@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { FolderInput, FolderPlus, FolderSync, Trash2 } from "../../../components/icons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
@@ -12,13 +13,7 @@ import {
   useLibraryFiles,
   useReadOnlyFolders,
 } from "../../../hooks/useLibraryFileOperation.ts";
-import {
-  addReadOnlyFolder,
-  checkLibraryIngestSource,
-  removeReadOnlyFolder,
-  startLibraryCleanup,
-  startLibraryIngest,
-} from "../../../utils/api/endpoints/library.ts";
+import { libraryFilesClient } from "../../../utils/api/clients/libraryFiles.ts";
 import type { ComponentProps } from "react";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsSelect } from "./SettingsField";
@@ -83,7 +78,9 @@ function ReadOnlyFoldersSection({
     setAdding(true);
     setAddError("");
     try {
-      await addReadOnlyFolder(draft);
+      await parseResponse(
+        libraryFilesClient.files["read-only-folders"].$post({ json: { path: draft } }),
+      );
       setDraft("");
       setFieldKey((key) => key + 1);
       await onChanged();
@@ -97,7 +94,9 @@ function ReadOnlyFoldersSection({
   const remove = async () => {
     setRemoveBusy(true);
     try {
-      await removeReadOnlyFolder(removing);
+      await parseResponse(
+        libraryFilesClient.files["read-only-folders"].$delete({ json: { path: removing } }),
+      );
       setRemoving(null);
       await onChanged();
     } catch (error) {
@@ -229,13 +228,12 @@ function IngestSection({
   showError: Toast;
 }) {
   const [sourcePath, setSourcePath] = useState("");
-  const [mode, setMode] = useState<Parameters<typeof startLibraryIngest>[1]>("copy");
-  const [monitor, setMonitor] =
-    useState<Parameters<typeof startLibraryIngest>[2]["monitor"]>("tracks");
+  const [mode, setMode] = useState<keyof typeof MODE_HELP>("copy");
+  const [monitor, setMonitor] = useState<keyof typeof MONITOR_HELP>("tracks");
   const [fillTags, setFillTags] = useState(true);
   const [check, setCheck] = useState<{
     loading: boolean;
-    result: Awaited<ReturnType<typeof checkLibraryIngestSource>> | null;
+    result: InferResponseType<typeof libraryFilesClient.files.ingest.check.$post, 200> | null;
     error: string;
   }>({ loading: false, result: null, error: "" });
   const [starting, setStarting] = useState(false);
@@ -248,7 +246,7 @@ function IngestSection({
       return;
     }
     setCheck({ loading: true, result: null, error: "" });
-    checkLibraryIngestSource(sourcePath)
+    parseResponse(libraryFilesClient.files.ingest.check.$post({ json: { sourcePath } }))
       .then((result) => {
         if (requestId !== requestRef.current) return;
         setCheck({ loading: false, result, error: "" });
@@ -278,7 +276,11 @@ function IngestSection({
   const start = async () => {
     setStarting(true);
     try {
-      await startLibraryIngest(result!.sourcePath, mode, { monitor, fillTags });
+      await parseResponse(
+        libraryFilesClient.files.ingest.$post({
+          json: { sourcePath: result!.sourcePath, mode, monitor, fillTags },
+        }),
+      );
       await onChanged();
     } catch (error) {
       showError(errorMessage(error, "The ingest could not start. Nothing was changed."));
@@ -405,7 +407,7 @@ export function SettingsLibraryFilesTab({ showError }: { showError: Toast }) {
   const cleanUp = async () => {
     setCleaningUp(true);
     try {
-      await startLibraryCleanup();
+      await parseResponse(libraryFilesClient.files.cleanup.$post());
       await refresh();
     } catch (error) {
       showError(errorMessage(error, "Clean up could not start. Nothing was changed."));

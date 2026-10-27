@@ -1,4 +1,5 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 import path from "node:path";
@@ -7,8 +8,7 @@ import { EventEmitter } from "node:events";
 
 process.env.NODE_ENV = "test";
 
-const { registerLibraryIndex } =
-  await import("../../backend/routes/library/handlers/libraryIndex.ts");
+const { api } = await import("../../backend/routes/api.ts");
 const {
   claimScheduledLibraryScanJob,
   beginLibraryScanJob,
@@ -89,20 +89,30 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   if (Number.isSafeInteger(existingJobId)) getLibraryScanQueue().cancel(existingJobId);
   clearScheduledLibraryScan();
 
-  const routes = createRouteHarness(registerLibraryIndex);
+  const app = signedInAs(testUser(1)).route("/", api);
 
   type ScanStatus = NonNullable<
     ReturnType<typeof import("../../backend/services/libraryScanWorker.ts").getLibraryScanStatus>
   >;
-  const response = createResponse<{ queued: boolean; jobId: number; status: ScanStatus }>();
+  type Queued = { queued: boolean; jobId: number; status: ScanStatus };
+  const refresh = async (body?: { mode: string }) => {
+    const response = await app.request("/library/refresh", {
+      method: "POST",
+      ...(body && {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    });
+    const payload: Queued = await response.json();
+    return { statusCode: response.status, body: payload };
+  };
   let refreshJobId: number | undefined;
 
   const queuedPayload = (jobId: number) =>
     JSON.parse(requireValue(getLibraryScanQueue().getJob(jobId)).payload);
 
   try {
-    await routes.get("POST /refresh")({ user: { id: 1 }, body: { mode: "bogus" } }, response);
-    assert.equal(response.statusCode, 400);
+    assert.equal((await refresh({ mode: "bogus" })).statusCode, 400);
     assert.equal(
       dbOps.getJSONSetting<{
         jobId?: number;
@@ -113,39 +123,36 @@ test("library refresh queues a quick or full scan and exposes its queue status",
       undefined,
     );
 
-    await routes.get("POST /refresh")({ user: { id: 1 } }, response);
-    assert.equal(response.statusCode, 202);
-    assert.equal(response.body.queued, true);
-    assert.equal(response.body.status.status, "queued");
-    assert.deepEqual(queuedPayload(response.body.jobId), {
+    const quick = await refresh();
+    assert.equal(quick.statusCode, 202);
+    assert.equal(quick.body.queued, true);
+    assert.equal(quick.body.status.status, "queued");
+    assert.deepEqual(queuedPayload(quick.body.jobId), {
       force: false,
       includeLidarr: true,
       changedPaths: null,
     });
-    getLibraryScanQueue().cancel(response.body.jobId);
+    getLibraryScanQueue().cancel(quick.body.jobId);
     clearScheduledLibraryScan();
 
-    await routes.get("POST /refresh")({ user: { id: 1 }, body: { mode: "full" } }, response);
-    assert.equal(response.statusCode, 202);
-    assert.equal(queuedPayload(response.body.jobId).force, true);
-    getLibraryScanQueue().cancel(response.body.jobId);
+    const full = await refresh({ mode: "full" });
+    assert.equal(full.statusCode, 202);
+    assert.equal(queuedPayload(full.body.jobId).force, true);
+    getLibraryScanQueue().cancel(full.body.jobId);
     clearScheduledLibraryScan();
 
-    await routes.get("POST /refresh")({ user: { id: 1 }, body: { mode: "quick" } }, response);
-    assert.equal(queuedPayload(response.body.jobId).force, false);
-    const jobId = response.body.jobId;
+    const { jobId } = (await refresh({ mode: "quick" })).body;
+    assert.equal(queuedPayload(jobId).force, false);
     refreshJobId = jobId;
-    await routes.get("POST /refresh")({ user: { id: 1 }, body: { mode: "full" } }, response);
-    assert.equal(response.body.jobId, jobId);
+    assert.equal((await refresh({ mode: "full" })).body.jobId, jobId);
     assert.equal(beginLibraryScanJob(jobId, queuedPayload(jobId)).force, true);
 
-    await routes.get("GET /refresh")({ user: { id: 1 } }, response);
-    assert.equal(response.body.jobId, jobId);
-    assert.equal(response.body.status.status, "queued");
+    const current: Queued = await (await app.request("/library/refresh")).json();
+    assert.equal(current.jobId, jobId);
+    assert.equal(current.status.status, "queued");
 
-    const statusResponse = createResponse<ScanStatus>();
-    await routes.get("GET /refresh/:jobId")({ user: { id: 1 }, params: { jobId } }, statusResponse);
-    assert.equal(statusResponse.body.status, "queued");
+    const status: ScanStatus = await (await app.request(`/library/refresh/${jobId}`)).json();
+    assert.equal(status.status, "queued");
   } finally {
     if (refreshJobId) getLibraryScanQueue().cancel(refreshJobId);
     clearScheduledLibraryScan();

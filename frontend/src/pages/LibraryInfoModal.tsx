@@ -1,13 +1,13 @@
 import { useId } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { X } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
-import { getLibraryTrackFiles } from "../utils/api/endpoints/library.ts";
+import { libraryTracksClient } from "../utils/api/clients/libraryTracks.ts";
 import { getJobFiles } from "../utils/api/endpoints/playlists.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
-import type { GetLibraryTrackFilesResponse } from "../../../backend/routes/library/handlers/tracks.ts";
 
 type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
@@ -165,7 +165,11 @@ const getRows = ({ kind, source, entity, artist, album, trackNumber }: LibraryIn
   return rows.filter(([, value]) => text(value));
 };
 
-const pathsLabel = (query: UseQueryResult<GetLibraryTrackFilesResponse>) => {
+const pathsLabel = (
+  query: UseQueryResult<
+    InferResponseType<(typeof libraryTracksClient.tracks)[":id"]["files"]["$get"], 200>
+  >,
+) => {
   if (query.isPending) return "Loading…";
   if (query.isError) return "Could not load file paths";
   return query.data?.paths?.length ? query.data.paths : "No file on disk";
@@ -191,7 +195,12 @@ export default function LibraryInfoModal({
     queryFn: ({ signal }) =>
       item?.source === "playlist"
         ? getJobFiles(String(trackId), { signal })
-        : getLibraryTrackFiles(trackId!, { signal }),
+        : parseResponse(
+            libraryTracksClient.tracks[":id"].files.$get(
+              { param: { id: encodeURIComponent(trackId!) } },
+              { init: { signal } },
+            ),
+          ),
     enabled: showPaths,
     staleTime: 30_000,
   });

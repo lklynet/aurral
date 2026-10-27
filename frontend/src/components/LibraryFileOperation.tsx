@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { ArrowRight } from "./icons";
 import { DotLoader } from "./DotLoader";
 import { getApiErrorText } from "../pages/onboardingUtils.tsx";
 import { asApiError } from "../utils/api/core.ts";
-import {
-  cancelLibraryFileOperation,
-  getLibraryFileOperationItems,
-  removeLibraryFileOperationSources,
-} from "../utils/api/endpoints/library.ts";
+import { libraryFilesClient } from "../utils/api/clients/libraryFiles.ts";
 import {
   ACTIVE_LIBRARY_FILE_STATUSES,
   libraryFilesQueryKey,
@@ -191,7 +188,11 @@ function StopButton({
   const stop = async () => {
     setStopping(true);
     try {
-      await cancelLibraryFileOperation(operation.id);
+      await parseResponse(
+        libraryFilesClient.files.operations[":id"].cancel.$post({
+          param: { id: encodeURIComponent(operation.id) },
+        }),
+      );
       await onChanged?.();
     } catch (error) {
       showError?.(
@@ -227,7 +228,11 @@ function RemoveSourcesOffer({
   const remove = async () => {
     setRemoving(true);
     try {
-      await removeLibraryFileOperationSources(operation.id);
+      await parseResponse(
+        libraryFilesClient.files.operations[":id"]["remove-sources"].$post({
+          param: { id: encodeURIComponent(operation.id) },
+        }),
+      );
       await onChanged?.();
     } catch (error) {
       showError?.(getApiErrorText(error, "message") || asApiError(error)?.message || copy.failed);
@@ -287,11 +292,16 @@ export default function LibraryFileOperation({
       operation?.updatedAt,
     ],
     queryFn: () =>
-      getLibraryFileOperationItems(operation!.id, {
-        status: group!.statuses,
-        offset,
-        limit: PAGE_SIZE,
-      }),
+      parseResponse(
+        libraryFilesClient.files.operations[":id"].items.$get({
+          param: { id: encodeURIComponent(operation!.id) },
+          query: {
+            status: group!.statuses.join(",") || undefined,
+            offset: String(offset),
+            limit: String(PAGE_SIZE),
+          },
+        }),
+      ),
     enabled: Boolean(operation && group),
     placeholderData: (previous) => previous,
   });

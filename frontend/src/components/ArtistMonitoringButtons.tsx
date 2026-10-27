@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { Eye, MoreVertical, Plus, SlidersHorizontal } from "./icons";
 import AddActionButton from "./AddActionButton";
 import { ArtistMonitoringRulesDialog } from "./ArtistMonitoringRulesDialog";
@@ -10,7 +11,8 @@ import { useToast } from "../contexts/ToastContext";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import { getArtistMonitoring, updateLibraryArtist } from "../utils/api/endpoints/library.ts";
+import { libraryArtistsClient } from "../utils/api/clients/libraryArtists.ts";
+import { updateLibraryArtist } from "../utils/api/endpoints/library.ts";
 import { describeAurralMonitoringError } from "../utils/aurralMonitoring.ts";
 import {
   buildArtistMonitoringItems,
@@ -20,7 +22,10 @@ import {
   isArtistMonitored,
 } from "../utils/artistMonitoring.ts";
 
-type MonitoringData = Awaited<ReturnType<typeof getArtistMonitoring>>;
+type MonitoringData = InferResponseType<
+  (typeof libraryArtistsClient.artists)[":mbid"]["monitoring"]["$get"],
+  200
+>;
 type MonitoringRequest = Parameters<
   Parameters<typeof buildArtistMonitoringItems>[0]["onSelect"]
 >[0];
@@ -71,7 +76,15 @@ export function useArtistMonitoring({
   const pendingRef = useRef(false);
   const monitoringQuery = useQuery({
     queryKey: queryKeys.artistMonitoring(mbid),
-    queryFn: mbid ? ({ signal }) => getArtistMonitoring(mbid, { signal }) : skipToken,
+    queryFn: mbid
+      ? ({ signal }) =>
+          parseResponse(
+            libraryArtistsClient.artists[":mbid"].monitoring.$get(
+              { param: { mbid: encodeURIComponent(mbid) } },
+              { init: { signal } },
+            ),
+          )
+      : skipToken,
     enabled: Boolean(mbid),
     staleTime: 0,
   });

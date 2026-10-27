@@ -1,6 +1,7 @@
 import ArtworkImage from "../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import {
   Link,
   useLocation,
@@ -76,28 +77,21 @@ import {
 } from "./playlists/usePlaylistBulkActions.ts";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.ts";
+import { libraryClient } from "../utils/api/clients/library.ts";
+import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
+import { libraryArtistsClient } from "../utils/api/clients/libraryArtists.ts";
+import { libraryArtworkClient } from "../utils/api/clients/libraryArtwork.ts";
+import { libraryTracksClient } from "../utils/api/clients/libraryTracks.ts";
+import { requestsClient } from "../utils/api/clients/requests.ts";
 import {
   clearLibraryPageCache,
-  deleteAlbumFromLibrary,
-  deleteArtistFromLibrary,
-  deleteAurralAlbumFromLibrary,
-  deleteLidarrAlbumFromLibrary,
-  deleteTrackFromLibrary,
-  deleteLibraryCustomArtwork,
   getLibraryCustomArtworkUrl,
-  getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
-  getLibraryRefreshStatus,
-  getRequests,
   downloadTrackToLibrary,
   reSearchLibraryTrack,
   requestAlbumFromSearch,
-  requestLibraryRefresh,
-  setLibraryCustomArtworkUrl,
-  updateLibraryAlbum,
   updateLibraryFavorites,
-  uploadLibraryCustomArtwork,
   type AurralMonitoringResult,
   type CustomArtworkResult,
 } from "../utils/api/endpoints/library.ts";
@@ -167,6 +161,7 @@ import Tooltip from "../components/Tooltip";
 import { showFavoriteRemoved } from "../utils/favoriteUndo.ts";
 import ArtworkEditorModal from "../components/ArtworkEditorModal.tsx";
 import type { WebSocketChannelMessage } from "../../../backend/services/websocketService.ts";
+import type { ActivityRequest } from "./activity/activityListUtils.ts";
 
 type LibraryPageTrack = LibraryTrack & {
   durationMs?: number | null;
@@ -557,7 +552,9 @@ function LibraryPage() {
   const pollLibraryRefresh = useCallback(
     async (jobId: number, attempt: number, successMessage = "") => {
       while (true) {
-        const status = await getLibraryRefreshStatus(jobId);
+        const status = await parseResponse(
+          libraryClient.refresh[":jobId"].$get({ param: { jobId: encodeURIComponent(jobId) } }),
+        );
         if (refreshAttemptRef.current !== attempt) return;
         if (status.status === "completed") {
           completeLibraryRefresh();
@@ -577,7 +574,7 @@ function LibraryPage() {
     let mounted = true;
     const restoreLibraryRefresh = async () => {
       try {
-        const active = await getActiveLibraryRefresh();
+        const active = await parseResponse(libraryClient.refresh.$get());
         if (
           !mounted ||
           !active?.jobId ||
@@ -616,7 +613,7 @@ function LibraryPage() {
       setRefreshing(true);
       try {
         clearLibraryPageCache();
-        const queued = await requestLibraryRefresh(mode);
+        const queued = await parseResponse(libraryClient.refresh.$post({ json: { mode } }));
         const jobId = queued?.jobId;
         if (!jobId) throw new Error("Library refresh did not start");
         await pollLibraryRefresh(
@@ -1161,18 +1158,42 @@ function LibraryPage() {
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await deleteArtistFromLibrary(removal.entity.mbid || removal.entity.id, deleteFiles);
+          await parseResponse(
+            libraryArtistsClient.artists[":mbid"].$delete({
+              param: { mbid: encodeURIComponent(removal.entity.mbid || removal.entity.id) },
+              query: { deleteFiles: String(deleteFiles) },
+            }),
+          );
         } else if (removal.kind === "album") {
           const { entity } = removal;
           if (resolveAlbumManager(entity) === "aurral") {
-            await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
+            await parseResponse(
+              libraryAlbumsClient.albums.aurral[":canonicalId"].$delete({
+                param: { canonicalId: encodeURIComponent(entity.canonicalId || entity.id) },
+                query: { deleteFiles: String(deleteFiles) },
+              }),
+            );
           } else if (entity.providerId != null && /^\d+$/.test(String(entity.providerId))) {
-            await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
+            await parseResponse(
+              libraryAlbumsClient.albums[":id"].$delete({
+                param: { id: encodeURIComponent(entity.providerId) },
+                query: { deleteFiles: String(deleteFiles) },
+              }),
+            );
           } else {
-            await deleteLidarrAlbumFromLibrary(entity.releaseGroupMbid || entity.mbid, deleteFiles);
+            await parseResponse(
+              libraryAlbumsClient.albums.lidarr[":mbid"].$delete({
+                param: { mbid: encodeURIComponent(String(entity.releaseGroupMbid || entity.mbid)) },
+                query: { deleteFiles: String(deleteFiles) },
+              }),
+            );
           }
         } else {
-          await deleteTrackFromLibrary(removal.entity.id);
+          await parseResponse(
+            libraryTracksClient.tracks[":id"].$delete({
+              param: { id: encodeURIComponent(removal.entity.id) },
+            }),
+          );
         }
       }
       removeLocalLibraryEntity(removal);
@@ -1258,7 +1279,7 @@ function LibraryPage() {
             ...current,
             [key]: {
               jobId: result?.jobId || null,
-              status: result?.reused ? "moving" : "searching",
+              status: "reused" in result && result.reused ? "moving" : "searching",
             },
           }));
         }
@@ -1526,7 +1547,8 @@ function LibraryPage() {
   );
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
-    queryFn: ({ signal }) => getRequests({ refresh: true, signal }),
+    queryFn: ({ signal }): Promise<ActivityRequest[]> =>
+      parseResponse(requestsClient.$get({ query: { refresh: "1" } }, { init: { signal } })),
     enabled: Boolean(libraryAlbum && !isPreviewLibrary && hasMissingAlbumTracks),
     staleTime: 0,
     refetchInterval: hasTrackDownloadPolling ? 4000 : false,
@@ -1718,7 +1740,12 @@ function LibraryPage() {
       const title = libraryAlbum!.title || "Album";
       setLidarrMonitoredOverride({ albumId: lidarrAlbumId, monitored });
       try {
-        await updateLibraryAlbum(lidarrAlbumId, { monitored });
+        await parseResponse(
+          libraryAlbumsClient.albums[":id"].$put({
+            param: { id: encodeURIComponent(lidarrAlbumId) },
+            json: { monitored },
+          }),
+        );
         updateAlbumMonitoringState(libraryAlbum!.id, { monitored });
         showSuccess(monitored ? `${title} monitored in Lidarr` : `${title} unmonitored in Lidarr`);
       } catch (requestError) {
@@ -3334,10 +3361,31 @@ function LibraryPage() {
         hasCustomArtwork={artworkEditor?.hasCustomArtwork}
         onClose={() => setArtworkEditor(null)}
         onUpload={(file) =>
-          uploadLibraryCustomArtwork(artworkEditor!.kind, artworkEditor!.id, file)
+          parseResponse(
+            libraryArtworkClient.artwork[":kind"][":id"].$put(
+              { param: { kind: artworkEditor!.kind, id: encodeURIComponent(artworkEditor!.id) } },
+              {
+                init: { body: file },
+                headers: { "Content-Type": file.type || "application/octet-stream" },
+              },
+            ),
+          )
         }
-        onSaveUrl={(url) => setLibraryCustomArtworkUrl(artworkEditor!.kind, artworkEditor!.id, url)}
-        onRemove={() => deleteLibraryCustomArtwork(artworkEditor!.kind, artworkEditor!.id)}
+        onSaveUrl={(url) =>
+          parseResponse(
+            libraryArtworkClient.artwork[":kind"][":id"].url.$put({
+              param: { kind: artworkEditor!.kind, id: encodeURIComponent(artworkEditor!.id) },
+              json: { url },
+            }),
+          )
+        }
+        onRemove={() =>
+          parseResponse(
+            libraryArtworkClient.artwork[":kind"][":id"].$delete({
+              param: { kind: artworkEditor!.kind, id: encodeURIComponent(artworkEditor!.id) },
+            }),
+          )
+        }
         onSaved={handleArtworkSaved}
       />
     </>

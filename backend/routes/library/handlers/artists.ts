@@ -1,8 +1,11 @@
-import type { Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
-import { cacheMiddleware, noCache } from "../../../middleware/cache.ts";
-import { requireAuth, requirePermission } from "../../../middleware/requirePermission.ts";
+import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
+import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
@@ -12,216 +15,239 @@ import {
   isMetadataNotFoundError,
 } from "../../../services/providers/brainzmashProvider.ts";
 import { asAppError, type AppError } from "../../../../lib/errors.ts";
-export function registerArtists(router: Router) {
-  router.get("/artists", cacheMiddleware(120), async (req, res) => {
+import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
+
+const listQuery = v.object({
+  limit: v.optional(v.string()),
+  offset: v.optional(v.string()),
+  readPath: v.optional(v.string()),
+  source: v.optional(v.string()),
+});
+
+const id = v.union([v.string(), v.number()]);
+
+const monitoringInput = v.object({
+  monitored: v.optional(v.boolean()),
+  useDefault: v.optional(v.boolean()),
+  rules: v.optional(v.unknown()),
+});
+
+const addInput = v.object({
+  foreignArtistId: v.optional(v.string()),
+  artistName: v.optional(v.string()),
+  quality: v.optional(v.nullable(v.string())),
+  monitorOption: v.optional(v.nullable(v.string())),
+  monitoring: v.optional(v.nullable(monitoringInput)),
+  rootFolderPath: v.optional(v.nullable(v.string())),
+  qualityProfileId: v.optional(v.nullable(id)),
+  tagId: v.optional(v.nullable(id)),
+  releaseGroupMbid: v.optional(v.nullable(v.string())),
+  managedBy: v.optional(v.nullable(v.string())),
+});
+
+const mbidInput = v.object({ mbid: v.optional(v.nullable(v.string())) });
+
+const updateInput = v.object({
+  monitorOption: v.optional(v.nullable(v.string())),
+  monitoring: v.optional(v.nullable(monitoringInput)),
+  artistName: v.optional(v.nullable(v.string())),
+});
+
+const deleteQuery = v.object({
+  deleteFiles: v.optional(v.string()),
+  manager: v.optional(v.string()),
+});
+
+export default new Hono<AppEnv>()
+  .basePath("/library")
+  .get("/artists", cacheFor(120), validate("query", listQuery), (c) => {
+    const query = c.req.valid("query");
     try {
-      const limit = Math.min(Math.max(parseInt(String(req.query.limit), 10) || 10000, 1), 10000);
-      const offset = Math.max(parseInt(String(req.query.offset), 10) || 0, 0);
-      if (req.query.readPath === "canonical") {
+      const limit = Math.min(Math.max(Number.parseInt(query.limit ?? "", 10) || 10000, 1), 10000);
+      const offset = Math.max(Number.parseInt(query.offset ?? "", 10) || 0, 0);
+      if (query.readPath === "canonical") {
         const { artists } = getLibraryReadModelForArtistPage({
-          source: req.query.source || "all",
+          source: query.source || "all",
           limit,
           offset,
         });
-        return res.json(
-          artists.map((artist) => ({
-            ...artist,
-            added: artist.addedAt,
-          })),
+        return c.json(
+          artists.map((artist) => ({ ...artist, added: artist.addedAt })),
+          200,
         );
       }
       const artists = getLibraryArtistProjection({ pageSize: limit, offset });
-      const formatted = artists.map((artist) => ({
-        ...artist,
-        foreignArtistId: artist.foreignArtistId || artist.mbid,
-        added: artist.addedAt,
-      }));
-      res.json(formatted);
+      return c.json(
+        artists.map((artist) => ({
+          ...artist,
+          foreignArtistId: artist.foreignArtistId || artist.mbid,
+          added: artist.addedAt,
+        })),
+        200,
+      );
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch artists",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to fetch artists", message: asAppError(error)?.message }, 500);
     }
-  });
-
-  router.get<"/artists/:mbid/monitoring">(
-    "/artists/:mbid/monitoring",
-    noCache,
-    async (req, res) => {
-      try {
-        const { mbid } = req.params;
-        if (!UUID_REGEX.test(mbid)) {
-          return res.status(400).json({ error: "Invalid MBID format" });
-        }
-        res.json(await libraryManager.getArtistMonitoring(mbid));
-      } catch (error) {
-        const failure = asAppError(error);
-        res.status(500).json({
-          error: "Failed to read artist monitoring",
-          message: failure?.message,
-        });
-      }
-    },
-  );
-
-  router.get<"/artists/:mbid">("/artists/:mbid", cacheMiddleware(120), async (req, res) => {
+  })
+  .get("/artists/:mbid/monitoring", noCache, async (c) => {
     try {
-      const { mbid } = req.params;
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
-      }
-
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+      return c.json(await libraryManager.getArtistMonitoring(mbid), 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to read artist monitoring", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .get("/artists/:mbid", cacheFor(120), async (c) => {
+    try {
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
       const artist = await libraryManager.getArtist(mbid);
-      if (!artist) {
-        return res.status(404).json({ error: "Artist not found" });
-      }
-
-      const formatted = {
-        ...artist,
-        foreignArtistId: artist.foreignArtistId || artist.mbid,
-        added: artist.addedAt,
-      };
-      res.json(formatted);
+      if (!artist) return c.json({ error: "Artist not found" }, 404);
+      return c.json(
+        {
+          ...artist,
+          foreignArtistId: artist.foreignArtistId || artist.mbid,
+          added: artist.addedAt,
+        },
+        200,
+      );
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch artist",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to fetch artist", message: asAppError(error)?.message }, 500);
     }
-  });
-
-  router.post("/artists", requireAuth, requirePermission("addArtist"), async (req, res) => {
-    try {
-      const {
-        foreignArtistId: mbid,
-        artistName,
-        quality,
-        monitorOption,
-        monitoring,
-        rootFolderPath,
-        qualityProfileId,
-        tagId,
-        releaseGroupMbid,
-        managedBy: requestedManagedBy,
-      } = req.body;
-
-      if (!mbid || !artistName) {
-        return res.status(400).json({
-          error: "foreignArtistId and artistName are required",
-        });
-      }
-
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
-      }
-
-      let managedBy;
+  })
+  .post(
+    "/artists",
+    requireAuth,
+    requirePermission("addArtist"),
+    validate("json", addInput),
+    async (c) => {
+      const user = c.var.user;
       try {
-        managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
-      } catch (error) {
-        const failure = asAppError(error);
-        return res.status(failure?.statusCode || 400).json({
-          error: failure?.message,
-          code: failure?.code || null,
-        });
-      }
-
-      const existingArtist = await libraryManager.getArtist(mbid, { managedBy });
-      if (existingArtist?.id) {
-        return res.status(200).json({
-          queued: false,
+        const {
           foreignArtistId: mbid,
           artistName,
-          artist: {
-            ...existingArtist,
-            foreignArtistId: existingArtist.foreignArtistId || existingArtist.mbid,
-            added: existingArtist.addedAt,
-          },
-        });
-      }
-
-      let preparedAddOptions = null;
-      try {
-        preparedAddOptions = await libraryManager.resolveArtistAddOptions({
-          user: req.user,
-          managedBy,
           quality,
           monitorOption,
           monitoring,
           rootFolderPath,
           qualityProfileId,
           tagId,
-          albumOnly: Boolean(releaseGroupMbid),
-          albumMbid: releaseGroupMbid || null,
+          releaseGroupMbid,
+          managedBy: requestedManagedBy,
+        } = c.req.valid("json");
+
+        if (!mbid || !artistName) {
+          return c.json({ error: "foreignArtistId and artistName are required" }, 400);
+        }
+        if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+
+        let managedBy;
+        try {
+          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
+        } catch (error) {
+          const failure = asAppError(error);
+          return c.json(
+            { error: failure?.message, code: failure?.code || null },
+            isErrorStatus(failure?.statusCode) ? failure.statusCode : 400,
+          );
+        }
+
+        const existingArtist = await libraryManager.getArtist(mbid, { managedBy });
+        if (existingArtist?.id) {
+          return c.json(
+            {
+              queued: false,
+              foreignArtistId: mbid,
+              artistName,
+              artist: {
+                ...existingArtist,
+                foreignArtistId: existingArtist.foreignArtistId || existingArtist.mbid,
+                added: existingArtist.addedAt,
+              },
+            },
+            200,
+          );
+        }
+
+        let preparedAddOptions = null;
+        try {
+          preparedAddOptions = await libraryManager.resolveArtistAddOptions({
+            user,
+            managedBy,
+            quality,
+            monitorOption,
+            monitoring,
+            rootFolderPath,
+            qualityProfileId,
+            tagId,
+            albumOnly: Boolean(releaseGroupMbid),
+            albumMbid: releaseGroupMbid || null,
+          });
+        } catch (error) {
+          const failure: (AppError & { field?: string }) | undefined = asAppError(error);
+          const statusCode =
+            failure?.statusCode === 400 || failure?.statusCode === 409 ? failure.statusCode : 500;
+          return c.json(
+            {
+              error:
+                statusCode === 409
+                  ? "Saved Lidarr default is no longer valid"
+                  : "Failed to validate Lidarr add options",
+              message: failure?.message,
+              field: failure?.field || null,
+              code: failure?.code || null,
+            },
+            statusCode,
+          );
+        }
+
+        const artist = await libraryManager.addArtistWithResolvedOptions(mbid, artistName, {
+          ...preparedAddOptions,
+          user,
         });
+        if (isFailure(artist)) {
+          logger.error("library", `Failed to add artist ${artistName}:`, {
+            message: artist.error,
+          });
+          return c.json(
+            { error: "Failed to add artist", message: artist.error, code: artist.code || null },
+            isErrorStatus(artist.statusCode) ? artist.statusCode : 503,
+          );
+        }
+
+        return c.json(
+          {
+            queued: false,
+            foreignArtistId: mbid,
+            artistName,
+            artist: {
+              ...artist,
+              foreignArtistId: artist.foreignArtistId || artist.mbid || mbid,
+              added: artist.addedAt,
+            },
+          },
+          201,
+        );
       } catch (error) {
-        const failure: (AppError & { field?: string }) | undefined = asAppError(error);
-        const statusCode =
-          failure?.statusCode === 400 || failure?.statusCode === 409 ? failure?.statusCode : 500;
-        return res.status(statusCode).json({
-          error:
-            statusCode === 409
-              ? "Saved Lidarr default is no longer valid"
-              : "Failed to validate Lidarr add options",
-          message: failure?.message,
-          field: failure?.field || null,
-          code: failure?.code || null,
-        });
+        return c.json({ error: "Failed to add artist", message: asAppError(error)?.message }, 500);
       }
-
-      const artist = await libraryManager.addArtistWithResolvedOptions(mbid, artistName, {
-        ...preparedAddOptions,
-        user: req.user,
-      });
-      if (artist?.error) {
-        logger.error("library", `Failed to add artist ${artistName}:`, {
-          message: artist.error,
-        });
-        const statusCode =
-          typeof artist.statusCode === "number" &&
-          Number.isInteger(artist.statusCode) &&
-          artist.statusCode >= 400
-            ? artist.statusCode
-            : 503;
-        return res.status(statusCode).json({
-          error: "Failed to add artist",
-          message: artist.error,
-          code: artist.code || null,
-        });
-      }
-
-      return res.status(201).json({
-        queued: false,
-        foreignArtistId: mbid,
-        artistName,
-        artist: {
-          ...artist,
-          foreignArtistId: artist.foreignArtistId || artist.mbid || mbid,
-          added: artist.addedAt,
-        },
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to add artist",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.put<"/canonical/artists/:id/mbid">(
+    },
+  )
+  .put(
     "/canonical/artists/:id/mbid",
     requireAuth,
     requirePermission("addArtist"),
-    async (req, res) => {
-      const artistId = Number(req.params.id);
-      const rawMbid = req.body?.mbid;
+    validate("json", mbidInput),
+    async (c) => {
+      const artistId = Number(c.req.param("id"));
+      const rawMbid = c.req.valid("json").mbid;
       const mbid = typeof rawMbid === "string" ? rawMbid.trim().toLowerCase() : rawMbid;
       if (!Number.isSafeInteger(artistId) || (mbid !== null && !UUID_REGEX.test(String(mbid)))) {
-        return res.status(400).json({ error: "A MusicBrainz artist ID or null is required" });
+        return c.json({ error: "A MusicBrainz artist ID or null is required" }, 400);
       }
       let musicbrainzName = null;
       if (mbid) {
@@ -230,180 +256,118 @@ export function registerArtists(router: Router) {
           musicbrainzName = artist.name || null;
         } catch (error) {
           if (isMetadataNotFoundError(error)) {
-            return res.status(404).json({ error: "MusicBrainz has no artist with that ID" });
+            return c.json({ error: "MusicBrainz has no artist with that ID" }, 404);
           }
-          return res
-            .status(503)
-            .json({ error: "Could not reach the metadata provider. Try again." });
+          return c.json({ error: "Could not reach the metadata provider. Try again." }, 503);
         }
       }
-      const result = setLibraryArtistMbid(artistId, mbid);
-      if (result.error === "not_found") {
-        return res.status(404).json({ error: "Artist not found" });
-      }
+      const result = setLibraryArtistMbid(artistId, mbid ?? null);
       if (result.error === "lidarr_managed") {
-        return res
-          .status(409)
-          .json({ error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." });
+        return c.json(
+          { error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." },
+          409,
+        );
       }
-      res.json({
-        id: result.artist!.id,
-        mbid: result.artist!.mbid,
-        name: result.artist!.name,
-        musicbrainzName,
-        merged: Boolean(result.mergedArtistId),
-      });
+      const { artist } = result;
+      if (!artist) return c.json({ error: "Artist not found" }, 404);
+      return c.json(
+        {
+          id: artist.id,
+          mbid: artist.mbid,
+          name: artist.name,
+          musicbrainzName,
+          merged: Boolean(result.mergedArtistId),
+        },
+        200,
+      );
     },
-  );
-
-  router.put<"/artists/:mbid">(
+  )
+  .put(
     "/artists/:mbid",
     requireAuth,
     requirePermission("changeMonitoring"),
-    async (req, res) => {
+    validate("json", updateInput),
+    async (c) => {
       try {
-        const { mbid } = req.params;
-        if (!UUID_REGEX.test(mbid)) {
-          return res.status(400).json({ error: "Invalid MBID format" });
-        }
-
+        const mbid = c.req.param("mbid");
+        if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
         const artist = await libraryManager.setArtistMonitoring(mbid, {
-          monitorOption: req.body?.monitorOption,
-          monitoring: req.body?.monitoring,
-          artistName: req.body?.artistName,
-          user: req.user,
+          ...c.req.valid("json"),
+          user: c.var.user,
         });
-        if (artist?.error) {
-          return res.status(artist.statusCode || 503).json({
-            error: artist.error,
-            message: artist.error,
-            code: artist.code || null,
-          });
+        if (isFailure(artist)) {
+          return c.json(
+            { error: artist.error, message: artist.error, code: artist.code || null },
+            isErrorStatus(artist.statusCode) ? artist.statusCode : 503,
+          );
         }
-        res.json(artist);
+        return c.json(artist, 200);
       } catch (error) {
-        const failure = asAppError(error);
-        res.status(500).json({
-          error: "Failed to update artist",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to update artist", message: asAppError(error)?.message },
+          500,
+        );
       }
     },
-  );
-
-  router.delete<"/artists/:mbid">(
+  )
+  .delete(
     "/artists/:mbid",
     requireAuth,
     requirePermission("deleteArtist"),
-    async (req, res) => {
+    validate("query", deleteQuery),
+    async (c) => {
       try {
-        const { mbid } = req.params;
-        const { deleteFiles = false, manager = null } = req.query;
-
+        const mbid = c.req.param("mbid");
+        const { deleteFiles, manager = null } = c.req.valid("query");
         if (!UUID_REGEX.test(mbid) && !/^[1-9]\d*$/.test(mbid)) {
-          return res.status(400).json({ error: "Use an artist's MusicBrainz ID or Library id" });
+          return c.json({ error: "Use an artist's MusicBrainz ID or Library id" }, 400);
         }
         if (manager !== null && manager !== "aurral" && manager !== "lidarr") {
-          return res.status(400).json({ error: "manager must be 'aurral' or 'lidarr'" });
+          return c.json({ error: "manager must be 'aurral' or 'lidarr'" }, 400);
         }
-
-        const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true", { manager });
+        const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true", {
+          manager,
+        });
         if (!result?.success) {
           const message = result?.error || "Failed to delete artist";
-          return res
-            .status(result?.statusCode || 503)
-            .json({ error: message, message, code: result?.code });
+          return c.json(
+            { error: message, message, code: result?.code },
+            isErrorStatus(result?.statusCode) ? result.statusCode : 503,
+          );
         }
-        res.json({ success: true, message: "Artist deleted successfully" });
+        return c.json({ success: true, message: "Artist deleted successfully" }, 200);
       } catch (error) {
-        const failure = asAppError(error);
-        res.status(500).json({
-          error: "Failed to delete artist",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to delete artist", message: asAppError(error)?.message },
+          500,
+        );
       }
     },
-  );
+  )
+  .post("/artists/:mbid/refresh", requireAuth, requirePermission("changeMonitoring"), async (c) => {
+    try {
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+      const artist = await libraryManager.getArtist(mbid);
+      if (!artist) return c.json({ error: "Artist not found" }, 404);
 
-  router.post<"/artists/:mbid/refresh">(
-    "/artists/:mbid/refresh",
-    requireAuth,
-    requirePermission("changeMonitoring"),
-    async (req, res) => {
-      try {
-        const { mbid } = req.params;
-        if (!UUID_REGEX.test(mbid)) {
-          return res.status(400).json({ error: "Invalid MBID format" });
+      const { lidarrClient } = await import("../../../services/lidarrClient.ts");
+      const albums = await libraryManager.getAlbums(artist.id);
+      if (lidarrClient && lidarrClient.isConfigured()) {
+        const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
+        const monitoring = lidarrArtist ? libraryManager.mapLidarrArtist(lidarrArtist) : null;
+        if (lidarrArtist && monitoring?.monitored && monitoring.monitorOption !== "none") {
+          await lidarrClient.triggerArtistSearch(lidarrArtist.id);
         }
-
-        const artist = await libraryManager.getArtist(mbid);
-        if (!artist) {
-          return res.status(404).json({ error: "Artist not found" });
-        }
-
-        const { lidarrClient } = await import("../../../services/lidarrClient.ts");
-
-        const albums = await libraryManager.getAlbums(artist.id);
-
-        if (lidarrClient && lidarrClient.isConfigured()) {
-          const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-          const monitoring = lidarrArtist ? libraryManager.mapLidarrArtist(lidarrArtist) : null;
-          if (lidarrArtist && monitoring?.monitored && monitoring.monitorOption !== "none") {
-            await lidarrClient.triggerArtistSearch(lidarrArtist.id);
-          }
-        }
-
-        res.json({
-          success: true,
-          message: "Artist refreshed successfully",
-          albums: albums.length,
-        });
-      } catch (error) {
-        const failure = asAppError(error);
-        res.status(500).json({
-          error: "Failed to refresh artist",
-          message: failure?.message,
-        });
       }
-    },
-  );
-}
-
-type LibraryArtistRecord =
-  | ReturnType<typeof libraryManager.mapLidarrArtist>
-  | ReturnType<typeof getLibraryArtistProjection>[number];
-
-type WithNullableForeignArtistId<Artist> = Artist extends unknown
-  ? Omit<Artist, "foreignArtistId"> & { foreignArtistId: string | null }
-  : never;
-
-export type FetchLibraryArtistResponse = WithNullableForeignArtistId<LibraryArtistRecord> & {
-  added: LibraryArtistRecord["addedAt"];
-};
-
-export type AddArtistToLibraryResponse = {
-  queued: false;
-  foreignArtistId: string;
-  artistName: string;
-  artist: FetchLibraryArtistResponse;
-};
-
-export type UpdateLibraryArtistMbidResponse = {
-  id: number;
-  mbid: string | null;
-  name: string;
-  musicbrainzName: string | null;
-  merged: boolean;
-};
-
-export type UpdateLibraryArtistResponse = Awaited<
-  ReturnType<typeof libraryManager.setArtistMonitoring>
->;
-
-export type GetArtistMonitoringResponse = Awaited<
-  ReturnType<typeof libraryManager.getArtistMonitoring>
->;
-
-export type DeleteArtistFromLibraryResponse = { success: true; message: string };
-
-export type RefreshLibraryArtistResponse = { success: true; message: string; albums: number };
+      return c.json(
+        { success: true, message: "Artist refreshed successfully", albums: albums.length },
+        200,
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to refresh artist", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  });

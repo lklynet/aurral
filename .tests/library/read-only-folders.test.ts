@@ -1,5 +1,6 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -30,8 +31,7 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  { registerFiles },
-  { registerTracks },
+  { api },
   { scanConfiguredLibrary },
   { resolveDownloadRoot },
   { reuseTrackForPlaylist },
@@ -43,8 +43,7 @@ const [
   "read-only-folders",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/routes/library/handlers/files.ts"),
-  () => import("../../backend/routes/library/handlers/tracks.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryIndexService.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
   () => import("../../backend/services/downloadJobs/fileReuse.ts"),
@@ -105,27 +104,22 @@ async function makeTrack(
   return filePath;
 }
 
-function captureRoutes(
-  register: typeof import("../../backend/routes/library/handlers/tracks.ts").registerTracks,
-) {
-  const routes = createRouteHarness(register);
-  return async (
-    method: string,
-    routePath: string,
-    { body, params }: { body?: { path: string }; params?: { id: string } } = {},
-  ) => {
-    const response = createResponse<{
-      folders: { path: string; tracks?: number; readable?: boolean }[];
-      message?: string;
-      error?: string;
-    }>();
-    await routes.get(`${method} ${routePath}`)({ body, params, user: { id: 1 } }, response);
-    return response;
-  };
-}
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-const callFiles = captureRoutes(registerFiles);
-const callTracks = captureRoutes(registerTracks);
+async function callLibrary(method: string, routePath: string, body?: { path: string }) {
+  const response = await app.request(
+    `/library${routePath}`,
+    body
+      ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      : { method },
+  );
+  const responseBody: {
+    folders: { path: string; tracks?: number; readable?: boolean }[];
+    message?: string;
+    error?: string;
+  } = await response.json();
+  return { status: response.status, body: responseBody };
+}
 
 const fileRow = (filePath: string) =>
   db
@@ -152,8 +146,8 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   const filePath = await makeTrack(folder, "Kept Artist", "Kept Album", "Kept Song");
   const before = await fingerprint(filePath);
 
-  const added = await callFiles("POST", "/files/read-only-folders", { body: { path: folder } });
-  assert.equal(added.statusCode, 201);
+  const added = await callLibrary("POST", "/files/read-only-folders", { path: folder });
+  assert.equal(added.status, 201);
   assert.deepEqual(
     requireFixture(added.body).folders.map((entry) => entry.path),
     [folder],
@@ -169,14 +163,12 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
       managed_by: "aurral",
     },
   ]);
-  const listed = await callFiles("GET", "/files/read-only-folders");
+  const listed = await callLibrary("GET", "/files/read-only-folders");
   assert.equal(requireFixture(listed.body).folders[0].tracks, 1);
   assert.equal(requireFixture(listed.body).folders[0].readable, true);
 
-  const deleted = await callTracks("DELETE", "/tracks/:id", {
-    params: { id: String(fileRow(filePath)[0].track_id) },
-  });
-  assert.equal(deleted.statusCode, 409);
+  const deleted = await callLibrary("DELETE", `/tracks/${fileRow(filePath)[0].track_id}`);
+  assert.equal(deleted.status, 409);
   assert.deepEqual(await fingerprint(filePath), before);
   assert.equal(fileRow(filePath).length, 1);
 });
@@ -188,7 +180,7 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
   await mkdir(inDownloads, { recursive: true });
 
   assert.equal(
-    (await callFiles("POST", "/files/read-only-folders", { body: { path: folder } })).statusCode,
+    (await callLibrary("POST", "/files/read-only-folders", { path: folder })).status,
     201,
   );
   for (const rejected of [
@@ -199,10 +191,8 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
     path.join(folder, "Missing"),
     "relative/path",
   ]) {
-    const response = await callFiles("POST", "/files/read-only-folders", {
-      body: { path: rejected },
-    });
-    assert.equal(response.statusCode, 400, rejected);
+    const response = await callLibrary("POST", "/files/read-only-folders", { path: rejected });
+    assert.equal(response.status, 400, rejected);
     assert.ok(requireFixture(response.body).message, rejected);
   }
   assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders"), [folder]);
@@ -211,12 +201,12 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
 test("removing a read-only folder takes its music out of the Library and keeps the files", async () => {
   const folder = await makeFolder("removed");
   const filePath = await makeTrack(folder, "Gone Artist", "Gone Album", "Gone Song");
-  await callFiles("POST", "/files/read-only-folders", { body: { path: folder } });
+  await callLibrary("POST", "/files/read-only-folders", { path: folder });
   await scanConfiguredLibrary({ lidarrClient: lidarrOff });
   assert.equal(fileRow(filePath).length, 1);
 
-  const removed = await callFiles("DELETE", "/files/read-only-folders", { body: { path: folder } });
-  assert.equal(removed.statusCode, 200);
+  const removed = await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
+  assert.equal(removed.status, 200);
   assert.deepEqual([...requireFixture(removed.body).folders], []);
   await scanConfiguredLibrary({ lidarrClient: lidarrOff });
 
@@ -231,7 +221,7 @@ test("removing a read-only folder takes its music out of the Library and keeps t
 test("a Lidarr root added as a read-only folder keeps its music when Lidarr is turned off", async () => {
   const folder = await makeFolder("lidarr-root");
   const filePath = await makeTrack(folder, "Moving Artist", "Moving Album", "Moving Song");
-  await callFiles("POST", "/files/read-only-folders", { body: { path: folder } });
+  await callLibrary("POST", "/files/read-only-folders", { path: folder });
 
   await scanConfiguredLibrary({ lidarrClient: lidarrOn, lidarrRoots: [folder] });
   assert.deepEqual(
@@ -252,7 +242,7 @@ test("playlists use a read-only file in place and download their own copy once t
   const folder = await makeFolder("playlist");
   const filePath = await makeTrack(folder, "Shared Artist", "Shared Album", "Shared Song");
   const before = await fingerprint(filePath);
-  await callFiles("POST", "/files/read-only-folders", { body: { path: folder } });
+  await callLibrary("POST", "/files/read-only-folders", { path: folder });
   await scanConfiguredLibrary({ lidarrClient: lidarrOff });
 
   const playlistId = `read-only-playlist-${process.pid}`;
@@ -272,7 +262,7 @@ test("playlists use a read-only file in place and download their own copy once t
   await downloadWorker.releaseLidarrFiles();
   assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "done");
 
-  await callFiles("DELETE", "/files/read-only-folders", { body: { path: folder } });
+  await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
   vi.spyOn(downloadWorker, "start").mockResolvedValue(undefined);
   await processSystemTask({ kind: "read-only-folder-release", folders: [folder] });
   assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "pending");

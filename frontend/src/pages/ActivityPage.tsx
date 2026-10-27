@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getRequests, triggerAlbumSearch } from "../utils/api/endpoints/library.ts";
+import { parseResponse } from "hono/client";
+import { requestsClient } from "../utils/api/clients/requests.ts";
+import { triggerAlbumSearch } from "../utils/api/endpoints/library.ts";
 import {
   approveBlockedJob,
   cancelDownloadJob,
@@ -44,6 +46,12 @@ import { AlertCircle, Music } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { ActivityRequest } from "./activity/activityListUtils.ts";
+
+const loadRequests = (refresh: boolean, signal: AbortSignal): Promise<ActivityRequest[]> =>
+  parseResponse(
+    requestsClient.$get({ query: { refresh: refresh ? "1" : undefined } }, { init: { signal } }),
+  );
+
 const ACTIVITY_PAGE_SIZE = 25;
 
 const QUEUE_EMPTY_STATE = {
@@ -118,7 +126,7 @@ function ActivityPage() {
   }, [activityWsConnected, refreshFromStatusEvent]);
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
-    queryFn: ({ signal }) => getRequests({ refresh: isListLikeView, signal }),
+    queryFn: ({ signal }) => loadRequests(isListLikeView, signal),
     enabled: !isMissingView,
     staleTime: isListLikeView ? 0 : 30_000,
     refetchInterval: isMissingView
@@ -175,7 +183,7 @@ function ActivityPage() {
       try {
         const result = await queryClient.fetchQuery({
           queryKey: activityQueryKey,
-          queryFn: ({ signal }) => getRequests({ refresh: refresh || isListLikeView, signal }),
+          queryFn: ({ signal }) => loadRequests(refresh || isListLikeView, signal),
           staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
         });
         setLocalError(null);

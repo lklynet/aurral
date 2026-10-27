@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { parseResponse } from "hono/client";
 import { Eye, EyeOff } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
 import {
-  getAurralAlbumStatus,
   setAurralAlbumMonitoring,
   type AurralMonitoringResult,
 } from "../utils/api/endpoints/library.ts";
@@ -83,7 +84,13 @@ export function useAurralAlbumMonitoring({
     const status = await queryClient
       .fetchQuery({
         queryKey: queryKeys.aurralAlbumStatus(albumId),
-        queryFn: ({ signal }) => getAurralAlbumStatus(albumId, { signal }),
+        queryFn: ({ signal }) =>
+          parseResponse(
+            libraryAlbumsClient.albums.aurral[":canonicalId"].status.$get(
+              { param: { canonicalId: encodeURIComponent(albumId) } },
+              { init: { signal } },
+            ),
+          ),
       })
       .catch(() => null);
     if (shouldConfirmUnmonitor(status?.status)) setConfirmingId(albumId);

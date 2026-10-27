@@ -1,14 +1,12 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-import {
-  invalidateAllDownloadStatusesCache,
-  registerDownloads,
-} from "../../backend/routes/library/handlers/downloads.ts";
+import { api } from "../../backend/routes/api.ts";
+import { invalidateAllDownloadStatusesCache } from "../../backend/routes/library/handlers/downloads.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 
-const routes = createRouteHarness(registerDownloads);
+const app = signedInAs(undefined).route("/", api);
 
 test("a queue item without a remaining size reports no progress", async () => {
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
@@ -21,10 +19,10 @@ test("a queue item without a remaining size reports no progress", async () => {
   vi.spyOn(lidarrClient, "request").mockResolvedValue([]);
   invalidateAllDownloadStatusesCache();
 
-  const response = createResponse<{ progress: number }[]>();
-  await routes.get("GET /downloads")({}, response);
+  const response = await app.request("/library/downloads");
+  const items: { progress: number }[] = await response.json();
   assert.deepEqual(
-    response.body.map((item) => item.progress),
+    items.map((item) => item.progress),
     [0, 75],
   );
 });

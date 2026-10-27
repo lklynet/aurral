@@ -1,4 +1,4 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
@@ -29,8 +29,10 @@ import {
 } from "../../backend/services/libraryScanWorker.ts";
 import { getLibraryScanQueue } from "../../backend/services/honkerDb.ts";
 import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.ts";
-import { registerArtists } from "../../backend/routes/library/handlers/artists.ts";
+import { api } from "../../backend/routes/api.ts";
 import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.ts";
+
+const app = signedInAs(undefined).route("/", api);
 
 test("stable artist and discovery reads do not call Lidarr", async () => {
   const identityKey = `stable-read-test:${Date.now()}`;
@@ -376,23 +378,17 @@ test("library artist compatibility reads apply SQL pagination", async () => {
     paths.push(filePath);
   }
 
-  const routes = createRouteHarness(registerArtists);
-
-  const response =
-    createResponse<
-      (ReturnType<
-        typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
-      >["artists"][number] & { added: string | null })[]
-    >();
   try {
-    await routes.get("GET /artists")(
-      { query: { readPath: "canonical", source: "lidarr", limit: "1", offset: "1" } },
-      response,
+    const response = await app.request(
+      `/library/artists?${new URLSearchParams({ readPath: "canonical", source: "lidarr", limit: "1", offset: "1" })}`,
     );
-    assert.deepEqual(requireValue(response.body.map((artist) => artist.name)), [`${key} B`]);
-    assert.equal(requireValue(response.body[0]).canonicalId, artists[1].id);
-    assert.equal(requireValue(response.body[0]).statistics.trackCount, 1);
-    assert.equal(requireValue(response.body[0]).added, requireValue(response.body[0]).addedAt);
+    const body: (ReturnType<
+      typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
+    >["artists"][number] & { added: string | null })[] = await response.json();
+    assert.deepEqual(requireValue(body.map((artist) => artist.name)), [`${key} B`]);
+    assert.equal(requireValue(body[0]).canonicalId, artists[1].id);
+    assert.equal(requireValue(body[0]).statistics.trackCount, 1);
+    assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
     db.prepare(
@@ -645,20 +641,15 @@ test("legacy artist list bounds the projection before materialization", async ()
     throw new Error("legacy artist list must not materialize all projection pages");
   });
 
-  const routes = createRouteHarness(registerArtists);
-
-  const response =
-    createResponse<
-      (ReturnType<typeof getLibraryArtistProjection>[number] & { added: string | null })[]
-    >();
   try {
-    await routes.get("GET /artists")({ query: { limit: "1", offset: "100" } }, response);
+    const response = await app.request("/library/artists?limit=1&offset=100");
+    const body: (ReturnType<typeof getLibraryArtistProjection>[number] & {
+      added: string | null;
+    })[] = await response.json();
 
-    assert.equal(response.statusCode, 200);
-    assert.deepEqual(requireValue(response.body.map((artist) => artist.id)), [
-      String(artists[100].id),
-    ]);
-    assert.equal(requireValue(response.body[0]).added, requireValue(response.body[0]).addedAt);
+    assert.equal(response.status, 200);
+    assert.deepEqual(requireValue(body.map((artist) => artist.id)), [String(artists[100].id)]);
+    assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
   } finally {
     db.prepare(`DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`).run(
       ...artists.map((artist) => artist.id),

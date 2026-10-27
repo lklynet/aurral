@@ -1,6 +1,9 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
-import type { FetchLibraryPageResponse } from "../../backend/routes/library/handlers/libraryIndex.ts";
-type Page<Kind extends "albums" | "artists"> = Extract<FetchLibraryPageResponse, { kind: Kind }>;
+import type { toPublicLibraryPage } from "../../backend/routes/library/handlers/libraryIndex.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+type Page<Kind extends "albums" | "artists"> = Extract<
+  ReturnType<typeof toPublicLibraryPage>,
+  { kind: Kind }
+>;
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 
@@ -10,17 +13,16 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }] =
+const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }, { api }] =
   await setupIsolatedBackend(
     "canonical-available-only-route",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/libraryMediaStore.ts"),
     () => import("../../backend/services/libraryManagementStore.ts"),
+    () => import("../../backend/routes/api.ts"),
   );
 
-const { registerLibraryIndex } =
-  await import("../../backend/routes/library/handlers/libraryIndex.ts");
 const {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -29,8 +31,8 @@ const {
   upsertLibraryTrack,
 } = libraryStore;
 
-const routes = createRouteHarness(registerLibraryIndex);
-function callLibraryPage<Kind extends "artists" | "albums">(query: {
+const app = signedInAs(undefined).route("/", api);
+async function callLibraryPage<Kind extends "artists" | "albums">(query: {
   kind: Kind;
   page: string;
   pageSize: string;
@@ -38,9 +40,9 @@ function callLibraryPage<Kind extends "artists" | "albums">(query: {
   source?: string;
   availableOnly?: string;
 }) {
-  const response = createResponse<Page<Kind>>();
-  routes.get("GET /canonical")({ query }, response);
-  return response.body;
+  const response = await app.request(`/library/canonical?${new URLSearchParams(query)}`);
+  const page: Page<Kind> = await response.json();
+  return page;
 }
 
 beforeAll(() => {
@@ -145,16 +147,16 @@ afterAll(async () => {
 const titles = (page: Page<"albums" | "artists">) =>
   page.items.map((entry) => ("title" in entry ? entry.title : entry.name)).sort();
 
-test("the Library lists what can be played and what Aurral is fetching, with or without Lidarr", () => {
+test("the Library lists what can be played and what Aurral is fetching, with or without Lidarr", async () => {
   for (const lidarr of [
     { url: "http://lidarr:8686", apiKey: "test-key", availableOnly: false },
     {},
   ]) {
     dbOps.updateSettings({ integrations: { lidarr } });
-    const albums = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
+    const albums = await callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
     assert.deepEqual(titles(albums), ["Owned Album", "Requested Album"]);
     assert.equal(albums.total, 2);
-    const artists = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
+    const artists = await callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
     assert.deepEqual(titles(artists), ["Fetching", "Owns Some"]);
     assert.deepEqual(
       artists.items.map((artist) => ("albumCount" in artist ? artist.albumCount : undefined)),
@@ -164,7 +166,7 @@ test("the Library lists what can be played and what Aurral is fetching, with or 
     assert.ok(ownsSome);
     assert.deepEqual(
       titles(
-        callLibraryPage({
+        await callLibraryPage({
           kind: "albums",
           page: "1",
           pageSize: "50",
@@ -176,23 +178,23 @@ test("the Library lists what can be played and what Aurral is fetching, with or 
   }
 });
 
-test("a source filter lists and counts only albums and artists with playable files from that source", () => {
+test("a source filter lists and counts only albums and artists with playable files from that source", async () => {
   for (const kind of ["albums", "artists"] as const) {
-    const page = callLibraryPage({ kind, page: "1", pageSize: "50", source: "lidarr" });
+    const page = await callLibraryPage({ kind, page: "1", pageSize: "50", source: "lidarr" });
     assert.deepEqual(titles(page), [kind === "albums" ? "Owned Album" : "Owns Some"]);
     assert.equal(page.total, 1);
   }
 });
 
-test("an explicit availableOnly query param overrides the Library's rule", () => {
-  const playable = callLibraryPage({
+test("an explicit availableOnly query param overrides the Library's rule", async () => {
+  const playable = await callLibraryPage({
     kind: "albums",
     page: "1",
     pageSize: "50",
     availableOnly: "true",
   });
   assert.deepEqual(titles(playable), ["Owned Album"]);
-  const everything = callLibraryPage({
+  const everything = await callLibraryPage({
     kind: "albums",
     page: "1",
     pageSize: "50",

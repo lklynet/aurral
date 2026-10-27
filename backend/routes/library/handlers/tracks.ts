@@ -1,13 +1,12 @@
-import type { NextFunction, Request, Response, Router } from "express";
+import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
+import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
-import { cacheMiddleware } from "../../../middleware/cache.ts";
-import { noCache } from "../../../middleware/cache.ts";
+import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
 import { hasPermission } from "../../../middleware/auth.ts";
-import {
-  requireAdmin,
-  requireAuth,
-  requirePermission,
-} from "../../../middleware/requirePermission.ts";
+import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 import type { deezerGetAlbumTracks } from "../../../services/apiClients/index.ts";
@@ -22,6 +21,7 @@ import {
 import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
 import { stripFilesystemPaths } from "./libraryIndex.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
 const canReadAudioFile = async (filePath: string | null | undefined) => {
   if (!filePath) return false;
@@ -55,143 +55,141 @@ type TrackListEntry =
       title: string;
     });
 
-const requireTrackDeletion = (req: Request, res: Response, next: NextFunction) => {
-  if (hasPermission(req.user, "deleteTrack") || hasPermission(req.user, "deleteAlbum")) {
-    return next();
+const requireTrackDeletion = createMiddleware<AppEnv>(async (c, next) => {
+  const user = c.var.user;
+  if (!hasPermission(user, "deleteTrack") && !hasPermission(user, "deleteAlbum")) {
+    return c.json(
+      { error: "Forbidden", message: "Permission required: deleteTrack or deleteAlbum" },
+      403,
+    );
   }
-  return res.status(403).json({
-    error: "Forbidden",
-    message: "Permission required: deleteTrack or deleteAlbum",
-  });
-};
+  await next();
+});
 
-export function registerTracks(router: Router) {
-  router.delete<"/tracks/:id">(
-    "/tracks/:id",
-    requireAuth,
-    requireTrackDeletion,
-    async (req, res) => {
-      try {
-        const result = await libraryManager.deleteTrack(req.params.id);
-        if (!result?.success) {
-          if (result?.code === "not_found") {
-            return res.status(404).json({
-              error: "Track not found",
-              message: "The track or its file no longer exists.",
-            });
-          }
-          if (result?.code === "read_only") {
-            return res.status(409).json({
+const aurralTrackInput = v.object({
+  keepFile: v.optional(v.boolean()),
+  monitored: v.optional(v.boolean()),
+});
+
+const queueQuery = v.object({ page: v.optional(v.string()), pageSize: v.optional(v.string()) });
+
+const tracksQuery = v.object({
+  albumId: v.optional(v.string()),
+  releaseGroupMbid: v.optional(v.string()),
+  readPath: v.optional(v.string()),
+  source: v.optional(v.string()),
+  artistName: v.optional(v.string()),
+  albumTitle: v.optional(v.string()),
+  releaseType: v.optional(v.string()),
+  releaseDate: v.optional(v.string()),
+  deezerAlbumId: v.optional(v.string()),
+});
+
+export default new Hono<AppEnv>()
+  .basePath("/library")
+  .delete("/tracks/:id", requireAuth, requireTrackDeletion, async (c) => {
+    try {
+      const result = await libraryManager.deleteTrack(c.req.param("id"));
+      if (!result?.success) {
+        if (result?.code === "not_found") {
+          return c.json(
+            { error: "Track not found", message: "The track or its file no longer exists." },
+            404,
+          );
+        }
+        if (result?.code === "read_only") {
+          return c.json(
+            {
               error: "Read-only file",
               message:
                 "This file is in a read-only folder, so Aurral did not delete it. Remove it from the folder yourself.",
-            });
-          }
-          if (result?.code === "lidarr_unavailable") {
-            return res.status(503).json({
-              error: "Lidarr unavailable",
-              message: "Lidarr is not available. Try again later.",
-            });
-          }
-          logger.error(
-            "library",
-            `Track deletion failed: ${String(result?.error || "Unknown error")}`,
+            },
+            409,
           );
-          return res.status(500).json({
-            error: "Failed to delete track",
-            message: "Failed to delete track",
-          });
         }
-        return res.json({ success: true, message: "Track deleted successfully" });
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.error("library", `Track deletion threw: ${failure?.message}`);
-        return res.status(500).json({
-          error: "Failed to delete track",
-          message: "Failed to delete track",
-        });
+        if (result?.code === "lidarr_unavailable") {
+          return c.json(
+            { error: "Lidarr unavailable", message: "Lidarr is not available. Try again later." },
+            503,
+          );
+        }
+        logger.error(
+          "library",
+          `Track deletion failed: ${String(result?.error || "Unknown error")}`,
+        );
+        return c.json({ error: "Failed to delete track", message: "Failed to delete track" }, 500);
       }
-    },
-  );
-
-  router.put<"/tracks/aurral/:canonicalId">(
+      return c.json({ success: true, message: "Track deleted successfully" }, 200);
+    } catch (error) {
+      logger.error("library", `Track deletion threw: ${asAppError(error)?.message}`);
+      return c.json({ error: "Failed to delete track", message: "Failed to delete track" }, 500);
+    }
+  })
+  .put(
     "/tracks/aurral/:canonicalId",
     requireAuth,
     requirePermission("changeMonitoring"),
-    async (req, res) => {
+    validate("json", aurralTrackInput),
+    async (c) => {
+      const canonicalId = c.req.param("canonicalId");
+      const { keepFile, monitored } = c.req.valid("json");
       try {
         const result =
-          req.body?.keepFile !== undefined
-            ? await libraryManager.setTrackKeepFile(req.params.canonicalId, {
-                keepFile: req.body.keepFile,
-              })
-            : await libraryManager.setAurralTrackMonitoring(req.params.canonicalId, {
-                monitored: req.body?.monitored,
-              });
-        if (result?.error) {
+          keepFile !== undefined
+            ? await libraryManager.setTrackKeepFile(canonicalId, { keepFile })
+            : await libraryManager.setAurralTrackMonitoring(canonicalId, { monitored });
+        if (isFailure(result)) {
           const { error, statusCode, ...details } = result;
-          return res.status(statusCode || 500).json({ ...details, error });
+          return c.json({ ...details, error }, isErrorStatus(statusCode) ? statusCode : 500);
         }
-        return res.json(result);
+        return c.json(result, 200);
       } catch (error) {
-        const failure = asAppError(error);
-        return res.status(500).json({
-          error: "Failed to update track monitoring",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to update track monitoring", message: asAppError(error)?.message },
+          500,
+        );
       }
     },
-  );
-
-  router.get("/playback-queue", cacheMiddleware(120), async (req, res) => {
+  )
+  .get("/playback-queue", cacheFor(120), validate("query", queueQuery), async (c) => {
+    const query = c.req.valid("query");
     try {
       const tracks = await libraryManager.getPlaybackQueue({
-        page: Number.parseInt(String(req.query.page), 10) || 1,
-        pageSize: Number.parseInt(String(req.query.pageSize), 10) || 100,
+        page: Number.parseInt(query.page ?? "", 10) || 1,
+        pageSize: Number.parseInt(query.pageSize ?? "", 10) || 100,
       });
-      res.json(tracks);
+      return c.json(tracks, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to build playback queue",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to build playback queue", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get<"/tracks/:id/files">("/tracks/:id/files", requireAdmin, noCache, (req, res) => {
-    const [track] = getLibraryForTrackIds({ ids: [req.params.id] }).tracks;
-    if (!track) return res.status(404).json({ error: "Track not found" });
-    res.json({ paths: track.files.map((file) => file.path).filter(Boolean) });
-  });
-
-  router.get("/tracks", cacheMiddleware(120), async (req, res) => {
+  })
+  .get("/tracks/:id/files", requireAdmin, noCache, (c) => {
+    const [track] = getLibraryForTrackIds({ ids: [c.req.param("id")] }).tracks;
+    if (!track) return c.json({ error: "Track not found" }, 404);
+    return c.json({ paths: track.files.map((file) => file.path).filter(Boolean) }, 200);
+  })
+  .get("/tracks", cacheFor(120), validate("query", tracksQuery), async (c) => {
+    const query = c.req.valid("query");
     try {
-      const { albumId, releaseGroupMbid } = req.query;
-      if (
-        (albumId !== undefined && typeof albumId !== "string") ||
-        (releaseGroupMbid !== undefined && typeof releaseGroupMbid !== "string")
-      ) {
-        return res.status(400).json({
-          error: "albumId and releaseGroupMbid must each be a single value",
-        });
-      }
-
-      if (req.query.readPath === "canonical") {
+      const { albumId, releaseGroupMbid } = query;
+      if (query.readPath === "canonical") {
         let readModel = albumId
           ? getLibraryReadModelForAlbumReferences({
-              source: req.query.source || "all",
+              source: query.source || "all",
               availableOnly: true,
               references: [albumId],
             })
           : getLibraryReadModelForAlbumReferences({
-              source: req.query.source || "all",
+              source: query.source || "all",
               availableOnly: true,
               references: releaseGroupMbid ? [releaseGroupMbid] : [],
             });
         if (albumId && readModel.albums.length === 0 && releaseGroupMbid) {
           readModel = getLibraryReadModelForAlbumReferences({
-            source: req.query.source || "all",
+            source: query.source || "all",
             availableOnly: true,
             references: [releaseGroupMbid],
           });
@@ -215,7 +213,7 @@ export function registerTracks(router: Router) {
                 : null,
             }))
           : [];
-        return res.json(libraryTracks);
+        return c.json(libraryTracks, 200);
       }
 
       let tracks: TrackListEntry[] = [];
@@ -225,7 +223,7 @@ export function registerTracks(router: Router) {
       }
 
       if (tracks.length === 0 && releaseGroupMbid) {
-        if (String(releaseGroupMbid).startsWith("dz-")) {
+        if (releaseGroupMbid.startsWith("dz-")) {
           const { deezerGetAlbumTracks } = await import("../../../services/apiClients/index.ts");
           const dzTracks = await deezerGetAlbumTracks(releaseGroupMbid);
           tracks = dzTracks.map((t) => ({
@@ -296,19 +294,14 @@ export function registerTracks(router: Router) {
 
       const needsPreview = tracksWithStreamState.some((track) => !track.streamPath);
       if (!needsPreview) {
-        return res.json(tracksWithStreamState);
+        return c.json(tracksWithStreamState, 200);
       }
 
-      const artistName =
-        typeof req.query.artistName === "string" ? req.query.artistName.trim() : "";
-      const albumTitle =
-        typeof req.query.albumTitle === "string" ? req.query.albumTitle.trim() : "";
-      const releaseType =
-        typeof req.query.releaseType === "string" ? req.query.releaseType.trim() : "";
-      const releaseDate =
-        typeof req.query.releaseDate === "string" ? req.query.releaseDate.trim() : "";
-      const deezerAlbumId =
-        typeof req.query.deezerAlbumId === "string" ? req.query.deezerAlbumId.trim() : "";
+      const artistName = query.artistName?.trim() ?? "";
+      const albumTitle = query.albumTitle?.trim() ?? "";
+      const releaseType = query.releaseType?.trim() ?? "";
+      const releaseDate = query.releaseDate?.trim() ?? "";
+      const deezerAlbumId = query.deezerAlbumId?.trim() ?? "";
 
       const enriched: ((typeof tracksWithStreamState)[number] & {
         preview_url?: string | null;
@@ -321,26 +314,14 @@ export function registerTracks(router: Router) {
         cacheKey: `library:${albumId || releaseGroupMbid}:${deezerAlbumId || artistName}`,
       }).catch(() => tracksWithStreamState);
 
-      res.json(
+      return c.json(
         enriched.map((track) => ({
           ...track,
           preview_url: track.streamPath ? null : track.preview_url || null,
         })),
+        200,
       );
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch tracks",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to fetch tracks", message: asAppError(error)?.message }, 500);
     }
   });
-}
-
-export type DeleteLibraryTrackResponse = { success: true; message: string };
-
-export type GetLibraryTrackFilesResponse = { paths: string[] };
-
-export type SetAurralTrackKeepFileResponse = Awaited<
-  ReturnType<typeof libraryManager.setTrackKeepFile>
->;

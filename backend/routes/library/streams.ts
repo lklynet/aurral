@@ -14,20 +14,19 @@ const trackFileMissing = { error: "Track file missing" };
 
 export default new Hono<AppEnv>()
   .basePath("/library")
-  .use(noCache, requireStreamAuth)
-  .get("/canonical-stream/:albumId/:trackId", async (c) => {
+  .get("/canonical-stream/:albumId/:trackId", noCache, requireStreamAuth, async (c) => {
     const filePath = resolveLibraryTrackPath(c.req.param("albumId"), c.req.param("trackId"));
     const sent = filePath && (await sendViaNode(c, sendAudioFile, filePath));
     return sent || c.json(trackFileMissing, 404);
   })
-  .get("/file-stream/:albumId/:trackId", async (c) => {
+  .get("/file-stream/:albumId/:trackId", noCache, requireStreamAuth, async (c) => {
     const trackId = c.req.param("trackId");
     const tracks = await libraryManager.getTracks(c.req.param("albumId"));
     const track = tracks.find((item) => String(item.id) === trackId);
     const sent = track?.hasFile && track.path && (await sendViaNode(c, sendAudioFile, track.path));
     return sent || c.json(trackFileMissing, 404);
   })
-  .get("/stream/:songId", async (c) => {
+  .get("/stream/:songId", noCache, requireStreamAuth, async (c) => {
     const navidrome = dbOps.getSettings().integrations?.navidrome;
     if (!navidrome?.url || !navidrome.username || !navidrome.password) {
       return c.json({ error: "Navidrome not configured" }, 503);

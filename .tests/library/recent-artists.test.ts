@@ -1,5 +1,5 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import type { getRecentlyAddedLibraryArtists } from "../../backend/services/libraryQueryService.ts";
 type RecentArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number] & { added?: string };
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ const [
   { db },
   store,
   management,
-  { registerMisc },
+  { api },
   { scanMusicRoot },
   { lidarrClient },
   { getLibraryPage },
@@ -26,21 +26,21 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
-  () => import("../../backend/routes/library/handlers/misc.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
 );
 
-const routes = createRouteHarness(registerMisc);
+const app = signedInAs(undefined).route("/", api);
 const mbid = "11111111-1111-4111-8111-111111111111";
 const images = [{ kind: "Poster", url: "https://example.test/aurral.jpg" }];
 
 async function getRecent() {
-  const response = createResponse<RecentArtist[]>();
-  await routes.get("GET /recent")({}, response);
-  assert.equal(response.statusCode, 200);
-  return response.body;
+  const response = await app.request("/library/recent");
+  assert.equal(response.status, 200);
+  const recent: RecentArtist[] = await response.json();
+  return recent;
 }
 
 function addFile(

@@ -1,8 +1,10 @@
-import type { Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import type { getRecentMissingReleases } from "../../../services/discovery/recentReleases.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { noCache } from "../../../middleware/cache.ts";
+import { noCache } from "../../../middleware/cacheHeaders.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
@@ -179,97 +181,109 @@ export async function getArtistLibraryLookup(mbid: string) {
   };
 }
 
-export function registerMisc(router: Router) {
-  router.get("/rootfolder", async (req, res) => {
+type LidarrAlbumLookupResult = {
+  inLibrary: true;
+  canonicalInLibrary: false;
+  libraryAlbumId: string | null;
+  libraryArtistId: string | null;
+  managedBy?: undefined;
+  status: "available" | "monitored" | "unmonitored";
+  monitored: boolean;
+  trackListComplete: true;
+  percentOfTracks: number;
+  sizeOnDisk: number;
+  trackCount: number;
+  trackFileCount: number;
+  ownedTrackMbids: ReturnType<typeof ownedLidarrTrackMbids>;
+  albumName: string;
+  releaseDate: string;
+};
+
+const mbidsInput = v.object({ mbids: v.optional(v.array(v.nullable(v.string()))) });
+
+const uniqueMbids = (mbids: (string | null)[]) => [
+  ...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean)),
+];
+
+export default new Hono<AppEnv>()
+  .basePath("/library")
+  .get("/rootfolder", async (c) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.ts");
       const configured = lidarrClient.getConfiguredRootFolderPaths();
-      if (!lidarrClient.isEnabled()) {
-        return res.json(configured.map((path) => ({ path })));
-      }
-      if (!lidarrClient.isConfigured() && configured.length === 0) {
-        return res.json([]);
-      }
+      if (!lidarrClient.isEnabled())
+        return c.json(
+          configured.map((path) => ({ path })),
+          200,
+        );
+      if (!lidarrClient.isConfigured() && configured.length === 0) return c.json([], 200);
       const rootFolders = await lidarrClient.getRootFolders();
-      const list = Array.isArray(rootFolders) ? rootFolders.map((r) => ({ path: r.path })) : [];
-      res.json(list);
+      return c.json(
+        Array.isArray(rootFolders) ? rootFolders.map((folder) => ({ path: folder.path })) : [],
+        200,
+      );
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch root folder",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch root folder", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get<"/lookup/:mbid">("/lookup/:mbid", async (req, res) => {
+  })
+  .get("/lookup/:mbid", async (c) => {
     try {
-      const { mbid } = req.params;
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
-      }
-
-      res.json(await getArtistLibraryLookup(mbid));
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+      return c.json(await getArtistLibraryLookup(mbid), 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to lookup artist",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to lookup artist", message: asAppError(error)?.message }, 500);
     }
-  });
-
-  router.post("/lookup/batch", async (req, res) => {
+  })
+  .post("/lookup/batch", validate("json", mbidsInput), (c) => {
     try {
-      const { mbids } = req.body;
-      if (!Array.isArray(mbids)) {
-        return res.status(400).json({ error: "mbids must be an array" });
-      }
-
-      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
+      const { mbids } = c.req.valid("json");
+      if (!mbids) return c.json({ error: "mbids must be an array" }, 400);
+      const wanted = uniqueMbids(mbids);
       if (wanted.length > ARTIST_LOOKUP_BATCH_MAX) {
-        return res.status(400).json({
-          error: `mbids must contain at most ${ARTIST_LOOKUP_BATCH_MAX} unique values`,
-        });
+        return c.json(
+          { error: `mbids must contain at most ${ARTIST_LOOKUP_BATCH_MAX} unique values` },
+          400,
+        );
       }
-
       const existingArtistIds = getLibraryArtistMbids({
         source: "all",
         availableOnly: false,
         mbids: wanted,
       });
-      const results: LookupArtistsInLibraryBatchResponse = {};
+      const results: Record<string, boolean> = {};
       for (const mbid of wanted) {
         results[mbid] = existingArtistIds.has(mbid);
       }
-
-      res.json(results);
+      return c.json(results, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to batch lookup artists",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to batch lookup artists", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.post("/albums/lookup/batch", async (req, res) => {
+  })
+  .post("/albums/lookup/batch", validate("json", mbidsInput), async (c) => {
     try {
-      const { mbids } = req.body;
-      if (!Array.isArray(mbids)) {
-        return res.status(400).json({ error: "mbids must be an array" });
-      }
-
-      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
-      if (wanted.length === 0) return res.json({});
+      const { mbids } = c.req.valid("json");
+      if (!mbids) return c.json({ error: "mbids must be an array" }, 400);
+      const wanted = uniqueMbids(mbids);
+      const results: Record<
+        string,
+        ReturnType<typeof libraryAlbumResult> | LidarrAlbumLookupResult
+      > = {};
+      if (wanted.length === 0) return c.json(results, 200);
       const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
         await import("../../../services/lidarrClient.ts");
       if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
-        return res.status(400).json({
-          error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values`,
-        });
+        return c.json(
+          { error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values` },
+          400,
+        );
       }
-
       const { albums: libraryAlbums, tracks: libraryTracks } =
         getLibraryReadModelForAlbumReferences({
           source: "all",
@@ -282,7 +296,6 @@ export function registerMisc(router: Router) {
         albumTracks.push(track);
         tracksByAlbumId.set(String(track.albumId), albumTracks);
       }
-      const results: LookupAlbumsInLibraryBatchResponse = {};
       for (const foreignAlbumId of wanted) {
         const album = libraryAlbumLookup(libraryAlbums, foreignAlbumId);
         if (album) {
@@ -308,9 +321,7 @@ export function registerMisc(router: Router) {
         }
       }
 
-      if (!lidarrClient.isConfigured()) {
-        return res.json(results);
-      }
+      if (!lidarrClient.isConfigured()) return c.json(results, 200);
       const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
 
       for (let index = 0; index < wanted.length; index += 1) {
@@ -358,37 +369,32 @@ export function registerMisc(router: Router) {
         };
       }
 
-      res.json(results);
+      return c.json(results, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to batch lookup albums",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to batch lookup albums", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get("/recent", noCache, (req, res) => {
+  })
+  .get("/recent", noCache, (c) => {
     try {
-      const recent = getRecentlyAddedLibraryArtists({
-        availableOnly: true,
-        limit: 20,
-      }).map((artist) => ({
-        ...artist,
-        foreignArtistId: artist.foreignArtistId || artist.mbid,
-        added: artist.addedAt,
-      }));
-      res.json(recent);
+      const recent = getRecentlyAddedLibraryArtists({ availableOnly: true, limit: 20 }).map(
+        (artist) => ({
+          ...artist,
+          foreignArtistId: artist.foreignArtistId || artist.mbid,
+          added: artist.addedAt,
+        }),
+      );
+      return c.json(recent, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch recent artists",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch recent artists", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get("/recent-releases", async (req, res) => {
+  })
+  .get("/recent-releases", async (c) => {
     try {
       const { getRecentMissingReleases } =
         await import("../../../services/discovery/recentReleases.ts");
@@ -442,54 +448,12 @@ export function registerMisc(router: Router) {
         };
       });
 
-      res.set("Cache-Control", "private, no-store");
-      res.json(withCachedCovers);
+      c.header("Cache-Control", "private, no-store");
+      return c.json(withCachedCovers, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch recent releases",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch recent releases", message: asAppError(error)?.message },
+        500,
+      );
     }
   });
-}
-
-export type GetLibraryArtistLookupResponse = Awaited<ReturnType<typeof getArtistLibraryLookup>>;
-
-export type LookupArtistsInLibraryBatchResponse = Record<string, boolean>;
-
-type LidarrAlbumLookupResult = {
-  inLibrary: true;
-  canonicalInLibrary: false;
-  libraryAlbumId: string | null;
-  libraryArtistId: string | null;
-  managedBy?: undefined;
-  status: "available" | "monitored" | "unmonitored";
-  monitored: boolean;
-  trackListComplete: true;
-  percentOfTracks: number;
-  sizeOnDisk: number;
-  trackCount: number;
-  trackFileCount: number;
-  ownedTrackMbids: ReturnType<typeof ownedLidarrTrackMbids>;
-  albumName: string;
-  releaseDate: string;
-};
-
-export type LookupAlbumsInLibraryBatchResponse = Record<
-  string,
-  ReturnType<typeof libraryAlbumResult> | LidarrAlbumLookupResult
->;
-
-type RecentlyAddedArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number];
-
-export type GetRecentlyAddedResponse = (RecentlyAddedArtist & {
-  foreignArtistId: string;
-  added: RecentlyAddedArtist["addedAt"];
-})[];
-
-export type GetRecentReleasesResponse = (Awaited<
-  ReturnType<typeof getRecentMissingReleases>
->[number] & {
-  coverUrl: string | null;
-})[];

@@ -1,55 +1,36 @@
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
-import express from "express";
 import {
   cleanupIsolatedState,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 
 const [
   isolatedState,
   { db },
   { lidarrClient },
-  { default: requestsRouter },
+  { api },
   { recordAlbumSearchFailed },
   { invalidateAllDownloadStatusesCache },
 ] = await setupIsolatedBackend(
   "activity-requests-lidarr-reads",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
-  () => import("../../backend/routes/requests.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
   () => import("../../backend/routes/library/handlers/downloads.ts"),
 );
 
-let app: {
-  url: string;
-  server: import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >;
-};
+const app = signedInAs(testUser(1, { username: "admin", role: "admin" })).route("/", api);
 
-beforeAll(async () => {
+beforeAll(() => {
   resetDatabase(db);
-  const expressApp = express();
-  expressApp.use((req, _res, next) => {
-    req.user = { id: 1, username: "admin", role: "admin", permissions: {} };
-    next();
-  });
-  expressApp.use("/api/requests", requestsRouter);
-  await new Promise<void>((resolve) => {
-    const server = expressApp.listen(0, "127.0.0.1", () => {
-      app = { url: `http://127.0.0.1:${listeningAddress(server)!.port}`, server };
-      resolve();
-    });
-  });
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => app.server.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -96,7 +77,7 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
   invalidateAllDownloadStatusesCache();
 
   const refresh = async () => {
-    const response = await fetch(`${app.url}/api/requests?refresh=1`);
+    const response = await app.request("/requests?refresh=1");
     assert.equal(response.status, 200);
     const requests: { status: string; albumId: string }[] = await response.json();
     return requests

@@ -14,7 +14,7 @@ const [
   { dbOps, userOps },
   { createSession },
   { authMiddleware },
-  { default: libraryRouter },
+  { handToHono, resolveTokenUser },
   { buildPublicLibrary },
   libraryStore,
   { scanMusicRoot },
@@ -24,7 +24,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/library/index.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
@@ -43,7 +43,8 @@ dbOps.updateSettings({ onboardingComplete: true });
 
 const app = express();
 app.use(authMiddleware);
-app.use("/api/library", libraryRouter);
+app.get("/api/library/albums/:albumId/cover", resolveTokenUser, handToHono);
+app.use("/api/library", handToHono);
 const server = await new Promise<
   import("node:http").Server<
     typeof import("node:http").IncomingMessage,

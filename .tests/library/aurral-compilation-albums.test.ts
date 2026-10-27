@@ -1,5 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -23,7 +24,7 @@ const [
   { lidarrClient },
   { getLibraryForAlbumIds },
   { clearMetadataProviderCaches },
-  { registerAlbums },
+  { api },
   { validateDownloadedTrackFile, POST_DOWNLOAD_DECISIONS },
   { buildResolvedJobTrack, writeAudioMetadata },
   { scanMusicRoot },
@@ -36,22 +37,13 @@ const [
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/trackMatching/index.ts"),
   () => import("../../backend/services/downloadUtils.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
 );
 
-const routes = createRouteHarness(registerAlbums);
-
-async function callRoute(key: string, body: Record<string, unknown> = {}) {
-  const response = createResponse<unknown>();
-  await routes.get(key)(
-    { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
-    response,
-  );
-  return response;
-}
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 const variousArtists = "89ad4ac3-39f7-470e-963a-56509c546377";
 const albumMbid = "c0c0c0c0-c0c0-4c0c-8c0c-c0c0c0c0c0c0";
@@ -131,14 +123,18 @@ afterAll(async () => {
 });
 
 test("a compilation keeps Various Artists on the album and matches each track by its own artist", async () => {
-  const requested = await callRoute("POST /albums/request", {
-    albumMbid,
-    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-    artistMbid: variousArtists,
-    artistName: "Various Artists",
-    managedBy: "aurral",
+  const requested = await app.request("/library/albums/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      albumMbid,
+      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+      artistMbid: variousArtists,
+      artistName: "Various Artists",
+      managedBy: "aurral",
+    }),
   });
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  assert.equal(requested.status, 201, await requested.text());
 
   const albumId = requireFixture(db)
     .prepare<unknown[], { id: number }>(

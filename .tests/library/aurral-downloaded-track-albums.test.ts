@@ -1,5 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -24,8 +25,7 @@ const [
   { getLibraryForAlbumIds },
   { scanMusicRoot },
   { clearMetadataProviderCaches },
-  { registerAlbums },
-  { registerDownloads },
+  { api },
 ] = await setupIsolatedBackend(
   "aurral-downloaded-track-albums",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -39,20 +39,17 @@ const [
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
-  () => import("../../backend/routes/library/handlers/downloads.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
 
-const routes = createRouteHarness(registerAlbums, registerDownloads);
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-async function callRoute(key: string, body: Record<string, unknown> = {}) {
-  const response = createResponse<{ jobId: string; monitored: boolean }>();
-  await routes.get(key)(
-    { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
-    response,
-  );
-  return response;
-}
+const postJson = (path: string, body: Record<string, unknown>) =>
+  app.request(`/library${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
 const artistMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const albumMbid = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -189,7 +186,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
   assert.equal(adopted.album.monitored, false);
   assert.deepEqual(adopted.monitored, [true, false, undefined]);
 
-  const requested = await callRoute("POST /albums/request", {
+  const requested = await postJson("/albums/request", {
     albumMbid,
     albumName: "Playlist Album",
     artistMbid,
@@ -197,7 +194,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     managedBy: "aurral",
   });
 
-  assert.equal(requested.statusCode, 201);
+  assert.equal(requested.status, 201);
   const downloaded = albumState();
   assert.equal(downloaded.album.monitored, true);
   assert.equal(downloaded.album.trackIds.length, 3);
@@ -208,7 +205,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
   assert.deepEqual(albumState().monitored, [false, false, false]);
   assert.deepEqual(queuedTrackMbids(), []);
 
-  await callRoute("POST /albums/request", {
+  await postJson("/albums/request", {
     albumMbid,
     albumName: "Playlist Album",
     artistMbid,
@@ -230,16 +227,17 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
     .find((track) => requireFixture(track).mbid === trackMbids[2]);
   assert.ok(missing != null);
 
-  const response = await callRoute("POST /downloads/track", {
+  const response = await postJson("/downloads/track", {
     artistName: "Playlist Artist",
     trackName: missing.title,
     albumName: "Playlist Album",
     canonicalTrackId: String(missing.id),
   });
 
-  assert.equal(response.statusCode, 202);
-  assert.equal(response.body.monitored, true);
-  assert.equal(downloadTracker.getJob(response.body.jobId)!.albumMbid, albumMbid);
+  assert.equal(response.status, 202);
+  const body = await response.json();
+  assert.equal(body.monitored, true);
+  assert.equal(downloadTracker.getJob(body.jobId)!.albumMbid, albumMbid);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
   assert.deepEqual(albumState().monitored, [false, false, true]);
   assert.equal(albumState().album.monitored, false);

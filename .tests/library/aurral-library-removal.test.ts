@@ -1,4 +1,4 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -16,11 +16,10 @@ const [
   cancellation,
   libraryStore,
   managementStore,
-  { registerAlbums },
+  { api },
   { lidarrClient },
   { dbOps },
   { db },
-  { registerArtists },
   { libraryManager },
   { resolveDownloadRoot },
 ] = await setupIsolatedBackend(
@@ -29,42 +28,31 @@ const [
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/routes/library/handlers/artists.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
 );
 
-const routes = createRouteHarness(registerAlbums, registerArtists);
+const app = signedInAs({ id: 1, username: "test", role: "admin", permissions: {} }).route("/", api);
 
 const removeAlbum = (
   album: import("../../backend/db/rows.ts").LibraryAlbumsRow,
   deleteFiles: boolean,
-) =>
-  callRoute("DELETE /albums/aurral/:canonicalId", { canonicalId: String(album.id) }, deleteFiles);
+) => callRoute(`/albums/aurral/${album.id}`, deleteFiles);
 const removeArtist = (
   artist: import("../../backend/db/rows.ts").LibraryArtistsRow,
   deleteFiles: boolean,
-) => callRoute("DELETE /artists/:mbid", { mbid: artist.mbid! }, deleteFiles);
+) => callRoute(`/artists/${artist.mbid}`, deleteFiles);
 
-async function callRoute<Body = RouteBody>(
-  key: string,
-  params: Record<string, string>,
-  deleteFiles: boolean,
-) {
-  const response = createResponse<Body>();
-  await routes.get(key)(
-    {
-      params,
-      query: { deleteFiles: String(deleteFiles) },
-      user: { id: 1, username: "test", role: "admin", permissions: {} },
-    },
-    response,
-  );
-  return response;
+async function callRoute<Body = RouteBody>(path: string, deleteFiles: boolean) {
+  const response = await app.request(`/library${path}?deleteFiles=${deleteFiles}`, {
+    method: "DELETE",
+  });
+  const body: Body = await response.json();
+  return { statusCode: response.status, body };
 }
 
 let sequence = 0;
@@ -434,7 +422,7 @@ test("an ingested artist without a MusicBrainz ID is deleted with its files", as
     metadata: { id: artist.id },
   });
 
-  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+  const response = await callRoute(`/artists/${artist.id}`, true);
 
   assert.equal(response.statusCode, 200);
   assert.equal(artistRow(artist.id), undefined);
@@ -464,7 +452,7 @@ test("an artist without a MusicBrainz ID that Lidarr manages is left to Lidarr",
     managedBy: "lidarr",
   });
 
-  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+  const response = await callRoute(`/artists/${artist.id}`, true);
 
   assert.equal(response.statusCode, 409);
   assert.ok(artistRow(artist.id));

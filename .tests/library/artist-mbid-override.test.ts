@@ -1,5 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -23,7 +24,7 @@ const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService] =
     () => import("../../backend/services/libraryIndexService.ts"),
   );
 
-const { registerArtists } = await import("../../backend/routes/library/handlers/artists.ts");
+const { api } = await import("../../backend/routes/api.ts");
 const { getArtistLibraryLookup } = await import("../../backend/routes/library/handlers/misc.ts");
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 
@@ -132,13 +133,15 @@ function createArtist(
   return { artist, album };
 }
 
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
+
 async function updateMbid(artistId: number, mbid: string | null) {
-  const response = createResponse<{ musicbrainzName: string; id: number; merged: boolean }>();
-  await createRouteHarness(registerArtists).get("PUT /canonical/artists/:id/mbid")(
-    { params: { id: String(artistId) }, body: { mbid } },
-    response,
-  );
-  return response;
+  const response = await app.request(`/library/canonical/artists/${artistId}/mbid`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mbid }),
+  });
+  return { status: response.status, body: await response.json() };
 }
 
 const artistRow = (id: number) =>
@@ -153,7 +156,7 @@ test("a user can link an unmatched artist to a MusicBrainz ID", async () => {
 
   const response = await updateMbid(artist.id, KNOWN_MBID.toUpperCase());
 
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.status, 200);
   assert.equal(response.body.musicbrainzName, "Known Artist");
   assert.equal(artistRow(artist.id).mbid, KNOWN_MBID);
   assert.equal(artistRow(artist.id).name, "Unmatched Artist");
@@ -197,7 +200,7 @@ test("removing an MBID never merges two artists that share a name", async () => 
 
   const response = await updateMbid(tagged.artist.id, null);
 
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.status, 200);
   assert.equal(response.body.merged, false);
   assert.equal(artistRow(tagged.artist.id).mbid, null);
   assert.ok(artistRow(unmatched.artist.id));
@@ -227,7 +230,7 @@ test("clearing a wrong automatic match keeps the artist unmatched on later scans
     lidarrClient: lidarrConnected,
   });
 
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.status, 200);
   assert.equal(artistRow(artist.id).mbid, null);
 });
 
@@ -243,7 +246,7 @@ test("MBID edits are rejected without changing the artist when they cannot be ve
   const offline = await updateMbid(artist.id, OTHER_MBID);
 
   assert.deepEqual(
-    [missing.statusCode, invalid.statusCode, lidarrManaged.statusCode, offline.statusCode],
+    [missing.status, invalid.status, lidarrManaged.status, offline.status],
     [404, 400, 409, 503],
   );
   assert.equal(artistRow(artist.id).mbid, null);

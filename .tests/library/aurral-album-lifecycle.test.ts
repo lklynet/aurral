@@ -1,4 +1,3 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { test, beforeEach, afterAll, vi, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -14,6 +13,7 @@ import {
   cleanupIsolatedState,
   createMockHttpServer,
 } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 
 const [
   isolatedState,
@@ -21,8 +21,8 @@ const [
   cancellation,
   libraryStore,
   managementStore,
-  { registerAlbums },
-  { registerDownloads, invalidateAllDownloadStatusesCache },
+  { api },
+  { invalidateAllDownloadStatusesCache },
   { resolveYtdlpStagingRoot },
   { lidarrClient },
   { dbOps },
@@ -42,7 +42,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/routes/library/handlers/downloads.ts"),
   () => import("../../backend/services/downloadFolderConfig.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
@@ -64,7 +64,7 @@ setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const { downloadTracker, DownloadTracker } = trackerModule;
 const { default: playlistsRouter } = await import("../../backend/routes/playlists/index.ts");
-const { default: requestsRouter } = await import("../../backend/routes/requests.ts");
+const { handToHono } = await import("../../backend/routes/shared/expressHandoff.ts");
 const history = await import("../../backend/services/aurralHistoryService.ts");
 const testUser = (
   id: number,
@@ -84,7 +84,7 @@ app.use((req, _res, next) => {
   next();
 });
 app.use("/api/playlists", playlistsRouter);
-app.use("/api/requests", requestsRouter);
+app.use("/api/requests", handToHono);
 const server = await new Promise<import("node:http").Server>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
@@ -110,17 +110,16 @@ async function apiRequest<Body = ApiBody>(route: string, method: string = "GET")
   return { status: response.status, body };
 }
 
-const routes = createRouteHarness(registerAlbums, registerDownloads);
+const libraryApp = signedInAs(testUser(1, "admin")).route("/", api);
 
-async function callRoute<Body = RouteBody>(
-  key: string,
-  params: Record<string, string> = {},
-  body: object = {},
-  query: Record<string, string> = {},
-) {
-  const response = createResponse<Body>();
-  await routes.get(key)({ params, body, query, user: testUser(1, "admin") }, response);
-  return response;
+async function callRoute<Body = RouteBody>(route: string, method: string = "GET", body?: object) {
+  const response = await libraryApp.request(route, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body && JSON.stringify(body),
+  });
+  const json: Body = await response.json();
+  return { status: response.status, body: json };
 }
 
 async function callRouteAsWebProcess<Body = RouteBody>(
@@ -700,10 +699,8 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
   await fs.writeFile(path.join(stagingPath, "partial.m4a"), "partial download");
 
   try {
-    const cancelled = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-      canonicalId: String(album.id),
-    });
-    assert.equal(cancelled.statusCode, 200);
+    const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+    assert.equal(cancelled.status, 200);
     assert.deepEqual(cancelled.body.cancelledJobIds.sort(), [downloadingJob, pendingJob].sort());
     assert.equal(getJob(doneJob).status, "done");
     assert.equal(getJob(downloadingJob).status, "cancelled");
@@ -712,10 +709,8 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
     await assert.rejects(fs.access(stagingPath));
     assert.equal(downloadTracker.getNextPending(), null);
 
-    const repeated = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-      canonicalId: String(album.id),
-    });
-    assert.equal(repeated.statusCode, 200);
+    const repeated = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+    assert.equal(repeated.status, 200);
     assert.deepEqual([...repeated.body.cancelledJobIds], []);
     assert.equal(lidarrCalls.length, 0);
   } finally {
@@ -730,18 +725,12 @@ test("album cancellation rejects unknown, malformed, and Lidarr-managed albums",
   });
   const lidarrJob = jobFor(1);
 
-  const missing = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-    canonicalId: "999999",
-  });
-  assert.equal(missing.statusCode, 404);
-  const malformed = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-    canonicalId: "12abc",
-  });
-  assert.equal(malformed.statusCode, 400);
-  const conflict = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-    canonicalId: String(lidarrAlbum.id),
-  });
-  assert.equal(conflict.statusCode, 409);
+  const missing = await callRoute("/library/albums/aurral/999999/cancel", "POST");
+  assert.equal(missing.status, 404);
+  const malformed = await callRoute("/library/albums/aurral/12abc/cancel", "POST");
+  assert.equal(malformed.status, 400);
+  const conflict = await callRoute(`/library/albums/aurral/${lidarrAlbum.id}/cancel`, "POST");
+  assert.equal(conflict.status, 409);
   assert.equal(conflict.body.code, "album_owner_conflict");
   assert.equal(conflict.body.managedBy, "lidarr");
   assert.equal(getJob(lidarrJob).status, "pending");
@@ -756,10 +745,8 @@ test("album cancellation waits on provider cleanup without reviving the job", as
     downloadClientId: "unconfigured-sabnzbd-item",
   });
 
-  const cancelled = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-    canonicalId: String(album.id),
-  });
-  assert.equal(cancelled.statusCode, 200);
+  const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+  assert.equal(cancelled.status, 200);
   assert.equal(cancelled.body.cleanupFailed, true);
   assert.equal(getJob(jobId).status, "cancel_requested");
 
@@ -868,10 +855,8 @@ test("album status aggregates library availability and per-track jobs", async (t
         if (jobStatus === "blocked") downloadTracker.setBlocked(jobId, "Low confidence match");
       });
 
-      const response = await callRoute("GET /albums/aurral/:canonicalId/status", {
-        canonicalId: String(album.id),
-      });
-      assert.equal(response.statusCode, 200, scenario.name);
+      const response = await callRoute(`/library/albums/aurral/${album.id}/status`);
+      assert.equal(response.status, 200, scenario.name);
       assert.equal(response.body.status, scenario.status, scenario.name);
       assert.equal(response.body.managedBy, "aurral", scenario.name);
       assert.equal(response.body.counts.total, 3, scenario.name);
@@ -882,15 +867,15 @@ test("album status aggregates library availability and per-track jobs", async (t
     setDownloadSourceConfigured(true);
     const { album: lidarrAlbum } = createLibraryAlbum({ managedBy: "lidarr" });
     const polled = scenarios.filter((scenario) => scenario.sourceConfigured !== false);
-    const query = {
+    const query = new URLSearchParams({
       albumIds: [
         ...polled.map((scenario) => keyFor(scenario)),
         `aurral:${lidarrAlbum.id}`,
         "aurral:not-a-number",
       ].join(","),
-    };
-    const batch = await callRoute<AlbumStatuses>("GET /downloads/status", {}, {}, query);
-    assert.equal(batch.statusCode, 200);
+    });
+    const batch = await callRoute<AlbumStatuses>(`/library/downloads/status?${query}`);
+    assert.equal(batch.status, 200);
     assert.deepEqual(
       Object.keys(batch.body).sort(),
       polled.map((scenario) => keyFor(scenario)).sort(),
@@ -905,10 +890,7 @@ test("album status aggregates library availability and per-track jobs", async (t
     }
     const { response: webBatch } = await callRouteAsWebProcess<AlbumStatuses>(
       t,
-      "GET /downloads/status",
-      {},
-      {},
-      query,
+      `/library/downloads/status?${query}`,
     );
     assert.deepEqual(webBatch.body, batch.body);
     assert.equal(lidarrCalls.length, 0);
@@ -949,26 +931,20 @@ test("a download status poll finds album jobs under either album ID in any spell
     downloadTracker.reconcileCommittedJobs();
 
     const keys = [legacy, spelled, untouched].map(({ album }) => `aurral:${album.id}`);
-    const query = { albumIds: keys.join(",") };
+    const query = new URLSearchParams({ albumIds: keys.join(",") });
     const expected = {
       [keys[0]]: { status: "queued", pending: 2, failed: 0 },
       [keys[1]]: { status: "downloading", pending: 1, downloading: 1 },
       [keys[2]]: { status: "missing", missing: 2, pending: 0 },
     };
-    const poll = await callRoute<AlbumStatuses>("GET /downloads/status", {}, {}, query);
+    const poll = await callRoute<AlbumStatuses>(`/library/downloads/status?${query}`);
     const webPoll = await callRouteAsWebProcess<AlbumStatuses>(
       t,
-      "GET /downloads/status",
-      {},
-      {},
-      query,
+      `/library/downloads/status?${query}`,
     );
     const singleAlbumPoll = await callRouteAsWebProcess<AlbumStatuses>(
       t,
-      "GET /downloads/status",
-      {},
-      {},
-      { albumIds: keys[0] },
+      `/library/downloads/status?${new URLSearchParams({ albumIds: keys[0] })}`,
     );
 
     for (const [key, { status, ...counts }] of Object.entries(expected)) {
@@ -1089,8 +1065,8 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
       "discover",
     );
 
-    const response = await callRoute<ActiveDownloadsBody>("GET /downloads/active");
-    assert.equal(response.statusCode, 200);
+    const response = await callRoute<ActiveDownloadsBody>("/library/downloads/active");
+    assert.equal(response.status, 200);
     assert.deepEqual(
       [...response.body.albums].sort(),
       [queuedAlbum.albumMbid, "lidarr-album"].sort(),
@@ -1109,7 +1085,7 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
     );
     const { response: webResponse } = await callRouteAsWebProcess<ActiveDownloadsBody>(
       t,
-      "GET /downloads/active",
+      "/library/downloads/active",
     );
     assert.deepEqual(webResponse.body, response.body);
   } finally {
@@ -1198,18 +1174,14 @@ test("an album asks for its most common edition and a shorter download leaves it
     await metadata.close();
   });
 
-  const requested = await callRoute<RequestedAlbumBody>(
-    "POST /albums/request",
-    {},
-    {
-      albumMbid,
-      albumName: "Edition Album",
-      artistMbid,
-      artistName: "Edition Artist",
-      managedBy: "aurral",
-    },
-  );
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Edition Album",
+    artistMbid,
+    artistName: "Edition Artist",
+    managedBy: "aurral",
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
   assert.deepEqual(
     ids.map((id) => [getJob(id).trackNumber, getJob(id).trackName]),
@@ -1290,9 +1262,7 @@ test("an album asks for its most common edition and a shorter download leaves it
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
   invalidateAllDownloadStatusesCache();
-  const status = await callRoute("GET /albums/aurral/:canonicalId/status", {
-    canonicalId: String(requested.body.album.id),
-  });
+  const status = await callRoute(`/library/albums/aurral/${requested.body.album.id}/status`);
   assert.notEqual(status.body.status, "complete");
   assert.equal(status.body.counts.total, 3);
 });
@@ -1369,18 +1339,14 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
     await metadata.close();
   });
 
-  const requested = await callRoute<RequestedAlbumBody>(
-    "POST /albums/request",
-    {},
-    {
-      albumMbid,
-      albumName: "Expanded Album",
-      artistMbid,
-      artistName: "Expanded Artist",
-      managedBy: "aurral",
-    },
-  );
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Expanded Album",
+    artistMbid,
+    artistName: "Expanded Artist",
+    managedBy: "aurral",
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
   ids = requested.body.jobIds;
   assert.deepEqual(
     ids.map((id) => getJob(id).trackName),
@@ -1498,18 +1464,14 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
     await metadata.close();
   });
 
-  const requested = await callRoute<RequestedAlbumBody>(
-    "POST /albums/request",
-    {},
-    {
-      albumMbid,
-      albumName: "Disc Album",
-      artistMbid,
-      artistName: "Disc Artist",
-      managedBy: "aurral",
-    },
-  );
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Disc Album",
+    artistMbid,
+    artistName: "Disc Artist",
+    managedBy: "aurral",
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
   assert.deepEqual(
     ids.map((id) => [getJob(id).discNumber, getJob(id).trackNumber]),
@@ -1624,18 +1586,14 @@ test("an album asks for its release's own lengths and fills a missing one from p
     await metadata.close();
   });
 
-  const requested = await callRoute<RequestedAlbumBody>(
-    "POST /albums/request",
-    {},
-    {
-      albumMbid,
-      albumName: "Pressing Album",
-      artistMbid,
-      artistName: "Pressing Artist",
-      managedBy: "aurral",
-    },
-  );
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Pressing Album",
+    artistMbid,
+    artistName: "Pressing Artist",
+    managedBy: "aurral",
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
   assert.deepEqual(
     requested.body.jobIds.map((id) => getJob(id).durationMs),
     [296000, 254447],
@@ -1756,19 +1714,15 @@ test("asking for an album downloads the missing tracks of the edition its track 
     },
   });
 
-  const requested = await callRoute<RequestedAlbumBody>(
-    "POST /albums/request",
-    {},
-    {
-      albumMbid,
-      albumName: "Listed Album",
-      artistMbid,
-      artistName: "Listed Artist",
-      managedBy: "aurral",
-    },
-  );
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Listed Album",
+    artistMbid,
+    artistName: "Listed Artist",
+    managedBy: "aurral",
+  });
 
-  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
   assert.deepEqual(
     requested.body.jobIds.map((id) => getJob(id).trackName),
     ["Listed Song 2", "Listed Song 3"],
@@ -1876,8 +1830,7 @@ test("an album scanned with its release ID stays one album through downloads and
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, path.join(root, "elsewhere.flac"));
   const status = async () =>
-    (await callRoute("GET /albums/aurral/:canonicalId/status", { canonicalId: String(album.id) }))
-      .body.status;
+    (await callRoute(`/library/albums/aurral/${album.id}/status`)).body.status;
 
   const duplicate = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${release}`,
@@ -1994,10 +1947,8 @@ test("an album scanned with its release ID queues by release group and cancels i
     "library",
   );
 
-  const cancelled = await callRoute("POST /albums/aurral/:canonicalId/cancel", {
-    canonicalId: String(album.id),
-  });
-  assert.equal(cancelled.statusCode, 200, JSON.stringify(cancelled.body));
+  const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
   assert.equal(getJob(legacyJobId).status, "cancelled");
 });
 

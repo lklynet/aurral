@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { DotLoader } from "../../../components/DotLoader";
 import { MonitoringRulesFields } from "../../../components/MonitoringRulesFields";
 import PillToggle from "../../../components/PillToggle";
@@ -8,14 +9,8 @@ import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { MonitoringExclusion } from "../../../../../backend/services/aurralMonitoringStore.ts";
-import type { libraryManager } from "../../../../../backend/services/libraryManager.ts";
-import {
-  getMonitoringDefaults,
-  getMonitoringExclusions,
-  previewMonitoringDefaults,
-  removeMonitoringExclusion,
-  saveMonitoringDefaults,
-} from "../../../utils/api/endpoints/library.ts";
+import { libraryMonitoringClient } from "../../../utils/api/clients/libraryMonitoring.ts";
+import { slowLibraryFetch } from "../../../utils/api/endpoints/library.ts";
 import { describeAurralMonitoringError } from "../../../utils/aurralMonitoring.ts";
 import {
   describeDownloadCount,
@@ -34,10 +29,13 @@ import type { SettingsState } from "../utils";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type MissingTrackSearch = Partial<NonNullable<AppSettings["missingTrackSearch"]>>;
-type MonitoringDefaults = ReturnType<typeof libraryManager.getMonitoringDefaultsState>;
-type MonitoringPreview = Extract<
-  Awaited<ReturnType<typeof libraryManager.previewMonitoringDefaults>>,
-  { artistCount: number }
+type MonitoringDefaults = InferResponseType<
+  typeof libraryMonitoringClient.monitoring.defaults.$get,
+  200
+>;
+type MonitoringPreview = InferResponseType<
+  typeof libraryMonitoringClient.monitoring.defaults.preview.$post,
+  200
 >;
 
 const sameRules = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
@@ -63,7 +61,7 @@ function DefaultRulesModal({
   const save = async () => {
     setBusy(true);
     try {
-      await saveMonitoringDefaults(rules);
+      await parseResponse(libraryMonitoringClient.monitoring.defaults.$put({ json: { rules } }));
       await onSaved(review?.artistCount ?? defaults.artistCount);
     } catch (error) {
       showError(
@@ -84,7 +82,14 @@ function DefaultRulesModal({
     }
     setBusy(true);
     try {
-      setReview(await previewMonitoringDefaults(rules));
+      setReview(
+        await parseResponse(
+          libraryMonitoringClient.monitoring.defaults.preview.$post(
+            { json: { rules } },
+            { fetch: slowLibraryFetch },
+          ),
+        ),
+      );
     } catch (error) {
       showError(
         `Could not check the new rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
@@ -154,10 +159,18 @@ function DefaultRulesModal({
 function ExclusionsTable({ showError }: { showError: Toast }) {
   const exclusionsQuery = useQuery({
     queryKey: queryKeys.monitoringExclusions(null),
-    queryFn: ({ signal }) => getMonitoringExclusions({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        libraryMonitoringClient.monitoring.exclusions.$get({ query: {} }, { init: { signal } }),
+      ),
   });
   const allow = useMutation({
-    mutationFn: (exclusion: MonitoringExclusion) => removeMonitoringExclusion(exclusion.id),
+    mutationFn: (exclusion: MonitoringExclusion) =>
+      parseResponse(
+        libraryMonitoringClient.monitoring.exclusions[":id"].$delete({
+          param: { id: encodeURIComponent(exclusion.id) },
+        }),
+      ),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
     onError: (error, exclusion) =>
@@ -254,7 +267,10 @@ export function SettingsMonitoringTab({
   const [intervalDraft, setIntervalDraft] = useState<string | null>(null);
   const defaultsQuery = useQuery({
     queryKey: queryKeys.monitoringDefaults,
-    queryFn: ({ signal }) => getMonitoringDefaults({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        libraryMonitoringClient.monitoring.defaults.$get(undefined, { init: { signal } }),
+      ),
   });
   const defaults = defaultsQuery.data;
   const missingTrackSearch: MissingTrackSearch = settings.missingTrackSearch || {};

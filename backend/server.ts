@@ -25,9 +25,7 @@ import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStat
 
 import artistsRouter from "./routes/artists/index.ts";
 import searchRouter from "./routes/search.ts";
-import libraryRouter from "./routes/library/index.ts";
 import discoveryRouter from "./routes/discovery/index.ts";
-import requestsRouter from "./routes/requests.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import playlistsRouter from "./routes/playlists/index.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
@@ -180,10 +178,17 @@ app.use(
   resolveTokenUser,
   handToHono,
 );
+app.get(
+  ["/api/library/albums/:albumId/cover", "/api/library/artwork/:kind/:id"],
+  resolveTokenUser,
+  handToHono,
+);
 app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
 app.use(
   [
     "/api/inbox",
+    "/api/library",
+    "/api/requests",
     "/api/settings",
     "/api/updates",
     "/api/auth",
@@ -199,11 +204,9 @@ app.use(
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use("/api/search", searchRouter);
 app.use("/api/artists", artistsRouter);
-app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
 app.use("/api/news", newsRouter);
 app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
-app.use("/api/requests", requestsRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {

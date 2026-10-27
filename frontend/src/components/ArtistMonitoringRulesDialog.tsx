@@ -1,15 +1,13 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import PillToggle from "./PillToggle";
 import { DotLoader } from "./DotLoader";
 import { MonitoringRulesFields, type MonitoringRules } from "./MonitoringRulesFields";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import {
-  getMonitoringExclusions,
-  previewArtistMonitoring,
-  removeMonitoringExclusion,
-} from "../utils/api/endpoints/library.ts";
+import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
+import { slowLibraryFetch } from "../utils/api/endpoints/library.ts";
 import { describeAurralMonitoringError } from "../utils/aurralMonitoring.ts";
 import {
   RELEASE_SKIP_REASONS,
@@ -97,7 +95,15 @@ function MonitoringPreview({ mbid, artistName, request }: MonitoringPreviewProps
   const preview = useQuery<ArtistMonitoringPreview>({
     queryKey: [...queryKeys.artistMonitoring(mbid), "preview", debounced],
     queryFn: ({ signal }) =>
-      previewArtistMonitoring(mbid, { monitoring: debounced, artistName }, { signal }),
+      parseResponse(
+        libraryMonitoringClient.artists[":mbid"].monitoring.preview.$post(
+          {
+            param: { mbid: encodeURIComponent(mbid) },
+            json: { monitoring: debounced, artistName },
+          },
+          { fetch: slowLibraryFetch, init: { signal } },
+        ),
+      ),
     placeholderData: keepPreviousData,
     retry: false,
     staleTime: 30_000,
@@ -201,10 +207,21 @@ interface MonitoringExclusionsProps {
 function MonitoringExclusions({ mbid, onError }: MonitoringExclusionsProps) {
   const exclusionsQuery = useQuery<MonitoringExclusion[]>({
     queryKey: queryKeys.monitoringExclusions(mbid),
-    queryFn: ({ signal }) => getMonitoringExclusions({ artistMbid: mbid, signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        libraryMonitoringClient.monitoring.exclusions.$get(
+          { query: { artistMbid: mbid } },
+          { init: { signal } },
+        ),
+      ),
   });
   const allow = useMutation({
-    mutationFn: (exclusion: MonitoringExclusion) => removeMonitoringExclusion(exclusion.id),
+    mutationFn: (exclusion: MonitoringExclusion) =>
+      parseResponse(
+        libraryMonitoringClient.monitoring.exclusions[":id"].$delete({
+          param: { id: encodeURIComponent(exclusion.id) },
+        }),
+      ),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
