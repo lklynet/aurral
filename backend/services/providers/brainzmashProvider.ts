@@ -303,9 +303,15 @@ function getMetadataCachePolicy(path: string) {
 async function readCachedMetadata(cacheKey: string, { persistent = false } = {}) {
   let entry = persistent ? null : metadataHotCache.get(cacheKey);
   if (!entry) {
-    entry = await dbOps.getMetadataResponseAsync(cacheKey);
-    if (!entry) return null;
-    metadataHotCache.set(cacheKey, entry);
+    const persisted = await dbOps.getMetadataResponseAsync(cacheKey);
+    const current = persistent ? null : metadataHotCache.get(cacheKey);
+    if (!persisted) {
+      if (!current) return null;
+      entry = current;
+    } else {
+      entry = persisted;
+      if (!current) metadataHotCache.set(cacheKey, persisted);
+    }
   }
   const now = Date.now();
   if (entry.staleUntil < now) return null;

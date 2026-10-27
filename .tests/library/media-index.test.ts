@@ -1275,6 +1275,9 @@ async function withReleaseGroups(
   }
 }
 
+const expireMetadataRequestCooldowns = () =>
+  db.prepare("UPDATE metadata_request_state SET retry_after = 0").run();
+
 const albumListing = (title: string) =>
   db
     .prepare<unknown[], { title: Rows.LibraryTracksRow["title"]; have: number }>(
@@ -1379,6 +1382,7 @@ test("an album lists every track of the release its files are tagged with, inclu
       ]);
 
       provider.up = true;
+      expireMetadataRequestCooldowns();
       await scan();
       const listed = [
         ["One", "have"],
@@ -1508,6 +1512,7 @@ test("a song an album keeps after its untagged file is gone is listed once, and 
     ]);
 
     provider.up = true;
+    expireMetadataRequestCooldowns();
     await scan();
     const listed = [
       ["One", "have"],
@@ -2048,6 +2053,7 @@ test("a second file of a song, tagged with a recording its album's release does 
     await taggedTrack(root, artist, title, album, "Sex & Candy", 4, uuid("c5c5c5c5", 4));
     await scan();
     provider.up = true;
+    expireMetadataRequestCooldowns();
     await scan();
 
     assert.deepEqual(albumListing(title).sort(), listed);

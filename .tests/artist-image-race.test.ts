@@ -1,6 +1,6 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { test, afterAll } from "vite-plus/test";
+import { test, afterAll, vi } from "vite-plus/test";
 import express from "express";
 import {
   cleanupIsolatedState,
@@ -9,6 +9,19 @@ import {
 } from "./helpers/backendTestHarness.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 import type { CachedArtistImage } from "../backend/db/helpers/cache.ts";
+
+vi.mock("../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
+});
+vi.mock("../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../backend/services/metadataProviderBudget.ts")>()),
+  reserveMetadataProviderRequest: () => 0,
+}));
 
 const [
   state,

@@ -697,6 +697,7 @@ test("clean up says the metadata provider was unreachable instead of calling an 
   assert.deepEqual(await readFile(tagged), taggedBytes);
 
   providerDown = false;
+  db.prepare("UPDATE metadata_request_state SET retry_after = 0").run();
   const retried = await checkAndRun(await operations.startCleanup());
 
   assert.equal(
