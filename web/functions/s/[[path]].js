@@ -29,7 +29,6 @@ const DEEZER_TIMEOUT_MS = 2500;
 const PAGE_CACHE_SECONDS = 3600;
 const LISTEN_TIMEOUT_MS = 5000;
 const TRACK_PATH_PATTERN = /^tracks\/\d+\/\d+$/;
-const LISTEN_HEADINGS = { track: "Listen to the full track", album: "Listen to the full album" };
 
 function fromBase64Url(segment) {
   if (!segment || segment.length > MAX_PAYLOAD_LENGTH || !/^[A-Za-z0-9_-]+$/.test(segment))
@@ -274,50 +273,72 @@ function formatDuration(ms) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function listenSection(listen) {
-  const single = listen.tracks.length === 1;
-  const expiry = listen.expiresAt
-    ? `<p class="note">Available until ${escapeHtml(
-        new Date(listen.expiresAt).toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        }),
-      )}.</p>`
-    : "";
-  const downloadAll =
-    listen.allowDownload && !single
-      ? `<a class="button primary" href="${escapeHtml(`${listen.base}/download`)}" download>Download all</a>`
-      : "";
-  const singleDownload =
-    listen.allowDownload && single
-      ? `<a class="button" href="${escapeHtml(`${listen.tracks[0].url}/download`)}" download>Download</a>`
-      : "";
-  const rows = single
-    ? ""
-    : `<ol class="tracks">${listen.tracks
-        .map(
-          (track, index) => `<li class="track-row">
-            <button type="button" class="track" data-src="${escapeHtml(`${track.url}/stream`)}" aria-current="${index === 0 ? "true" : "false"}">
-              <span class="track-number">${track.trackNumber ?? index + 1}</span>
-              <span class="track-text">
-                <span class="track-title">${escapeHtml(track.title)}</span>
-                ${listen.kind === "artist" && track.albumTitle ? `<span class="track-album">${escapeHtml(track.albumTitle)}</span>` : ""}
-              </span>
-              <span class="track-duration">${escapeHtml(formatDuration(track.durationMs))}</span>
-            </button>
-            ${listen.allowDownload ? `<a class="track-download" href="${escapeHtml(`${track.url}/download`)}" download aria-label="Download ${escapeHtml(track.title)}">Download</a>` : ""}
-          </li>`,
-        )
-        .join("")}</ol>`;
-  return `<section class="player" aria-labelledby="player-title" data-player>
-    <p class="section-title" id="player-title">${LISTEN_HEADINGS[listen.kind] || "Listen"}</p>
-    <audio controls preload="metadata" src="${escapeHtml(`${listen.tracks[0].url}/stream`)}" aria-labelledby="player-title"></audio>
-    ${rows}
-    ${downloadAll}${singleDownload}
-    ${expiry}
+const DOWNLOAD_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></svg>';
+const OPEN_ICON =
+  '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 3H3v14h14v-5M10 3h7v7M17 3l-9 9"/></svg>';
+const DETAILS_ICON =
+  '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 3h10v14H5zM8 7h4M8 10h4M8 13h2"/></svg>';
+
+function playerSection(tracks, { kind, download = null } = {}) {
+  if (!tracks.length) return "";
+  const first = tracks.find((track) => !track.preview) || tracks[0];
+  const previewsOnly = tracks.every((track) => track.preview);
+  const label = previewsOnly ? "Play previews" : "Play";
+  const rows = tracks
+    .map(
+      (track, index) => `<li class="track-row" ${index >= 5 ? "data-extra-track" : ""}>
+    <button type="button" class="track" data-src="${escapeHtml(track.src)}" ${track.preview ? 'data-preview="true"' : ""} aria-current="false">
+      <span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span>
+      <span class="track-album">${escapeHtml(kind === "artist" ? track.albumTitle || track.artistName : track.artistName)}</span></span>
+      <span class="track-duration">${track.preview ? "Preview" : escapeHtml(formatDuration(track.durationMs))}</span>
+    </button>${track.download ? `<a class="track-download" href="${escapeHtml(track.download)}" download aria-label="Download ${escapeHtml(track.title)}">${DOWNLOAD_ICON}</a>` : ""}
+  </li>`,
+    )
+    .join("");
+  return `<section class="player" data-player aria-label="${previewsOnly ? "30-second previews" : "Shared tracks"}">
+    <div class="share-actions"><button type="button" class="button primary" data-play-all data-label="${label}" aria-pressed="false" hidden>
+      <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+      <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+      <span data-play-label>${label}</span></button>
+      ${download ? `<a class="download-all" href="${escapeHtml(download)}" download>${DOWNLOAD_ICON}${kind === "track" ? "Download" : "Download all"}</a>` : ""}
+    </div>
+    <audio controls preload="none" src="${escapeHtml(first.src)}" aria-label="Shared music player"></audio>
+    <div class="transport" data-transport hidden><input class="seek" data-seek type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="Seek" />
+      <div class="times"><span data-elapsed>0:00</span><span data-duration>${previewsOnly ? "0:30" : escapeHtml(formatDuration(first.durationMs)) || "0:00"}</span></div></div>
+    <ol class="tracks ${kind === "track" && tracks.length === 1 ? "tracks--single" : ""}">${rows}</ol>
+    ${tracks.length > 5 ? `<button type="button" class="text-button" data-show-tracks data-label="View all ${tracks.length} tracks" aria-expanded="false" hidden>View all ${tracks.length} tracks</button>` : ""}
+    <p class="note" data-play-status role="status" hidden></p>
   </section>`;
+}
+
+function listenSection(listen) {
+  return playerSection(
+    listen.tracks.map((track) => ({
+      ...track,
+      src: `${track.url}/stream`,
+      preview: false,
+      download: listen.allowDownload ? `${track.url}/download` : null,
+    })),
+    { kind: listen.kind, download: listen.allowDownload ? `${listen.base}/download` : null },
+  );
+}
+
+function aurralMenu(item, url, listen) {
+  const path = (action) =>
+    escapeHtml(`/share/import?url=${encodeURIComponent(url)}&action=${action}`);
+  return `<details class="aurral" data-aurral hidden><summary>My Aurral<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></summary>
+    <div class="aurral-panel"><div data-aurral-actions>
+      ${item.kind !== "playlist" ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("open")}">${OPEN_ICON}Open in my Aurral</a>` : ""}
+      <a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("details")}">${DETAILS_ICON}Import details only</a>
+      ${listen?.allowDownload ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("files")}">${DOWNLOAD_ICON}Import shared files</a>` : `<button class="aurral-action" type="button" disabled aria-describedby="files-unavailable">${DOWNLOAD_ICON}Import shared files</button><p class="aurral-hint" id="files-unavailable">${listen === null ? "Shared files are offline." : "Downloads aren't shared."}</p>`}
+      <div class="aurral-server" data-aurral-server hidden><span></span><button type="button" class="text-button" data-change-address>Change</button></div>
+    </div>
+    <form hidden novalidate><button type="button" class="text-button aurral-back" data-aurral-back>Back</button><label for="aurral-url">Your Aurral address</label>
+      <input id="aurral-url" type="url" inputmode="url" autocomplete="url" placeholder="https://music.example.com" aria-describedby="aurral-error" />
+      <p class="error" id="aurral-error" role="alert" hidden>Enter your Aurral address, like music.example.com.</p>
+      <button type="submit" class="button primary">Continue</button>
+    </form></div></details>`;
 }
 
 function searchQuery(item) {
@@ -337,8 +358,7 @@ function listenLinks(item, deezerLink) {
 }
 
 function describe(item) {
-  if (item.kind === "playlist")
-    return { heading: item.title, kicker: "Playlist", byline: `${item.tracks.length} tracks` };
+  if (item.kind === "playlist") return { heading: item.title, kicker: "Playlist", byline: "" };
   if (item.kind === "artist") {
     return { heading: item.artistName, kicker: "Artist", byline: "" };
   }
@@ -352,253 +372,15 @@ function describe(item) {
   };
 }
 
-const STYLES = `
-:root {
-  color-scheme: dark;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
-  --chrome: #000000;
-  --surface: #111111;
-  --text: #ffffff;
-  --text-muted: rgb(255 255 255 / 58%);
-  --text-subtle: rgb(255 255 255 / 46%);
-  --border: rgb(255 255 255 / 8%);
-  --border-strong: rgb(255 255 255 / 14%);
-  --hover: rgb(255 255 255 / 9%);
-  --ring: rgb(255 255 255 / 46%);
-  --radius: 10px;
-  --radius-sm: 6px;
-}
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-body {
-  background: var(--chrome);
-  color: var(--text);
-  font: 400 16px / 1.5 var(--font-sans);
-  margin: 0;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  -webkit-font-smoothing: antialiased;
-}
-h1, p { margin: 0; }
-a { color: inherit; text-decoration: none; }
-:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--radius-sm); }
-.top { padding: 20px 24px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
-.brand img { height: 20px; width: auto; }
-main { flex: 1; display: flex; justify-content: center; padding: 16px 24px 48px; }
-.share { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 20px; }
-.share-head { display: flex; gap: 16px; align-items: center; }
-.share-head .art { width: 80px; flex-shrink: 0; font-size: 36px; }
-.share-actions { display: flex; gap: 8px; }
-.share-actions .button { width: auto; }
-.art {
-  aspect-ratio: 1;
-  width: 100%;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-subtle);
-  font-size: 96px;
-  font-weight: 700;
-}
-.art--round { border-radius: 9999px; }
-.art img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.meta { display: flex; flex-direction: column; gap: 4px; }
-.kicker { color: var(--text-muted); font-size: 13px; font-weight: 600; }
-h1 { font-size: 28px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
-.byline { color: var(--text-muted); font-size: 16px; }
-audio { width: 100%; }
-.preview-label { color: var(--text-subtle); font-size: 13px; margin-bottom: 6px; }
-.section-title { color: var(--text-muted); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.listen { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.button {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  cursor: pointer;
-  display: inline-flex;
-  font: 500 15px / 1 var(--font-sans);
-  gap: 8px;
-  height: 44px;
-  justify-content: center;
-  padding-inline: 16px;
-  width: 100%;
-  transition: background-color 150ms ease, border-color 150ms ease;
-}
-.button.primary { background: var(--text); border-color: var(--text); color: var(--chrome); }
-.button:active { transform: scale(0.97); }
-@media (hover: hover) and (pointer: fine) {
-  .button:hover { background: var(--hover); border-color: rgb(255 255 255 / 22%); }
-  .button.primary:hover { background: #ffffff; border-color: #ffffff; }
-}
-.aurral { border-top: 1px solid var(--border); padding-top: 24px; display: flex; flex-direction: column; gap: 12px; }
-.aurral p { color: var(--text-muted); font-size: 14px; }
-.aurral form { display: flex; flex-direction: column; gap: 8px; }
-.aurral label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
-.aurral input {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font: 400 15px / 1 var(--font-sans);
-  height: 44px;
-  padding-inline: 12px;
-  width: 100%;
-}
-.aurral .error { color: #f87171; font-size: 13px; }
-.text-button {
-  background: none;
-  border: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  font: 500 13px / 1 var(--font-sans);
-  padding: 4px 0;
-  align-self: flex-start;
-}
-.player { display: flex; flex-direction: column; gap: 12px; }
-.player .section-title { margin-bottom: 0; }
-.note { color: var(--text-subtle); font-size: 13px; }
-.unavailable { color: var(--text-muted); font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
-.tracks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
-.track-row { display: flex; align-items: center; gap: 4px; }
-.track {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 6px 8px;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  cursor: pointer;
-  font: 400 15px / 1.3 var(--font-sans);
-  text-align: left;
-}
-.track[aria-current="true"] { background: var(--hover); font-weight: 600; }
-.track-number, .track-duration { color: var(--text-subtle); font-size: 13px; font-variant-numeric: tabular-nums; }
-.track-number { min-width: 20px; text-align: right; }
-.track-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.track-title { overflow-wrap: anywhere; }
-.track-album { color: var(--text-subtle); font-size: 13px; }
-.track-download { color: var(--text-muted); font-size: 13px; padding: 12px 8px; }
-@media (hover: hover) and (pointer: fine) {
-  .track:hover { background: var(--hover); }
-  .track-download:hover { color: var(--text); }
-}
-footer { color: var(--text-subtle); font-size: 13px; padding: 24px; text-align: center; }
-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-`;
-
-const SCRIPT = `
-(() => {
-  const KEY = "aurral:instance-url";
-  const root = document.querySelector("[data-aurral]");
-  const path = root.dataset.path;
-  const open = root.querySelector("[data-open]");
-  const change = root.querySelector("[data-change]");
-  const form = root.querySelector("form");
-  const input = form.querySelector("input");
-  const error = form.querySelector(".error");
-  const normalize = (value) => {
-    let text = String(value || "").trim();
-    if (!text) return null;
-    if (!/^https?:\\/\\//i.test(text)) text = "http://" + text;
-    try {
-      const url = new URL(text);
-      if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-      return url.origin + url.pathname.replace(/\\/+$/, "");
-    } catch {
-      return null;
-    }
-  };
-  const read = () => {
-    try { return normalize(localStorage.getItem(KEY)); } catch { return null; }
-  };
-  const render = () => {
-    const saved = read();
-    open.hidden = !saved;
-    change.hidden = !saved;
-    form.hidden = Boolean(saved);
-    if (saved) open.href = saved + path;
-  };
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const url = normalize(input.value);
-    if (!url) {
-      error.hidden = false;
-      input.setAttribute("aria-invalid", "true");
-      input.focus();
-      return;
-    }
-    try { localStorage.setItem(KEY, url); } catch {}
-    window.location.href = url + path;
-  });
-  change.addEventListener("click", () => {
-    open.hidden = true;
-    change.hidden = true;
-    form.hidden = false;
-    input.value = read() || "";
-    input.focus();
-  });
-  document.querySelectorAll("img[data-fallback]").forEach((img) => {
-    img.addEventListener("error", () => {
-      const holder = img.parentElement;
-      holder.textContent = img.dataset.fallback;
-    });
-  });
-  render();
-  const player = document.querySelector("[data-player]");
-  if (player) {
-    const audio = player.querySelector("audio");
-    const tracks = Array.from(player.querySelectorAll("[data-src]"));
-    let current = 0;
-    const select = (index) => {
-      current = index;
-      tracks.forEach((track, position) => track.setAttribute("aria-current", String(position === index)));
-      audio.src = tracks[index].dataset.src;
-      audio.play().catch(() => {});
-    };
-    const start = player.querySelector("[data-play-all]");
-    if (start) start.addEventListener("click", () => {
-      const first = tracks.findIndex((track) => !track.dataset.preview);
-      if (first >= 0) select(first);
-    });
-    const status = player.querySelector("[data-play-status]");
-    audio.addEventListener("error", () => {
-      if (status) status.textContent = tracks[current]?.dataset.preview
-        ? "No preview is available for this track. Try a streaming service."
-        : "The shared file is unavailable. Try again when the share is online.";
-    });
-    audio.addEventListener("playing", () => { if (status) status.textContent = ""; });
-    tracks.forEach((track, index) => track.addEventListener("click", () => select(index)));
-    audio.addEventListener("ended", () => {
-      if (tracks[current]?.dataset.preview) return;
-      const next = tracks.findIndex((track, index) => index > current && !track.dataset.preview);
-      if (next >= 0) select(next);
-    });
-  }
-})();
-`;
-
 function securityHeaders(nonce) {
   return {
     "Content-Security-Policy": [
       "default-src 'none'",
-      "img-src https:",
-      "media-src https:",
-      `style-src 'nonce-${nonce}'`,
-      `script-src 'nonce-${nonce}'`,
+      "img-src 'self' https:",
+      "media-src 'self' https:",
+      `style-src 'self' 'nonce-${nonce}'`,
+      "font-src 'self'",
+      `script-src 'self' 'nonce-${nonce}'`,
       "base-uri 'none'",
       "form-action 'none'",
       "frame-ancestors 'none'",
@@ -609,7 +391,7 @@ function securityHeaders(nonce) {
   };
 }
 
-function page({ type, title, description, image, url, nonce, body, script = "" }) {
+function page({ type, title, description, image, url, nonce, body, script = false, menu = "" }) {
   const metaImage = image
     ? `<meta property="og:image" content="${escapeHtml(image)}" />
     <meta name="twitter:card" content="summary_large_image" />`
@@ -620,7 +402,7 @@ function page({ type, title, description, image, url, nonce, body, script = "" }
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <meta name="theme-color" content="#050505" />
+    <meta name="theme-color" content="#000000" />
     <title>${escapeHtml(title)}</title>
     <meta name="description" content="${escapeHtml(description)}" />
     <meta property="og:type" content="${type}" />
@@ -630,15 +412,16 @@ function page({ type, title, description, image, url, nonce, body, script = "" }
     <meta property="og:url" content="${escapeHtml(url)}" />
     ${metaImage}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <style nonce="${nonce}">${STYLES}</style>
+    <link rel="stylesheet" href="/share-page.css" />
   </head>
   <body>
     <header class="top">
       <a class="brand" href="/"><img src="/favicon.svg" alt="" width="27" height="20" />Aurral</a>
+      ${menu}
     </header>
     <main>${body}</main>
-    <footer>Shared from <a href="/">Aurral</a>, self-hosted music discovery.</footer>
-    ${script ? `<script nonce="${nonce}" data-cfasync="false">${script}</script>` : ""}
+    <footer>Shared with <a href="/">Aurral</a></footer>
+    ${script ? `<script nonce="${nonce}" src="/share-page.js" data-cfasync="false" defer></script>` : ""}
   </body>
 </html>`;
 }
@@ -662,25 +445,20 @@ function notFoundPage(url, nonce) {
 }
 
 function manifestPlayer(item, listen, segment) {
-  const rows = item.tracks
-    .map((track, index) => {
+  return playerSection(
+    item.tracks.map((track, index) => {
       const file = listen?.tracks.find((entry) => entry.path === track.path);
-      const src = file
-        ? `${file.url}/stream`
-        : `/api/shares/preview?share=${encodeURIComponent(segment)}&track=${index}`;
-      return `<li class="track-row"><button type="button" class="track" data-src="${escapeHtml(src)}" ${file ? "" : 'data-preview="true"'} aria-current="false">
-      <span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span>
-      <span class="track-album">${escapeHtml(track.artistName)}</span></span><span class="track-duration">${file ? "Full track" : "Preview"}</span></button>
-      ${file && listen.allowDownload ? `<a class="track-download" href="${escapeHtml(`${file.url}/download`)}" download aria-label="Download ${escapeHtml(track.title)}">Download</a>` : ""}</li>`;
-    })
-    .join("");
-  const count = listen?.tracks.length || 0;
-  return `<section class="player" data-player aria-label="Shared tracks"><div class="share-actions">
-    ${count ? `<button type="button" class="button primary" data-play-all>${LISTEN_HEADINGS[item.kind] || "Listen"}</button>` : ""}
-    ${listen?.allowDownload ? `<a class="button" href="${escapeHtml(`${listen.base}/download`)}" download>${count === 1 ? "Download" : "Download all"}</a>` : ""}
-    </div><audio controls preload="none" aria-label="Shared music player"></audio><ol class="tracks">${rows}</ol>
-    <p class="note" data-play-status role="status"></p>
-    </section>`;
+      return {
+        ...track,
+        src: file
+          ? `${file.url}/stream`
+          : `/api/shares/preview?share=${encodeURIComponent(segment)}&track=${index}`,
+        preview: !file,
+        download: file && listen.allowDownload ? `${file.url}/download` : null,
+      };
+    }),
+    { kind: item.kind, download: listen?.allowDownload ? `${listen.base}/download` : null },
+  );
 }
 
 function sharePage(item, deezer, url, nonce, listen, segment, catalogPreviews) {
@@ -700,64 +478,70 @@ function sharePage(item, deezer, url, nonce, listen, segment, catalogPreviews) {
         : item.kind === "album"
           ? `Listen to the album ${item.title} by ${item.artistName}.`
           : `Listen to ${item.title} by ${item.artistName}.`;
-  const art = image
-    ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.kind === "artist" ? heading : `${heading} cover`)}" data-fallback="${escapeHtml(initial)}" />`
-    : `<span aria-hidden="true">${escapeHtml(initial)}</span>`;
+  const covers =
+    item.kind === "playlist"
+      ? [...new Set(item.tracks.map((track) => track.albumMbid).filter(Boolean))].slice(0, 4)
+      : [];
+  const collage = covers.length > 1;
+  const art = collage
+    ? Array.from(
+        { length: 4 },
+        (_, index) =>
+          `<span><img src="https://coverartarchive.org/release-group/${escapeHtml(covers[index % covers.length])}/front-250" alt="" data-fallback="${escapeHtml(initial)}" /></span>`,
+      ).join("")
+    : image
+      ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.kind === "artist" ? heading : `${heading} cover`)}" data-fallback="${escapeHtml(initial)}" />`
+      : `<span aria-hidden="true">${escapeHtml(initial)}</span>`;
   const unavailable =
-    listen === null
-      ? `<p class="unavailable" role="status">This isn&#39;t available to listen to right now.</p>`
-      : "";
-  const catalogPlayer = catalogPreviews.length
-    ? `<section class="player" data-player aria-label="30-second previews"><p class="section-title">30-second previews</p><audio controls preload="none" aria-label="Preview player"></audio><ol class="tracks">${catalogPreviews.map((track, index) => `<li class="track-row"><button type="button" class="track" data-src="${escapeHtml(track.preview)}" data-preview="true" aria-current="false"><span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span><span class="track-album">${escapeHtml(track.artistName)}</span></span><span class="track-duration">Preview</span></button></li>`).join("")}</ol><p class="note" data-play-status role="status"></p></section>`
-    : "";
+    listen === null ? `<p class="unavailable" role="status">Shared files are offline.</p>` : "";
+  const catalogPlayer = playerSection(
+    catalogPreviews.map((track) => ({ ...track, src: track.preview, preview: true })),
+    { kind: item.kind },
+  );
   const preview = item.tracks?.length
     ? manifestPlayer(item, listen, segment)
     : listen
       ? listenSection(listen)
       : deezer.preview
-        ? `<div>
-        <p class="preview-label" id="preview-label">30-second preview</p>
-        <audio controls preload="none" src="${escapeHtml(deezer.preview)}" aria-labelledby="preview-label"></audio>
-      </div>`
+        ? playerSection(
+            [
+              {
+                title: item.title,
+                artistName: item.artistName,
+                src: deezer.preview,
+                preview: true,
+              },
+            ],
+            { kind: item.kind },
+          )
         : catalogPlayer;
   const links = listenLinks(item, deezer.link)
     .map(
       ([name, href]) =>
-        `<li><a class="button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`,
+        `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`,
     )
     .join("");
   return page({
     type: OG_TYPES[item.kind],
-    script: SCRIPT,
+    script: true,
+    menu: aurralMenu(item, url, listen),
     title: `${title} | Aurral`,
     description,
     image,
     url,
     nonce,
     body: `<article class="share">
-      <div class="share-head"><div class="art${item.kind === "artist" ? " art--round" : ""}">${art}</div>
+      <div class="share-head"><div class="art${item.kind === "artist" ? " art--round" : collage ? " art--collage" : ""}">${art}</div>
       <div class="meta">
-        <p class="kicker">${escapeHtml(kicker)}</p>
         <h1>${escapeHtml(heading)}</h1>
         ${byline ? `<p class="byline">${escapeHtml(byline)}</p>` : ""}
+        <p class="kicker">${escapeHtml(kicker)}${item.kind !== "track" && item.tracks?.length ? `, ${item.tracks.length} tracks` : ""}</p>
       </div></div>
       ${unavailable}
       ${preview}
-      <section aria-labelledby="listen-title">
+      <section class="listen-section" aria-labelledby="listen-title">
         <p class="section-title" id="listen-title">Listen on</p>
         <ul class="listen">${links}</ul>
-      </section>
-      <section class="aurral" aria-labelledby="aurral-title" data-aurral data-path="${escapeHtml(`/share/import?url=${encodeURIComponent(url)}`)}">
-        <p class="section-title" id="aurral-title">Have Aurral?</p>
-        <a class="button primary" data-open hidden>Open in my Aurral</a>
-        <button type="button" class="text-button" data-change hidden>Change Aurral address</button>
-        <form novalidate>
-          <label for="aurral-url">Your Aurral address</label>
-          <input id="aurral-url" type="url" inputmode="url" autocomplete="url" placeholder="https://music.example.com" aria-describedby="aurral-error aurral-help" />
-          <p class="error" id="aurral-error" role="alert" hidden>Enter your Aurral address, like music.example.com.</p>
-          <p id="aurral-help">Saved in this browser only, so next time it opens straight away.</p>
-          <button type="submit" class="button">Open in my Aurral</button>
-        </form>
       </section>
     </article>`,
   });

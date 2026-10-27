@@ -8,6 +8,7 @@ import { createPlainShare, publishShareManifest } from "../services/shareLinks/h
 import { randomUUID } from "node:crypto";
 import { asAppError } from "../../lib/errors.ts";
 import { loadRemoteShare } from "../services/shareLinks/remote.ts";
+import { shareDestination } from "../services/shareLinks/open.ts";
 import { findShareLocalFiles } from "../services/shareLinks/import.ts";
 import { playlistOperationQueue } from "../services/playlists/playlistOperationQueue.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
@@ -144,6 +145,20 @@ router.post("/plain", async (req, res) => {
 });
 
 export type PlainShareLinkCreatedResponse = { link: Awaited<ReturnType<typeof createPlainShare>> };
+
+router.post("/open", async (req, res) => {
+  try {
+    const share = await loadRemoteShare(req.body?.url);
+    return res.json({ to: shareDestination(share.manifest) });
+  } catch (error) {
+    return res.status(400).json({
+      error: "share_unavailable",
+      message: asAppError(error)?.message || "Could not open the share. Try again.",
+    });
+  }
+});
+
+export type ShareOpenResponse = { to: string };
 
 router.use(requireUserAccount);
 

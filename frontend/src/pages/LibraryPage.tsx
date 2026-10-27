@@ -2394,6 +2394,7 @@ function LibraryPage() {
     <TrackList
       label={label}
       variant={variant}
+      highlightKey={searchParams.get("track")}
       rows={tracks.map((track, index) => {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);

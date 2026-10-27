@@ -8,6 +8,7 @@ import type {
   ShareImportPreviewResponse,
   ShareImportQueuedResponse,
   PlainShareLinkCreatedResponse,
+  ShareOpenResponse,
 } from "../../../../../backend/routes/shareLinks.ts";
 
 export const getShareLinks = ({
@@ -31,6 +32,9 @@ export const deleteShareLink = (id: number): Promise<void> =>
 
 export const previewShareImport = (url: string): Promise<ShareImportPreviewResponse> =>
   postData("/share-links/import/preview", { url });
+
+export const openShareLink = (url: string): Promise<ShareOpenResponse> =>
+  postData("/share-links/open", { url });
 
 export const importShareLink = (
   url: string,

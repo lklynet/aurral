@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router";
-import { importShareLink, previewShareImport } from "../utils/api/endpoints/shareLinks.ts";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import {
+  importShareLink,
+  openShareLink,
+  previewShareImport,
+} from "../utils/api/endpoints/shareLinks.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle.ts";
 import { getApiErrorMessage } from "./onboardingUtils.tsx";
 import { DotLoader } from "../components/DotLoader.tsx";
@@ -9,19 +13,30 @@ import { queryKeys } from "../queryClient.ts";
 import "./ShareImportPage.css";
 
 export default function ShareImportPage() {
-  useDocumentTitle("Import share");
   const [params, setParams] = useSearchParams();
   const sharedUrl = params.get("url") || "";
+  const opening = params.get("action") === "open";
+  useDocumentTitle(opening ? "Open share" : "Import share");
+  const navigate = useNavigate();
   const [url, setUrl] = useState(sharedUrl);
-  const [includeFiles, setIncludeFiles] = useState(false);
   const queryClient = useQueryClient();
+  const destination = useQuery({
+    queryKey: ["share-open", sharedUrl],
+    queryFn: () => openShareLink(sharedUrl),
+    enabled: opening && Boolean(sharedUrl),
+    retry: false,
+  });
+  useEffect(() => {
+    if (opening && destination.data) navigate(destination.data.to, { replace: true });
+  }, [opening, destination.data, navigate]);
   const preview = useQuery({
     queryKey: ["share-import", sharedUrl],
     queryFn: () => previewShareImport(sharedUrl),
-    enabled: Boolean(sharedUrl),
+    enabled: Boolean(sharedUrl) && !opening,
     retry: false,
     staleTime: 0,
   });
+  const includeFiles = params.get("action") === "files" && preview.data?.canDownload === true;
   const submit = useMutation({
     mutationFn: () =>
       importShareLink(sharedUrl, includeFiles && preview.data?.canDownload === true),
@@ -32,6 +47,33 @@ export default function ShareImportPage() {
       ]),
   });
   const data = url.trim() === sharedUrl ? preview.data : undefined;
+  if (opening) {
+    return (
+      <div className="library-page native-library-page">
+        <header className="native-library-header">
+          <h1 className="page-title">Open share</h1>
+        </header>
+        <div className="native-library-content">
+          <div className="native-library-state" role={destination.isError ? "alert" : "status"}>
+            {destination.isError ? (
+              <>
+                <strong>Could not open the share</strong>
+                <span>{getApiErrorMessage(destination.error, "Try opening the share again.")}</span>
+                <button className="btn btn-secondary" onClick={() => destination.refetch()}>
+                  Try again
+                </button>
+                <Link className="btn btn-secondary" to="/library">
+                  Open Library
+                </Link>
+              </>
+            ) : (
+              <DotLoader size="sm" label="Opening share" />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="library-page native-library-page">
       <header className="native-library-header">
@@ -60,7 +102,6 @@ export default function ShareImportPage() {
                 className="share-import__url"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  setIncludeFiles(false);
                   setParams({ url: url.trim() });
                   submit.reset();
                 }}
@@ -116,7 +157,9 @@ export default function ShareImportPage() {
                       type="radio"
                       name="share-import-mode"
                       checked={!includeFiles}
-                      onChange={() => setIncludeFiles(false)}
+                      onChange={() =>
+                        setParams({ url: sharedUrl, action: "details" }, { replace: true })
+                      }
                       disabled={submit.isPending}
                     />
                     <span>
@@ -130,7 +173,9 @@ export default function ShareImportPage() {
                         type="radio"
                         name="share-import-mode"
                         checked={includeFiles}
-                        onChange={() => setIncludeFiles(true)}
+                        onChange={() =>
+                          setParams({ url: sharedUrl, action: "files" }, { replace: true })
+                        }
                         disabled={submit.isPending}
                       />
                       <span>

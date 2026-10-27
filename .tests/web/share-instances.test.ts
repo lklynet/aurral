@@ -168,11 +168,11 @@ test("a listen link plays from the registered tunnel, and says so when the tunne
   assert.ok(html.includes(`src="${TUNNEL}/share/${TOKEN}/tracks/4/9/stream"`));
   assert.ok(html.includes(`href="${TUNNEL}/share/${TOKEN}/tracks/4/9/download"`));
   assert.ok(!html.includes("Song <b>"));
-  assert.ok(!html.includes("available to listen to right now"));
+  assert.ok(!html.includes("Shared files are offline."));
 
   tunnelUp = false;
   const stopped = await (await open(`${PAYLOAD}~${INSTANCE_ID}.${TOKEN}`)).text();
-  assert.ok(stopped.includes("available to listen to right now"));
+  assert.ok(stopped.includes("Shared files are offline."));
   assert.ok(!stopped.includes("/stream"));
 });
 

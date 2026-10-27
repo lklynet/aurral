@@ -35,6 +35,7 @@ type LookupEntry = { method?: string; url?: string; body: { secret: string; url:
 const lookupRequests: LookupEntry[] = [];
 const lookupWaiters = new Set<(entry: LookupEntry) => void>();
 let lookupStatus = 204;
+let resolvedManifest: unknown = null;
 const lookup = await createMockHttpServer((request, response) => {
   let body = "";
   request.on("data", (chunk) => {
@@ -48,6 +49,11 @@ const lookup = await createMockHttpServer((request, response) => {
     };
     lookupRequests.push(entry);
     for (const waiter of lookupWaiters) waiter(entry);
+    if (request.url?.startsWith("/api/shares/resolve?") && resolvedManifest) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ manifest: resolvedManifest, files: null }));
+      return;
+    }
     response.statusCode = lookupStatus;
     response.end();
   });
@@ -242,6 +248,26 @@ beforeEach(async () => {
   await writeFile(launchLog, "");
   lookupRequests.length = 0;
   lookupStatus = 204;
+  resolvedManifest = null;
+});
+
+test("opening a share is available without import permissions or an account and queues no downloads", async () => {
+  resolvedManifest = {
+    kind: "album",
+    title: firstAlbum.album.title,
+    artistName: artist.name,
+    albumMbid: FIRST_ALBUM_MBID,
+  };
+  for (const user of [stranger, { ...owner, id: 0 }]) {
+    const result = await callApi("POST", "/open", {
+      user,
+      body: { url: `${lookup.url}/s/s123456789abcdef` },
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.to, `/library/album/${firstAlbum.album.id}`);
+  }
+  assert.equal(db.prepare("SELECT 1 FROM share_links LIMIT 1").get(), undefined);
+  assert.equal(db.prepare("SELECT 1 FROM playlist_download_jobs LIMIT 1").get(), undefined);
 });
 
 async function callApi(

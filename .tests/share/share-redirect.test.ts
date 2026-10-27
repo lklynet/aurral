@@ -4,6 +4,24 @@ import { consumeShareImport, rememberShareImport } from "../../frontend/src/util
 
 afterEach(() => vi.unstubAllGlobals());
 
+for (const action of ["open", "details", "files"]) {
+  test(`sign-in keeps the selected ${action} action and app base path`, () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      setItem: (key: string, value: string) => values.set(key, value),
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+    });
+    const url = "https://aurral.org/s/s123456789abcdef";
+    const search = new URLSearchParams({ url, action });
+    vi.stubGlobal("window", {
+      location: { pathname: "/music/share/import", search: `?${search}` },
+    });
+    rememberShareImport();
+    assert.equal(consumeShareImport(), `/share/import?${search}`);
+  });
+}
+
 test("SSO resumes the requested share import under an app base path", () => {
   const values = new Map<string, string>();
   vi.stubGlobal("sessionStorage", {

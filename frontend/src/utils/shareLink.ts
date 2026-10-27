@@ -6,9 +6,15 @@ const PENDING_SHARE_KEY = "aurral:pending-share-import";
 export function rememberShareImport() {
   try {
     sessionStorage.removeItem(PENDING_SHARE_KEY);
-    const url = new URLSearchParams(window.location.search).get("url");
-    if (window.location.pathname.endsWith("/share/import") && url)
-      sessionStorage.setItem(PENDING_SHARE_KEY, url);
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get("url");
+    if (window.location.pathname.endsWith("/share/import") && url) {
+      const next = new URLSearchParams({ url });
+      const action = params.get("action");
+      if (action === "open" || action === "details" || action === "files")
+        next.set("action", action);
+      sessionStorage.setItem(PENDING_SHARE_KEY, `/share/import?${next}`);
+    }
   } catch {}
 }
 
@@ -16,7 +22,8 @@ export function consumeShareImport() {
   try {
     const url = sessionStorage.getItem(PENDING_SHARE_KEY);
     sessionStorage.removeItem(PENDING_SHARE_KEY);
-    return url ? `/share/import?url=${encodeURIComponent(url)}` : null;
+    if (!url) return null;
+    return url.startsWith("/share/import?") ? url : `/share/import?url=${encodeURIComponent(url)}`;
   } catch {
     return null;
   }

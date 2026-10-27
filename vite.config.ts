@@ -72,7 +72,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["frontend/public/**/*.js"],
+        files: ["frontend/public/**/*.js", "web/share-page.js"],
         env: { browser: true },
       },
       {
