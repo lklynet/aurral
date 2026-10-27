@@ -38,6 +38,7 @@ import {
   normalizeDiscoverLayout,
   readStoredDiscoverLayout,
   writeStoredDiscoverLayout,
+  type DiscoverSection,
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
@@ -46,6 +47,10 @@ import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
 import type { DiscoveryBasedOn } from "../../../backend/db/helpers/discovery.ts";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
+
+const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$get());
+const saveServerLayout = (layout: DiscoverSection[]) =>
+  parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } }));
 
 const SECTION_CARD_KINDS = new Map<
   string,
@@ -113,9 +118,8 @@ function DiscoverPage() {
     normalizeLayout: normalizeDiscoverLayout,
     readStoredLayout: readStoredDiscoverLayout,
     writeStoredLayout: writeStoredDiscoverLayout,
-    loadServerLayout: () => parseResponse(usersClient.me["discover-layout"].$get()),
-    saveServerLayout: (layout) =>
-      parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } })),
+    loadServerLayout,
+    saveServerLayout,
     showSuccess,
     showError,
   });
