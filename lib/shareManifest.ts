@@ -70,6 +70,11 @@ export function parseShareManifest(value: unknown) {
 }
 
 export type ShareManifest = NonNullable<ReturnType<typeof parseShareManifest>>;
+
+export const withoutShareFiles = (manifest: ShareManifest): ShareManifest => ({
+  ...manifest,
+  tracks: manifest.tracks.map((track) => ({ ...track, path: null, size: null, format: null })),
+});
 export type SharedTrack = ShareManifest["tracks"][number];
 
 type ShareTrackIdentity = Pick<

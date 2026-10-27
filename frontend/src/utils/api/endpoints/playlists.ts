@@ -342,14 +342,6 @@ export const setFlowEnabled = (flowId: string, enabled: boolean): Promise<SetFlo
     enabled,
   });
 
-export const importStaticPlaylist = (payload: {
-  name: string;
-  sourceName: string | null;
-  sourceFlowId: string | null;
-  tracks: PlaylistTrackPayload[];
-}): Promise<StaticPlaylistQueuedResponse> =>
-  postData("/playlists/shared-playlists/import", payload);
-
 export const updateStaticPlaylist = (
   playlistId: string,
   payload: { name?: string; tracks?: PlaylistTrackPayload[]; importSource?: ImportSourcePayload },

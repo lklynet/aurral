@@ -11,7 +11,7 @@ export function rememberShareImport() {
     if (window.location.pathname.endsWith("/share/import") && url) {
       const next = new URLSearchParams({ url });
       const action = params.get("action");
-      if (action === "open" || action === "details" || action === "files")
+      if (action === "open" || action === "details" || action === "files" || action === "import")
         next.set("action", action);
       sessionStorage.setItem(PENDING_SHARE_KEY, `/share/import?${next}`);
     }

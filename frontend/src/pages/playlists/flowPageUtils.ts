@@ -16,34 +16,16 @@ export interface FlowDraft {
   scheduleTime?: string;
 }
 
-interface TracklistTrack {
-  artistName?: string | null;
-  trackName?: string | null;
-  albumName?: string | null;
-  artistMbid?: string | null;
-  albumMbid?: string | null;
-  trackMbid?: string | null;
-  releaseYear?: string | null;
-  durationMs?: unknown;
-  artistAliases?: unknown;
-  releaseMbid?: string | null;
-  trackNumber?: unknown;
-  discNumber?: unknown;
-}
-
 interface ImportedTrack {
   artistName?: unknown;
   artist?: unknown;
   artist_name?: unknown;
-  "Artist Name(s)"?: unknown;
   trackName?: unknown;
   title?: unknown;
   name?: unknown;
   track?: unknown;
-  "Track Name"?: unknown;
   albumName?: unknown;
   album?: unknown;
-  "Album Name"?: unknown;
   artistMbid?: unknown;
   artistId?: unknown;
   albumMbid?: unknown;
@@ -63,25 +45,7 @@ interface ImportedTrack {
   discNumber?: unknown;
 }
 
-interface TracklistEntry {
-  name?: unknown;
-  sourceName?: unknown;
-  sourceFlowId?: unknown;
-  source?: { name?: unknown; id?: unknown } | null;
-  tracks?: unknown;
-  playlist?: { name?: unknown; tracks?: unknown } | null;
-}
-
 type ImportedValue = ImportedTrack | string | number | boolean | unknown[] | null | undefined;
-
-type TracklistInput =
-  | TracklistEntry
-  | ImportedValue[]
-  | string
-  | number
-  | boolean
-  | null
-  | undefined;
 
 interface FlowEntryObject {
   name?: unknown;
@@ -107,9 +71,6 @@ export const NEW_FLOW_TEMPLATE = {
   relatedArtists: [],
   scheduleTime: "00:00",
 };
-
-const FLOW_SHARE_FILE_VERSION = 1;
-const FLOW_SHARE_FILE_TYPE = "aurral-static-tracklist";
 
 function getNextRunDiff(nextRunAt: number | null | undefined, now = Date.now()) {
   if (!nextRunAt) return null;
@@ -156,16 +117,6 @@ export function formatFlowLastRunShort(lastRunAt: number | null | undefined) {
   if (Number.isNaN(date.getTime())) return null;
   return formatDate(date, { month: "numeric", day: "numeric" });
 }
-
-export const slugifyFilePart = (value: string | null | undefined, fallback = "flow") => {
-  const slug = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return slug || fallback;
-};
 
 export const normalizeNameKey = (value: string | null | undefined) =>
   String(value || "")
@@ -508,7 +459,7 @@ export const buildReleaseRadarFlowFromForm = (
 const positiveInteger = (value: unknown) =>
   Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
-const albumPlacement = (track: ImportedTrack | TracklistTrack | null | undefined) => ({
+const albumPlacement = (track: ImportedTrack | null | undefined) => ({
   releaseMbid: String(track?.releaseMbid || "").trim() || null,
   trackNumber: positiveInteger(track?.trackNumber),
   discNumber: positiveInteger(track?.discNumber),
@@ -516,14 +467,12 @@ const albumPlacement = (track: ImportedTrack | TracklistTrack | null | undefined
 
 export const normalizePlaylistTrackEntry = (track: ImportedValue) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
-  const artistName = String(
-    track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
-  ).trim();
+  const artistName = String(track.artistName ?? track.artist ?? track.artist_name ?? "").trim();
   const trackName = String(
-    track.trackName ?? track.title ?? track.name ?? track.track ?? track["Track Name"] ?? "",
+    track.trackName ?? track.title ?? track.name ?? track.track ?? "",
   ).trim();
   if (!artistName || !trackName) return null;
-  const albumName = String(track.albumName ?? track.album ?? track["Album Name"] ?? "").trim();
+  const albumName = String(track.albumName ?? track.album ?? "").trim();
   const artistMbid = String(track.artistMbid ?? track.artistId ?? "").trim();
   const albumMbid = String(track.albumMbid ?? track.releaseGroupMbid ?? track.albumId ?? "").trim();
   const trackMbid = String(
@@ -543,145 +492,4 @@ export const normalizePlaylistTrackEntry = (track: ImportedValue) => {
     reason: track.reason ? String(track.reason).trim() : null,
     ...albumPlacement(track),
   };
-};
-
-export const buildStaticTracklistPayload = ({
-  name,
-  sourceName,
-  sourceFlowId,
-  tracks,
-}: {
-  name?: string | null;
-  sourceName?: string | null;
-  sourceFlowId?: string | null;
-  tracks?: TracklistTrack[] | null;
-}) => ({
-  type: FLOW_SHARE_FILE_TYPE,
-  version: FLOW_SHARE_FILE_VERSION,
-  exportedAt: new Date().toISOString(),
-  name: String(name || "").trim() || "Playlist",
-  sourceName: String(sourceName || "").trim() || null,
-  sourceFlowId: String(sourceFlowId || "").trim() || null,
-  trackCount: Array.isArray(tracks) ? tracks.length : 0,
-  tracks: (Array.isArray(tracks) ? tracks : []).map((track) => ({
-    artistName: String(track.artistName || "").trim(),
-    trackName: String(track.trackName || "").trim(),
-    albumName: track.albumName ? String(track.albumName).trim() : null,
-    artistMbid: track.artistMbid ? String(track.artistMbid).trim() : null,
-    albumMbid: track.albumMbid ? String(track.albumMbid).trim() : null,
-    trackMbid: track.trackMbid ? String(track.trackMbid).trim() : null,
-    releaseYear: track.releaseYear ? String(track.releaseYear).trim() : null,
-    durationMs: normalizeDurationMs(track.durationMs),
-    artistAliases: normalizeArtistAliases(track.artistAliases),
-    ...albumPlacement(track),
-  })),
-});
-
-export const downloadTracklistFile = (
-  fileName: string,
-  payload: ReturnType<typeof buildStaticTracklistPayload>,
-) => {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json",
-  });
-  const objectUrl = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => {
-    window.URL.revokeObjectURL(objectUrl);
-  }, 0);
-};
-
-export const parseTracklistImportFile = (content: string) => {
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error("Import file is not valid JSON");
-  }
-
-  const toPlaylistPayload = (entry: TracklistInput, index: number) => {
-    if (Array.isArray(entry)) {
-      const tracks = entry.map(normalizePlaylistTrackEntry).filter((track) => track !== null);
-      if (tracks.length === 0) {
-        throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
-      }
-      return {
-        name: `Imported Playlist ${index + 1}`,
-        sourceName: null,
-        sourceFlowId: null,
-        trackCount: tracks.length,
-        tracks,
-      };
-    }
-    if (!entry || typeof entry !== "object") {
-      throw new Error(`Tracklist ${index + 1}: invalid playlist payload`);
-    }
-    const rawTracks = Array.isArray(entry.tracks)
-      ? entry.tracks
-      : Array.isArray(entry.playlist?.tracks)
-        ? entry.playlist.tracks
-        : null;
-    if (!rawTracks?.length) {
-      throw new Error(`Tracklist ${index + 1}: no tracks found`);
-    }
-    const tracks = rawTracks.map(normalizePlaylistTrackEntry).filter((track) => track !== null);
-    if (tracks.length === 0) {
-      throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
-    }
-    return {
-      name:
-        String(entry.name ?? entry.playlist?.name ?? entry.sourceName ?? "").trim() ||
-        `Imported Playlist ${index + 1}`,
-      sourceName: String(entry.sourceName ?? entry.source?.name ?? "").trim() || null,
-      sourceFlowId: String(entry.sourceFlowId ?? entry.source?.id ?? "").trim() || null,
-      trackCount: tracks.length,
-      tracks,
-    };
-  };
-
-  let entries: TracklistInput[] = [];
-  if (Array.isArray(parsed)) {
-    const looksLikeTrackArray = parsed.every(
-      (entry) => entry && typeof entry === "object" && !Array.isArray(entry),
-    );
-    entries = looksLikeTrackArray ? [parsed] : parsed;
-  } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.playlists)) {
-    entries = parsed.playlists;
-  } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.tracks)) {
-    entries = [parsed];
-  } else if (
-    parsed &&
-    typeof parsed === "object" &&
-    parsed.playlist &&
-    typeof parsed.playlist === "object"
-  ) {
-    entries = [parsed.playlist];
-  } else if (parsed && typeof parsed === "object") {
-    entries = [parsed];
-  }
-
-  if (!entries.length) {
-    throw new Error("Import file does not contain any tracklists");
-  }
-
-  const playlists = entries
-    .map((entry, index) => {
-      try {
-        return toPlaylistPayload(entry, index);
-      } catch {
-        return null;
-      }
-    })
-    .filter((playlist) => playlist !== null);
-
-  if (!playlists.length) {
-    throw new Error("Import file does not contain any valid tracks");
-  }
-
-  return playlists;
 };

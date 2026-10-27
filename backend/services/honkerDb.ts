@@ -153,6 +153,12 @@ export const SCHEDULED_SYSTEM_TASKS: ScheduledSystemTask[] = [
     payload: { kind: "import-list-sync" },
   },
   {
+    name: "share-playlist-refresh",
+    queue: "system-task",
+    schedule: "@every 24h",
+    payload: { kind: "share-playlist-refresh" },
+  },
+  {
     name: "release-metadata-refresh",
     queue: "release-metadata-refresh",
     schedule: "@every 24h",

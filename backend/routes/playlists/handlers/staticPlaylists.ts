@@ -27,11 +27,7 @@ import {
 import { asAppError } from "../../../../lib/errors.ts";
 import type { Request, Response, Router } from "express";
 
-async function createOrImportStaticPlaylist(
-  req: Request,
-  res: Response,
-  { requireTracks, label }: { requireTracks: boolean; label: string },
-) {
+async function createStaticPlaylist(req: Request, res: Response) {
   const { name, sourceName = null, sourceFlowId = null, tracks } = req.body || {};
   const safeName = String(name || "").trim();
   const normalizedTracks = Array.isArray(tracks) ? dedupePlaylistTracks(tracks) : [];
@@ -39,12 +35,6 @@ async function createOrImportStaticPlaylist(
 
   if (!safeName) {
     return res.status(400).json({ error: "name is required" });
-  }
-  if (requireTracks && normalizedTracks.length === 0) {
-    return res.status(400).json({
-      error: "tracks are required",
-      message: "Import file must include at least one track",
-    });
   }
   if (rawTracksProvided && tracks.length > 0 && normalizedTracks.length === 0) {
     return res.status(400).json({
@@ -56,7 +46,7 @@ async function createOrImportStaticPlaylist(
   const playlistId = randomUUID();
   const result = await playlistOperationQueue.enqueuePayload({
     kind: "shared-playlist-create",
-    label,
+    label: "shared-playlist:create",
     playlistId,
     name: safeName,
     sourceName,
@@ -201,10 +191,7 @@ export function registerStaticPlaylists(router: Router) {
   );
   router.post("/shared-playlists", async (req, res) => {
     try {
-      return await createOrImportStaticPlaylist(req, res, {
-        requireTracks: false,
-        label: "shared-playlist:create",
-      });
+      return await createStaticPlaylist(req, res);
     } catch (error) {
       const failure = asAppError(error);
       if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
@@ -215,27 +202,6 @@ export function registerStaticPlaylists(router: Router) {
       }
       res.status(500).json({
         error: "Failed to create playlist",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.post("/shared-playlists/import", async (req, res) => {
-    try {
-      return await createOrImportStaticPlaylist(req, res, {
-        requireTracks: true,
-        label: "shared-playlist:import",
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Playlist name already exists",
-          message: failure?.message,
-        });
-      }
-      res.status(500).json({
-        error: "Failed to import playlist",
         message: failure?.message,
       });
     }

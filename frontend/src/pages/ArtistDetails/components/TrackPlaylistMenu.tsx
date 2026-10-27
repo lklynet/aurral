@@ -18,15 +18,12 @@ export type PlaylistTrackIdentity = {
   artistName?: string | null;
   artist?: string | null;
   artist_name?: string | null;
-  "Artist Name(s)"?: string | null;
   trackName?: string | null;
   title?: string | null;
   name?: string | null;
   track?: string | null;
-  "Track Name"?: string | null;
   albumName?: string | null;
   album?: string | null;
-  "Album Name"?: string | null;
   artistMbid?: string | null;
   artistId?: string | number | null;
   albumMbid?: string | null;
@@ -74,14 +71,12 @@ function normalizeTrackForSharedIdentity(track: PlaylistTrackIdentity | null | u
   if (!track || typeof track !== "object" || Array.isArray(track)) {
     return null;
   }
-  const artistName = String(
-    track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
-  ).trim();
+  const artistName = String(track.artistName ?? track.artist ?? track.artist_name ?? "").trim();
   const trackName = String(
-    track.trackName ?? track.title ?? track.name ?? track.track ?? track["Track Name"] ?? "",
+    track.trackName ?? track.title ?? track.name ?? track.track ?? "",
   ).trim();
   if (!artistName || !trackName) return null;
-  const albumName = String(track.albumName ?? track.album ?? track["Album Name"] ?? "").trim();
+  const albumName = String(track.albumName ?? track.album ?? "").trim();
   const artistMbid = String(track.artistMbid ?? track.artistId ?? "").trim();
   const albumMbid = String(track.albumMbid ?? track.releaseGroupMbid ?? track.albumId ?? "").trim();
   const trackMbid = String(

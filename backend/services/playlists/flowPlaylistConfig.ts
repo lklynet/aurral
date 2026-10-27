@@ -88,15 +88,12 @@ export interface PlaylistTrackInput {
   artistName?: unknown;
   artist?: unknown;
   artist_name?: unknown;
-  "Artist Name(s)"?: unknown;
   trackName?: unknown;
   title?: unknown;
   name?: unknown;
   track?: unknown;
-  "Track Name"?: unknown;
   albumName?: unknown;
   album?: unknown;
-  "Album Name"?: unknown;
   artistMbid?: unknown;
   artistId?: unknown;
   albumMbid?: unknown;
@@ -160,6 +157,7 @@ export const IMPORT_SOURCE_PROVIDERS = new Set([
   "lastfm-station",
   "youtube-music-playlist",
   "deezer-playlist",
+  "aurral-share",
 ]);
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
@@ -444,14 +442,12 @@ const positiveInteger = (value: unknown) =>
 
 export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefined) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
-  const artistName = String(
-    track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
-  ).trim();
+  const artistName = String(track.artistName ?? track.artist ?? track.artist_name ?? "").trim();
   const trackName = String(
-    track.trackName ?? track.title ?? track.name ?? track.track ?? track["Track Name"] ?? "",
+    track.trackName ?? track.title ?? track.name ?? track.track ?? "",
   ).trim();
   if (!artistName || !trackName) return null;
-  const albumName = String(track.albumName ?? track.album ?? track["Album Name"] ?? "").trim();
+  const albumName = String(track.albumName ?? track.album ?? "").trim();
   const artistMbid = String(track.artistMbid ?? track.artistId ?? "").trim();
   const albumMbid = String(track.albumMbid ?? track.releaseGroupMbid ?? track.albumId ?? "").trim();
   const trackMbid = String(

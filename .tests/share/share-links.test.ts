@@ -595,7 +595,7 @@ test("only Library items can be shared to listen", async () => {
   assert.deepEqual(await launches(), []);
 });
 
-test("metadata-only shares publish without starting a tunnel", async () => {
+test("details-only shares publish permanent links without starting a tunnel", async () => {
   const created = await callApi("POST", "", {
     body: {
       kind: "album",
@@ -611,11 +611,11 @@ test("metadata-only shares publish without starting a tunnel", async () => {
   assert.equal(lookupRequests.length, 1);
   assert.match(lookupRequests[0].url || "", /^\/api\/shares\//);
   assert.deepEqual(await launches(), []);
-  assert.equal((await callApi("DELETE", `/${created.body.link.id}`)).status, 204);
-  assert.equal(lookupRequests.at(-1)?.method, "DELETE");
+  assert.equal(created.body.link.id, undefined);
+  assert.equal((await callApi("GET", "")).body.links.length, 0);
 });
 
-test("stopping a share revokes local files even when hosted removal fails, and can be retried", async () => {
+test("stopping an album share ends file access but keeps its link, even when retried", async () => {
   const created = await callApi("POST", "", {
     body: {
       kind: "album",
@@ -640,8 +640,18 @@ test("stopping a share revokes local files even when hosted removal fails, and c
   assert.equal(remaining[0].shareFiles, false);
   assert.equal(remaining[0].allowDownload, false);
   lookupStatus = 204;
+  lookupRequests.length = 0;
   assert.equal((await callApi("DELETE", `/${created.body.link.id}`)).status, 204);
   assert.equal((await callApi("GET", "")).body.links.length, 0);
+  const kept = lookupRequests.find((entry) => entry.url?.startsWith("/api/shares/"));
+  assert.equal(kept?.method, "PUT");
+  assert.ok(kept?.body && "manifest" in kept.body && "shareFiles" in kept.body);
+  assert.equal(kept.body.shareFiles, false);
+  const { parseShareManifest } = await import("../../lib/shareManifest.ts");
+  const details = parseShareManifest(kept.body.manifest);
+  assert.equal(details?.title, firstAlbum.album.title);
+  assert.ok(details?.tracks.length);
+  assert.ok(details.tracks.every((track) => track.path === null));
 });
 
 test("a release-only album never publishes its release ID as a release-group ID", async () => {
@@ -942,4 +952,75 @@ test("playlist shares keep missing entries and never expose tracks added after c
       (link: { id: number }) => link.id === created.body.link.id,
     ),
   );
+});
+
+test("playlist shares republish changes daily without exposing files for added tracks", async () => {
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const { refreshPlaylistShares } = await import("../../backend/services/shareLinks/refresh.ts");
+  const curator = userOps.createUser("curator", "hash", "user", { accessFlow: true });
+  assert.ok(curator);
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Synced playlist",
+    ownerUserId: curator.id,
+    tracks: [
+      { trackName: "Opening Song", artistName: artist.name, albumName: firstAlbum.album.title },
+    ],
+  });
+  const created = await callApi("POST", "", {
+    user: curator,
+    body: {
+      kind: "playlist",
+      playlistId: playlist.id,
+      manifest: { kind: "playlist", title: playlist.name },
+      shareFiles: true,
+      allowDownload: true,
+      expiresIn: "7d",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  lookupRequests.length = 0;
+
+  await refreshPlaylistShares();
+  assert.equal(lookupRequests.length, 0);
+
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    name: "Renamed playlist",
+    tracks: [
+      ...playlist.tracks,
+      { trackName: "Later Song", artistName: artist.name, albumName: secondAlbum.album.title },
+    ],
+  });
+  await refreshPlaylistShares();
+  const { parseShareManifest } = await import("../../lib/shareManifest.ts");
+  const published = lookupRequests.find((entry) => entry.method === "PUT");
+  assert.ok(published?.body);
+  assert.ok("manifest" in published.body);
+  const snapshot = parseShareManifest(published.body.manifest);
+  assert.equal(snapshot?.title, "Renamed playlist");
+  assert.deepEqual(
+    snapshot?.tracks.map((track) => [track.title, Boolean(track.path)]),
+    [
+      ["Opening Song", true],
+      ["Later Song", false],
+    ],
+  );
+  const base = await shareUrl(created.body.link);
+  assert.equal(
+    (
+      await fetch(
+        `${base}/tracks/${secondAlbum.album.id}/${secondAlbum.tracks[0].trackId}/download`,
+      )
+    ).status,
+    404,
+  );
+
+  lookupRequests.length = 0;
+  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+  await refreshPlaylistShares();
+  assert.deepEqual(
+    lookupRequests.map((entry) => entry.method),
+    ["DELETE"],
+  );
+  assert.deepEqual((await callApi("GET", "", { user: curator })).body.links, []);
 });

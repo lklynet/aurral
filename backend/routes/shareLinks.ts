@@ -4,17 +4,25 @@ import { requireAuth, requireUserAccount } from "../middleware/requirePermission
 import { hasPermission } from "../middleware/auth.ts";
 import { flowPlaylistConfig } from "../services/playlists/flowPlaylistConfig.ts";
 import { resolveShareManifest } from "../services/shareLinks/metadata.ts";
-import { createPlainShare, publishShareManifest } from "../services/shareLinks/hosting.ts";
+import {
+  createPlainShare,
+  publishDetailsShare,
+  publishShareManifest,
+} from "../services/shareLinks/hosting.ts";
 import { randomUUID } from "node:crypto";
 import { asAppError } from "../../lib/errors.ts";
 import { loadRemoteShare } from "../services/shareLinks/remote.ts";
+import {
+  enqueueImportedPlaylist,
+  sharedPlaylistTracks,
+} from "../services/importLists/importPlaylist.ts";
 import { shareDestination } from "../services/shareLinks/open.ts";
 import { findShareLocalFiles } from "../services/shareLinks/import.ts";
 import { playlistOperationQueue } from "../services/playlists/playlistOperationQueue.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { resolveShareTarget } from "../services/shareLinks/library.ts";
 import { getLibraryForTrackMatches } from "../services/libraryQueryService.ts";
-import { findSharedTrack, MAX_SHARE_BYTES } from "../../lib/shareManifest.ts";
+import { findSharedTrack, MAX_SHARE_BYTES, withoutShareFiles } from "../../lib/shareManifest.ts";
 import { syncShareListener } from "../services/shareLinks/shareListener.ts";
 import { getShareTunnelState, hasCloudflared } from "../services/shareLinks/tunnel.ts";
 import {
@@ -215,6 +223,8 @@ router.post("/import", async (req, res) => {
   try {
     const preview = await previewImport(req.body?.url);
     const includeFiles = req.body?.includeFiles === true;
+    const sync = req.body?.sync === true;
+    const name = text(req.body?.name) || preview.manifest.title;
     if (
       !canImport(req.user, preview.manifest.kind) ||
       (includeFiles && preview.manifest.kind !== "playlist" && !hasPermission(req.user, "addAlbum"))
@@ -222,6 +232,29 @@ router.post("/import", async (req, res) => {
       return res
         .status(403)
         .json({ error: "forbidden", message: "Your account cannot import this item." });
+    if (sync) {
+      if (preview.manifest.kind !== "playlist")
+        return res
+          .status(400)
+          .json({ error: "invalid_request", message: "Only playlists can stay synced." });
+      const result = await enqueueImportedPlaylist({
+        ownerUserId: req.user!.id,
+        name,
+        sourceName: "Aurral share",
+        provider: "aurral-share",
+        externalId: preview.url,
+        externalName: preview.manifest.title,
+        tracks: sharedPlaylistTracks(preview.manifest),
+        syncEnabled: true,
+        syncIntervalHours: 24,
+        keepRemovedTracks: true,
+      });
+      return res.status(202).json({
+        queued: true,
+        operationId: result.operationId,
+        to: `/library/playlists/${result.playlistId}`,
+      });
+    }
     if (includeFiles && !preview.canDownload)
       return res.status(409).json({
         error: "files_unavailable",
@@ -236,6 +269,7 @@ router.post("/import", async (req, res) => {
       url: preview.url,
       manifest: preview.manifest,
       includeFiles,
+      name,
       ownerUserId: req.user!.id,
     });
     return res.status(202).json({
@@ -252,6 +286,13 @@ router.post("/import", async (req, res) => {
 });
 
 export type ShareImportQueuedResponse = { queued: true; operationId: string; to: string };
+
+export type ShareImportRequest = {
+  url: string;
+  includeFiles?: boolean;
+  sync?: boolean;
+  name?: string;
+};
 
 router.get("/", (req, res) => {
   res.json({
@@ -306,16 +347,22 @@ router.post("/", async (req, res) => {
       error: "invalid_manifest",
       message: "The share is incomplete or contains too many tracks.",
     });
-  if (manifest && !shareFiles)
-    manifest = {
-      ...manifest,
-      tracks: manifest.tracks.map((track) => ({ ...track, path: null, format: null, size: null })),
-    };
+  if (manifest && !shareFiles) manifest = withoutShareFiles(manifest);
   if (manifest && Buffer.byteLength(JSON.stringify(manifest)) > MAX_SHARE_BYTES - 1024)
     return res.status(400).json({
       error: "share_too_large",
       message: "This share is too large. Share a smaller selection.",
     });
+  if (manifest && !shareFiles && target.kind !== "playlist") {
+    try {
+      return res.status(201).json({ link: await publishDetailsShare(manifest) });
+    } catch {
+      return res.status(503).json({
+        error: "sharing_unavailable",
+        message: "Could not publish the share on aurral.org. Try again.",
+      });
+    }
+  }
   const expiresIn = shareFiles ? text(req.body?.expiresIn) : "never";
   if (!Object.hasOwn(EXPIRY_OPTIONS, expiresIn)) {
     return res.status(400).json({
@@ -367,13 +414,16 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "This link was already stopped." });
   revokeShareFiles(Number(req.user!.id), req.params.id);
   await syncShareListener();
-  if (link?.manifest) {
+  if (link.manifest) {
+    const keepDetails = link.kind !== "playlist";
     try {
-      await publishShareManifest(link.token, null);
+      await publishShareManifest(link.token, keepDetails ? withoutShareFiles(link.manifest) : null);
     } catch {
       return res.status(503).json({
         error: "sharing_unavailable",
-        message: "Files stopped. Could not remove the link from aurral.org. Try again.",
+        message: keepDetails
+          ? "Files stopped. Could not update the link on aurral.org. Try again."
+          : "Files stopped. Could not remove the link from aurral.org. Try again.",
       });
     }
   }
@@ -394,7 +444,9 @@ export type ShareAvailabilityResponse = {
   totalTracks: number | null;
 };
 
-export type ShareLinkCreatedResponse = { link: ShareLinkResponse };
+export type ShareLinkCreatedResponse = {
+  link: ShareLinkResponse | Awaited<ReturnType<typeof publishDetailsShare>>;
+};
 
 export type ShareTargetInput = {
   kind?: string;

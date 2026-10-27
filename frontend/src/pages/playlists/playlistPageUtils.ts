@@ -3,13 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "../../components/icons";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";
-import type { PlaylistJob } from "../../utils/api/endpoints/playlists.ts";
-import {
-  buildStaticTracklistPayload,
-  downloadTracklistFile,
-  formatNextRun,
-  slugifyFilePart,
-} from "./flowPageUtils";
+import { formatNextRun } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./playlistRunActivity";
 import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
@@ -22,7 +16,6 @@ import {
   type Flow,
   type PlaylistStats,
   type PlaylistStatus,
-  type StaticPlaylist,
 } from "./playlistStats";
 import { getApiErrorText } from "../onboardingUtils.tsx";
 
@@ -33,6 +26,7 @@ export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([
   "lastfm-station",
   "youtube-music-playlist",
   "deezer-playlist",
+  "aurral-share",
 ]);
 
 export const SYNC_INTERVAL_OPTIONS = [
@@ -49,6 +43,7 @@ export function getImportedProviderLogo(provider: string | null | undefined) {
   if (provider === "youtube-music-playlist") return youtubeMusicLogo;
   if (provider === "deezer-playlist") return deezerLogo;
   if (provider === "spotify-playlist") return spotifyLogo;
+  if (provider === "aurral-share") return "/arralogo.svg";
   return null;
 }
 
@@ -57,6 +52,7 @@ export function getImportedProviderLabel(provider: string | null | undefined) {
   if (provider === "lastfm-station") return "Last.fm";
   if (provider === "youtube-music-playlist") return "YouTube Music";
   if (provider === "deezer-playlist") return "Deezer";
+  if (provider === "aurral-share") return "Aurral share";
   return "Spotify";
 }
 
@@ -133,40 +129,4 @@ export function usePlaylistTracks(
     error: getApiErrorText(query.error, "message") || query.error?.message || "",
     refresh,
   };
-}
-
-export function exportPlaylistTracklist(
-  entry: Pick<StaticPlaylist, "name">,
-  jobs: PlaylistJob[],
-  { sourceFlowId = null }: { sourceFlowId?: string | null } = {},
-) {
-  const tracks = (Array.isArray(jobs) ? jobs : [])
-    .filter((job) => job?.status !== "failed")
-    .map((job) => ({
-      artistName: job.artistName,
-      trackName: job.trackName,
-      albumName: job.albumName || null,
-      artistMbid: job.artistMbid || null,
-      albumMbid: job.albumMbid || null,
-      releaseMbid: job.releaseMbid || null,
-      trackMbid: job.trackMbid || null,
-      releaseYear: job.releaseYear || null,
-      durationMs: job.durationMs || null,
-      trackNumber: job.trackNumber || null,
-      discNumber: job.discNumber || null,
-      artistAliases: job.artistAliases || [],
-    }))
-    .filter((track) => track.artistName && track.trackName);
-  if (tracks.length === 0) {
-    throw new Error("No tracks available to export yet");
-  }
-  downloadTracklistFile(
-    `aurral-tracklist-${slugifyFilePart(entry.name)}.json`,
-    buildStaticTracklistPayload({
-      name: entry.name,
-      sourceName: entry.name,
-      sourceFlowId,
-      tracks,
-    }),
-  );
 }

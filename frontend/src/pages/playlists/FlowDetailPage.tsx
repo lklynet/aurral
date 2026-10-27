@@ -1,15 +1,7 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import {
-  Check,
-  ClipboardCopy,
-  Download,
-  FilePlus2,
-  Pencil,
-  RefreshCw,
-  Trash2,
-} from "../../components/icons";
+import { Check, ClipboardCopy, FilePlus2, Pencil, RefreshCw, Trash2 } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import {
   SkeletonCollectionHeader,
@@ -60,7 +52,6 @@ import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.t
 import {
   describeFlowSchedule,
   formatFlowTrackLabel,
-  exportPlaylistTracklist,
   getFlowActivityMessage,
   optionMenuItem,
   usePlaylistTracks,
@@ -248,15 +239,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     }
   };
 
-  const handleExport = () => {
-    try {
-      exportPlaylistTracklist(flow, tracks, { sourceFlowId: flow.id });
-      showSuccess(`Exported ${flow.name} tracklist`);
-    } catch (err) {
-      showError(asApiError(err)?.message || "Failed to export tracklist");
-    }
-  };
-
   const handleCopyLidarrUrl = async () => {
     try {
       const response = await getFlowLidarrImportListUrl(flow.id);
@@ -376,13 +358,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   icon: FilePlus2,
                   disabled: Number(stats?.done || 0) === 0,
                   onSelect: handleConvertToStatic,
-                },
-                {
-                  id: "export",
-                  label: "Export tracklist",
-                  icon: Download,
-                  disabled: tracks.length === 0,
-                  onSelect: handleExport,
                 },
                 optionMenuItem({
                   id: "scrobble",

@@ -101,6 +101,24 @@ function ListenHint({
   );
 }
 
+function describeCreated(
+  kind: ShareKind,
+  { shareFiles, expiresAt }: Pick<ShareLinkResponse, "shareFiles" | "expiresAt">,
+) {
+  const files = shareFiles
+    ? expiresAt
+      ? `File access ends ${formatDateTime(new Date(expiresAt))}.`
+      : "File access has no expiry."
+    : null;
+  if (kind === "playlist")
+    return ["Updates daily.", files, "Stop sharing in Profile → Shared links."]
+      .filter(Boolean)
+      .join(" ");
+  return files
+    ? `${files} Stop file access in Profile → Shared links. The link keeps working.`
+    : "This link does not expire.";
+}
+
 export function ShareModal({
   request,
   onClose,
@@ -252,12 +270,7 @@ export function ShareModal({
             aria-label="Listen link"
             onFocus={(event) => event.target.select()}
           />
-          <p className="settings-page__hint">
-            {created.expiresAt
-              ? `Expires ${formatDateTime(new Date(created.expiresAt))}.`
-              : "No expiry."}{" "}
-            {hasAccount ? "Stop sharing in Profile → Shared links." : null}
-          </p>
+          <p className="settings-page__hint">{describeCreated(kind, created)}</p>
         </div>
       ) : (
         <div className="playlist-modal__fields">
@@ -327,6 +340,11 @@ export function ShareModal({
                 </div>
               </div>
             </>
+          ) : null}
+          {kind === "playlist" && hasAccount ? (
+            <p className="settings-page__hint">
+              Playlist links update daily, so people who import them stay in sync.
+            </p>
           ) : null}
           {create.isError ? (
             <p className="artist-error-text" role="alert">

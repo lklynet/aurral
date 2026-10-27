@@ -13,36 +13,34 @@ By default, a share includes names and the available track list. The link opens 
 
 Turn on **Share my files** to let people play the available music from your Library. Aurral opens a temporary Cloudflare tunnel for those files, keeping your server's address hidden. Your server must stay running for full playback.
 
-Sharing files or playlists requires signing in to an account. Sign in to manage links in your Profile too. Without an account, links share details only and cannot be stopped from the app.
+Sharing files or playlists requires signing in to an account. Track, album, and artist links without files are permanent, with or without an account.
 
 **Allow downloads** also lets people download original files or copy them into their own Aurral. A playlist can include tracks whose files you do not have. Its full track list is still shared, and available files are identified separately.
 
 Set when file access expires, then select **Create link** and **Share link**. On a phone or a browser with a share menu, Aurral opens that menu. Otherwise it copies the link.
 
-Shares hold a snapshot of the selected music. Changes to a playlist or new releases added to an artist do not add music to an existing share. Create another link to share those additions. A share can include up to 2,000 tracks. Files from flows are never shared.
+Track, album, and artist shares hold a snapshot of the selected music. Playlist shares update on aurral.org once a day, so people who import them can stay in sync. File access never grows: tracks added to a playlist after you share it appear as details only. A share can include up to 2,000 tracks. Files from flows are never shared.
 
 ## Import into your Aurral
 
-The **My Aurral** menu keeps three actions separate. **Open in my Aurral** finds the artist, album, or track in your own Library, or opens discovery or search when you do not have it. It does not import anything. **Import details only** and **Import shared files** open the import review with that choice selected. Playlist shares offer the two import actions.
+The **My Aurral** menu keeps three actions separate. **Open in my Aurral** finds the artist, album, or track in your own Library, or opens discovery or search when you do not have it. It does not import anything. **Import details only** and **Import shared files** open the import review with that choice selected. Playlist shares offer **Import playlist**, which opens the playlist import window. See [Import an Aurral share](/using/playlist-imports/#import-an-aurral-share).
 
 Enter your Aurral address the first time you use an action. Your browser remembers it for next time, including an app base path. The address is never sent to aurral.org. Use **Change** in the menu to switch Aurrals.
 
-You can also select **Import share** in your Library, or **Import Aurral share** in the Playlists menu, and paste a link.
+Review a track, album, or artist on your own Aurral before importing:
 
-Review the item on your own Aurral before importing:
-
-- **Details only** saves the names and track list without starting downloads or enabling monitoring. An artist import saves the artist. A playlist import keeps its order and repeated entries.
+- **Details only** saves the names and track list without starting downloads or enabling monitoring. An artist import saves the artist.
 - **Include shared files** copies available files when the sender permits downloads. Aurral reuses music already in your Library. Tracks without a shared file remain as details only.
 
 File transfers appear in Activity. If a transfer fails, retry it when the sender's share is online. A failed transfer does not start a search or switch to another download service. Copying shared files does not require Lidarr or a download integration. Each imported file can be up to 2 GiB.
 
-Imported playlists are independent copies. They do not sync with the sender. If a playlist's name is already taken, Aurral adds a number to the imported name.
+A playlist imported once is an independent copy. A synced playlist follows the sender until they stop sharing.
 
 ## File access and stopping a share
 
 When file access expires or the sender goes offline, the share keeps its details and available previews. People can still import the details.
 
-Your links are listed in **Profile → Shared links**. **Stop sharing** removes the hosted details and ends access to your files. It does not remove details or files someone has already imported or downloaded.
+**Profile → Shared links** lists your file shares and playlists. For a track, album, or artist, **Stop files** ends access to your files at once and the link keeps working with details and previews. For a playlist, **Stop sharing** ends file access and removes the link, and synced imports stop updating. Neither removes details or files someone has already imported or downloaded. A track, album, or artist share leaves the list when its file access expires.
 
 The Docker image includes `cloudflared`, which file sharing needs. If you run Aurral another way, install it on your server. Aurral opens one tunnel while file shares are active and closes it when none remain. Cloudflare offers quick tunnels without an uptime guarantee, so playback can be temporarily unavailable.
 

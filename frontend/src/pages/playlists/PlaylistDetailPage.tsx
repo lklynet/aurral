@@ -1,7 +1,7 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Clock, Download, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
+import { Clock, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 import { DotLoader } from "../../components/DotLoader";
 import {
@@ -37,7 +37,6 @@ import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.t
 import {
   SYNC_INTERVAL_OPTIONS,
   SYNCABLE_IMPORT_PROVIDERS,
-  exportPlaylistTracklist,
   formatTrackTotal,
   getImportedProviderLabel,
   choiceMenuItem,
@@ -225,15 +224,6 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
     }
   };
 
-  const handleExport = async () => {
-    try {
-      exportPlaylistTracklist(playlist, tracks);
-      showSuccess(`Exported ${playlist.name} tracklist`);
-    } catch (err) {
-      showError(asApiError(err)?.message || "Failed to export tracklist");
-    }
-  };
-
   const saveSetting = async (
     action: () => Promise<void>,
     successMessage: string,
@@ -351,13 +341,6 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                   label: "Edit details",
                   icon: Pencil,
                   onSelect: () => setEditOpen(true),
-                },
-                {
-                  id: "export",
-                  label: "Export tracklist",
-                  icon: Download,
-                  disabled: tracks.length === 0,
-                  onSelect: handleExport,
                 },
                 ...(isSyncable
                   ? [

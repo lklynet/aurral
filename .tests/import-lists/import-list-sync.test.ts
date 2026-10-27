@@ -304,3 +304,47 @@ test("a sync that keeps failing the same way does not rewrite the playlist each 
     "Spotify is unavailable",
   );
 });
+
+test("a synced Aurral share follows the sender's latest snapshot until they stop sharing", async () => {
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "info").mockImplementation(() => {});
+  const shareUrl = "https://aurral.org/s/sAbCdEfGhIjKlMnO";
+  let shared = true;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).startsWith("https://aurral.org/api/shares/resolve?"))
+      return originalFetch(url, init);
+    return shared
+      ? jsonResponse({
+          manifest: {
+            kind: "playlist",
+            title: "Friend's mix",
+            tracks: [{ title: "New Song", artistName: "New Artist", albumTitle: "New Album" }],
+          },
+          files: null,
+        })
+      : new Response(null, { status: 404 });
+  };
+  const playlist = createSyncedPlaylist("Friend's mix", 7, "aurral-share", shareUrl);
+
+  await runScheduledSync();
+  const synced = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+  assert.deepEqual(
+    synced?.tracks.map((track) => [track.artistName, track.trackName, track.albumName]),
+    [["New Artist", "New Song", "New Album"]],
+  );
+
+  shared = false;
+  await assert.rejects(
+    syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true }),
+    /This share was stopped/,
+  );
+  const stopped = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+  assert.equal(
+    stopped?.importSource?.lastSyncError,
+    "This share was stopped or could not be found.",
+  );
+  assert.deepEqual(
+    stopped?.tracks.map((track) => track.trackName),
+    ["New Song"],
+  );
+});

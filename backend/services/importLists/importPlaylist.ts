@@ -5,7 +5,13 @@ import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.ts";
 import { lastfmStationClient } from "./lastfmStations.ts";
 import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.ts";
 import { getDeezerPlaylist } from "./deezerPlaylists.ts";
-import { normalizeImportSource, type PlaylistTrack } from "../playlists/flowPlaylistConfig.ts";
+import {
+  normalizeImportSource,
+  normalizePlaylistTrack,
+  type PlaylistTrack,
+} from "../playlists/flowPlaylistConfig.ts";
+import { loadRemoteShare } from "../shareLinks/remote.ts";
+import type { ShareManifest } from "../../../lib/shareManifest.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
 
@@ -29,6 +35,11 @@ export type ImportedPlaylistTracks = {
   excluded?: ImportExcluded;
   user?: string;
 };
+
+export const sharedPlaylistTracks = (manifest: ShareManifest) =>
+  manifest.tracks
+    .map((track) => normalizePlaylistTrack({ ...track, albumName: track.albumTitle }))
+    .filter((track) => track !== null);
 
 export async function fetchImportedPlaylistTracks({
   provider,
@@ -72,6 +83,19 @@ export async function fetchImportedPlaylistTracks({
   if (provider === "deezer-playlist") {
     const { tracks, stats, excluded, artworkUrl } = await getDeezerPlaylist(externalId);
     return { tracks, stats, excluded, artworkUrl };
+  }
+  if (provider === "aurral-share") {
+    const { manifest } = await loadRemoteShare(externalId);
+    if (manifest.kind !== "playlist") throw new Error("This share is not a playlist.");
+    const tracks = sharedPlaylistTracks(manifest);
+    return {
+      tracks,
+      stats: {
+        sourceItems: manifest.tracks.length,
+        incomplete: manifest.tracks.length - tracks.length,
+        duplicate: 0,
+      },
+    };
   }
   const error: CodedError = new Error(
     `Unsupported playlist import provider: ${provider || "unknown"}`,

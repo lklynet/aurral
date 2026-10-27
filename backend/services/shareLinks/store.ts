@@ -61,7 +61,7 @@ export function shareLinkUrl(link: ShareLink) {
 export function deleteExpiredShareLinks(now = Date.now()) {
   return db
     .prepare(
-      "DELETE FROM share_links WHERE manifest IS NULL AND expires_at IS NOT NULL AND expires_at <= ?",
+      "DELETE FROM share_links WHERE expires_at IS NOT NULL AND expires_at <= ? AND (manifest IS NULL OR kind != 'playlist')",
     )
     .run(now).changes;
 }

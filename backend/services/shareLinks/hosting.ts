@@ -3,6 +3,7 @@ import {
   MAX_SHARE_BYTES,
   getShareCode,
   parseShareManifest,
+  withoutShareFiles,
   type ShareManifest,
 } from "../../../lib/shareManifest.ts";
 import crypto from "node:crypto";
@@ -22,18 +23,17 @@ export async function publishShareManifest(
   if (!response.ok) throw new Error("Could not update the share on aurral.org. Try again.");
 }
 
+export async function publishDetailsShare(manifest: ShareManifest) {
+  const token = crypto.randomBytes(16).toString("base64url");
+  await publishShareManifest(token, withoutShareFiles(manifest));
+  return { url: `${SHARE_ORIGIN}/s/${getShareCode(token)}`, shareFiles: false, expiresAt: null };
+}
+
 export async function createPlainShare(input: unknown) {
   const manifest = parseShareManifest(input);
   if (!manifest || manifest.kind === "playlist")
     throw new Error("Choose a track, album, or artist to share.");
-  for (const track of manifest.tracks) {
-    track.path = null;
-    track.size = null;
-    track.format = null;
-  }
-  if (Buffer.byteLength(JSON.stringify(manifest)) > MAX_SHARE_BYTES - 1024)
+  if (Buffer.byteLength(JSON.stringify(withoutShareFiles(manifest))) > MAX_SHARE_BYTES - 1024)
     throw new Error("This share is too large. Share a smaller selection.");
-  const token = crypto.randomBytes(16).toString("base64url");
-  await publishShareManifest(token, manifest);
-  return { url: `${SHARE_ORIGIN}/s/${getShareCode(token)}`, shareFiles: false, expiresAt: null };
+  return publishDetailsShare(manifest);
 }

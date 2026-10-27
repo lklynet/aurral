@@ -339,9 +339,13 @@ function aurralMenu(item, url, listen) {
     escapeHtml(`/share/import?url=${encodeURIComponent(url)}&action=${action}`);
   return `<details class="aurral" data-aurral hidden><summary>My Aurral<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></summary>
     <div class="aurral-panel"><div data-aurral-actions>
-      ${item.kind !== "playlist" ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("open")}">${OPEN_ICON}Open in my Aurral</a>` : ""}
+      ${
+        item.kind === "playlist"
+          ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("import")}">${DETAILS_ICON}Import playlist</a>`
+          : `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("open")}">${OPEN_ICON}Open in my Aurral</a>
       <a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("details")}">${DETAILS_ICON}Import details only</a>
-      ${listen?.allowDownload ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("files")}">${DOWNLOAD_ICON}Import shared files</a>` : `<button class="aurral-action" type="button" disabled aria-describedby="files-unavailable">${DOWNLOAD_ICON}Import shared files</button><p class="aurral-hint" id="files-unavailable">${listen === null ? "Shared files are offline." : "Downloads aren't shared."}</p>`}
+      ${listen?.allowDownload ? `<a class="aurral-action" href="#aurral-url" data-aurral-action data-path="${path("files")}">${DOWNLOAD_ICON}Import shared files</a>` : `<button class="aurral-action" type="button" disabled aria-describedby="files-unavailable">${DOWNLOAD_ICON}Import shared files</button><p class="aurral-hint" id="files-unavailable">${listen === null ? "Shared files are offline." : "Downloads aren't shared."}</p>`}`
+      }
       <div class="aurral-server" data-aurral-server hidden><span></span><button type="button" class="text-button" data-change-address>Change</button></div>
     </div>
     <form hidden novalidate><button type="button" class="text-button aurral-back" data-aurral-back>Back</button><label for="aurral-url">Your Aurral address</label>

@@ -125,6 +125,11 @@ export async function processSystemTask(
       await enqueueDiscoveryRefreshIfNeeded({ reason: "interval" });
       return;
     }
+    case "share-playlist-refresh": {
+      const { refreshPlaylistShares } = await import("./shareLinks/refresh.ts");
+      await refreshPlaylistShares();
+      return;
+    }
     case "import-list-sync": {
       const { runDueImportSourceSyncs } = await import("./importLists/importListSync.ts");
       await runDueImportSourceSyncs();

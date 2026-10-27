@@ -340,7 +340,7 @@ no feed could be refreshed.
 | `GET`    | `/api/share-links`              | List the current user's live listen links                               |
 | `GET`    | `/api/share-links/availability` | Count the Library tracks a track, album, or artist would share          |
 | `POST`   | `/api/share-links`              | Create a listen link with an expiry and an optional download permission |
-| `DELETE` | `/api/share-links/:id`          | Stop sharing a link                                                     |
+| `DELETE` | `/api/share-links/:id`          | Stop file access, or stop a playlist link                               |
 
 ## Playlists and flows
 
@@ -375,7 +375,6 @@ The routes call a static playlist a shared playlist.
 | `GET`    | `/api/playlists/stream/:jobId`                                       | Stream a playlist track                                                                               |
 | `GET`    | `/api/playlists/staging-stream/:jobId`                               | Stream a staged track                                                                                 |
 | `POST`   | `/api/playlists/shared-playlists`                                    | Create a static playlist                                                                              |
-| `POST`   | `/api/playlists/shared-playlists/import`                             | Import a static playlist                                                                              |
 | `PUT`    | `/api/playlists/shared-playlists/:playlistId`                        | Update a static playlist                                                                              |
 | `PUT`    | `/api/playlists/shared-playlists/:playlistId/record-history`         | Enable or disable listening history for a static playlist                                             |
 | `PUT`    | `/api/playlists/shared-playlists/:playlistId/track-availability`     | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }`            |

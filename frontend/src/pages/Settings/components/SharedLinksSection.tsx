@@ -28,19 +28,22 @@ const TUNNEL_NOTES: Partial<Record<ShareLinksResponse["tunnel"], string>> = {
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
-function describeExpiry(expiresAt: number | null) {
-  if (!expiresAt) return "Never expires";
+function describeFiles({ shareFiles, expiresAt }: ShareLinkResponse) {
+  if (!shareFiles) return null;
+  if (!expiresAt) return "Files never expire";
+  if (expiresAt <= Date.now()) return "Files expired";
   const date = new Date(expiresAt);
   return expiresAt - Date.now() < TWO_DAYS_MS
-    ? `Expires ${formatRelativeTime(date)}`
-    : `Expires ${formatDate(date)}`;
+    ? `Files expire ${formatRelativeTime(date)}`
+    : `Files until ${formatDate(date)}`;
 }
 
 function describeLink(link: ShareLinkResponse) {
   return [
     KIND_LABELS[link.kind] || "Link",
     link.artistName && link.kind !== "artist" ? link.artistName : null,
-    describeExpiry(link.expiresAt),
+    link.kind === "playlist" ? "Updates daily" : null,
+    describeFiles(link),
     link.allowDownload ? "Downloads allowed" : null,
   ]
     .filter(Boolean)
@@ -83,7 +86,11 @@ export function SharedLinksSection({
             links: current.links.filter((entry) => entry.id !== link.id),
           },
       );
-      showSuccess?.(`Stopped sharing ${link.title}.`);
+      showSuccess?.(
+        link.kind === "playlist"
+          ? `Stopped sharing ${link.title}.`
+          : `Stopped sharing files for ${link.title}. The link still works.`,
+      );
     },
     onError: (error) => {
       showError?.(
@@ -114,7 +121,9 @@ export function SharedLinksSection({
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Shared links</h3>
-        <p className="settings-page__section-note">Stopping a link ends access immediately.</p>
+        <p className="settings-page__section-note">
+          Stopping ends file access immediately. Stopped playlist links stop working.
+        </p>
       </div>
 
       {links.isPending ? (
@@ -165,7 +174,11 @@ export function SharedLinksSection({
                       onClick={() => stop.mutate(link)}
                       disabled={stopping}
                     >
-                      {stopping ? "Stopping…" : "Stop sharing"}
+                      {stopping
+                        ? "Stopping…"
+                        : link.kind === "playlist"
+                          ? "Stop sharing"
+                          : "Stop files"}
                     </button>
                   </span>
                 </li>

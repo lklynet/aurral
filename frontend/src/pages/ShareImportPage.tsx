@@ -36,17 +36,28 @@ export default function ShareImportPage() {
     retry: false,
     staleTime: 0,
   });
+  const playlistShare = preview.data?.manifest.kind === "playlist";
+  useEffect(() => {
+    if (playlistShare)
+      navigate("/library/playlists", {
+        replace: true,
+        state: { openImport: true, shareUrl: sharedUrl },
+      });
+  }, [playlistShare, sharedUrl, navigate]);
   const includeFiles = params.get("action") === "files" && preview.data?.canDownload === true;
   const submit = useMutation({
     mutationFn: () =>
-      importShareLink(sharedUrl, includeFiles && preview.data?.canDownload === true),
+      importShareLink({
+        url: sharedUrl,
+        includeFiles: includeFiles && preview.data?.canDownload === true,
+      }),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix }),
         queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus }),
       ]),
   });
-  const data = url.trim() === sharedUrl ? preview.data : undefined;
+  const data = url.trim() === sharedUrl && !playlistShare ? preview.data : undefined;
   if (opening) {
     return (
       <div className="library-page native-library-page">
@@ -125,7 +136,7 @@ export default function ShareImportPage() {
                   Review share
                 </button>
               </form>
-              {sharedUrl && preview.isPending ? (
+              {sharedUrl && (preview.isPending || playlistShare) ? (
                 <p role="status">
                   <DotLoader size="sm" label="Loading share" />
                 </p>
