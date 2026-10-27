@@ -672,7 +672,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
     /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
     (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
-    (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
+    (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i.test(req.path)) ||
     (req.method === "GET" && /^\/api\/playlists\/track-artwork\/[^/]+$/i.test(req.path)) ||
     (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
   ) {

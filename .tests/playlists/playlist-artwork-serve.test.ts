@@ -25,6 +25,7 @@ const [
   { registerArtworkServe },
   { default: playlistsRouter },
   { authMiddleware },
+  { createSession },
   { playlistOperationQueue },
   { processPlaylistOperation },
 ] = await Promise.all([
@@ -33,6 +34,7 @@ const [
   import("../../backend/routes/playlists/handlers/artworkServe.ts"),
   import("../../backend/routes/playlists/index.ts"),
   import("../../backend/middleware/auth.ts"),
+  import("../../backend/config/session-helpers.ts"),
   import("../../backend/services/playlists/playlistOperationQueue.ts"),
   import("../../backend/services/playlists/playlistOperations.ts"),
 ]);
@@ -149,6 +151,36 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     const playlistCover = await request(`/artwork/${playlistId}`);
     assert.equal(playlistCover.status, 200);
     assert.equal(playlistCover.type, "image/webp");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("cover previews load from an image tag that can only carry the session token in the URL", async () => {
+  const user = userOps.getUserByUsername("curator");
+  assert.ok(user != null);
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Wedding MegaMix",
+    ownerUserId: user.id,
+  });
+  const app = express();
+  app.use(authMiddleware);
+  app.use("/api/playlists", playlistsRouter);
+  const server = await new Promise<import("node:http").Server>((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+  const query = new URLSearchParams({ title: playlist.name, style: "simple", template: "a3" });
+  const preview = (token?: string) => {
+    const params = new URLSearchParams(query);
+    if (token) params.set("token", token);
+    return fetch(`${baseUrl}/api/playlists/artwork/${playlist.id}/preview?${params}`);
+  };
+  try {
+    assert.equal((await preview()).status, 401);
+    const response = await preview(createSession(user.id).token);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/webp");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
