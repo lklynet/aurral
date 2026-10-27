@@ -363,6 +363,7 @@ export class PlaylistManager {
         if (existing && state?.sourceUrl === sourceUrl) return;
         try {
           await this._saveOriginalArtwork(playlistId, sourceUrl);
+          await this._syncNavidromeArtwork(playlistId);
           return;
         } catch (error) {
           console.warn(
@@ -394,6 +395,7 @@ export class PlaylistManager {
             ? { ...generated.state, mode: "original", flowRunAt }
             : { ...generated.state, flowRunAt },
         );
+        await this._syncNavidromeArtwork(playlistId);
       } catch (error) {
         console.warn(
           `[PlaylistManager] ${artworkKind} artwork generation failed: ${asAppError(error)?.message}`,

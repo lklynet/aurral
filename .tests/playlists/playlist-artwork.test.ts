@@ -205,34 +205,6 @@ test("an unavailable source preserves the current original cover and restore can
   assert.deepEqual(await fs.readFile(artwork.safePath), before);
 });
 
-test("does not replace uploaded artwork when legacy global style changes", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Custom Cover",
-    tracks: [{ artistName: "A", trackName: "One" }],
-  });
-  const manager = makeManager();
-  const uploaded = await sharp({
-    create: {
-      width: 48,
-      height: 48,
-      channels: 3,
-      background: "#663322",
-    },
-  })
-    .png()
-    .toBuffer();
-  await manager.saveArtworkUpload(playlist.id, uploaded);
-  const artworkPath = (await manager.resolveArtworkFile(playlist.id))!.safePath;
-  const before = await fs.readFile(artworkPath);
-  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
-  const photoRequests = vi.mocked(imageSource.fetchDeezerArtistImageUrl);
-
-  await manager.syncPlaylists();
-
-  assert.equal(photoRequests.mock.calls.length, 0);
-  assert.deepEqual(await fs.readFile(artworkPath), before);
-});
-
 test("removes old sidecar artwork when a flow is renamed", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Old Name",
@@ -351,6 +323,40 @@ test("syncs artwork changes to the existing Navidrome playlist", async () => {
 
   await manager.removeArtwork(playlist.id);
   assert.deepEqual(manager.__artworkUploads.at(-1), { id: "Artwork API", deleted: true });
+});
+
+test("automatic cover changes reach the existing Navidrome playlist", async () => {
+  const source = await sharp({
+    create: { width: 48, height: 48, channels: 3, background: "#284466" },
+  })
+    .png()
+    .toBuffer();
+  vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
+    buffer: source,
+    contentType: "image/png",
+    metadata: await sharp(source).metadata(),
+  });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Imported cover",
+    importSource: {
+      provider: "deezer-playlist",
+      externalId: "123",
+      artworkUrl: "https://images.example.test/one.png",
+    },
+  });
+  const manager = makeManager();
+  await manager.syncPlaylists();
+  manager.__artworkUploads.length = 0;
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    importSource: { ...playlist.importSource, artworkUrl: "https://images.example.test/two.png" },
+  });
+
+  await manager.syncPlaylists();
+
+  assert.deepEqual(
+    manager.__artworkUploads.map((upload) => upload.filename),
+    ["Imported cover.webp"],
+  );
 });
 
 test("renaming an imported playlist preserves its uploaded cover", async () => {

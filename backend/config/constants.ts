@@ -167,9 +167,6 @@ export const defaultData = {
         enabled: false,
       },
     },
-    playlistArtwork: {
-      style: "photo",
-    },
     inbox: {
       enabled: true,
       releases: true,

@@ -81,18 +81,13 @@ function storeCurrentIntegrations() {
     integrations.metadata = { ...integrations.metadata, baseUrl: DEFAULT_METADATA_BASE_URL };
     changed = true;
   }
-  let artworkStyle = null;
   if (integrations.lastfm && "discoverFlowArtworkStyle" in integrations.lastfm) {
-    const { discoverFlowArtworkStyle, ...lastfm } = integrations.lastfm;
+    const { discoverFlowArtworkStyle: _, ...lastfm } = integrations.lastfm;
     integrations.lastfm = lastfm;
-    if (discoverFlowArtworkStyle === "aurral") artworkStyle = "aurral";
     changed = true;
   }
 
   if (changed) dbOps.updateSettings({ integrations });
-  if (artworkStyle && settings.playlistArtwork?.style !== artworkStyle) {
-    dbOps.updateSettings({ playlistArtwork: { ...settings.playlistArtwork, style: artworkStyle } });
-  }
 }
 
 export function migrateStoredData() {

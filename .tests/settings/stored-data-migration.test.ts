@@ -111,7 +111,6 @@ test("stores older settings, flows, worker options, and sign-in in their current
   assert.equal(integrations.navidrome.url, "http://navidrome.invalid");
   assert.deepEqual(integrations.lastfm, { username: "listener" });
   assert.equal(integrations.metadata.baseUrl, "https://lidarrapi.brainzmash.cc");
-  assert.equal(dbOps.getSettings().playlistArtwork.style, "aurral");
 
   const admin = resolveUser("owner", "correct horse battery");
   assert.equal(admin?.role, "admin");

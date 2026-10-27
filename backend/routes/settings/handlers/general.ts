@@ -148,7 +148,6 @@ export function registerGeneral(router: Router) {
         downloadFolderPath,
         pathMappings,
         security,
-        playlistArtwork,
         missingTrackSearch,
         inbox,
         dateTimeFormat,
@@ -568,13 +567,6 @@ export function registerGeneral(router: Router) {
                     defaultData.settings.security.localNetworkBypass,
               }
             : currentSettings.security || defaultData.settings.security,
-        playlistArtwork:
-          playlistArtwork !== undefined
-            ? {
-                ...(currentSettings.playlistArtwork || defaultData.settings.playlistArtwork),
-                ...playlistArtwork,
-              }
-            : currentSettings.playlistArtwork || defaultData.settings.playlistArtwork,
         missingTrackSearch:
           missingTrackSearch && typeof missingTrackSearch === "object"
             ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }

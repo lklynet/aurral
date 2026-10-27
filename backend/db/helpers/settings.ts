@@ -134,10 +134,6 @@ export interface StoredIntegrations {
 
 export type SettingsPlaylistWorker = ReturnType<typeof normalizePlaylistWorkerSettings>;
 
-interface SettingsPlaylistArtwork {
-  style: "aurral" | "photo";
-}
-
 type SettingsMissingTrackSearch = ReturnType<typeof normalizeMissingTrackSearchSettings>;
 
 type SettingsInbox = typeof defaultData.settings.inbox;
@@ -151,10 +147,6 @@ export interface StoredPlaylistWorker {
   concurrency?: unknown;
   retryPausedPlaylistIds?: unknown;
   existingFileMode?: unknown;
-}
-
-interface StoredPlaylistArtwork {
-  style?: unknown;
 }
 
 interface StoredMissingTrackSearch {
@@ -193,7 +185,6 @@ export interface AppSettings {
   sharedPlaylists: unknown;
   subsonic: typeof defaultData.settings.subsonic;
   playlistWorker: SettingsPlaylistWorker;
-  playlistArtwork: SettingsPlaylistArtwork;
   missingTrackSearch: SettingsMissingTrackSearch;
   reviewTimeoutHours: number;
   inbox: SettingsInbox;
@@ -217,7 +208,6 @@ export interface SettingsUpdate {
   sharedPlaylists?: unknown;
   subsonic?: { favoriteAutoKeep?: boolean };
   playlistWorker?: StoredPlaylistWorker;
-  playlistArtwork?: StoredPlaylistArtwork;
   missingTrackSearch?: StoredMissingTrackSearch;
   reviewTimeoutHours?: number | string;
   blocklist?: StoredBlocklist;
@@ -267,18 +257,6 @@ function readStoredSettingJson<T = unknown>(
     if (legacy != null) return legacy;
   }
   return null;
-}
-
-function normalizePlaylistArtworkSettings(
-  raw: StoredPlaylistArtwork | null | undefined,
-): SettingsPlaylistArtwork {
-  const artwork: StoredPlaylistArtwork = raw && typeof raw === "object" ? raw : {};
-  const style = String(artwork.style || "photo")
-    .trim()
-    .toLowerCase();
-  return {
-    style: style === "aurral" ? "aurral" : "photo",
-  };
 }
 
 function normalizeMissingTrackSearchSettings(raw: StoredMissingTrackSearch | null | undefined) {
@@ -425,9 +403,6 @@ export const dbOps = {
     const playlistWorker = normalizePlaylistWorkerSettings(
       readStoredSettingJson<StoredPlaylistWorker>("playlistWorker", ["weeklyFlowWorker"]),
     );
-    const playlistArtwork = normalizePlaylistArtworkSettings(
-      readStoredSettingJson<StoredPlaylistArtwork>("playlistArtwork"),
-    );
     const missingTrackSearch = normalizeMissingTrackSearchSettings(
       readStoredSettingJson<StoredMissingTrackSearch>("missingTrackSearch"),
     );
@@ -470,7 +445,6 @@ export const dbOps = {
         favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
       },
       playlistWorker,
-      playlistArtwork,
       missingTrackSearch,
       reviewTimeoutHours,
       inbox: {
@@ -597,12 +571,6 @@ export const dbOps = {
         upsertSettingStmt.run(
           "playlistWorker",
           dbHelpers.stringifyJSON(normalizePlaylistWorkerSettings(settings.playlistWorker)),
-        );
-      }
-      if (settings.playlistArtwork !== undefined) {
-        upsertSettingStmt.run(
-          "playlistArtwork",
-          dbHelpers.stringifyJSON(normalizePlaylistArtworkSettings(settings.playlistArtwork)),
         );
       }
       if (settings.missingTrackSearch !== undefined) {
