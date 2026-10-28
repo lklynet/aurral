@@ -46,7 +46,7 @@
   -webkit-tap-highlight-color: transparent;
   transition: background-color var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
-.wrapped-frame p {
+:where(.wrapped-frame) p {
   margin: 0;
 }
 .wrapped-actions {
@@ -397,7 +397,7 @@
 }
 
 .wrapped-fill {
-  margin: 22cqw 0 0 -1.5cqw;
+  margin: 22cqw 0 0.12em -1.5cqw;
   font-size: 41cqw;
   line-height: 0.8;
   letter-spacing: -0.05em;
@@ -550,7 +550,7 @@
 }
 
 .wrapped-variety {
-  margin-top: 2cqw;
+  margin: 4cqw 0 0.12em;
   line-height: 0.8;
   letter-spacing: -0.04em;
   white-space: nowrap;

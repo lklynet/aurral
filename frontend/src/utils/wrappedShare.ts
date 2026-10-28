@@ -163,11 +163,11 @@ export async function prepareWrappedCard(summary: WrappedRecap, field: string, u
       context.fillText(Math.round(stat.value * counted).toLocaleString(), x, statTop + offset);
       context.globalAlpha *= 0.6;
       const labelWidth = font(3.4 * u, WRAPPED_TEXT, 600, stat.label).width;
-      context.fillText(stat.label, x, statTop + 4.4 * u + offset);
+      context.fillText(stat.label, x, statTop + 6.4 * u + offset);
       x += Math.max(valueWidth, labelWidth) + 6 * u;
     });
 
-    y = statTop + 4.4 * u + 7 * u;
+    y = statTop + 6.4 * u + 5 * u;
     names.forEach((name, index) => {
       y += 8.8 * u;
       font(8.6 * u, WRAPPED_DISPLAY, 800, name);
