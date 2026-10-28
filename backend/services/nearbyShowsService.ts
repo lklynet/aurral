@@ -345,7 +345,6 @@ const fetchTicketmasterEvents = async ({
         locale: "*",
         includeTBA: "no",
         includeTBD: "no",
-        source: "ticketmaster",
         ...buildDateRange(),
         ...getTicketmasterLocationParams(location, radiusMiles),
       },
