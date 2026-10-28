@@ -386,7 +386,7 @@ export async function collectWrappedHistory(userId: number, period: Period) {
     (profile.listenHistoryProvider === "koito" ? profile.listenHistoryUrl : null);
   if (koito)
     readers.push({ source: "koito", read: koitoReader(koito, connections.koito?.token, period) });
-  const soleUser = userOps.getAllUsers().filter((user) => user.status === "active").length === 1;
+  const soleUser = userOps.getAllUsers().length === 1;
   const navidrome = settings.integrations?.navidrome;
   if (
     navidrome?.url &&

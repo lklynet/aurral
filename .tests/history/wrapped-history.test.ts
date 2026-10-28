@@ -11,7 +11,7 @@ import { wrappedPeriod, type WrappedPlay } from "../../backend/services/wrapped/
 
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 
-const [state, { db }, { userOps }, history, reports, lastfm, { default: wrapped }] =
+const [state, { db }, { dbOps, userOps }, history, reports, lastfm, { default: wrapped }] =
   await setupIsolatedBackend(
     "wrapped-history",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -178,6 +178,18 @@ test("local history stays scoped to the listener and the calendar year", () => {
   listen(two.id, period.start);
   listen(one.id, period.end);
   assert.equal(history.readLocalWrappedHistory(one.id, period).length, 1);
+});
+
+test("a disabled account keeps the shared Navidrome history out of another listener's recap", async () => {
+  userOps.updateUser(two.id, { status: "disabled" });
+  dbOps.updateSettings({
+    integrations: { navidrome: { url: "http://navidrome.test", username: "two", password: "pw" } },
+  });
+  const { sources } = await history.collectWrappedHistory(one.id, period);
+  assert.deepEqual(
+    sources.map((status) => status.source),
+    ["aurral"],
+  );
 });
 
 test("a source that fails partway keeps the pages it already read", async () => {
