@@ -403,7 +403,6 @@ export default function WrappedIntro({
       video.pause();
       video.removeAttribute("src");
       video.load();
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, [slide, summary]);
 

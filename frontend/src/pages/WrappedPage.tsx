@@ -254,7 +254,14 @@ function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
   }
 }
 
-function usePreviewAudio(src: string | null, muted: boolean, vintage: boolean) {
+const previewUrl = (src: string) => new URL(resolveApiPath(src), window.location.href).href;
+
+function usePreviewAudio(
+  src: string | null,
+  muted: boolean,
+  vintage: boolean,
+  previews: readonly string[],
+) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const graph = useRef<ReturnType<typeof vintageGraph>>(null);
   const [playing, setPlaying] = useState(false);
@@ -263,6 +270,8 @@ function usePreviewAudio(src: string | null, muted: boolean, vintage: boolean) {
   queueRef.current = queue;
   const vintageRef = useRef(vintage);
   vintageRef.current = vintage;
+  const previewsRef = useRef(previews);
+  previewsRef.current = previews;
 
   useEffect(() => {
     const element = new Audio();
@@ -275,6 +284,11 @@ function usePreviewAudio(src: string | null, muted: boolean, vintage: boolean) {
       if (queueRef.current.isPlaying) queueRef.current.togglePlayPause();
     });
     element.addEventListener("pause", () => setPlaying(false));
+    element.addEventListener("ended", () => {
+      const urls = previewsRef.current.map(previewUrl);
+      element.src = urls[(urls.indexOf(element.src) + 1) % urls.length] ?? element.src;
+      element.play().catch(() => {});
+    });
     audio.current = element;
     graph.current = sound;
     return () => {
@@ -303,14 +317,14 @@ function usePreviewAudio(src: string | null, muted: boolean, vintage: boolean) {
   useEffect(() => {
     const element = audio.current;
     if (!element || !src) return;
-    const url = new URL(resolveApiPath(src), window.location.href).href;
+    const url = previewUrl(src);
     if (element.src === url) return;
     element.src = url;
     element.volume = 0;
     element.play().catch(() => {});
     const started = performance.now();
     let frame = requestAnimationFrame(function fade(now) {
-      element.volume = Math.min(1, (now - started) / 800);
+      element.volume = Math.min(1, Math.max(0, (now - started) / 800));
       if (element.volume < 1) frame = requestAnimationFrame(fade);
     });
     return () => cancelAnimationFrame(frame);
@@ -944,7 +958,11 @@ function Story({
   const shareField = fieldOf(slides.length - 1);
   const image = useShareImage(summary, shareField, username);
   const nowPlaying = slides.slice(0, index + 1).findLast((entry) => entry.preview)?.preview ?? null;
-  const audio = usePreviewAudio(nowPlaying, muted, vintage);
+  const previews = useMemo(
+    () => [...new Set(summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []))],
+    [summary],
+  );
+  const audio = usePreviewAudio(nowPlaying, muted, vintage, previews);
   const hasAudio = slides.some((entry) => entry.preview);
   const playing = audio.playing && !muted && slide.preview !== null && nowPlaying === slide.preview;
   const last = index === slides.length - 1;
