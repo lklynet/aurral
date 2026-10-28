@@ -10494,7 +10494,7 @@ button.native-library-genre-row:focus-visible {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) minmax(6.5rem, auto) minmax(
+  grid-template-columns: 1.75rem minmax(0, 1fr) 1rem minmax(6.5rem, auto) minmax(
       4.5rem,
       auto
     ) max-content;
@@ -10642,11 +10642,26 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-subtle);
 }
 
+.activity-row__kind {
+  display: inline-flex;
+  color: var(--aurral-text-muted);
+}
+
+.activity-row__kind svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+}
+
 .activity-row__status-label,
 .activity-row__time {
   color: var(--aurral-text-muted);
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+.activity-row__status-label {
+  grid-column: 4;
 }
 
 .activity-row__status-label--success {

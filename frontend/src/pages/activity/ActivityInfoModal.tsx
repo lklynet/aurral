@@ -57,7 +57,7 @@ function getRows(item: Partial<ActivityRequest>) {
   const details = item.error || item.subtitle;
   const id = item.jobId || item.id;
   return [
-    ["Type", formatKind(item.kind)],
+    ["Type", item.upgrade ? "Quality upgrade" : formatKind(item.kind)],
     [
       "Download method",
       item.downloadMethodLabel ||
@@ -73,6 +73,7 @@ function getRows(item: Partial<ActivityRequest>) {
     ["Track", item.trackName],
     ["Operation", operation],
     ["Source", formatSource(item)],
+    ["Previous quality", item.upgrade?.fromQuality],
     ["Quality", item.qualityLabel],
     ["Quality state", formatQualityState(item.qualityState)],
     ["Requested", formatTimestamp(item.requestedAt || item.createdAt)],

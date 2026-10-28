@@ -18,6 +18,7 @@ const {
   upsertAurralHistory,
   getAurralHistoryRequests,
   recordTrackJobBlocked,
+  recordTrackJobDownloading,
   recordTrackJobQueued,
   toHistoryRequestItem,
 } = historyModule;
@@ -303,6 +304,29 @@ test("queued album track jobs open their album, and other library jobs open the 
     (item) => item.jobId === "upgrade-of-one",
   );
   assert.equal(upgrade?.href, `/library/album/${album.id}`);
+});
+
+test("a quality upgrade stays marked as one from queued to its result", async () => {
+  const sourceId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+  const otherId = downloadTracker.addJob({ artistName: "Artist", trackName: "Other" }, "library");
+  const upgradeId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+  const upgradeJob = {
+    ...requireFixture(downloadTracker.getJob(upgradeId)),
+    upgradeForJobId: sourceId,
+  };
+  const upgradeOf = async (jobId: string | null) =>
+    (await getAurralHistoryRequests()).find((item) => item.jobId === jobId)?.upgrade;
+
+  recordTrackJobQueued(upgradeJob, null, { fromQuality: "MP3 320" });
+  recordTrackJobQueued(downloadTracker.getJob(otherId));
+  recordTrackJobDownloading(upgradeJob);
+  assert.deepEqual(await upgradeOf(upgradeId), { fromQuality: "MP3 320" });
+  assert.equal(await upgradeOf(otherId), null);
+
+  const { finalizeQualityUpgradeFailure } =
+    await import("../../backend/services/qualityProfileService.ts");
+  await finalizeQualityUpgradeFailure(upgradeJob, "No better file");
+  assert.deepEqual(await upgradeOf(upgradeId), { fromQuality: "MP3 320" });
 });
 
 test("pending tracker jobs without history appear in activity immediately", async () => {

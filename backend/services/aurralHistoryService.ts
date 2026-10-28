@@ -4,7 +4,11 @@ import { dbOps } from "../db/helpers/index.ts";
 import { resolveBlockedJobReleaseTitle, resolveBlockedJobSourceFilename } from "./downloadUtils.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { getLibraryForAlbumReferences } from "./libraryQueryService.ts";
-import type { AurralHistoryEntry, AurralHistoryMetadata } from "../db/helpers/history.ts";
+import type {
+  AurralHistoryEntry,
+  AurralHistoryMetadata,
+  TrackUpgrade,
+} from "../db/helpers/history.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
@@ -1056,6 +1060,7 @@ type TrackJobActivityInput = {
   releaseTitle?: string | null;
   user?: RequesterUser | null;
   href?: string | null;
+  upgrade?: TrackUpgrade | null;
 };
 
 export const recordTrackJobActivity = ({
@@ -1076,6 +1081,7 @@ export const recordTrackJobActivity = ({
   requestGroupId = null,
   user = null,
   href = null,
+  upgrade = null,
 }: TrackJobActivityInput = {}) => {
   const id = String(jobId || "").trim();
   if (!id) return null;
@@ -1089,6 +1095,7 @@ export const recordTrackJobActivity = ({
   const previous = dbOps.getAurralHistoryById(stableId("track_download", id));
   const requester = requesterFromMetadata(previous?.metadata) || requesterFromUser(user);
   const groupId = requestGroupId || previous?.metadata?.requestGroupId || null;
+  const trackUpgrade = upgrade || previous?.metadata?.upgrade || null;
   return upsertAurralHistory({
     referenceId: id,
     kind: "track_download",
@@ -1110,6 +1117,7 @@ export const recordTrackJobActivity = ({
       ...requester,
       ...(filename ? { sourceFilename: filename } : {}),
       ...(release ? { releaseTitle: release } : {}),
+      ...(trackUpgrade ? { upgrade: trackUpgrade } : {}),
     },
   });
 };
@@ -1144,6 +1152,7 @@ export const getTrackJobRequesterId = (jobId: string) =>
 export const recordTrackJobQueued = (
   job: HistoryJob | null | undefined,
   user: RequesterUser | null = null,
+  upgrade: TrackUpgrade | null = null,
 ) => {
   const jobId = String(job?.id || "").trim();
   if (!jobId) return null;
@@ -1159,6 +1168,7 @@ export const recordTrackJobQueued = (
   }
   return recordTrackJob(job, {
     user,
+    upgrade,
     status: "pending",
     statusLabel: "Queued",
     title: `Queued ${job?.trackName || "track"}`,
@@ -1268,6 +1278,7 @@ export interface AurralRequestItem {
   requestedBy: { id: string | number; username: string | null } | null;
   sourceFilename: string | null;
   releaseTitle: string | null;
+  upgrade: TrackUpgrade | null;
   inQueue: boolean;
   canReSearch: boolean;
 }
@@ -1330,6 +1341,7 @@ export const toHistoryRequestItem = (
     requestedBy: requester ? { id: requester.userId, username: requester.username || null } : null,
     sourceFilename,
     releaseTitle,
+    upgrade: entry.metadata?.upgrade || null,
     inQueue:
       entry.status === "processing" || entry.status === "pending" || entry.status === "blocked",
     canReSearch:

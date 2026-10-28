@@ -261,7 +261,9 @@ async function addUpgradesAtOnce(
     if (!upgradeJobId) return "ineligible";
     downloadTracker.updateMetadata(upgradeJobId, context);
     downloadTracker.markQualityUpgradeChecked(sourceJobId!);
-    recordTrackJobQueued(downloadTracker.getJob(upgradeJobId));
+    recordTrackJobQueued(downloadTracker.getJob(upgradeJobId), null, {
+      fromQuality: getQualityTier(source?.qualityTier)?.label ?? null,
+    });
     queuedIds.push(upgradeJobId);
     return "queued";
   });

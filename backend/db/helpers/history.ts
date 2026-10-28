@@ -1,6 +1,8 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { AurralHistoryRow } from "../rows.ts";
 
+export type TrackUpgrade = { fromQuality: string | null };
+
 export type AurralHistoryMetadata = {
   userId?: number;
   username?: string;
@@ -41,6 +43,7 @@ export type AurralHistoryMetadata = {
   tracksQueued?: number;
   tracksReused?: number;
   reserveTracks?: number;
+  upgrade?: TrackUpgrade;
 };
 
 export interface AurralHistoryEntry {

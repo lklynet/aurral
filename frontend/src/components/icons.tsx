@@ -120,6 +120,7 @@ export const ThumbsDown = createIcon(icons.ThumbsDown);
 export const ThumbsUp = createIcon(icons.ThumbsUp);
 export const Ticket = createIcon(icons.Ticket01);
 export const Trash2 = createIcon(icons.Trash01);
+export const TrendUp = createIcon(icons.TrendUp01);
 export const TriangleAlert = createIcon(icons.AlertTriangle);
 export const Upload = createIcon(icons.Upload01);
 export const User = createIcon(icons.User01);
