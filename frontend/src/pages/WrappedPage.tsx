@@ -458,8 +458,9 @@ function Opening({ summary, username }: { summary: WrappedRecap; username: strin
   );
 }
 
-function Minutes({ summary }: { summary: WrappedRecap }) {
+function Minutes({ summary, spinning }: { summary: WrappedRecap; spinning: boolean }) {
   const { minutes, totalPlays, uniqueArtists, uniqueSongs } = summary;
+  const [cover] = wrappedCovers(summary, 1);
   const span =
     minutes === null || minutes < 60
       ? ""
@@ -467,19 +468,30 @@ function Minutes({ summary }: { summary: WrappedRecap }) {
         ? `About ${(minutes / 1440).toLocaleString(undefined, { maximumFractionDigits: 1 })} days of music. `
         : `About ${count(Math.round(minutes / 60), "hour")} of music. `;
   return (
-    <div className="wrapped-pad">
-      <Fit className="wrapped-fill wrapped-in wrapped-in--fade" max={41} step={3}>
-        <CountUp value={minutes ?? totalPlays} from={3} />
-      </Fit>
-      <p className="wrapped-word wrapped-in" style={at(9)}>
-        {minutes === null ? "plays" : "minutes"}
-      </p>
-      <p className="wrapped-body wrapped-in" style={at(16)}>
-        {minutes === null
-          ? `${count(uniqueArtists, "artist")} and ${count(uniqueSongs, "song")}.`
-          : `${span}${count(totalPlays, "play")} across ${count(uniqueArtists, "artist")}.`}
-      </p>
-    </div>
+    <>
+      <div
+        className={`wrapped-record wrapped-in${spinning ? " wrapped-record--spinning" : ""}`}
+        style={at(14)}
+        aria-hidden="true"
+      >
+        <div className="wrapped-record-disc">
+          {cover && <img src={wrappedImageUrl(cover)} alt="" />}
+        </div>
+      </div>
+      <div className="wrapped-pad">
+        <Fit className="wrapped-fill wrapped-in wrapped-in--fade" max={41} step={3}>
+          <CountUp value={minutes ?? totalPlays} from={3} />
+        </Fit>
+        <p className="wrapped-word wrapped-in" style={at(9)}>
+          {minutes === null ? "plays" : "minutes"}
+        </p>
+        <p className="wrapped-body wrapped-in" style={at(16)}>
+          {minutes === null
+            ? `${count(uniqueArtists, "artist")} and ${count(uniqueSongs, "song")}.`
+            : `${span}${count(totalPlays, "play")} across ${count(uniqueArtists, "artist")}.`}
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -952,7 +964,8 @@ function Story({
   const source = cue && wrappedSongSource(cue.song);
   const audio = useSoundtrack(source, cue?.song.preview === null, muted, vintage);
   const hasAudio = soundtrack.some(Boolean);
-  const playing = !muted && cue?.named === true && audio.current === source;
+  const audible = !muted && Boolean(source) && audio.current === source;
+  const playing = audible && cue?.named === true;
   const last = index === slides.length - 1;
   const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
 
@@ -1054,7 +1067,7 @@ function Story({
       case "opening":
         return <Opening summary={summary} username={username} />;
       case "minutes":
-        return <Minutes summary={summary} />;
+        return <Minutes summary={summary} spinning={current && audible} />;
       case "variety":
         return <Variety summary={summary} />;
       case "genre":

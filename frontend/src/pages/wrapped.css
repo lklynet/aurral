@@ -2,6 +2,9 @@
   --wrapped-display: "Wrapped Display", var(--font-sans);
   --wrapped-t: calc(var(--aurral-duration-slower) / 4.2);
   --wrapped-slide-time: 7s;
+  --wrapped-spin-time: 1.8s;
+  --wrapped-vinyl: var(--aurral-overlay-base);
+  --wrapped-shine: var(--aurral-overlay-foreground);
   position: fixed;
   inset: 0;
   z-index: var(--aurral-z-modal);
@@ -402,6 +405,82 @@
   line-height: 0.8;
   letter-spacing: -0.05em;
   white-space: nowrap;
+}
+
+.wrapped-record {
+  position: absolute;
+  left: 22cqw;
+  bottom: -92cqw;
+  width: 170cqw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+.wrapped-record::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 20deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--wrapped-shine) 12%, transparent) 18deg,
+    transparent 42deg 180deg,
+    color-mix(in srgb, var(--wrapped-shine) 9%, transparent) 200deg,
+    transparent 226deg
+  );
+  mask: radial-gradient(circle, transparent 33%, black 33.5% 96%, transparent 96.5%);
+}
+.wrapped-record-disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle,
+      transparent 0 31%,
+      var(--wrapped-vinyl) 31% 33%,
+      transparent 33% 96%,
+      var(--wrapped-vinyl) 96%
+    ),
+    repeating-radial-gradient(
+      circle,
+      color-mix(in srgb, var(--wrapped-shine) 6%, var(--wrapped-vinyl)) 0 1px,
+      color-mix(in srgb, var(--wrapped-shine) 10%, var(--wrapped-vinyl)) 1px 2px,
+      color-mix(in srgb, var(--wrapped-shine) 5%, var(--wrapped-vinyl)) 2px 3.5px
+    );
+  animation: wrapped-spin var(--wrapped-spin-time) var(--aurral-ease-linear) infinite paused;
+}
+.wrapped-record--spinning .wrapped-record-disc {
+  animation-play-state: running;
+}
+.wrapped-record-disc img {
+  position: absolute;
+  inset: 34%;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.wrapped-record-disc::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.4%;
+  height: 2.4%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--wrapped-field);
+}
+@keyframes wrapped-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wrapped-record-disc {
+    animation: none;
+  }
 }
 
 .wrapped-hero {
