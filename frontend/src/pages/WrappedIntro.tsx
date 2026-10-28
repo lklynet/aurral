@@ -51,7 +51,6 @@ export default function WrappedIntro({
     }
     let active = true;
     let frame = 0;
-    let url: string | null = null;
     let reel: ReturnType<typeof createReel> | null = null;
     const finish = () => {
       if (!active) return;
@@ -65,8 +64,7 @@ export default function WrappedIntro({
       loadWrappedFonts(GLYPHS),
       loadWrappedLogo(),
       fetch(footage)
-        .then((response) => (response.ok ? response.blob() : null))
-        .then((blob) => (blob && active ? (url = URL.createObjectURL(blob)) : null))
+        .then((response) => (response.ok ? response.arrayBuffer().then(() => footage) : null))
         .catch(() => null),
       findSlide(slide, () => active).then((element) =>
         Promise.all(
@@ -120,7 +118,6 @@ export default function WrappedIntro({
       active = false;
       cancelAnimationFrame(frame);
       reel?.dispose();
-      if (url) URL.revokeObjectURL(url);
     };
   }, [beats, slide, summary]);
 
