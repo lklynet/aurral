@@ -172,6 +172,7 @@ export function calculateWrapped(
   const artists = new Map<string, Tally>();
   const songs = new Map<string, Tally>();
   const albums = new Map<string, Tally>();
+  const albumSongs = new Map<string, Set<string>>();
   const genres = new Map<string, { name: string; plays: number }>();
   const days = new Map<string, { plays: number; songs: Map<string, number> }>();
   const months = new Map<string, { plays: number; artists: Map<string, number> }>();
@@ -232,15 +233,11 @@ export function calculateWrapped(
     const artistKey = wrappedKey(play.artist);
     tally(artists, artistKey, play.artist, play, duration, play.artistMbid);
     tally(songs, songKey(play), play.title, play, duration, play.trackMbid);
-    if (play.album)
-      tally(
-        albums,
-        `${artistKey}\u0000${wrappedKey(play.album)}`,
-        play.album,
-        play,
-        duration,
-        play.albumMbid,
-      );
+    if (play.album) {
+      const albumKey = `${artistKey}\u0000${wrappedKey(play.album)}`;
+      tally(albums, albumKey, play.album, play, duration, play.albumMbid);
+      albumSongs.set(albumKey, (albumSongs.get(albumKey) ?? new Set()).add(songKey(play)));
+    }
 
     const date = dateOf.format(play.playedAt);
     const day = days.get(date) ?? { plays: 0, songs: new Map() };
@@ -289,7 +286,9 @@ export function calculateWrapped(
     if (index - runStart + 1 > streak.days)
       streak = { days: index - runStart + 1, start: dates[runStart], end: dates[index] };
   }
-  const lastMonth = dateOf.format(Math.max(period.start, period.end - 1)).slice(0, 7);
+  const lastDate = dateOf.format(Math.max(period.start, period.end - 1));
+  const lastMonth = lastDate.slice(0, 7);
+  const firstDay = Date.UTC(period.year, 0, 1);
   const busiest = [...days].sort((a, b) => b[1].plays - a[1].plays || a[0].localeCompare(b[0]))[0];
 
   return {
@@ -309,7 +308,10 @@ export function calculateWrapped(
     firstPlayedAt: plays[0]?.playedAt ?? null,
     topArtists: ranked(artists, 5),
     topSongs: ranked(songs, 100),
-    topAlbums: ranked(albums, 5),
+    topAlbums: ranked(albums, 5).map((album) => ({
+      ...album,
+      songs: albumSongs.get(album.key)?.size ?? 0,
+    })),
     topGenres: rank(genres.values()).slice(0, 5),
     busiestDay: busiest
       ? { date: busiest[0], plays: busiest[1].plays, topSong: leader(busiest[1].songs, songs) }
@@ -325,6 +327,11 @@ export function calculateWrapped(
         topArtist: leader(months.get(month)?.artists ?? new Map(), artists),
       })),
     hours,
+    calendar: Array.from(
+      { length: (Date.parse(lastDate) - firstDay) / DAY_MS + 1 },
+      (_, index) =>
+        days.get(new Date(firstDay + index * DAY_MS).toISOString().slice(0, 10))?.plays ?? 0,
+    ),
   };
 }
 

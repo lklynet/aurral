@@ -150,6 +150,15 @@
   line-height: 1.35;
 }
 .wrapped-word,
+.wrapped-headline,
+.wrapped-variety,
+.wrapped-artists-rank,
+.wrapped-artists-name,
+.wrapped-genre-name,
+.wrapped-album-name,
+.wrapped-day-month,
+.wrapped-day-number,
+.wrapped-streak,
 .wrapped-year,
 .wrapped-fill,
 .wrapped-artist,
@@ -335,6 +344,220 @@
   font-size: 3cqw;
   font-weight: 600;
   opacity: 0.7;
+}
+
+.wrapped-kicker {
+  font-size: 4.6cqw;
+  font-weight: 700;
+}
+.wrapped-headline {
+  margin: 6cqw 0 0 -1cqw;
+  font-size: 40cqw;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+}
+.wrapped-headline--tight {
+  margin-top: 2cqw;
+  line-height: 0.84;
+}
+
+.wrapped-variety {
+  margin-top: 2cqw;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.wrapped-variety-label {
+  margin-top: 1cqw;
+  font-size: 7cqw;
+  font-weight: 800;
+}
+
+.wrapped-genres {
+  position: absolute;
+  inset: auto 0 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wrapped-genres li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 1.2cqw;
+  margin-top: 3.6cqw;
+}
+.wrapped-genre-name {
+  overflow: hidden;
+  font-size: 6.4cqw;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.wrapped-genre-share {
+  align-self: end;
+  font-size: 4cqw;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.wrapped-genres i {
+  grid-column: 1 / -1;
+  height: 1.4cqw;
+  background: currentColor;
+}
+.wrapped-genres li + li i {
+  opacity: 0.45;
+}
+
+.wrapped-artists {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wrapped-artists li {
+  display: grid;
+  grid-template-columns: 24cqw 7cqw minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: end;
+  column-gap: 2.4cqw;
+  margin-bottom: 4.6cqw;
+}
+.wrapped-artists img,
+.wrapped-artists-blank {
+  grid-row: span 2;
+  width: 24cqw;
+  height: 24cqw;
+  object-fit: cover;
+  filter: grayscale(1);
+}
+.wrapped-artists-blank {
+  background: currentColor;
+  opacity: 0.16;
+}
+.wrapped-artists-rank {
+  grid-row: span 2;
+  align-self: center;
+  font-size: 13cqw;
+  line-height: 0.8;
+}
+.wrapped-artists-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 8.4cqw;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.wrapped-artists-plays {
+  margin-top: 1cqw;
+  font-size: 3.6cqw;
+  font-weight: 500;
+  opacity: 0.65;
+}
+
+.wrapped-cover {
+  position: absolute;
+  top: 13cqw;
+  left: 5cqw;
+  width: 74cqw;
+  height: 74cqw;
+  object-fit: cover;
+}
+.wrapped-album {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100cqw;
+  height: 100cqw;
+  object-fit: cover;
+}
+.wrapped-album-name {
+  margin: 2cqw 0 0 -0.6cqw;
+  font-size: 24cqw;
+  line-height: 0.85;
+  letter-spacing: -0.04em;
+}
+
+.wrapped-months {
+  position: absolute;
+  left: 5cqw;
+  right: 5cqw;
+  bottom: 7cqw;
+  height: 62cqw;
+  display: flex;
+  gap: 1.6cqw;
+}
+.wrapped-month {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1.6cqw;
+}
+.wrapped-month i {
+  width: 100%;
+  background: currentColor;
+  opacity: 0.32;
+}
+.wrapped-month.wrapped-peak i {
+  opacity: 1;
+}
+.wrapped-month span {
+  font-size: 3.4cqw;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.wrapped-day-month {
+  margin: 8cqw 0 0 -1cqw;
+  font-size: 31cqw;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.wrapped-day-number {
+  margin: 2cqw 0 0 -3cqw;
+  font-size: 96cqw;
+  line-height: 0.76;
+  letter-spacing: -0.06em;
+}
+
+.wrapped-streak {
+  margin: 2cqw 0 0 -3cqw;
+  font-size: 74cqw;
+  line-height: 0.76;
+  letter-spacing: -0.06em;
+}
+.wrapped-calendar {
+  position: absolute;
+  left: 5cqw;
+  right: 5cqw;
+  bottom: 7cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9cqw;
+}
+.wrapped-calendar div {
+  display: grid;
+  grid-template-columns: repeat(31, 1fr);
+  gap: 0.5cqw;
+}
+.wrapped-calendar i {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.16;
+}
+.wrapped-calendar .wrapped-calendar-on {
+  opacity: 0.55;
+}
+.wrapped-calendar .wrapped-calendar-streak {
+  opacity: 1;
+}
+.wrapped-calendar .wrapped-calendar-none {
+  opacity: 0;
 }
 
 .wrapped-card {

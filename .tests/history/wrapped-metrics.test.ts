@@ -103,3 +103,16 @@ test("an empty year produces an empty recap", () => {
   assert.equal(summary.busiestDay, null);
   assert.deepEqual(summary.topSongs, []);
 });
+
+test("the calendar counts each local day and albums count the songs heard from them", () => {
+  const summary = calculateWrapped(
+    [
+      play({ playedAt: at("2026-01-02T12:00:00Z"), album: "Record" }),
+      play({ playedAt: at("2026-01-02T13:00:00Z"), album: "Record" }),
+      play({ playedAt: at("2026-01-04T12:00:00Z"), title: "Other", album: "Record" }),
+    ],
+    wrappedPeriod(2026, "UTC", at("2026-01-05T00:00:00Z")),
+  );
+  assert.deepEqual(summary.calendar, [0, 2, 0, 1]);
+  assert.equal(summary.topAlbums[0].songs, 2);
+});

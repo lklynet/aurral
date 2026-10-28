@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -39,34 +40,88 @@ import TooltipButton from "../components/TooltipButton.tsx";
 import "./wrapped.css";
 
 type Slide = {
-  kind: "opening" | "minutes" | "artist" | "songs" | "hour" | "share";
+  kind:
+    | "opening"
+    | "minutes"
+    | "variety"
+    | "genre"
+    | "artist"
+    | "artists"
+    | "song"
+    | "songs"
+    | "album"
+    | "months"
+    | "day"
+    | "streak"
+    | "hour"
+    | "share";
   preview: string | null;
 };
 type ShareImage = { file: File; url: string } | "failed" | null;
 
-const count = (value: number, word: string) =>
-  `${value.toLocaleString()} ${word}${value === 1 ? "" : "s"}`;
+const DAY_MS = 86_400_000;
+const plural = (value: number, word: string) => `${word}${value === 1 ? "" : "s"}`;
+const count = (value: number, word: string) => `${value.toLocaleString()} ${plural(value, word)}`;
 const hourLabel = (hour: number) =>
   new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(new Date(2000, 0, 1, hour));
+const dayLabel = (date: string, options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(undefined, { ...options, timeZone: "UTC" }).format(Date.parse(date));
+const percent = (part: number, whole: number) => {
+  const value = Math.round((part / Math.max(1, whole)) * 100);
+  return value < 1 ? "<1%" : `${value}%`;
+};
+const sentenceCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+const withoutEdition = (title: string) => title.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "") || title;
+const same = (left: string | null | undefined, right: string) =>
+  left?.toLowerCase() === right.toLowerCase();
+
+function artistTrack(summary: WrappedRecap) {
+  const artist = summary.topArtists[0];
+  return artist && summary.topSongs.find((song) => song.preview && same(song.artist, artist.name));
+}
+
+function albumTrack(summary: WrappedRecap) {
+  const album = summary.topAlbums[0];
+  return (
+    album &&
+    summary.topSongs.find(
+      (song) => song.preview && same(song.album, album.name) && same(song.artist, album.artist),
+    )
+  );
+}
 
 function storySlides(summary: WrappedRecap) {
   const previews = summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []);
   const preview = (rank: number) => (previews.length ? previews[rank % previews.length] : null);
-  const artist = summary.topArtists[0];
-  const artistSong = artistTrack(summary);
-  const slides: Slide[] = [
-    { kind: "opening", preview: preview(2) },
-    { kind: "minutes", preview: preview(1) },
-  ];
-  if (artist) slides.push({ kind: "artist", preview: artistSong?.preview ?? null });
-  if (summary.topSongs.length) slides.push({ kind: "songs", preview: preview(0) });
-  slides.push({ kind: "hour", preview: preview(3) }, { kind: "share", preview: preview(0) });
-  return slides;
-}
-
-function artistTrack(summary: WrappedRecap) {
-  const name = summary.topArtists[0]?.name.toLowerCase();
-  return summary.topSongs.find((song) => song.preview && song.artist.toLowerCase() === name);
+  const include = (condition: unknown, slide: Slide) => (condition ? [slide] : []);
+  return [
+    { kind: "opening", preview: preview(4) },
+    { kind: "minutes", preview: preview(3) },
+    { kind: "variety", preview: null },
+    ...include(summary.topGenres.length, { kind: "genre", preview: null }),
+    ...include(summary.topArtists[0], {
+      kind: "artist",
+      preview: artistTrack(summary)?.preview ?? null,
+    }),
+    ...include(summary.topArtists.length >= 3, { kind: "artists", preview: null }),
+    ...include(summary.topSongs[0], {
+      kind: "song",
+      preview: summary.topSongs[0]?.preview ?? null,
+    }),
+    ...include(summary.topSongs.length >= 3, { kind: "songs", preview: preview(1) }),
+    ...include(summary.topAlbums[0], {
+      kind: "album",
+      preview: albumTrack(summary)?.preview ?? null,
+    }),
+    ...include(summary.months.filter((month) => month.plays).length >= 2, {
+      kind: "months",
+      preview: null,
+    }),
+    ...include(summary.busiestDay, { kind: "day", preview: null }),
+    ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak", preview: null }),
+    { kind: "hour", preview: preview(2) },
+    { kind: "share", preview: preview(0) },
+  ] satisfies Slide[];
 }
 
 function Fit({
@@ -222,6 +277,65 @@ function Minutes({ summary }: { summary: WrappedRecap }) {
   );
 }
 
+function NowPlaying({ title }: { title: string }) {
+  return (
+    <p className="wrapped-now">
+      <span className="wrapped-eq" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      Playing {title}
+    </p>
+  );
+}
+
+function Variety({ summary }: { summary: WrappedRecap }) {
+  const rows = [
+    { value: summary.uniqueArtists, word: "artist", size: 46 },
+    { value: summary.uniqueSongs, word: "song", size: 34 },
+    { value: summary.uniqueAlbums, word: "album", size: 26 },
+  ].filter((row) => row.value > 0);
+  return (
+    <div className="wrapped-pad">
+      {rows.map((row) => (
+        <Fragment key={row.word}>
+          <Fit className="wrapped-variety" max={row.size}>
+            {row.value.toLocaleString()}
+          </Fit>
+          <p className="wrapped-variety-label">{plural(row.value, row.word)}</p>
+        </Fragment>
+      ))}
+      <p className="wrapped-body">Spread across {count(summary.activeDays, "day")} of listening.</p>
+    </div>
+  );
+}
+
+function Genre({ summary }: { summary: WrappedRecap }) {
+  const [top] = summary.topGenres;
+  if (!top) return null;
+  return (
+    <div className="wrapped-pad">
+      <Fit className="wrapped-headline" max={40} lines={2}>
+        {sentenceCase(top.name)}
+      </Fit>
+      <p className="wrapped-word wrapped-word--small">was your sound.</p>
+      <p className="wrapped-body">
+        It ran through {percent(top.plays, summary.totalPlays)} of your plays.
+      </p>
+      <ol className="wrapped-genres">
+        {summary.topGenres.map((genre) => (
+          <li key={genre.name}>
+            <span className="wrapped-genre-name">{sentenceCase(genre.name)}</span>
+            <span className="wrapped-genre-share">{percent(genre.plays, summary.totalPlays)}</span>
+            <i style={{ width: `${(genre.plays / top.plays) * 100}%` }} />
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
   const artist = summary.topArtists[0];
   const song = artistTrack(summary);
@@ -236,16 +350,178 @@ function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean 
           {artist.name}
         </Fit>
         <p className="wrapped-body">Your top artist. {count(artist.plays, "play")}.</p>
-        {song && playing && (
-          <p className="wrapped-now">
-            <span className="wrapped-eq" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            Playing {song.name}
-          </p>
-        )}
+        {song && playing && <NowPlaying title={song.name} />}
+      </div>
+    </>
+  );
+}
+
+function Artists({ summary }: { summary: WrappedRecap }) {
+  return (
+    <div className="wrapped-pad">
+      <h2 className="sr-only">Your top artists</h2>
+      <ol className="wrapped-artists">
+        {summary.topArtists.map((artist, index) => (
+          <li key={artist.key}>
+            {artist.artwork ? (
+              <img src={wrappedImageUrl(artist.artwork)} alt="" />
+            ) : (
+              <span className="wrapped-artists-blank" />
+            )}
+            <span className="wrapped-artists-rank">{index + 1}</span>
+            <span className="wrapped-artists-name">{artist.name}</span>
+            <span className="wrapped-artists-plays">{count(artist.plays, "play")}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Song({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
+  const song = summary.topSongs[0];
+  if (!song) return null;
+  const details = [
+    song.artist,
+    `${count(song.plays, "play")}${song.minutes ? `, about ${count(song.minutes, "minute")}` : ""}`,
+    `First played this year on ${new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric", timeZone: summary.timeZone }).format(song.firstPlayedAt)}`,
+  ];
+  return (
+    <>
+      {song.artwork && <img className="wrapped-cover" src={wrappedImageUrl(song.artwork)} alt="" />}
+      <div className="wrapped-pad wrapped-bottom">
+        <p className="wrapped-kicker">Your top song</p>
+        <Fit className="wrapped-headline wrapped-headline--tight" max={40} lines={2}>
+          {song.name}
+        </Fit>
+        <p className="wrapped-body">{details.join(". ")}.</p>
+        {playing && <NowPlaying title={song.name} />}
+      </div>
+    </>
+  );
+}
+
+function Album({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
+  const album = summary.topAlbums[0];
+  const song = albumTrack(summary);
+  if (!album) return null;
+  return (
+    <>
+      {album.artwork && (
+        <img className="wrapped-album" src={wrappedImageUrl(album.artwork)} alt="" />
+      )}
+      <div className="wrapped-pad wrapped-bottom">
+        <p className="wrapped-kicker">Your top album</p>
+        <Fit className="wrapped-album-name" max={24} lines={2}>
+          {withoutEdition(album.name)}
+        </Fit>
+        <p className="wrapped-body">
+          {album.artist}. {count(album.plays, "play")}
+          {album.songs > 1 ? ` across ${count(album.songs, "song")}` : ""}.
+        </p>
+        {song && playing && <NowPlaying title={song.name} />}
+      </div>
+    </>
+  );
+}
+
+function Months({ summary }: { summary: WrappedRecap }) {
+  const peak = summary.months.reduce((top, month) => (month.plays > top.plays ? month : top));
+  const months = Array.from(
+    { length: 12 },
+    (_, index) =>
+      summary.months[index] ?? {
+        month: `${summary.year}-${String(index + 1).padStart(2, "0")}`,
+        plays: 0,
+        topArtist: null,
+      },
+  );
+  return (
+    <>
+      <div className="wrapped-pad">
+        <Fit className="wrapped-headline" max={40}>
+          {dayLabel(`${peak.month}-01`, { month: "long" })}
+        </Fit>
+        <p className="wrapped-word wrapped-word--small">was your loudest month.</p>
+        <p className="wrapped-body">
+          {count(peak.plays, "play")}
+          {peak.topArtist ? `, mostly ${peak.topArtist.name}` : ""}.
+        </p>
+      </div>
+      <div className="wrapped-months" aria-hidden="true">
+        {months.map((month) => (
+          <div
+            key={month.month}
+            className={month === peak ? "wrapped-month wrapped-peak" : "wrapped-month"}
+          >
+            <i
+              style={{
+                height: month.plays ? `${Math.max(2, (month.plays / peak.plays) * 100)}%` : 0,
+              }}
+            />
+            <span>{dayLabel(`${month.month}-01`, { month: "narrow" })}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Day({ summary }: { summary: WrappedRecap }) {
+  const day = summary.busiestDay;
+  if (!day) return null;
+  return (
+    <div className="wrapped-pad">
+      <Fit className="wrapped-day-month" max={31}>
+        {dayLabel(day.date, { month: "long" })}
+      </Fit>
+      <p className="wrapped-day-number">{dayLabel(day.date, { day: "numeric" })}</p>
+      <p className="wrapped-body">
+        {count(day.plays, "play")} in one day.
+        {day.topSong && day.topSong.plays > 1
+          ? ` Most of all, ${day.topSong.name}, ${count(day.topSong.plays, "time")}.`
+          : ""}
+      </p>
+    </div>
+  );
+}
+
+function Streak({ summary }: { summary: WrappedRecap }) {
+  const streak = summary.longestStreak;
+  if (!streak) return null;
+  const first = Date.UTC(summary.year, 0, 1);
+  const offset = (date: string) => (Date.parse(date) - first) / DAY_MS;
+  const [start, end] = [offset(streak.start), offset(streak.end)];
+  const date = (value: string) => dayLabel(value, { month: "long", day: "numeric" });
+  return (
+    <>
+      <div className="wrapped-pad">
+        <p className="wrapped-streak">{streak.days}</p>
+        <p className="wrapped-word wrapped-word--small">days in a row.</p>
+        <p className="wrapped-body">
+          {date(streak.start)} to {date(streak.end)}. Music on {count(summary.activeDays, "day")}{" "}
+          this year.
+        </p>
+      </div>
+      <div className="wrapped-calendar" aria-hidden="true">
+        {Array.from({ length: 12 }, (_, month) => (
+          <div key={month}>
+            {Array.from({ length: 31 }, (_, day) => {
+              const time = Date.UTC(summary.year, month, day + 1);
+              const index = (time - first) / DAY_MS;
+              const exists =
+                new Date(time).getUTCMonth() === month && index < summary.calendar.length;
+              const state = !exists
+                ? "wrapped-calendar-none"
+                : index >= start && index <= end
+                  ? "wrapped-calendar-streak"
+                  : summary.calendar[index]
+                    ? "wrapped-calendar-on"
+                    : undefined;
+              return <i key={day} className={state} />;
+            })}
+          </div>
+        ))}
       </div>
     </>
   );
@@ -334,17 +610,20 @@ function Story({
   const nowPlaying = slides.slice(0, index + 1).findLast((entry) => entry.preview)?.preview ?? null;
   const audio = usePreviewAudio(nowPlaying, muted);
   const hasAudio = slides.some((entry) => entry.preview);
+  const playing = audio.playing && !muted && slide.preview !== null && nowPlaying === slide.preview;
   const last = index === slides.length - 1;
 
   useEffect(() => {
     let active = true;
+    const rows = [...summary.topArtists, ...summary.topSongs.slice(0, 5), ...summary.topAlbums];
     const text = [
-      ...summary.topArtists.map((artist) => artist.name),
-      ...summary.topSongs.slice(0, 5).flatMap((song) => [song.name, song.artist]),
+      ...rows.flatMap((row) => [row.name, row.artist]),
+      ...summary.topGenres.map((genre) => genre.name),
+      summary.busiestDay?.topSong?.name ?? "",
       username,
     ].join("");
     loadWrappedFonts(`${text}0123456789,.%`).finally(() => active && setFontsReady(true));
-    for (const url of [...wrappedCovers(summary), summary.topArtists[0]?.artwork ?? ""])
+    for (const url of new Set([...wrappedCovers(summary), ...rows.map((row) => row.artwork)]))
       if (url) new Image().src = wrappedImageUrl(url);
     return () => {
       active = false;
@@ -411,13 +690,16 @@ function Story({
           <div key={slide.kind} className={`wrapped-slide wrapped-slide--${slide.kind}`}>
             {slide.kind === "opening" && <Opening summary={summary} username={username} />}
             {slide.kind === "minutes" && <Minutes summary={summary} />}
-            {slide.kind === "artist" && (
-              <Artist
-                summary={summary}
-                playing={audio.playing && !muted && nowPlaying === slide.preview}
-              />
-            )}
+            {slide.kind === "variety" && <Variety summary={summary} />}
+            {slide.kind === "genre" && <Genre summary={summary} />}
+            {slide.kind === "artist" && <Artist summary={summary} playing={playing} />}
+            {slide.kind === "artists" && <Artists summary={summary} />}
+            {slide.kind === "song" && <Song summary={summary} playing={playing} />}
             {slide.kind === "songs" && <Songs summary={summary} />}
+            {slide.kind === "album" && <Album summary={summary} playing={playing} />}
+            {slide.kind === "months" && <Months summary={summary} />}
+            {slide.kind === "day" && <Day summary={summary} />}
+            {slide.kind === "streak" && <Streak summary={summary} />}
             {slide.kind === "hour" && <Hour summary={summary} />}
             {slide.kind === "share" && (
               <ShareCard image={image} alt={`${username}'s ${summary.year} in music`} />

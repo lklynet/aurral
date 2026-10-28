@@ -573,7 +573,15 @@ export async function buildWrappedSummary(userId: number, period: Period) {
   const artistSong = summary.topSongs.find(
     (song) => wrappedKey(song.artist) === summary.topArtists[0]?.key,
   );
-  if (artistSong && !featured.includes(artistSong)) featured.push(artistSong);
+  const album = summary.topAlbums[0];
+  const albumSong =
+    album &&
+    summary.topSongs.find(
+      (song) =>
+        song.album && `${wrappedKey(song.artist)}\u0000${wrappedKey(song.album)}` === album.key,
+    );
+  for (const song of [artistSong, albumSong])
+    if (song && !featured.includes(song)) featured.push(song);
   await Promise.all([
     ...[...summary.topArtists, ...featured, ...summary.topAlbums].map(async (row) => {
       if (row.artwork) row.color = await artworkColor(row.artwork).catch(() => null);
