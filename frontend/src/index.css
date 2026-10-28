@@ -2023,6 +2023,14 @@ textarea {
   flex-shrink: 0;
 }
 
+.site-logo--pumpkin {
+  scale: 1.4;
+}
+
+.sidebar-logo.site-logo--pumpkin {
+  margin-inline: 0.3rem;
+}
+
 .sidebar-title {
   color: var(--aurral-text);
   font-size: 1rem;

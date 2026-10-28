@@ -5,7 +5,7 @@
 <radialGradient id="bk" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#ea580c"/><stop offset="1" stop-color="#7c2d12"/></radialGradient>
 <linearGradient id="st" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#84cc16"/><stop offset="1" stop-color="#3f6212"/></linearGradient>
 <radialGradient id="gl" gradientUnits="userSpaceOnUse" cx="330" cy="250" r="400"><stop offset="0" stop-color="#fefce8"/><stop offset=".45" stop-color="#fde047"/><stop offset="1" stop-color="#f59e0b"/></radialGradient>
-<clipPath id="cut"><use href="#l" transform="translate(224 352) scale(.85)"/></clipPath>
+<clipPath id="cut"><use href="#l" transform="translate(175.2 315.5) scale(1)"/></clipPath>
 <filter id="blur" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="22"/></filter>
 </defs>
 <path d="M462 236C468 186 462 146 440 112L488 92C514 136 526 186 530 236Z" fill="url(#st)"/>
@@ -17,10 +17,10 @@
 <ellipse cx="600" cy="520" rx="225" ry="310" fill="url(#fr)"/>
 <ellipse cx="500" cy="515" rx="205" ry="322" fill="url(#fr)"/>
 </g>
-<use href="#l" transform="translate(224 352) scale(.85)" fill="#fde047" opacity=".55" filter="url(#blur)"/>
-<use href="#l" transform="translate(224 352) scale(.85)" fill="none" stroke="#7c2d12" stroke-width="10"/>
+<use href="#l" transform="translate(175.2 315.5) scale(1)" fill="#fde047" opacity=".55" filter="url(#blur)"/>
+<use href="#l" transform="translate(175.2 315.5) scale(1)" fill="none" stroke="#7c2d12" stroke-width="10"/>
 <g clip-path="url(#cut)">
 <rect width="1000" height="1000" fill="#7c2d12"/>
-<use href="#l" transform="translate(216 366) scale(.85)" fill="url(#gl)"/>
+<use href="#l" transform="translate(167.2 329.5) scale(1)" fill="url(#gl)"/>
 </g>
 </svg>

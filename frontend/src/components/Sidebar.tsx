@@ -56,7 +56,7 @@ type SidebarNavItem = {
 function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
-  const logoSrc = useSiteLogo();
+  const logo = useSiteLogo();
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
     getSidebarStageBackdropEnabled(user?.id),
   );
@@ -383,7 +383,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
       {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
       <div className="sidebar-logo-row">
         <RouteLink to="/" className="sidebar-logo-link">
-          <img src={logoSrc} alt="Aurral logo" className="sidebar-logo" />
+          <img src={logo.src} alt="Aurral logo" className={`sidebar-logo${logo.className}`} />
           {!isIcons && <span className="sidebar-title">Aurral</span>}
         </RouteLink>
       </div>

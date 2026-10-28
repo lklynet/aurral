@@ -32,7 +32,7 @@ const consumeSsoParams = () => {
 
 const SsoComplete = () => {
   useDocumentTitle("Signing in");
-  const logoSrc = useSiteLogo();
+  const logo = useSiteLogo();
   const navigate = useNavigate();
   const { refreshAuth } = useAuth();
   const [error, setError] = useState("");
@@ -90,7 +90,7 @@ const SsoComplete = () => {
       <main className="login-page sso-complete-page">
         <div className="login-card">
           <div className="login-header">
-            <img src={logoSrc} alt="Aurral" className="login-logo" />
+            <img src={logo.src} alt="Aurral" className={`login-logo${logo.className}`} />
             <h1 className="login-title">Sign-in failed</h1>
             <p className="login-subtitle login-subtitle--error" role="alert">
               {error}
@@ -108,7 +108,7 @@ const SsoComplete = () => {
     <main className="login-page sso-complete-page">
       <div className="login-card sso-complete-card">
         <div className="login-header">
-          <img src={logoSrc} alt="Aurral" className="login-logo" />
+          <img src={logo.src} alt="Aurral" className={`login-logo${logo.className}`} />
           <h1 className="login-title">Signing you in</h1>
           <p className="login-subtitle" role="status" aria-live="polite">
             Signing in…

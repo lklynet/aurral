@@ -19,7 +19,7 @@ const buildApiUrl = (path: string) => {
 
 const Login = () => {
   useDocumentTitle("Sign in");
-  const logoSrc = useSiteLogo();
+  const logo = useSiteLogo();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -129,7 +129,7 @@ const Login = () => {
     <main className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <img src={logoSrc} alt="Aurral" className="login-logo" />
+          <img src={logo.src} alt="Aurral" className={`login-logo${logo.className}`} />
           <h1 className="login-title">Sign in</h1>
         </div>
 

@@ -22,7 +22,7 @@ import {
 import { ChevronRight, ChevronLeft } from "../components/icons";
 function Onboarding() {
   useDocumentTitle("Setup");
-  const logoSrc = useSiteLogo();
+  const logo = useSiteLogo();
   const [step, setStep] = useState(0);
   const [authUser, setAuthUser] = useState("admin");
   const [authPassword, setAuthPassword] = useState("");
@@ -222,10 +222,10 @@ function Onboarding() {
           className="onboarding-card"
         >
           <img
-            src={logoSrc}
+            src={logo.src}
             alt="Aurral"
             aria-hidden={step > 0}
-            className={`onboarding-brand-mark${animateStepHeight ? " onboarding-brand-mark--animate" : ""}`}
+            className={`onboarding-brand-mark${logo.className}${animateStepHeight ? " onboarding-brand-mark--animate" : ""}`}
             style={logoFlyout}
           />
           <div className="onboarding-progress">
