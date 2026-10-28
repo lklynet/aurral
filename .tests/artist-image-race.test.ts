@@ -305,59 +305,17 @@ test("clearing an override starts a fresh lookup without changing the override r
   assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
 });
 
-test("an old sibling search cannot replace a newer explicit override", async () => {
-  const mbid = artistId(10);
-  const replacement = artistId(110);
-  const sibling = artistId(210);
-  const searchGate = gate();
-  artist(mbid);
-  artist(replacement, { images: [image(newImage)] });
-  artist(sibling, { images: [image(oldImage)] });
-  fixtures.set(
-    "metadata.invalid/search/artist",
-    async (url: { searchParams: { get: (arg0: string) => string } }) => {
-      if (url.searchParams.get("query") !== `Artist ${mbid}`) return [];
-      await searchGate.wait();
-      return [{ id: sibling, artistname: `Artist ${mbid}`, images: [image(oldImage)] }];
-    },
-  );
-  const oldLookup = getArtistImage(mbid);
-  await searchGate.started;
-  let latest:
-    | Promise<{
-        url: string | null;
-        images: CachedArtistImage[];
-        notFound?: boolean;
-        transientError?: boolean;
-      }>
-    | undefined;
-  try {
-    await putOverride(mbid, { musicbrainzId: replacement });
-    latest = getArtistImage(mbid);
-    assert.equal((await whileOldIsBlocked(latest)).url, newImage);
-  } finally {
-    searchGate.release();
-    await Promise.allSettled([oldLookup, latest]);
-    fixtures.delete("metadata.invalid/search/artist");
-  }
-  assert.equal((await oldLookup).url, oldImage);
-  assert.equal(dbOps.getArtistOverride(mbid)?.musicbrainzId, replacement);
-  assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
-});
-
-test("the existing sibling fallback still saves its override and image without a concurrent edit", async () => {
+test("an artist without an image never takes a namesake's image or page", async () => {
   const mbid = artistId(11);
-  const sibling = artistId(211);
+  const namesake = artistId(211);
   artist(mbid);
-  artist(sibling, { images: [image(oldImage)] });
+  artist(namesake, { images: [image(oldImage)] });
   fixtures.set("metadata.invalid/search/artist", async () => [
-    { id: sibling, artistname: `Artist ${mbid}`, images: [image(oldImage)] },
+    { id: namesake, artistname: `Artist ${mbid}`, images: [image(oldImage)] },
   ]);
   try {
-    assert.equal((await getArtistImage(mbid)).url, oldImage);
-    assert.equal(dbOps.getArtistOverride(mbid)?.musicbrainzId, sibling);
-    assert.equal(dbOps.getArtistOverride(mbid)?.deezerArtistId, null);
-    assert.equal(dbOps.getImage(mbid)?.imageUrl, oldImage);
+    assert.equal((await getArtistImage(mbid)).url, null);
+    assert.equal(dbOps.getArtistOverride(mbid), null);
   } finally {
     fixtures.delete("metadata.invalid/search/artist");
   }

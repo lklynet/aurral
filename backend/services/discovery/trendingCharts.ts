@@ -1,6 +1,6 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { deezerPreviewPath } from "../apiClients/deezer.ts";
-import { musicbrainzResolveArtistMbidByName } from "../apiClients/musicbrainz.ts";
+import { guessArtistMbid } from "../artistMatch.ts";
 import { EDITORIAL_GENRES, deezerRequest } from "../importLists/deezerPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { findLibraryPlaylist } from "./editorialPlaylists.ts";
@@ -207,7 +207,7 @@ async function fetchArtists() {
       const name = text(artist.name);
       const [details, mbid] = await Promise.all([
         deezerRequest<DeezerArtistPayload>(`/artist/${key}`).catch(() => null),
-        musicbrainzResolveArtistMbidByName(name).catch(() => null),
+        guessArtistMbid(name),
       ]);
       return {
         key,

@@ -279,7 +279,9 @@ Download jobs, playlists, favorites, and lyrics files follow each file, and stay
 
 ## Artists without a MusicBrainz ID
 
-Aurral matches Lidarr files to artists by MusicBrainz ID. When a file has no MusicBrainz artist tag, Aurral looks up the artist name on MusicBrainz after each scan. It links the artist only when exactly one MusicBrainz artist has that name or alias. A name that several artists share stays unlinked.
+Aurral matches Lidarr files to artists by MusicBrainz ID. When a file has no MusicBrainz artist tag, Aurral looks up the artist name on MusicBrainz after each scan. It links the artist when exactly one MusicBrainz artist has that name or alias. When several artists share the name, as with Nirvana or Genesis, it links the one whose discography holds the most of your albums, ignoring edition labels such as "Remastered". If no artist holds more of your albums than the others, the artist stays unlinked.
+
+Once an artist is linked, each of its albums without MusicBrainz tags takes the MusicBrainz album with its title that has at least half of its songs. The album then lists every track like a tagged album, and the tracks you do not have show as missing. Aurral does not download them unless you ask. Aurral looks up each album once, and again when its songs change or you run a **Full scan**.
 
 Artists and albums named in another script, such as Japanese, Korean, or Cyrillic, stay apart without MusicBrainz tags. Earlier versions put such artists under one artist and could merge their albums. Run a quick or full scan to split them. Favorites, play counts, and monitoring carry over to the artists, albums, and tracks that split off.
 

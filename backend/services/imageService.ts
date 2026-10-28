@@ -5,11 +5,7 @@ import { isOwnKey } from "../../lib/ownKey.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
-import {
-  getArtistByMbid,
-  listArtistAlbums,
-  searchArtists,
-} from "./providers/brainzmashProvider.ts";
+import { getArtistByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
 import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
 import {
@@ -485,37 +481,6 @@ export const getArtistImage = async (
     } catch (e) {
       console.warn(`Failed to fetch image for ${mbid}:`, asAppError(e)?.message);
       return { url: null, images: [], transientError: true };
-    }
-
-    const fallbackArtistName = metadataArtist?.name;
-    if (fallbackArtistName) {
-      try {
-        const searchResults = await searchArtists(fallbackArtistName, { limit: 20 });
-        const siblings = searchResults.items.filter(
-          (a) => a.id !== resolvedMbid && a.images?.length > 0 && a.name === fallbackArtistName,
-        );
-        if (siblings.length > 0) {
-          siblings.sort((a, b) => b.images.length - a.images.length);
-          const sibling = siblings[0];
-          if (isCurrentRequest()) {
-            dbOps.setArtistOverride(mbid, {
-              musicbrainzId: sibling.id,
-              deezerArtistId: override?.deezerArtistId || null,
-            });
-          }
-          const siblingResult = await getArtistImage(sibling.id, {
-            forceRefresh: false,
-            artistName: null,
-          });
-          if (siblingResult?.url) {
-            if (isCurrentRequest()) {
-              negativeImageCache.delete(mbid);
-              dbOps.setImage(mbid, siblingResult.url, siblingResult.images);
-            }
-            return siblingResult;
-          }
-        }
-      } catch {}
     }
 
     if (isCurrentRequest()) {

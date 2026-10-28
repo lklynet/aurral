@@ -807,6 +807,15 @@ db.transaction(() => {
   ).run();
 }).immediate();
 
+const artistGuessesMigrationKey = "migration:name-guesses-v2";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(artistGuessesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.prepare("DELETE FROM musicbrainz_artist_mbid_cache").run();
+}).immediate();
+
 const albumCreditsMigrationKey = "migration:album-credits-v1";
 db.transaction(() => {
   const claimed = db

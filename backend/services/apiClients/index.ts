@@ -17,9 +17,6 @@ export {
   getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistNameByMbid,
   musicbrainzGetArtistIdentityByMbid,
-  musicbrainzGetCachedArtistMbidByName,
-  musicbrainzResolveArtistMbidByName,
-  musicbrainzResolveLibraryArtistMbid,
   musicbrainzSearchArtistsByTag,
 } from "./musicbrainz.ts";
 

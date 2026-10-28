@@ -12,15 +12,24 @@ import {
   chooseLibraryAlbumRelease,
   getLibraryAlbumsToList,
   getUnresolvedLibraryArtists,
+  getUntaggedLibraryAlbums,
   isLibraryAlbumReleaseGroup,
+  noteLibraryAlbumLookup,
+  assignLibraryAlbumReleaseGroup,
   removeLibraryMediaFiles,
   removeMissingLibraryMediaFiles,
   reconcileLibraryAlbums,
   removeLidarrLibrary,
   storeLibraryAlbumTrackList,
   upsertLibraryArtist,
+  type UntaggedLibraryAlbum,
 } from "./libraryMediaStore.ts";
-import { getAlbumByMbid, selectAlbumRelease } from "./providers/brainzmashProvider.ts";
+import {
+  getAlbumByMbid,
+  resolveAlbumByArtistAndTitle,
+  selectAlbumRelease,
+} from "./providers/brainzmashProvider.ts";
+import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
@@ -28,10 +37,8 @@ import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.t
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.ts";
 import { rebuildLibraryGenreStats } from "./libraryQueryService.ts";
 import type { LibraryScanRequest } from "./libraryScanRequest.ts";
-import {
-  musicbrainzGetArtistNameByMbid,
-  musicbrainzResolveLibraryArtistMbid,
-} from "./apiClients/index.ts";
+import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.ts";
+import { matchLibraryArtist } from "./artistMatch.ts";
 import { logger } from "./logger.ts";
 import {
   activeLidarrRoots,
@@ -192,7 +199,7 @@ async function resolveUnmatchedLibraryArtists() {
   for (const artist of getUnresolvedLibraryArtists()) {
     let mbid;
     try {
-      mbid = await musicbrainzResolveLibraryArtistMbid(artist.name);
+      mbid = await matchLibraryArtist(artist.name, artist.albums);
     } catch (error) {
       const failure = asAppError(error);
       logger.warn("library", "Stopped matching unmatched artists; metadata provider unavailable", {
@@ -201,6 +208,40 @@ async function resolveUnmatchedLibraryArtists() {
       break;
     }
     if (mbid && assignLibraryArtistMbid(artist.id, mbid)) changed = true;
+  }
+  return changed;
+}
+
+function holdsMostSongs(album: UntaggedLibraryAlbum, group: NormalizedAlbum) {
+  const held = album.files.filter((file) =>
+    isLibraryAlbumReleaseGroup({ artistMbid: album.artistMbid, files: [file] }, group),
+  );
+  return held.length * 2 >= album.files.length;
+}
+
+// An untagged album of a linked artist takes the release group of its title
+// that holds at least half of its songs, so it lists its tracks like a tagged
+// album.
+async function matchUntaggedLibraryAlbums(retry: boolean) {
+  let changed = false;
+  for (const album of getUntaggedLibraryAlbums({ retry })) {
+    let releaseGroup;
+    try {
+      releaseGroup = await resolveAlbumByArtistAndTitle({
+        artistName: album.artistName,
+        artistMbid: album.artistMbid,
+        albumTitle: album.title,
+        releaseYear: album.releaseDate,
+        holds: async (id) => holdsMostSongs(album, await getAlbumByMbid(id)),
+      });
+    } catch (error) {
+      logger.warn("library", "Stopped matching untagged albums; metadata provider unavailable", {
+        message: asAppError(error)?.message || String(error),
+      });
+      break;
+    }
+    if (!releaseGroup) noteLibraryAlbumLookup(album.id, album.basis);
+    else if (assignLibraryAlbumReleaseGroup(album.id, releaseGroup) != null) changed = true;
   }
   return changed;
 }
@@ -330,6 +371,7 @@ export async function scanConfiguredLibrary({
   let readOnly: FolderScan = skippedScan();
   let scanFailed = false;
   let artistsResolved = false;
+  let albumsMatched = false;
   let tracksListed = false;
   let lidarrRemoved = false;
   const lidarrActive = isLidarrLibraryActive(lidarrClient);
@@ -420,6 +462,7 @@ export async function scanConfiguredLibrary({
       if (lidarrRemoved) reconcileLibraryAlbums();
     }
     artistsResolved = await resolveUnmatchedLibraryArtists();
+    albumsMatched = await matchUntaggedLibraryAlbums(force);
     tracksListed = await completeLibraryTrackLists();
     if (tracksListed) reconcileLibraryAlbums();
     if (!targeted) {
@@ -436,6 +479,7 @@ export async function scanConfiguredLibrary({
     if (
       scanFailed ||
       artistsResolved ||
+      albumsMatched ||
       tracksListed ||
       lidarrRemoved ||
       local?.changed ||

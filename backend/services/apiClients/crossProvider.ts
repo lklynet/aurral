@@ -1,6 +1,6 @@
 import { dbOps } from "../../db/helpers/index.ts";
 import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.ts";
-import { musicbrainzResolveArtistMbidByName } from "./musicbrainz.ts";
+import { guessArtistMbid } from "../artistMatch.ts";
 
 function normalizeArtistAlbumKey(
   artistName: string | null | undefined,
@@ -60,7 +60,7 @@ export async function resolveArtistAndAlbumMbids({
   const artist = String(artistName || "").trim();
   const album = String(albumName || "").trim();
   const [artistMbid, albumMbid] = await Promise.all([
-    musicbrainzResolveArtistMbidByName(artist),
+    guessArtistMbid(artist, { album }),
     album ? resolveDeezerAlbumToMbid(artist, album, deezerAlbumId) : null,
   ]);
   return { artistMbid: artistMbid || null, albumMbid: albumMbid || null };

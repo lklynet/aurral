@@ -5,10 +5,9 @@ import {
   deezerGetRelatedArtists,
   getDeezerArtist,
   listenbrainzRequest,
-  musicbrainzGetCachedArtistMbidByName,
-  musicbrainzResolveArtistMbidByName,
   musicbrainzSearchArtistsByTag,
 } from "../apiClients/index.ts";
+import { guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getArtistByMbid } from "../providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
@@ -69,10 +68,7 @@ const resolveArtistMbid = async (artist: MusicArtistRef) => {
   if (mbid) return mbid;
   const name = text(artist?.name);
   if (!name) return null;
-  return (
-    musicbrainzGetCachedArtistMbidByName(name) ||
-    (await musicbrainzResolveArtistMbidByName(name).catch(() => null))
-  );
+  return guessArtistMbid(name);
 };
 
 const toTagList = (tags: ListenbrainzTag[] | null | undefined) => {
@@ -134,9 +130,7 @@ const getDeezerSimilarArtists = async (
     (await getDeezerArtist(text(artist?.name) || text(metadata?.name)))?.id;
   const related = await deezerGetRelatedArtists(deezerId ?? null, { limit }).catch(() => []);
   return mapWithConcurrency(related, RESOLVE_CONCURRENCY, async (entry, index) => ({
-    mbid:
-      musicbrainzGetCachedArtistMbidByName(entry.name) ||
-      (await musicbrainzResolveArtistMbidByName(entry.name).catch(() => null)),
+    mbid: await guessArtistMbid(entry.name),
     name: entry.name,
     match: 1 - index / related.length,
     image: entry.image,

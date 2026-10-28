@@ -10,14 +10,6 @@ type Release = NormalizedRelease & { releaseMbid?: unknown };
 
 type PressingRelease = Partial<Omit<Release, "tracks">> & { tracks?: Track[] };
 
-type ArtistCandidate = {
-  name?: unknown;
-  score?: unknown;
-  type?: unknown;
-  disambiguation?: unknown;
-  images?: unknown[];
-};
-
 type AlbumCandidate = {
   id?: string;
   title?: unknown;
@@ -220,59 +212,10 @@ function bootlegPenalty(item: AlbumCandidate | null | undefined) {
   return statuses.some((status) => String(status || "").toLowerCase() === "bootleg") ? 1 : 0;
 }
 
-function isProperNameExtension(query: unknown, name: unknown) {
-  const normalizedQuery = normalizeText(query);
-  const normalizedName = normalizeText(name);
-  return (
-    Boolean(normalizedQuery) &&
-    Boolean(normalizedName) &&
-    normalizedName !== normalizedQuery &&
-    normalizedName.startsWith(`${normalizedQuery} `)
-  );
-}
-
 export function artistNamesMatch(left: unknown, right: unknown) {
   const a = normalizeText(left);
   const b = normalizeText(right);
   return Boolean(a) && a === b;
-}
-
-export function rankArtistCandidates<T extends ArtistCandidate>(
-  query: unknown,
-  candidates: T[] = [],
-): T[] {
-  const normalizedQuery = normalizeText(query);
-  return [...candidates].sort((left, right) => {
-    const leftName = String(left?.name || "").trim();
-    const rightName = String(right?.name || "").trim();
-    const leftExact = normalizeText(leftName) === normalizedQuery ? 1 : 0;
-    const rightExact = normalizeText(rightName) === normalizedQuery ? 1 : 0;
-    if (leftExact !== rightExact) return rightExact - leftExact;
-
-    const leftExtension = isProperNameExtension(normalizedQuery, leftName) ? 1 : 0;
-    const rightExtension = isProperNameExtension(normalizedQuery, rightName) ? 1 : 0;
-    if (leftExtension !== rightExtension) return leftExtension - rightExtension;
-
-    const leftScore = Number(left?.score || 0);
-    const rightScore = Number(right?.score || 0);
-    if (leftScore !== rightScore) return rightScore - leftScore;
-
-    const leftType = left?.type ? 1 : 0;
-    const rightType = right?.type ? 1 : 0;
-    if (leftType !== rightType) return rightType - leftType;
-
-    const leftDisambiguation = left?.disambiguation ? 1 : 0;
-    const rightDisambiguation = right?.disambiguation ? 1 : 0;
-    if (leftDisambiguation !== rightDisambiguation) {
-      return rightDisambiguation - leftDisambiguation;
-    }
-
-    const leftImageCount = Array.isArray(left?.images) ? left.images.length : 0;
-    const rightImageCount = Array.isArray(right?.images) ? right.images.length : 0;
-    if (leftImageCount !== rightImageCount) return rightImageCount - leftImageCount;
-
-    return leftName.localeCompare(rightName);
-  });
 }
 
 export function rankAlbumCandidates<T extends AlbumCandidate>(

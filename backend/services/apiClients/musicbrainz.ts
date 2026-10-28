@@ -1,11 +1,8 @@
 import createCache from "./simpleCache.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import {
   getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
   listArtistAlbums as listMetadataArtistAlbums,
-  resolveArtistByName as resolveMetadataArtistByName,
-  resolveLibraryArtistByName as resolveMetadataLibraryArtistByName,
 } from "../providers/brainzmashProvider.ts";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
 import { musicbrainzGet } from "./musicbrainzHttp.ts";
@@ -354,76 +351,6 @@ export async function musicbrainzGetArtistIdentityByMbid(
   } catch {
     return null;
   }
-}
-
-function normalizeArtistNameKey(artistName: string | null | undefined) {
-  return String(artistName || "")
-    .trim()
-    .toLowerCase();
-}
-
-export function musicbrainzGetCachedArtistMbidByName(artistName: string | null | undefined) {
-  const normalized = normalizeArtistNameKey(artistName);
-  if (!normalized) return null;
-  const cached = dbOps.getMusicbrainzArtistMbidCache(normalized);
-  if (!cached?.updatedAt) return null;
-  const ageMs = Date.now() - cached.updatedAt;
-  const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-  const NEGATIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-  const cacheTtl = cached.mbid ? CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS;
-  if (ageMs < 0 || ageMs >= cacheTtl) return null;
-  return cached.mbid || null;
-}
-
-async function resolveCachedArtistMbid(
-  cacheKey: string,
-  artistName: string,
-  resolve: (artistName: string) => Promise<string | null>,
-  { throwOnError = false }: { throwOnError?: boolean } = {},
-) {
-  const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);
-  const now = Date.now();
-  const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-  const NEGATIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-  if (cached?.updatedAt) {
-    const ageMs = now - cached.updatedAt;
-    const cacheTtl = cached.mbid ? CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS;
-    if (ageMs >= 0 && ageMs < cacheTtl) {
-      return cached.mbid || null;
-    }
-  }
-  try {
-    const resolved = await resolve(artistName);
-    dbOps.setMusicbrainzArtistMbidCache(cacheKey, resolved);
-    return resolved;
-  } catch (e) {
-    if (throwOnError) throw e;
-    if (cached) {
-      return cached.mbid || null;
-    }
-    return null;
-  }
-}
-
-export async function musicbrainzResolveArtistMbidByName(artistName: string | null | undefined) {
-  const rawName = String(artistName || "").trim();
-  if (!rawName) return null;
-  return resolveCachedArtistMbid(
-    normalizeArtistNameKey(rawName),
-    rawName,
-    resolveMetadataArtistByName,
-  );
-}
-
-export async function musicbrainzResolveLibraryArtistMbid(artistName: string | null | undefined) {
-  const rawName = String(artistName || "").trim();
-  if (!rawName) return null;
-  return resolveCachedArtistMbid(
-    `library:${normalizeArtistNameKey(rawName)}`,
-    rawName,
-    resolveMetadataLibraryArtistByName,
-    { throwOnError: true },
-  );
 }
 
 export {

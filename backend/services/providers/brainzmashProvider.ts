@@ -7,7 +7,6 @@ import { APP_NAME, APP_VERSION, DEFAULT_METADATA_BASE_URL } from "../../config/c
 import {
   getNormalizedText,
   rankAlbumCandidates,
-  rankArtistCandidates,
   runningOrder,
   scoreTextMatch,
   withPressingDurations,
@@ -22,7 +21,7 @@ import {
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
 import { selectBestAlbumImage } from "../imageService.ts";
-import { withoutFeaturedArtists } from "../trackMatching/titleText.ts";
+import { coreAlbumTitle, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet } from "../apiClients/musicbrainzHttp.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
@@ -689,7 +688,8 @@ export async function searchArtists(
     limit = 24,
     offset = 0,
     signal,
-  }: { limit?: number; offset?: number; signal?: AbortSignal } = {},
+    throwOnFailure = false,
+  }: { limit?: number; offset?: number; signal?: AbortSignal; throwOnFailure?: boolean } = {},
 ) {
   let items: NormalizedArtist[] = [];
   try {
@@ -705,8 +705,9 @@ export async function searchArtists(
     items = source.map((entry) => ({
       ...toNormalizedArtist(entry),
     }));
-  } catch {
+  } catch (error) {
     signal?.throwIfAborted();
+    if (throwOnFailure) throw error;
   }
   return {
     query,
@@ -861,10 +862,12 @@ function artistNameForms(name: unknown) {
   const parts = value.split(",").map((part) => part.trim());
   const variants =
     parts.length === 2 && parts.every(Boolean) ? [value, `${parts[1]} ${parts[0]}`] : [value];
-  return variants.map((variant) => getNormalizedText(variant).replace(/^the /, "")).filter(Boolean);
+  return variants
+    .map((variant) => getNormalizedText(variant).replace(/^the /, "") || variant.toLowerCase())
+    .filter(Boolean);
 }
 
-const hasArtistName = (name: unknown, artist: ArtistLike) => {
+export const hasArtistName = (name: unknown, artist: ArtistLike) => {
   const forms = new Set(artistNameForms(name));
   return [artist?.name, ...(artist?.aliases || [])].some((candidate) =>
     artistNameForms(candidate).some((form) => forms.has(form)),
@@ -877,46 +880,13 @@ export function isCreditedArtist(credit: string | null | undefined, artist: Arti
   return hasArtistName(credit, artist) || hasArtistName(withoutFeaturedArtists(credit), artist);
 }
 
-// Search also finds artists that share only a word with the name, such as
-// "Andrew Dance" for "Dance Gavin Dance feat. Andrew Wells", so a match must
-// carry the name. A credit with a guest falls back to its lead artist.
-export async function resolveArtistByName(name: string): Promise<string | null> {
-  const result = await searchArtists(name, { limit: 10, offset: 0 });
-  const ranked = rankArtistCandidates(name, result.items);
-  const named = ranked.find((artist) => hasArtistName(name, artist));
-  if (named) return named.id || null;
-  const lead = withoutFeaturedArtists(name);
-  return lead && lead !== String(name || "").trim() ? resolveArtistByName(lead) : null;
-}
-
-export async function resolveLibraryArtistByName(name: string) {
-  const forms = new Set(artistNameForms(name));
-  if (forms.size === 0) return null;
-  const data = await request<ArtistResponse[]>("/search/artist", {
-    query: String(name).trim(),
-    limit: 10,
-  });
-  const matches = new Set(
-    (Array.isArray(data) ? data : [])
-      .map(toNormalizedArtist)
-      .filter(
-        (artist) =>
-          artist.id &&
-          [artist.name, ...artist.aliases].some((candidate) =>
-            artistNameForms(candidate).some((form) => forms.has(form)),
-          ),
-      )
-      .map((artist) => artist.id),
-  );
-  return matches.size === 1 ? [...matches][0] : null;
-}
-
 // A search the provider could not answer throws, so a caller can tell an
 // outage from an album MusicBrainz does not have. A match has the title and
 // credits the artist by ID or by name. The search without the artist finds an
 // artist written another way, such as in another script, and also other
-// artists' albums with the same title. `holds` checks a match further, such
-// as that it lists the song being downloaded.
+// artists' albums with the same title. A title that names an edition, such as
+// "Nevermind (Remastered)", also matches the album without it. `holds` checks
+// a match further, such as that it lists the song being downloaded.
 export async function resolveAlbumByArtistAndTitle({
   artistName = "",
   artistMbid = "",
@@ -939,21 +909,25 @@ export async function resolveAlbumByArtistAndTitle({
     [{ id: album?.artistId }, ...(album?.artists || [])].some(
       (artist) => (artistMbid && artist.id === artistMbid) || isCreditedArtist(artistName, artist),
     );
+  const core = coreAlbumTitle(albumTitle);
+  const titled = (title: string) =>
+    scoreTextMatch(title, albumTitle) >= 85 || scoreTextMatch(coreAlbumTitle(title), core) >= 85;
   const tried = new Set();
-  for (const searchArtist of new Set([artistName, ""])) {
-    const result = await searchAlbums(albumTitle, {
-      artistName: searchArtist,
-      limit: 10,
-      offset: 0,
-      throwOnFailure: true,
-    });
-    const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });
-    for (const candidate of ranked) {
-      if (!candidate?.id || tried.has(candidate.id)) continue;
-      if (scoreTextMatch(candidate.title, albumTitle) < 85) continue;
-      tried.add(candidate.id);
-      if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
-      if (!holds || (await holds(candidate.id))) return candidate.id;
+  for (const searchTitle of new Set([albumTitle, core])) {
+    for (const searchArtist of new Set([artistName, ""])) {
+      const result = await searchAlbums(searchTitle, {
+        artistName: searchArtist,
+        limit: 10,
+        offset: 0,
+        throwOnFailure: true,
+      });
+      const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });
+      for (const candidate of ranked) {
+        if (!candidate?.id || tried.has(candidate.id) || !titled(candidate.title)) continue;
+        tried.add(candidate.id);
+        if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
+        if (!holds || (await holds(candidate.id))) return candidate.id;
+      }
     }
   }
   return null;

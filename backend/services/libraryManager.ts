@@ -103,8 +103,8 @@ import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import {
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistIdentityByMbid,
-  musicbrainzResolveArtistMbidByName,
 } from "./apiClients/index.ts";
+import { guessArtistMbid } from "./artistMatch.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { logger } from "./logger.ts";
 import { runMonitoringRepairSequence } from "./libraryMonitoringRepair.ts";
@@ -1891,7 +1891,7 @@ export class LibraryManager {
     const existingMbid = dbOps.getLidarrArtistMbid(providerId);
     if (existingMbid) return existingMbid;
 
-    const mbid = await musicbrainzResolveArtistMbidByName(artistName);
+    const mbid = await guessArtistMbid(artistName);
     if (!UUID_REGEX.test(String(mbid || ""))) return null;
 
     const identity = await musicbrainzGetArtistIdentityByMbid(mbid);

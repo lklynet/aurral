@@ -1,4 +1,5 @@
-import { lastfmRequest, musicbrainzResolveArtistMbidByName } from "../apiClients/index.ts";
+import { lastfmRequest } from "../apiClients/index.ts";
+import { guessArtistMbid } from "../artistMatch.ts";
 import {
   getArtistByMbid,
   getAlbumByMbid,
@@ -605,7 +606,7 @@ export async function resolveTrackSearchContext(
   }
 
   if (!base.artistMbid) {
-    base.artistMbid = await musicbrainzResolveArtistMbidByName(base.artistName);
+    base.artistMbid = await guessArtistMbid(base.artistName, { album: base.albumName });
   }
 
   if (!base.albumMbid && base.albumName) {

@@ -1,10 +1,6 @@
 import { dbOps, userOps } from "../../db/helpers/index.ts";
-import {
-  lastfmRequest,
-  listenbrainzRequest,
-  musicbrainzGetCachedArtistMbidByName,
-  musicbrainzResolveArtistMbidByName,
-} from "../apiClients/index.ts";
+import { lastfmRequest, listenbrainzRequest } from "../apiClients/index.ts";
+import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
 import { getListenHistoryProfile, hasListenHistoryProfile } from "../listeningHistory.ts";
@@ -164,7 +160,7 @@ const fetchListenHistoryArtists = async (
           ? artist.artist_mbids.find(Boolean)
           : artist.artist_mbid || null;
         return {
-          mbid: mbid || musicbrainzGetCachedArtistMbidByName(artist.artist_name) || null,
+          mbid: mbid || cachedArtistGuess(artist.artist_name) || null,
           artistName: artist.artist_name,
           playcount: parseInt(String(artist.listen_count || 0), 10) || 0,
         };
@@ -197,10 +193,7 @@ const fetchListenHistoryArtists = async (
       const artistName = String(artist?.name || "").trim();
       if (!artistName) return null;
       return {
-        mbid:
-          String(artist.mbid || "").trim() ||
-          musicbrainzGetCachedArtistMbidByName(artistName) ||
-          null,
+        mbid: String(artist.mbid || "").trim() || cachedArtistGuess(artistName) || null,
         artistName,
         playcount: parseInt(artist.playcount || 0, 10) || 0,
       };
@@ -230,9 +223,7 @@ const resolveArtistMbids = (items: DiscoveryRecommendation[]) =>
     getDiscoveryNetworkConcurrency(),
     async (item: DiscoveryRecommendation) => {
       if (item?.id || !item?.name) return;
-      const resolved =
-        musicbrainzGetCachedArtistMbidByName(item.name) ||
-        (await musicbrainzResolveArtistMbidByName(item.name));
+      const resolved = await guessArtistMbid(item.name);
       if (!resolved) return;
       item.id = resolved;
       item.navigateTo = resolved;
