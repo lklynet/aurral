@@ -194,3 +194,75 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
   assert.equal(result.location.city, "Paris");
   assert.equal(result.location.countryCode, "FR");
 });
+
+const ok = (data: unknown) => ({ status: 200, statusText: "OK", headers: {}, data });
+
+test("looks up a postal code in the requester's country when no country is given", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+    if (url.startsWith("https://ipapi.co/")) return ok({ country_code: "DE" });
+    if (url.includes("zippopotam")) {
+      return ok({ places: [{ "place name": "New York", latitude: "40.7", longitude: "-74" }] });
+    }
+    if (url === "https://nominatim.openstreetmap.org/search") {
+      return ok(
+        options.params?.countrycodes === "de"
+          ? [{ address: { city: "Berlin", country_code: "de" }, lat: "52.53", lon: "13.38" }]
+          : [],
+      );
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({ req: { ip: "198.51.100.20" }, zipCode: "10115" });
+
+  assert.equal(result.location.city, "Berlin");
+  assert.equal(result.location.countryCode, "DE");
+});
+
+test("finds a postal code outside the requester's country", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+    if (url.startsWith("https://ipapi.co/")) return ok({ country_code: "DE" });
+    if (url.includes("zippopotam")) {
+      return ok({
+        places: [{ "place name": "Beverly Hills", latitude: "34.09", longitude: "-118.41" }],
+      });
+    }
+    if (url === "https://nominatim.openstreetmap.org/search") return ok([]);
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({ req: { ip: "198.51.100.21" }, zipCode: "90210" });
+
+  assert.equal(result.location.city, "Beverly Hills");
+  assert.equal(result.location.countryCode, "US");
+});
+
+test("searches Ticketmaster by postal code when the location has no coordinates", async (t: import("vite-plus/test").TestContext) => {
+  withTicketmasterKey(t);
+  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+    if (url.startsWith("https://ipapi.co/")) {
+      return ok({ city: "Berlin", postal: "10115", country_code: "DE" });
+    }
+    if (url.includes("ticketmaster.com")) {
+      if (String(options.params?.sort).startsWith("distance") && !options.params?.latlong) {
+        throw new Error('Query param "latlong" is required for sorting by distance');
+      }
+      const events =
+        options.params?.postalCode === "10115"
+          ? [ticketmasterEvent("berlin", "2026-11-03", ["Library Band"])]
+          : [];
+      return ok({ _embedded: { events } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({
+    req: { ip: "198.51.100.22" },
+    libraryArtists: [{ name: "Library Band" }],
+  });
+
+  assert.deepEqual(
+    result.shows.map(({ id }) => id),
+    ["berlin"],
+  );
+});

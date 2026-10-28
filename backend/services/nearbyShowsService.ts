@@ -173,8 +173,7 @@ const buildDateRange = () => {
 };
 
 const getTicketmasterLocationParams = (location: NearbyLocation, radiusMiles: number) => {
-  const latitude = Number(location.latitude);
-  const longitude = Number(location.longitude);
+  const { latitude, longitude } = location;
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
     return {
       latlong: `${latitude},${longitude}`,
@@ -191,7 +190,6 @@ const getTicketmasterLocationParams = (location: NearbyLocation, radiusMiles: nu
       countryCode: location.countryCode || undefined,
       radius: radiusMiles,
       unit: "miles",
-      sort: "distance,asc",
     };
   }
   throw new Error("Unable to determine a search location");
@@ -427,7 +425,7 @@ export const getNearbyShows = async ({
 }): Promise<{ location: NearbyLocation; shows: ReturnType<typeof matchShows> }> => {
   const sanitizedZipCode = sanitizeZipCode(zipCode);
   const sanitizedCountryCode = sanitizeCountryCode(countryCode);
-  const publicIp = sanitizedZipCode ? "" : getPublicRequestIp(req);
+  const publicIp = getPublicRequestIp(req);
   const locationKey = sanitizedZipCode
     ? `${sanitizedCountryCode || "auto"}:${sanitizedZipCode}`
     : `ip:${publicIp || "server"}`;
@@ -439,18 +437,26 @@ export const getNearbyShows = async ({
 
   let location: NearbyLocation;
   if (sanitizedZipCode) {
-    location = (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
-      source: "zip",
-      resolved: false,
-      postalCode: sanitizedZipCode,
-      city: null,
-      region: null,
-      regionCode: null,
-      countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
-      latitude: null,
-      longitude: null,
-      label: sanitizedZipCode,
-    };
+    const localCountryCode = sanitizedCountryCode
+      ? ""
+      : await resolveIpLocation(publicIp).then(
+          (ipLocation) => sanitizeCountryCode(ipLocation.countryCode),
+          () => "",
+        );
+    location = (localCountryCode &&
+      (await resolveZipLocation(sanitizedZipCode, localCountryCode))) ||
+      (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
+        source: "zip",
+        resolved: false,
+        postalCode: sanitizedZipCode,
+        city: null,
+        region: null,
+        regionCode: null,
+        countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
+        latitude: null,
+        longitude: null,
+        label: sanitizedZipCode,
+      };
   } else {
     location = await resolveIpLocation(publicIp);
   }
