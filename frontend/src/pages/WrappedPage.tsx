@@ -38,7 +38,12 @@ import {
   wrappedInk,
   wrappedPalette,
 } from "../utils/wrappedShare";
-import { resolveApiPath } from "../utils/api/core";
+import {
+  wrappedAlbumSong,
+  wrappedArtistSong,
+  wrappedSongSource,
+  wrappedSoundtrack,
+} from "../utils/wrappedSoundtrack.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { RotateCcw, Volume2, VolumeX, X } from "../components/icons.tsx";
 import TooltipButton from "../components/TooltipButton.tsx";
@@ -61,7 +66,6 @@ type Slide = {
     | "streak"
     | "hour"
     | "share";
-  preview: string | null;
 };
 type ShareImage = { file: File; url: string } | "failed" | null;
 
@@ -78,56 +82,24 @@ const percent = (part: number, whole: number) => {
 };
 const sentenceCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const withoutEdition = (title: string) => title.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "") || title;
-const same = (left: string | null | undefined, right: string) =>
-  left?.toLowerCase() === right.toLowerCase();
-
-function artistTrack(summary: WrappedRecap) {
-  const artist = summary.topArtists[0];
-  return artist && summary.topSongs.find((song) => song.preview && same(song.artist, artist.name));
-}
-
-function albumTrack(summary: WrappedRecap) {
-  const album = summary.topAlbums[0];
-  return (
-    album &&
-    summary.topSongs.find(
-      (song) => song.preview && same(song.album, album.name) && same(song.artist, album.artist),
-    )
-  );
-}
 
 function storySlides(summary: WrappedRecap) {
   const include = (condition: unknown, slide: Slide) => (condition ? [slide] : []);
   return [
-    {
-      kind: "opening",
-      preview: summary.topSongs.slice(0, 5).find((song) => song.preview)?.preview ?? null,
-    },
-    { kind: "minutes", preview: null },
-    { kind: "variety", preview: null },
-    ...include(summary.topGenres.length, { kind: "genre", preview: null }),
-    ...include(summary.topArtists[0], {
-      kind: "artist",
-      preview: artistTrack(summary)?.preview ?? null,
-    }),
-    ...include(summary.topArtists.length >= 3, { kind: "artists", preview: null }),
-    ...include(summary.topSongs[0], {
-      kind: "song",
-      preview: summary.topSongs[0]?.preview ?? null,
-    }),
-    ...include(summary.topSongs.length >= 3, { kind: "songs", preview: null }),
-    ...include(summary.topAlbums[0], {
-      kind: "album",
-      preview: albumTrack(summary)?.preview ?? null,
-    }),
-    ...include(summary.months.filter((month) => month.plays).length >= 2, {
-      kind: "months",
-      preview: null,
-    }),
-    ...include(summary.busiestDay, { kind: "day", preview: null }),
-    ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak", preview: null }),
-    { kind: "hour", preview: null },
-    { kind: "share", preview: null },
+    { kind: "opening" },
+    { kind: "minutes" },
+    { kind: "variety" },
+    ...include(summary.topGenres.length, { kind: "genre" }),
+    ...include(summary.topArtists[0], { kind: "artist" }),
+    ...include(summary.topArtists.length >= 3, { kind: "artists" }),
+    ...include(summary.topSongs[0], { kind: "song" }),
+    ...include(summary.topSongs.length >= 3, { kind: "songs" }),
+    ...include(summary.topAlbums[0], { kind: "album" }),
+    ...include(summary.months.filter((month) => month.plays).length >= 2, { kind: "months" }),
+    ...include(summary.busiestDay, { kind: "day" }),
+    ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak" }),
+    { kind: "hour" },
+    { kind: "share" },
   ] satisfies Slide[];
 }
 
@@ -255,29 +227,22 @@ function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
   }
 }
 
-const previewUrl = (src: string) => new URL(resolveApiPath(src), window.location.href).href;
-
-function usePreviewAudio(
-  src: string | null,
-  muted: boolean,
-  vintage: boolean,
-  previews: readonly string[],
-) {
+function useSoundtrack(src: string | null, seek: boolean, muted: boolean, vintage: boolean) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const graph = useRef<ReturnType<typeof vintageGraph>>(null);
+  const startAt = useRef(0);
   const [current, setCurrent] = useState<string | null>(null);
   const queue = useAudioQueue();
   const queueRef = useRef(queue);
   queueRef.current = queue;
   const vintageRef = useRef(vintage);
   vintageRef.current = vintage;
-  const previewsRef = useRef(previews);
-  previewsRef.current = previews;
 
   useEffect(() => {
     const element = new Audio();
     element.preload = "auto";
     element.crossOrigin = "anonymous";
+    element.loop = true;
     const sound = vintageGraph(element, vintageRef.current);
     element.addEventListener("playing", () => {
       setCurrent(element.src);
@@ -285,11 +250,6 @@ function usePreviewAudio(
       if (queueRef.current.isPlaying) queueRef.current.togglePlayPause();
     });
     element.addEventListener("pause", () => setCurrent(null));
-    element.addEventListener("ended", () => {
-      const urls = previewsRef.current.map(previewUrl);
-      element.src = urls[(urls.indexOf(element.src) + 1) % urls.length] ?? element.src;
-      element.play().catch(() => {});
-    });
     audio.current = element;
     graph.current = sound;
     return () => {
@@ -318,31 +278,53 @@ function usePreviewAudio(
   useEffect(() => {
     const element = audio.current;
     if (!element || !src) return;
-    const url = previewUrl(src);
-    if (element.src === url) return;
-    element.src = url;
-    element.volume = 0;
-    element.play().catch(() => {});
-    const started = performance.now();
-    let frame = requestAnimationFrame(function fade(now) {
-      element.volume = Math.min(1, Math.max(0, (now - started) / 800));
-      if (element.volume < 1) frame = requestAnimationFrame(fade);
-    });
+    let frame = 0;
+    const ramp = (to: number, length: number, then?: () => void) => {
+      const from = element.volume;
+      const started = performance.now();
+      frame = requestAnimationFrame(function step(now) {
+        const k = Math.min(1, Math.max(0, (now - started) / length));
+        element.volume = from + (to - from) * k;
+        if (k < 1) frame = requestAnimationFrame(step);
+        else then?.();
+      });
+    };
+    const start = () => {
+      element.src = src;
+      startAt.current = 0;
+      if (seek)
+        element.addEventListener(
+          "loadedmetadata",
+          () => {
+            if (element.src !== src || !(element.duration > 60)) return;
+            startAt.current = Math.round(element.duration * 0.3);
+            element.currentTime = startAt.current;
+          },
+          { once: true },
+        );
+      element.play().catch(() => {});
+      ramp(1, 800);
+    };
+    if (element.src === src) ramp(1, 300);
+    else if (element.paused) {
+      element.volume = 0;
+      start();
+    } else ramp(0, 350, start);
     return () => cancelAnimationFrame(frame);
-  }, [src]);
+  }, [src, seek]);
 
   return {
     current,
     resume: () => {
       const element = audio.current;
       graph.current?.context.resume().catch(() => {});
-      if (element?.src && element.paused && !element.ended) element.play().catch(() => {});
+      if (element?.src && element.paused) element.play().catch(() => {});
     },
     restart: () => {
       const element = audio.current;
       graph.current?.context.resume().catch(() => {});
       if (!element?.src) return;
-      element.currentTime = 0;
+      element.currentTime = startAt.current;
       element.play().catch(() => {});
     },
   };
@@ -575,7 +557,7 @@ function Genre({ summary }: { summary: WrappedRecap }) {
 
 function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
   const artist = summary.topArtists[0];
-  const song = artistTrack(summary);
+  const song = wrappedArtistSong(summary);
   if (!artist) return null;
   return (
     <>
@@ -653,7 +635,7 @@ function Song({ summary, playing }: { summary: WrappedRecap; playing: boolean })
 
 function Album({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
   const album = summary.topAlbums[0];
-  const song = albumTrack(summary);
+  const song = wrappedAlbumSong(summary);
   if (!album) return null;
   return (
     <>
@@ -958,13 +940,19 @@ function Story({
   const fieldOf = (position: number) => palette[position % palette.length];
   const shareField = fieldOf(slides.length - 1);
   const image = useShareImage(summary, shareField, username);
-  const previews = useMemo(
-    () => [...new Set(summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []))],
-    [summary],
+  const soundtrack = useMemo(
+    () =>
+      wrappedSoundtrack(
+        summary,
+        slides.map((entry) => entry.kind),
+      ),
+    [summary, slides],
   );
-  const audio = usePreviewAudio(slide.preview, muted, vintage, previews);
-  const hasAudio = slides.some((entry) => entry.preview);
-  const playing = !muted && slide.preview !== null && audio.current === previewUrl(slide.preview);
+  const cue = soundtrack[index];
+  const source = cue && wrappedSongSource(cue.song);
+  const audio = useSoundtrack(source, cue?.song.preview === null, muted, vintage);
+  const hasAudio = soundtrack.some(Boolean);
+  const playing = !muted && cue?.named === true && audio.current === source;
   const last = index === slides.length - 1;
   const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
 
