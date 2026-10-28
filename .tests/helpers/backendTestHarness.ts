@@ -119,7 +119,14 @@ export function listeningAddress(server: Pick<net.Server, "address">) {
 }
 
 export async function createMockHttpServer(handler: http.RequestListener) {
-  const server = http.createServer(handler);
+  const server = http.createServer((request, response) => {
+    // T3 Code probes every new local port with a traced GET /. Aurral never sends trace headers.
+    if (request.headers.traceparent) {
+      response.end();
+      return;
+    }
+    handler(request, response);
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = listeningAddress(server);
   return {
