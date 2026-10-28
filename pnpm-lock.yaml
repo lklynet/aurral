@@ -360,6 +360,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.3.1)
+      '@fontsource-variable/archivo':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
@@ -1155,6 +1158,9 @@ packages:
 
   '@expressive-code/plugin-text-markers@0.44.3':
     resolution: {integrity: sha512-4Ae2xRSDV5kdWPsi40xWbOtoihbzM0zLVjQKkDAnD5KzFXl+6/kd+VhuWOlTRVaJ5cqGk++vCbAaf0MR1XbZlw==}
+
+  '@fontsource-variable/archivo@5.3.0':
+    resolution: {integrity: sha512-HogK8FJelrD1o7TlZlkIVtHgc20bO5PZRWE7mUeUTdMN055alznQV6/00J00IBeu8FQAH4s3zW9UJNvKExXf+g==}
 
   '@fontsource-variable/inter@5.3.0':
     resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
@@ -5742,6 +5748,8 @@ snapshots:
   '@expressive-code/plugin-text-markers@0.44.3':
     dependencies:
       '@expressive-code/core': 0.44.3
+
+  '@fontsource-variable/archivo@5.3.0': {}
 
   '@fontsource-variable/inter@5.3.0': {}
 

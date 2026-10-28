@@ -1,504 +1,475 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { parseResponse, type InferResponseType } from "hono/client";
+import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
-import { useWrapped, useWrappedSeason, wrappedTimeZone } from "../hooks/useWrapped.ts";
+import {
+  useWrapped,
+  useWrappedSeason,
+  wrappedTimeZone,
+  type WrappedRecap,
+} from "../hooks/useWrapped.ts";
 import { playlistPath } from "../navigation/playlistPaths.ts";
-import { buildAuthenticatedApiUrl, resolveApiPath } from "../utils/api/core";
-import { createWrappedImage, downloadWrappedFile } from "../utils/wrappedShare";
+import {
+  createWrappedImage,
+  downloadWrappedFile,
+  loadWrappedFonts,
+  wrappedCovers,
+  wrappedImageUrl,
+  wrappedInk,
+  wrappedPalette,
+} from "../utils/wrappedShare";
+import { resolveApiPath } from "../utils/api/core";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
-import { X } from "../components/icons.tsx";
+import { Volume2, VolumeX, X } from "../components/icons.tsx";
 import TooltipButton from "../components/TooltipButton.tsx";
 import "./wrapped.css";
 
-type Summary = NonNullable<InferResponseType<typeof wrappedClient.$get, 200>["summary"]>;
-const number = (value: number) => value.toLocaleString();
-const imageUrl = (url: string) => (url.startsWith("/api/") ? resolveApiPath(url) : url);
+type Slide = {
+  kind: "opening" | "minutes" | "artist" | "songs" | "hour" | "share";
+  preview: string | null;
+};
+type ShareImage = { file: File; url: string } | "failed" | null;
 
-function WrappedFrame({
-  year,
+const count = (value: number, word: string) =>
+  `${value.toLocaleString()} ${word}${value === 1 ? "" : "s"}`;
+const hourLabel = (hour: number) =>
+  new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(new Date(2000, 0, 1, hour));
+
+function storySlides(summary: WrappedRecap) {
+  const previews = summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []);
+  const preview = (rank: number) => (previews.length ? previews[rank % previews.length] : null);
+  const artist = summary.topArtists[0];
+  const artistSong = artistTrack(summary);
+  const slides: Slide[] = [
+    { kind: "opening", preview: preview(2) },
+    { kind: "minutes", preview: preview(1) },
+  ];
+  if (artist) slides.push({ kind: "artist", preview: artistSong?.preview ?? null });
+  if (summary.topSongs.length) slides.push({ kind: "songs", preview: preview(0) });
+  slides.push({ kind: "hour", preview: preview(3) }, { kind: "share", preview: preview(0) });
+  return slides;
+}
+
+function artistTrack(summary: WrappedRecap) {
+  const name = summary.topArtists[0]?.name.toLowerCase();
+  return summary.topSongs.find((song) => song.preview && song.artist.toLowerCase() === name);
+}
+
+function Fit({
+  className,
+  max,
+  lines = 1,
+  children,
+}: {
+  className: string;
+  max: number;
+  lines?: number;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    for (let size = max; size >= 6; size--) {
+      element.style.fontSize = `${size}cqw`;
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      if (
+        element.scrollWidth <= element.clientWidth &&
+        element.offsetHeight <= lines * lineHeight + 1
+      )
+        break;
+    }
+  }, [children, lines, max]);
+  return (
+    <p ref={ref} className={className}>
+      {children}
+    </p>
+  );
+}
+
+function usePreviewAudio(src: string | null, muted: boolean) {
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const queue = useAudioQueue();
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+
+  useEffect(() => {
+    const element = new Audio();
+    element.preload = "auto";
+    element.addEventListener("playing", () => {
+      setPlaying(true);
+      if (queueRef.current.isPlaying) queueRef.current.togglePlayPause();
+    });
+    element.addEventListener("pause", () => setPlaying(false));
+    audio.current = element;
+    return () => {
+      element.pause();
+      element.removeAttribute("src");
+      element.load();
+      audio.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (audio.current) audio.current.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    const element = audio.current;
+    if (!element || !src) return;
+    const url = new URL(resolveApiPath(src), window.location.href).href;
+    if (element.src === url) return;
+    element.src = url;
+    element.volume = 0;
+    element.play().catch(() => {});
+    const started = performance.now();
+    let frame = requestAnimationFrame(function fade(now) {
+      element.volume = Math.min(1, (now - started) / 800);
+      if (element.volume < 1) frame = requestAnimationFrame(fade);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [src]);
+
+  return {
+    playing,
+    resume: () => {
+      const element = audio.current;
+      if (element?.src && element.paused && !element.ended) element.play().catch(() => {});
+    },
+  };
+}
+
+function useShareImage(summary: WrappedRecap, field: string, username: string) {
+  const [image, setImage] = useState<ShareImage>(null);
+  useEffect(() => {
+    let url = "";
+    let active = true;
+    createWrappedImage(summary, field, username)
+      .then((file) => {
+        url = URL.createObjectURL(file);
+        if (active) setImage({ file, url });
+        else URL.revokeObjectURL(url);
+      })
+      .catch(() => active && setImage("failed"));
+    return () => {
+      active = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [field, summary, username]);
+  return image;
+}
+
+function Opening({ summary, username }: { summary: WrappedRecap; username: string }) {
+  const covers = wrappedCovers(summary);
+  const year = String(summary.year);
+  return (
+    <>
+      {covers.length > 0 && (
+        <div className="wrapped-stack" aria-hidden="true">
+          {covers.map((url) => (
+            <img key={url} src={wrappedImageUrl(url)} alt="" />
+          ))}
+        </div>
+      )}
+      <p className={covers.length ? "wrapped-year wrapped-year--beside" : "wrapped-year"}>
+        {year.slice(0, 2)}
+        <br />
+        {year.slice(2)}
+      </p>
+      <div className="wrapped-foot">
+        <p>Your year in music</p>
+        <p className="wrapped-dim">{username}</p>
+      </div>
+    </>
+  );
+}
+
+function Minutes({ summary }: { summary: WrappedRecap }) {
+  const { minutes, totalPlays, uniqueArtists, uniqueSongs } = summary;
+  const span =
+    minutes === null || minutes < 60
+      ? ""
+      : minutes >= 1440
+        ? `About ${(minutes / 1440).toLocaleString(undefined, { maximumFractionDigits: 1 })} days of music. `
+        : `About ${count(Math.round(minutes / 60), "hour")} of music. `;
+  return (
+    <div className="wrapped-pad">
+      <Fit className="wrapped-fill" max={41}>
+        {(minutes ?? totalPlays).toLocaleString()}
+      </Fit>
+      <p className="wrapped-word">{minutes === null ? "plays" : "minutes"}</p>
+      <p className="wrapped-body">
+        {minutes === null
+          ? `${count(uniqueArtists, "artist")} and ${count(uniqueSongs, "song")}.`
+          : `${span}${count(totalPlays, "play")} across ${count(uniqueArtists, "artist")}.`}
+      </p>
+    </div>
+  );
+}
+
+function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
+  const artist = summary.topArtists[0];
+  const song = artistTrack(summary);
+  if (!artist) return null;
+  return (
+    <>
+      {artist.artwork && (
+        <img className="wrapped-hero" src={wrappedImageUrl(artist.artwork)} alt="" />
+      )}
+      <div className="wrapped-pad wrapped-bottom">
+        <Fit className="wrapped-artist" max={37} lines={3}>
+          {artist.name}
+        </Fit>
+        <p className="wrapped-body">Your top artist. {count(artist.plays, "play")}.</p>
+        {song && playing && (
+          <p className="wrapped-now">
+            <span className="wrapped-eq" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            Playing {song.name}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Songs({ summary }: { summary: WrappedRecap }) {
+  return (
+    <div className="wrapped-pad">
+      <h2 className="sr-only">Your top songs</h2>
+      <ol className="wrapped-rank">
+        {summary.topSongs.slice(0, 5).map((song, index) => (
+          <li key={song.key}>
+            <span className="wrapped-rank-number">{index + 1}</span>
+            <span className="wrapped-rank-title">{song.name}</span>
+            <span className="wrapped-rank-artist">{song.artist}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Hour({ summary }: { summary: WrappedRecap }) {
+  const peak = Math.max(1, ...summary.hours);
+  const hour = summary.hours.indexOf(peak);
+  const share = Math.round((peak / Math.max(1, summary.totalPlays)) * 100);
+  return (
+    <>
+      <div className="wrapped-pad">
+        <Fit className="wrapped-hour" max={50}>
+          {hourLabel(hour)}
+        </Fit>
+        <p className="wrapped-word wrapped-word--small">was your hour.</p>
+        <p className="wrapped-body">
+          {count(peak, "play")} started in this hour. That is {share}% of your year.
+        </p>
+      </div>
+      <div className="wrapped-histogram" aria-hidden="true">
+        {summary.hours.map((plays, index) => (
+          <i
+            key={index}
+            className={index === hour ? "wrapped-peak" : undefined}
+            style={{ height: `${Math.max(2, (plays / peak) * 100)}%` }}
+          />
+        ))}
+      </div>
+      <div className="wrapped-axis" aria-hidden="true">
+        <span>{hourLabel(0)}</span>
+        <span>{hourLabel(12)}</span>
+        <span>{hourLabel(23)}</span>
+      </div>
+    </>
+  );
+}
+
+function ShareCard({ image, alt }: { image: ShareImage; alt: string }) {
+  if (image === "failed")
+    return (
+      <div className="wrapped-pad wrapped-notice">
+        <p className="wrapped-body">Your share card could not be created.</p>
+      </div>
+    );
+  return image ? <img className="wrapped-card" src={image.url} alt={alt} /> : null;
+}
+
+function Story({
+  summary,
+  username,
+  onClose,
+  actions,
+}: {
+  summary: WrappedRecap;
+  username: string;
+  onClose: () => void;
+  actions: (image: ShareImage) => ReactNode;
+}) {
+  const slides = useMemo(() => storySlides(summary), [summary]);
+  const palette = useMemo(() => wrappedPalette(summary), [summary]);
+  const [index, setIndex] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
+  const slide = slides[index];
+  const fieldOf = (position: number) => palette[position % palette.length];
+  const field = fieldOf(index);
+  const image = useShareImage(summary, fieldOf(slides.length - 1), username);
+  const nowPlaying = slides.slice(0, index + 1).findLast((entry) => entry.preview)?.preview ?? null;
+  const audio = usePreviewAudio(nowPlaying, muted);
+  const hasAudio = slides.some((entry) => entry.preview);
+  const last = index === slides.length - 1;
+
+  useEffect(() => {
+    let active = true;
+    const text = [
+      ...summary.topArtists.map((artist) => artist.name),
+      ...summary.topSongs.slice(0, 5).flatMap((song) => [song.name, song.artist]),
+      username,
+    ].join("");
+    loadWrappedFonts(`${text}0123456789,.%`).finally(() => active && setFontsReady(true));
+    for (const url of [...wrappedCovers(summary), summary.topArtists[0]?.artwork ?? ""])
+      if (url) new Image().src = wrappedImageUrl(url);
+    return () => {
+      active = false;
+    };
+  }, [summary, username]);
+
+  const go = (step: number) => {
+    audio.resume();
+    setIndex((current) => Math.min(slides.length - 1, Math.max(0, current + step)));
+  };
+  const goRef = useRef(go);
+  goRef.current = go;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight") goRef.current(1);
+      if (event.key === "ArrowLeft") goRef.current(-1);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const tap = (event: MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    go(event.clientX - bounds.left < bounds.width * 0.3 ? -1 : 1);
+  };
+  const stop = (event: MouseEvent) => event.stopPropagation();
+  const style: CSSProperties = { "--wrapped-field": field, "--wrapped-ink": wrappedInk(field) };
+
+  return (
+    <>
+      <div
+        className="wrapped-frame"
+        style={style}
+        onClick={tap}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={`${index + 1} of ${slides.length}`}
+      >
+        <div className="wrapped-progress" aria-hidden="true">
+          {slides.map((entry, position) => (
+            <i key={entry.kind} className={position <= index ? "wrapped-seen" : undefined} />
+          ))}
+        </div>
+        <div className="wrapped-controls" onClick={stop}>
+          {hasAudio && (
+            <TooltipButton
+              type="button"
+              className="wrapped-control"
+              label={muted ? "Unmute" : "Mute"}
+              onClick={() => {
+                setMuted(!muted);
+                audio.resume();
+              }}
+            >
+              {muted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
+            </TooltipButton>
+          )}
+          <TooltipButton type="button" className="wrapped-control" label="Close" onClick={onClose}>
+            <X aria-hidden="true" />
+          </TooltipButton>
+        </div>
+        {fontsReady && (
+          <div key={slide.kind} className={`wrapped-slide wrapped-slide--${slide.kind}`}>
+            {slide.kind === "opening" && <Opening summary={summary} username={username} />}
+            {slide.kind === "minutes" && <Minutes summary={summary} />}
+            {slide.kind === "artist" && (
+              <Artist
+                summary={summary}
+                playing={audio.playing && !muted && nowPlaying === slide.preview}
+              />
+            )}
+            {slide.kind === "songs" && <Songs summary={summary} />}
+            {slide.kind === "hour" && <Hour summary={summary} />}
+            {slide.kind === "share" && (
+              <ShareCard image={image} alt={`${username}'s ${summary.year} in music`} />
+            )}
+          </div>
+        )}
+      </div>
+      <div className="wrapped-actions">{last && actions(image)}</div>
+    </>
+  );
+}
+
+function Notice({
+  title,
+  body,
   onClose,
   children,
 }: {
-  year: number;
+  title: string;
+  body: string;
   onClose: () => void;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
-  const { dialogRef } = useModalDialog({ open: true, onClose });
-  return createPortal(
-    <div className="wrapped-stage">
-      <div
-        className="wrapped-page"
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Your ${year} Aurral Wrapped`}
-        tabIndex={-1}
-      >
-        <header className="wrapped-header">
-          <h1>
-            Aurral Wrapped <span>{year}</span>
-          </h1>
-          <TooltipButton
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
-            label="Close Wrapped"
-          >
+  return (
+    <>
+      <div className="wrapped-frame">
+        <div className="wrapped-controls">
+          <TooltipButton type="button" className="wrapped-control" label="Close" onClick={onClose}>
             <X aria-hidden="true" />
           </TooltipButton>
-        </header>
-        {children}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function Opening({
-  summary,
-  onStart,
-  onRecap,
-}: {
-  summary: Summary;
-  onStart: () => void;
-  onRecap: () => void;
-}) {
-  const covers = [...summary.topAlbums, ...summary.topSongs, ...summary.topArtists]
-    .flatMap((item) => (item.artwork ? [item.artwork] : []))
-    .filter((url, index, urls) => urls.indexOf(url) === index)
-    .slice(0, 3);
-  return (
-    <section className="wrapped-opening" aria-label="Your year in music">
-      <div className="wrapped-opening-content">
-        <h2>
-          Your year.
-          <br />
-          Your music.
-        </h2>
-        {covers.length > 0 ? (
-          <div className="wrapped-sleeves" aria-hidden="true">
-            {covers.map((url) => (
-              <img key={url} src={imageUrl(url)} alt="" />
-            ))}
-          </div>
-        ) : (
-          <p className="wrapped-opening-total">{number(summary.totalPlays)} plays.</p>
-        )}
-        <p className="wrapped-opening-year">{summary.year}</p>
-      </div>
-      <div className="wrapped-opening-actions">
-        <button type="button" className="btn btn-primary" onClick={onStart}>
-          Start your Wrapped
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onRecap}>
-          View full recap
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function Rankings({ rows, artist = false }: { rows: Summary["topSongs"]; artist?: boolean }) {
-  return (
-    <ol className="wrapped-ranking">
-      {rows.map((row, index) => (
-        <li key={row.key}>
-          <span className="wrapped-rank">{index + 1}</span>
-          {row.artwork && <img src={imageUrl(row.artwork)} alt="" loading="lazy" />}
-          <div>
-            <strong>{row.name}</strong>
-            {!artist && <span>{row.artist}</span>}
-          </div>
-          <span className="wrapped-count">{number(row.plays)} plays</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function ListeningMonths({ summary }: { summary: Summary }) {
-  const max = Math.max(1, ...summary.months.map((month) => month.plays));
-  const [selected, setSelected] = useState(summary.months.length - 1);
-  const month = summary.months[selected];
-  return (
-    <div className="wrapped-months">
-      <div
-        className="wrapped-chart"
-        role="group"
-        aria-label={summary.months
-          .map((month) => `${month.month}: ${month.plays} plays`)
-          .join(", ")}
-      >
-        {summary.months.map((month, index) => (
-          <button
-            key={month.month}
-            type="button"
-            className={`btn btn-ghost wrapped-month${index === selected ? " is-selected" : ""}`}
-            onClick={() => setSelected(index)}
-            aria-pressed={index === selected}
-            aria-label={`${month.month}: ${month.plays} plays`}
-          >
-            <span
-              className="wrapped-month-bar"
-              style={{ height: `${Math.max(1, (month.plays / max) * 100)}%` }}
-            />
-            <span>
-              {new Intl.DateTimeFormat(undefined, { month: "short", timeZone: "UTC" }).format(
-                new Date(`${month.month}-01T12:00:00Z`),
-              )}
-            </span>
-          </button>
-        ))}
-      </div>
-      {month && (
-        <div className="wrapped-month-detail">
-          <h3>
-            {new Intl.DateTimeFormat(undefined, {
-              month: "long",
-              year: "numeric",
-              timeZone: "UTC",
-            }).format(new Date(`${month.month}-01T12:00:00Z`))}
-          </h3>
-          <ol>
-            {month.topArtist && (
-              <li>
-                <span>{month.topArtist.name}</span>
-                <span>{month.topArtist.plays} plays</span>
-              </li>
-            )}
-          </ol>
         </div>
-      )}
-    </div>
-  );
-}
-
-function SongQuiz({ summary }: { summary: Summary }) {
-  const [answer, setAnswer] = useState<string | null>(null);
-  const top = summary.topSongs[0];
-  const candidates = [...summary.topSongs.slice(0, 4)].sort((a, b) => a.name.localeCompare(b.name));
-  const winners = summary.topSongs.filter((song) => song.plays === top.plays);
-  return (
-    <div className="wrapped-quiz">
-      <p>
-        {winners.length > 1
-          ? "Which song shares your number-one spot?"
-          : "Which song did you play most?"}
-      </p>
-      {candidates.map((song) => (
-        <button
-          className={`btn btn-ghost wrapped-quiz-choice${answer === song.key ? " is-selected" : ""}`}
-          type="button"
-          key={song.key}
-          disabled={answer !== null}
-          onClick={() => setAnswer(song.key)}
-        >
-          {song.name}
-          <span>{song.artist}</span>
-        </button>
-      ))}
-      {answer && (
-        <p role="status">
-          {winners.some((song) => song.key === answer)
-            ? "You know your favorites."
-            : `${top.name} came out on top.`}{" "}
-          {top.plays} plays
-          {winners.length > 1
-            ? `, tied with ${winners.length - 1} other ${winners.length === 2 ? "song" : "songs"}`
-            : ""}
-          .
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Recap({ summary }: { summary: Summary }) {
-  return (
-    <div className="wrapped-recap">
-      <div className="wrapped-stats">
-        <p>
-          <strong>{number(summary.totalPlays)}</strong>plays
-        </p>
-        <p>
-          <strong>{number(summary.uniqueArtists)}</strong>artists
-        </p>
-        <p>
-          <strong>{number(summary.uniqueSongs)}</strong>songs
-        </p>
+        <div className="wrapped-pad wrapped-notice" role="status">
+          <p className="wrapped-word">{title}</p>
+          <p className="wrapped-body">{body}</p>
+        </div>
       </div>
-      <section>
-        <h2>Top artists</h2>
-        <Rankings rows={summary.topArtists} artist />
-      </section>
-      <section>
-        <h2>Top songs</h2>
-        <Rankings rows={summary.topSongs} />
-      </section>
-      {summary.topAlbums.length > 0 && (
-        <section>
-          <h2>Top albums</h2>
-          <p className="wrapped-note">Ranked by recorded track plays.</p>
-          <Rankings rows={summary.topAlbums} />
-        </section>
-      )}
-      {summary.topGenres.length > 0 && (
-        <section>
-          <h2>Top genres</h2>
-          <ol className="wrapped-genres">
-            {summary.topGenres.map((genre) => (
-              <li key={genre.name}>
-                <span>{genre.name}</span>
-                <span>{genre.plays} plays</span>
-              </li>
-            ))}
-          </ol>
-          <p className="wrapped-note">
-            Genre metadata is available for {number(summary.genrePlays)} of{" "}
-            {number(summary.totalPlays)} plays.
-          </p>
-        </section>
-      )}
-      <section>
-        <h2>Your listening year</h2>
-        <ListeningMonths summary={summary} />
-      </section>
-      <div className="wrapped-facts">
-        <p>
-          <strong>{summary.longestStreak?.days ?? 0} days</strong>Longest recorded streak
-        </p>
-        <p>
-          <strong>{summary.activeDays} days</strong>With recorded listening
-        </p>
-        {summary.busiestDay && (
-          <p>
-            <strong>{summary.busiestDay.plays} plays</strong>On {summary.busiestDay.date}
-          </p>
-        )}
-      </div>
-      {summary.minutes !== null && (
-        <section>
-          <h2>{summary.minutesMeasured ? "Listening time" : "Estimated listening time"}</h2>
-          <p className="wrapped-minutes">{number(summary.minutes)} minutes</p>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function Stories({ summary, onRecap }: { summary: Summary; onRecap: () => void }) {
-  const [index, setIndex] = useState(0);
-  const pointerStart = useRef<{ x: number; y: number } | null>(null);
-  const artist = summary.topArtists[0];
-  const slides = [
-    {
-      key: "year",
-      title: "Your year in music.",
-      content: (
-        <>
-          <p className="wrapped-big-number">{number(summary.totalPlays)}</p>
-          <p className="wrapped-story-label">plays. All yours.</p>
-          <div className="wrapped-story-facts">
-            <p>{number(summary.uniqueArtists)} artists</p>
-            <p>{number(summary.uniqueSongs)} songs</p>
-          </div>
-        </>
-      ),
-    },
-    {
-      key: "artist",
-      title: "Your top artist",
-      content: (
-        <>
-          <h2 className="wrapped-artist-name">{artist.name}</h2>
-          {artist.artwork && (
-            <img className="wrapped-story-art" src={imageUrl(artist.artwork)} alt={artist.name} />
-          )}
-          <p className="wrapped-story-count">
-            <strong>{artist.plays}</strong> plays this year
-          </p>
-        </>
-      ),
-    },
-    {
-      key: "songs",
-      title: "Your top songs",
-      content: <Rankings rows={summary.topSongs.slice(0, 5)} />,
-    },
-    ...(summary.topAlbums.length
-      ? [
-          {
-            key: "albums",
-            title: "Your top albums",
-            content: (
-              <>
-                <Rankings rows={summary.topAlbums} />
-                <p className="wrapped-note">By recorded track plays.</p>
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...(summary.topGenres.length
-      ? [
-          {
-            key: "genres",
-            title: "Your sound this year",
-            content: (
-              <>
-                <ol className="wrapped-genres wrapped-genres--story">
-                  {summary.topGenres.map((genre) => (
-                    <li key={genre.name}>{genre.name}</li>
-                  ))}
-                </ol>
-                <p className="wrapped-note">
-                  Based on {number(summary.genrePlays)} plays with genre metadata.
-                </p>
-              </>
-            ),
-          },
-        ]
-      : []),
-    {
-      key: "months",
-      title: "Your favorites changed.",
-      content: <ListeningMonths summary={summary} />,
-    },
-    { key: "quiz", title: "One more thing.", content: <SongQuiz summary={summary} /> },
-    {
-      key: "streak",
-      title: "You kept listening.",
-      content: (
-        <>
-          <p className="wrapped-big-number">{summary.longestStreak?.days ?? 0}</p>
-          <p className="wrapped-story-label">days in your longest streak.</p>
-          <p>{summary.activeDays} days with recorded listening this year.</p>
-        </>
-      ),
-    },
-  ];
-  const next = () => (index === slides.length - 1 ? onRecap() : setIndex(index + 1));
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        !(event.target instanceof Element) ||
-        !event.target.closest(".wrapped-page") ||
-        event.target.closest(
-          ".wrapped-months, .wrapped-quiz, input, select, textarea, [contenteditable]",
-        )
-      )
-        return;
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        setIndex(Math.max(0, index - 1));
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        if (index === slides.length - 1) onRecap();
-        else setIndex(index + 1);
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [index, onRecap, slides.length]);
-  const slide = slides[Math.min(index, slides.length - 1)];
-  return (
-    <section className="wrapped-story" aria-label="Your Wrapped stories">
-      <div className="wrapped-progress" aria-label={`Story ${index + 1} of ${slides.length}`}>
-        {slides.map((slide, i) => (
-          <span key={slide.key} className={i <= index ? "is-complete" : ""} />
-        ))}
-      </div>
-      <div
-        className="wrapped-slide"
-        key={slide.key}
-        aria-live="polite"
-        onPointerDown={(event) => {
-          pointerStart.current = { x: event.clientX, y: event.clientY };
-        }}
-        onPointerUp={(event) => {
-          const start = pointerStart.current;
-          pointerStart.current = null;
-          if (
-            event.button !== 0 ||
-            !start ||
-            Math.abs(start.x - event.clientX) > 10 ||
-            Math.abs(start.y - event.clientY) > 10 ||
-            !(event.target instanceof Element) ||
-            event.target.closest("button, a, input, select, textarea") ||
-            window.getSelection()?.toString()
-          )
-            return;
-          const bounds = event.currentTarget.getBoundingClientRect();
-          if (event.clientX < bounds.left + bounds.width / 2) setIndex(Math.max(0, index - 1));
-          else next();
-        }}
-      >
-        <h2 className="wrapped-slide-title">{slide.title}</h2>
-        {slide.content}
-      </div>
-      <div className="wrapped-story-controls">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => setIndex(index - 1)}
-          disabled={index === 0}
-        >
-          Back
-        </button>
-        <button type="button" className="btn btn-primary" onClick={next}>
-          {index === slides.length - 1 ? "See full recap" : "Next"}
-        </button>
-      </div>
-    </section>
+      <div className="wrapped-actions">{children}</div>
+    </>
   );
 }
 
 export default function WrappedPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const season = useWrappedSeason();
-  const enabled = season !== null;
-  const [view, setView] = useState<"opening" | "stories" | "recap">("opening");
-  const [sharing, setSharing] = useState(false);
   const timeZone = wrappedTimeZone();
   const year = season?.year ?? new Date().getFullYear();
   const client = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const queue = useAudioQueue();
   const toast = useToast();
   const query = useWrapped();
-  const build = useMutation({
-    mutationFn: () => parseResponse(wrappedClient.$post({ json: { timeZone } })),
-    onSuccess: (data) => client.setQueriesData({ queryKey: ["wrapped"] }, data),
-    onError: () => toast.showError("Your recap could not be started. Try again."),
-  });
-  const playlist = useMutation({
-    mutationFn: async () => {
-      const response = await wrappedClient.playlist.$post({ json: { timeZone } });
-      const result = await response.json();
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    },
-    onSuccess: (result) => {
-      toast.showSuccess(
-        `Saved ${result.trackCount} songs${result.missingCount ? `; ${result.missingCount} songs not in your Library were left out` : ""}.`,
-      );
-      navigate(playlistPath(result.playlistId));
-    },
-    onError: (error) => toast.showError(error.message || "The playlist could not be saved."),
-  });
-  if (!enabled) return <Navigate to="/" replace />;
+  const [sharing, setSharing] = useState(false);
   const close = () => {
     const from: unknown = location.state?.wrappedFrom;
     navigate(
@@ -511,212 +482,151 @@ export default function WrappedPage() {
       { replace: true },
     );
   };
-  const summary = query.data?.summary ?? null;
-  const collecting = query.data?.building === true;
-  const share = async () => {
-    if (!summary) return;
+  const { dialogRef } = useModalDialog({ open: true, onClose: close });
+  const build = useMutation({
+    mutationFn: () => parseResponse(wrappedClient.$post({ json: { timeZone } })),
+    onSuccess: (data) => client.setQueriesData({ queryKey: ["wrapped"] }, data),
+    onError: () => toast.showError("Your Wrapped could not be started. Try again."),
+  });
+  const playlist = useMutation({
+    mutationFn: async () => {
+      const response = await wrappedClient.playlist.$post({ json: { timeZone } });
+      const result = await response.json();
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (result) => {
+      toast.showSuccess(
+        `Saved ${count(result.trackCount, "song")}${result.missingCount ? `. ${count(result.missingCount, "song")} not in your Library were left out` : ""}.`,
+      );
+      navigate(playlistPath(result.playlistId));
+    },
+    onError: (error) => toast.showError(error.message || "The playlist could not be saved."),
+  });
+  if (!season) return <Navigate to="/" replace />;
+
+  const share = async (file: File) => {
     setSharing(true);
     try {
-      const file = await createWrappedImage(summary);
       if (navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: `My ${year} Aurral Wrapped` });
-        } catch (error) {
+        await navigator.share({ files: [file], title: `My ${year} on Aurral` }).catch((error) => {
           if (!(error instanceof Error && error.name === "AbortError")) throw error;
-        }
+        });
       } else {
         downloadWrappedFile(file);
-        toast.showSuccess("Your share image was saved.");
+        toast.showSuccess("Your share card was saved.");
       }
     } catch {
-      toast.showError("Your share image could not be created. Try again.");
+      toast.showError("Your share card could not be shared. Try again.");
     } finally {
       setSharing(false);
     }
   };
-  const playSongs = () => {
-    if (!summary) return;
-    const tracks = summary.topSongs.flatMap((song) =>
-      song.libraryTrackId && song.libraryAlbumId
-        ? [
-            {
-              id: `song:${song.libraryTrackId}`,
-              title: song.name,
-              artist: song.artist,
-              album: song.album,
-              artwork: song.artwork,
-              trackMbid: song.mbid,
-              src: buildAuthenticatedApiUrl(
-                `/library/canonical-stream/${song.libraryAlbumId}/${song.libraryTrackId}`,
-              ),
-              recordHistory: true,
-            },
-          ]
-        : [],
+
+  const summary = query.data?.summary ?? null;
+  const unavailable = summary?.sources.some((source) => source.state !== "ready") ?? false;
+  const rebuild = (
+    <button
+      type="button"
+      className="btn btn-ghost"
+      disabled={build.isPending || query.data?.building}
+      onClick={() => build.mutate()}
+    >
+      Try again
+    </button>
+  );
+
+  let content: ReactNode;
+  if (query.isPending)
+    content = (
+      <>
+        <div className="wrapped-frame" />
+        <div className="wrapped-actions" />
+      </>
     );
-    if (
-      !queue.playQueue(tracks, {
-        source: { type: "wrapped", id: year, label: `Your ${year} Wrapped` },
-      })
-    )
-      toast.showError("None of these songs are available in your Library.");
-    else toast.showSuccess(`Playing ${tracks.length} songs available in your Library.`);
-  };
-  return (
-    <WrappedFrame year={year} onClose={close}>
-      {query.isPending && (
-        <div className="wrapped-status" role="status">
-          <h2>Your year in music.</h2>
-          <p>Loading your recap.</p>
-        </div>
-      )}
-      {query.isError && (
-        <div className="wrapped-status" role="alert">
-          <h2>Your recap could not be loaded.</h2>
-          <button type="button" className="btn btn-primary" onClick={() => query.refetch()}>
-            Try again
-          </button>
-        </div>
-      )}
-      {!query.isPending && !query.isError && !summary && (
-        <div className="wrapped-status" role="status">
-          <h2>Your year in music.</h2>
-          <p>
-            {collecting
-              ? "Collecting your listening history. You can leave this page and come back."
-              : query.data?.error
-                ? query.data.error
-                : "Bring together the music you kept coming back to."}
-          </p>
-          {!collecting && (
+  else if (query.isError)
+    content = (
+      <Notice title="Not loaded" body="Your Wrapped could not be loaded." onClose={close}>
+        <button type="button" className="btn btn-primary" onClick={() => query.refetch()}>
+          Try again
+        </button>
+      </Notice>
+    );
+  else if (!summary)
+    content = (
+      <Notice
+        title={query.data?.error ? "Not ready" : `Building your ${year}`}
+        body={
+          query.data?.error ?? "Collecting your listening history. You can leave and come back."
+        }
+        onClose={close}
+      >
+        {query.data?.error && rebuild}
+      </Notice>
+    );
+  else if (summary.totalPlays === 0)
+    content = (
+      <Notice
+        title="No plays yet"
+        body={
+          unavailable
+            ? "Your listening history could not be reached. Check your connections, then try again."
+            : "Listen through Aurral or connect a scrobbler in your Profile to fill your Wrapped."
+        }
+        onClose={close}
+      >
+        <Link className="btn btn-primary" to="/profile">
+          Open Profile
+        </Link>
+        {rebuild}
+      </Notice>
+    );
+  else
+    content = (
+      <Story
+        key={summary.end}
+        summary={summary}
+        username={user?.username ?? ""}
+        onClose={close}
+        actions={(image) => (
+          <>
             <button
               type="button"
               className="btn btn-primary"
-              disabled={build.isPending}
-              onClick={() => build.mutate()}
+              disabled={!image || image === "failed" || sharing}
+              onClick={() => image && image !== "failed" && share(image.file)}
             >
-              {build.isPending ? "Starting…" : "Build your Wrapped"}
+              Share
             </button>
-          )}
-        </div>
-      )}
-      {summary && summary.totalPlays === 0 && (
-        <div className="wrapped-status">
-          <h2>
-            {summary.sources.some((source) => source.state !== "ready")
-              ? "Your listening history is unavailable."
-              : "No recorded listening yet."}
-          </h2>
-          <p>
-            {summary.sources.some((source) => source.state !== "ready")
-              ? "Check your connections, then try again."
-              : "Connect a scrobbler in your Profile, or listen through Aurral to start your recap."}
-          </p>
-          <Link className="btn btn-primary" to="/profile">
-            Open Profile
-          </Link>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={build.isPending}
-            onClick={() => build.mutate()}
-          >
-            Try again
-          </button>
-        </div>
-      )}
-      {summary && summary.totalPlays > 0 && view === "opening" && (
-        <Opening
-          summary={summary}
-          onStart={() => setView("stories")}
-          onRecap={() => setView("recap")}
-        />
-      )}
-      {summary && summary.totalPlays > 0 && view !== "opening" && (
-        <>
-          <div className="wrapped-view-controls">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              aria-pressed={view === "stories"}
-              onClick={() => setView("stories")}
-            >
-              Stories
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              aria-pressed={view === "recap"}
-              onClick={() => setView("recap")}
-            >
-              Full recap
-            </button>
-            <button type="button" className="btn btn-primary" disabled={sharing} onClick={share}>
-              {sharing ? "Creating image…" : "Share your year"}
-            </button>
-          </div>
-          <div className={`wrapped-body wrapped-body--${view}`}>
-            {view === "stories" ? (
-              <Stories
-                key={`${year}:${summary.end}`}
-                summary={summary}
-                onRecap={() => setView("recap")}
-              />
-            ) : (
-              <Recap summary={summary} />
+            {hasPermission("accessFlow") && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={playlist.isPending}
+                onClick={() => playlist.mutate()}
+              >
+                {playlist.isPending ? "Saving" : "Save top songs"}
+              </button>
             )}
-            {view === "recap" && (
-              <div className="wrapped-actions">
-                <button type="button" className="btn btn-secondary" onClick={playSongs}>
-                  Play top songs
-                </button>
-                {hasPermission("accessFlow") && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={playlist.isPending}
-                    onClick={() => playlist.mutate()}
-                  >
-                    {playlist.isPending ? "Saving…" : "Save available songs"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={build.isPending}
-                  onClick={() => build.mutate()}
-                >
-                  Rebuild
-                </button>
-              </div>
-            )}
-            {view === "recap" && (
-              <footer className="wrapped-coverage">
-                <p>
-                  {new Intl.DateTimeFormat(undefined, { timeZone, dateStyle: "medium" }).format(
-                    summary.start,
-                  )}{" "}
-                  to{" "}
-                  {new Intl.DateTimeFormat(undefined, { timeZone, dateStyle: "medium" }).format(
-                    summary.end - 1,
-                  )}
-                  . Recorded listening only.
-                </p>
-                {summary.sources.some((source) => source.state !== "ready") && (
-                  <p>
-                    Some history is unavailable or incomplete:{" "}
-                    {summary.sources
-                      .filter((source) => source.state !== "ready")
-                      .map((source) => source.source)
-                      .join(", ")}
-                    . Check your connections and rebuild.
-                  </p>
-                )}
-              </footer>
-            )}
-          </div>
-        </>
-      )}
-    </WrappedFrame>
+            {unavailable && rebuild}
+          </>
+        )}
+      />
+    );
+
+  return createPortal(
+    <div className="wrapped-stage">
+      <div
+        className="wrapped-story"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Your ${year} Wrapped`}
+        tabIndex={-1}
+      >
+        {content}
+      </div>
+    </div>,
+    document.body,
   );
 }

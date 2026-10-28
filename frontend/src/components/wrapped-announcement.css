@@ -1,43 +1,40 @@
 .wrapped-announcement {
-  color-scheme: dark;
-  color: var(--aurral-overlay-foreground);
-  background: var(--aurral-overlay-base);
-  margin: var(--aurral-space-page);
-  padding-bottom: var(--aurral-space-section);
-  border-bottom: 1px solid var(--aurral-border);
-}
-.wrapped-announcement-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--aurral-space-stack);
+  margin: var(--aurral-space-page);
+  padding: var(--aurral-space-stack);
+  border-radius: var(--aurral-radius);
+  color-scheme: dark;
+  color: var(--aurral-overlay-foreground);
+  background: var(--aurral-surface);
 }
-.wrapped-announcement-heading h2 {
+.wrapped-announcement h2 {
+  flex: 1 1 14rem;
   margin: 0;
-  font-size: 1rem;
-  letter-spacing: -0.03em;
-}
-.wrapped-announcement-heading p {
-  margin: 4px 0 0;
-  font-size: 0.8rem;
-  color: var(--aurral-text-muted);
+  font-family: "Wrapped Display", var(--font-sans);
+  font-size: 1.375rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
 }
 .wrapped-announcement-art {
   display: grid;
-  grid-template-columns: repeat(2, 27px);
-  gap: 1px;
+  grid-template-columns: repeat(2, 22px);
   flex-shrink: 0;
 }
 .wrapped-announcement-art img {
-  width: 27px;
-  height: 27px;
+  width: 22px;
+  height: 22px;
   object-fit: cover;
 }
-.wrapped-announcement-year {
-  font-size: 1.5rem;
-  letter-spacing: -0.05em;
-}
 .wrapped-announcement-actions {
-  margin-top: var(--aurral-space-stack);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aurral-space-outer);
+}
+.wrapped-announcement .btn {
+  border-radius: var(--aurral-radius-round);
 }
 .wrapped-announcement .btn-primary {
   color: var(--aurral-overlay-base);
@@ -50,14 +47,4 @@
     background: var(--aurral-overlay-foreground-soft);
     border-color: var(--aurral-overlay-foreground-soft);
   }
-}
-.wrapped-announcement-dismissals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--aurral-space-stack);
-  margin-top: 4px;
-}
-.wrapped-announcement-dismissals .btn {
-  font-size: 0.75rem;
-  padding-inline: 0;
 }

@@ -277,3 +277,12 @@ test("Jellyfin play times are converted from the server's local clock", async ()
   );
   assert.equal(failed.status.state, "unavailable");
 });
+
+test("a cover's color favors its vivid area over a larger plain background", () => {
+  const pixels = [
+    ...Array.from({ length: 60 }, () => [12, 12, 12]),
+    ...Array.from({ length: 30 }, () => [240, 40, 120]),
+  ].flat();
+  assert.equal(history.vividColor(Uint8Array.from(pixels)), "#f02878");
+  assert.equal(history.vividColor(Uint8Array.from([12, 12, 12, 12, 12, 12])), "#0c0c0c");
+});

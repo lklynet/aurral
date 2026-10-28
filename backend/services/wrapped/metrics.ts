@@ -141,6 +141,8 @@ type Tally = {
   untimedPlays: number;
   firstPlayedAt: number;
   artwork: string | null;
+  color: string | null;
+  preview: string | null;
   mbid: string | null;
   libraryTrackId: number | null;
   libraryAlbumId: number | null;
@@ -197,6 +199,8 @@ export function calculateWrapped(
       untimedPlays: 0,
       firstPlayedAt: play.playedAt,
       artwork: null,
+      color: null,
+      preview: null,
       mbid: null,
       libraryTrackId: null,
       libraryAlbumId: null,

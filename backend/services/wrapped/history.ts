@@ -12,7 +12,9 @@ import { PlexClient } from "../plex.ts";
 import { plexConnectionStore } from "../plex/plexConnectionStore.ts";
 import { JellyfinClient } from "../jellyfin.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
-import { buildImageProxyUrl } from "../imageProxyService.ts";
+import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
+import { buildImageProxyUrl, warmImageProxy } from "../imageProxyService.ts";
+import getSharp from "../sharpConfig.ts";
 import { getArtistImage } from "../imageService.ts";
 import { calculateWrapped, wrappedKey, type WrappedPeriod, type WrappedPlay } from "./metrics.ts";
 
@@ -527,6 +529,34 @@ function enrichFromLibrary(plays: WrappedPlay[]) {
   }
 }
 
+export function vividColor(pixels: Uint8Array) {
+  const bins = new Map<number, { score: number; rgb: [number, number, number]; count: number }>();
+  for (let index = 0; index + 2 < pixels.length; index += 3) {
+    const rgb = [pixels[index], pixels[index + 1], pixels[index + 2]] as const;
+    const key = (rgb[0] >> 5) * 64 + (rgb[1] >> 5) * 8 + (rgb[2] >> 5);
+    const bin = bins.get(key) ?? { score: 0, rgb: [0, 0, 0], count: 0 };
+    bin.score += 0.15 + (Math.max(...rgb) - Math.min(...rgb)) / 255;
+    rgb.forEach((value, channel) => (bin.rgb[channel] += value));
+    bin.count++;
+    bins.set(key, bin);
+  }
+  const best = [...bins.values()].reduce((top, bin) => (bin.score > top.score ? bin : top));
+  return `#${best.rgb
+    .map((value) =>
+      Math.round(value / best.count)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+async function artworkColor(source: string) {
+  const [{ imagePath }, sharp] = await Promise.all([warmImageProxy(source), getSharp()]);
+  return vividColor(
+    await sharp(imagePath).resize(24, 24, { fit: "cover" }).removeAlpha().raw().toBuffer(),
+  );
+}
+
 export async function buildWrappedSummary(userId: number, period: Period) {
   const history = await collectWrappedHistory(userId, period);
   const summary = calculateWrapped(history.plays, period, enrichFromLibrary);
@@ -539,6 +569,23 @@ export async function buildWrappedSummary(userId: number, period: Period) {
       } catch {}
     }),
   );
+  const featured = summary.topSongs.slice(0, 5);
+  const artistSong = summary.topSongs.find(
+    (song) => wrappedKey(song.artist) === summary.topArtists[0]?.key,
+  );
+  if (artistSong && !featured.includes(artistSong)) featured.push(artistSong);
+  await Promise.all([
+    ...[...summary.topArtists, ...featured, ...summary.topAlbums].map(async (row) => {
+      if (row.artwork) row.color = await artworkColor(row.artwork).catch(() => null);
+    }),
+    ...featured.map(async (song) => {
+      const preview = await deezerGetTrackPreview({
+        artistName: song.artist,
+        trackName: song.name,
+      });
+      song.preview = preview?.preview_url ?? null;
+    }),
+  ]);
   for (const row of [...summary.topSongs, ...summary.topArtists, ...summary.topAlbums])
     row.artwork = buildImageProxyUrl(row.artwork);
   return { ...summary, sources: history.sources };

@@ -1,11 +1,15 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseResponse } from "hono/client";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
 
 const PREVIEW_KEY = "aurral-lantern";
+
+export type WrappedRecap = NonNullable<
+  InferResponseType<typeof wrappedClient.$get, 200>["summary"]
+>;
 
 export const wrappedTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 

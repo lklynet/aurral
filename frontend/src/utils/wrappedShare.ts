@@ -1,95 +1,186 @@
-import type { WrappedSummary } from "../../../backend/services/wrapped/metrics.ts";
+import latin from "@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url";
+import latinExt from "@fontsource-variable/archivo/files/archivo-latin-ext-wdth-normal.woff2?url";
+import type { WrappedRecap } from "../hooks/useWrapped.ts";
 import { resolveApiPath } from "./api/core.ts";
 
-async function artwork(url: string) {
+const DISPLAY = '"Wrapped Display", sans-serif';
+const TEXT = '"Wrapped Text", ui-sans-serif, system-ui, sans-serif';
+const SUBSETS = [
+  [
+    latin,
+    "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+  ],
+  [
+    latinExt,
+    "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+  ],
+] as const;
+const FACES = [
+  ["Wrapped Display", "62%", "700 900"],
+  ["Wrapped Text", "100%", "400 700"],
+] as const;
+
+let registered = false;
+
+export function loadWrappedFonts(text: string) {
+  if (!registered) {
+    registered = true;
+    for (const [family, stretch, weight] of FACES)
+      for (const [url, unicodeRange] of SUBSETS)
+        document.fonts.add(
+          new FontFace(family, `url("${url}") format("woff2")`, { stretch, weight, unicodeRange }),
+        );
+  }
+  return Promise.all([
+    document.fonts.load(`900 16px ${DISPLAY}`, text),
+    document.fonts.load(`500 16px ${TEXT}`, text),
+  ]);
+}
+
+export const wrappedImageUrl = (url: string) =>
+  url.startsWith("/api/") ? resolveApiPath(url) : url;
+
+const channels = (color: string) =>
+  [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
+
+export function wrappedInk(color: string) {
+  const [r, g, b] = channels(color);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 115 ? "#000000" : "#ffffff";
+}
+
+export function wrappedPalette(summary: WrappedRecap) {
+  const colors: string[] = [];
+  for (const { color } of [
+    ...summary.topAlbums,
+    ...summary.topSongs.slice(0, 5),
+    ...summary.topArtists,
+  ]) {
+    if (!color) continue;
+    const [r, g, b] = channels(color);
+    const distinct = colors.every((seen) => {
+      const [sr, sg, sb] = channels(seen);
+      return Math.abs(r - sr) + Math.abs(g - sg) + Math.abs(b - sb) > 90;
+    });
+    if (distinct) colors.push(color);
+  }
+  return colors.length ? colors : ["#000000"];
+}
+
+export function wrappedCovers(summary: WrappedRecap, count = 4) {
+  return [...summary.topAlbums, ...summary.topSongs, ...summary.topArtists]
+    .flatMap((row) => (row.artwork ? [row.artwork] : []))
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, count);
+}
+
+async function loadImage(url: string) {
   const image = new Image();
   image.crossOrigin = "anonymous";
-  image.src = url.startsWith("/api/") ? resolveApiPath(url) : url;
+  image.src = wrappedImageUrl(url);
   await image.decode();
   return image;
 }
 
-export async function createWrappedImage(summary: WrappedSummary) {
+async function loadLogo() {
+  const svg = await (await fetch(`${import.meta.env.BASE_URL}arralogo.svg`)).text();
+  const path = svg.match(/\sd="([^"]+)"/)?.[1];
+  return path ? new Path2D(path) : null;
+}
+
+export async function createWrappedImage(summary: WrappedRecap, field: string, username: string) {
+  const width = 1080;
+  const height = 1920;
+  const u = width / 100;
+  const left = 5 * u;
+  const room = width - 10 * u;
+  const names = summary.topArtists.map((artist) => artist.name);
+  const [covers, logo] = await Promise.all([
+    Promise.all(wrappedCovers(summary).map((url) => loadImage(url).catch(() => null))),
+    loadLogo().catch(() => null),
+    loadWrappedFonts(`${summary.year}0123456789,.${names.join("")}${username}`),
+  ]);
   const canvas = document.createElement("canvas");
-  canvas.width = 1080;
-  canvas.height = 1920;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Image export is unavailable in this browser");
-  context.fillStyle = "#000";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#fff";
-  context.font = "600 30px Arial";
-  context.fillText("Aurral Wrapped", 70, 72);
-  context.font = "220px Georgia";
-  context.fillText(String(summary.year), 60, 285);
-  const covers = await Promise.all(
-    summary.topAlbums.slice(0, 3).map(async (album) => {
-      if (!album.artwork) return null;
-      try {
-        return await artwork(album.artwork);
-      } catch {
-        return null;
-      }
-    }),
-  );
-  if (covers.every((cover) => !cover)) {
-    summary.topSongs.slice(0, 3).forEach((song, index) => {
-      context.font = "600 45px Arial";
-      let name = song.name;
-      while (name.length > 1 && context.measureText(name).width > 900)
-        name = name.slice(0, -2) + "…";
-      context.fillText(name, 70, 480 + index * 130);
-      context.font = "28px Arial";
-      context.fillText(song.artist.slice(0, 55), 70, 531 + index * 130);
-    });
+  const ink = wrappedInk(field);
+  context.fillStyle = field;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = ink;
+
+  const font = (size: number, family: string, weight: number, value = "", max = room) => {
+    context.font = `${weight} ${size}px ${family}`;
+    const measured = context.measureText(value).width;
+    if (measured > max)
+      context.font = `${weight} ${Math.floor((size * max) / measured)}px ${family}`;
+    return context.measureText(value);
+  };
+
+  const year = String(summary.year);
+  context.letterSpacing = `${-0.06 * 44 * u}px`;
+  const yearBox = font(44 * u, DISPLAY, 900, year);
+  let y = 6 * u + yearBox.actualBoundingBoxAscent;
+  context.fillText(year, left - 1.4 * u, y);
+  context.letterSpacing = "0px";
+
+  const stats = [
+    ...(summary.minutes === null ? [] : [{ value: summary.minutes, label: "minutes" }]),
+    { value: summary.totalPlays, label: "plays" },
+    { value: summary.uniqueArtists, label: "artists" },
+  ];
+  y += 6 * u;
+  let x = left;
+  const statTop = y + font(14 * u, DISPLAY, 900, "0").actualBoundingBoxAscent;
+  for (const stat of stats) {
+    const value = stat.value.toLocaleString();
+    const valueWidth = font(14 * u, DISPLAY, 900, value).width;
+    context.fillText(value, x, statTop);
+    context.globalAlpha = 0.6;
+    const labelWidth = font(3.4 * u, TEXT, 600, stat.label).width;
+    context.fillText(stat.label, x, statTop + 4.4 * u);
+    context.globalAlpha = 1;
+    x += Math.max(valueWidth, labelWidth) + 6 * u;
   }
-  for (let i = 0; i < covers.length; i++) {
-    const cover = covers[i];
-    if (!cover) continue;
-    context.save();
-    context.translate(245 + i * 285, 650 + (i === 1 ? -25 : 0));
-    context.rotate((i - 1) * 0.12);
-    const side = Math.min(cover.width, cover.height);
+
+  y = statTop + 4.4 * u + 7 * u;
+  for (const name of names) {
+    y += 8.8 * u;
+    font(8.6 * u, DISPLAY, 800, name);
+    context.fillText(name, left, y);
+  }
+
+  const logoHeight = (6.4 * u * 485) / 650;
+  const brandBottom = height - 6 * u;
+  const brandTop = brandBottom - logoHeight;
+  const coverSize = 15 * u;
+  const coverTop = brandTop - 4 * u - coverSize;
+  covers.forEach((cover, index) => {
+    if (!cover) return;
+    const side = Math.min(cover.naturalWidth, cover.naturalHeight);
     context.drawImage(
       cover,
-      (cover.width - side) / 2,
-      (cover.height - side) / 2,
+      (cover.naturalWidth - side) / 2,
+      (cover.naturalHeight - side) / 2,
       side,
       side,
-      -220,
-      -220,
-      440,
-      440,
+      left + index * (coverSize + 2 * u),
+      coverTop,
+      coverSize,
+      coverSize,
     );
+  });
+  if (logo) {
+    context.save();
+    context.translate(left, brandTop);
+    context.scale((6.4 * u) / 650, (6.4 * u) / 650);
+    context.fill(logo);
     context.restore();
   }
-  context.font = "800 142px Arial";
-  context.fillText(summary.totalPlays.toLocaleString(), 65, 1120);
-  context.font = "36px Arial";
-  context.fillText("plays", 70, 1180);
-  context.font = "32px Arial";
-  context.fillText(
-    `${summary.uniqueArtists.toLocaleString()} artists     ${summary.uniqueSongs.toLocaleString()} songs`,
-    70,
-    1270,
-  );
-  context.font = "600 43px Arial";
-  summary.topArtists.slice(0, 3).forEach((artist, index) => {
-    let name = artist.name;
-    while (name.length > 1 && context.measureText(name).width > 920) name = name.slice(0, -2) + "…";
-    context.fillText(name, 70, 1410 + index * 90);
-  });
-  context.font = "26px Arial";
-  const format = new Intl.DateTimeFormat(undefined, {
-    timeZone: summary.timeZone,
-    month: "short",
-    day: "numeric",
-  });
-  context.fillText(
-    `${format.format(summary.start)} to ${format.format(summary.end - 1)} · aurral.org`,
-    70,
-    1850,
-  );
+  font(3.6 * u, TEXT, 700);
+  context.textBaseline = "middle";
+  context.fillText(`${username} on aurral`, left + 8 * u, brandTop + logoHeight / 2);
+
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Image export failed"))),

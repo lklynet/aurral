@@ -1,11 +1,11 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
-import { resolveApiPath } from "../utils/api/core.ts";
+import { loadWrappedFonts, wrappedCovers, wrappedImageUrl } from "../utils/wrappedShare.ts";
 import { useWrapped, wrappedTimeZone } from "../hooks/useWrapped.ts";
 import "./wrapped-announcement.css";
 
@@ -38,6 +38,9 @@ export default function WrappedAnnouncement() {
     onError: () => toast.showError("Wrapped could not be hidden. Try again."),
   });
   const summary = query.data?.summary;
+  useEffect(() => {
+    if (year) void loadWrappedFonts(`Your ${year} Wrapped is ready.`);
+  }, [year]);
   if (
     !summary?.totalPlays ||
     query.data?.bannerHidden ||
@@ -45,10 +48,7 @@ export default function WrappedAnnouncement() {
     location.pathname === "/wrapped"
   )
     return null;
-  const artwork = [...summary.topAlbums, ...summary.topArtists, ...summary.topSongs]
-    .flatMap((item) => (item.artwork ? [item.artwork] : []))
-    .filter((url, index, urls) => urls.indexOf(url) === index)
-    .slice(0, 4);
+  const artwork = wrappedCovers(summary);
   const hideSession = () => {
     setHiddenSession(sessionKey);
     try {
@@ -57,49 +57,33 @@ export default function WrappedAnnouncement() {
   };
   return (
     <section className="wrapped-announcement" aria-labelledby={headingId}>
-      <div className="wrapped-announcement-heading">
-        {artwork.length > 0 ? (
-          <div className="wrapped-announcement-art" aria-hidden="true">
-            {artwork.map((url) => (
-              <img
-                key={url}
-                src={url.startsWith("/api/") ? resolveApiPath(url) : url}
-                alt=""
-                loading="lazy"
-              />
-            ))}
-          </div>
-        ) : (
-          <span className="wrapped-announcement-year" aria-hidden="true">
-            {year}
-          </span>
-        )}
-        <div>
-          <h2 id={headingId}>Your {year} Wrapped is ready.</h2>
-          <p>{user?.username}&apos;s year in music.</p>
+      {artwork.length > 0 && (
+        <div className="wrapped-announcement-art" aria-hidden="true">
+          {artwork.map((url) => (
+            <img key={url} src={wrappedImageUrl(url)} alt="" loading="lazy" />
+          ))}
         </div>
-      </div>
+      )}
+      <h2 id={headingId}>Your {year} Wrapped is ready.</h2>
       <div className="wrapped-announcement-actions">
         <Link
           className="btn btn-primary"
           to="/wrapped"
           state={{ wrappedFrom: `${location.pathname}${location.search}${location.hash}` }}
         >
-          Open Wrapped
+          Open
         </Link>
-        <div className="wrapped-announcement-dismissals">
-          <button type="button" className="btn btn-ghost" onClick={hideSession}>
-            Hide
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={dismissal.isPending}
-            onClick={() => dismissal.mutate(true)}
-          >
-            Hide for this year
-          </button>
-        </div>
+        <button type="button" className="btn btn-secondary" onClick={hideSession}>
+          Hide
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={dismissal.isPending}
+          onClick={() => dismissal.mutate(true)}
+        >
+          Hide for this year
+        </button>
       </div>
     </section>
   );
