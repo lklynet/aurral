@@ -1059,7 +1059,8 @@ function Story({
   const arrival = (position: number) => {
     if (position !== index) return " wrapped-slide--leaving wrapped-slide--still";
     if (leaving !== null) return cut ? " wrapped-slide--cut" : " wrapped-slide--wipe";
-    return position === 0 && fromIntro ? " wrapped-slide--still" : "";
+    if (position !== 0 || !fromIntro) return "";
+    return intro ? " wrapped-slide--still" : " wrapped-slide--revealed";
   };
   const content = (entry: Slide, current: boolean) => {
     const live = current && playing;

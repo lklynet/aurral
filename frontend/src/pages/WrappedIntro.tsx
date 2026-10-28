@@ -89,27 +89,6 @@ function measureOpening(slide: HTMLElement) {
   const covers = [...slide.querySelectorAll<HTMLImageElement>(".wrapped-stack img")].map(
     (image) => ({ image, box: box(image.getBoundingClientRect()) }),
   );
-  const text = [...slide.querySelectorAll<HTMLElement>(".wrapped-year, .wrapped-foot p")].flatMap(
-    (element) => {
-      const style = getComputedStyle(element);
-      return [...element.childNodes].flatMap((node) => {
-        const value = node.nodeType === Node.TEXT_NODE ? node.textContent?.trim() : "";
-        if (!value) return [];
-        const range = document.createRange();
-        range.selectNodeContents(node);
-        return [
-          {
-            value,
-            box: box(range.getBoundingClientRect()),
-            font: `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,
-            spacing: style.letterSpacing === "normal" ? "0px" : style.letterSpacing,
-            color: style.color,
-            alpha: Number(style.opacity),
-          },
-        ];
-      });
-    },
-  );
   return (context: CanvasRenderingContext2D) => {
     context.save();
     context.scale(scale, scale);
@@ -118,14 +97,6 @@ function measureOpening(slide: HTMLElement) {
     for (const cover of covers)
       if (cover.image.complete && cover.image.naturalWidth)
         drawCover(context, cover.image, cover.box);
-    for (const line of text) {
-      context.font = line.font;
-      context.letterSpacing = line.spacing;
-      context.fillStyle = line.color;
-      context.globalAlpha = line.alpha;
-      const ascent = context.measureText(line.value).fontBoundingBoxAscent;
-      context.fillText(line.value, line.box.left, line.box.top + ascent);
-    }
     context.restore();
   };
 }

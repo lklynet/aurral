@@ -220,7 +220,8 @@
   display: inline-block;
   animation-name: wrapped-word;
 }
-.wrapped-slide--still .wrapped-in {
+.wrapped-slide--still .wrapped-in,
+.wrapped-slide--revealed .wrapped-stack .wrapped-in {
   animation: none;
 }
 .wrapped-slide--leaving .wrapped-stack img {
