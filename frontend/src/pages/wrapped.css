@@ -1,5 +1,7 @@
 .wrapped-stage {
   --wrapped-display: "Wrapped Display", var(--font-sans);
+  --wrapped-t: calc(var(--aurral-duration-slower) / 4.2);
+  --wrapped-slide-time: 7s;
   position: fixed;
   inset: 0;
   z-index: var(--aurral-z-modal);
@@ -78,6 +80,34 @@
     border-radius: 0;
   }
 }
+.wrapped-frame--intro {
+  background: var(--aurral-overlay-base);
+}
+.wrapped-frame--intro .wrapped-progress {
+  visibility: hidden;
+}
+.wrapped-frame--intro .wrapped-controls {
+  color: var(--aurral-overlay-foreground);
+}
+.wrapped-intro {
+  position: absolute;
+  inset: 0;
+  z-index: var(--aurral-z-raised);
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--aurral-overlay-base);
+}
+.wrapped-ghost {
+  position: absolute;
+  z-index: var(--aurral-z-raised);
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
 
 .wrapped-progress {
   position: absolute;
@@ -89,14 +119,31 @@
   gap: 1.1cqw;
 }
 .wrapped-progress i {
+  position: relative;
   flex: 1;
   height: 0.75cqw;
+  overflow: hidden;
   border-radius: 1cqw;
+}
+.wrapped-progress i::before,
+.wrapped-progress b {
+  content: "";
+  position: absolute;
+  inset: 0;
   background: currentColor;
+}
+.wrapped-progress i::before {
   opacity: 0.28;
 }
-.wrapped-progress .wrapped-seen {
+.wrapped-progress .wrapped-seen::before {
   opacity: 1;
+}
+.wrapped-progress b {
+  transform-origin: 0 50%;
+  animation: wrapped-timer var(--wrapped-slide-time) var(--aurral-ease-linear) both;
+}
+.wrapped-frame--paused .wrapped-progress b {
+  animation-play-state: paused;
 }
 .wrapped-controls {
   position: absolute;
@@ -124,14 +171,140 @@
 .wrapped-slide {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  color: var(--wrapped-ink);
+  background: var(--wrapped-field);
 }
-.wrapped-slide > * {
-  animation: wrapped-rise var(--aurral-duration-slower) var(--aurral-ease-emphasized) both;
+.wrapped-slide--wipe {
+  animation: wrapped-wipe calc(var(--wrapped-t) * 7) var(--aurral-ease-in-out) both;
+}
+.wrapped-slide--cut {
+  animation: wrapped-cut calc(var(--wrapped-t) * 8) var(--aurral-ease-linear) backwards;
+}
+.wrapped-in {
+  animation: wrapped-rise calc(var(--wrapped-t) * 7) var(--aurral-ease-emphasized) both;
+  animation-delay: calc(var(--wrapped-t) * var(--i, 0));
+}
+.wrapped-in--fade {
+  animation-name: wrapped-fade;
+}
+.wrapped-in--stamp {
+  transform-origin: 0 100%;
+  animation-name: wrapped-stamp;
+}
+.wrapped-in--drop {
+  animation-name: wrapped-drop;
+}
+.wrapped-in--grow {
+  transform-origin: 50% 100%;
+  animation-name: wrapped-grow;
+}
+.wrapped-in--stretch {
+  transform-origin: 0 50%;
+  animation-name: wrapped-stretch;
+}
+.wrapped-in--dot {
+  animation-name: wrapped-dot;
+}
+.wrapped-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-top: 0.2em;
+  margin-top: -0.2em;
+}
+.wrapped-in--word {
+  display: inline-block;
+  animation-name: wrapped-word;
+}
+.wrapped-slide--still .wrapped-in {
+  animation: none;
+}
+.wrapped-slide--leaving .wrapped-stack img {
+  animation: wrapped-exit calc(var(--wrapped-t) * 7) var(--aurral-ease-in-out) both;
+  animation-delay: calc(var(--wrapped-t) * (var(--i, 4) - 4) / 2);
+}
+.wrapped-slide--leaving .wrapped-year {
+  animation: wrapped-lift calc(var(--wrapped-t) * 7) var(--aurral-ease-in-out) both;
+}
+@keyframes wrapped-timer {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes wrapped-wipe {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+}
+@keyframes wrapped-cut {
+  from,
+  to {
+    visibility: hidden;
+  }
 }
 @keyframes wrapped-rise {
   from {
     opacity: 0;
-    transform: translateY(4cqw);
+    transform: translateY(5cqw);
+  }
+}
+@keyframes wrapped-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes wrapped-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+@keyframes wrapped-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-110%);
+  }
+}
+@keyframes wrapped-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes wrapped-stretch {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes wrapped-dot {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+@keyframes wrapped-word {
+  from {
+    transform: translateY(105%);
+  }
+}
+@keyframes wrapped-exit {
+  to {
+    transform: translateX(110%);
+  }
+}
+@keyframes wrapped-lift {
+  to {
+    transform: translateY(-12cqw);
+  }
+}
+@keyframes wrapped-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+@keyframes wrapped-settle {
+  from {
+    transform: scale(1.25);
   }
 }
 
@@ -230,9 +403,16 @@
   top: 0;
   left: 0;
   width: 100%;
-  height: 62%;
+  height: 50%;
   object-fit: cover;
   filter: grayscale(1) contrast(1.05);
+}
+.wrapped-hero,
+.wrapped-album {
+  animation:
+    wrapped-reveal calc(var(--wrapped-t) * 9) var(--aurral-ease-in-out) both,
+    wrapped-settle calc(var(--wrapped-t) * 69) var(--aurral-ease-emphasized) both;
+  animation-delay: calc(var(--wrapped-t) * 2);
 }
 .wrapped-artist {
   margin-left: -1cqw;
@@ -247,6 +427,7 @@
   font-size: 3.6cqw;
   font-weight: 600;
   opacity: 0.8;
+  animation: wrapped-fade calc(var(--wrapped-t) * 5) var(--aurral-ease-emphasized) both;
 }
 .wrapped-eq {
   display: inline-flex;
@@ -333,6 +514,7 @@
 }
 .wrapped-histogram .wrapped-peak {
   opacity: 1;
+  animation-timing-function: var(--aurral-ease-spring);
 }
 .wrapped-axis {
   position: absolute;

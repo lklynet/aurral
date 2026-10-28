@@ -3,8 +3,8 @@ import latinExt from "@fontsource-variable/archivo/files/archivo-latin-ext-wdth-
 import type { WrappedRecap } from "../hooks/useWrapped.ts";
 import { resolveApiPath } from "./api/core.ts";
 
-const DISPLAY = '"Wrapped Display", sans-serif';
-const TEXT = '"Wrapped Text", ui-sans-serif, system-ui, sans-serif';
+export const WRAPPED_DISPLAY = '"Wrapped Display", sans-serif';
+export const WRAPPED_TEXT = '"Wrapped Text", ui-sans-serif, system-ui, sans-serif';
 const SUBSETS = [
   [
     latin,
@@ -32,8 +32,8 @@ export function loadWrappedFonts(text: string) {
         );
   }
   return Promise.all([
-    document.fonts.load(`900 16px ${DISPLAY}`, text),
-    document.fonts.load(`500 16px ${TEXT}`, text),
+    document.fonts.load(`900 16px ${WRAPPED_DISPLAY}`, text),
+    document.fonts.load(`500 16px ${WRAPPED_TEXT}`, text),
   ]);
 }
 
@@ -73,7 +73,7 @@ export function wrappedCovers(summary: WrappedRecap, count = 4) {
     .slice(0, count);
 }
 
-async function loadImage(url: string) {
+export async function loadWrappedImage(url: string) {
   const image = new Image();
   image.crossOrigin = "anonymous";
   image.src = wrappedImageUrl(url);
@@ -81,106 +81,161 @@ async function loadImage(url: string) {
   return image;
 }
 
-async function loadLogo() {
-  const svg = await (await fetch(`${import.meta.env.BASE_URL}arralogo.svg`)).text();
-  const path = svg.match(/\sd="([^"]+)"/)?.[1];
-  return path ? new Path2D(path) : null;
+let logo: Promise<{ path: Path2D; length: number } | null> | null = null;
+
+export function loadWrappedLogo() {
+  logo ??= fetch(`${import.meta.env.BASE_URL}arralogo.svg`)
+    .then((response) => response.text())
+    .then((svg) => {
+      const d = svg.match(/\sd="([^"]+)"/)?.[1];
+      if (!d) return null;
+      const measure = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      measure.setAttribute("d", d);
+      return { path: new Path2D(d), length: measure.getTotalLength() };
+    })
+    .catch(() => null);
+  return logo;
 }
 
-export async function createWrappedImage(summary: WrappedRecap, field: string, username: string) {
+export const WRAPPED_CARD_BUILD = 3.6;
+const progress = (time: number, start: number, length: number) =>
+  1 - (1 - Math.min(1, Math.max(0, (time - start) / length))) ** 3;
+
+export async function prepareWrappedCard(summary: WrappedRecap, field: string, username: string) {
+  const names = summary.topArtists.map((artist) => artist.name);
+  const [covers, mark] = await Promise.all([
+    Promise.all(wrappedCovers(summary).map((url) => loadWrappedImage(url).catch(() => null))),
+    loadWrappedLogo(),
+    loadWrappedFonts(`${summary.year}0123456789,.${names.join("")}${username}`),
+  ]);
   const width = 1080;
   const height = 1920;
   const u = width / 100;
   const left = 5 * u;
   const room = width - 10 * u;
-  const names = summary.topArtists.map((artist) => artist.name);
-  const [covers, logo] = await Promise.all([
-    Promise.all(wrappedCovers(summary).map((url) => loadImage(url).catch(() => null))),
-    loadLogo().catch(() => null),
-    loadWrappedFonts(`${summary.year}0123456789,.${names.join("")}${username}`),
-  ]);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Image export is unavailable in this browser");
   const ink = wrappedInk(field);
-  context.fillStyle = field;
-  context.fillRect(0, 0, width, height);
-  context.fillStyle = ink;
-
-  const font = (size: number, family: string, weight: number, value = "", max = room) => {
-    context.font = `${weight} ${size}px ${family}`;
-    const measured = context.measureText(value).width;
-    if (measured > max)
-      context.font = `${weight} ${Math.floor((size * max) / measured)}px ${family}`;
-    return context.measureText(value);
-  };
-
   const year = String(summary.year);
-  context.letterSpacing = `${-0.06 * 44 * u}px`;
-  const yearBox = font(44 * u, DISPLAY, 900, year);
-  let y = 6 * u + yearBox.actualBoundingBoxAscent;
-  context.fillText(year, left - 1.4 * u, y);
-  context.letterSpacing = "0px";
-
   const stats = [
     ...(summary.minutes === null ? [] : [{ value: summary.minutes, label: "minutes" }]),
     { value: summary.totalPlays, label: "plays" },
     { value: summary.uniqueArtists, label: "artists" },
   ];
-  y += 6 * u;
-  let x = left;
-  const statTop = y + font(14 * u, DISPLAY, 900, "0").actualBoundingBoxAscent;
-  for (const stat of stats) {
-    const value = stat.value.toLocaleString();
-    const valueWidth = font(14 * u, DISPLAY, 900, value).width;
-    context.fillText(value, x, statTop);
-    context.globalAlpha = 0.6;
-    const labelWidth = font(3.4 * u, TEXT, 600, stat.label).width;
-    context.fillText(stat.label, x, statTop + 4.4 * u);
+
+  return (context: CanvasRenderingContext2D, time = Number.POSITIVE_INFINITY) => {
+    const font = (size: number, family: string, weight: number, value = "", max = room) => {
+      context.font = `${weight} ${size}px ${family}`;
+      const measured = context.measureText(value).width;
+      if (measured > max)
+        context.font = `${weight} ${Math.floor((size * max) / measured)}px ${family}`;
+      return context.measureText(value);
+    };
+    const rise = (start: number, length: number, distance: number) => {
+      const k = progress(time, start, length);
+      context.globalAlpha = k;
+      return distance * (1 - k);
+    };
+
     context.globalAlpha = 1;
-    x += Math.max(valueWidth, labelWidth) + 6 * u;
-  }
+    context.fillStyle = field;
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = ink;
 
-  y = statTop + 4.4 * u + 7 * u;
-  for (const name of names) {
-    y += 8.8 * u;
-    font(8.6 * u, DISPLAY, 800, name);
-    context.fillText(name, left, y);
-  }
-
-  const logoHeight = (6.4 * u * 485) / 650;
-  const brandBottom = height - 6 * u;
-  const brandTop = brandBottom - logoHeight;
-  const coverSize = 15 * u;
-  const coverTop = brandTop - 4 * u - coverSize;
-  covers.forEach((cover, index) => {
-    if (!cover) return;
-    const side = Math.min(cover.naturalWidth, cover.naturalHeight);
-    context.drawImage(
-      cover,
-      (cover.naturalWidth - side) / 2,
-      (cover.naturalHeight - side) / 2,
-      side,
-      side,
-      left + index * (coverSize + 2 * u),
-      coverTop,
-      coverSize,
-      coverSize,
-    );
-  });
-  if (logo) {
+    context.letterSpacing = `${-0.06 * 44 * u}px`;
+    const yearBox = font(44 * u, WRAPPED_DISPLAY, 900, year);
+    let y = 6 * u + yearBox.actualBoundingBoxAscent;
+    const grow = progress(time, 0, 0.7);
     context.save();
-    context.translate(left, brandTop);
-    context.scale((6.4 * u) / 650, (6.4 * u) / 650);
-    context.fill(logo);
+    context.globalAlpha = grow;
+    context.translate(left - 1.4 * u, 6 * u);
+    context.scale(1.18 - 0.18 * grow, 1.18 - 0.18 * grow);
+    context.fillText(year, 0, y - 6 * u);
     context.restore();
-  }
-  font(3.6 * u, TEXT, 700);
-  context.textBaseline = "middle";
-  context.fillText(`${username} on aurral`, left + 8 * u, brandTop + logoHeight / 2);
+    context.letterSpacing = "0px";
 
+    y += 6 * u;
+    let x = left;
+    const statTop = y + font(14 * u, WRAPPED_DISPLAY, 900, "0").actualBoundingBoxAscent;
+    stats.forEach((stat, index) => {
+      const final = stat.value.toLocaleString();
+      const valueWidth = font(14 * u, WRAPPED_DISPLAY, 900, final).width;
+      const counted = 1 - (1 - Math.min(1, Math.max(0, (time - 0.3 - index * 0.1) / 1.6))) ** 4;
+      const offset = rise(0.25 + index * 0.1, 0.7, 3 * u);
+      context.fillText(Math.round(stat.value * counted).toLocaleString(), x, statTop + offset);
+      context.globalAlpha *= 0.6;
+      const labelWidth = font(3.4 * u, WRAPPED_TEXT, 600, stat.label).width;
+      context.fillText(stat.label, x, statTop + 4.4 * u + offset);
+      x += Math.max(valueWidth, labelWidth) + 6 * u;
+    });
+
+    y = statTop + 4.4 * u + 7 * u;
+    names.forEach((name, index) => {
+      y += 8.8 * u;
+      font(8.6 * u, WRAPPED_DISPLAY, 800, name);
+      context.fillText(name, left, y + rise(0.8 + index * 0.1, 0.6, 4 * u));
+    });
+
+    const logoHeight = (6.4 * u * 485) / 650;
+    const brandBottom = height - 6 * u;
+    const brandTop = brandBottom - logoHeight;
+    const coverSize = 15 * u;
+    const coverTop = brandTop - 4 * u - coverSize;
+    covers.forEach((cover, index) => {
+      if (!cover) return;
+      const k = progress(time, 1.3 + index * 0.09, 0.6);
+      const side = Math.min(cover.naturalWidth, cover.naturalHeight);
+      const coverLeft = left + index * (coverSize + 2 * u);
+      context.save();
+      context.globalAlpha = k;
+      context.translate(coverLeft + coverSize / 2, coverTop + coverSize / 2 - 6 * u * (1 - k));
+      context.rotate((-4 * (1 - k) * Math.PI) / 180);
+      context.drawImage(
+        cover,
+        (cover.naturalWidth - side) / 2,
+        (cover.naturalHeight - side) / 2,
+        side,
+        side,
+        -coverSize / 2,
+        -coverSize / 2,
+        coverSize,
+        coverSize,
+      );
+      context.restore();
+    });
+    context.globalAlpha = 1;
+    if (mark) {
+      const scale = (6.4 * u) / 650;
+      context.save();
+      context.translate(left, brandTop);
+      context.scale(scale, scale);
+      const drawn = progress(time, 1.9, 1.5);
+      if (drawn < 1) {
+        context.strokeStyle = ink;
+        context.lineWidth = 14;
+        context.setLineDash([mark.length]);
+        context.lineDashOffset = mark.length * (1 - drawn);
+        context.stroke(mark.path);
+      }
+      context.globalAlpha = progress(time, 3.1, 0.5);
+      context.fill(mark.path);
+      context.restore();
+    }
+    context.globalAlpha = progress(time, 1.9, 0.5);
+    font(3.6 * u, WRAPPED_TEXT, 700);
+    context.textBaseline = "middle";
+    context.fillText(`${username} on aurral`, left + 8 * u, brandTop + logoHeight / 2);
+    context.textBaseline = "alphabetic";
+    context.globalAlpha = 1;
+  };
+}
+
+export async function createWrappedImage(summary: WrappedRecap, field: string, username: string) {
+  const draw = await prepareWrappedCard(summary, field, username);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image export is unavailable in this browser");
+  draw(context);
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Image export failed"))),

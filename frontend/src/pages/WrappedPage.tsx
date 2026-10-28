@@ -1,12 +1,15 @@
 import {
   Fragment,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type AnimationEvent,
   type CSSProperties,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -25,9 +28,11 @@ import {
 } from "../hooks/useWrapped.ts";
 import { playlistPath } from "../navigation/playlistPaths.ts";
 import {
+  WRAPPED_CARD_BUILD,
   createWrappedImage,
   downloadWrappedFile,
   loadWrappedFonts,
+  prepareWrappedCard,
   wrappedCovers,
   wrappedImageUrl,
   wrappedInk,
@@ -35,8 +40,9 @@ import {
 } from "../utils/wrappedShare";
 import { resolveApiPath } from "../utils/api/core";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
-import { Volume2, VolumeX, X } from "../components/icons.tsx";
+import { RotateCcw, Volume2, VolumeX, X } from "../components/icons.tsx";
 import TooltipButton from "../components/TooltipButton.tsx";
+import WrappedIntro from "./WrappedIntro.tsx";
 import "./wrapped.css";
 
 type Slide = {
@@ -95,8 +101,8 @@ function storySlides(summary: WrappedRecap) {
   const preview = (rank: number) => (previews.length ? previews[rank % previews.length] : null);
   const include = (condition: unknown, slide: Slide) => (condition ? [slide] : []);
   return [
-    { kind: "opening", preview: preview(4) },
-    { kind: "minutes", preview: preview(3) },
+    { kind: "opening", preview: preview(0) },
+    { kind: "minutes", preview: null },
     { kind: "variety", preview: null },
     ...include(summary.topGenres.length, { kind: "genre", preview: null }),
     ...include(summary.topArtists[0], {
@@ -119,20 +125,46 @@ function storySlides(summary: WrappedRecap) {
     }),
     ...include(summary.busiestDay, { kind: "day", preview: null }),
     ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak", preview: null }),
-    { kind: "hour", preview: preview(2) },
+    { kind: "hour", preview: null },
     { kind: "share", preview: preview(0) },
   ] satisfies Slide[];
 }
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const introKey = (year: number) => `aurral.wrapped.intro.${year}`;
+
+function introPending(year: number) {
+  try {
+    return !reducedMotion() && localStorage.getItem(introKey(year)) === null;
+  } catch {
+    return false;
+  }
+}
+
+function markIntroSeen(year: number) {
+  try {
+    localStorage.setItem(introKey(year), "seen");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const at = (step: number): CSSProperties => ({ "--i": step });
 
 function Fit({
   className,
   max,
   lines = 1,
+  step,
+  fly,
   children,
 }: {
   className: string;
   max: number;
   lines?: number;
+  step?: number;
+  fly?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -150,39 +182,123 @@ function Fit({
     }
   }, [children, lines, max]);
   return (
-    <p ref={ref} className={className}>
+    <p
+      ref={ref}
+      className={className}
+      style={step === undefined ? undefined : at(step)}
+      data-fly={fly}
+    >
       {children}
     </p>
   );
 }
 
-function usePreviewAudio(src: string | null, muted: boolean) {
+function Words({ text, from }: { text: string; from: number }) {
+  return text.split(" ").map((word, index) => (
+    <Fragment key={index}>
+      {index > 0 && " "}
+      <span className="wrapped-mask">
+        <span className="wrapped-in wrapped-in--word" style={at(from + index * 1.4)}>
+          {word}
+        </span>
+      </span>
+    </Fragment>
+  ));
+}
+
+function CountUp({ value, from }: { value: number; from: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || reducedMotion()) return;
+    const start = performance.now() + from * 100;
+    let frame = requestAnimationFrame(function tick(now) {
+      const k = Math.min(1, Math.max(0, (now - start) / 2200));
+      element.textContent = Math.round(value * (1 - (1 - k) ** 4)).toLocaleString();
+      if (k < 1) frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [from, value]);
+  return <span ref={ref}>{value.toLocaleString()}</span>;
+}
+
+function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
+  try {
+    const context = new AudioContext();
+    const source = context.createMediaElementSource(element);
+    const clean = new GainNode(context, { gain: vintage ? 0 : 1 });
+    const mono = new GainNode(context, { channelCount: 1, channelCountMode: "explicit" });
+    const old = new GainNode(context, { gain: vintage ? 2 : 0 });
+    const hiss = new GainNode(context, { gain: vintage ? 1 : 0 });
+    const noise = context.createBuffer(1, context.sampleRate * 4, context.sampleRate);
+    const samples = noise.getChannelData(0);
+    for (let index = 0; index < samples.length; index++)
+      samples[index] =
+        (Math.random() * 2 - 1) * 0.012 + (Math.random() < 0.0007 ? Math.random() - 0.5 : 0);
+    const crackle = new AudioBufferSourceNode(context, { buffer: noise, loop: true });
+    source.connect(clean).connect(context.destination);
+    source
+      .connect(mono)
+      .connect(new BiquadFilterNode(context, { type: "highpass", frequency: 380 }))
+      .connect(new BiquadFilterNode(context, { type: "lowpass", frequency: 3000 }))
+      .connect(old)
+      .connect(context.destination);
+    crackle
+      .connect(new BiquadFilterNode(context, { type: "highpass", frequency: 900 }))
+      .connect(hiss)
+      .connect(context.destination);
+    crackle.start();
+    return { context, clean, old, hiss };
+  } catch {
+    return null;
+  }
+}
+
+function usePreviewAudio(src: string | null, muted: boolean, vintage: boolean) {
   const audio = useRef<HTMLAudioElement | null>(null);
+  const graph = useRef<ReturnType<typeof vintageGraph>>(null);
   const [playing, setPlaying] = useState(false);
   const queue = useAudioQueue();
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  const vintageRef = useRef(vintage);
+  vintageRef.current = vintage;
 
   useEffect(() => {
     const element = new Audio();
     element.preload = "auto";
+    element.crossOrigin = "anonymous";
+    const sound = vintageGraph(element, vintageRef.current);
     element.addEventListener("playing", () => {
       setPlaying(true);
+      sound?.context.resume().catch(() => {});
       if (queueRef.current.isPlaying) queueRef.current.togglePlayPause();
     });
     element.addEventListener("pause", () => setPlaying(false));
     audio.current = element;
+    graph.current = sound;
     return () => {
       element.pause();
       element.removeAttribute("src");
       element.load();
+      sound?.context.close().catch(() => {});
       audio.current = null;
+      graph.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (audio.current) audio.current.muted = muted;
   }, [muted]);
+
+  useEffect(() => {
+    const sound = graph.current;
+    if (!sound) return;
+    const now = sound.context.currentTime;
+    sound.clean.gain.setTargetAtTime(!vintage && !muted ? 1 : 0, now, 0.15);
+    sound.old.gain.setTargetAtTime(vintage && !muted ? 2 : 0, now, 0.15);
+    sound.hiss.gain.setTargetAtTime(vintage && !muted ? 1 : 0, now, 0.15);
+  }, [muted, vintage]);
 
   useEffect(() => {
     const element = audio.current;
@@ -204,7 +320,15 @@ function usePreviewAudio(src: string | null, muted: boolean) {
     playing,
     resume: () => {
       const element = audio.current;
+      graph.current?.context.resume().catch(() => {});
       if (element?.src && element.paused && !element.ended) element.play().catch(() => {});
+    },
+    restart: () => {
+      const element = audio.current;
+      graph.current?.context.resume().catch(() => {});
+      if (!element?.src) return;
+      element.currentTime = 0;
+      element.play().catch(() => {});
     },
   };
 }
@@ -229,6 +353,80 @@ function useShareImage(summary: WrappedRecap, field: string, username: string) {
   return image;
 }
 
+function fly(from: HTMLElement, to: HTMLElement, frame: HTMLElement) {
+  const box = frame.getBoundingClientRect();
+  const start = from.getBoundingClientRect();
+  const end = to.getBoundingClientRect();
+  const source = getComputedStyle(from);
+  const target = getComputedStyle(to);
+  const ghost = document.createElement("p");
+  ghost.className = "wrapped-ghost";
+  ghost.textContent = to.textContent;
+  Object.assign(ghost.style, {
+    left: `${end.left - box.left}px`,
+    top: `${end.top - box.top}px`,
+    width: `${end.width}px`,
+    fontFamily: target.fontFamily,
+    fontSize: target.fontSize,
+    fontWeight: target.fontWeight,
+    lineHeight: target.lineHeight,
+    letterSpacing: target.letterSpacing,
+  });
+  frame.append(ghost);
+  from.style.visibility = "hidden";
+  to.style.visibility = "hidden";
+  to.style.animation = "none";
+  const scale = Number.parseFloat(source.fontSize) / Number.parseFloat(target.fontSize);
+  ghost
+    .animate(
+      [
+        {
+          transform: `translate(${start.left - end.left}px, ${start.top - end.top}px) scale(${scale})`,
+          color: source.color,
+        },
+        { transform: "none", color: target.color },
+      ],
+      { duration: 1000, easing: "cubic-bezier(0.65, 0, 0.2, 1)", fill: "both" },
+    )
+    .finished.finally(() => {
+      to.style.visibility = "";
+      ghost.remove();
+    });
+}
+
+function expand(from: HTMLElement, frame: HTMLElement, field: string) {
+  const box = frame.getBoundingClientRect();
+  const bar = from.getBoundingClientRect();
+  const left = `${bar.left - box.left}px`;
+  const width = `${bar.width}px`;
+  const color = getComputedStyle(from).backgroundColor;
+  const ghost = document.createElement("div");
+  ghost.className = "wrapped-ghost";
+  frame.append(ghost);
+  ghost
+    .animate(
+      [
+        {
+          left,
+          top: `${bar.top - box.top}px`,
+          width,
+          height: `${bar.height}px`,
+          background: color,
+        },
+        { left, top: "0px", width, height: `${box.height}px`, background: color, offset: 0.45 },
+        {
+          left: "0px",
+          top: "0px",
+          width: `${box.width}px`,
+          height: `${box.height}px`,
+          background: field,
+        },
+      ],
+      { duration: 800, easing: "cubic-bezier(0.7, 0, 0.25, 1)", fill: "both" },
+    )
+    .finished.finally(() => ghost.remove());
+}
+
 function Opening({ summary, username }: { summary: WrappedRecap; username: string }) {
   const covers = wrappedCovers(summary);
   const year = String(summary.year);
@@ -236,17 +434,26 @@ function Opening({ summary, username }: { summary: WrappedRecap; username: strin
     <>
       {covers.length > 0 && (
         <div className="wrapped-stack" aria-hidden="true">
-          {covers.map((url) => (
-            <img key={url} src={wrappedImageUrl(url)} alt="" />
+          {covers.map((url, index) => (
+            <img
+              key={url}
+              className="wrapped-in wrapped-in--drop"
+              style={at(4 + index * 1.2)}
+              src={wrappedImageUrl(url)}
+              alt=""
+            />
           ))}
         </div>
       )}
-      <p className={covers.length ? "wrapped-year wrapped-year--beside" : "wrapped-year"}>
+      <p
+        className={`wrapped-year wrapped-in wrapped-in--stamp${covers.length ? " wrapped-year--beside" : ""}`}
+        style={at(1)}
+      >
         {year.slice(0, 2)}
         <br />
         {year.slice(2)}
       </p>
-      <div className="wrapped-foot">
+      <div className="wrapped-foot wrapped-in" style={at(9)}>
         <p>Your year in music</p>
         <p className="wrapped-dim">{username}</p>
       </div>
@@ -264,11 +471,13 @@ function Minutes({ summary }: { summary: WrappedRecap }) {
         : `About ${count(Math.round(minutes / 60), "hour")} of music. `;
   return (
     <div className="wrapped-pad">
-      <Fit className="wrapped-fill" max={41}>
-        {(minutes ?? totalPlays).toLocaleString()}
+      <Fit className="wrapped-fill wrapped-in wrapped-in--fade" max={41} step={3}>
+        <CountUp value={minutes ?? totalPlays} from={3} />
       </Fit>
-      <p className="wrapped-word">{minutes === null ? "plays" : "minutes"}</p>
-      <p className="wrapped-body">
+      <p className="wrapped-word wrapped-in" style={at(9)}>
+        {minutes === null ? "plays" : "minutes"}
+      </p>
+      <p className="wrapped-body wrapped-in" style={at(16)}>
         {minutes === null
           ? `${count(uniqueArtists, "artist")} and ${count(uniqueSongs, "song")}.`
           : `${span}${count(totalPlays, "play")} across ${count(uniqueArtists, "artist")}.`}
@@ -298,15 +507,23 @@ function Variety({ summary }: { summary: WrappedRecap }) {
   ].filter((row) => row.value > 0);
   return (
     <div className="wrapped-pad">
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <Fragment key={row.word}>
-          <Fit className="wrapped-variety" max={row.size}>
-            {row.value.toLocaleString()}
+          <Fit
+            className="wrapped-variety wrapped-in wrapped-in--fade"
+            max={row.size}
+            step={3 + index * 3}
+          >
+            <CountUp value={row.value} from={3 + index * 3} />
           </Fit>
-          <p className="wrapped-variety-label">{plural(row.value, row.word)}</p>
+          <p className="wrapped-variety-label wrapped-in" style={at(4 + index * 3)}>
+            {plural(row.value, row.word)}
+          </p>
         </Fragment>
       ))}
-      <p className="wrapped-body">Spread across {count(summary.activeDays, "day")} of listening.</p>
+      <p className="wrapped-body wrapped-in" style={at(13)}>
+        Spread across {count(summary.activeDays, "day")} of listening.
+      </p>
     </div>
   );
 }
@@ -316,19 +533,24 @@ function Genre({ summary }: { summary: WrappedRecap }) {
   if (!top) return null;
   return (
     <div className="wrapped-pad">
-      <Fit className="wrapped-headline" max={40} lines={2}>
+      <Fit className="wrapped-headline wrapped-in wrapped-in--stamp" max={40} lines={2} step={3}>
         {sentenceCase(top.name)}
       </Fit>
-      <p className="wrapped-word wrapped-word--small">was your sound.</p>
-      <p className="wrapped-body">
+      <p className="wrapped-word wrapped-word--small wrapped-in" style={at(7)}>
+        was your sound.
+      </p>
+      <p className="wrapped-body wrapped-in" style={at(10)}>
         It ran through {percent(top.plays, summary.totalPlays)} of your plays.
       </p>
       <ol className="wrapped-genres">
-        {summary.topGenres.map((genre) => (
-          <li key={genre.name}>
+        {summary.topGenres.map((genre, index) => (
+          <li key={genre.name} className="wrapped-in" style={at(12 + index * 1.2)}>
             <span className="wrapped-genre-name">{sentenceCase(genre.name)}</span>
             <span className="wrapped-genre-share">{percent(genre.plays, summary.totalPlays)}</span>
-            <i style={{ width: `${(genre.plays / top.plays) * 100}%` }} />
+            <i
+              className="wrapped-in wrapped-in--stretch"
+              style={{ ...at(13 + index * 1.2), width: `${(genre.plays / top.plays) * 100}%` }}
+            />
           </li>
         ))}
       </ol>
@@ -347,9 +569,11 @@ function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean 
       )}
       <div className="wrapped-pad wrapped-bottom">
         <Fit className="wrapped-artist" max={37} lines={3}>
-          {artist.name}
+          <Words text={artist.name} from={7} />
         </Fit>
-        <p className="wrapped-body">Your top artist. {count(artist.plays, "play")}.</p>
+        <p className="wrapped-body wrapped-in" style={at(12)}>
+          Your top artist. {count(artist.plays, "play")}.
+        </p>
         {song && playing && <NowPlaying title={song.name} />}
       </div>
     </>
@@ -362,7 +586,7 @@ function Artists({ summary }: { summary: WrappedRecap }) {
       <h2 className="sr-only">Your top artists</h2>
       <ol className="wrapped-artists">
         {summary.topArtists.map((artist, index) => (
-          <li key={artist.key}>
+          <li key={artist.key} className="wrapped-in" style={at(3 + index * 1.2)}>
             {artist.artwork ? (
               <img src={wrappedImageUrl(artist.artwork)} alt="" />
             ) : (
@@ -388,13 +612,24 @@ function Song({ summary, playing }: { summary: WrappedRecap; playing: boolean })
   ];
   return (
     <>
-      {song.artwork && <img className="wrapped-cover" src={wrappedImageUrl(song.artwork)} alt="" />}
+      {song.artwork && (
+        <img
+          className="wrapped-cover wrapped-in wrapped-in--stamp"
+          style={at(2)}
+          src={wrappedImageUrl(song.artwork)}
+          alt=""
+        />
+      )}
       <div className="wrapped-pad wrapped-bottom">
-        <p className="wrapped-kicker">Your top song</p>
-        <Fit className="wrapped-headline wrapped-headline--tight" max={40} lines={2}>
-          {song.name}
+        <p className="wrapped-kicker wrapped-in" style={at(6)}>
+          Your top song
+        </p>
+        <Fit className="wrapped-headline wrapped-headline--tight" max={40} lines={2} fly="top-song">
+          <Words text={song.name} from={7} />
         </Fit>
-        <p className="wrapped-body">{details.join(". ")}.</p>
+        <p className="wrapped-body wrapped-in" style={at(12)}>
+          {details.join(". ")}.
+        </p>
         {playing && <NowPlaying title={song.name} />}
       </div>
     </>
@@ -411,11 +646,13 @@ function Album({ summary, playing }: { summary: WrappedRecap; playing: boolean }
         <img className="wrapped-album" src={wrappedImageUrl(album.artwork)} alt="" />
       )}
       <div className="wrapped-pad wrapped-bottom">
-        <p className="wrapped-kicker">Your top album</p>
+        <p className="wrapped-kicker wrapped-in" style={at(6)}>
+          Your top album
+        </p>
         <Fit className="wrapped-album-name" max={24} lines={2}>
-          {withoutEdition(album.name)}
+          <Words text={withoutEdition(album.name)} from={7} />
         </Fit>
-        <p className="wrapped-body">
+        <p className="wrapped-body wrapped-in" style={at(12)}>
           {album.artist}. {count(album.plays, "play")}
           {album.songs > 1 ? ` across ${count(album.songs, "song")}` : ""}.
         </p>
@@ -439,27 +676,33 @@ function Months({ summary }: { summary: WrappedRecap }) {
   return (
     <>
       <div className="wrapped-pad">
-        <Fit className="wrapped-headline" max={40}>
+        <Fit className="wrapped-headline wrapped-in wrapped-in--stamp" max={40} step={3}>
           {dayLabel(`${peak.month}-01`, { month: "long" })}
         </Fit>
-        <p className="wrapped-word wrapped-word--small">was your loudest month.</p>
-        <p className="wrapped-body">
+        <p className="wrapped-word wrapped-word--small wrapped-in" style={at(7)}>
+          was your loudest month.
+        </p>
+        <p className="wrapped-body wrapped-in" style={at(10)}>
           {count(peak.plays, "play")}
           {peak.topArtist ? `, mostly ${peak.topArtist.name}` : ""}.
         </p>
       </div>
       <div className="wrapped-months" aria-hidden="true">
-        {months.map((month) => (
+        {months.map((month, index) => (
           <div
             key={month.month}
             className={month === peak ? "wrapped-month wrapped-peak" : "wrapped-month"}
           >
             <i
+              className="wrapped-in wrapped-in--grow"
               style={{
+                ...at(6 + index * 0.6),
                 height: month.plays ? `${Math.max(2, (month.plays / peak.plays) * 100)}%` : 0,
               }}
             />
-            <span>{dayLabel(`${month.month}-01`, { month: "narrow" })}</span>
+            <span className="wrapped-in wrapped-in--fade" style={at(6 + index * 0.6)}>
+              {dayLabel(`${month.month}-01`, { month: "narrow" })}
+            </span>
           </div>
         ))}
       </div>
@@ -472,11 +715,13 @@ function Day({ summary }: { summary: WrappedRecap }) {
   if (!day) return null;
   return (
     <div className="wrapped-pad">
-      <Fit className="wrapped-day-month" max={31}>
+      <Fit className="wrapped-day-month wrapped-in wrapped-in--stamp" max={31} step={3}>
         {dayLabel(day.date, { month: "long" })}
       </Fit>
-      <p className="wrapped-day-number">{dayLabel(day.date, { day: "numeric" })}</p>
-      <p className="wrapped-body">
+      <p className="wrapped-day-number wrapped-in wrapped-in--stamp" style={at(6)}>
+        {dayLabel(day.date, { day: "numeric" })}
+      </p>
+      <p className="wrapped-body wrapped-in" style={at(11)}>
         {count(day.plays, "play")} in one day.
         {day.topSong && day.topSong.plays > 1
           ? ` Most of all, ${day.topSong.name}, ${count(day.topSong.plays, "time")}.`
@@ -496,9 +741,13 @@ function Streak({ summary }: { summary: WrappedRecap }) {
   return (
     <>
       <div className="wrapped-pad">
-        <p className="wrapped-streak">{streak.days}</p>
-        <p className="wrapped-word wrapped-word--small">days in a row.</p>
-        <p className="wrapped-body">
+        <p className="wrapped-streak wrapped-in wrapped-in--fade" style={at(3)}>
+          <CountUp value={streak.days} from={3} />
+        </p>
+        <p className="wrapped-word wrapped-word--small wrapped-in" style={at(9)}>
+          days in a row.
+        </p>
+        <p className="wrapped-body wrapped-in" style={at(12)}>
           {date(streak.start)} to {date(streak.end)}. Music on {count(summary.activeDays, "day")}{" "}
           this year.
         </p>
@@ -517,8 +766,14 @@ function Streak({ summary }: { summary: WrappedRecap }) {
                   ? "wrapped-calendar-streak"
                   : summary.calendar[index]
                     ? "wrapped-calendar-on"
-                    : undefined;
-              return <i key={day} className={state} />;
+                    : "";
+              return (
+                <i
+                  key={day}
+                  className={`wrapped-in wrapped-in--dot ${state}`}
+                  style={at(4 + (month * 31 + day) * 0.08)}
+                />
+              );
             })}
           </div>
         ))}
@@ -532,13 +787,29 @@ function Songs({ summary }: { summary: WrappedRecap }) {
     <div className="wrapped-pad">
       <h2 className="sr-only">Your top songs</h2>
       <ol className="wrapped-rank">
-        {summary.topSongs.slice(0, 5).map((song, index) => (
-          <li key={song.key}>
-            <span className="wrapped-rank-number">{index + 1}</span>
-            <span className="wrapped-rank-title">{song.name}</span>
-            <span className="wrapped-rank-artist">{song.artist}</span>
-          </li>
-        ))}
+        {summary.topSongs.slice(0, 5).map((song, index) => {
+          const step = index ? 13 + (index - 1) * 2.8 : 5;
+          return (
+            <li key={song.key}>
+              <span
+                className={`wrapped-rank-number wrapped-in${index ? "" : " wrapped-in--stamp"}`}
+                style={at(step)}
+              >
+                {index + 1}
+              </span>
+              <span
+                className="wrapped-rank-title wrapped-in"
+                style={at(index ? step + 0.7 : 7)}
+                data-fly={index ? undefined : "top-song"}
+              >
+                {song.name}
+              </span>
+              <span className="wrapped-rank-artist wrapped-in" style={at(index ? step + 1.4 : 10)}>
+                {song.artist}
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
@@ -551,11 +822,13 @@ function Hour({ summary }: { summary: WrappedRecap }) {
   return (
     <>
       <div className="wrapped-pad">
-        <Fit className="wrapped-hour" max={50}>
+        <Fit className="wrapped-hour wrapped-in wrapped-in--stamp" max={50} step={13.5}>
           {hourLabel(hour)}
         </Fit>
-        <p className="wrapped-word wrapped-word--small">was your hour.</p>
-        <p className="wrapped-body">
+        <p className="wrapped-word wrapped-word--small wrapped-in" style={at(17)}>
+          was your hour.
+        </p>
+        <p className="wrapped-body wrapped-in" style={at(21)}>
           {count(peak, "play")} started in this hour. That is {share}% of your year.
         </p>
       </div>
@@ -563,12 +836,13 @@ function Hour({ summary }: { summary: WrappedRecap }) {
         {summary.hours.map((plays, index) => (
           <i
             key={index}
-            className={index === hour ? "wrapped-peak" : undefined}
-            style={{ height: `${Math.max(2, (plays / peak) * 100)}%` }}
+            className={`wrapped-in wrapped-in--grow${index === hour ? " wrapped-peak" : ""}`}
+            style={{ ...at(5 + index * 0.35), height: `${Math.max(2, (plays / peak) * 100)}%` }}
+            data-fly={index === hour ? "peak" : undefined}
           />
         ))}
       </div>
-      <div className="wrapped-axis" aria-hidden="true">
+      <div className="wrapped-axis wrapped-in wrapped-in--fade" style={at(5)} aria-hidden="true">
         <span>{hourLabel(0)}</span>
         <span>{hourLabel(12)}</span>
         <span>{hourLabel(23)}</span>
@@ -577,14 +851,65 @@ function Hour({ summary }: { summary: WrappedRecap }) {
   );
 }
 
-function ShareCard({ image, alt }: { image: ShareImage; alt: string }) {
+function ShareCard({
+  summary,
+  field,
+  username,
+  image,
+  alt,
+  delay,
+}: {
+  summary: WrappedRecap;
+  field: string;
+  username: string;
+  image: ShareImage;
+  alt: string;
+  delay: number;
+}) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [start] = useState(delay);
+  const [built, setBuilt] = useState(reducedMotion);
+  useEffect(() => {
+    if (built) return;
+    let active = true;
+    let frame = 0;
+    prepareWrappedCard(summary, field, username)
+      .then((draw) => {
+        const context = canvas.current?.getContext("2d");
+        if (!active || !context) return;
+        const begin = performance.now() + start * 100;
+        frame = requestAnimationFrame(function tick(now) {
+          const time = (now - begin) / 1000;
+          draw(context, time);
+          if (time < WRAPPED_CARD_BUILD) frame = requestAnimationFrame(tick);
+          else setBuilt(true);
+        });
+      })
+      .catch(() => active && setBuilt(true));
+    return () => {
+      active = false;
+      cancelAnimationFrame(frame);
+    };
+  }, [built, field, start, summary, username]);
   if (image === "failed")
     return (
       <div className="wrapped-pad wrapped-notice">
         <p className="wrapped-body">Your share card could not be created.</p>
       </div>
     );
-  return image ? <img className="wrapped-card" src={image.url} alt={alt} /> : null;
+  return built && image ? (
+    <img className="wrapped-card" src={image.url} alt={alt} data-fly="peak" />
+  ) : (
+    <canvas
+      ref={canvas}
+      className="wrapped-card"
+      width={1080}
+      height={1920}
+      role="img"
+      aria-label={alt}
+      data-fly="peak"
+    />
+  );
 }
 
 function Story({
@@ -600,18 +925,30 @@ function Story({
 }) {
   const slides = useMemo(() => storySlides(summary), [summary]);
   const palette = useMemo(() => wrappedPalette(summary), [summary]);
-  const [index, setIndex] = useState(0);
+  const [view, setView] = useState<{ index: number; leaving: number | null }>({
+    index: 0,
+    leaving: null,
+  });
+  const [intro, setIntro] = useState(() => introPending(summary.year));
+  const [vintage, setVintage] = useState(intro);
+  const [fromIntro, setFromIntro] = useState(intro);
+  const [held, setHeld] = useState(false);
   const [muted, setMuted] = useState(false);
   const [fontsReady, setFontsReady] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const slideRef = useRef<HTMLDivElement>(null);
+  const pressed = useRef(0);
+  const { index, leaving } = view;
   const slide = slides[index];
   const fieldOf = (position: number) => palette[position % palette.length];
-  const field = fieldOf(index);
-  const image = useShareImage(summary, fieldOf(slides.length - 1), username);
+  const shareField = fieldOf(slides.length - 1);
+  const image = useShareImage(summary, shareField, username);
   const nowPlaying = slides.slice(0, index + 1).findLast((entry) => entry.preview)?.preview ?? null;
-  const audio = usePreviewAudio(nowPlaying, muted);
+  const audio = usePreviewAudio(nowPlaying, muted, vintage);
   const hasAudio = slides.some((entry) => entry.preview);
   const playing = audio.playing && !muted && slide.preview !== null && nowPlaying === slide.preview;
   const last = index === slides.length - 1;
+  const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
 
   useEffect(() => {
     let active = true;
@@ -630,9 +967,43 @@ function Story({
     };
   }, [summary, username]);
 
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (leaving === null || !frame || reducedMotion()) return;
+    const from = frame.querySelector<HTMLElement>(
+      `[data-slide="${slides[leaving].kind}"] [data-fly]`,
+    );
+    const to =
+      from &&
+      frame.querySelector<HTMLElement>(
+        `[data-slide="${slides[index].kind}"] [data-fly="${from.dataset.fly}"]`,
+      );
+    if (!from || !to) return;
+    if (from.dataset.fly === "peak") expand(from, frame, palette[index % palette.length]);
+    else fly(from, to, frame);
+  }, [index, leaving, palette, slides]);
+
+  const finishIntro = useCallback(() => {
+    markIntroSeen(summary.year);
+    setVintage(false);
+    setIntro(false);
+  }, [summary.year]);
+  const reveal = useCallback(() => setVintage(false), []);
+
   const go = (step: number) => {
     audio.resume();
-    setIndex((current) => Math.min(slides.length - 1, Math.max(0, current + step)));
+    if (intro) {
+      setFromIntro(false);
+      finishIntro();
+      return;
+    }
+    setFromIntro(false);
+    setView((current) => {
+      const next = Math.min(slides.length - 1, Math.max(0, current.index + step));
+      return next === current.index
+        ? current
+        : { index: next, leaving: step > 0 ? current.index : null };
+    });
   };
   const goRef = useRef(go);
   goRef.current = go;
@@ -647,28 +1018,114 @@ function Story({
   }, []);
 
   const tap = (event: MouseEvent<HTMLDivElement>) => {
+    if (performance.now() - pressed.current > 300) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     go(event.clientX - bounds.left < bounds.width * 0.3 ? -1 : 1);
   };
-  const stop = (event: MouseEvent) => event.stopPropagation();
-  const style: CSSProperties = { "--wrapped-field": field, "--wrapped-ink": wrappedInk(field) };
+  const stop = (event: MouseEvent | PointerEvent<HTMLDivElement>) => event.stopPropagation();
+  const settle = (event: AnimationEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget)
+      setView((current) => (current.leaving === null ? current : { ...current, leaving: null }));
+  };
+  const replay = () => {
+    setFromIntro(true);
+    setVintage(true);
+    setIntro(true);
+    audio.restart();
+  };
+  const fieldStyle = (position: number): CSSProperties => ({
+    "--wrapped-field": fieldOf(position),
+    "--wrapped-ink": wrappedInk(fieldOf(position)),
+  });
+  const arrival = (position: number) => {
+    if (position !== index) return " wrapped-slide--leaving wrapped-slide--still";
+    if (leaving !== null) return cut ? " wrapped-slide--cut" : " wrapped-slide--wipe";
+    return position === 0 && fromIntro ? " wrapped-slide--still" : "";
+  };
+  const content = (entry: Slide, current: boolean) => {
+    const live = current && playing;
+    switch (entry.kind) {
+      case "opening":
+        return <Opening summary={summary} username={username} />;
+      case "minutes":
+        return <Minutes summary={summary} />;
+      case "variety":
+        return <Variety summary={summary} />;
+      case "genre":
+        return <Genre summary={summary} />;
+      case "artist":
+        return <Artist summary={summary} playing={live} />;
+      case "artists":
+        return <Artists summary={summary} />;
+      case "song":
+        return <Song summary={summary} playing={live} />;
+      case "songs":
+        return <Songs summary={summary} />;
+      case "album":
+        return <Album summary={summary} playing={live} />;
+      case "months":
+        return <Months summary={summary} />;
+      case "day":
+        return <Day summary={summary} />;
+      case "streak":
+        return <Streak summary={summary} />;
+      case "hour":
+        return <Hour summary={summary} />;
+      case "share":
+        return (
+          <ShareCard
+            summary={summary}
+            field={shareField}
+            username={username}
+            image={image}
+            alt={`${username}'s ${summary.year} in music`}
+            delay={cut ? 8 : 5}
+          />
+        );
+    }
+  };
 
   return (
     <>
       <div
-        className="wrapped-frame"
-        style={style}
+        ref={frameRef}
+        className={`wrapped-frame${intro ? " wrapped-frame--intro" : ""}${intro || held ? " wrapped-frame--paused" : ""}`}
+        style={fieldStyle(index)}
         onClick={tap}
+        onPointerDown={() => {
+          pressed.current = performance.now();
+          setHeld(true);
+        }}
+        onPointerUp={() => setHeld(false)}
+        onPointerCancel={() => setHeld(false)}
+        onPointerLeave={() => setHeld(false)}
         role="group"
         aria-roledescription="slide"
-        aria-label={`${index + 1} of ${slides.length}`}
+        aria-label={intro ? "Intro" : `${index + 1} of ${slides.length}`}
       >
+        {intro && (
+          <WrappedIntro summary={summary} slide={slideRef} onReveal={reveal} onDone={finishIntro} />
+        )}
         <div className="wrapped-progress" aria-hidden="true">
           {slides.map((entry, position) => (
-            <i key={entry.kind} className={position <= index ? "wrapped-seen" : undefined} />
+            <i key={entry.kind} className={position < index ? "wrapped-seen" : undefined}>
+              {position === index && fontsReady && (
+                <b onAnimationEnd={() => !last && goRef.current(1)} />
+              )}
+            </i>
           ))}
         </div>
-        <div className="wrapped-controls" onClick={stop}>
+        <div className="wrapped-controls" onClick={stop} onPointerDown={stop}>
+          {slide.kind === "opening" && !intro && !reducedMotion() && (
+            <TooltipButton
+              type="button"
+              className="wrapped-control"
+              label="Play intro"
+              onClick={replay}
+            >
+              <RotateCcw aria-hidden="true" />
+            </TooltipButton>
+          )}
           {hasAudio && (
             <TooltipButton
               type="button"
@@ -686,28 +1143,26 @@ function Story({
             <X aria-hidden="true" />
           </TooltipButton>
         </div>
-        {fontsReady && (
-          <div key={slide.kind} className={`wrapped-slide wrapped-slide--${slide.kind}`}>
-            {slide.kind === "opening" && <Opening summary={summary} username={username} />}
-            {slide.kind === "minutes" && <Minutes summary={summary} />}
-            {slide.kind === "variety" && <Variety summary={summary} />}
-            {slide.kind === "genre" && <Genre summary={summary} />}
-            {slide.kind === "artist" && <Artist summary={summary} playing={playing} />}
-            {slide.kind === "artists" && <Artists summary={summary} />}
-            {slide.kind === "song" && <Song summary={summary} playing={playing} />}
-            {slide.kind === "songs" && <Songs summary={summary} />}
-            {slide.kind === "album" && <Album summary={summary} playing={playing} />}
-            {slide.kind === "months" && <Months summary={summary} />}
-            {slide.kind === "day" && <Day summary={summary} />}
-            {slide.kind === "streak" && <Streak summary={summary} />}
-            {slide.kind === "hour" && <Hour summary={summary} />}
-            {slide.kind === "share" && (
-              <ShareCard image={image} alt={`${username}'s ${summary.year} in music`} />
-            )}
-          </div>
-        )}
+        {fontsReady &&
+          [leaving, index].map((position) => {
+            if (position === null) return null;
+            const entry = slides[position];
+            return (
+              <div
+                key={entry.kind}
+                ref={position === index ? slideRef : undefined}
+                data-slide={entry.kind}
+                className={`wrapped-slide wrapped-slide--${entry.kind}${arrival(position)}`}
+                style={fieldStyle(position)}
+                aria-hidden={position === index ? undefined : true}
+                onAnimationEnd={position === index ? settle : undefined}
+              >
+                {content(entry, position === index)}
+              </div>
+            );
+          })}
       </div>
-      <div className="wrapped-actions">{last && actions(image)}</div>
+      <div className="wrapped-actions">{last && !intro && actions(image)}</div>
     </>
   );
 }
