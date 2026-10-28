@@ -128,10 +128,10 @@ const getDeezerSimilarArtists = async (
   mbid: string | null,
   limit: number,
 ) => {
-  const linkedId = mbid
-    ? getLinkedDeezerArtistId((await getArtistByMbid(mbid).catch(() => null))?.links)
-    : null;
-  const deezerId = linkedId || (await getDeezerArtist(text(artist?.name)))?.id;
+  const metadata = mbid ? await getArtistByMbid(mbid).catch(() => null) : null;
+  const deezerId =
+    getLinkedDeezerArtistId(metadata?.links) ||
+    (await getDeezerArtist(text(artist?.name) || text(metadata?.name)))?.id;
   const related = await deezerGetRelatedArtists(deezerId ?? null, { limit }).catch(() => []);
   return mapWithConcurrency(related, RESOLVE_CONCURRENCY, async (entry, index) => ({
     mbid:

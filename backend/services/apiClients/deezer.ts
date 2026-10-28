@@ -73,6 +73,11 @@ const deezerLimiter = createRateLimiter(110);
 const isDeezerOutage = (data: { error?: { code?: number } } | null | undefined) =>
   Boolean(data?.error) && data?.error?.code !== 800;
 
+const deezerArtistPhoto = (artist: DeezerArtist) => {
+  const url = artist.picture_xl || artist.picture_big || artist.picture_medium;
+  return url && !url.includes("/images/artist//") ? url : null;
+};
+
 async function cachedOrInflight<T>(
   cache: ReturnType<typeof createCache>,
   key: string,
@@ -145,12 +150,7 @@ export async function getDeezerArtist(
         ? {
             id: match.id,
             name: match.name,
-            imageUrl:
-              match.picture_xl ||
-              match.picture_big ||
-              match.picture_medium ||
-              match.picture ||
-              null,
+            imageUrl: deezerArtistPhoto(match),
           }
         : null;
       deezerArtistCache.set(cacheKey, result);
@@ -184,8 +184,7 @@ export async function getDeezerArtistById(
       const result = {
         id: data.id,
         name: data.name || null,
-        imageUrl:
-          data.picture_xl || data.picture_big || data.picture_medium || data.picture || null,
+        imageUrl: deezerArtistPhoto(data),
       };
       deezerArtistCache.set(cacheKey, result);
       return result;
@@ -245,7 +244,7 @@ export async function deezerGetRelatedArtists(
         ? [
             {
               name: artist.name.trim(),
-              image: artist.picture_xl || artist.picture_big || artist.picture_medium || null,
+              image: deezerArtistPhoto(artist),
             },
           ]
         : [],

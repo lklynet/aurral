@@ -131,6 +131,9 @@ const respond = (url: URL) => {
       ],
     });
   }
+  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === `/artist/${QUIET.mbid}`) {
+    return json({ id: QUIET.mbid, artistname: QUIET.name, links: [], Albums: [] });
+  }
   if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === "/search/artist") {
     return json(
       url.searchParams.get("query") === RELATED.name
@@ -264,6 +267,18 @@ test("without a Last.fm key artist pages fall back to Deezer's related artists w
     [[RELATED.mbid, RELATED.name]],
   );
   assert.ok(body.artists[0].image);
+});
+
+test("flows that only know an artist's MBID still get Deezer's related artists", async () => {
+  const artists = await new FlowTrackSource()._getSimilarArtists(QUIET.mbid);
+
+  assert.deepEqual(
+    artists.map((artist) => [artist.mbid, artist.name]),
+    [
+      [RELATED.mbid, RELATED.name],
+      [null, "Unknown To MusicBrainz"],
+    ],
+  );
 });
 
 test("without a Last.fm key a Mix flow picks the library artist's own Deezer top track", async () => {

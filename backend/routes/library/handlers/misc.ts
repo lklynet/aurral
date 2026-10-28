@@ -416,7 +416,9 @@ export default new Hono<AppEnv>()
           .map((id) => `rg:${id}`),
       );
 
-      const coverTargets = recentMissing.slice(0, 6);
+      const coverTargets = recentMissing
+        .filter((album) => libraryReleaseIds.has(album.mbid))
+        .slice(0, 6);
       const warmedVisibleCovers = await Promise.all(
         coverTargets.map(async (album) => {
           const coverId = album.mbid || album.foreignAlbumId;

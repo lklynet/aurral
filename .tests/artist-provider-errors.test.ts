@@ -105,26 +105,48 @@ test("an artist name search accepts only the same name, not the first result", a
   assert.equal((await deezer.getDeezerArtist("sigur ros"))?.imageUrl, photo);
 });
 
-test("an artist with no provider photo or linked Deezer artist uses its Wikidata photo", async () => {
-  artistLinked = false;
-  wikidataLinked = true;
-  const commonsPhoto =
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Provider.jpg/960px-Provider.jpg";
-  const realGet = axios.get.bind(axios);
-  const asked: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
-    if (String(url).startsWith(provider.url)) return realGet(url, options);
-    asked.push(new URL(url).hostname);
-    const data =
-      new URL(url).hostname === "www.wikidata.org"
-        ? { P18: [{ rank: "normal", value: { content: "Provider.jpg" } }] }
-        : { query: { pages: [{ imageinfo: [{ thumburl: `${commonsPhoto}?utm_source=test` }] }] } };
-    return { status: 200, statusText: "OK", headers: {}, data };
-  });
+test.each([
+  { deezerLink: "no linked Deezer artist", linked: false },
+  { deezerLink: "a linked Deezer artist without a photo", linked: true },
+])(
+  "an artist with no provider photo and $deezerLink uses its Wikidata photo",
+  async ({ linked }) => {
+    artistLinked = linked;
+    wikidataLinked = true;
+    const commonsPhoto =
+      "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Provider.jpg/960px-Provider.jpg";
+    const realGet = axios.get.bind(axios);
+    const asked: string[] = [];
+    vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+      if (String(url).startsWith(provider.url)) return realGet(url, options);
+      const host = new URL(url).hostname;
+      asked.push(host);
+      const data =
+        host === "api.deezer.com"
+          ? {
+              id: 101,
+              name: "Provider Artist",
+              picture: "https://api.deezer.com/artist/101/image",
+              picture_xl: "https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg",
+            }
+          : host === "www.wikidata.org"
+            ? { P18: [{ rank: "normal", value: { content: "Provider.jpg" } }] }
+            : {
+                query: {
+                  pages: [{ imageinfo: [{ thumburl: `${commonsPhoto}?utm_source=test` }] }],
+                },
+              };
+      return { status: 200, statusText: "OK", headers: {}, data };
+    });
 
-  assert.equal((await getArtistImage(mbid, { forceRefresh: true })).url, commonsPhoto);
-  assert.deepEqual(asked, ["www.wikidata.org", "commons.wikimedia.org"]);
-});
+    assert.equal((await getArtistImage(mbid, { forceRefresh: true })).url, commonsPhoto);
+    assert.deepEqual(asked, [
+      ...(linked ? ["api.deezer.com"] : []),
+      "www.wikidata.org",
+      "commons.wikimedia.org",
+    ]);
+  },
+);
 
 test("a failed artist ID lookup can recover without clearing its cache", async (t) => {
   let failed = true;
