@@ -1551,14 +1551,13 @@ export function getUntaggedLibraryAlbums({ retry = false }: { retry?: boolean } 
      JOIN library_tracks AS track ON track.id = link.track_id
      JOIN library_media_files AS media ON media.track_id = track.id
        AND media.album_id = link.album_id AND media.available = 1
-     WHERE link.album_id = ?`,
+     WHERE link.album_id = ?
+     ORDER BY track.title, track.mbid`,
   );
   return albums.flatMap(({ lookedUpFor, ...album }) => {
     const files = albumSongs.all(album.id);
     const basis = createHash("sha1")
-      .update(
-        JSON.stringify([album.artistMbid, album.title, files.map((file) => file.title).sort()]),
-      )
+      .update(JSON.stringify([album.artistMbid, album.title, files]))
       .digest("hex");
     return files.length && (retry || lookedUpFor !== basis) ? [{ ...album, files, basis }] : [];
   });

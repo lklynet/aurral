@@ -305,7 +305,7 @@ test("an untagged album joins the Library's album of the release group it matche
   ]);
 });
 
-test("an untagged album no release group holds is looked up again only when asked", async () => {
+test("an untagged album no release group holds is looked up again when asked or when its songs change", async () => {
   const albumId = untaggedAlbum("Nevermind", ["Demo One", "Demo Two"]);
 
   await scan();
@@ -319,4 +319,13 @@ test("an untagged album no release group holds is looked up again only when aske
 
   await scan({ force: true });
   assert.ok(albumSearches > searched);
+
+  const tagRecording = db.prepare<[string, string]>(
+    "UPDATE library_tracks SET mbid = ? WHERE title = ?",
+  );
+  tagRecording.run("66666666-6666-4666-8666-666666666701", "Demo One");
+  tagRecording.run("66666666-6666-4666-8666-666666666702", "Demo Two");
+  await scan();
+
+  assert.equal(albumRow(albumId)?.release_group_mbid, NEVERMIND);
 });
