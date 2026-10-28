@@ -7,126 +7,99 @@ import {
   type WrappedPlay,
 } from "../../backend/services/wrapped/metrics.ts";
 
-const at = (date: string) => Date.parse(date);
-const period = wrappedPeriod(2026, "UTC", at("2027-01-01T00:00:00Z"));
-const play = (overrides: Partial<WrappedPlay> = {}): WrappedPlay => ({
+const period = wrappedPeriod(2026, "UTC", Date.parse("2027-01-01T00:00:00Z"));
+const at = (iso: string) => Date.parse(iso);
+let id = 0;
+const play = (overrides: Partial<WrappedPlay>): WrappedPlay => ({
   source: "aurral",
   account: "1",
-  id: "one",
-  playedAt: at("2026-06-01T12:00:00Z"),
+  id: String(++id),
+  playedAt: at("2026-03-01T12:00:00Z"),
   title: "Song",
   artist: "Artist",
   ...overrides,
 });
 
-test("merges mirrored plays one-to-one while preserving repeat listens", () => {
-  const first = play();
-  const second = play({ id: "two", playedAt: first.playedAt + 1000 });
-  const result = mergeWrappedPlays([
-    first,
-    second,
-    { ...first, source: "lastfm", id: "remote-one" },
-    { ...second, source: "lastfm", id: "remote-two" },
-    { ...first, source: "listenbrainz", id: "another" },
-    first,
+test("a play mirrored to a scrobbler counts once, and repeat listens still count", () => {
+  const plays = [
+    play({ playedAt: at("2026-03-01T12:00:00Z"), durationMs: 200_000 }),
+    play({ playedAt: at("2026-03-01T12:03:20Z"), durationMs: 200_000 }),
+    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
+    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:03:20Z") }),
+  ];
+  assert.equal(mergeWrappedPlays(plays).length, 2);
+});
+
+test("a server that stamps plays at the end still matches the scrobble stamped at the start", () => {
+  const merged = mergeWrappedPlays([
+    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
+    play({
+      source: "navidrome",
+      account: "me",
+      playedAt: at("2026-03-01T12:05:00Z"),
+      durationMs: 300_000,
+      album: "Album",
+    }),
   ]);
-  assert.equal(result.length, 2);
-  assert.deepEqual(
-    result.map((row) => row.origins.length),
-    [3, 2],
-  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].album, "Album");
+  assert.equal(merged[0].durationMs, 300_000);
 });
 
-test("matches a known start timestamp without merging different recording identities", () => {
-  const first = play({
-    durationMs: 180000,
-    startedAt: at("2026-06-01T11:57:00Z"),
-    trackMbid: "recording-a",
-  });
-  assert.equal(
-    mergeWrappedPlays([
-      first,
-      play({ source: "plex", playedAt: first.startedAt!, trackMbid: "recording-a" }),
-    ]).length,
-    1,
-  );
-  assert.equal(
-    mergeWrappedPlays([first, play({ source: "plex", trackMbid: "recording-b" })]).length,
-    2,
-  );
-});
-
-test("resolves missing IDs only when a name has one unambiguous identity", () => {
-  const result = calculateWrapped(
+test("the same song across sources groups together even when their MBIDs disagree", () => {
+  const summary = calculateWrapped(
     [
-      play({ trackMbid: "recording-a", artistMbid: "artist-a" }),
-      play({ id: "two", playedAt: period.start + 1000, title: " song ", artist: "ARTIST" }),
-    ],
-    period,
-  );
-  assert.equal(result.uniqueSongs, 1);
-  assert.equal(result.uniqueArtists, 1);
-  assert.equal(result.topSongs[0].plays, 2);
-});
-
-test("uses local calendar boundaries and counts a streak across daylight saving", () => {
-  const ny = wrappedPeriod(2026, "America/New_York", at("2027-01-01T05:00:00Z"));
-  assert.equal(ny.start, at("2026-01-01T05:00:00Z"));
-  assert.equal(ny.end, at("2027-01-01T05:00:00Z"));
-  const result = calculateWrapped(
-    [
-      play({ id: "excluded", playedAt: ny.start - 1 }),
-      ...["2026-03-08T04:30:00Z", "2026-03-09T03:30:00Z", "2026-03-10T03:30:00Z"].map((date) =>
-        play({ id: date, playedAt: at(date) }),
-      ),
-      play({ id: "end", playedAt: ny.end }),
-    ],
-    ny,
-  );
-  assert.equal(result.totalPlays, 3);
-  assert.equal(result.longestStreak, 3);
-  assert.equal(result.months[2].plays, 3);
-});
-
-test("keeps measured time separate from estimates and does not extrapolate missing durations", () => {
-  const result = calculateWrapped(
-    [
-      play({ durationMs: 180000 }),
-      play({ source: "jellyfin", id: "mirror", durationMs: 180000, listenedMs: 60000 }),
-      play({ id: "two", playedAt: period.start + 1000, durationMs: 120000 }),
-      play({ id: "unknown", playedAt: period.start + 2000 }),
-    ],
-    period,
-  );
-  assert.equal(result.totalPlays, 3);
-  assert.deepEqual(result.listening, {
-    minutes: 3,
-    timedPlays: 2,
-    measuredPlays: 1,
-    estimated: true,
-  });
-});
-
-test("ranks listened genres, filters incomplete known albums, and handles empty history", () => {
-  const result = calculateWrapped(
-    [
-      play({ album: "Album", albumTrackCount: 10, genres: [" Rock ", "rock", "unknown"] }),
+      play({ trackMbid: "aaa", playedAt: at("2026-03-01T12:00:00Z") }),
       play({
-        id: "two",
-        playedAt: period.start + 1000,
-        title: "Other song",
-        album: "Album",
-        albumTrackCount: 10,
+        source: "lastfm",
+        account: "me",
+        trackMbid: "bbb",
+        title: "song",
+        playedAt: at("2026-04-01T12:00:00Z"),
       }),
     ],
     period,
   );
-  assert.equal(result.topAlbums.length, 0);
-  assert.deepEqual(result.topGenres, [{ name: "rock", plays: 1 }]);
-  assert.equal(result.genrePlays, 1);
-  const empty = calculateWrapped([], period);
-  assert.equal(empty.firstPlayedAt, null);
-  assert.equal(empty.busiestDay, null);
-  assert.equal(empty.listening.minutes, 0);
-  assert.throws(() => wrappedPeriod(2026, "invalid/timezone"));
+  assert.equal(summary.uniqueSongs, 1);
+  assert.equal(summary.topSongs[0].plays, 2);
+});
+
+test("days, streaks and months follow the listener's timezone", () => {
+  const newYork = wrappedPeriod(2026, "America/New_York", at("2027-01-01T05:00:00Z"));
+  const summary = calculateWrapped(
+    [
+      play({ playedAt: at("2026-03-07T23:00:00Z") }),
+      play({ playedAt: at("2026-03-08T12:00:00Z"), title: "Two" }),
+      play({ playedAt: at("2026-03-09T12:00:00Z"), title: "Three" }),
+      play({ playedAt: at("2027-01-01T04:30:00Z"), title: "Still 2026" }),
+    ],
+    newYork,
+  );
+  assert.equal(summary.totalPlays, 4);
+  assert.deepEqual(summary.longestStreak, { days: 3, start: "2026-03-07", end: "2026-03-09" });
+  assert.equal(summary.months.length, 12);
+  assert.equal(summary.months[11].plays, 1);
+  assert.equal(summary.hours[18], 1);
+});
+
+test("plays without a duration are estimated from the average known track length", () => {
+  const summary = calculateWrapped(
+    [
+      play({ durationMs: 240_000 }),
+      play({ playedAt: at("2026-05-01T12:00:00Z"), durationMs: 120_000, title: "Short" }),
+      play({ source: "lastfm", account: "me", playedAt: at("2026-06-01T12:00:00Z") }),
+    ],
+    period,
+  );
+  assert.equal(summary.minutes, 9);
+  assert.equal(summary.minutesMeasured, false);
+  assert.equal(calculateWrapped([play({ source: "lastfm" })], period).minutes, null);
+});
+
+test("an empty year produces an empty recap", () => {
+  const summary = calculateWrapped([], period);
+  assert.equal(summary.totalPlays, 0);
+  assert.equal(summary.longestStreak, null);
+  assert.equal(summary.busiestDay, null);
+  assert.deepEqual(summary.topSongs, []);
 });

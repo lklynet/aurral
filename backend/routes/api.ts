@@ -35,6 +35,7 @@ import settingsDownloadClients from "./settings/downloadClients.ts";
 import settingsPlayback from "./settings/playback.ts";
 import updates from "./updates.ts";
 import users from "./users.ts";
+import wrapped from "./wrapped.ts";
 import userPlexLink from "./users/plexLinkHandlers.ts";
 
 const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
@@ -90,6 +91,7 @@ export const api = new Hono<AppEnv>()
   .route("/", news)
   .route("/", playEvents)
   .route("/", shareLinks)
+  .route("/", wrapped)
   .route("/", lidarrWebhook)
   .route("/", lidarrFeed);
 

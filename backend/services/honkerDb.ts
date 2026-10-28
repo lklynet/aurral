@@ -64,7 +64,7 @@ export function configureHonkerQueueWake(handler: ((name: string) => void) | nul
   queueWakeHandler = typeof handler === "function" ? handler : null;
 }
 
-export function wakeQueueOwner(name: string) {
+function wakeQueueOwner(name: string) {
   try {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
       process.send!({ type: "queue-wake", queue: name });

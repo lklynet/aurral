@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
-import { buildWrapped, getWrapped, saveWrappedPlaylist } from "../utils/api/endpoints/wrapped";
+import { wrappedClient } from "../utils/api/clients/wrapped.ts";
+import { useWrapped, useWrappedSeason, wrappedTimeZone } from "../hooks/useWrapped.ts";
+import { playlistPath } from "../navigation/playlistPaths.ts";
 import { buildAuthenticatedApiUrl, resolveApiPath } from "../utils/api/core";
 import { createWrappedImage, downloadWrappedFile } from "../utils/wrappedShare";
-import type { WrappedResponse } from "../../../backend/routes/wrapped.ts";
-import type { WrappedSummary } from "../../../backend/services/wrapped/metrics.ts";
-import { wrappedSeason } from "../../../lib/wrapped.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { X } from "../components/icons.tsx";
 import TooltipButton from "../components/TooltipButton.tsx";
 import "./wrapped.css";
 
-type Summary = WrappedSummary;
+type Summary = NonNullable<InferResponseType<typeof wrappedClient.$get, 200>["summary"]>;
 const number = (value: number) => value.toLocaleString();
 const imageUrl = (url: string) => (url.startsWith("/api/") ? resolveApiPath(url) : url);
 
@@ -166,14 +166,12 @@ function ListeningMonths({ summary }: { summary: Summary }) {
             }).format(new Date(`${month.month}-01T12:00:00Z`))}
           </h3>
           <ol>
-            {month.artists
-              .filter((artist) => artist.plays)
-              .map((artist) => (
-                <li key={artist.name}>
-                  <span>{artist.name}</span>
-                  <span>{artist.plays} plays</span>
-                </li>
-              ))}
+            {month.topArtist && (
+              <li>
+                <span>{month.topArtist.name}</span>
+                <span>{month.topArtist.plays} plays</span>
+              </li>
+            )}
           </ol>
         </div>
       )}
@@ -273,7 +271,7 @@ function Recap({ summary }: { summary: Summary }) {
       </section>
       <div className="wrapped-facts">
         <p>
-          <strong>{summary.longestStreak} days</strong>Longest recorded streak
+          <strong>{summary.longestStreak?.days ?? 0} days</strong>Longest recorded streak
         </p>
         <p>
           <strong>{summary.activeDays} days</strong>With recorded listening
@@ -284,15 +282,10 @@ function Recap({ summary }: { summary: Summary }) {
           </p>
         )}
       </div>
-      {summary.listening.timedPlays > 0 && (
+      {summary.minutes !== null && (
         <section>
-          <h2>{summary.listening.estimated ? "Estimated listening time" : "Listening time"}</h2>
-          <p className="wrapped-minutes">{number(summary.listening.minutes)} minutes</p>
-          <p className="wrapped-note">
-            Time is available for {number(summary.listening.timedPlays)} of{" "}
-            {number(summary.totalPlays)} plays.
-            {summary.listening.estimated ? " Includes estimates from track lengths." : ""}
-          </p>
+          <h2>{summary.minutesMeasured ? "Listening time" : "Estimated listening time"}</h2>
+          <p className="wrapped-minutes">{number(summary.minutes)} minutes</p>
         </section>
       )}
     </div>
@@ -383,7 +376,7 @@ function Stories({ summary, onRecap }: { summary: Summary; onRecap: () => void }
       title: "You kept listening.",
       content: (
         <>
-          <p className="wrapped-big-number">{summary.longestStreak}</p>
+          <p className="wrapped-big-number">{summary.longestStreak?.days ?? 0}</p>
           <p className="wrapped-story-label">days in your longest streak.</p>
           <p>{summary.activeDays} days with recorded listening this year.</p>
         </>
@@ -472,44 +465,38 @@ function Stories({ summary, onRecap }: { summary: Summary; onRecap: () => void }
 }
 
 export default function WrappedPage() {
-  const { bootstrap, user, hasPermission } = useAuth();
-  const enabled = bootstrap?.api.features.includes("wrapped") === true;
+  const { hasPermission } = useAuth();
+  const season = useWrappedSeason();
+  const enabled = season !== null;
   const [view, setView] = useState<"opening" | "stories" | "recap">("opening");
   const [sharing, setSharing] = useState(false);
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const season = bootstrap?.wrappedPreview ?? wrappedSeason(bootstrap?.appVersion ?? "");
+  const timeZone = wrappedTimeZone();
   const year = season?.year ?? new Date().getFullYear();
   const client = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const queue = useAudioQueue();
   const toast = useToast();
-  const queryKey = ["wrapped", user?.id, year, timeZone];
-  const query = useQuery({
-    queryKey,
-    enabled: enabled && season !== null,
-    queryFn: async ({ signal }) => {
-      const data = await getWrapped(year, timeZone, signal);
-      return data.report ? data : buildWrapped(year, timeZone);
-    },
-    refetchInterval: (query) =>
-      ["queued", "running"].includes(query.state.data?.report?.state ?? "") ? 3000 : false,
-  });
+  const query = useWrapped();
   const build = useMutation({
-    mutationFn: () => buildWrapped(year, timeZone, true),
-    onSuccess: (data) => client.setQueryData<WrappedResponse>(queryKey, data),
+    mutationFn: () => parseResponse(wrappedClient.$post({ json: { timeZone } })),
+    onSuccess: (data) => client.setQueriesData({ queryKey: ["wrapped"] }, data),
     onError: () => toast.showError("Your recap could not be started. Try again."),
   });
   const playlist = useMutation({
-    mutationFn: () => saveWrappedPlaylist(year, timeZone),
+    mutationFn: async () => {
+      const response = await wrappedClient.playlist.$post({ json: { timeZone } });
+      const result = await response.json();
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    },
     onSuccess: (result) => {
       toast.showSuccess(
-        `Saved ${result.trackCount} songs${result.unavailableCount ? `; ${result.unavailableCount} unavailable songs were left out` : ""}.`,
+        `Saved ${result.trackCount} songs${result.missingCount ? `; ${result.missingCount} songs not in your Library were left out` : ""}.`,
       );
-      navigate(`/playlists/${encodeURIComponent(result.playlistId)}`);
+      navigate(playlistPath(result.playlistId));
     },
-    onError: () =>
-      toast.showError("The playlist could not be saved. Rebuild your recap and try again."),
+    onError: (error) => toast.showError(error.message || "The playlist could not be saved."),
   });
   if (!enabled) return <Navigate to="/" replace />;
   const close = () => {
@@ -524,9 +511,8 @@ export default function WrappedPage() {
       { replace: true },
     );
   };
-  const report = query.data?.report;
-  const summary = report?.state === "ready" ? report.summary : null;
-  const collecting = report?.state === "queued" || report?.state === "running";
+  const summary = query.data?.summary ?? null;
+  const collecting = query.data?.building === true;
   const share = async () => {
     if (!summary) return;
     setSharing(true);
@@ -598,8 +584,8 @@ export default function WrappedPage() {
           <p>
             {collecting
               ? "Collecting your listening history. You can leave this page and come back."
-              : report?.state === "failed"
-                ? report.message
+              : query.data?.error
+                ? query.data.error
                 : "Bring together the music you kept coming back to."}
           </p>
           {!collecting && (

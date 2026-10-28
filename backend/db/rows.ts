@@ -627,3 +627,14 @@ export interface WeeklyFlowDownloadProviderWorkRow {
   username: string;
   created_at: number;
 }
+
+export interface WrappedReportsRow {
+  user_id: number;
+  year: number;
+  cutoff: number;
+  time_zone: string;
+  summary: string | null;
+  error: string | null;
+  banner_hidden: number;
+  built_at: number;
+}

@@ -1,149 +1,61 @@
-import express from "express";
-import { requireAuth, requireUserAccount } from "../middleware/requirePermission.ts";
+import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
+import * as v from "valibot";
+import type { WrappedSeason } from "../../lib/wrapped.ts";
+import { requireAuth, requirePermission, requireUserAccount } from "../middleware/guards.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
+import { validate } from "../middleware/validate.ts";
 import {
-  getWrappedReport,
-  requestWrappedReport,
-  validateWrappedRequest,
+  currentWrappedSeason,
+  getWrapped,
+  hideWrappedBanner,
+  rebuildWrapped,
+  saveWrappedPlaylist,
 } from "../services/wrapped/reports.ts";
-import { isWrappedEnabled } from "../config/apiContract.ts";
-import { createSubsonicPlaylist } from "../services/subsonicLibraryService.ts";
-import {
-  getWrappedAnnouncement,
-  setWrappedAnnouncementHidden,
-} from "../services/wrapped/announcement.ts";
-import { isWrappedPreviewBuild } from "../../lib/wrapped.ts";
-import { APP_VERSION } from "../config/constants.ts";
-import {
-  getWrappedAvailability,
-  getWrappedPreview,
-  setWrappedPreview,
-} from "../services/wrapped/preview.ts";
 
-const router = express.Router();
-router.post(
-  "/preview",
-  (_req, res, next) => (isWrappedPreviewBuild(APP_VERSION) ? next() : res.sendStatus(404)),
-  requireAuth,
-  requireUserAccount,
-  (req, res) => {
-    const timeZone = typeof req.body?.timeZone === "string" ? req.body.timeZone : "UTC";
-    try {
-      const preview = setWrappedPreview(req.user!.id, timeZone, req.body?.enabled !== false);
-      const report = preview
-        ? requestWrappedReport(req.user!.id, preview.year, timeZone, Date.now(), true)
-        : null;
-      return res.set("Cache-Control", "no-store").json({ report });
-    } catch {
-      return res
-        .status(400)
-        .json({ error: "The preview could not be started. Check the timezone and try again." });
-    }
+const isTimeZone = (value: string) => {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const timeZone = v.pipe(v.string(), v.maxLength(100), v.check(isTimeZone, "Unknown timezone"));
+
+const requireSeason = createMiddleware<{ Variables: { season: WrappedSeason } }>(
+  async (c, next) => {
+    const season = currentWrappedSeason();
+    if (!season) return c.notFound();
+    c.set("season", season);
+    await next();
   },
 );
-router.use((req, res, next) =>
-  isWrappedEnabled() || (req.user && req.user.id > 0 && getWrappedPreview(req.user.id))
-    ? next()
-    : res.sendStatus(404),
-);
-router.use(requireAuth, requireUserAccount);
-router.get("/announcement", (req, res) => {
-  const timeZone = typeof req.query.timeZone === "string" ? req.query.timeZone : "UTC";
-  try {
-    const season = getWrappedAvailability(req.user!.id);
-    if (!season) return res.sendStatus(404);
-    return res
-      .set("Cache-Control", "no-store")
-      .json(getWrappedAnnouncement(req.user!.id, season.year, timeZone));
-  } catch {
-    return res.status(400).json({ error: "Choose a valid timezone" });
-  }
-});
-router.post("/announcement", (req, res) => {
-  const timeZone = typeof req.body?.timeZone === "string" ? req.body.timeZone : "UTC";
-  if (typeof req.body?.hidden !== "boolean")
-    return res.status(400).json({ error: "Choose whether to hide the announcement" });
-  try {
-    return res
-      .set("Cache-Control", "no-store")
-      .json(
-        setWrappedAnnouncementHidden(
-          req.user!.id,
-          Number(req.body?.year),
-          timeZone,
-          req.body.hidden,
-        ),
+
+export default new Hono<AppEnv>()
+  .basePath("/wrapped")
+  .use(requireSeason, requireAuth, requireUserAccount)
+  .get("/", validate("query", v.object({ timeZone })), (c) =>
+    c.json(getWrapped(c.var.season, c.var.user.id, c.req.valid("query").timeZone), 200),
+  )
+  .post("/", validate("json", v.object({ timeZone })), (c) =>
+    c.json(rebuildWrapped(c.var.season, c.var.user.id, c.req.valid("json").timeZone), 202),
+  )
+  .put("/banner", validate("json", v.object({ timeZone, hidden: v.boolean() })), (c) => {
+    const { timeZone, hidden } = c.req.valid("json");
+    return c.json(hideWrappedBanner(c.var.season, c.var.user.id, timeZone, hidden), 200);
+  })
+  .post(
+    "/playlist",
+    requirePermission("accessFlow"),
+    validate("json", v.object({ timeZone })),
+    async (c) => {
+      const result = await saveWrappedPlaylist(
+        c.var.season,
+        c.var.user,
+        c.req.valid("json").timeZone,
       );
-  } catch {
-    return res.status(400).json({ error: "Choose the latest released year and a valid timezone" });
-  }
-});
-router.get("/:year", (req, res) => {
-  const year = Number(req.params.year);
-  const timeZone = typeof req.query.timeZone === "string" ? req.query.timeZone : "UTC";
-  try {
-    validateWrappedRequest(req.user!.id, year, timeZone);
-    res
-      .set("Cache-Control", "no-store")
-      .json({ report: getWrappedReport(req.user!.id, year, timeZone) });
-  } catch {
-    res.status(400).json({ error: "Choose a valid year and timezone" });
-  }
-});
-router.post("/:year", (req, res) => {
-  const year = Number(req.params.year);
-  const timeZone = typeof req.body?.timeZone === "string" ? req.body.timeZone : "UTC";
-  try {
-    const report = requestWrappedReport(
-      req.user!.id,
-      year,
-      timeZone,
-      Date.now(),
-      req.body?.refresh === true,
-    );
-    res
-      .set("Cache-Control", "no-store")
-      .status(report.state === "ready" ? 200 : 202)
-      .json({ report });
-  } catch {
-    res.status(400).json({ error: "Choose the latest released year and a valid timezone" });
-  }
-});
-router.post("/:year/playlist", async (req, res) => {
-  try {
-    const year = Number(req.params.year);
-    const timeZone = typeof req.body?.timeZone === "string" ? req.body.timeZone : "UTC";
-    validateWrappedRequest(req.user!.id, year, timeZone);
-    const report = getWrappedReport(req.user!.id, year, timeZone);
-    if (report?.state !== "ready") return res.status(409).json({ error: "Build your recap first" });
-    const songIds = report.summary.topSongs.flatMap((song) =>
-      song.libraryTrackId ? [`song:${song.libraryTrackId}`] : [],
-    );
-    if (!songIds.length)
-      return res.status(409).json({ error: "None of these songs are available in your Library" });
-    const playlist = await createSubsonicPlaylist(req.user!, {
-      name: `Your ${year} Wrapped`,
-      songIds,
-    });
-    if (!playlist)
-      return res
-        .status(403)
-        .json({ error: "The playlist could not be created. Check your playlist permissions." });
-    return res.status(201).json({
-      playlistId: playlist.id,
-      trackCount: songIds.length,
-      unavailableCount: report.summary.topSongs.length - songIds.length,
-    });
-  } catch {
-    return res
-      .status(400)
-      .json({ error: "The playlist could not be saved. Rebuild your recap and try again." });
-  }
-});
-export type WrappedResponse = { report: ReturnType<typeof getWrappedReport> };
-export type WrappedAnnouncementResponse = ReturnType<typeof getWrappedAnnouncement>;
-export type WrappedPlaylistResponse = {
-  playlistId: string;
-  trackCount: number;
-  unavailableCount: number;
-};
-export default router;
+      return "error" in result ? c.json(result, 409) : c.json(result, 201);
+    },
+  );

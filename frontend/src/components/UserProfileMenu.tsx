@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
+import { useWrappedSeason } from "../hooks/useWrapped.ts";
 import TooltipButton from "./TooltipButton";
 
 function GitHubIcon({ className = "" }) {
@@ -17,7 +18,8 @@ function UserProfileMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { authRequired, canLogOut, logout, bootstrap } = useAuth();
+  const { authRequired, canLogOut, logout } = useAuth();
+  const wrappedSeason = useWrappedSeason();
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -63,7 +65,7 @@ function UserProfileMenu() {
       {menuOpen && (
         <div className="app-profile-menu__dropdown" role="menu">
           <ul className="app-profile-menu__list">
-            {bootstrap?.api.features.includes("wrapped") && (
+            {wrappedSeason && (
               <li role="none">
                 <Link
                   to="/wrapped"

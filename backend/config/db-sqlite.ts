@@ -211,6 +211,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_album_stats_user_ranking
     ON play_album_stats(user_id, play_count DESC, last_played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS wrapped_reports (
+    user_id INTEGER PRIMARY KEY,
+    year INTEGER NOT NULL,
+    cutoff INTEGER NOT NULL,
+    time_zone TEXT NOT NULL,
+    summary TEXT,
+    error TEXT,
+    banner_hidden INTEGER NOT NULL DEFAULT 0,
+    built_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS playlist_download_jobs (
     id TEXT PRIMARY KEY,
     artist_name TEXT NOT NULL,

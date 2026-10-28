@@ -33,7 +33,7 @@ import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.ts";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
-import { useLanternPreview } from "./hooks/useLanternPreview.ts";
+import { useLanternPreview, useWrappedSeason } from "./hooks/useWrapped.ts";
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -211,6 +211,7 @@ function AppContent() {
 
 function ProtectedLayout() {
   useLanternPreview();
+  const wrappedSeason = useWrappedSeason();
   const { appVersion, healthIssue, isHealthy, rootFolderConfigured } =
     useOutletContext<AppOutletContext>();
   const { user, bootstrap } = useAuth();
@@ -228,7 +229,7 @@ function ProtectedLayout() {
             }
           >
             <SpotifyReconnectNotice />
-            {bootstrap?.api.features.includes("wrapped") && (
+            {wrappedSeason && (
               <Suspense fallback={null}>
                 <WrappedAnnouncement />
               </Suspense>

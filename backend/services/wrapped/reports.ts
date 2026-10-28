@@ -1,178 +1,139 @@
-import { createHash, randomUUID } from "node:crypto";
 import { db } from "../../config/db-sqlite.ts";
-import type { SettingsRow } from "../../db/rows.ts";
-import { getMaintenanceTaskQueue, getHonkerDb, wakeQueueOwner } from "../honkerDb.ts";
-import { isWrappedEnabled } from "../../config/apiContract.ts";
+import { APP_VERSION } from "../../config/constants.ts";
+import { userOps } from "../../db/helpers/index.ts";
+import type { LibraryTracksRow, WrappedReportsRow } from "../../db/rows.ts";
+import { wrappedSeason, type WrappedSeason } from "../../../lib/wrapped.ts";
+import { enqueueSystemTaskJob, findActiveHonkerJob, getSystemTaskQueueName } from "../honkerDb.ts";
+import { logger } from "../logger.ts";
+import { subsonicId } from "../libraryMediaStore.ts";
+import { createSubsonicPlaylist } from "../subsonicLibraryService.ts";
+import type { RequestUser } from "../../middleware/requestUser.ts";
 import { wrappedPeriod } from "./metrics.ts";
-import { buildWrappedSummary } from "./history.ts";
-import { getWrappedAvailability } from "./preview.ts";
+import type { buildWrappedSummary } from "./history.ts";
 
-type ReportBase = {
-  requestId: string;
-  userId: number;
-  year: number;
-  timeZone: string;
-  cutoff: number;
-  expiresAt: number;
-  operationId: number;
-};
-export type WrappedReport = ReportBase &
-  (
-    | { state: "queued" | "running" }
-    | { state: "failed"; message: string }
-    | { state: "ready"; summary: Awaited<ReturnType<typeof buildWrappedSummary>> }
+const BUILD_KIND = "wrapped-build";
+
+const readReport = db.prepare<[number], WrappedReportsRow>(
+  "SELECT * FROM wrapped_reports WHERE user_id = ?",
+);
+const saveReport = db.prepare<
+  [number, number, number, string, string | null, string | null, number]
+>(`
+  INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, error, built_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET
+    banner_hidden = CASE WHEN year = excluded.year THEN banner_hidden ELSE 0 END,
+    summary = CASE
+      WHEN excluded.summary IS NULL AND year = excluded.year AND cutoff = excluded.cutoff
+      THEN summary ELSE excluded.summary END,
+    year = excluded.year,
+    cutoff = excluded.cutoff,
+    time_zone = excluded.time_zone,
+    error = excluded.error,
+    built_at = excluded.built_at
+`);
+const setBannerHidden = db.prepare<[number, number]>(
+  "UPDATE wrapped_reports SET banner_hidden = ? WHERE user_id = ?",
+);
+
+export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
+
+const activeBuild = (userId: number) =>
+  findActiveHonkerJob(getSystemTaskQueueName(BUILD_KIND), (payload) => payload?.userId === userId, {
+    payloadKind: BUILD_KIND,
+    recoverExpired: true,
+  });
+
+function startBuild(userId: number, timeZone: string) {
+  if (!activeBuild(userId)) enqueueSystemTaskJob({ kind: BUILD_KIND, userId, timeZone });
+}
+
+export function getWrapped(season: WrappedSeason, userId: number, timeZone: string) {
+  const stored = readReport.get(userId);
+  const row =
+    stored?.year === season.year && (season.preview || stored.cutoff === season.cutoff)
+      ? stored
+      : null;
+  if (!row) startBuild(userId, timeZone);
+  const summary: Awaited<ReturnType<typeof buildWrappedSummary>> | null = row?.summary
+    ? JSON.parse(row.summary)
+    : null;
+  return {
+    year: season.year,
+    preview: season.preview,
+    building: !row || Boolean(activeBuild(userId)),
+    bannerHidden: row?.banner_hidden === 1,
+    error: row?.error ?? null,
+    summary,
+  };
+}
+
+export function rebuildWrapped(season: WrappedSeason, userId: number, timeZone: string) {
+  startBuild(userId, timeZone);
+  return getWrapped(season, userId, timeZone);
+}
+
+export function hideWrappedBanner(
+  season: WrappedSeason,
+  userId: number,
+  timeZone: string,
+  hidden: boolean,
+) {
+  setBannerHidden.run(hidden ? 1 : 0, userId);
+  return getWrapped(season, userId, timeZone);
+}
+
+export async function processWrappedBuild(userId: number, timeZone: string) {
+  const season = currentWrappedSeason();
+  if (!season || userOps.getUserById(userId)?.status !== "active") return;
+  const { buildWrappedSummary } = await import("./history.ts");
+  let summary: string | null = null;
+  let error: string | null = null;
+  try {
+    summary = JSON.stringify(
+      await buildWrappedSummary(userId, wrappedPeriod(season.year, timeZone, season.cutoff)),
+    );
+  } catch (cause) {
+    logger.warn("wrapped", "Recap build failed", { userId, cause: String(cause) });
+    error = "Your listening history could not be collected. Check your connections and try again.";
+  }
+  saveReport.run(userId, season.year, season.cutoff, timeZone, summary, error, Date.now());
+}
+
+export async function saveWrappedPlaylist(
+  season: WrappedSeason,
+  user: RequestUser,
+  timeZone: string,
+) {
+  const wrapped = getWrapped(season, user.id, timeZone);
+  if (!wrapped.summary) return { error: "Build your recap first" } as const;
+  const trackIds = wrapped.summary.topSongs.flatMap((song) =>
+    song.libraryTrackId ? [song.libraryTrackId] : [],
   );
-const read = db.prepare<[string], Pick<SettingsRow, "value">>(
-  "SELECT value FROM settings WHERE key = ?",
-);
-const save = db.prepare<[string, string]>(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
-const remove = db.prepare<[string]>("DELETE FROM settings WHERE key = ?");
-const cacheKey = (userId: number, year: number, timeZone: string) =>
-  `wrapped:${userId}:${year}:${createHash("sha256").update(timeZone).digest("hex").slice(0, 16)}`;
-
-export function cleanupWrappedReports(now = Date.now()) {
-  db.prepare<[number]>(
-    "DELETE FROM settings WHERE (key LIKE 'wrapped:%' OR key LIKE 'wrapped-banner:%' OR key LIKE 'wrapped-preview:%') AND (NOT json_valid(value) OR json_extract(value, '$.expiresAt') <= ?)",
-  ).run(now);
-}
-
-export function validateWrappedRequest(
-  userId: number,
-  year: number,
-  timeZone: string,
-  now = Date.now(),
-) {
-  wrappedPeriod(year, timeZone, now);
-  if (!timeZone || timeZone.length > 100) throw new Error("Invalid timezone");
-  const season = getWrappedAvailability(userId, now);
-  if (!season || year !== season.year) throw new Error("Choose the latest released Wrapped year");
-  return season;
-}
-
-export function rolloverWrappedReports(now = Date.now()) {
-  if (!isWrappedEnabled()) return;
-  const rows = db
-    .prepare<[], Pick<SettingsRow, "value">>(
-      "SELECT settings.value FROM settings JOIN users ON users.id = json_extract(settings.value, '$.userId') WHERE settings.key LIKE 'wrapped:%' AND json_valid(settings.value) AND users.status = 'active'",
-    )
-    .all();
-  for (const row of rows) {
-    const report: WrappedReport = JSON.parse(row.value);
-    const season = getWrappedAvailability(report.userId, now);
-    if (season && report.year < season.year)
-      requestWrappedReport(report.userId, season.year, report.timeZone, now);
-  }
-}
-
-export function getWrappedReport(userId: number, year: number, timeZone: string, now = Date.now()) {
-  const key = cacheKey(userId, year, timeZone);
-  const row = read.get(key);
-  if (!row) return null;
-  const report: WrappedReport = JSON.parse(row.value);
-  if (
-    report.userId !== userId ||
-    report.expiresAt <= now ||
-    report.cutoff !== getWrappedAvailability(userId, now)?.cutoff
-  ) {
-    remove.run(key);
-    return null;
-  }
-  if (
-    (report.state === "queued" || report.state === "running") &&
-    !getHonkerDb().query("SELECT id FROM _honker_live WHERE id = ?", [report.operationId]).length
-  ) {
-    const failed: WrappedReport = {
-      ...report,
-      state: "failed",
-      message: "Your recap stopped before it finished. Try again.",
-    };
-    save.run(key, JSON.stringify(failed));
-    return failed;
-  }
-  return report;
-}
-
-export function requestWrappedReport(
-  userId: number,
-  year: number,
-  timeZone: string,
-  now = Date.now(),
-  refresh = false,
-) {
-  const season = validateWrappedRequest(userId, year, timeZone, now);
-  const existing = getWrappedReport(userId, year, timeZone, now);
-  if (
-    existing &&
-    (existing.state === "queued" ||
-      existing.state === "running" ||
-      (!refresh && existing.state === "ready"))
-  )
-    return existing;
-  const requestId = randomUUID();
-  const tx = getHonkerDb().transaction();
-  try {
-    const operationId = getMaintenanceTaskQueue().enqueueTx(tx, {
-      kind: "wrapped-build",
-      userId,
-      year,
-      timeZone,
-      cutoff: season.cutoff,
-      requestId,
-    });
-    const report: WrappedReport = {
-      requestId,
-      operationId,
-      userId,
-      year,
-      timeZone,
-      cutoff: season.cutoff,
-      expiresAt: Math.min(now + 86400000, season.expiresAt),
-      state: "queued",
-    };
-    tx.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
-      cacheKey(userId, year, timeZone),
-      JSON.stringify(report),
-    ]);
-    tx.commit();
-    wakeQueueOwner("system-task-maintenance");
-    return report;
-  } catch (error) {
-    tx.rollback();
-    throw error;
-  }
-}
-
-export async function processWrappedReport(
-  userId: number,
-  year: number,
-  timeZone: string,
-  cutoff: number,
-  requestId: string,
-) {
-  if (!getWrappedAvailability(userId)) return;
-  const key = cacheKey(userId, year, timeZone);
-  const row = read.get(key);
-  if (!row) return;
-  const report: WrappedReport = JSON.parse(row.value);
-  if (report.requestId !== requestId || report.expiresAt <= Date.now()) return;
-  const running: WrappedReport = { ...report, state: "running" };
-  save.run(key, JSON.stringify(running));
-  let result: WrappedReport;
-  try {
-    const season = validateWrappedRequest(userId, year, timeZone);
-    const summary = await buildWrappedSummary(userId, wrappedPeriod(year, timeZone, cutoff));
-    result = { ...running, state: "ready", summary, expiresAt: season.expiresAt };
-  } catch {
-    result = {
-      ...running,
-      state: "failed",
-      message:
-        "Your listening history could not be collected. Check your connections and try again.",
-    };
-  }
-  const latest = read.get(key);
-  if (latest && JSON.parse(latest.value).requestId === requestId && result.expiresAt > Date.now())
-    save.run(key, JSON.stringify(result));
+  const keys = new Map(
+    trackIds.length
+      ? db
+          .prepare<number[], Pick<LibraryTracksRow, "id" | "identity_key">>(
+            `SELECT id, identity_key FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`,
+          )
+          .all(...trackIds)
+          .map((row) => [row.id, row.identity_key])
+      : [],
+  );
+  const songIds = trackIds.flatMap((id) => {
+    const key = keys.get(id);
+    return key ? [subsonicId("song", key)] : [];
+  });
+  if (!songIds.length) return { error: "None of these songs are in your Library" } as const;
+  const playlist = await createSubsonicPlaylist(user, {
+    name: `Your Top Songs ${wrapped.year}`,
+    songIds,
+  });
+  if (!playlist)
+    return { error: "Your Library changed. Rebuild your recap and try again." } as const;
+  return {
+    playlistId: playlist.id,
+    trackCount: songIds.length,
+    missingCount: wrapped.summary.topSongs.length - songIds.length,
+  };
 }

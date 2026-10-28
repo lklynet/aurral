@@ -1,7 +1,7 @@
 import axios from "../../../lib/axiosFetch.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
-import type { PlayEventsRow } from "../../db/rows.ts";
+import type { LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
 import { lastfmRequest } from "../apiClients/lastfm.ts";
 import { listenbrainzRequest } from "../apiClients/listenbrainz.ts";
 import { getListenHistoryProfile } from "../listeningHistory.ts";
@@ -14,7 +14,7 @@ import { JellyfinClient } from "../jellyfin.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { buildImageProxyUrl } from "../imageProxyService.ts";
 import { getArtistImage } from "../imageService.ts";
-import { calculateWrapped, wrappedName, type WrappedPlay, type wrappedPeriod } from "./metrics.ts";
+import { calculateWrapped, wrappedKey, type WrappedPeriod, type WrappedPlay } from "./metrics.ts";
 
 const MAX_PLAYS = 100_000;
 const PAGE_SIZE = 500;
@@ -26,7 +26,7 @@ const text = (value: unknown) => (typeof value === "string" ? value.trim() : "")
 const number = (value: unknown) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const timestamp = (value: unknown) =>
   typeof value === "number" ? value * (value < 1e11 ? 1000 : 1) : Date.parse(text(value));
-type Period = ReturnType<typeof wrappedPeriod>;
+type Period = WrappedPeriod;
 type Source = WrappedPlay["source"];
 type Page = { plays: WrappedPlay[]; more: boolean };
 
@@ -68,10 +68,6 @@ export function readLocalWrappedHistory(userId: number, period: Period) {
       account: String(userId),
       id: String(row.id),
       playedAt: row.played_at,
-      startedAt:
-        row.source === "native-player" && row.duration_ms
-          ? row.played_at - row.duration_ms
-          : undefined,
       title: row.title,
       artist: row.artist,
       album: row.album,
@@ -138,6 +134,7 @@ export function listenbrainzWrappedReader(username: string, period: Period, toke
     const plays = rows.map((row): WrappedPlay => {
       const metadata = object(row.track_metadata);
       const additional = object(metadata.additional_info);
+      const mapping = object(metadata.mbid_mapping);
       return {
         source: "listenbrainz",
         account: username,
@@ -146,9 +143,9 @@ export function listenbrainzWrappedReader(username: string, period: Period, toke
         title: text(metadata.track_name),
         artist: text(metadata.artist_name),
         album: text(metadata.release_name),
-        trackMbid: text(additional.recording_mbid),
-        artistMbid: text(list(additional.artist_mbids)[0]),
-        albumMbid: text(additional.release_mbid),
+        trackMbid: text(additional.recording_mbid) || text(mapping.recording_mbid),
+        artistMbid: text(list(additional.artist_mbids)[0]) || text(list(mapping.artist_mbids)[0]),
+        albumMbid: text(additional.release_mbid) || text(mapping.release_mbid),
         durationMs:
           number(additional.duration_ms) || number(additional.duration) * 1000 || undefined,
       };
@@ -194,7 +191,6 @@ export function koitoReader(baseUrl: string, token: string | undefined, period: 
           playedAt: timestamp(row.time),
           title: text(track.title),
           artist: text(artist.name),
-          artistMbid: text(artist.musicbrainz_id),
         };
       }),
       more: result.has_next_page === true,
@@ -218,16 +214,15 @@ export function navidromeReader(client: NavidromeClient, account: string, period
     });
     if (!Array.isArray(raw)) throw new Error("Navidrome history API unavailable");
     const rows = raw.map(object);
-    for (const id of new Set(rows.map((row) => text(row.mediaFileId)).filter(Boolean))) {
-      if (!songs.has(id))
-        songs.set(
-          id,
-          object(
-            await client._nativeRequest("GET", `/api/song/${encodeURIComponent(id)}`, null, {
-              timeout: 20_000,
-            }),
-          ),
-        );
+    const missing = [...new Set(rows.map((row) => text(row.mediaFileId)))].filter(
+      (id) => id && !songs.has(id),
+    );
+    for (let offset = 0; offset < missing.length; offset += 100) {
+      const ids = new URLSearchParams(missing.slice(offset, offset + 100).map((id) => ["id", id]));
+      const found: unknown = await client._nativeRequest("GET", `/api/song?${ids}`, null, {
+        timeout: 20_000,
+      });
+      for (const song of list(found).map(object)) songs.set(text(song.id), song);
     }
     return {
       plays: rows.map((row): WrappedPlay => {
@@ -241,7 +236,7 @@ export function navidromeReader(client: NavidromeClient, account: string, period
           artist: text(song.artist),
           album: text(song.album),
           trackMbid: text(song.mbzRecordingID),
-          artistMbid: text(song.mbzArtistID),
+          artistMbid: text(song.mbzArtistId),
           durationMs: number(song.duration) * 1000 || undefined,
           genres: list(song.genres)
             .map((genre) => text(object(genre).name))
@@ -279,37 +274,55 @@ export function plexReader(client: PlexClient, accountId: string | number | null
         id: String(row.historyKey || `${row.ratingKey}:${row.viewedAt}`),
         playedAt: timestamp(number(row.viewedAt)),
         title: text(row.title),
-        artist: text(row.grandparentTitle),
+        artist: text(row.originalTitle) || text(row.grandparentTitle),
         album: text(row.parentTitle),
-        durationMs: number(row.duration) || undefined,
       })),
       more: page * PAGE_SIZE < number(container.totalSize),
     };
   };
 }
 
+const PLAYBACK_REPORTING_QUERY = "/user_usage_stats/submit_custom_query";
+
+async function playbackReportingQuery(client: JellyfinClient, sql: string) {
+  const result = object(
+    await client.request("POST", PLAYBACK_REPORTING_QUERY, { data: { CustomQueryString: sql } }),
+  );
+  if (/error|failed|no such|not authorized/i.test(text(result.message)))
+    throw new Error("Playback Reporting query unavailable");
+  if (!Array.isArray(result.results)) throw new Error("Jellyfin Playback Reporting unavailable");
+  return result.results.map(list);
+}
+
+async function jellyfinServerOffsetMs(client: JellyfinClient) {
+  try {
+    const [row] = await playbackReportingQuery(
+      client,
+      "SELECT CAST(strftime('%s','now','localtime') AS INTEGER) - CAST(strftime('%s','now') AS INTEGER)",
+    );
+    return number(row?.[0]) * 1000;
+  } catch {
+    return 0;
+  }
+}
+
 export function jellyfinReader(client: JellyfinClient, account: string, period: Period) {
   return async (page: number): Promise<Page> => {
     if (page !== 1) return { plays: [], more: false };
-    const quoted = account.replaceAll("-", "").replaceAll("'", "''");
-    const start = new Date(period.start).toISOString().slice(0, 19).replace("T", " ");
-    const end = new Date(period.end).toISOString().slice(0, 19).replace("T", " ");
-    const raw: unknown = await client.request("POST", "/user_usage_stats/submit_custom_query", {
-      data: {
-        CustomQueryString: `SELECT DateCreated, ItemId, PlayDuration FROM PlaybackActivity WHERE REPLACE(UserId, '-', '') = '${quoted}' AND ItemType = 'Audio' AND DateCreated >= '${start}' AND DateCreated < '${end}' ORDER BY DateCreated LIMIT ${MAX_PLAYS + 1}`,
-      },
-    });
-    const result = object(raw);
-    if (/error|failed|no such|not authorized/i.test(text(result.message)))
-      throw new Error("Playback Reporting query unavailable");
-    if (!Array.isArray(result.results)) throw new Error("Jellyfin Playback Reporting unavailable");
-    const rows = result.results.map(list);
+    const offset = await jellyfinServerOffsetMs(client);
+    const local = (time: number) =>
+      new Date(time + offset).toISOString().slice(0, 19).replace("T", " ");
+    const user = account.replaceAll("-", "").replaceAll("'", "''");
+    const rows = await playbackReportingQuery(
+      client,
+      `SELECT DateCreated, ItemId, PlayDuration FROM PlaybackActivity WHERE REPLACE(UserId, '-', '') = '${user}' AND ItemType = 'Audio' AND DateCreated >= '${local(period.start)}' AND DateCreated < '${local(period.end)}' ORDER BY DateCreated LIMIT ${MAX_PLAYS + 1}`,
+    );
     const items = new Map<string, Record<string, unknown>>();
     const ids = [...new Set(rows.map((row) => text(row[1])).filter(Boolean))];
-    for (let offset = 0; offset < ids.length; offset += 100) {
+    for (let index = 0; index < ids.length; index += 100) {
       const response: unknown = await client.request("GET", "/Items", {
         params: {
-          ids: ids.slice(offset, offset + 100).join(","),
+          ids: ids.slice(index, index + 100).join(","),
           userId: account,
           fields: "Genres",
           enableImages: false,
@@ -323,12 +336,12 @@ export function jellyfinReader(client: JellyfinClient, account: string, period: 
     return {
       plays: rows.map((row, index): WrappedPlay => {
         const item = items.get(text(row[1])) ?? {};
-        const date = text(row[0]);
+        const date = text(row[0]).slice(0, 19).replace(" ", "T");
         return {
           source: "jellyfin",
           account,
-          id: `${date}:${row[1]}:${index}`,
-          playedAt: Date.parse(date.includes("T") ? date : `${date.replace(" ", "T")}Z`),
+          id: `${date}:${text(row[1])}:${index}`,
+          playedAt: Date.parse(`${date}Z`) - offset,
           title: text(item.Name),
           artist: text(list(item.Artists)[0]),
           album: text(item.Album),
@@ -366,14 +379,16 @@ export async function collectWrappedHistory(userId: number, period: Period) {
       source: "listenbrainz",
       read: listenbrainzWrappedReader(listenbrainz, period, connections.listenbrainz?.token),
     });
-  const koito = connections.koito?.baseUrl || profile.listenHistoryUrl;
+  const koito =
+    connections.koito?.baseUrl ||
+    (profile.listenHistoryProvider === "koito" ? profile.listenHistoryUrl : null);
   if (koito)
     readers.push({ source: "koito", read: koitoReader(koito, connections.koito?.token, period) });
   const soleUser = userOps.getAllUsers().filter((user) => user.status === "active").length === 1;
   const navidrome = settings.integrations?.navidrome;
   if (
     navidrome?.url &&
-    (soleUser || wrappedName(navidrome.username || "") === wrappedName(user.username))
+    (soleUser || wrappedKey(navidrome.username || "") === wrappedKey(user.username))
   ) {
     readers.push({
       source: "navidrome",
@@ -400,15 +415,20 @@ export async function collectWrappedHistory(userId: number, period: Period) {
           const raw: unknown = await client.request("/accounts", { timeout: 20_000 });
           const accounts = list(object(object(raw).MediaContainer).Account).map(object);
           let username = text(linkedPlex?.plexUsername) || plex.plexUsername || "";
-          if (!username && linkedPlex?.plexAccountId == null)
+          const byId = accounts.filter(
+            (account) =>
+              linkedPlex?.plexAccountId != null &&
+              String(account.id) === String(linkedPlex.plexAccountId),
+          );
+          if (!username && !byId.length)
             username = text(
               object(await PlexClient.validateToken(client.token, client.clientId)).username,
             );
-          const matches = accounts.filter((account) =>
-            linkedPlex?.plexAccountId != null
-              ? String(account.id) === String(linkedPlex.plexAccountId)
-              : username && wrappedName(text(account.name)) === wrappedName(username),
-          );
+          const matches = byId.length
+            ? byId
+            : accounts.filter(
+                (account) => username && wrappedKey(text(account.name)) === wrappedKey(username),
+              );
           if (matches.length !== 1) throw new Error("Plex account could not be identified");
           const id = matches[0].id;
           if (typeof id !== "string" && typeof id !== "number")
@@ -428,7 +448,7 @@ export async function collectWrappedHistory(userId: number, period: Period) {
       read: async (page) => {
         if (
           !soleUser &&
-          wrappedName(text(object(await client.getUser()).Name)) !== wrappedName(user.username)
+          wrappedKey(text(object(await client.getUser()).Name)) !== wrappedKey(user.username)
         )
           throw new Error("Link your playback account first");
         return read(page);
@@ -444,72 +464,72 @@ export async function collectWrappedHistory(userId: number, period: Period) {
   };
 }
 
-export async function buildWrappedSummary(userId: number, period: Period) {
-  const history = await collectWrappedHistory(userId, period);
-  const plays = history.plays.filter(
-    (play) => play.playedAt >= period.start && play.playedAt < period.end,
-  );
+function enrichFromLibrary(plays: WrappedPlay[]) {
   const library = getLibraryForTrackMatches({
     mbids: plays.map((play) => play.trackMbid),
     titles: plays.map((play) => play.title),
   });
   const byMbid = new Map(
-    library.tracks.filter((track) => track.mbid).map((track) => [track.mbid, track]),
+    library.tracks.flatMap((track) => (track.mbid ? [[track.mbid, track] as const] : [])),
   );
-  const byName = new Map<string, typeof library.tracks>();
+  const byName = new Map<string, (typeof library.tracks)[number][]>();
   for (const track of library.tracks) {
-    const key = `${wrappedName(track.artistName || "")}\u0000${wrappedName(track.title)}`;
+    const key = `${wrappedKey(track.artistName || "")}\u0000${wrappedKey(track.title)}`;
     byName.set(key, [...(byName.get(key) ?? []), track]);
   }
   const albums = new Map(library.albums.map((album) => [album.id, album]));
-  const genres = db
-    .prepare<[], { entity_kind: string; entity_id: number; name: string }>(
+  const genres = new Map<string, string[]>();
+  for (const row of db
+    .prepare<[], Pick<LibraryEntityGenresRow, "entity_kind" | "entity_id" | "name">>(
       "SELECT entity_kind, entity_id, name FROM library_entity_genres",
     )
-    .all();
-  const genreMap = new Map<string, string[]>();
-  for (const row of genres) {
+    .all()) {
     const key = `${row.entity_kind}:${row.entity_id}`;
-    genreMap.set(key, [...(genreMap.get(key) ?? []), row.name]);
+    genres.set(key, [...(genres.get(key) ?? []), row.name]);
   }
   for (const play of plays) {
-    const matches = byName.get(`${wrappedName(play.artist)}\u0000${wrappedName(play.title)}`);
+    const named = byName.get(`${wrappedKey(play.artist)}\u0000${wrappedKey(play.title)}`);
     const track =
-      (play.trackMbid ? byMbid.get(play.trackMbid) : undefined) ||
-      (matches?.length === 1 ? matches[0] : undefined);
+      (play.trackMbid ? byMbid.get(play.trackMbid) : undefined) ??
+      (named?.length === 1 ? named[0] : undefined);
     if (!track) continue;
-    const album = track.albums
-      .map((link) => albums.get(link.albumId))
-      .find(
-        (album) => album && (!play.album || wrappedName(album.title) === wrappedName(play.album)),
-      );
+    const album =
+      track.albums
+        .map((link) => albums.get(link.albumId))
+        .find(
+          (album) => album && (!play.album || wrappedKey(album.title) === wrappedKey(play.album)),
+        ) ?? undefined;
     const file = track.files.find(
-      (file) => file.available && (!album || file.albumId === album.id || !file.albumId),
+      (file) => file.available && (!album || !file.albumId || file.albumId === album.id),
     );
     play.trackMbid ||= track.mbid;
     play.durationMs ||= file?.durationMs;
-    if (file && album) {
+    const libraryAlbumId = file && (file.albumId ?? album?.id);
+    if (libraryAlbumId) {
       play.libraryTrackId = track.id;
-      play.libraryAlbumId = album.id;
+      play.libraryAlbumId = libraryAlbumId;
     }
-    if (album) {
-      play.album ||= album.title;
-      play.albumMbid ||= album.releaseGroupMbid || album.mbid;
-      const cover = album.metadata?.images?.find((image) =>
-        /^https?:/.test(image.remoteUrl || image.url || ""),
-      );
-      play.artwork ||= cover?.remoteUrl || cover?.url;
-      play.genres = [
-        ...new Set([
-          ...(play.genres ?? []),
-          ...(genreMap.get(`albums:${album.id}`) ?? []),
-          ...(genreMap.get(`artists:${album.artistId}`) ?? []),
-          ...(genreMap.get(`tracks:${track.id}`) ?? []),
-        ]),
-      ];
-    }
+    if (!album) continue;
+    play.album ||= album.title;
+    play.albumMbid ||= album.releaseGroupMbid || album.mbid;
+    const cover = album.metadata?.images?.find((image) =>
+      /^https?:/.test(image.remoteUrl || image.url || ""),
+    );
+    play.artwork ||= cover?.remoteUrl || cover?.url;
+    play.genres = [
+      ...new Set([
+        ...(play.genres ?? []),
+        ...(genres.get(`tracks:${track.id}`) ?? []),
+        ...(genres.get(`albums:${album.id}`) ?? []),
+        ...(genres.get(`artists:${album.artistId}`) ?? []),
+      ]),
+    ];
   }
-  const summary = calculateWrapped(plays, period);
+}
+
+export async function buildWrappedSummary(userId: number, period: Period) {
+  const history = await collectWrappedHistory(userId, period);
+  const summary = calculateWrapped(history.plays, period, enrichFromLibrary);
   await Promise.all(
     summary.topArtists.map(async (artist) => {
       if (!artist.mbid) return;

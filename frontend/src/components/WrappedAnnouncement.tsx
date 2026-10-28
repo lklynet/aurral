@@ -1,56 +1,34 @@
 import { useId, useState } from "react";
 import { Link, useLocation } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import {
-  buildWrapped,
-  getWrappedAnnouncement,
-  hideWrappedAnnouncement,
-} from "../utils/api/endpoints/wrapped.ts";
+import { wrappedClient } from "../utils/api/clients/wrapped.ts";
 import { resolveApiPath } from "../utils/api/core.ts";
-import { wrappedSeason } from "../../../lib/wrapped.ts";
+import { useWrapped, wrappedTimeZone } from "../hooks/useWrapped.ts";
 import "./wrapped-announcement.css";
 
 export default function WrappedAnnouncement() {
-  const { user, bootstrap } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const client = useQueryClient();
   const toast = useToast();
   const headingId = useId();
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const season = bootstrap?.wrappedPreview ?? wrappedSeason(bootstrap?.appVersion ?? "");
-  const year = season?.year;
+  const query = useWrapped();
+  const year = query.data?.year;
   const sessionKey = `aurral-wrapped-hidden:${user?.id}:${year}`;
   const [hiddenSession, setHiddenSession] = useState<string | null>(null);
   let sessionHidden = hiddenSession === sessionKey;
   try {
     sessionHidden ||= sessionStorage.getItem(sessionKey) === "1";
   } catch {}
-  const queryKey = ["wrapped-announcement", user?.id, year, timeZone];
-  const query = useQuery({
-    queryKey,
-    enabled: Boolean(season && (user?.id ?? 0) > 0),
-    queryFn: async ({ signal }) => {
-      const announcement = await getWrappedAnnouncement(timeZone, signal);
-      if (announcement.state === "missing" && !announcement.hidden) {
-        await buildWrapped(announcement.year, timeZone);
-        return getWrappedAnnouncement(timeZone, signal);
-      }
-      return announcement;
-    },
-    refetchOnWindowFocus: true,
-    refetchInterval: (query) =>
-      ["queued", "running"].includes(query.state.data?.state ?? "") ? 3000 : 60_000,
-  });
   const dismissal = useMutation({
-    mutationFn: (hidden: boolean) => {
-      if (!season) throw new Error("Wrapped is unavailable");
-      return hideWrappedAnnouncement(season.year, timeZone, hidden);
-    },
+    mutationFn: (hidden: boolean) =>
+      parseResponse(wrappedClient.banner.$put({ json: { hidden, timeZone: wrappedTimeZone() } })),
     onSuccess: (data) => {
-      client.setQueryData(queryKey, data);
-      if (data.hidden)
+      client.setQueriesData({ queryKey: ["wrapped"] }, data);
+      if (data.bannerHidden)
         toast.showInfo({
           message:
             "Wrapped is hidden until next year. You can still open it from your profile menu.",
@@ -59,8 +37,18 @@ export default function WrappedAnnouncement() {
     },
     onError: () => toast.showError("Wrapped could not be hidden. Try again."),
   });
-  if (!query.data?.ready || query.data.hidden || sessionHidden || location.pathname === "/wrapped")
+  const summary = query.data?.summary;
+  if (
+    !summary?.totalPlays ||
+    query.data?.bannerHidden ||
+    sessionHidden ||
+    location.pathname === "/wrapped"
+  )
     return null;
+  const artwork = [...summary.topAlbums, ...summary.topArtists, ...summary.topSongs]
+    .flatMap((item) => (item.artwork ? [item.artwork] : []))
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, 4);
   const hideSession = () => {
     setHiddenSession(sessionKey);
     try {
@@ -70,9 +58,9 @@ export default function WrappedAnnouncement() {
   return (
     <section className="wrapped-announcement" aria-labelledby={headingId}>
       <div className="wrapped-announcement-heading">
-        {query.data.artwork.length > 0 ? (
+        {artwork.length > 0 ? (
           <div className="wrapped-announcement-art" aria-hidden="true">
-            {query.data.artwork.map((url) => (
+            {artwork.map((url) => (
               <img
                 key={url}
                 src={url.startsWith("/api/") ? resolveApiPath(url) : url}

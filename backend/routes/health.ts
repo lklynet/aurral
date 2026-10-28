@@ -10,9 +10,9 @@ import {
   getTicketmasterApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients/index.ts";
-import { API_CONTRACT, isWrappedEnabled } from "../config/apiContract.ts";
+import { API_CONTRACT } from "../config/apiContract.ts";
 import { APP_VERSION } from "../config/constants.ts";
-import { getWrappedPreview } from "../services/wrapped/preview.ts";
+import { wrappedSeason } from "../../lib/wrapped.ts";
 import {
   resolveRequestUser,
   isAuthRequiredByConfig,
@@ -264,7 +264,6 @@ type BootstrapPayload = {
   status: string;
   timestamp: string;
   appVersion: string;
-  wrappedPreview?: NonNullable<ReturnType<typeof getWrappedPreview>>;
   api: typeof API_CONTRACT;
   matcher: {
     available: boolean;
@@ -291,6 +290,7 @@ type BootstrapPayload = {
   lastfmConfigured?: boolean;
   ticketmasterConfigured?: boolean;
   inboxEnabled?: boolean;
+  wrapped?: { year: number; preview: boolean };
   newsConfigured?: boolean;
   musicbrainzConfigured?: boolean;
   metadataConfigured?: boolean;
@@ -341,8 +341,6 @@ function buildBootstrapPayload(req: CredentialRequest) {
   const authRequired = isAuthRequiredByConfig();
   const currentUser = resolveRequestUser(req);
   const lidarrConfigured = lidarrClient.isConfigured();
-  const wrappedPreview =
-    currentUser && currentUser.id > 0 ? getWrappedPreview(currentUser.id) : null;
 
   const oidcInfo = getOidcBootstrapInfo();
   const payload: BootstrapPayload = {
@@ -358,15 +356,8 @@ function buildBootstrapPayload(req: CredentialRequest) {
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
-    api: {
-      ...API_CONTRACT,
-      features:
-        (isWrappedEnabled() || wrappedPreview) && currentUser && currentUser.id > 0
-          ? [...API_CONTRACT.features, "wrapped"]
-          : API_CONTRACT.features,
-    },
+    api: API_CONTRACT,
     matcher: serializeBootstrapMatcherStatus(getMatcherStatus(), Boolean(currentUser)),
-    ...(wrappedPreview ? { wrappedPreview } : {}),
   };
 
   if (currentUser) {
@@ -378,6 +369,8 @@ function buildBootstrapPayload(req: CredentialRequest) {
       permissions: currentUser.permissions,
     };
     payload.authUser = currentUser.username;
+    const wrapped = currentUser.id > 0 ? wrappedSeason(APP_VERSION) : null;
+    if (wrapped) payload.wrapped = { year: wrapped.year, preview: wrapped.preview };
     payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
     payload.lidarr = {
       configured: lidarrConfigured,

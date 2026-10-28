@@ -8,12 +8,13 @@ export const WRAPPED_SOURCES = [
   "jellyfin",
 ] as const;
 
+export type WrappedSource = (typeof WRAPPED_SOURCES)[number];
+
 export type WrappedPlay = {
-  source: (typeof WRAPPED_SOURCES)[number];
+  source: WrappedSource;
   account: string;
   id: string;
   playedAt: number;
-  startedAt?: number;
   title: string;
   artist: string;
   album?: string | null;
@@ -26,13 +27,24 @@ export type WrappedPlay = {
   artwork?: string | null;
   libraryTrackId?: number;
   libraryAlbumId?: number;
-  albumTrackCount?: number;
 };
 
-export const wrappedName = (value: string) =>
-  value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
-const positive = (value: number | null | undefined) =>
+export type WrappedPeriod = ReturnType<typeof wrappedPeriod>;
+
+const DEFAULT_TRACK_MS = 4 * 60_000;
+const MIRROR_SLACK_MS = 60_000;
+const MAX_MIRROR_GAP_MS = 30 * 60_000;
+const DAY_MS = 86_400_000;
+
+export const wrappedKey = (value: string) => {
+  const folded = value.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+  return folded.replace(/[^\p{L}\p{N}]+/gu, "") || folded.trim();
+};
+
+const positive = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
+
+const songKey = (play: WrappedPlay) => `${wrappedKey(play.artist)}\u0000${wrappedKey(play.title)}`;
 
 export function wrappedPeriod(year: number, timeZone: string, cutoff = Date.now()) {
   if (!Number.isInteger(year) || year < 1970 || year > 9998) throw new Error("Invalid year");
@@ -51,15 +63,15 @@ export function wrappedPeriod(year: number, timeZone: string, cutoff = Date.now(
     let timestamp = target;
     for (let attempt = 0; attempt < 4; attempt++) {
       const parts = Object.fromEntries(
-        format.formatToParts(timestamp).map(({ type, value }) => [type, value]),
+        format.formatToParts(timestamp).map(({ type, value }) => [type, Number(value)]),
       );
       const represented = Date.UTC(
-        Number(parts.year),
-        Number(parts.month) - 1,
-        Number(parts.day),
-        Number(parts.hour),
-        Number(parts.minute),
-        Number(parts.second),
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second,
       );
       const next = timestamp + target - represented;
       if (next === timestamp) break;
@@ -67,291 +79,248 @@ export function wrappedPeriod(year: number, timeZone: string, cutoff = Date.now(
     }
     return timestamp;
   };
-  const start = midnight(year);
-  const end = Math.min(midnight(year + 1), cutoff);
-  return { year, timeZone, start, end };
-}
-
-function identityResolver(plays: WrappedPlay[], kind: "track" | "artist" | "album") {
-  const ids = new Map<string, Set<string>>();
-  const name = (play: WrappedPlay) =>
-    kind === "artist"
-      ? wrappedName(play.artist)
-      : `${wrappedName(play.artist)}\u0000${wrappedName(kind === "album" ? play.album || "" : play.title)}`;
-  for (const play of plays) {
-    const mbid =
-      kind === "artist" ? play.artistMbid : kind === "album" ? play.albumMbid : play.trackMbid;
-    if (!mbid) continue;
-    const matches = ids.get(name(play)) ?? new Set<string>();
-    matches.add(mbid.toLowerCase());
-    ids.set(name(play), matches);
-  }
-  return (play: WrappedPlay) => {
-    const explicit =
-      kind === "artist" ? play.artistMbid : kind === "album" ? play.albumMbid : play.trackMbid;
-    const matches = ids.get(name(play));
-    return explicit?.toLowerCase() || (matches?.size === 1 ? [...matches][0] : name(play));
-  };
+  return { year, timeZone, start: midnight(year), end: Math.min(midnight(year + 1), cutoff) };
 }
 
 export function mergeWrappedPlays(input: WrappedPlay[]) {
-  const plays = input.filter(
-    (play) => play.artist.trim() && play.title.trim() && Number.isFinite(play.playedAt),
-  );
-  const trackKey = identityResolver(plays, "track");
   const seen = new Set<string>();
-  const buckets = new Map<string, number[]>();
-  const merged: (WrappedPlay & { origins: string[] })[] = [];
-  for (const play of [...plays].sort(
-    (a, b) => a.playedAt - b.playedAt || a.source.localeCompare(b.source),
-  )) {
+  const groups = new Map<string, (WrappedPlay & { origins: Set<string> })[]>();
+  const merged: (WrappedPlay & { origins: Set<string> })[] = [];
+  const sorted = input
+    .filter((play) => play.artist.trim() && play.title.trim() && Number.isFinite(play.playedAt))
+    .sort((a, b) => a.playedAt - b.playedAt || a.source.localeCompare(b.source));
+  for (const play of sorted) {
     const origin = `${play.source}:${play.account}`;
-    const eventId = `${origin}:${play.id}`;
-    if (seen.has(eventId)) continue;
-    seen.add(eventId);
-    const times = [
-      ...new Set(
-        [play.playedAt, play.startedAt].filter((time): time is number => Number.isFinite(time)),
-      ),
-    ];
-    const candidates = new Set<number>();
-    for (const time of times) {
-      for (let offset = -2; offset <= 2; offset++) {
-        for (const index of buckets.get(`${trackKey(play)}:${Math.floor(time / 1000) + offset}`) ??
-          [])
-          candidates.add(index);
+    if (seen.has(`${origin}:${play.id}`)) continue;
+    seen.add(`${origin}:${play.id}`);
+    const key = songKey(play);
+    const group = groups.get(key) ?? [];
+    let mirror: (typeof merged)[number] | undefined;
+    for (let index = group.length - 1; index >= 0; index--) {
+      const other = group[index];
+      const gap = play.playedAt - other.playedAt;
+      if (gap > MAX_MIRROR_GAP_MS) break;
+      const length = [play.durationMs, other.durationMs].find(positive) ?? DEFAULT_TRACK_MS;
+      if (!other.origins.has(origin) && gap <= length + MIRROR_SLACK_MS) {
+        mirror = other;
+        break;
       }
     }
-    const match = [...candidates]
-      .filter((index) => !merged[index].origins.includes(origin))
-      .map((index) => {
-        const other = merged[index];
-        const otherTimes = [other.playedAt, other.startedAt].filter((time): time is number =>
-          Number.isFinite(time),
-        );
-        return {
-          index,
-          difference: Math.min(
-            ...times.flatMap((time) => otherTimes.map((otherTime) => Math.abs(time - otherTime))),
-          ),
-        };
-      })
-      .filter(({ difference }) => difference <= 2000)
-      .sort((a, b) => a.difference - b.difference || a.index - b.index)[0];
-    let index: number;
-    if (match) {
-      index = match.index;
-      const other = merged[index];
-      other.origins.push(origin);
-      for (const key of [
-        "album",
-        "trackMbid",
-        "artistMbid",
-        "albumMbid",
-        "artwork",
-        "libraryTrackId",
-        "libraryAlbumId",
-        "albumTrackCount",
-        "startedAt",
-      ] as const) {
-        if (other[key] == null && play[key] != null) Object.assign(other, { [key]: play[key] });
-      }
-      if (!positive(other.durationMs) && positive(play.durationMs))
-        other.durationMs = play.durationMs;
-      if (!positive(other.listenedMs) && positive(play.listenedMs))
-        other.listenedMs = play.listenedMs;
-      other.genres = [...new Set([...(other.genres ?? []), ...(play.genres ?? [])])];
-    } else {
-      index = merged.length;
-      merged.push({ ...play, origins: [origin] });
+    if (!mirror) {
+      const entry = { ...play, origins: new Set([origin]) };
+      merged.push(entry);
+      group.push(entry);
+      groups.set(key, group);
+      continue;
     }
-    for (const time of times) {
-      const key = `${trackKey(play)}:${Math.floor(time / 1000)}`;
-      const values = buckets.get(key) ?? [];
-      if (!values.includes(index)) values.push(index);
-      buckets.set(key, values);
+    mirror.origins.add(origin);
+    mirror.album ||= play.album;
+    mirror.trackMbid ||= play.trackMbid;
+    mirror.artistMbid ||= play.artistMbid;
+    mirror.albumMbid ||= play.albumMbid;
+    mirror.artwork ||= play.artwork;
+    if (mirror.libraryTrackId == null) {
+      mirror.libraryTrackId = play.libraryTrackId;
+      mirror.libraryAlbumId = play.libraryAlbumId;
     }
+    if (!positive(mirror.durationMs)) mirror.durationMs = play.durationMs;
+    if (!positive(mirror.listenedMs)) mirror.listenedMs = play.listenedMs;
+    if (play.genres?.length)
+      mirror.genres = [...new Set([...(mirror.genres ?? []), ...play.genres])];
   }
-  return merged;
+  return merged.map(({ origins: _origins, ...play }) => play);
 }
 
-export function calculateWrapped(input: WrappedPlay[], period: ReturnType<typeof wrappedPeriod>) {
+type Tally = {
+  key: string;
+  name: string;
+  artist: string;
+  album: string | null;
+  plays: number;
+  timedMs: number;
+  untimedPlays: number;
+  firstPlayedAt: number;
+  artwork: string | null;
+  mbid: string | null;
+  libraryTrackId: number | null;
+  libraryAlbumId: number | null;
+};
+
+export function calculateWrapped(
+  input: WrappedPlay[],
+  period: WrappedPeriod,
+  enrich: (plays: WrappedPlay[]) => void = () => {},
+) {
   const eligible = input.filter(
     (play) => play.playedAt >= period.start && play.playedAt < period.end,
   );
   const plays = mergeWrappedPlays(eligible);
-  const artistKey = identityResolver(plays, "artist");
-  const trackKey = identityResolver(plays, "track");
-  const albumKey = identityResolver(plays, "album");
-  const dateFormat = new Intl.DateTimeFormat("en-CA", {
+  enrich(plays);
+  const dateOf = new Intl.DateTimeFormat("en-CA", {
     timeZone: period.timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  type Ranking = {
-    key: string;
-    name: string;
-    artist: string;
-    plays: number;
-    firstPlayedAt: number;
-    minutes: number;
-    artwork: string | null;
-    libraryTrackId: number | null;
-    libraryAlbumId: number | null;
-    mbid: string | null;
-    album: string | null;
-  };
-  const artists = new Map<string, Ranking>();
-  const songs = new Map<string, Ranking>();
-  const albums = new Map<string, Ranking & { tracks: Set<string>; trackCount: number | null }>();
+  const hourOf = new Intl.DateTimeFormat("en-US", {
+    timeZone: period.timeZone,
+    hour: "numeric",
+    hourCycle: "h23",
+  });
+  const artists = new Map<string, Tally>();
+  const songs = new Map<string, Tally>();
+  const albums = new Map<string, Tally>();
   const genres = new Map<string, { name: string; plays: number }>();
-  const days = new Map<string, number>();
-  const months = Array.from({ length: 12 }, (_, month) => ({
-    month: `${period.year}-${String(month + 1).padStart(2, "0")}`,
-    plays: 0,
-    artists: new Map<string, number>(),
-  }));
-  let measuredPlays = 0;
+  const days = new Map<string, { plays: number; songs: Map<string, number> }>();
+  const months = new Map<string, { plays: number; artists: Map<string, number> }>();
+  const hours = Array.from({ length: 24 }, () => 0);
+  let timedMs = 0;
   let timedPlays = 0;
-  let milliseconds = 0;
+  let measuredPlays = 0;
   let genrePlays = 0;
-  const add = (
-    target: Map<string, Ranking>,
+
+  const tally = (
+    target: Map<string, Tally>,
     key: string,
     name: string,
     play: WrappedPlay,
     duration: number,
+    mbid: string | null | undefined,
   ) => {
     const row = target.get(key) ?? {
       key,
       name,
       artist: play.artist,
+      album: play.album ?? null,
       plays: 0,
+      timedMs: 0,
+      untimedPlays: 0,
       firstPlayedAt: play.playedAt,
-      minutes: 0,
       artwork: null,
+      mbid: null,
       libraryTrackId: null,
       libraryAlbumId: null,
-      mbid:
-        (target === artists
-          ? play.artistMbid
-          : target === albums
-            ? play.albumMbid
-            : play.trackMbid) ?? null,
-      album: play.album ?? null,
     };
     row.plays++;
-    row.firstPlayedAt = Math.min(row.firstPlayedAt, play.playedAt);
-    row.minutes += duration / 60000;
+    if (duration) row.timedMs += duration;
+    else row.untimedPlays++;
     row.artwork ||= play.artwork ?? null;
-    row.mbid ||=
-      (target === artists
-        ? play.artistMbid
-        : target === albums
-          ? play.albumMbid
-          : play.trackMbid) ?? null;
-    row.libraryTrackId ??= play.libraryTrackId ?? null;
-    row.libraryAlbumId ??= play.libraryAlbumId ?? null;
+    row.album ||= play.album ?? null;
+    row.mbid ||= mbid ?? null;
+    if (row.libraryTrackId == null && play.libraryTrackId != null) {
+      row.libraryTrackId = play.libraryTrackId;
+      row.libraryAlbumId = play.libraryAlbumId ?? null;
+    }
     target.set(key, row);
-    return row;
   };
+
   for (const play of plays) {
     const duration = positive(play.listenedMs)
-      ? play.listenedMs!
+      ? play.listenedMs
       : positive(play.durationMs)
-        ? play.durationMs!
+        ? play.durationMs
         : 0;
     if (positive(play.listenedMs)) measuredPlays++;
-    if (duration) timedPlays++;
-    milliseconds += duration;
-    add(artists, artistKey(play), play.artist, play, duration);
-    add(songs, trackKey(play), play.title, play, duration);
-    if (play.album) {
-      const key = albumKey(play);
-      const existing = albums.get(key);
-      const row = add(albums, key, play.album, play, duration);
-      const tracks = existing?.tracks ?? new Set<string>();
-      tracks.add(trackKey(play));
-      albums.set(key, {
-        ...row,
-        tracks,
-        trackCount: existing?.trackCount ?? play.albumTrackCount ?? null,
-      });
+    if (duration) {
+      timedPlays++;
+      timedMs += duration;
     }
-    const date = dateFormat.format(play.playedAt);
-    days.set(date, (days.get(date) ?? 0) + 1);
-    const month = months.find((month) => month.month === date.slice(0, 7));
-    if (month) {
-      month.plays++;
-      month.artists.set(artistKey(play), (month.artists.get(artistKey(play)) ?? 0) + 1);
-    }
-    const tags = [
-      ...new Set((play.genres ?? []).map(wrappedName).filter((name) => name && name !== "unknown")),
-    ];
-    if (tags.length) genrePlays++;
+    const artistKey = wrappedKey(play.artist);
+    tally(artists, artistKey, play.artist, play, duration, play.artistMbid);
+    tally(songs, songKey(play), play.title, play, duration, play.trackMbid);
+    if (play.album)
+      tally(
+        albums,
+        `${artistKey}\u0000${wrappedKey(play.album)}`,
+        play.album,
+        play,
+        duration,
+        play.albumMbid,
+      );
+
+    const date = dateOf.format(play.playedAt);
+    const day = days.get(date) ?? { plays: 0, songs: new Map() };
+    day.plays++;
+    day.songs.set(songKey(play), (day.songs.get(songKey(play)) ?? 0) + 1);
+    days.set(date, day);
+    const month = months.get(date.slice(0, 7)) ?? { plays: 0, artists: new Map() };
+    month.plays++;
+    month.artists.set(artistKey, (month.artists.get(artistKey) ?? 0) + 1);
+    months.set(date.slice(0, 7), month);
+    hours[Number(hourOf.format(play.playedAt)) % 24]++;
+
+    const tags = new Set(
+      (play.genres ?? []).map((genre) => genre.trim().toLowerCase()).filter(Boolean),
+    );
+    tags.delete("unknown");
+    if (tags.size) genrePlays++;
     for (const name of tags) genres.set(name, { name, plays: (genres.get(name)?.plays ?? 0) + 1 });
   }
+
+  const averageMs = timedPlays ? timedMs / timedPlays : 0;
+  const minutesOf = (row: Pick<Tally, "timedMs" | "untimedPlays">) =>
+    Math.round((row.timedMs + row.untimedPlays * averageMs) / 60_000);
   const rank = <T extends { plays: number; name: string }>(rows: Iterable<T>) =>
     [...rows].sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name));
-  const rankedArtists = rank(artists.values());
-  const rankedSongs = rank(songs.values());
-  let longestStreak = 0;
-  let streak = 0;
-  let previous = 0;
-  for (const date of [...days.keys()].sort()) {
-    const day = Date.parse(`${date}T00:00:00Z`);
-    streak = day - previous === 86400000 ? streak + 1 : 1;
-    longestStreak = Math.max(longestStreak, streak);
-    previous = day;
+  const ranked = (rows: Map<string, Tally>, limit: number) =>
+    rank(rows.values())
+      .slice(0, limit)
+      .map((tally) => {
+        const { timedMs: _timedMs, untimedPlays: _untimedPlays, ...row } = tally;
+        return { ...row, minutes: minutesOf(tally) };
+      });
+  const leader = (counts: Map<string, number>, names: Map<string, Tally>) => {
+    const [key, plays] =
+      [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ?? [];
+    const row = key ? names.get(key) : undefined;
+    return row && plays ? { name: row.name, artist: row.artist, plays } : null;
+  };
+
+  const dates = [...days.keys()].sort();
+  let streak = { days: 0, start: "", end: "" };
+  for (let index = 0, runStart = 0; index < dates.length; index++) {
+    const contiguous =
+      index > 0 && Date.parse(dates[index]) - Date.parse(dates[index - 1]) === DAY_MS;
+    if (!contiguous) runStart = index;
+    if (index - runStart + 1 > streak.days)
+      streak = { days: index - runStart + 1, start: dates[runStart], end: dates[index] };
   }
+  const lastMonth = dateOf.format(Math.max(period.start, period.end - 1)).slice(0, 7);
+  const busiest = [...days].sort((a, b) => b[1].plays - a[1].plays || a[0].localeCompare(b[0]))[0];
+
   return {
     ...period,
     totalPlays: plays.length,
     importedPlays: eligible.length,
     duplicatesRemoved: eligible.length - plays.length,
+    minutes: timedPlays ? minutesOf({ timedMs, untimedPlays: plays.length - timedPlays }) : null,
+    minutesMeasured: plays.length > 0 && measuredPlays === plays.length,
     uniqueArtists: artists.size,
     uniqueSongs: songs.size,
     uniqueAlbums: albums.size,
-    activeDays: days.size,
-    longestStreak,
-    firstPlayedAt: plays.length
-      ? plays.reduce((first, play) => Math.min(first, play.playedAt), Infinity)
-      : null,
-    lastPlayedAt: plays.length
-      ? plays.reduce((last, play) => Math.max(last, play.playedAt), -Infinity)
-      : null,
-    listening: {
-      minutes: Math.floor(milliseconds / 60000),
-      timedPlays,
-      measuredPlays,
-      estimated: measuredPlays < timedPlays,
-    },
-    topArtists: rankedArtists.slice(0, 5),
-    topSongs: rankedSongs.slice(0, 100),
-    topAlbums: rank(albums.values())
-      .filter((album) => !album.trackCount || album.tracks.size / album.trackCount >= 0.7)
-      .slice(0, 5)
-      .map(({ tracks, ...album }) => ({ ...album, tracksPlayed: tracks.size })),
-    topGenres: rank(genres.values()).slice(0, 5),
     uniqueGenres: genres.size,
     genrePlays,
-    busiestDay:
-      [...days]
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .map(([date, plays]) => ({ date, plays }))[0] ?? null,
-    months: months
-      .filter(
-        (month) =>
-          month.month <= dateFormat.format(Math.max(period.start, period.end - 1)).slice(0, 7),
-      )
-      .map(({ artists: counts, ...month }) => ({
-        ...month,
-        artists: rankedArtists
-          .slice(0, 5)
-          .map((artist) => ({ name: artist.name, plays: counts.get(artist.key) ?? 0 }))
-          .sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name)),
+    activeDays: days.size,
+    longestStreak: streak.days ? streak : null,
+    firstPlayedAt: plays[0]?.playedAt ?? null,
+    topArtists: ranked(artists, 5),
+    topSongs: ranked(songs, 100),
+    topAlbums: ranked(albums, 5),
+    topGenres: rank(genres.values()).slice(0, 5),
+    busiestDay: busiest
+      ? { date: busiest[0], plays: busiest[1].plays, topSong: leader(busiest[1].songs, songs) }
+      : null,
+    months: Array.from(
+      { length: 12 },
+      (_, index) => `${period.year}-${String(index + 1).padStart(2, "0")}`,
+    )
+      .filter((month) => month <= lastMonth)
+      .map((month) => ({
+        month,
+        plays: months.get(month)?.plays ?? 0,
+        topArtist: leader(months.get(month)?.artists ?? new Map(), artists),
       })),
+    hours,
   };
 }
 
