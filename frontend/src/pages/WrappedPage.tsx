@@ -125,6 +125,59 @@ function markIntroSeen(year: number) {
 
 const at = (step: number): CSSProperties => ({ "--i": step });
 
+const DOODLES = {
+  crown: {
+    width: 24,
+    height: 18,
+    paths: [
+      "M19.1 15C19.3 14 20 11.1 20.3 9.1C20.7 7.1 20.9 4 21 3C20.6 3.5 19.3 5 18.4 6C17.5 7 16.2 8.6 15.8 9.2C15.3 8.4 13.9 5.9 13 4.4C12.2 2.9 10.9 0.7 10.5 0C10 0.7 8.6 2.8 7.7 4.4C6.9 5.9 5.7 8.4 5.3 9.2C4.9 8.6 3.7 6.9 2.8 5.9C2 4.9 0.5 3.5 0 3C0.1 4 0.5 7 0.8 9C1.1 11 1.7 14 1.9 15C2.8 15.1 5.7 15.2 7.6 15.3C9.5 15.3 11.5 15.4 13.5 15.3C15.4 15.3 18.2 15.1 19.1 15",
+      "M19.1 15C19.3 14 19.7 11 20 9C20.4 7 20.8 4 21 3C20.5 3.5 19.1 4.8 18.2 5.9C17.3 6.9 16.2 8.6 15.8 9.2C15.3 8.4 14.1 5.9 13.3 4.3C12.4 2.8 11 0.7 10.5 0C10 0.7 8.5 2.9 7.7 4.4C6.8 5.9 5.7 8.4 5.3 9.2C4.8 8.6 3.5 7.1 2.6 6C1.8 5 0.4 3.5 0 3C0.2 4 0.6 6.8 0.9 8.8C1.2 10.8 1.7 14 1.9 15C2.9 15 5.8 15.1 7.7 15.1C9.6 15.2 11.6 15.3 13.5 15.3C15.4 15.3 18.2 15.1 19.1 15",
+    ],
+  },
+  heart: {
+    width: 12,
+    height: 11,
+    paths: [
+      "M4.5 8C3.8 7.3 0.7 4.9 0.1 3.7C-0.5 2.4 0.4 1.3 0.9 0.6C1.3 0 2.4 -0.3 3 -0.1C3.6 0.1 4.2 1.6 4.5 1.9C4.7 1.5 5.4 0.1 6 -0.1C6.6 -0.3 7.7 0 8.2 0.7C8.7 1.3 9.6 2.5 9 3.7C8.4 4.9 5.3 7.4 4.6 8.1",
+      "M4.5 8C3.7 7.3 0.5 4.8 -0.1 3.6C-0.7 2.3 0.2 1.1 0.7 0.5C1.3 -0.1 2.6 -0.4 3.2 -0.1C3.8 0.1 4.2 1.6 4.4 1.9C4.6 1.6 5.2 0.2 5.8 0C6.5 -0.2 7.7 -0.1 8.2 0.5C8.8 1.1 9.7 2.3 9.1 3.6C8.5 4.8 5.3 7.4 4.6 8.1",
+    ],
+  },
+  flame: {
+    width: 13,
+    height: 20,
+    paths: [
+      "M9.1 17C9.2 16.4 9.8 14.4 9.9 13.1C10.1 11.8 10.1 10.1 10 9C9.9 7.9 9.6 7.3 9.4 6.5C9.1 5.7 8.5 4.5 8.3 4.1C8.1 4.6 7.4 6.1 7.1 7.2C6.8 8.2 6.7 10 6.6 10.5C6.5 9.6 6.2 6.8 5.9 5.1C5.6 3.3 4.9 0.9 4.7 0C4.5 0.8 3.8 3 3.4 4.6C3 6.2 2.6 8.7 2.4 9.5C2.3 9.2 2 8.1 1.7 7.4C1.4 6.8 1 5.8 0.8 5.4C0.7 6 0.3 7.7 0.2 8.7C0 9.8 0 10.9 0 11.9C0 12.9 0.2 13.7 0.3 14.6C0.4 15.4 0.6 16.6 0.7 17",
+      "M9.1 17C9.2 16.3 9.5 14.3 9.7 13C9.8 11.7 10.1 10.1 10 9C9.9 7.9 9.5 7.2 9.2 6.4C8.9 5.5 8.5 4.5 8.3 4.1C8.1 4.6 7.6 6.1 7.3 7.1C7 8.2 6.7 10 6.6 10.5C6.5 9.6 6.2 6.9 5.9 5.1C5.6 3.4 4.9 0.9 4.7 0C4.5 0.8 3.6 3.1 3.2 4.7C2.8 6.3 2.5 8.7 2.4 9.5C2.3 9.2 2 8 1.8 7.3C1.5 6.6 1 5.8 0.8 5.4C0.7 6 0.4 7.5 0.3 8.6C0.1 9.7 0 10.9 0 11.9C0 12.9 0.2 13.7 0.3 14.6C0.4 15.4 0.6 16.6 0.7 17",
+    ],
+  },
+};
+
+function Doodle({
+  shape,
+  className,
+  step,
+  style,
+}: {
+  shape: keyof typeof DOODLES;
+  className: string;
+  step: number;
+  style?: CSSProperties;
+}) {
+  const { width, height, paths } = DOODLES[shape];
+  return (
+    <svg
+      className={`wrapped-doodle ${className}`}
+      viewBox={`-1.5 -1.5 ${width} ${height}`}
+      style={{ ...at(step), ...style }}
+      aria-hidden="true"
+    >
+      {paths.map((d) => (
+        <path key={d} d={d} pathLength={1} />
+      ))}
+    </svg>
+  );
+}
+
 function Fit({
   className,
   max,
@@ -579,18 +632,48 @@ function Genre({ summary }: { summary: WrappedRecap }) {
 function Artist({ summary, playing }: { summary: WrappedRecap; playing: boolean }) {
   const artist = summary.topArtists[0];
   const song = wrappedArtistSong(summary);
+  const pad = useRef<HTMLDivElement>(null);
+  const [crown, setCrown] = useState<CSSProperties | null>(null);
+  const name = artist?.name;
+  useLayoutEffect(() => {
+    const words = [...(pad.current?.querySelectorAll<HTMLElement>(".wrapped-in--word") ?? [])];
+    const [first] = words;
+    if (!pad.current || !first) return;
+    const unit = pad.current.offsetWidth / 90;
+    const line = words.filter((word) => word.offsetTop === first.offsetTop);
+    const right = Math.max(...line.map((word) => word.offsetLeft + word.offsetWidth)) / unit;
+    const scale = Math.min(1, (86.5 - right) / 21);
+    setCrown(
+      scale < 0.6
+        ? null
+        : {
+            left: `${right + 2}cqw`,
+            top: `${(first.offsetTop + first.offsetHeight / 2) / unit - 9 * scale}cqw`,
+            width: `${24 * scale}cqw`,
+          },
+    );
+  }, [name]);
   if (!artist) return null;
   return (
     <>
       {artist.artwork && (
         <img className="wrapped-hero" src={wrappedImageUrl(artist.artwork)} alt="" />
       )}
-      <div className="wrapped-pad wrapped-bottom">
+      <div ref={pad} className="wrapped-pad wrapped-bottom">
         <Fit className="wrapped-artist" max={37} lines={3}>
           <Words text={artist.name} from={7} />
         </Fit>
+        {crown && (
+          <Doodle
+            shape="crown"
+            className="wrapped-crown"
+            step={13 + artist.name.split(" ").length * 1.4}
+            style={crown}
+          />
+        )}
         <p className="wrapped-body wrapped-in" style={at(12)}>
-          Your top artist. {count(artist.plays, "play")}.
+          Your top artist. {count(artist.plays, "play")}.{"\u00a0"}
+          <Doodle shape="heart" className="wrapped-heart" step={20} />
         </p>
         {song && playing && <NowPlaying title={song.name} />}
       </div>
@@ -717,7 +800,9 @@ function Months({ summary }: { summary: WrappedRecap }) {
                 ...at(6 + index * 0.6),
                 height: month.plays ? `${Math.max(2, (month.plays / peak.plays) * 100)}%` : 0,
               }}
-            />
+            >
+              {month === peak && <Doodle shape="flame" className="wrapped-flame" step={21} />}
+            </i>
             <span className="wrapped-in wrapped-in--fade" style={at(6 + index * 0.6)}>
               {dayLabel(`${month.month}-01`, { month: "narrow" })}
             </span>

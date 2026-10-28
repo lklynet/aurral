@@ -765,6 +765,7 @@
   gap: 1.6cqw;
 }
 .wrapped-month i {
+  position: relative;
   width: 100%;
   background: currentColor;
   opacity: 0.32;
@@ -842,4 +843,47 @@
 }
 .wrapped-notice .wrapped-word {
   font-size: 18cqw;
+}
+
+.wrapped-doodle {
+  overflow: visible;
+  pointer-events: none;
+}
+.wrapped-doodle path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 2;
+  animation: wrapped-draw calc(var(--wrapped-t) * 8) var(--aurral-ease-out) backwards;
+  animation-delay: calc(var(--wrapped-t) * var(--i, 0));
+}
+.wrapped-doodle path + path {
+  stroke-width: 0.52;
+  opacity: 0.6;
+}
+.wrapped-slide--still .wrapped-doodle path {
+  animation: none;
+}
+.wrapped-crown {
+  position: absolute;
+}
+.wrapped-heart {
+  display: inline-block;
+  width: 12cqw;
+  margin: -3cqw 0 -3cqw 1cqw;
+  vertical-align: middle;
+}
+.wrapped-flame {
+  position: absolute;
+  bottom: calc(100% + 0.5cqw);
+  left: 50%;
+  width: 11cqw;
+  translate: -50% 0;
+}
+@keyframes wrapped-draw {
+  from {
+    stroke-dashoffset: 1.02;
+  }
 }
