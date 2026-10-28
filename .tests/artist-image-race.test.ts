@@ -1,6 +1,6 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { test, afterAll } from "vite-plus/test";
+import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 import { signedInAs } from "./helpers/honoApp.ts";
 import { testUser } from "./helpers/userFixtures.ts";
@@ -9,6 +9,18 @@ import type { CachedArtistImage } from "../backend/db/helpers/cache.ts";
 
 const wallClockSetTimeout = globalThis.setTimeout;
 const wallClockClearTimeout = globalThis.clearTimeout;
+
+// Async gzip runs on the thread pool while the fake clock keeps ticking, which on a busy machine fires the request timeouts these tests hold open.
+vi.mock("node:zlib", async (importOriginal) => {
+  const zlib = await importOriginal<typeof import("node:zlib")>();
+  return {
+    ...zlib,
+    gzip: (input: string, done: (error: null, result: Buffer) => void) =>
+      done(null, zlib.gzipSync(input)),
+    gunzip: (input: Buffer, done: (error: null, result: Buffer) => void) =>
+      done(null, zlib.gunzipSync(input)),
+  };
+});
 
 const [
   state,
