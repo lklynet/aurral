@@ -2675,6 +2675,80 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
   }
 });
 
+test("an artist an older scan keyed by another service's ID becomes unlinked, keeping its albums and favorites", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-foreign-artist-"));
+  const source = `test-foreign-artist-${process.pid}`;
+  const artist = `Foreign Artist ${process.pid}`;
+  const userId = 9900 + (process.pid % 90);
+  const spotify = "29TCgxO6qzQx4O3pjUIMzn";
+  const filePath = await createAudioFile(root, `${artist}/Violent Things/01 One.flac`);
+  const metadataReader = async () => {
+    const metadata = untagged(artist, "Violent Things", "One");
+    Object.assign(metadata.common, { musicbrainz_albumartistid: [spotify] });
+    return metadata;
+  };
+  try {
+    await withLibraryScan(source, root, async (scanId) => {
+      const { size, mtimeMs } = await stat(filePath);
+      const artistRow = upsertLibraryArtist({
+        identityKey: `mbid:${spotify}`,
+        mbid: spotify,
+        name: artist,
+      });
+      const album = upsertLibraryAlbum({
+        identityKey: `${source}-album`,
+        artistId: artistRow.id,
+        title: "Violent Things",
+      });
+      const track = upsertLibraryTrack({
+        identityKey: `${source}-track`,
+        title: "One",
+        artistName: artist,
+      });
+      linkLibraryAlbumTrack({
+        albumId: album.id,
+        trackId: track.id,
+        discNumber: 1,
+        trackNumber: 1,
+      });
+      upsertLibraryMediaFile({
+        trackId: track.id,
+        albumId: album.id,
+        source,
+        path: filePath,
+        format: "flac",
+        size,
+        mtimeMs,
+        scanId,
+      });
+      return {};
+    });
+    starFor(userId, ["artist", `mbid:${spotify}`]);
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader });
+
+    const unlinked = buildFallbackIdentityKey("artist", artist);
+    assert.deepEqual(
+      db
+        .prepare<unknown[], Pick<Rows.LibraryArtistsRow, "identity_key" | "mbid">>(
+          "SELECT identity_key, mbid FROM library_artists WHERE name = ?",
+        )
+        .all(artist),
+      [{ identity_key: unlinked, mbid: null }],
+    );
+    assert.deepEqual(
+      artistAlbums(artist).map((album) => album.title),
+      ["Violent Things"],
+    );
+    assert.deepEqual(starredKeys(userId), [["artist", unlinked]]);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    deleteIndexedFile(source, filePath);
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a file retagged onto another album leaves no empty track or album behind", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-retagged-"));
   const source = `test-retagged-${process.pid}`;

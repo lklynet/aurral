@@ -152,6 +152,8 @@ export function buildIdentityKey(prefix: string, value: unknown) {
   return `${prefix}:${normalized}`;
 }
 
+const MBID_GLOB = [8, 4, 4, 4, 12].map((length) => "[0-9a-f]".repeat(length)).join("-");
+
 export function buildFallbackIdentityKey(...parts: unknown[]) {
   return joinFallbackKey(normalizeKeyPart, parts);
 }
@@ -460,21 +462,21 @@ export function upsertLibraryArtist({
     const findResolvedArtist = () => {
       const credited = JSON.stringify(creditedMbids);
       const exact = db
-        .prepare<[string, string], LibraryArtistsRow>(
+        .prepare<[string, string, string], LibraryArtistsRow>(
           `SELECT * FROM library_artists
-           WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
+           WHERE lower(mbid) GLOB ? AND name = ? COLLATE NOCASE
              AND mbid NOT IN (SELECT value FROM json_each(?))
            ORDER BY id
            LIMIT 2`,
         )
-        .all(artistName, credited);
+        .all(MBID_GLOB, artistName, credited);
       if (exact.length === 1) return exact[0];
       // ponytail: normalized duplicate repair scans artist rows; add a persisted normalized name if this becomes hot.
       const matches = db
-        .prepare<[string], LibraryArtistsRow>(
-          "SELECT * FROM library_artists WHERE mbid IS NOT NULL AND mbid NOT IN (SELECT value FROM json_each(?))",
+        .prepare<[string, string], LibraryArtistsRow>(
+          "SELECT * FROM library_artists WHERE lower(mbid) GLOB ? AND mbid NOT IN (SELECT value FROM json_each(?))",
         )
-        .all(credited)
+        .all(MBID_GLOB, credited)
         .filter((row) => buildFallbackIdentityKey("artist", row.name) === fallbackKey);
       return matches.length === 1 ? matches[0] : null;
     };
@@ -2001,8 +2003,6 @@ const legacyAlbumKeyBuilders = ({
       ((part: KeyPart) =>
         joinFallbackKey(part, ["album", buildIdentityKey("mbid", artistMbid), title])),
   ].filter(Boolean) as KeyBuilder[];
-
-const MBID_GLOB = [8, 4, 4, 4, 12].map((length) => "[0-9a-f]".repeat(length)).join("-");
 
 const keyedByForeignIds = (table: string, prefixes: string[]) =>
   db
