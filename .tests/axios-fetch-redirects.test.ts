@@ -28,7 +28,12 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
   });
 
   const response = await axios.get(`${source.origin}/start`, {
-    headers: { "X-Api-Key": "secret", "X-Plex-Token": "token", Accept: "text/plain" },
+    headers: {
+      "X-Api-Key": "secret",
+      "X-Gotify-Key": "gotify",
+      "X-Plex-Token": "token",
+      Accept: "text/plain",
+    },
     auth: { username: "user", password: "pass" },
   });
 
@@ -36,11 +41,13 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
   assert.equal(seen.length, 3);
   for (const headers of seen.slice(0, 2)) {
     assert.equal(headers["x-api-key"], "secret");
+    assert.equal(headers["x-gotify-key"], "gotify");
     assert.equal(headers["x-plex-token"], "token");
     assert.ok(headers.authorization);
   }
   const crossOrigin = seen[2];
   assert.equal(crossOrigin["x-api-key"], undefined);
+  assert.equal(crossOrigin["x-gotify-key"], undefined);
   assert.equal(crossOrigin["x-plex-token"], undefined);
   assert.equal(crossOrigin.authorization, undefined);
   assert.equal(crossOrigin.accept, "text/plain");

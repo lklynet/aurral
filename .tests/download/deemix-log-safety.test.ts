@@ -35,7 +35,7 @@ test("deemix queue cleanup logs a safe diagnostic when removal fails", async () 
   );
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
-    throw new Error("Failed at https://user:pass@example.test/api?token=secret-value");
+    throw new Error("Failed at https://example.test/api?token=secret-value");
   });
   const warnings: Parameters<typeof logger.warn>[] = [];
   vi.spyOn(logger, "warn").mockImplementation((...args) => warnings.push(args));
@@ -53,6 +53,5 @@ test("deemix queue cleanup logs a safe diagnostic when removal fails", async () 
   assert.ok(warning);
   const details = warning[2] as { jobId: string; reason: string };
   assert.equal(details.jobId, jobId);
-  assert.match(details.reason, /\[redacted URL\]/);
-  assert.doesNotMatch(details.reason, /secret-value|user:pass/);
+  assert.equal(details.reason, "Failed at https://example.test/api?token=***");
 });

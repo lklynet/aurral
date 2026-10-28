@@ -48,19 +48,6 @@ interface QueuedNotification {
   flowName?: string;
 }
 
-function redactUrl(value: string) {
-  try {
-    const url = new URL(String(value));
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return "[redacted]";
-  }
-}
-
 function logDeliveryFailure(
   kind: string,
   event: WebhookEvent | null | undefined,
@@ -71,7 +58,7 @@ function logDeliveryFailure(
   logger.error("notifications", "Notification delivery failed", {
     kind,
     event: event || null,
-    receiver: redactUrl(url),
+    receiver: URL.parse(url)?.host ?? null,
     status: failure?.response?.status ?? null,
     message: failure?.message || String(error),
   });
@@ -87,12 +74,11 @@ async function sendGotifyDirect(
   const url = (gotify.url || "").trim().replace(/\/+$/, "");
   const token = (gotify.token || "").trim();
   if (!url || !token) return;
-  const endpoint = `${url}/message?token=${encodeURIComponent(token)}`;
   try {
     await axios.post(
-      endpoint,
+      `${url}/message`,
       { title, message, priority },
-      { timeout: 10000, headers: { "Content-Type": "application/json" } },
+      { timeout: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": token } },
     );
   } catch (error) {
     logDeliveryFailure("gotify", null, url, error);
@@ -273,15 +259,14 @@ export async function sendGotifyTest(
     err.code = "MISSING_CONFIG";
     throw err;
   }
-  const endpoint = `${base}/message?token=${encodeURIComponent(t)}`;
   const response = await axios.post(
-    endpoint,
+    `${base}/message`,
     {
       title: "Aurral test",
       message: "Test notification received.",
       priority: 5,
     },
-    { timeout: 10000, headers: { "Content-Type": "application/json" } },
+    { timeout: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": t } },
   );
   return response.status === 200;
 }

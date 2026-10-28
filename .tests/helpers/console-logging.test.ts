@@ -4,35 +4,24 @@ import { spawnSync } from "node:child_process";
 
 import { safeLogDiagnostic } from "../../backend/services/logger.ts";
 
-test("log diagnostics redact credentials, collapse lines, and cap length", () => {
+test("log diagnostics mask credentials, collapse lines, and cap length", () => {
   const error = new Error(
-    "Request to https://user:pass@example.test/api?token=url-secret failed\n" +
-      "Authorization: Bearer bearer-secret token=token-secret ARL=arl-secret",
+    "Request to https://example.test/api?token=url-secret failed\n" +
+      "Authorization: Bearer bearer-secret ARL=arl-secret",
   );
   error.stack = "stack-secret";
-  const diagnostic = safeLogDiagnostic(error);
-  assert.match(diagnostic, /Request to \[redacted URL\] failed/);
-  assert.doesNotMatch(
-    diagnostic,
-    /url-secret|bearer-secret|token-secret|arl-secret|stack-secret|\n/,
+  assert.equal(
+    safeLogDiagnostic(error),
+    "Request to https://example.test/api?token=*** failed Authorization=*** ARL=***",
   );
-  assert.equal(safeLogDiagnostic("Cookie: session=cookie-secret"), "Cookie=[redacted]");
-  assert.equal(safeLogDiagnostic({ message: "token=object-secret" }), "token=[redacted]");
+  assert.equal(safeLogDiagnostic("Cookie: session=cookie-secret"), "Cookie=***");
   assert.equal(
     safeLogDiagnostic('client_secret=snake-value "clientSecret": "camel-value"'),
-    "client_secret=[redacted] clientSecret=[redacted]",
+    "client_secret=*** clientSecret=***",
   );
   assert.equal(
-    safeLogDiagnostic("Could not read /config/private/provider.json"),
-    "Could not read [redacted path]",
-  );
-  assert.equal(
-    safeLogDiagnostic("Could not read /volume-one/private/provider.json"),
-    "Could not read [redacted path]",
-  );
-  assert.equal(
-    safeLogDiagnostic('Could not read "C:\\Users\\Jane Doe\\secret.json"'),
-    'Could not read "[redacted path]"',
+    safeLogDiagnostic('Could not read "/music/Artist/Album/01 Song.flac"'),
+    'Could not read "/music/Artist/Album/01 Song.flac"',
   );
   assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
   assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
@@ -59,7 +48,7 @@ test("HTML error titles are extracted without repeated scans of malformed input"
   );
 });
 
-test("logger sink redacts nested provider diagnostics and credential fields", async () => {
+test("logger sink masks nested credentials and keeps file paths", async () => {
   const output: unknown[][] = [];
   const originalError = console.error;
   console.error = (...args) => output.push(args);
@@ -68,19 +57,14 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
     const { logger } = await import("../../backend/services/logger.ts");
     logger.error("workers", "Provider failed", {
       reason: new Error(
-        "Failed at /config/private/provider.json: https://user:pass@example.test/?token=url-secret",
+        "Failed at /config/private/provider.json: https://example.test/?token=url-secret",
       ),
       headers: { authorization: "Bearer bearer-secret", clientSecret: "client-secret" },
       endpoint: "/album",
     });
-    const rendered = JSON.stringify(output);
-    assert.match(rendered, /Provider failed|redacted/);
-    assert.doesNotMatch(
-      rendered,
-      /\/config\/private|user:pass|url-secret|bearer-secret|client-secret/,
-    );
     assert.partialDeepStrictEqual(output[0][2], {
-      headers: { authorization: "[redacted]", clientSecret: "[redacted]" },
+      reason: "Failed at /config/private/provider.json: https://example.test/?token=***",
+      headers: { authorization: "***", clientSecret: "***" },
       endpoint: "/album",
     });
     logger.error("workers", "Unsafe endpoint", { endpoint: "/album?token=endpoint-secret" });

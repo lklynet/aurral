@@ -176,7 +176,7 @@ test("webhook test route returns receiver failures as useful JSON", async () => 
     assert.equal(response.statusCode, 503);
     assert.deepEqual(response.payload, {
       error: "Webhook test failed",
-      message: "Request failed with status code 503",
+      message: `Request to ${new URL(url).host} failed with status code 503`,
     });
   });
 });

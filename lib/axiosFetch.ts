@@ -149,6 +149,7 @@ const SENSITIVE_REDIRECT_HEADERS = new Set([
   "proxy-authorization",
   "cookie",
   "x-api-key",
+  "x-gotify-key",
   "x-plex-token",
 ]);
 const BODY_HEADERS = new Set(["content-length", "content-type", "transfer-encoding"]);
@@ -277,7 +278,9 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
         ? config.validateStatus
         : (status: number) => status >= 200 && status < 300;
     if (!validateStatus(response.status)) {
-      const error: AxiosError = new Error(`Request failed with status code ${response.status}`);
+      const error: AxiosError = new Error(
+        `Request to ${new URL(url).host} failed with status code ${response.status}`,
+      );
       error.response = axiosResponse;
       error.code = controller.signal.aborted ? "ECONNABORTED" : undefined;
       throw error;

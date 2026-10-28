@@ -180,9 +180,10 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
     });
 
     const requests = await waitFor(2);
-    const gotify = requests.find((entry) => entry.url?.startsWith("/message"));
+    const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
+    assert.equal(gotify.headers["x-gotify-key"], "test-token");
     assert.equal(gotify.body.title, "Aurral – Request");
     assert.equal(gotify.body.message, "Album requested: Blue Train by John Coltrane (alice)");
     assert.ok(webhook != null);
@@ -320,9 +321,9 @@ test("failed notification delivery is logged without an unhandled rejection", as
     assert.deepEqual(failedLog[failedLog.length - 1], {
       kind: "webhooks",
       event: "notifyRequestMade",
-      receiver: "[redacted URL]",
+      receiver: `127.0.0.1:${port}`,
       status: 500,
-      message: "Request failed with status code 500",
+      message: `Request to 127.0.0.1:${port} failed with status code 500`,
     });
     assert.doesNotMatch(JSON.stringify(failedLog), /receiver-secret/);
 
@@ -376,9 +377,10 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     await notifyFlowDone(playlistId, { completed: 3, failed: 1 }, flowPath, "Late Night");
 
     const requests = await waitFor(2);
-    const gotify = requests.find((entry) => entry.url?.startsWith("/message"));
+    const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
+    assert.equal(gotify.headers["x-gotify-key"], "test-token");
     assert.match(String(gotify.body.message), /Flow "Late Night"/);
     assert.doesNotMatch(String(gotify.body.message), /c0c01bc3-72ca-4110-8ab6-681f132a6e63/);
     assert.ok(webhook != null);

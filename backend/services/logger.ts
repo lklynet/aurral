@@ -44,28 +44,18 @@ export function safeLogDiagnostic(value: unknown) {
   const diagnostic = isHtml
     ? `Upstream HTML error${Number.isInteger(status) && status >= 400 ? ` (${status})` : ""}${title ? `: ${title}` : ""}`
     : raw;
-  const redacted = diagnostic
-    .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
-    .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 [redacted]")
-    .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=[redacted]")
+  const masked = diagnostic
+    .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=***")
     .replace(
-      /["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi,
-      "$1=[redacted]",
+      /["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi,
+      "$1=***",
     )
-    .replace(
-      /(["'])(?:[a-z]:\\|\/(?!api(?:\/|$)|rest(?:\/|$)))[^"'\r\n]+\1/gi,
-      "$1[redacted path]$1",
-    )
-    .replace(
-      /(?:\b[a-z]:\\|(?<![\w/])\/(?!api(?:\/|$)|rest(?:\/|$)))[^\s"'<>]+/gi,
-      "[redacted path]",
-    )
-    .replace(/\b[a-f0-9]{64,}\b/gi, "[redacted]")
+    .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 ***")
     .replace(/[\x00-\x1f\x7f]+/g, " ")
     .trim();
-  return redacted.length > MAX_LOG_DIAGNOSTIC_LENGTH
-    ? `${redacted.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH)}…`
-    : redacted;
+  return masked.length > MAX_LOG_DIAGNOSTIC_LENGTH
+    ? `${masked.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH)}…`
+    : masked;
 }
 
 function safeLogData(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
@@ -76,22 +66,10 @@ function safeLogData(value: unknown, depth = 0, seen = new WeakSet<object>()): u
   if (Array.isArray(value))
     return value.slice(0, 100).map((item) => safeLogData(item, depth + 1, seen));
   return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => {
-      if (SENSITIVE_LOG_KEY.test(key)) return [key, "[redacted]"];
-      const safeEndpoint =
-        key === "endpoint" &&
-        typeof item === "string" &&
-        /^\/[a-z0-9/_.:-]+$/i.test(item) &&
-        !item
-          .split("/")
-          .some((part) => part === ".." || /(?:token|secret|password|api[_-]?key)/i.test(part));
-      return [
-        key,
-        safeEndpoint
-          ? item.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH)
-          : safeLogData(item, depth + 1, seen),
-      ];
-    }),
+    Object.entries(value).map(([key, item]) => [
+      key,
+      SENSITIVE_LOG_KEY.test(key) ? "***" : safeLogData(item, depth + 1, seen),
+    ]),
   );
 }
 
