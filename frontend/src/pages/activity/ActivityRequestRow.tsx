@@ -56,7 +56,7 @@ function getStatusMeta(request: ActivityRequest) {
   if (request.status === "blocked") {
     return { icon: Eye, label: request.statusLabel || "Needs review", tone: "review" };
   }
-  if (request.status === "processing" || request.status === "pending") {
+  if (request.status === "processing") {
     return {
       label: request.statusLabel || "In progress",
       tone: "active",

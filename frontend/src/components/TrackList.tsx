@@ -7,7 +7,8 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { ArrowDown, ArrowUp, Heart, Pause, Play } from "./icons";
+import { AlertTriangle, ArrowDown, ArrowUp, Clock, Heart, Pause, Play } from "./icons";
+import { DotLoader } from "./DotLoader";
 import type { To } from "react-router";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
@@ -55,6 +56,7 @@ export type TrackListRow = {
   trailing?: ReactNode;
   active?: boolean;
   missing?: boolean;
+  status?: { label: string; kind: "active" | "queued" | "missing" } | null;
   playing?: boolean;
   loading?: boolean;
   selected?: boolean;
@@ -312,6 +314,22 @@ export function TrackList({
                     aria-label={`Select ${row.title}`}
                   />
                 </span>
+              ) : row.status ? (
+                <Tooltip content={row.status.label}>
+                  <span
+                    className="native-library-track__status"
+                    role="img"
+                    aria-label={row.status.label}
+                  >
+                    {row.status.kind === "active" ? (
+                      <DotLoader size="xs" label={null} />
+                    ) : row.status.kind === "queued" ? (
+                      <Clock aria-hidden="true" />
+                    ) : (
+                      <AlertTriangle aria-hidden="true" />
+                    )}
+                  </span>
+                </Tooltip>
               ) : row.onPlay ? (
                 <TooltipButton
                   className="native-library-track__play"

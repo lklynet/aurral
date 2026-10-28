@@ -606,6 +606,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       track.qualityOwned === true &&
       !activeReplacementTrackIds.has(String(track.id));
     const availability = showTrackAvailability ? getTrackAvailability(track) : null;
+    const isReSearching = reSearchingTrackIds[track.id] === true;
     const isCurrent = track.id === currentTrackId;
     const trackFavoriteId = getTrackFavoriteId?.(track) || "";
     const hasPlaylistMenu =
@@ -666,6 +667,18 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       playing: isCurrent && isRunning,
       loading: isCurrent && isLoading,
       missing: showPlaybackControls && !canPlay,
+      status:
+        showPlaybackControls && !canPlay
+          ? ({
+              label: isReSearching ? "Searching" : getTrackAvailability(track).label,
+              kind:
+                isReSearching || track.status === "downloading"
+                  ? "active"
+                  : track.status === "pending"
+                    ? "queued"
+                    : "missing",
+            } as const)
+          : null,
       onPlay: showPlaybackControls ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
       badge: availability ? (
@@ -711,7 +724,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           canReSearch={canReSearch}
           canManualReSearch={canManualReSearch}
           searchAction={searchAction}
-          isReSearching={reSearchingTrackIds[track.id] === true}
+          isReSearching={isReSearching}
           canDelete={typeof onDeleteTrack === "function" && Boolean(track.id)}
           isDeleting={deletingTrackId === track.id}
           onReSearch={onReSearchTrack}
