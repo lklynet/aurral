@@ -181,15 +181,15 @@ Node then writes one `.heapsnapshot` file to `/config/diagnostics` when a proces
 
 The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.
 
-The web app loads artwork directly from the provider links, and the browser caches it. Fanart.tv thumbnails use 200 px or 400 px previews according to the image's display size and screen density. Larger artwork uses the original image. If a preview is unavailable, Aurral retries the original before showing the existing fallback. Thumbnail loading does not add a server-side artwork cache.
+Library artwork is stored once per album and artist as a 512 px WebP image in the `library-artwork` folder of the data directory. Aurral makes each copy the first time it is shown, in the web app or a Subsonic client, and serves it from disk after that. A copy is replaced when the album's files change and removed when the album or artist leaves the Library.
 
-Subsonic clients that need Aurral to serve artwork get covers on demand. Aurral caches these as 512 px WebP images.
+Artwork outside the Library, such as Discover and Search, loads directly from the provider links, and the browser caches it. Fanart.tv thumbnails use 200 px or 400 px previews according to the image's display size and screen density. Larger artwork uses the original image. If a preview is unavailable, Aurral retries the original before showing the existing fallback.
 
-The artwork disk cache holds up to 256 MB and removes the least recently used images first. This cache handles at most two cover downloads at a time. Sharp does not retain an image-processing cache. To start from a clean memory baseline, restart Aurral.
+A separate disk cache holds up to 256 MB of artwork outside the Library that Aurral serves itself, such as covers of playlist tracks you do not have, and removes the least recently used images first. Aurral downloads at most two covers at a time. Sharp does not retain an image-processing cache. To start from a clean memory baseline, restart Aurral.
 
-Aurral stores artwork links in SQLite, separately from the cached image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
+Aurral stores artwork links in SQLite, separately from the image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
 
-**Clear artwork cache** in **Settings > Discover** removes the stored links and the cached image files. It keeps your recommendations. Aurral rebuilds the artwork when it needs it.
+**Clear artwork cache** in **Settings > Discover** removes the stored links, the cached image files, and the Library artwork copies. It keeps your recommendations. Aurral rebuilds the artwork when it needs it.
 
 ## The container exits with code 137
 

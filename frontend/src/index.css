@@ -8796,19 +8796,6 @@ textarea {
   font-size: 0.95rem;
 }
 
-.native-library-artist-image,
-.native-library-artist-image .artist-image-root {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.native-library-artist-image .artist-image-media {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .native-library-card__play {
   position: absolute;
   right: 0.45rem;
@@ -9494,9 +9481,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .native-library-detail__hero--artist .native-library-detail__cover,
-.native-library-detail__hero--artist .native-library-detail__cover > img,
-.native-library-detail__hero--artist .native-library-detail__artist-image,
-.native-library-detail__hero--artist .native-library-detail__artist-image .artist-image-root {
+.native-library-detail__hero--artist .native-library-detail__cover > img {
   border-radius: 50%;
 }
 
@@ -9509,9 +9494,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .native-library-detail__cover > img,
-.native-library-detail__cover > .native-library-cover-fallback,
-.native-library-detail__cover .native-library-detail__artist-image,
-.native-library-detail__cover .native-library-detail__artist-image .artist-image-root {
+.native-library-detail__cover > .native-library-cover-fallback {
   display: block;
   width: 100%;
   height: 100%;

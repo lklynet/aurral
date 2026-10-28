@@ -472,6 +472,10 @@ const {
     }
     const { settleIngestedMusic } = await import("./libraryFiles/ingest.ts");
     await settleIngestedMusic();
+    const { pruneLibraryArtwork } = await import("./libraryArtwork.ts");
+    await pruneLibraryArtwork().catch((error) =>
+      console.error("[libraryScanWorker] Could not prune library artwork:", error),
+    );
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }

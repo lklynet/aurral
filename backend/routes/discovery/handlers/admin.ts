@@ -3,6 +3,7 @@ import { dbOps } from "../../../db/helpers/index.ts";
 import { requireAdmin, requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { clearImageProxyCache } from "../../../services/imageProxyService.ts";
+import { clearLibraryArtwork } from "../../../services/libraryArtwork.ts";
 import { clearApiCaches } from "../../../services/apiClients/index.ts";
 import { getDiscoveryCache } from "../../../services/discovery/index.ts";
 import { enqueueDiscoveryRefresh } from "../../../services/discovery/refreshScheduler.ts";
@@ -42,6 +43,7 @@ export default new Hono<AppEnv>()
     try {
       dbOps.clearImages();
       await clearImageProxyCache();
+      await clearLibraryArtwork();
       clearApiCaches();
       return c.json({ message: "Artwork cache cleared" }, 200);
     } catch (err) {

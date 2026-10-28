@@ -107,7 +107,7 @@ const tokenPaths = [
 ];
 
 const tokenArtworkPaths = [
-  /^\/api\/library\/albums\/[1-9]\d*\/cover$/i,
+  /^\/api\/library\/(?:albums|artists)\/[1-9]\d*\/cover$/i,
   /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i,
   /^\/api\/weekly-flow\/artwork\/[^/]+$/i,
   /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i,

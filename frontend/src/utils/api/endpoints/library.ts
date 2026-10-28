@@ -136,16 +136,29 @@ const withAuthenticatedArtwork = <T extends object>(entity: T & ArtworkEntity): 
 const withAuthenticatedArtworkList = <T extends object>(entities: T[]) =>
   entities.map(withAuthenticatedArtwork);
 
+const authenticatedCollections = <
+  Artist extends object,
+  Album extends object,
+  Track extends object,
+>(library: {
+  artists?: Artist[];
+  albums?: Album[];
+  tracks?: Track[];
+}) => ({
+  ...(Array.isArray(library.artists)
+    ? { artists: withAuthenticatedArtworkList(library.artists) }
+    : {}),
+  ...(Array.isArray(library.albums)
+    ? { albums: withAuthenticatedArtworkList(library.albums) }
+    : {}),
+  ...(Array.isArray(library.tracks)
+    ? { tracks: withAuthenticatedArtworkList(library.tracks) }
+    : {}),
+});
+
 const withAuthenticatedLibraryArtwork = (library: LibraryPageResponse): LibraryPageResponse => {
   if (!library || typeof library !== "object") return library;
-  const collections = {
-    ...(Array.isArray(library.albums)
-      ? { albums: withAuthenticatedArtworkList(library.albums) }
-      : {}),
-    ...(Array.isArray(library.tracks)
-      ? { tracks: withAuthenticatedArtworkList(library.tracks) }
-      : {}),
-  };
+  const collections = authenticatedCollections(library);
   switch (library.kind) {
     case "artists":
       return {
@@ -272,7 +285,14 @@ let libraryFavoritesRefresh: Promise<unknown> | null = null;
 let libraryFavoritesWrite: Promise<unknown> = Promise.resolve();
 
 const fetchLibraryFavorites = ({ signal }: SignalOptions = {}) =>
-  parseResponse(libraryClient.favorites.$get(undefined, { init: { signal } }));
+  parseResponse(libraryClient.favorites.$get(undefined, { init: { signal } })).then((favorites) =>
+    favorites?.library
+      ? {
+          ...favorites,
+          library: { ...favorites.library, ...authenticatedCollections(favorites.library) },
+        }
+      : favorites,
+  );
 
 const waitForLibraryFavoritesRefresh = async () => {
   let waited = false;

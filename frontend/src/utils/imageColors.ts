@@ -68,15 +68,13 @@ function sameOriginCopy(src: string) {
   return localCopyCache.get(src)!;
 }
 
-async function readImagePixels(src: string) {
-  const normalized = normalizeMediaUrl(src);
-  const readable = isCrossOrigin(normalized) ? await sameOriginCopy(normalized) : normalized;
+function readPixels(src: string) {
   return new Promise<HTMLImageElement>((ok, err) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
-    img.src = readable;
+    img.src = src;
   }).then((img) => {
     const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
     const ctx = c.getContext("2d");
@@ -84,6 +82,16 @@ async function readImagePixels(src: string) {
     ctx.drawImage(img, 0, 0, N, N);
     return ctx.getImageData(0, 0, N, N).data;
   });
+}
+
+async function readImagePixels(src: string) {
+  const normalized = normalizeMediaUrl(src);
+  try {
+    return await readPixels(normalized);
+  } catch (error) {
+    if (!isCrossOrigin(normalized)) throw error;
+    return readPixels(await sameOriginCopy(normalized));
+  }
 }
 
 export function extractArtworkAccent(src: string | null | undefined) {

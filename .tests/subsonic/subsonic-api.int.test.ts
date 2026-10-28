@@ -28,7 +28,6 @@ const [
   { resolveArtworkUrl, createSubsonicPlaylist, star },
   { warmImageProxy },
   { playlistManager },
-  { getArtistImage, invalidateArtistImage },
   { removeCustomArtwork, saveCustomArtworkUpload },
   { setPlaylistArtworkState },
 ] = await setupIsolatedBackend(
@@ -44,7 +43,6 @@ const [
   () => import("../../backend/services/subsonicLibraryService.ts"),
   () => import("../../backend/services/imageProxyService.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/imageService.ts"),
   () => import("../../backend/services/customArtworkService.ts"),
   () => import("../../backend/services/playlistArtworkState.ts"),
 );
@@ -2060,14 +2058,21 @@ test("keeps library protocol IDs and flow entries after restart", async () => {
   );
 });
 
-test("returns the library artwork redirect contract", async () => {
-  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
-  const source = "https://example.com/cover.jpg";
-  dbOps.setImage("11111111-1111-4111-8111-111111111111", source);
-  const result = await request("getCoverArt", { id: artist.id }, { redirect: "manual" });
-  assert.equal(result.response.status, 302);
-  assert.equal(result.response.headers.get("location"), source);
-  assert.equal(result.response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+test("serves library album artwork from the album's own files", async () => {
+  const sidecar = path.join(path.dirname(fixturePath), "cover.png");
+  await sharp({ create: { width: 24, height: 24, channels: 3, background: "red" } })
+    .png()
+    .toFile(sidecar);
+  try {
+    const album = responseJson(await request("getAlbumList2", { type: "newest", size: 1 }))
+      .albumList2.album[0];
+    const result = await fetch(subsonicUrl("getCoverArt", { id: album.coverArt }));
+    assert.equal(result.status, 200);
+    assert.equal(result.headers.get("content-type"), "image/webp");
+    assert.equal(result.headers.get("cache-control"), "private, max-age=86400");
+  } finally {
+    await rm(sidecar);
+  }
 });
 
 test("resolves playlist release-group artwork without a library album row", async () => {
@@ -2094,159 +2099,3 @@ test("resolves playlist release-group artwork without a library album row", asyn
     global.fetch = originalFetch;
   }
 });
-
-test("uses cached album artwork for artist artwork", async () => {
-  const originalFetch = global.fetch;
-  global.fetch = async () =>
-    new Response(
-      Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64",
-      ),
-      { headers: { "content-type": "image/png" } },
-    );
-  try {
-    const artist = db
-      .prepare<
-        unknown[],
-        {
-          mbid: import("../../backend/db/rows.ts").LibraryArtistsRow["mbid"];
-          identity_key: import("../../backend/db/rows.ts").LibraryArtistsRow["identity_key"];
-        }
-      >("SELECT mbid, identity_key FROM library_artists LIMIT 1")
-      .get();
-    const album = db
-      .prepare<
-        unknown[],
-        {
-          mbid: import("../../backend/db/rows.ts").LibraryAlbumsRow["mbid"];
-          release_group_mbid: import("../../backend/db/rows.ts").LibraryAlbumsRow["release_group_mbid"];
-        }
-      >("SELECT mbid, release_group_mbid FROM library_albums LIMIT 1")
-      .get();
-    assert.ok(album != null);
-    const cacheId = album.release_group_mbid || album.mbid;
-    const cached = await warmImageProxy(`https://images.example/artist-album-${cacheId}.png`);
-    assert.ok(artist != null);
-    assert.ok(artist.mbid != null);
-    dbOps.deleteImage(artist.mbid);
-    dbOps.setImage(`rg:${cacheId}`, cached.localUrl);
-
-    assert.ok(artist != null);
-    const artwork = await resolveArtworkUrl(`artist:${encodeURIComponent(artist.identity_key)}`);
-    const libraryArtwork = await warmImageProxy(cached.localUrl, "library");
-    assert.equal(artwork, libraryArtwork.localUrl);
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-for (const source of ["an artist image lookup", "album artwork"]) {
-  test(`artist artwork from ${source} that started before an override cannot replace its image`, async () => {
-    const artist = db
-      .prepare<
-        unknown[],
-        {
-          id: import("../../backend/db/rows.ts").LibraryArtistsRow["id"];
-          mbid: import("../../backend/db/rows.ts").LibraryArtistsRow["mbid"];
-          identity_key: import("../../backend/db/rows.ts").LibraryArtistsRow["identity_key"];
-        }
-      >("SELECT id, mbid, identity_key FROM library_artists WHERE mbid IS NOT NULL LIMIT 1")
-      .get();
-    assert.ok(artist != null);
-    const albums = db
-      .prepare<
-        unknown[],
-        {
-          mbid: import("../../backend/db/rows.ts").LibraryAlbumsRow["mbid"];
-          release_group_mbid: import("../../backend/db/rows.ts").LibraryAlbumsRow["release_group_mbid"];
-        }
-      >("SELECT mbid, release_group_mbid FROM library_albums WHERE artist_id = ?")
-      .all(artist.id);
-    const replacement = "77777777-7777-4777-8777-777777777777";
-    const oldImage = `https://images.example/old-${source.replaceAll(" ", "-")}.png`;
-    const newImage = "https://images.example/override-artist.png";
-    const oldGate = Promise.withResolvers<void>();
-    const oldStarted = Promise.withResolvers<void>();
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
-    );
-    const metadataArtist = (id: string, images: string[]) => ({
-      id,
-      artistname: "Canonical Artist",
-      sortname: "Canonical Artist",
-      images: images.map((Url) => ({ CoverType: "Artist", Url })),
-      Albums: [],
-      links: [],
-      genres: [],
-      artistaliases: [],
-    });
-    const originalFetch = global.fetch;
-    global.fetch = async (input, init) => {
-      const url = new URL(String(input));
-      if (url.hostname === "127.0.0.1") return originalFetch(input, init);
-      assert.ok(artist != null);
-      const oldRequest =
-        source === "album artwork"
-          ? url.href === oldImage
-          : url.pathname === `/artist/${artist.mbid}`;
-      if (oldRequest) {
-        oldStarted.resolve();
-        await oldGate.promise;
-      }
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      if (url.pathname === `/artist/${artist.mbid}`)
-        return Response.json(metadataArtist(artist.mbid, [oldImage]));
-      if (url.pathname === `/artist/${replacement}`)
-        return Response.json(metadataArtist(replacement, [newImage]));
-      return new Response(png, { headers: { "content-type": "image/png" } });
-    };
-    assert.ok(artist != null);
-    assert.ok(artist.mbid != null);
-    dbOps.deleteImage(artist.mbid);
-    assert.ok(artist != null);
-    assert.ok(artist.mbid != null);
-    dbOps.deleteArtistOverride(artist.mbid);
-    for (const album of albums) {
-      const releaseGroupKey = `rg:${album.release_group_mbid || album.mbid}`;
-      if (source === "album artwork") dbOps.setImage(releaseGroupKey, oldImage);
-      else dbOps.deleteImage(releaseGroupKey);
-    }
-    let oldArtwork: Promise<string | null> = Promise.resolve(null);
-    try {
-      assert.ok(artist != null);
-      oldArtwork = resolveArtworkUrl(`artist:${encodeURIComponent(artist.identity_key)}`);
-      await Promise.race([
-        oldStarted.promise,
-        oldArtwork.then(() => assert.fail(`artwork resolved without requesting the ${source}`)),
-      ]);
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      dbOps.setArtistOverride(artist.mbid, { musicbrainzId: replacement, deezerArtistId: null });
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      invalidateArtistImage(artist.mbid);
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      assert.equal((await getArtistImage(artist.mbid)).url, newImage);
-      oldGate.resolve();
-
-      assert.equal(await oldArtwork, (await warmImageProxy(oldImage, "library")).localUrl);
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      assert.equal(dbOps.getImage(artist.mbid)?.imageUrl, newImage);
-    } finally {
-      oldGate.resolve();
-      await Promise.allSettled([oldArtwork]);
-      global.fetch = originalFetch;
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      dbOps.deleteArtistOverride(artist.mbid);
-      assert.ok(artist != null);
-      assert.ok(artist.mbid != null);
-      dbOps.deleteImage(artist.mbid);
-    }
-  });
-}

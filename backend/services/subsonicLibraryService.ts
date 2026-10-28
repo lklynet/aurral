@@ -20,7 +20,7 @@ import {
   getLibraryTrackPage,
 } from "./libraryQueryService.ts";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.ts";
-import { getArtistImage } from "./imageService.ts";
+import { getLibraryArtwork } from "./libraryArtwork.ts";
 import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -1856,82 +1856,47 @@ export function resolveCustomArtwork(value: string, user: SubsonicUser) {
 
 export async function resolveArtworkUrl(value: string) {
   const parsed = parseId(value);
+  if (parsed?.kind !== "album" || !parsed.key.startsWith("release-group:")) return null;
+  const releaseGroupMbid = parsed.key.slice("release-group:".length);
+  const cacheKey = `rg:${releaseGroupMbid}`;
+  const cached = await cachedArtworkUrl(cacheKey);
+  if (cached) return cached;
+  const result = await fetchReleaseGroupCoverUrl(releaseGroupMbid);
+  if (!result?.imageUrl) return null;
+  const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
+  if (artwork) dbOps.setImage(cacheKey, artwork);
+  return artwork;
+}
+
+export async function resolveLibraryArtwork(value: string) {
+  const parsed = parseId(value);
   if (!parsed) return null;
-
-  if (parsed.kind === "album" && parsed.key.startsWith("release-group:")) {
-    const releaseGroupMbid = parsed.key.slice("release-group:".length);
-    const cacheKey = `rg:${releaseGroupMbid}`;
-    const cached = await cachedArtworkUrl(cacheKey);
-    if (cached) return cached;
-    const result = await fetchReleaseGroupCoverUrl(releaseGroupMbid);
-    if (!result?.imageUrl) return null;
-    const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
-    if (artwork) dbOps.setImage(cacheKey, artwork);
-    return artwork;
+  if (parsed.kind === "artist") {
+    const library = indexFocusedLibrary(
+      getLibraryForArtistReferences({
+        source: "all",
+        availableOnly: false,
+        references: [parsed.key],
+      }),
+    );
+    const artist = findLibraryEntry(library, parsed);
+    return artist ? getLibraryArtwork("artist", String(artist.id)) : null;
   }
-
+  if (parsed.kind !== "album" && parsed.kind !== "song") return null;
   const library = indexFocusedLibrary(
-    parsed.kind === "artist"
-      ? getLibraryForArtistReferences({
+    parsed.kind === "album"
+      ? getLibraryForAlbumReferences({
           source: "all",
           availableOnly: false,
           references: [parsed.key],
         })
-      : parsed.kind === "album"
-        ? getLibraryForAlbumReferences({
-            source: "all",
-            availableOnly: false,
-            references: [parsed.key],
-          })
-        : getLibraryTrack({
-            trackId: parsed.key,
-            source: "all",
-            availableOnly: false,
-          }),
+      : getLibraryTrack({ trackId: parsed.key, source: "all", availableOnly: false }),
   );
-  if (parsed.kind === "artist") {
-    const artist = findLibraryEntry(library, parsed);
-    if (!artist) return null;
-    const artistCacheKey = artist.mbid || artist.identityKey;
-    const storedArtwork = storedImageUrl(artistCacheKey);
-    const cached = await cachedArtworkUrl(artistCacheKey);
-    if (cached) return cached;
-    const albums = artistAlbums(library, artist);
-    for (const album of albums) {
-      const cacheId = album.releaseGroupMbid || album.mbid;
-      const albumArtwork = cacheId ? await cachedArtworkUrl(`rg:${cacheId}`) : null;
-      if (albumArtwork) {
-        replaceStoredImage(artistCacheKey, storedArtwork, albumArtwork);
-        return albumArtwork;
-      }
-    }
-    if (artist.mbid) {
-      const result = await getArtistImage(artist.mbid, { artistName: artist.name });
-      if (result?.url) return warmPublicImageUrl(result.url, LIBRARY_IMAGE_PROFILE);
-    }
-    return null;
-  }
-
   const album =
     parsed.kind === "album"
       ? findLibraryEntry(library, parsed)
-      : parsed.kind === "song"
-        ? findAlbumForTrack(library, findLibraryEntry(library, parsed))
-        : null;
-  if (!album) return null;
-  const cacheId = album.releaseGroupMbid || album.mbid;
-  const cached = cacheId ? await cachedArtworkUrl(`rg:${cacheId}`) : null;
-  if (cached) return cached;
-  if (!cacheId) return null;
-  const artist = findArtistForAlbum(library, album);
-  const result = await fetchReleaseGroupCoverUrl(cacheId, {
-    artistName: artist?.name || album.albumArtist || "",
-    albumTitle: album.title,
-  });
-  if (!result?.imageUrl) return null;
-  const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
-  if (artwork) dbOps.setImage(`rg:${cacheId}`, artwork);
-  return artwork;
+      : findAlbumForTrack(library, findLibraryEntry(library, parsed));
+  return album ? getLibraryArtwork("album", String(album.id)) : null;
 }
 
 export async function resolvePlaylistArtwork(value: string, user: SubsonicUser) {

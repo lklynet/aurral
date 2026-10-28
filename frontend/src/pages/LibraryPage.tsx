@@ -39,7 +39,6 @@ import {
   X,
 } from "../components/icons";
 
-import ArtistImage from "../components/ArtistImage";
 import { useAurralAlbumMonitoring } from "../components/AurralAlbumMonitoring";
 import { useAurralTrackMonitoring } from "../components/AurralTrackMonitoring";
 import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
@@ -76,7 +75,6 @@ import {
   usePlaylistBulkActions,
 } from "./playlists/usePlaylistBulkActions.ts";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.ts";
 import { libraryClient } from "../utils/api/clients/library.ts";
 import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
 import { libraryArtistsClient } from "../utils/api/clients/libraryArtists.ts";
@@ -105,7 +103,6 @@ import {
   EMPTY_LIBRARY,
   favoriteId,
   firstAvailableFile,
-  getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
   releaseTypeOf,
@@ -499,7 +496,6 @@ function LibraryPage() {
   const queryTimerRef = useRef<number | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [covers, setCovers] = useState<Record<string, string>>({});
   const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
   const favoriteMutationInFlightRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -1863,58 +1859,12 @@ function LibraryPage() {
         : "Library",
   );
 
-  const coverItems = useMemo(() => {
-    const items = library.albums
-      .map((album) => ({
-        mbid: getAlbumCoverId(album),
-        coverUrl: album.coverUrl,
-        artistName: getArtistForAlbum(album)?.name || album.albumArtist,
-        albumTitle: album.title,
-      }))
-      .filter((item): item is typeof item & { mbid: string } =>
-        Boolean(item.mbid && !item.coverUrl),
-      );
-    return items
-      .filter(
-        (item, index, values) =>
-          values.findIndex((candidate) => candidate.mbid === item.mbid) === index,
-      )
-      .slice(0, 80);
-  }, [getArtistForAlbum, library.albums]);
-
-  useEffect(() => {
-    if (!coverItems.length) return undefined;
-    let cancelled = false;
-    getReleaseGroupCoversBatch(coverItems)
-      .then((result) => {
-        if (cancelled) return;
-        const next: Record<string, string> = {};
-        coverItems.forEach((item) => {
-          const image = result?.[item.mbid]?.image;
-          if (image) next[item.mbid] = image;
-        });
-        if (Object.keys(next).length) setCovers((current) => ({ ...current, ...next }));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [coverItems]);
-
   const getAlbumCover = useCallback(
-    (album: LibraryAlbum | null | undefined) => {
-      const coverId = getAlbumCoverId(album);
-      const url = album?.coverUrl || (coverId ? covers[coverId] : undefined) || "";
-      return url.startsWith("/api/library/albums/")
-        ? buildAuthenticatedApiUrl(url.replace(/^\/api/, ""))
-        : url;
-    },
-    [covers],
+    (album: LibraryAlbum | null | undefined) => album?.coverUrl || "",
+    [],
   );
-  const [artistHeroImage, setArtistHeroImage] = useState<string | null | undefined>(null);
-  useEffect(() => setArtistHeroImage(null), [libraryArtist?.id]);
   const detailTint = useCollectionTint(
-    libraryAlbum ? getAlbumCover(libraryAlbum) : libraryArtist ? artistHeroImage : null,
+    libraryAlbum ? getAlbumCover(libraryAlbum) : libraryArtist?.coverUrl,
   );
 
   const buildPlayableTrack = useCallback(
@@ -2657,20 +2607,7 @@ function LibraryPage() {
             data-artwork
             aria-label={"Open " + (artist.name || "artist")}
           >
-            {artist.mbid ? (
-              <ArtistImage
-                mbid={artist.mbid}
-                artistName={artist.name}
-                alt={artist.name || ""}
-                className="native-library-artist-image"
-                showLoading={false}
-                enablePreviewPlayback={false}
-                isInLibrary
-                onImageLoad={setArtistHeroImage}
-              />
-            ) : (
-              <Cover label={artist.name} round />
-            )}
+            <Cover src={artist.coverUrl} label={artist.name} round />
           </RouteLink>
           <LibraryItemMenu
             label={artist.name || "Artist"}
@@ -3208,20 +3145,7 @@ function LibraryPage() {
           data-library-menu-target
         >
           <div className="native-library-detail__cover" style={sharedArtworkStyle}>
-            {libraryArtist.mbid ? (
-              <ArtistImage
-                mbid={libraryArtist.mbid}
-                artistName={libraryArtist.name}
-                alt={libraryArtist.name || ""}
-                className="native-library-detail__artist-image"
-                thumbnail={false}
-                showLoading={false}
-                enablePreviewPlayback={false}
-                isInLibrary
-              />
-            ) : (
-              <Cover label={libraryArtist.name} />
-            )}
+            <Cover src={libraryArtist.coverUrl} label={libraryArtist.name} thumbnail={false} />
           </div>
           <div className="native-library-detail__body">
             <p className="native-library-kicker">Artist</p>

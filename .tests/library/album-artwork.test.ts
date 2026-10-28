@@ -1,8 +1,8 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
-import { describe, test, beforeAll, afterAll, vi } from "vite-plus/test";
-import fs, { mkdir, symlink, writeFile, truncate } from "node:fs/promises";
+import { describe, test, beforeAll, afterAll, vi, type TestContext } from "vite-plus/test";
+import fs, { access, mkdir, symlink, writeFile, truncate } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
@@ -17,6 +17,7 @@ const [
   { buildPublicLibrary },
   libraryStore,
   { scanMusicRoot },
+  { clearLibraryArtwork, getLibraryArtworkVersions, pruneLibraryArtwork },
 ] = await setupIsolatedBackend(
   "album-artwork",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -26,19 +27,24 @@ const [
   () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryArtwork.ts"),
 );
 
 const root = path.join(isolatedState.baseDir, "music");
 await mkdir(root);
-const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } })
-  .png()
-  .toBuffer();
+const solid = (background: "red" | "blue") =>
+  sharp({ create: { width: 16, height: 16, channels: 3, background } })
+    .png()
+    .toBuffer();
+const image = await solid("red");
+const blue = await solid("blue");
 const artist = libraryStore.upsertLibraryArtist({
   identityKey: "artwork-artist",
   name: "Artwork Artist",
 });
 dbOps.updateSettings({ onboardingComplete: true });
 
+const realFetch = globalThis.fetch;
 const server = await listen(app);
 const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 let session: { token: string; expiresAt: number } | null = null;
@@ -92,13 +98,18 @@ function audioWithPicture(picture: Buffer | null) {
   return Buffer.concat([header, frame, payload, audio]);
 }
 
-async function albumFixture(name: string, pictures: (Buffer | null)[]) {
+async function albumFixture(
+  name: string,
+  pictures: (Buffer | null)[],
+  albumFields: Partial<Parameters<typeof libraryStore.upsertLibraryAlbum>[0]> = {},
+) {
   const folder = path.join(root, name);
   await mkdir(folder);
   const album = libraryStore.upsertLibraryAlbum({
     identityKey: name,
     artistId: artist.id,
     title: name,
+    ...albumFields,
   });
   for (const [index, picture] of pictures.entries()) {
     const filePath = path.join(folder, `${String(index).padStart(3, "0")}.mp3`);
@@ -133,10 +144,15 @@ async function requestCover(
   {
     token = session?.token,
     headers = {},
-  }: { token?: string | null; headers?: { authorization?: string } } = {},
+    kind = "albums",
+  }: {
+    token?: string | null;
+    headers?: { authorization?: string };
+    kind?: "albums" | "artists";
+  } = {},
 ) {
   const query = token ? `?token=${encodeURIComponent(token)}` : "";
-  const response = await fetch(`${baseUrl}/api/library/albums/${albumId}/cover${query}`, {
+  const response = await realFetch(`${baseUrl}/api/library/${kind}/${albumId}/cover${query}`, {
     headers,
   });
   return {
@@ -147,28 +163,65 @@ async function requestCover(
   };
 }
 
-test("only available unidentified albums gain a local cover URL and remote artwork stays preferred", () => {
-  const albums = buildPublicLibrary({
+const isBlue = async (body: Buffer) => {
+  const { dominant } = await sharp(body).stats();
+  return dominant.b > dominant.r;
+};
+
+function stubImageHost(t: TestContext, body: Buffer) {
+  const requests: string[] = [];
+  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    requests.push(String(input instanceof Request ? input.url : input));
+    return new Response(new Uint8Array(body), { headers: { "content-type": "image/png" } });
+  });
+  t.onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+  return requests;
+}
+
+async function replaceFirstFile(album: { folder: string }, picture: Buffer) {
+  const filePath = path.join(album.folder, "000.mp3");
+  await writeFile(filePath, audioWithPicture(picture));
+  const stat = await fs.stat(filePath);
+  const file = requireFixture(
+    db
+      .prepare<[string], { track_id: number; album_id: number }>(
+        "SELECT track_id, album_id FROM library_media_files WHERE path = ?",
+      )
+      .get(filePath),
+  );
+  libraryStore.upsertLibraryMediaFile({
+    trackId: file.track_id,
+    albumId: file.album_id,
+    source: "aurral",
+    path: filePath,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+  });
+}
+
+test("album cover URLs carry a version that changes when the album's files change", async () => {
+  const album = await albumFixture("versioned", [image]);
+  const version = getLibraryArtworkVersions("album", [album.id]).get(String(album.id));
+  assert.match(requireFixture(version), /^[\da-f]{12}$/);
+
+  const [publicAlbum] = buildPublicLibrary({
     artists: [],
     tracks: [],
-    albums: [
-      libraryAlbum({ id: 12 }),
-      libraryAlbum({ id: 13, coverUrl: "/existing-cover.webp" }),
-      libraryAlbum({ id: 14, available: false }),
-      libraryAlbum({ id: 15, releaseGroupMbid: "release-group" }),
-      libraryAlbum({ id: 16, mbid: "release" }),
-      libraryAlbum({
-        id: 17,
-        metadata: { images: [{ remoteUrl: "https://example.invalid/cover.jpg" }] },
-      }),
-    ],
+    albums: [libraryAlbum({ id: album.id })],
   }).albums;
-  assert.equal(albums[0].coverUrl, "/api/library/albums/12/cover");
-  assert.equal(albums[1].coverUrl, "/existing-cover.webp");
-  assert.equal(albums[2].coverUrl, null);
-  assert.equal(albums[3].coverUrl, null);
-  assert.equal(albums[4].coverUrl, null);
-  assert.equal(albums[5].coverUrl, "https://example.invalid/cover.jpg");
+  assert.equal(publicAlbum.coverUrl, `/api/library/albums/${album.id}/cover?v=${version}`);
+
+  await replaceFirstFile(album, blue);
+  assert.notEqual(getLibraryArtworkVersions("album", [album.id]).get(String(album.id)), version);
+});
+
+test("clearing artwork gives covers new URLs so browsers fetch them again", async () => {
+  const album = await albumFixture("cleared", [image]);
+  const before = getLibraryArtworkVersions("album", [album.id]).get(String(album.id));
+  await clearLibraryArtwork();
+  assert.notEqual(getLibraryArtworkVersions("album", [album.id]).get(String(album.id)), before);
 });
 
 test("custom album artwork keeps the underlying embedded cover available as a fallback", () => {
@@ -330,5 +383,79 @@ describe("with sign-in required", () => {
     await addArtworkAndScan(path.join(album.folder, "cover.png"));
     assert.equal((await requestCover(album.id)).status, 200);
     assert.equal(albumReads(), 2);
+  });
+  test("an album's own file art wins over provider art", async (t) => {
+    const requests = stubImageHost(t, blue);
+    const album = await albumFixture("file-art-wins", [image], {
+      metadata: { images: [{ remoteUrl: "https://images.example/file-art-wins.png" }] },
+    });
+    const result = await requestCover(album.id);
+    assert.equal(result.status, 200);
+    assert.equal(await isBlue(result.body), false);
+    assert.deepEqual(requests, []);
+  });
+
+  test("provider art is downloaded once and then served from disk", async (t) => {
+    const requests = stubImageHost(t, blue);
+    const album = await albumFixture("provider-art", [null], {
+      metadata: { images: [{ remoteUrl: "https://images.example/provider-art.png" }] },
+    });
+    const first = await requestCover(album.id);
+    assert.equal(first.status, 200);
+    assert.equal(await isBlue(first.body), true);
+    assert.equal((await requestCover(album.id)).status, 200);
+    assert.deepEqual(requests, ["https://images.example/provider-art.png"]);
+  });
+
+  test("a changed album file replaces the cached art", async () => {
+    const album = await albumFixture("changed-file", [image]);
+    assert.equal(await isBlue((await requestCover(album.id)).body), false);
+    await replaceFirstFile(album, blue);
+    assert.equal(await isBlue((await requestCover(album.id)).body), true);
+  });
+
+  test("an artist without a provider photo shows its album's art", async () => {
+    const photoless = libraryStore.upsertLibraryArtist({
+      identityKey: "photoless-artist",
+      name: "Photoless Artist",
+    });
+    const album = await albumFixture("photoless-album", [blue], { artistId: photoless.id });
+    const result = await requestCover(photoless.id, { kind: "artists" });
+    assert.equal(result.status, 200);
+    assert.equal(await isBlue(result.body), true);
+
+    await replaceFirstFile(album, image);
+    assert.equal(await isBlue((await requestCover(photoless.id, { kind: "artists" })).body), false);
+  });
+
+  test("a failed artist photo lookup is retried instead of storing album art", async (t) => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("offline");
+    });
+    t.onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const outage = libraryStore.upsertLibraryArtist({
+      identityKey: "outage-artist",
+      name: "Outage Artist",
+      mbid: "1c5efd8c-8d4c-4d6c-9a43-1d9d0f2f1c11",
+    });
+    await albumFixture("outage-album", [blue], { artistId: outage.id });
+    const result = await requestCover(outage.id, { kind: "artists" });
+    assert.equal(result.status, 404);
+    assert.equal(result.cacheControl, "private, max-age=300");
+    await assert.rejects(
+      access(path.join(isolatedState.dataDir, "library-artwork", `artist-${outage.id}`)),
+    );
+  });
+
+  test("art for albums that leave the Library is pruned", async () => {
+    const album = await albumFixture("pruned", [image]);
+    assert.equal((await requestCover(album.id)).status, 200);
+    const folder = path.join(isolatedState.dataDir, "library-artwork", `album-${album.id}`);
+    await access(folder);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    await pruneLibraryArtwork();
+    await assert.rejects(access(folder));
   });
 });

@@ -74,9 +74,9 @@ Google and Plex sign-in use settings in the web UI, not environment variables. S
 
 ## Image cache
 
-| Variable                       | Purpose                                                                                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AURRAL_IMAGE_PROXY_MAX_BYTES` | The largest size of the disk cache for library artwork, in bytes. Default `268435456`, which is 256 MB. When the cache is full, Aurral removes the images that it served least recently. |
+| Variable                       | Purpose                                                                                                                                                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AURRAL_IMAGE_PROXY_MAX_BYTES` | The largest size of the disk cache for artwork outside the Library, in bytes. Default `268435456`, which is 256 MB. When the cache is full, Aurral removes the images that it served least recently. Library artwork does not count toward it. |
 
 ## Resource tuning
 

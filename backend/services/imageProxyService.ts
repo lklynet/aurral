@@ -604,6 +604,12 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
   throw new Error("Too many upstream image redirects");
 };
 
+export const fetchOptimizedImage = (sourceUrl: string) =>
+  imageWorkQueue.add(async () => {
+    const image = await fetchRemoteImage(normalizeKnownImageUrl(sourceUrl));
+    return optimizeImageBuffer(image.buffer, image.contentType);
+  });
+
 const fetchAndCacheImage = (sourceUrl: string, imageProfile = "library") =>
   runImageWork(`fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`, () =>
     fetchAndWriteImage(sourceUrl, imageProfile),

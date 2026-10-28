@@ -993,22 +993,3 @@ test("library responses do not expose filesystem paths", () => {
     },
   ]);
 });
-
-test("library album responses return public metadata artwork links", () => {
-  const remoteUrl = "https://cdn.example.test/cover.jpg?size=500";
-  const response = toPublicLibrary({
-    artists: [],
-    albums: [
-      {
-        ...readAlbum(),
-        id: 1,
-        metadata: {
-          images: [{ url: "/MediaCover/Albums/1/cover.jpg" }, { remoteUrl }],
-        },
-      },
-    ],
-    tracks: [],
-  });
-
-  assert.equal(response.albums[0].coverUrl, remoteUrl);
-});

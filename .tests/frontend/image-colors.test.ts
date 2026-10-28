@@ -43,14 +43,24 @@ async function loadImageColors(
       headers: { "content-type": "application/json" },
     });
   };
+  const isReadable = (image: FakeImage) => {
+    const source = new URL(image.currentSrc, `${APP_ORIGIN}/`);
+    return (
+      source.origin === APP_ORIGIN ||
+      (CORS_HOSTS.has(source.origin) && image.crossOrigin === "anonymous")
+    );
+  };
   class FakeImage {
     currentSrc = "";
     crossOrigin: string | null = null;
     onload: (() => void) | null = null;
+    onerror: ((error: Error) => void) | null = null;
     set src(value: string) {
       this.currentSrc = value;
       loadedImage = this;
-      queueMicrotask(() => this.onload?.());
+      queueMicrotask(() =>
+        isReadable(this) ? this.onload?.() : this.onerror?.(new Error("CORS request blocked")),
+      );
     }
   }
   vi.stubGlobal("Image", FakeImage);
@@ -59,11 +69,6 @@ async function loadImageColors(
       getContext: () => ({
         drawImage() {},
         getImageData(_x: number, _y: number, width: number, height: number) {
-          const source = new URL(loadedImage.currentSrc, `${APP_ORIGIN}/`);
-          const readable =
-            source.origin === APP_ORIGIN ||
-            (CORS_HOSTS.has(source.origin) && loadedImage.crossOrigin === "anonymous");
-          if (!readable) throw new Error("Canvas is tainted");
           const data = new Uint8ClampedArray(width * height * 4);
           for (let index = 0; index < data.length; index += 4) {
             const pixel = index / 4;
@@ -118,16 +123,17 @@ test("same-origin cover copies load under the app's API base path", async (t) =>
   assert.equal(colors.loadedImage().currentSrc, `/aurral/api/image-proxy/${key}.webp`);
 });
 
-test("covers still read directly from CORS hosts when Aurral can't cache them", async (t) => {
+test("covers from CORS hosts are read directly without a server copy", async (t) => {
   const source = "https://assets.fanart.tv/fanart/cover.jpg";
   const colors = await loadImageColors(t, {
-    cacheImage: async () => ({ status: 404, body: { error: "Image not found" } }),
+    cacheImage: async () => assert.fail("CORS covers need no copy"),
   });
 
   const accent = await colors.extractArtworkAccent(source);
 
   assert.ok(isRed(accent), `${accent} is red`);
   assert.equal(colors.loadedImage().currentSrc, source);
+  assert.deepEqual(colors.cacheRequests, []);
 });
 
 test("same-origin covers are read without asking the server for a copy", async (t) => {

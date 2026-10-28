@@ -1,14 +1,18 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import * as v from "valibot";
 import { isAuthRequiredByConfig } from "../../../middleware/auth.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth, requireUserAccount } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { sendBuffer } from "../../../services/fileResponses.ts";
-import { getLibraryAlbumArtwork } from "../../../services/libraryAlbumArtwork.ts";
+import { sendFile } from "../../../services/fileResponses.ts";
+import {
+  buildLibraryArtworkUrl,
+  getLibraryArtwork,
+  getLibraryArtworkVersions,
+  type LibraryArtworkKind,
+} from "../../../services/libraryArtwork.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
-import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import {
   buildCustomArtworkUrl,
   getCustomArtworkMap,
@@ -63,17 +67,6 @@ export function resolveAvailableOnly(queryValue: unknown) {
   return LIBRARY_VIEW;
 }
 
-function getAlbumCoverUrl(album: LibraryCollections["albums"][number]) {
-  const image = (Array.isArray(album?.metadata?.images) ? album.metadata.images : []).find(
-    (entry) => /^https?:\/\//i.test(entry?.remoteUrl || entry?.imageUrl || entry?.url || ""),
-  );
-  const source = image?.remoteUrl || image?.imageUrl || image?.url;
-  if (/^https?:\/\//i.test(source || "")) return buildImageProxyUrl(source);
-  return album.available && !album.mbid && !album.releaseGroupMbid
-    ? `/api/library/albums/${encodeURIComponent(album.id)}/cover`
-    : null;
-}
-
 const publicEntity = <T extends { identityKey: string }>(
   kind: string,
   entity: T,
@@ -84,20 +77,19 @@ const publicEntity = <T extends { identityKey: string }>(
     : { ...entity };
 
 const publicAlbum = (
-  album: LibraryCollections["albums"][number] & { coverUrl?: string | null },
+  album: LibraryCollections["albums"][number],
   favoriteKeys: Set<string> | null,
   customArtwork: number | undefined,
+  artworkVersion: string | undefined,
 ) => {
-  const defaultCoverUrl = album.coverUrl || getAlbumCoverUrl(album);
+  const defaultCoverUrl = buildLibraryArtworkUrl("album", album.id, artworkVersion);
+  const customArtworkUrl = customArtwork
+    ? buildCustomArtworkUrl("album", album.id, customArtwork)
+    : null;
   return {
     ...album,
-    coverUrl: customArtwork
-      ? buildCustomArtworkUrl("album", album.id, customArtwork)
-      : defaultCoverUrl,
-    ...(customArtwork && defaultCoverUrl ? { defaultCoverUrl } : {}),
-    ...(customArtwork
-      ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) }
-      : {}),
+    coverUrl: customArtworkUrl ?? defaultCoverUrl,
+    ...(customArtworkUrl ? { defaultCoverUrl, customArtworkUrl } : {}),
     ...(favoriteKeys ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) } : {}),
   };
 };
@@ -114,10 +106,26 @@ export function buildPublicLibrary(
     "track",
     library.tracks.map((track) => track.id),
   );
+  const albumVersions = getLibraryArtworkVersions(
+    "album",
+    library.albums.map((album) => album.id),
+  );
+  const artistVersions = getLibraryArtworkVersions(
+    "artist",
+    library.artists.map((artist) => artist.id),
+  );
   return {
-    artists: library.artists.map((artist) => publicEntity("artist", artist, favoriteKeys)),
+    artists: library.artists.map((artist) => ({
+      ...publicEntity("artist", artist, favoriteKeys),
+      coverUrl: buildLibraryArtworkUrl("artist", artist.id, artistVersions.get(String(artist.id))),
+    })),
     albums: library.albums.map((album) =>
-      publicAlbum(album, favoriteKeys, albumArtwork.get(String(album.id))),
+      publicAlbum(
+        album,
+        favoriteKeys,
+        albumArtwork.get(String(album.id)),
+        albumVersions.get(String(album.id)),
+      ),
     ),
     tracks: library.tracks.map((track) => {
       const item = publicEntity("song", track, favoriteKeys);
@@ -157,6 +165,25 @@ type LibraryCollections = Pick<ReturnType<typeof getLibrary>, "albums" | "tracks
 };
 type LibraryPage = ReturnType<typeof getLibraryPage>;
 
+async function sendLibraryArtwork(c: Context<AppEnv>, kind: LibraryArtworkKind, id: string) {
+  if (!c.var.user && isAuthRequiredByConfig()) return c.json({ error: "Unauthorized" }, 401);
+  const artwork = await getLibraryArtwork(kind, id).catch(() => null);
+  if (!artwork) {
+    c.header("Cache-Control", "private, max-age=300");
+    return c.json({ error: "Artwork not found" }, 404);
+  }
+  c.header(
+    "Cache-Control",
+    c.req.query("v") ? "private, max-age=31536000, immutable" : "private, max-age=3600",
+  );
+  return (
+    (await sendViaNode(c, sendFile, artwork.filePath, {
+      contentType: artwork.contentType,
+      dotfiles: "deny",
+    })) ?? c.json({ error: "Artwork not found" }, 404)
+  );
+}
+
 const refreshInput = v.object({ mode: v.optional(v.picklist(["quick", "full"])) });
 
 const pageQuery = v.object({
@@ -184,20 +211,8 @@ const restoreInput = v.object({
 
 export default new Hono<AppEnv>()
   .basePath("/library")
-  .get("/albums/:albumId/cover", async (c) => {
-    if (!c.var.user && isAuthRequiredByConfig()) return c.json({ error: "Unauthorized" }, 401);
-    try {
-      const artwork = await getLibraryAlbumArtwork(c.req.param("albumId"));
-      if (!artwork) return c.json({ error: "Album cover not found" }, 404);
-      c.header("Cache-Control", "private, max-age=3600");
-      return (
-        (await sendViaNode(c, sendBuffer, artwork.buffer, artwork.contentType)) ??
-        c.json({ error: "Failed to read album cover" }, 500)
-      );
-    } catch {
-      return c.json({ error: "Failed to read album cover" }, 500);
-    }
-  })
+  .get("/albums/:albumId/cover", (c) => sendLibraryArtwork(c, "album", c.req.param("albumId")))
+  .get("/artists/:artistId/cover", (c) => sendLibraryArtwork(c, "artist", c.req.param("artistId")))
   .post("/refresh", requireAuth, validate("json", refreshInput), (c) => {
     const jobId = scheduleLibraryScan({ force: c.req.valid("json").mode === "full" });
     return c.json({ queued: true, jobId, status: getLibraryScanStatus(jobId) }, 202);

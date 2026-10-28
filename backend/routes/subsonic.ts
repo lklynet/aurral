@@ -33,6 +33,7 @@ import {
   resolveCustomArtwork,
   resolvePlaylistArtwork,
   resolveArtworkUrl,
+  resolveLibraryArtwork,
   resolveStreamPath,
   searchLibrary,
   starMany,
@@ -728,6 +729,15 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
           : "private, max-age=86400",
       );
       const sent = await sendViaNode(c, sendFile, playlistArtwork.safePath);
+      return sent || notFound(c, "Cover art not found");
+    }
+    const libraryArtwork = await resolveLibraryArtwork(getParameter(params, "id"));
+    if (libraryArtwork) {
+      c.header("Cache-Control", "private, max-age=86400");
+      const sent = await sendViaNode(c, sendFile, libraryArtwork.filePath, {
+        contentType: libraryArtwork.contentType,
+        dotfiles: "deny",
+      });
       return sent || notFound(c, "Cover art not found");
     }
     const artworkUrl = await resolveArtworkUrl(getParameter(params, "id"));
