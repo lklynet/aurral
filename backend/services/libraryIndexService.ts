@@ -235,6 +235,7 @@ async function matchUntaggedLibraryAlbums(retry: boolean) {
         holds: async (id) => holdsMostSongs(album, await getAlbumByMbid(id)),
       });
     } catch (error) {
+      if (asAppError(error)?.code === "ERR_METADATA_COOLDOWN") continue;
       logger.warn("library", "Stopped matching untagged albums; metadata provider unavailable", {
         message: asAppError(error)?.message || String(error),
       });

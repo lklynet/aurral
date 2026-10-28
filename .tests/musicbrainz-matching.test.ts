@@ -37,6 +37,7 @@ const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, a
 const GRUNGE = "66666666-6666-4666-8666-666666666601";
 const SIXTIES = "66666666-6666-4666-8666-666666666602";
 const NEVERMIND = "66666666-6666-4666-8666-666666666611";
+const BLEACH = "66666666-6666-4666-8666-666666666612";
 
 const grunge = { id: GRUNGE, artistname: "Nirvana", albums: ["Nevermind", "In Utero"] };
 const sixties = {
@@ -63,13 +64,18 @@ const server = await createMockHttpServer((request, response) => {
   }
   if (url.pathname === "/search/album") {
     albumSearches += 1;
+    const query = url.searchParams.get("query") || "";
+    if (query.startsWith("Bleach")) {
+      return reply(200, [{ id: BLEACH, title: "Bleach", artistid: GRUNGE, artists: [grunge] }]);
+    }
     return reply(
       200,
-      url.searchParams.get("query")?.startsWith("Nevermind")
+      query.startsWith("Nevermind")
         ? [{ id: NEVERMIND, title: "Nevermind", artistid: GRUNGE, artists: [grunge] }]
         : [],
     );
   }
+  if (url.pathname === `/album/${BLEACH}`) return reply(503);
   if (url.pathname === `/album/${NEVERMIND}`) {
     return reply(200, {
       id: NEVERMIND,
@@ -338,4 +344,15 @@ test("an untagged album no release group holds is looked up again when asked or 
   await scan();
 
   assert.equal(albumRow(albumId)?.release_group_mbid, NEVERMIND);
+});
+
+test("an untagged album whose lookup is cooling down does not hold up the others", async () => {
+  const cooling = untaggedAlbum("Bleach", ["Blew"]);
+  const matched = untaggedAlbum("Nevermind", ["Smells Like Teen Spirit", "In Bloom"]);
+
+  await scan();
+  await scan();
+
+  assert.equal(albumRow(cooling)?.release_group_mbid, null);
+  assert.equal(albumRow(matched)?.release_group_mbid, NEVERMIND);
 });
