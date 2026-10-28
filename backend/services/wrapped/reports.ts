@@ -4,6 +4,7 @@ import { userOps } from "../../db/helpers/index.ts";
 import type { LibraryTracksRow, WrappedReportsRow } from "../../db/rows.ts";
 import { wrappedSeason, type WrappedSeason } from "../../../lib/wrapped.ts";
 import { enqueueSystemTaskJob, findActiveHonkerJob, getSystemTaskQueueName } from "../honkerDb.ts";
+import { findCachedImageUrl, warmPublicImageUrl } from "../imageProxyService.ts";
 import { logger } from "../logger.ts";
 import { subsonicId } from "../libraryMediaStore.ts";
 import { createSubsonicPlaylist } from "../subsonicLibraryService.ts";
@@ -50,11 +51,29 @@ function startBuild(userId: number, timeZone: string) {
   if (!activeBuild(userId)) enqueueSystemTaskJob({ kind: BUILD_KIND, userId, timeZone });
 }
 
+function cachedArtwork<Row extends { artwork: string | null }>(rows: Row[]) {
+  return rows.map((row) => {
+    if (!row.artwork?.startsWith("http")) return row;
+    const local = findCachedImageUrl(row.artwork);
+    if (local) return { ...row, artwork: local };
+    void warmPublicImageUrl(row.artwork);
+    return row;
+  });
+}
+
 export function getWrapped(season: WrappedSeason, userId: number, timeZone: string) {
   const stored = readReport.get(userId);
   const parsed: (Awaited<ReturnType<typeof buildWrappedSummary>> & { version?: number }) | null =
     stored?.summary ? JSON.parse(stored.summary) : null;
-  const summary = parsed?.version === SUMMARY_VERSION ? parsed : null;
+  const summary =
+    parsed?.version === SUMMARY_VERSION
+      ? {
+          ...parsed,
+          topSongs: cachedArtwork(parsed.topSongs),
+          topArtists: cachedArtwork(parsed.topArtists),
+          topAlbums: cachedArtwork(parsed.topAlbums),
+        }
+      : null;
   const row =
     stored?.year === season.year &&
     (season.preview || stored.cutoff === season.cutoff) &&

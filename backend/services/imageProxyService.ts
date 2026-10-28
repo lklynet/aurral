@@ -634,6 +634,11 @@ const fetchAndWriteImage = async (sourceUrl: string, imageProfile = "library") =
   );
 };
 
+export const findCachedImageUrl = (sourceUrl: string) => {
+  const entry = getCachedEntry(sourceUrl);
+  return entry?.imagePath && fs.existsSync(entry.imagePath) ? entry.localUrl : null;
+};
+
 export const warmImageProxy = async (sourceUrl: string, imageProfile = "library") => {
   const profile = normalizeImageProfile(imageProfile);
   const cacheKeyFromLocalUrl = getCacheKeyFromLocalUrl(sourceUrl);

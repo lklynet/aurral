@@ -13,7 +13,7 @@ import { plexConnectionStore } from "../plex/plexConnectionStore.ts";
 import { JellyfinClient } from "../jellyfin.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
-import { buildImageProxyUrl, warmImageProxy } from "../imageProxyService.ts";
+import { buildImageProxyUrl, warmImageProxy, warmPublicImageUrl } from "../imageProxyService.ts";
 import getSharp from "../sharpConfig.ts";
 import { getArtistImage } from "../imageService.ts";
 import { calculateWrapped, wrappedKey, type WrappedPeriod, type WrappedPlay } from "./metrics.ts";
@@ -594,7 +594,8 @@ export async function buildWrappedSummary(userId: number, period: Period) {
       song.preview = preview?.preview_url ?? null;
     }),
   ]);
-  for (const row of [...summary.topSongs, ...summary.topArtists, ...summary.topAlbums])
-    row.artwork = buildImageProxyUrl(row.artwork);
+  const rows = [...summary.topSongs, ...summary.topArtists, ...summary.topAlbums];
+  for (const row of rows) row.artwork = buildImageProxyUrl(row.artwork);
+  await Promise.all(rows.map((row) => row.artwork && warmPublicImageUrl(row.artwork)));
   return { ...summary, sources: history.sources };
 }

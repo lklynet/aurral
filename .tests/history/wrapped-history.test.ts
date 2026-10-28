@@ -148,6 +148,38 @@ test("a recap saved by an older build is rebuilt instead of shown", async () => 
   assert.equal(body.building, true);
 });
 
+test("a saved recap serves cached covers from Aurral and keeps the link for one that is not cached", async () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(
+      async () => new Response(png, { headers: { "content-type": "image/png" } }),
+    );
+  const { warmImageProxy } = await import("../../backend/services/imageProxyService.ts");
+  const cached = await warmImageProxy("https://covers.example/cached.png");
+  fetch.mockRejectedValue(new Error("offline"));
+  db.prepare(
+    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', ?, 0)",
+  ).run(
+    one.id,
+    Date.parse("2026-12-01T00:00:00Z"),
+    JSON.stringify({
+      version: 2,
+      topSongs: [{ name: "Song", artwork: "https://covers.example/cached.png" }],
+      topArtists: [{ name: "Artist", artwork: "https://covers.example/missing.png" }],
+      topAlbums: [],
+    }),
+  );
+  const body = await (
+    await signedInAs(one).route("/", wrapped).request("/wrapped?timeZone=UTC")
+  ).json();
+  assert.equal(body.summary.topSongs[0].artwork, cached.localUrl);
+  assert.equal(body.summary.topArtists[0].artwork, "https://covers.example/missing.png");
+});
+
 test("a failed rebuild keeps the recap the listener already has", async () => {
   listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
   await reports.processWrappedBuild(one.id, "UTC");
