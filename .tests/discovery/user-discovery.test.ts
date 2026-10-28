@@ -1,5 +1,9 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
+import type { hc, InferResponseType } from "hono/client";
+import type discoveryApp from "../../backend/routes/discovery/index.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -14,6 +18,7 @@ const [
   { getUserDiscovery },
   discovery,
   libraryStore,
+  { api },
 ] = await setupIsolatedBackend(
   "user-discovery",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -22,7 +27,13 @@ const [
   () => import("../../backend/services/discovery/userDiscovery.ts"),
   () => import("../../backend/services/discovery/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
+
+type DiscoverBody = InferResponseType<
+  ReturnType<typeof hc<typeof discoveryApp>>["discover"]["$get"],
+  200
+>;
 
 beforeEach(() => {
   resetDatabase(db);
@@ -96,4 +107,30 @@ test("cached discovery hides an artist once the library learns its MBID", async 
 
   libraryStore.upsertLibraryArtist({ identityKey: mbid, mbid, name: "Artist X" });
   assert.equal((await getUserDiscovery(7, 0)).body.recommendationCount, 0);
+});
+
+test("served picks say whether they came through another pick and when they were first seen", async () => {
+  dbOps.updateDiscoveryCache({
+    recommendations: [
+      {
+        id: "direct",
+        name: "Direct",
+        discoveryDepth: 1,
+        firstDiscoveredAt: "2026-10-01T00:00:00.000Z",
+      },
+      { id: "bridged", name: "Bridged", discoveryDepth: 2 },
+    ],
+  });
+  persistedDiscovery.reloadDiscoveryPersistedCache();
+  const response = await signedInAs(testUser(7)).route("/", api).request("/discover");
+  const body: DiscoverBody = await response.json();
+  assert.deepEqual(
+    Object.fromEntries(
+      body.recommendations.map((artist) => [
+        artist.name,
+        [artist.discoveryDepth, artist.firstDiscoveredAt],
+      ]),
+    ),
+    { Direct: [1, "2026-10-01T00:00:00.000Z"], Bridged: [2, null] },
+  );
 });

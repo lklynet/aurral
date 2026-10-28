@@ -2,6 +2,7 @@ import { matchPath, type Params } from "react-router";
 import type { FetchQueryOptions, QueryKey } from "@tanstack/react-query";
 import { queryClient } from "../queryClient.ts";
 import {
+  discoveryQueryOptions,
   editorialPlaylistQueryOptions,
   editorialShelfQueryOptions,
   playlistJobsQueryOptions,
@@ -68,6 +69,13 @@ const ROUTES = [
     ],
   },
   { path: "/discover/news", module: routeModules.news },
+  {
+    path: "/discover/recommended/:view?",
+    module: routeModules.recommended,
+    queries: (_params: Params<string>, { userId }: RouteContext) => [
+      prefetchable(discoveryQueryOptions(userId)),
+    ],
+  },
   {
     path: "/discover/trending/genres/:genreId",
     module: routeModules.trendingGenre,

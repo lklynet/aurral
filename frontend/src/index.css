@@ -6062,10 +6062,6 @@ textarea {
   white-space: nowrap;
 }
 
-.artist-match-percent {
-  font-variant-numeric: tabular-nums;
-}
-
 .artist-show-card--discover {
   position: relative;
   display: block;

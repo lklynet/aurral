@@ -26,6 +26,7 @@ import {
   WANTED_VIEWS,
 } from "../navigation/activityNavConfig";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
+import { lastRecommendedPath, RECOMMENDED_PATH } from "../navigation/recommendedPath";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { useStorageHealth } from "../hooks/useStorageHealth";
 import { useSiteLogo } from "../hooks/useSiteLogo";
@@ -265,8 +266,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
     }
 
     if (item.section === "discover") {
-      const isRecommendedActive =
-        location.pathname === "/search" && location.search === "?type=recommended";
+      const isRecommendedActive = location.pathname.startsWith(RECOMMENDED_PATH);
       const isTrendingActive = location.pathname.startsWith("/discover/trending");
       return (
         <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
@@ -278,7 +278,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
             Playlists
           </RouteLink>
           <RouteLink
-            to="/search?type=recommended"
+            to={lastRecommendedPath(location.pathname)}
             className={`sidebar-subnav-link${isRecommendedActive ? " is-active" : ""}`}
             aria-current={isRecommendedActive ? "page" : undefined}
           >

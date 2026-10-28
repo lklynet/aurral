@@ -48,6 +48,8 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
+import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
+import { recommendationReason, seedNameSet } from "./recommendedRails";
 import type { DiscoveryBasedOn } from "../../../backend/db/helpers/discovery.ts";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
@@ -186,6 +188,7 @@ function DiscoverPage() {
   const isActuallyUpdating = isUpdating && !hasData;
 
   const { recommendations = [], topGenres = [], basedOn = [] } = data || {};
+  const seeds = useMemo(() => seedNameSet(basedOn), [basedOn]);
   const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
   const { data: trending } = useQuery(trendingChartsQueryOptions(authUser?.id));
   const trendingArtists = trending?.artists;
@@ -447,12 +450,12 @@ function DiscoverPage() {
       if (!sectionAvailability.recommended) return null;
       if (recommendations.length > 0) {
         return (
-          <DiscoverRail key="recommended" title="Recommended" viewAllTo="/search?type=recommended">
+          <DiscoverRail key="recommended" title="Recommended" viewAllTo={lastRecommendedPath()}>
             <>
               {recommendations.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
                 <div key={artist.id} className="artist-discover-shelf-card">
                   <ArtistCard
-                    artist={artist}
+                    artist={{ ...artist, metaText: recommendationReason(artist, seeds) }}
                     isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
                     getLibraryLink={getArtistLibraryLink}
                     onFeedback={handleDiscoveryFeedback}
@@ -461,7 +464,7 @@ function DiscoverPage() {
                 </div>
               ))}
               <div className="artist-discover-shelf-card">
-                <ViewAllCard to="/search?type=recommended" />
+                <ViewAllCard to={lastRecommendedPath()} />
               </div>
             </>
           </DiscoverRail>
@@ -624,7 +627,7 @@ function DiscoverPage() {
       return (
         <div key="genreSections">
           {genreSections.map((section) => {
-            const viewAllPath = `/search?type=recommended&tag=${encodeURIComponent(section.genre)}`;
+            const viewAllPath = recommendedListPath({ genre: section.genre });
             return (
               <DiscoverRail
                 key={section.genre}
@@ -639,7 +642,7 @@ function DiscoverPage() {
                       className="artist-discover-shelf-card"
                     >
                       <ArtistCard
-                        artist={artist}
+                        artist={{ ...artist, metaText: recommendationReason(artist, seeds) }}
                         isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
                         getLibraryLink={getArtistLibraryLink}
                         onFeedback={handleDiscoveryFeedback}

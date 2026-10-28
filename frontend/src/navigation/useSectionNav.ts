@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavConfig";
 import { LIBRARY_VIEWS } from "./libraryNavConfig";
+import { lastRecommendedPath, RECOMMENDED_PATH } from "./recommendedPath";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "./showsNavConfig";
 
 function firstSegment(pathname: string, prefix: string) {
@@ -16,14 +17,13 @@ export function useSectionNav() {
   return useMemo(() => {
     const allowed = (permission: string | undefined) =>
       !permission || user?.role === "admin" || !!user?.permissions?.[permission];
-    const searchType = new URLSearchParams(search).get("type");
 
     const isDiscoverBrowse =
       pathname === "/" ||
       pathname === "/discover/playlists" ||
       pathname === "/discover/news" ||
       pathname.startsWith("/discover/trending") ||
-      (pathname === "/search" && searchType === "recommended");
+      pathname.startsWith(RECOMMENDED_PATH);
     if (isDiscoverBrowse) {
       const items = [
         { id: "home", label: "For you", path: "/", active: pathname === "/" },
@@ -36,8 +36,8 @@ export function useSectionNav() {
         {
           id: "recommended",
           label: "Recommended",
-          path: "/search?type=recommended",
-          active: pathname === "/search" && searchType === "recommended",
+          path: lastRecommendedPath(pathname),
+          active: pathname.startsWith(RECOMMENDED_PATH),
         },
         {
           id: "trending",

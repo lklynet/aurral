@@ -1,5 +1,5 @@
 import { describeAlbumRequestResult } from "../utils/albumAddAction";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { libraryMiscClient } from "../utils/api/clients/libraryMisc.ts";
@@ -10,45 +10,27 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
-import { discoveryClient } from "../utils/api/clients/discovery.ts";
-import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
-import { artistsShareDiscoveryIdentity } from "../utils/discoveryFeedback";
-import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
 import { useNearbyShows } from "../hooks/useNearbyShows";
 import {
   readStoredRecentlyAdded,
   writeStoredRecentlyAdded,
   readStoredRecentReleases,
   writeStoredRecentReleases,
-  readStoredDiscoveryData,
-  writeStoredDiscoveryData,
-  normalizeDiscoveryData,
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
   getLibraryArtistImage,
-  type DiscoverArtist,
 } from "./discoverUtils";
+import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { asApiError } from "../utils/api/core.ts";
 import { getApiErrorText } from "./onboardingUtils";
-import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
 
 type RecentlyAdded = InferResponseType<typeof libraryMiscClient.recent.$get, 200>;
 type RecentReleases = InferResponseType<(typeof libraryMiscClient)["recent-releases"]["$get"], 200>;
-
-export type DiscoverData = Omit<
-  NonNullable<ReturnType<typeof normalizeDiscoveryData>>,
-  "recommendations" | "globalTop" | "topGenres" | "topTags"
-> & {
-  recommendations: DiscoverArtist[];
-  globalTop: DiscoverArtist[];
-  topGenres: string[];
-  topTags: string[];
-};
 
 export type RecentRelease = RecentReleases[number];
 
@@ -68,28 +50,8 @@ export function useDiscoverData() {
     setAppliedZip: setAppliedNearbyZip,
   } = useNearbyShows({ enabled: ticketmasterConfigured });
 
-  const discoveryQueryKey = useMemo(() => queryKeys.discovery(authUser?.id), [authUser?.id]);
-  const discoveryInitial = useMemo(
-    () => readStoredDiscoveryData(authUser?.id) || undefined,
-    [authUser?.id],
-  );
-  const discoveryQuery = useQuery({
-    queryKey: discoveryQueryKey,
-    queryFn: async ({ signal }) =>
-      normalizeDiscoveryData(
-        await parseResponse(discoveryClient.$get({ query: {} }, { init: { signal } })),
-      ),
-    initialData: discoveryInitial,
-    initialDataUpdatedAt: 0,
-    staleTime: 30_000,
-  });
-  const data = (discoveryQuery.data || null) as DiscoverData | null;
-  const setData = useCallback(
-    (updater: (current: DiscoverData | undefined) => DiscoverData | undefined) => {
-      queryClient.setQueryData(discoveryQueryKey, updater);
-    },
-    [discoveryQueryKey],
-  );
+  const { data, error, discoveryStatus, artistFeedbackLookup, handleDiscoveryFeedback } =
+    useDiscoveryRecommendations();
   const recentlyAddedInitial = useMemo(
     () => readStoredRecentlyAdded(authUser?.id) || undefined,
     [authUser?.id],
@@ -122,9 +84,6 @@ export function useDiscoverData() {
     {},
   );
   const [libraryLookup, setLibraryLookup] = useState<ArtistsInLibrary>({});
-  const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
-  const { status: discoveryStatus } = useDiscoveryStatus();
-  const previousDiscoveryStatusRef = useRef<typeof discoveryStatus>(null);
   const canAddAlbum = hasPermission("addAlbum");
 
   useEffect(() => {
@@ -146,24 +105,6 @@ export function useDiscoverData() {
       queryKey: queryKeys.recentReleases(authUser?.id),
     });
   });
-
-  useEffect(() => {
-    if (data) writeStoredDiscoveryData(data, authUser?.id);
-  }, [authUser?.id, data]);
-
-  const error = discoveryQuery.error
-    ? getApiErrorText(discoveryQuery.error, "message") || "Failed to load discovery data"
-    : null;
-
-  useEffect(() => {
-    const previous = previousDiscoveryStatusRef.current;
-    previousDiscoveryStatusRef.current = discoveryStatus;
-    if (!previous || !discoveryStatus) return;
-    const finished = previous.isUpdating && !discoveryStatus.isUpdating;
-    if (finished || previous.lastUpdated !== discoveryStatus.lastUpdated) {
-      queryClient.invalidateQueries({ queryKey: discoveryQueryKey });
-    }
-  }, [discoveryQueryKey, discoveryStatus]);
 
   useEffect(() => {
     if (recentlyAddedQuery.error)
@@ -230,52 +171,6 @@ export function useDiscoverData() {
       }
     },
     [authUser?.id, getRecentReleaseKey, libraryDestination, showError, showInfo, showSuccess],
-  );
-
-  const handleDiscoveryFeedback = useCallback(
-    async (
-      artist: ArtistFeedbackSource,
-      action: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[1],
-      options: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[2] = {},
-    ) => {
-      if (action !== "block_artist" || options.isSelected) {
-        return submitFeedback(artist, action, options);
-      }
-      const hidden: Partial<
-        Record<"recommendations" | "globalTop", { candidate: DiscoverArtist; index: number }[]>
-      > = {};
-      setData((current) => {
-        if (!current) return current;
-        const next = { ...current };
-        for (const key of ["recommendations", "globalTop"] as const) {
-          const list = current[key] || [];
-          hidden[key] = list
-            .map((candidate, index) => ({ candidate, index }))
-            .filter(({ candidate }) => artistsShareDiscoveryIdentity(candidate, artist));
-          next[key] = list.filter((candidate) => !artistsShareDiscoveryIdentity(candidate, artist));
-        }
-        return next;
-      });
-      const restoreCards = () =>
-        setData((current) => {
-          if (!current) return current;
-          const next = { ...current };
-          for (const key of ["recommendations", "globalTop"] as const) {
-            const entries = hidden[key];
-            if (!entries) continue;
-            const list = [...(current[key] || [])];
-            for (const { candidate, index } of entries) {
-              if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {
-                list.splice(Math.min(index, list.length), 0, candidate);
-              }
-            }
-            next[key] = list;
-          }
-          return next;
-        });
-      return submitFeedback(artist, action, { ...options, onRevert: restoreCards });
-    },
-    [setData, submitFeedback],
   );
 
   return {

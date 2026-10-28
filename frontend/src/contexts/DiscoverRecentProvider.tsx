@@ -184,6 +184,7 @@ function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) 
   }
 
   if (pathname.startsWith("/discover/playlists")) return "Playlists";
+  if (pathname.startsWith("/discover/recommended")) return "Recommended";
   if (pathname.startsWith("/discover/trending")) return "Trending";
   if (pathname.startsWith("/shows")) return "Shows";
   if (pathname.startsWith("/playlists")) return "Playlist";
@@ -349,18 +350,11 @@ export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
     [discoverFlowActive, location, visibleRecentPages],
   );
 
-  const isDiscoverDiscoverSubnavPage = useMemo(() => {
-    const sp = new URLSearchParams(location.search);
-    const type = sp.get("type");
-    return location.pathname === "/search" && type === "recommended";
-  }, [location.pathname, location.search]);
-
   const isDiscoverSectionActive = useMemo(
     () =>
-      isDiscoverDiscoverSubnavPage ||
       isDiscoverBrowsePath(location.pathname) ||
       shouldKeepDiscoverSectionActive(location, visibleRecentPages, discoverFlowActive),
-    [discoverFlowActive, isDiscoverDiscoverSubnavPage, location, visibleRecentPages],
+    [discoverFlowActive, location, visibleRecentPages],
   );
 
   const value = useMemo(

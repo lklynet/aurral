@@ -58,6 +58,7 @@ const FlowsPage = lazy(routeModules.flows);
 const FlowDetailPage = lazy(routeModules.flow);
 const PlaylistRedirect = lazy(routeModules.playlistRedirect);
 const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
+const RecommendedPage = lazy(routeModules.recommended);
 const TrendingPage = lazy(routeModules.trending);
 const TrendingGenrePage = lazy(routeModules.trendingGenre);
 const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
@@ -292,6 +293,7 @@ const appRoutes = createRoutesFromElements(
       />
       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
       <Route path="/discover/news" element={<NewsPage />} />
+      <Route path="/discover/recommended/:view?" element={<RecommendedPage />} />
       <Route path="/discover/trending" element={<TrendingPage />} />
       <Route path="/discover/trending/genres/:genreId" element={<TrendingGenrePage />} />
       <Route

@@ -13,8 +13,6 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
-import { discoveryClient } from "../utils/api/clients/discovery.ts";
-import type { DiscoverResponse } from "./discoverUtils";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.ts";
@@ -66,35 +64,18 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { Link, Navigate, useSearchParams } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
+import { RECOMMENDED_PATH, recommendedListPath } from "../navigation/recommendedPath.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { artistMatchesGenre } from "./discoverUtils";
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  Grid3X3,
-  LayoutGrid,
-  List,
-  Music,
-  Search,
-  SlidersHorizontal,
-} from "../components/icons";
+import { Grid3X3, LayoutGrid, List, Music, Search, SlidersHorizontal } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 
-type DiscoverPage = DiscoverResponse;
 type UnifiedSearchResponse = Awaited<ReturnType<typeof searchUnified>>;
 type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
-type SearchPage = DiscoverPage | UnifiedSearchResponse | CatalogSearchPage;
+type SearchPage = UnifiedSearchResponse | CatalogSearchPage;
 type SearchResultItem = SearchItem & {
   durationMs?: number | null;
-  matchPercent?: number | null;
-  scoreTotal?: number | null;
-  scoreSimilarity?: number | null;
-  popularityRank?: number | null;
-  listeners?: number | null;
-  playcount?: number | null;
   monitored?: boolean;
   ownerConflict?: { message: string };
 };
@@ -117,65 +98,20 @@ type AlbumLibraryState =
       ownerConflict?: { message: string };
     };
 
-const RECOMMENDED_SORT_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "match", label: "Match" },
-  { value: "popularity", label: "Popularity" },
-];
-const getRecommendedSortOptions = (pageType: string | null) =>
-  pageType === "recommended"
-    ? RECOMMENDED_SORT_OPTIONS
-    : RECOMMENDED_SORT_OPTIONS.filter((option) => option.value !== "match");
-const getDefaultRecommendedSort = (pageType: string | null) =>
-  pageType === "recommended"
-    ? { key: "match", direction: "desc" }
-    : { key: "name", direction: "asc" };
 const EMPTY_SEARCH_PAGES: SearchPage[] = [];
 const combineLibraryLookup = (queries: { data?: ArtistsInLibrary }[]): ArtistsInLibrary =>
   Object.assign({}, ...queries.map((query) => query.data || {}));
 const LIBRARY_RESULT_LIMIT = 6;
 
-const getRecommendedArtistName = (artist: SearchResultItem | null | undefined) =>
+const getArtistName = (artist: SearchResultItem | null | undefined) =>
   String(artist?.name || "").trim();
 
-const getRecommendedMatch = (artist: SearchResultItem | null | undefined) =>
-  Number(artist?.matchPercent ?? 0) || 0;
-
-const getRecommendedScore = (artist: SearchResultItem | null | undefined) =>
-  Number(artist?.scoreTotal ?? artist?.score ?? artist?.scoreSimilarity ?? 0) || 0;
-
-const getRecommendedPopularity = (artist: SearchResultItem | null | undefined) => {
-  const rank = Number(artist?.popularityRank);
-  if (Number.isFinite(rank) && rank > 0) return -rank;
-  return Number(artist?.listeners ?? artist?.playcount ?? 0) || 0;
-};
-
-const sortRecommendedArtists = (
-  artists: SearchResultItem[],
-  sortKey: string,
-  sortDirection: string,
-) =>
-  [...artists].sort((left, right) => {
-    let difference;
-    if (sortKey === "name") {
-      difference = getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
-    } else if (sortKey === "match") {
-      difference =
-        getRecommendedMatch(left) - getRecommendedMatch(right) ||
-        getRecommendedScore(left) - getRecommendedScore(right);
-    } else {
-      difference = getRecommendedPopularity(left) - getRecommendedPopularity(right);
-    }
-    if (difference !== 0) return sortDirection === "asc" ? difference : -difference;
-    return getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
-  });
 function SearchResults() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const type = searchParams.get("type");
   const rawFilter = searchParams.get("filter") || "all";
   const activeFilter = rawFilter === "library" || rawFilter === "tracks" ? "all" : rawFilter;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [artistImages, setArtistImages] = useState<SearchImageMap>({});
   const [albumCovers, setAlbumCovers] = useState<SearchImageMap>({});
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState<Record<string, AlbumLibraryState>>(
@@ -185,18 +121,11 @@ function SearchResults() {
   const [albumOptionsOpen, setAlbumOptionsOpen] = useState(false);
   const [albumViewMode, setAlbumViewMode] = useState(() => readReleaseListViewMode());
   const [albumReleaseTab, setAlbumReleaseTab] = useState("all");
-  const [recommendedSearchTerm, setRecommendedSearchTerm] = useState("");
-  const [recommendedSortKey, setRecommendedSortKey] = useState(
-    () => getDefaultRecommendedSort(type).key,
-  );
-  const [recommendedSortDirection, setRecommendedSortDirection] = useState(
-    () => getDefaultRecommendedSort(type).direction,
-  );
-  const [recommendedSortMenuOpen, setRecommendedSortMenuOpen] = useState(false);
-  const [recommendedViewMode, setRecommendedViewMode] = useState(
+  const [tagFilterTerm, setTagFilterTerm] = useState("");
+  const [tagViewMode, setTagViewMode] = useState(
     () => localStorage.getItem("libraryViewMode") || "grid",
   );
-  const [recommendedGridColumns, setRecommendedGridColumns] = useState(() => {
+  const [tagGridColumns, setTagGridColumns] = useState(() => {
     const saved = parseInt(String(localStorage.getItem("libraryGridColumns")), 10);
     return saved >= 2 && saved <= 10 ? saved : 6;
   });
@@ -211,7 +140,6 @@ function SearchResults() {
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const albumOptionsMenuRef = useRef<HTMLDivElement>(null);
-  const recommendedToolbarRef = useRef<HTMLDivElement>(null);
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
@@ -219,37 +147,22 @@ function SearchResults() {
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
-    if (type === "recommended") return type;
     if (type === "album") return "album";
     if (type === "tag" || trimmedQuery.startsWith("#")) return "tag";
     if (type === "artist") return "artist";
     return "unified";
   }, [type, trimmedQuery]);
-  const recommendedTag =
-    normalizedType === "recommended" ? (searchParams.get("tag") || "").trim() : "";
-  const pagedRecommendations = normalizedType === "recommended" && !recommendedTag;
-  const [recommendedSortPageType, setRecommendedSortPageType] = useState(normalizedType);
-  if (recommendedSortPageType !== normalizedType) {
-    const defaultSort = getDefaultRecommendedSort(normalizedType);
-    setRecommendedSortPageType(normalizedType);
-    setRecommendedSortKey(defaultSort.key);
-    setRecommendedSortDirection(defaultSort.direction);
-  }
-  const recommendedSortOptions = getRecommendedSortOptions(normalizedType);
   const isTagSearch = normalizedType === "tag";
   const isAlbumSearch = normalizedType === "album";
   const isUnifiedSearch = normalizedType === "unified" && !!trimmedQuery;
   const pageTitle = useMemo(() => {
-    if (normalizedType === "recommended") {
-      return recommendedTag ? `Because you like ${recommendedTag}` : "Recommended";
-    }
     if (isTagSearch && trimmedQuery) {
       return trimmedQuery.startsWith("#") ? trimmedQuery : `#${trimmedQuery.replace(/^#/, "")}`;
     }
     if (isAlbumSearch) return trimmedQuery || "Album results";
     if (isUnifiedSearch) return trimmedQuery || "Search results";
     return trimmedQuery || "Search results";
-  }, [normalizedType, recommendedTag, isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
+  }, [isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
   useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
@@ -265,20 +178,6 @@ function SearchResults() {
       setSearchParams(params);
     },
     [searchParams, setSearchParams],
-  );
-
-  const handleRecommendedSortOptionClick = useCallback(
-    (option: { value: string; label: string }) => {
-      if (recommendedSortKey === option.value) {
-        setRecommendedSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-        setRecommendedSortMenuOpen(false);
-        return;
-      }
-      setRecommendedSortKey(option.value);
-      setRecommendedSortDirection(option.value === "name" ? "asc" : "desc");
-      setRecommendedSortMenuOpen(false);
-    },
-    [recommendedSortKey],
   );
 
   const updateUnifiedFilter = useCallback(
@@ -300,9 +199,6 @@ function SearchResults() {
   }, [trimmedQuery, isAlbumSearch]);
 
   const searchQueryKey = useMemo(() => {
-    if (normalizedType === "recommended") {
-      return queryKeys.searchDiscovery(0, pagedRecommendations ? PAGE_SIZE : undefined);
-    }
     if (isUnifiedSearch) {
       return queryKeys.searchUnified(trimmedQuery, "full", 20);
     }
@@ -313,15 +209,7 @@ function SearchResults() {
       releaseTypes: isAlbumSearch ? allReleaseTypes : [],
       sort: isAlbumSearch ? albumSort : undefined,
     });
-  }, [
-    albumSort,
-    isAlbumSearch,
-    isTagSearch,
-    isUnifiedSearch,
-    normalizedType,
-    pagedRecommendations,
-    trimmedQuery,
-  ]);
+  }, [albumSort, isAlbumSearch, isTagSearch, isUnifiedSearch, normalizedType, trimmedQuery]);
   const searchQuery = useInfiniteQuery<
     SearchPage,
     ApiError,
@@ -330,22 +218,9 @@ function SearchResults() {
     number
   >({
     queryKey: searchQueryKey,
-    enabled: Boolean(trimmedQuery || normalizedType === "recommended"),
+    enabled: Boolean(trimmedQuery),
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }): Promise<SearchPage> => {
-      if (normalizedType === "recommended") {
-        return parseResponse(
-          discoveryClient.$get(
-            {
-              query: {
-                offset: String(pageParam),
-                limit: pagedRecommendations ? String(PAGE_SIZE) : undefined,
-              },
-            },
-            { init: { signal } },
-          ),
-        );
-      }
       if (isUnifiedSearch) {
         return searchUnified(trimmedQuery, {
           mode: "full",
@@ -364,14 +239,6 @@ function SearchResults() {
     },
     getNextPageParam: (lastPage, pages) => {
       if (isUnifiedSearch) return undefined;
-      if (normalizedType === "recommended") {
-        const loaded = (pages as DiscoverPage[]).reduce(
-          (count, page) => count + (page?.recommendations?.length || 0),
-          0,
-        );
-        const total = Number((lastPage as DiscoverPage)?.recommendationCount || 0);
-        return loaded < total ? loaded : undefined;
-      }
       const loaded = (pages as CatalogSearchPage[]).reduce(
         (count, page) => count + (page?.items?.length || 0),
         0,
@@ -389,7 +256,6 @@ function SearchResults() {
       const previousKey = previousQuery?.queryKey;
       return previousKey &&
         searchQueryKey[1] !== "unified" &&
-        searchQueryKey[1] !== "discovery" &&
         previousKey[1] === searchQueryKey[1] &&
         previousKey[2] === searchQueryKey[2]
         ? previous
@@ -404,19 +270,11 @@ function SearchResults() {
     ? (searchPages[0] as UnifiedSearchResponse) || null
     : null;
   const rawResults = useMemo((): SearchResultItem[] => {
-    if (normalizedType === "recommended") {
-      const recommendations = (searchPages as DiscoverPage[]).flatMap(
-        (page) => page?.recommendations || [],
-      );
-      return recommendedTag
-        ? recommendations.filter((artist) => artistMatchesGenre(artist, recommendedTag))
-        : recommendations;
-    }
     const items: SearchResultItem[] = (searchPages as CatalogSearchPage[]).flatMap(
       (page): SearchResultItem[] => page?.items || [],
     );
     return isAlbumSearch ? dedupeAlbums(items) : dedupeArtists(items);
-  }, [isAlbumSearch, normalizedType, recommendedTag, searchPages]);
+  }, [isAlbumSearch, searchPages]);
   const withAlbumLibraryState = useCallback(
     (album: SearchResultItem) => {
       const match = album?.id ? albumLibraryLookup[album.id] : null;
@@ -478,77 +336,32 @@ function SearchResults() {
         : [],
     [libraryResults],
   );
-  const fullList = recommendedTag ? rawResults : null;
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
   const { fetchNextPage } = searchQuery;
   const error = getApiErrorText(searchQuery.error, "message") || searchQuery.error?.message || null;
-  const searchTotalCount = isUnifiedSearch
-    ? (unifiedResults?.catalog?.artists?.length || 0) +
-      (unifiedResults?.catalog?.albums?.length || 0) +
-      (unifiedResults?.catalog?.tracks?.length || 0)
-    : pagedRecommendations
-      ? Number(
-          (searchPages as DiscoverPage[])[searchPages.length - 1]?.recommendationCount ||
-            results.length,
-        )
-      : normalizedType === "recommended"
-        ? results.length
-        : Number(
-            (searchPages as CatalogSearchPage[])[searchPages.length - 1]?.count ?? results.length,
-          );
-  const hasMore = fullList
-    ? visibleCount < fullList.length
-    : !searchUpdating && searchQuery.hasNextPage === true;
+  const hasMore = !searchUpdating && searchQuery.hasNextPage === true;
 
   const albumResultsForTab = useMemo(() => {
     if (!isAlbumSearch) return results;
     return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
   }, [albumReleaseTab, isAlbumSearch, results]);
 
-  const discoveryArtists = useMemo(() => {
-    if (!["recommended", "tag"].includes(normalizedType)) return [];
-    const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
-    const filtered = normalizedSearch
-      ? results.filter((artist) =>
-          getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch),
-        )
+  const tagArtists = useMemo(() => {
+    if (!isTagSearch) return [];
+    const normalizedSearch = tagFilterTerm.trim().toLowerCase();
+    return normalizedSearch
+      ? results.filter((artist) => getArtistName(artist).toLowerCase().includes(normalizedSearch))
       : results;
-    if (isTagSearch) return filtered;
-    return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
-  }, [
-    isTagSearch,
-    normalizedType,
-    recommendedSearchTerm,
-    recommendedSortDirection,
-    recommendedSortKey,
-    results,
-  ]);
+  }, [isTagSearch, tagFilterTerm, results]);
 
-  const displayedResults = useMemo(
-    () =>
-      ["recommended", "tag"].includes(normalizedType)
-        ? discoveryArtists.slice(0, fullList ? visibleCount : undefined)
-        : isAlbumSearch
-          ? albumResultsForTab
-          : results,
-    [
-      albumResultsForTab,
-      discoveryArtists,
-      fullList,
-      isAlbumSearch,
-      normalizedType,
-      results,
-      visibleCount,
-    ],
-  );
+  const displayedResults = isTagSearch ? tagArtists : isAlbumSearch ? albumResultsForTab : results;
 
   useEffect(() => {
     setAlbumLibraryLookup({});
     setPendingAlbumIds({});
     setAlbumCovers({});
-    setVisibleCount(PAGE_SIZE);
-  }, [recommendedTag, searchQueryKey]);
+  }, [searchQueryKey]);
 
   useEffect(() => {
     const artists: SearchItem[] = isUnifiedSearch
@@ -944,17 +757,12 @@ function SearchResults() {
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
 
-    if (fullList) {
-      setVisibleCount((count) => Math.min(count + PAGE_SIZE, fullList.length));
-      return;
-    }
-
     try {
       await fetchNextPage();
     } catch (err) {
       console.warn("Failed to load more search results:", err);
     }
-  }, [fullList, hasMore, loading, loadingMore, fetchNextPage]);
+  }, [hasMore, loading, loadingMore, fetchNextPage]);
 
   const onSentinel = useCallback(
     (entries: IntersectionObserverEntry[]) => {
@@ -1263,14 +1071,12 @@ function SearchResults() {
     };
   }, [activeFilter, isUnifiedSearch, searchLibraryFlags, unifiedResults]);
 
-  const showContent = !loading && (query || normalizedType === "recommended");
+  const showContent = !loading && query;
   const showLibraryResults = isUnifiedSearch && activeFilter === "all" && libraryItems.length > 0;
   const isEmpty = isUnifiedSearch
     ? unifiedView.isEmpty && !showLibraryResults
     : displayedResults.length === 0;
-  const showLoadMore =
-    hasMore &&
-    (["recommended", "tag"].includes(normalizedType) || displayedResults.length >= PAGE_SIZE);
+  const showLoadMore = hasMore && (isTagSearch || displayedResults.length >= PAGE_SIZE);
 
   useEffect(() => {
     if (!albumOptionsOpen) return undefined;
@@ -1285,25 +1091,6 @@ function SearchResults() {
   }, [albumOptionsOpen]);
 
   useEffect(() => {
-    if (!recommendedSortMenuOpen) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && recommendedToolbarRef.current?.contains(event.target)) {
-        return;
-      }
-      setRecommendedSortMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setRecommendedSortMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [recommendedSortMenuOpen]);
-
-  useEffect(() => {
     const element = sentinelRef.current;
     if (!element || !showContent || isEmpty || !showLoadMore) return;
     const observer = new IntersectionObserver(onSentinel, {
@@ -1315,9 +1102,8 @@ function SearchResults() {
 
   const localSearchConfigured = unifiedResults?.localSearchConfigured !== false;
 
-  const emptyMessage = ["recommended", "tag"].includes(normalizedType)
-    ? "Nothing to show here yet."
-    : isUnifiedSearch && !localSearchConfigured
+  const emptyMessage =
+    isUnifiedSearch && !localSearchConfigured
       ? "Set up the metadata server in Settings → Metadata to search music."
       : isUnifiedSearch
         ? `No results for "${trimmedQuery}".`
@@ -1329,25 +1115,16 @@ function SearchResults() {
 
   const emptyTitle = "No results found";
 
-  const discoveryCount = recommendedSearchTerm.trim()
-    ? discoveryArtists.length
-    : searchTotalCount || results.length;
   const pageSubtitle =
-    normalizedType === "recommended"
-      ? `${discoveryCount} recommendations`
-      : isUnifiedSearch && trimmedQuery
-        ? "Artists, releases, and songs"
-        : isTagSearch && trimmedQuery
-          ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
-          : isAlbumSearch && trimmedQuery
-            ? null
-            : trimmedQuery
-              ? `${displayedResults.length} results`
-              : null;
-  const selectedRecommendedSort =
-    recommendedSortOptions.find((option) => option.value === recommendedSortKey) ||
-    recommendedSortOptions[0];
-  const RecommendedSortDirectionIcon = recommendedSortDirection === "asc" ? ArrowUp : ArrowDown;
+    isUnifiedSearch && trimmedQuery
+      ? "Artists, releases, and songs"
+      : isTagSearch && trimmedQuery
+        ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
+        : isAlbumSearch && trimmedQuery
+          ? null
+          : trimmedQuery
+            ? `${displayedResults.length} results`
+            : null;
 
   return (
     <div className="search-page">
@@ -1359,104 +1136,40 @@ function SearchResults() {
         {pageSubtitle && (
           <div className="search-page__subtitle-row">
             <p className="search-page__subtitle">{pageSubtitle}</p>
-            {recommendedTag && (
-              <Link
-                to={`/search?q=${encodeURIComponent(`#${recommendedTag}`)}&type=tag`}
-                className="search-page__subtitle-link"
-              >
-                Search #{recommendedTag}
-              </Link>
-            )}
           </div>
         )}
 
-        {["recommended", "tag"].includes(normalizedType) && (
-          <div ref={recommendedToolbarRef} className="library-page__toolbar global-search">
+        {isTagSearch && (
+          <div className="library-page__toolbar global-search">
             <div className="global-search__box">
-              {!isTagSearch && (
-                <>
-                  <div className="global-search__scope-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setRecommendedSortMenuOpen((open) => !open)}
-                      className={`global-search__scope-button library-page__sort-button${recommendedSortMenuOpen ? " is-open" : ""}`}
-                      aria-haspopup="listbox"
-                      aria-expanded={recommendedSortMenuOpen}
-                      aria-controls="recommended-sort-menu"
-                      aria-label="Sort results"
-                    >
-                      <span className="library-page__sort-label">
-                        {selectedRecommendedSort.label}
-                      </span>
-                      <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
-                      <ChevronDown
-                        className={`artist-icon-sm${recommendedSortMenuOpen ? " artist-chevron--open" : ""}`}
-                      />
-                    </button>
-
-                    {recommendedSortMenuOpen && (
-                      <div
-                        id="recommended-sort-menu"
-                        className="artist-options-menu library-page__sort-menu"
-                        role="listbox"
-                        aria-label="Result sort options"
-                      >
-                        {recommendedSortOptions.map((option) => {
-                          const active = recommendedSortKey === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => handleRecommendedSortOptionClick(option)}
-                              className={`artist-menu-item${active ? " is-active" : ""}`}
-                              role="option"
-                              aria-selected={active}
-                            >
-                              <span>{option.label}</span>
-                              <span>
-                                {active && (
-                                  <RecommendedSortDirectionIcon className="artist-icon-xs" />
-                                )}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="global-search__divider" />
-                </>
-              )}
-
               <div className="global-search__input-wrap">
                 <Search className="global-search__icon" />
                 <input
                   type="text"
-                  value={recommendedSearchTerm}
-                  onChange={(event) => setRecommendedSearchTerm(event.target.value)}
+                  value={tagFilterTerm}
+                  onChange={(event) => setTagFilterTerm(event.target.value)}
                   placeholder=""
                   className="global-search__input"
                   autoComplete="off"
                   aria-label="Search results"
                 />
-                {!recommendedSearchTerm && (
+                {!tagFilterTerm && (
                   <div className="global-search__placeholder">Search results...</div>
                 )}
               </div>
             </div>
 
             <div className="library-page__view-controls">
-              {recommendedViewMode === "grid" && (
-                <Tooltip content={`${recommendedGridColumns} columns`}>
+              {tagViewMode === "grid" && (
+                <Tooltip content={`${tagGridColumns} columns`}>
                   <input
                     type="range"
                     min="2"
                     max="10"
-                    value={recommendedGridColumns}
+                    value={tagGridColumns}
                     onChange={(event) => {
                       const value = parseInt(event.target.value, 10);
-                      setRecommendedGridColumns(value);
+                      setTagGridColumns(value);
                       localStorage.setItem("libraryGridColumns", String(value));
                     }}
                     className="library-page__grid-slider"
@@ -1467,17 +1180,15 @@ function SearchResults() {
               <TooltipButton
                 type="button"
                 onClick={() => {
-                  const next = recommendedViewMode === "grid" ? "list" : "grid";
-                  setRecommendedViewMode(next);
+                  const next = tagViewMode === "grid" ? "list" : "grid";
+                  setTagViewMode(next);
                   localStorage.setItem("libraryViewMode", next);
                 }}
                 className="btn btn-icon-square library-page__view-toggle"
-                aria-label={
-                  recommendedViewMode === "grid" ? "Switch to list view" : "Switch to grid view"
-                }
-                title={recommendedViewMode === "grid" ? "List view" : "Grid view"}
+                aria-label={tagViewMode === "grid" ? "Switch to list view" : "Switch to grid view"}
+                title={tagViewMode === "grid" ? "List view" : "Grid view"}
               >
-                {recommendedViewMode === "grid" ? (
+                {tagViewMode === "grid" ? (
                   <List className="artist-icon-sm" />
                 ) : (
                   <LayoutGrid className="artist-icon-sm" />
@@ -1618,16 +1329,11 @@ function SearchResults() {
                 ? ({ all: "all", artists: "round-artists" } as const)[activeFilter] || "albums"
                 : isAlbumSearch
                   ? "albums"
-                  : ["recommended", "tag"].includes(normalizedType) &&
-                      recommendedViewMode === "list"
+                  : isTagSearch && tagViewMode === "list"
                     ? "artist-list"
                     : "artists"
             }
-            gridColumns={
-              ["recommended", "tag"].includes(normalizedType) && recommendedViewMode === "grid"
-                ? recommendedGridColumns
-                : undefined
-            }
+            gridColumns={isTagSearch && tagViewMode === "grid" ? tagGridColumns : undefined}
           />
         </SkeletonStatus>
       )}
@@ -1684,7 +1390,6 @@ function SearchResults() {
                   {activeFilter === "artists" && unifiedView.artistsWithId.length > 0 && (
                     <SearchArtistResults
                       artists={unifiedView.artistsWithId}
-                      type="artist"
                       artistImages={artistImages}
                       libraryLookup={libraryLookup}
                       onArtistFeedback={handleArtistFeedback}
@@ -1718,20 +1423,12 @@ function SearchResults() {
               ) : (
                 <SearchArtistResults
                   artists={displayedResults}
-                  type={normalizedType}
                   artistImages={artistImages}
                   libraryLookup={libraryLookup}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
-                  variant={
-                    ["recommended", "tag"].includes(normalizedType) ? recommendedViewMode : "square"
-                  }
-                  gridColumns={
-                    ["recommended", "tag"].includes(normalizedType) &&
-                    recommendedViewMode === "grid"
-                      ? recommendedGridColumns
-                      : undefined
-                  }
+                  variant={isTagSearch ? tagViewMode : "square"}
+                  gridColumns={isTagSearch && tagViewMode === "grid" ? tagGridColumns : undefined}
                 />
               )}
 
@@ -1753,6 +1450,11 @@ function SearchResults() {
 
 export default function SearchResultsPage() {
   const [searchParams] = useSearchParams();
-  if (searchParams.get("type") === "trending") return <Navigate to="/discover/trending" replace />;
+  const type = searchParams.get("type");
+  if (type === "trending") return <Navigate to="/discover/trending" replace />;
+  if (type === "recommended") {
+    const tag = searchParams.get("tag");
+    return <Navigate to={tag ? recommendedListPath({ genre: tag }) : RECOMMENDED_PATH} replace />;
+  }
   return <SearchResults />;
 }

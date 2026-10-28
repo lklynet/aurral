@@ -4,7 +4,6 @@ import { ArtistContextMenu } from "./ArtistContextMenu";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
-import RecommendationMeta from "./RecommendationMeta";
 import RouteLink from "./RouteLink";
 import type { SearchImageMap } from "./SearchMixedResultList";
 import type { ArtistFeedbackAction } from "../utils/artistTaste";
@@ -27,8 +26,6 @@ type SearchArtist = {
   area?: string | null;
   country?: string | null;
   disambiguation?: string | null;
-  sourceArtist?: string | null;
-  matchPercent?: number | null;
   begin?: string | null;
   end?: string | null;
   ended?: boolean | null;
@@ -38,7 +35,6 @@ type SearchArtist = {
 
 interface SearchArtistResultsProps {
   artists: SearchArtist[];
-  type: string;
   artistImages: SearchImageMap;
   libraryLookup: Record<string, boolean | undefined>;
   onArtistFeedback?: (
@@ -53,7 +49,6 @@ interface SearchArtistResultsProps {
 
 function SearchArtistResults({
   artists,
-  type,
   artistImages,
   libraryLookup,
   onArtistFeedback,
@@ -119,25 +114,11 @@ function SearchArtistResults({
         const artistId = getArtistRecordId(artist);
         const artistKey = String(artistId);
         const artistTypeLabel = normalizeArtistType(artist);
-        const displayArtistTypeLabel =
-          type === "recommended" && artistTypeLabel?.toLowerCase() === "artist"
-            ? null
-            : artistTypeLabel;
         const lifeSpan = formatLifeSpan(artist);
         const area = normalizeArea(artist);
         const country = artist?.country ? String(artist.country).trim() : null;
         const disambiguation = artist?.disambiguation ? String(artist.disambiguation).trim() : null;
-        const disambiguationLine = [
-          displayArtistTypeLabel,
-          area || country,
-          lifeSpan,
-          disambiguation,
-        ]
-          .filter(Boolean)
-          .join(" • ");
-        const artistMetaText = [
-          type === "recommended" && artist.sourceArtist && `Similar to ${artist.sourceArtist}`,
-        ]
+        const disambiguationLine = [artistTypeLabel, area || country, lifeSpan, disambiguation]
           .filter(Boolean)
           .join(" • ");
 
@@ -195,11 +176,6 @@ function SearchArtistResults({
                 <Tooltip content={artist.name}>
                   <h2 className="artist-release-card__title artist-truncate">{artist.name}</h2>
                 </Tooltip>
-                <RecommendationMeta
-                  artist={artist}
-                  text={artistMetaText}
-                  className="artist-release-card__meta artist-truncate"
-                />
                 {disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
                     <p className="artist-release-card__meta artist-truncate">
@@ -235,11 +211,6 @@ function SearchArtistResults({
                   </Tooltip>
                   {libraryLookup[artistKey] && <SearchLibraryCheck />}
                 </div>
-                <RecommendationMeta
-                  artist={artist}
-                  text={artistMetaText}
-                  className="artist-card-meta--discover"
-                />
                 {variant !== "round" && disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
                     <p className="artist-card-meta--discover">{disambiguationLine}</p>

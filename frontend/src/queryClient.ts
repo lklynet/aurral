@@ -235,12 +235,6 @@ export const queryKeys = {
     query,
     options,
   ],
-  searchDiscovery: (offset: number, limit?: number): QueryKey => [
-    "search",
-    "discovery",
-    offset || 0,
-    limit || null,
-  ],
   searchUnified: (query: string, mode: string, limit?: number): QueryKey => [
     "search",
     "unified",

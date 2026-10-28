@@ -12,7 +12,6 @@ import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { getAlbumAddAction } from "../utils/albumAddAction";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import Tooltip from "../components/Tooltip";
-import RecommendationMeta from "../components/RecommendationMeta";
 import RouteLink from "../components/RouteLink";
 import type { DiscoverArtist } from "./discoverUtils";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
@@ -55,35 +54,6 @@ const formatReleaseStatus = (releaseDate: string | null | undefined) => {
   return { text: `Released ${formatRelativeTime(date, { unit: "day" })}`, detail: formattedDate };
 };
 
-const getRecommendationReason = (artist: DiscoverCardArtist | null | undefined) => {
-  if (artist?.metaText !== undefined) return artist.metaText;
-  const seedNames = Array.isArray(artist?.supportingSeeds)
-    ? artist.supportingSeeds
-        .map((seed) => seed?.artistName)
-        .filter(Boolean)
-        .slice(0, 2)
-    : [];
-  const matchedTags = Array.isArray(artist?.matchedTags)
-    ? artist.matchedTags.filter(Boolean).slice(0, 2)
-    : [];
-  if (matchedTags.length >= 2) {
-    return `${matchedTags[0]} + ${matchedTags[1]}`;
-  }
-  if (matchedTags.length === 1) {
-    return matchedTags[0];
-  }
-  if (seedNames.length >= 2) {
-    return `Because you listen to ${seedNames[0]} and ${seedNames[1]}`;
-  }
-  if (seedNames.length === 1) {
-    return `Because you listen to ${seedNames[0]}`;
-  }
-  if (artist?.sourceArtist) {
-    return `Similar to ${artist.sourceArtist}`;
-  }
-  return artist?.discoveryTier === "deeper" ? "A deeper pick" : "Picked for your profile";
-};
-
 function CardText({
   link,
   label,
@@ -123,7 +93,7 @@ export const ArtistCard = memo(
   }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
-    const artistMetaText = getRecommendationReason(artist);
+    const artistMetaText = artist.metaText;
     const link = artist.libraryPath
       ? { to: artist.libraryPath }
       : hasValidMbid
@@ -166,11 +136,11 @@ export const ArtistCard = memo(
               </Tooltip>
               {isInLibrary && <SearchLibraryCheck size="discover" />}
             </div>
-            <RecommendationMeta
-              artist={artist}
-              text={artistMetaText}
-              className="artist-card-meta--discover"
-            />
+            {artistMetaText ? (
+              <Tooltip content={artistMetaText}>
+                <p className="artist-card-meta--discover">{artistMetaText}</p>
+              </Tooltip>
+            ) : null}
             {artist.subtitle && (
               <Tooltip content={artist.subtitleDetail || artist.subtitle}>
                 <p className="artist-card-meta--discover">{artist.subtitle}</p>
@@ -201,8 +171,7 @@ export const ArtistCard = memo(
       prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       prevProps.artist.subtitleDetail === nextProps.artist.subtitleDetail &&
-      getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
-      prevProps.artist.matchPercent === nextProps.artist.matchPercent &&
+      prevProps.artist.metaText === nextProps.artist.metaText &&
       prevProps.status === nextProps.status &&
       prevProps.isInLibrary === nextProps.isInLibrary &&
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&

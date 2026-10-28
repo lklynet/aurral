@@ -29,6 +29,7 @@ export const routeModules = {
   discoverPlaylists: trackLoad(() => import("../pages/DiscoverPlaylistsPage")),
   editorialPlaylist: trackLoad(() => import("../pages/EditorialPlaylistDetailPage")),
   news: trackLoad(() => import("../pages/NewsPage")),
+  recommended: trackLoad(() => import("../pages/RecommendedPage")),
   trending: trackLoad(() => import("../pages/TrendingPage")),
   trendingGenre: trackLoad(() => import("../pages/TrendingGenrePage")),
   resolveLink: trackLoad(() => import("../pages/ResolveLinkPage")),

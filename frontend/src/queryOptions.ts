@@ -3,6 +3,7 @@ import { parseResponse } from "hono/client";
 import { queryKeys } from "./queryClient.ts";
 import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
+import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import {
   getPlaylistTrackStreamUrl,
@@ -11,6 +12,16 @@ import {
 
 type MaybeId = string | number | null | undefined;
 type MaybeText = string | null | undefined;
+
+export const discoveryQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.discovery(userId),
+    queryFn: async ({ signal }) =>
+      normalizeDiscoveryData(
+        await parseResponse(discoveryClient.$get({ query: {} }, { init: { signal } })),
+      ),
+    staleTime: 30_000,
+  });
 
 export const editorialShelfQueryOptions = (userId: MaybeId) =>
   queryOptions({

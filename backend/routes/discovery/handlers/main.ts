@@ -19,6 +19,8 @@ const toDiscoveryArtist = (artist: DiscoveryRecommendation) => ({
   sourceType: artist.sourceType || null,
   supportingSeeds: (artist.supportingSeeds || []).map((seed) => ({ artistName: seed?.artistName })),
   discoveryTier: artist.discoveryTier || null,
+  discoveryDepth: artist.discoveryDepth || 1,
+  firstDiscoveredAt: artist.firstDiscoveredAt || null,
   score: artist.score ?? null,
   scoreTotal: artist.scoreTotal ?? null,
   matchPercent: artist.matchPercent ?? null,
