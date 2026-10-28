@@ -1168,7 +1168,7 @@ function Story({
             );
           })}
       </div>
-      <div className="wrapped-actions">{last && !intro && actions(image)}</div>
+      <div className="wrapped-actions">{last && !intro && leaving === null && actions(image)}</div>
     </>
   );
 }

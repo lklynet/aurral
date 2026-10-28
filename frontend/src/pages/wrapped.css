@@ -236,6 +236,9 @@
   from {
     clip-path: inset(100% 0 0 0);
   }
+  to {
+    clip-path: inset(0);
+  }
 }
 @keyframes wrapped-cut {
   from,
@@ -300,6 +303,9 @@
 @keyframes wrapped-reveal {
   from {
     clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
   }
 }
 @keyframes wrapped-settle {
