@@ -120,6 +120,7 @@ type SubsonicPayload = {
 
 let authToken: string;
 let heldJobId: string | null;
+let disabledFlowId: string;
 let fixtureRoot: string;
 let fixturePath: string;
 let staticPlaylist: Playlist;
@@ -257,6 +258,7 @@ beforeAll(async () => {
   await scanLidarrRoot();
 
   const flow = flowPlaylistConfig.createFlow({ name: "Canonical Flow", size: 1 });
+  flowPlaylistConfig.setEnabled(flow.id, true);
   const jobId = downloadTracker.addJob(
     {
       artistName: "Flow Artist",
@@ -359,6 +361,7 @@ beforeAll(async () => {
     syncedFavoriteTrack.albumName,
   );
   const favoriteFlow = flowPlaylistConfig.createFlow({ name: "Favorite Toggle Flow", size: 1 });
+  flowPlaylistConfig.setEnabled(favoriteFlow.id, true);
   const favoritePath = path.join(
     fixtureRoot,
     "Favorite Artist",
@@ -391,6 +394,8 @@ beforeAll(async () => {
     "shared-artwork",
   );
   const heldFlow = flowPlaylistConfig.createFlow({ name: "Held FLAC", size: 1 });
+  flowPlaylistConfig.setEnabled(heldFlow.id, true);
+  disabledFlowId = flowPlaylistConfig.createFlow({ name: "Disabled Flow", size: 1 }).id;
   heldJobId = downloadTracker.addJob(
     { artistName: "Held Artist", trackName: "Held Song" },
     heldFlow.id,
@@ -1347,6 +1352,18 @@ test("does not expose another user's static playlist", async () => {
     }),
   );
   assert.deepEqual(result.error, { code: 70, message: "Requested data was not found" });
+});
+
+test("hides disabled flows from Subsonic clients", async () => {
+  const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
+  assert.equal(
+    playlists.some((entry) => entry.name === "Disabled Flow"),
+    false,
+  );
+  assert.deepEqual(
+    responseJson(await request("getPlaylist", { id: `flow:${disabledFlowId}` })).error,
+    { code: 70, message: "Requested data was not found" },
+  );
 });
 
 test("creates durable Subsonic playlists around one promoted library job", async () => {

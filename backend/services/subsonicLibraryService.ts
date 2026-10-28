@@ -268,7 +268,9 @@ const entityGenres = (entity: GenreEntity) => {
 };
 
 const visibleFlows = (user: SubsonicUser) =>
-  user && hasPermission(user, "accessFlow") ? flowPlaylistConfig.getFlowsForUser(user) : [];
+  user && hasPermission(user, "accessFlow")
+    ? flowPlaylistConfig.getFlowsForUser(user).filter((flow) => flow.enabled)
+    : [];
 
 const findAlbumForTrack = (library: IndexedLibrary, track: LibraryTrack | null | undefined) => {
   const albumId = track?.albums?.[0]?.albumId;
@@ -1735,7 +1737,7 @@ export function getSubsonicPlaylist(value: string, user: SubsonicUser) {
   const parsed = parseId(value);
   const kind = parsed?.kind === "shared" ? "shared" : "flow";
   const playlist = playlistFromId(user, value);
-  if (!playlist) return null;
+  if (!playlist || (kind === "flow" && !flowPlaylistConfig.isEnabled(playlist.id))) return null;
   const jobs = visiblePlaylistJobs(playlist);
   const starredAt = starredAtFor(user);
   const owned = resolveLibraryTracks(jobs.map((job) => trackFromJob(job)));
