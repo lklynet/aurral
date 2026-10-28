@@ -609,6 +609,7 @@ export function startThemeAccountSync({
 export function previewTheme(theme: Theme | null, mode?: ThemeMode) {
   preview = theme ? { theme, mode } : null;
   render();
+  for (const listener of listeners) listener();
 }
 
 export function setArtworkColor(color: unknown) {
@@ -624,6 +625,10 @@ function systemMode(): ThemeMode {
 
 export function resolveThemeMode(appearance = getThemeDocument().appearance): ThemeMode {
   return appearance === "light" || appearance === "dark" ? appearance : systemMode();
+}
+
+export function getPaintedThemeMode(): ThemeMode {
+  return preview?.mode || resolveThemeMode();
 }
 
 function mixPaletteColor(from: string, to: string, amount: number) {
@@ -713,7 +718,7 @@ function render({ animate = false }: { animate?: boolean } = {}) {
   if (!root?.style) return;
   const document = getThemeDocument();
   const theme = preview?.theme || findTheme(document.themeId, document) || AURRAL_THEME;
-  const mode = preview?.mode || resolveThemeMode(document.appearance);
+  const mode = getPaintedThemeMode();
   const artwork = !preview && document.matchArtwork ? artworkColor : null;
   const palette = artwork
     ? createThemePalette(tintSeedWithArtwork(getThemeSeed(theme, mode), artwork))

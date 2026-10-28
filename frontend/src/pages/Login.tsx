@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useSiteLogo } from "../hooks/useSiteLogo";
 import { getAppBasePath } from "../utils/basePath.ts";
 import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorText } from "./onboardingUtils";
@@ -18,6 +19,7 @@ const buildApiUrl = (path: string) => {
 
 const Login = () => {
   useDocumentTitle("Sign in");
+  const logoSrc = useSiteLogo();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -127,7 +129,7 @@ const Login = () => {
     <main className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <img src="/arralogo.svg" alt="Aurral" className="login-logo" />
+          <img src={logoSrc} alt="Aurral" className="login-logo" />
           <h1 className="login-title">Sign in</h1>
         </div>
 

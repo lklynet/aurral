@@ -6,6 +6,7 @@ import { invalidateBootstrapCache } from "../utils/appHealth.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useSiteLogo } from "../hooks/useSiteLogo";
 import { OnboardingStep, OnboardingStepHeader, OnboardingHint } from "./onboardingUtils.tsx";
 import PillToggle from "../components/PillToggle";
 import DownloadFolderField from "../components/DownloadFolderField";
@@ -21,6 +22,7 @@ import {
 import { ChevronRight, ChevronLeft } from "../components/icons";
 function Onboarding() {
   useDocumentTitle("Setup");
+  const logoSrc = useSiteLogo();
   const [step, setStep] = useState(0);
   const [authUser, setAuthUser] = useState("admin");
   const [authPassword, setAuthPassword] = useState("");
@@ -220,7 +222,7 @@ function Onboarding() {
           className="onboarding-card"
         >
           <img
-            src="/arralogo.svg"
+            src={logoSrc}
             alt="Aurral"
             aria-hidden={step > 0}
             className={`onboarding-brand-mark${animateStepHeight ? " onboarding-brand-mark--animate" : ""}`}

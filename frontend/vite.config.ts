@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
-        includeAssets: ["arralogo.svg", "icons/*.png", "spotify-oauth-callback.js"],
+        includeAssets: ["arralogo*.svg", "icons/*.png", "spotify-oauth-callback.js"],
         workbox: {
           navigateFallback: null,
           directoryIndex: null,

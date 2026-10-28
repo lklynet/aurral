@@ -5,6 +5,7 @@ import { setStoredAuth } from "../utils/api/core.ts";
 import { parseResponse } from "hono/client";
 import { authClient } from "../utils/api/clients/auth.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useSiteLogo } from "../hooks/useSiteLogo";
 import { DotLoader } from "../components/DotLoader";
 import { consumeShareImport } from "../utils/shareLink.ts";
 
@@ -31,6 +32,7 @@ const consumeSsoParams = () => {
 
 const SsoComplete = () => {
   useDocumentTitle("Signing in");
+  const logoSrc = useSiteLogo();
   const navigate = useNavigate();
   const { refreshAuth } = useAuth();
   const [error, setError] = useState("");
@@ -88,7 +90,7 @@ const SsoComplete = () => {
       <main className="login-page sso-complete-page">
         <div className="login-card">
           <div className="login-header">
-            <img src="/arralogo.svg" alt="Aurral" className="login-logo" />
+            <img src={logoSrc} alt="Aurral" className="login-logo" />
             <h1 className="login-title">Sign-in failed</h1>
             <p className="login-subtitle login-subtitle--error" role="alert">
               {error}
@@ -106,7 +108,7 @@ const SsoComplete = () => {
     <main className="login-page sso-complete-page">
       <div className="login-card sso-complete-card">
         <div className="login-header">
-          <img src="/arralogo.svg" alt="Aurral" className="login-logo" />
+          <img src={logoSrc} alt="Aurral" className="login-logo" />
           <h1 className="login-title">Signing you in</h1>
           <p className="login-subtitle" role="status" aria-live="polite">
             Signing in…

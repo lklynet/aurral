@@ -431,9 +431,12 @@ test("album art tints the theme only while immersive mode is on", async () => {
 
 test("previewing a theme changes the page without changing the saved choice", async () => {
   const { dataset, stored } = createBrowser();
-  const { findTheme, initializeTheme, previewTheme } = await loadTheme();
+  const { findTheme, getPaintedThemeMode, initializeTheme, previewTheme, subscribeToTheme } =
+    await loadTheme();
   initializeTheme();
   const before = stored.get("aurralTheme:v2");
+  const seenModes: string[] = [];
+  subscribeToTheme(() => seenModes.push(getPaintedThemeMode()));
 
   previewTheme(findTheme("solarized"), "dark");
   assert.equal(dataset.themeId, "solarized");
@@ -442,6 +445,7 @@ test("previewing a theme changes the page without changing the saved choice", as
 
   previewTheme(null);
   assert.equal(dataset.themeId, "aurral");
+  assert.deepEqual(seenModes, ["dark", "light"]);
 });
 
 test("removing a theme can be undone in place", async () => {

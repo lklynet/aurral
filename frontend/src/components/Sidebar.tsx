@@ -28,6 +28,7 @@ import {
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { useStorageHealth } from "../hooks/useStorageHealth";
+import { useSiteLogo } from "../hooks/useSiteLogo";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -55,6 +56,7 @@ type SidebarNavItem = {
 function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
+  const logoSrc = useSiteLogo();
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
     getSidebarStageBackdropEnabled(user?.id),
   );
@@ -381,7 +383,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
       {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
       <div className="sidebar-logo-row">
         <RouteLink to="/" className="sidebar-logo-link">
-          <img src="/arralogo.svg" alt="Aurral logo" className="sidebar-logo" />
+          <img src={logoSrc} alt="Aurral logo" className="sidebar-logo" />
           {!isIcons && <span className="sidebar-title">Aurral</span>}
         </RouteLink>
       </div>
