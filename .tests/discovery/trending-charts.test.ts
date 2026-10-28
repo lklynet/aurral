@@ -46,6 +46,7 @@ type Source = {
   playlists: { id: number; title: string }[];
   chartTracks: number[];
   appleStorefronts: Record<string, ReturnType<typeof appleAlbum>[]>;
+  appleFailures: ("timeout" | number)[];
   genreTracks: Record<string, number[]>;
   artistsFail?: boolean;
 };
@@ -58,9 +59,13 @@ const json = (body: unknown, status: number = 200) =>
 
 const respond = (url: URL) => {
   if (url.hostname === "rss.marketingtools.apple.com") {
-    const storefront = url.pathname.split("/")[3];
-    const albums = source.appleStorefronts[storefront];
-    return albums ? json({ feed: { results: albums } }) : json({}, 404);
+    const failure = source.appleFailures.shift();
+    if (failure === "timeout") throw new DOMException("The operation timed out", "TimeoutError");
+    if (failure) return new Response("<html>Bad Gateway</html>", { status: failure });
+    const albums = source.appleStorefronts[url.pathname.split("/")[3]];
+    return albums
+      ? json({ feed: { results: albums } })
+      : new Response("<html>Internal Server Error</html>", { status: 500 });
   }
   if (url.hostname !== "api.deezer.com") return json({ error: "unexpected" }, 404);
   if (url.pathname === "/infos") return json({ country_iso: source.region });
@@ -92,6 +97,7 @@ beforeEach(() => {
     ],
     chartTracks: [1, 2, 3],
     appleStorefronts: { gb: [appleAlbum(1, "Pop"), appleAlbum(2, "Pop"), appleAlbum(3, "Rock")] },
+    appleFailures: [],
     genreTracks: { 132: [501, 502] },
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -174,6 +180,31 @@ test("a region without its own charts falls back to worldwide songs and US album
   );
 });
 
+test("Apple Music timeouts and gateway errors are retried before giving up", async () => {
+  const appleStorefronts = () =>
+    requests
+      .filter((url) => url.hostname === "rss.marketingtools.apple.com")
+      .map((url) => url.pathname.split("/")[3]);
+  source.appleFailures = ["timeout", 502];
+
+  await refreshAt(DAY_ONE);
+
+  assert.deepEqual(
+    getTrendingCharts(USER_ID).albums?.map((album) => album.name),
+    ["Record 1", "Record 2", "Record 3"],
+  );
+  assert.deepEqual(appleStorefronts(), ["gb", "gb", "gb"]);
+
+  resetDatabase(db);
+  requests = [];
+  source.appleFailures = [504, 504, 504, 504, 504, 504];
+
+  await refreshAt(DAY_ONE);
+
+  assert.equal(getTrendingCharts(USER_ID).albums, null);
+  assert.deepEqual(appleStorefronts(), ["gb", "gb", "gb", "us", "us", "us"]);
+});
+
 test("stored days drive song movement and the No. 1 spotlight", async () => {
   await refreshAt(DAY_ONE);
   source.chartTracks = [1, 3, 4];
@@ -247,4 +278,17 @@ test("a scheduled refresh skips charts that are still fresh", async () => {
   assert.deepEqual(requests, []);
 
   assert.equal(await refreshTrendingCharts({ now: DAY_ONE + 6 * 60 * 60 * 1000 }), true);
+});
+
+test("a scheduled refresh retries right away when a chart is missing", async () => {
+  source.appleStorefronts = {};
+  assert.equal(await refreshTrendingCharts({ now: DAY_ONE }), true);
+  assert.equal(getTrendingCharts(USER_ID).albums, null);
+
+  source.appleStorefronts = { gb: [appleAlbum(1, "Pop")] };
+  assert.equal(await refreshTrendingCharts({ now: DAY_ONE + 60 * 1000 }), true);
+  assert.deepEqual(
+    getTrendingCharts(USER_ID).albums?.map((album) => album.name),
+    ["Record 1"],
+  );
 });

@@ -29,6 +29,9 @@ const HISTORY_DAYS = 30;
 const SPOTLIGHT_DAYS = 14;
 const FRESH_FOR_MS = 5 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
+const APPLE_ATTEMPTS = 3;
+const APPLE_TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const FRESHNESS_CHARTS = ["songs", "albums", "artists"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface DeezerTrackPayload {
@@ -172,10 +175,25 @@ async function fetchSongs(region: string) {
   return { playlistId: playlist.id, playlistName: playlist.name, items };
 }
 
+async function requestAppleFeed(url: string) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (attempt === APPLE_ATTEMPTS || !APPLE_TRANSIENT_STATUSES.has(response.status)) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === APPLE_ATTEMPTS) throw error;
+    }
+  }
+}
+
 async function fetchAppleAlbums(storefront: string) {
-  const response = await fetch(
+  const response = await requestAppleFeed(
     `${APPLE_FEED_URL}/${storefront}/music/most-played/${ALBUM_LIMIT}/albums.json`,
-    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
   );
   if (!response.ok) throw new Error(`Apple Music returned ${response.status}`);
   const body: { feed?: { results?: AppleAlbumPayload[] } } | null = await response
@@ -325,10 +343,11 @@ function summarizeGenres(albums: TrendingAlbum[]) {
   };
 }
 
-const isFresh = (now: number) => {
-  const row = selectChartStmt.get("songs");
-  return Boolean(row && now - row.updated_at < FRESH_FOR_MS);
-};
+const isFresh = (now: number) =>
+  FRESHNESS_CHARTS.every((chart) => {
+    const row = selectChartStmt.get(chart);
+    return row !== undefined && now - row.updated_at < FRESH_FOR_MS;
+  });
 
 export async function refreshTrendingCharts({
   now = Date.now(),
