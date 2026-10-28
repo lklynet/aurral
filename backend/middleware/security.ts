@@ -44,7 +44,7 @@ const headers = Object.entries({
     "base-uri 'self'",
     "font-src 'self' data:",
     "form-action 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: blob: https:",
     "object-src 'none'",
     "script-src 'self'",
     "script-src-attr 'none'",

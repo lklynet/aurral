@@ -97,11 +97,12 @@ function albumTrack(summary: WrappedRecap) {
 }
 
 function storySlides(summary: WrappedRecap) {
-  const previews = summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []);
-  const preview = (rank: number) => (previews.length ? previews[rank % previews.length] : null);
   const include = (condition: unknown, slide: Slide) => (condition ? [slide] : []);
   return [
-    { kind: "opening", preview: preview(0) },
+    {
+      kind: "opening",
+      preview: summary.topSongs.slice(0, 5).find((song) => song.preview)?.preview ?? null,
+    },
     { kind: "minutes", preview: null },
     { kind: "variety", preview: null },
     ...include(summary.topGenres.length, { kind: "genre", preview: null }),
@@ -114,7 +115,7 @@ function storySlides(summary: WrappedRecap) {
       kind: "song",
       preview: summary.topSongs[0]?.preview ?? null,
     }),
-    ...include(summary.topSongs.length >= 3, { kind: "songs", preview: preview(1) }),
+    ...include(summary.topSongs.length >= 3, { kind: "songs", preview: null }),
     ...include(summary.topAlbums[0], {
       kind: "album",
       preview: albumTrack(summary)?.preview ?? null,
@@ -126,7 +127,7 @@ function storySlides(summary: WrappedRecap) {
     ...include(summary.busiestDay, { kind: "day", preview: null }),
     ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak", preview: null }),
     { kind: "hour", preview: null },
-    { kind: "share", preview: preview(0) },
+    { kind: "share", preview: null },
   ] satisfies Slide[];
 }
 
@@ -264,7 +265,7 @@ function usePreviewAudio(
 ) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const graph = useRef<ReturnType<typeof vintageGraph>>(null);
-  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState<string | null>(null);
   const queue = useAudioQueue();
   const queueRef = useRef(queue);
   queueRef.current = queue;
@@ -279,11 +280,11 @@ function usePreviewAudio(
     element.crossOrigin = "anonymous";
     const sound = vintageGraph(element, vintageRef.current);
     element.addEventListener("playing", () => {
-      setPlaying(true);
+      setCurrent(element.src);
       sound?.context.resume().catch(() => {});
       if (queueRef.current.isPlaying) queueRef.current.togglePlayPause();
     });
-    element.addEventListener("pause", () => setPlaying(false));
+    element.addEventListener("pause", () => setCurrent(null));
     element.addEventListener("ended", () => {
       const urls = previewsRef.current.map(previewUrl);
       element.src = urls[(urls.indexOf(element.src) + 1) % urls.length] ?? element.src;
@@ -331,7 +332,7 @@ function usePreviewAudio(
   }, [src]);
 
   return {
-    playing,
+    current,
     resume: () => {
       const element = audio.current;
       graph.current?.context.resume().catch(() => {});
@@ -957,14 +958,13 @@ function Story({
   const fieldOf = (position: number) => palette[position % palette.length];
   const shareField = fieldOf(slides.length - 1);
   const image = useShareImage(summary, shareField, username);
-  const nowPlaying = slides.slice(0, index + 1).findLast((entry) => entry.preview)?.preview ?? null;
   const previews = useMemo(
     () => [...new Set(summary.topSongs.slice(0, 5).flatMap((song) => song.preview ?? []))],
     [summary],
   );
-  const audio = usePreviewAudio(nowPlaying, muted, vintage, previews);
+  const audio = usePreviewAudio(slide.preview, muted, vintage, previews);
   const hasAudio = slides.some((entry) => entry.preview);
-  const playing = audio.playing && !muted && slide.preview !== null && nowPlaying === slide.preview;
+  const playing = !muted && slide.preview !== null && audio.current === previewUrl(slide.preview);
   const last = index === slides.length - 1;
   const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
 

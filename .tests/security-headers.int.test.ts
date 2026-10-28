@@ -28,7 +28,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("CSP permits direct HTTPS artwork and preview audio", async () => {
+test("CSP permits direct HTTPS artwork, generated images, and preview audio", async () => {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/health/live`);
   const policy = response.headers.get("content-security-policy") || "";
   const sources = (name: string) =>
@@ -37,6 +37,7 @@ test("CSP permits direct HTTPS artwork and preview audio", async () => {
       .split(/\s+/);
 
   assert.ok(sources("img-src").includes("https:"));
+  assert.ok(sources("img-src").includes("blob:"));
   assert.ok(sources("media-src").includes("https:"));
 });
 
