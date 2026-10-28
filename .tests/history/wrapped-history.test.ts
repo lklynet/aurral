@@ -137,6 +137,17 @@ test("a recap built on another release channel is rebuilt with this channel's cu
   assert.equal(body.building, true);
 });
 
+test("a recap saved by an older build is rebuilt instead of shown", async () => {
+  db.prepare(
+    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', '{\"totalPlays\":1}', 0)",
+  ).run(one.id, Date.parse("2026-12-01T00:00:00Z"));
+  const body = await (
+    await signedInAs(one).route("/", wrapped).request("/wrapped?timeZone=UTC")
+  ).json();
+  assert.equal(body.summary, null);
+  assert.equal(body.building, true);
+});
+
 test("a failed rebuild keeps the recap the listener already has", async () => {
   listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
   await reports.processWrappedBuild(one.id, "UTC");

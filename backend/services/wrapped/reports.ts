@@ -36,6 +36,8 @@ const setBannerHidden = db.prepare<[number, number]>(
   "UPDATE wrapped_reports SET banner_hidden = ? WHERE user_id = ?",
 );
 
+const SUMMARY_VERSION = 2;
+
 export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
 
 const activeBuild = (userId: number) =>
@@ -50,14 +52,16 @@ function startBuild(userId: number, timeZone: string) {
 
 export function getWrapped(season: WrappedSeason, userId: number, timeZone: string) {
   const stored = readReport.get(userId);
+  const parsed: (Awaited<ReturnType<typeof buildWrappedSummary>> & { version?: number }) | null =
+    stored?.summary ? JSON.parse(stored.summary) : null;
+  const summary = parsed?.version === SUMMARY_VERSION ? parsed : null;
   const row =
-    stored?.year === season.year && (season.preview || stored.cutoff === season.cutoff)
+    stored?.year === season.year &&
+    (season.preview || stored.cutoff === season.cutoff) &&
+    (summary || stored.error)
       ? stored
       : null;
   if (!row) startBuild(userId, timeZone);
-  const summary: Awaited<ReturnType<typeof buildWrappedSummary>> | null = row?.summary
-    ? JSON.parse(row.summary)
-    : null;
   return {
     year: season.year,
     preview: season.preview,
@@ -90,9 +94,10 @@ export async function processWrappedBuild(userId: number, timeZone: string) {
   let summary: string | null = null;
   let error: string | null = null;
   try {
-    summary = JSON.stringify(
-      await buildWrappedSummary(userId, wrappedPeriod(season.year, timeZone, season.cutoff)),
-    );
+    summary = JSON.stringify({
+      ...(await buildWrappedSummary(userId, wrappedPeriod(season.year, timeZone, season.cutoff))),
+      version: SUMMARY_VERSION,
+    });
   } catch (cause) {
     logger.warn("wrapped", "Recap build failed", { userId, cause: String(cause) });
     error = "Your listening history could not be collected. Check your connections and try again.";
