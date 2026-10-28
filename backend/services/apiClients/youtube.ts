@@ -1,13 +1,57 @@
 import createCache from "./simpleCache.ts";
-import { ytdlpClient } from "../ytdlpClient.ts";
 import { compareRecording, MATCH_POLICY } from "../trackMatching/nativeMatcher.ts";
 import { parseYoutubeTitle, readYoutubeUpload } from "../trackMatching/youtubeEvidence.ts";
 
 export const youtubeVideoCache = createCache(24 * 3600);
 const inflight = new Map<string, ReturnType<typeof findVideo>>();
-const liveStatuses = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
+const YOUTUBE_REQUEST_TIMEOUT_MS = 10_000;
 
-type YoutubeSearchResult = Awaited<ReturnType<typeof ytdlpClient.search>>[number];
+const createSession = async () => {
+  const { Innertube, YTNodes } = await import("youtubei.js");
+  const youtube = await Innertube.create({
+    lang: "en",
+    retrieve_player: false,
+    generate_session_locally: true,
+    fetch: (input, init) =>
+      fetch(input, { ...init, signal: AbortSignal.timeout(YOUTUBE_REQUEST_TIMEOUT_MS) }),
+  });
+  return { youtube, Video: YTNodes.Video };
+};
+
+let session: ReturnType<typeof createSession> | null = null;
+
+const getSession = () => {
+  session ??= createSession().catch((error) => {
+    session = null;
+    throw error;
+  });
+  return session;
+};
+
+export const youtubeVideoSearch = {
+  async search(query: string) {
+    const { youtube, Video } = await getSession();
+    const results = await youtube.search(query, { type: "video" });
+    return results.videos.flatMap((node) =>
+      node.is(Video)
+        ? [
+            {
+              id: node.video_id,
+              title: node.title.toString(),
+              channel: node.author?.name || "",
+              live: Boolean(
+                node.is_live ||
+                node.is_upcoming ||
+                /^streamed\b/iu.test(node.published?.toString() || ""),
+              ),
+            },
+          ]
+        : [],
+    );
+  },
+};
+
+type YoutubeSearchResult = Awaited<ReturnType<typeof youtubeVideoSearch.search>>[number];
 
 function videoPreference(result: YoutubeSearchResult, artistChannel: string | null) {
   const title = result.title;
@@ -22,14 +66,12 @@ function videoPreference(result: YoutubeSearchResult, artistChannel: string | nu
 }
 
 async function findVideo(artist: string, title: string) {
-  const results = await ytdlpClient.search(`${artist} ${title} official music video`, {
-    limit: 10,
-    timeoutMs: 15000,
-  });
+  const results = await youtubeVideoSearch.search(`${artist} ${title} official music video`);
   const request = { title, artists: [artist] };
   const matches = results
+    .slice(0, 10)
     .flatMap((result) => {
-      if (!/^[a-zA-Z0-9_-]{11}$/u.test(result.id) || liveStatuses.has(result.liveStatus)) return [];
+      if (!/^[a-zA-Z0-9_-]{11}$/u.test(result.id) || result.live) return [];
       const parsed = parseYoutubeTitle(result.title, [artist], title);
       const upload = readYoutubeUpload(result.title, result.channel, [artist]);
       const comparison = compareRecording(request, {

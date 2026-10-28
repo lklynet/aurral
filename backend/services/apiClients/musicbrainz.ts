@@ -1,8 +1,5 @@
-import axios from "../../../lib/axiosFetch.ts";
-import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import { MUSICBRAINZ_API, APP_NAME, APP_VERSION } from "../../config/constants.ts";
 import {
   getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
@@ -11,7 +8,7 @@ import {
   resolveLibraryArtistByName as resolveMetadataLibraryArtistByName,
 } from "../providers/brainzmashProvider.ts";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
-import { getMusicBrainzContact } from "./config.ts";
+import { musicbrainzGet } from "./musicbrainzHttp.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -37,8 +34,6 @@ const SECONDARY_RELEASE_TYPES = [
   "Spokenword",
   "Other",
 ];
-
-const mbLimiter = createRateLimiter(1000);
 
 interface MusicBrainzArtistCredit {
   name?: string;
@@ -145,33 +140,20 @@ const artistCreditIncludesMbid = (
   );
 };
 
-const getMusicbrainzUserAgent = () => {
-  const contact = (getMusicBrainzContact() || "").trim() || "https://github.com/aurral";
-  return `${APP_NAME}/${APP_VERSION} ( ${contact} )`;
-};
-
-const browseMusicbrainzTrackArtistReleases = async (
+const browseMusicbrainzTrackArtistReleases = (
   mbid: string,
   { offset = 0, signal }: { offset?: number; signal?: AbortSignal } = {},
-): Promise<MusicBrainzTrackArtistReleasesPage> => {
-  const userAgent = getMusicbrainzUserAgent();
-  return mbLimiter.schedule(async () => {
-    signal?.throwIfAborted?.();
-    const response = await axios.get(`${MUSICBRAINZ_API}/release`, {
-      params: {
-        fmt: "json",
-        track_artist: mbid,
-        inc: "release-groups+artist-credits",
-        limit: APPEARS_ON_PAGE_SIZE,
-        offset,
-      },
-      headers: { "User-Agent": userAgent },
-      timeout: 8000,
-      signal,
-    });
-    return response.data;
-  });
-};
+) =>
+  musicbrainzGet<MusicBrainzTrackArtistReleasesPage>(
+    "/release",
+    {
+      track_artist: mbid,
+      inc: "release-groups+artist-credits",
+      limit: APPEARS_ON_PAGE_SIZE,
+      offset,
+    },
+    { signal },
+  );
 
 const isSpecialPurposeArtist = (artist: MusicBrainzArtist) =>
   artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name!);
@@ -189,20 +171,12 @@ export async function musicbrainzSearchArtistsByTag(
   const cacheKey = `${normalizedTag}:${safeLimit}:${safeOffset}`;
   const cached = musicbrainzTagArtistsCache.get(cacheKey);
   if (cached) return cached;
-  const data = await mbLimiter.schedule(async () => {
-    const response = await axios.get(`${MUSICBRAINZ_API}/artist`, {
-      params: {
-        fmt: "json",
-        query: `tag:"${normalizedTag.replace(/["\\]/g, "\\$&")}"`,
-        limit: safeLimit,
-        offset: safeOffset,
-      },
-      headers: { "User-Agent": getMusicbrainzUserAgent() },
-      timeout: 8000,
-    });
-    return response.data;
+  const data = await musicbrainzGet<{ artists?: MusicBrainzArtist[]; count?: number }>("/artist", {
+    query: `tag:"${normalizedTag.replace(/["\\]/g, "\\$&")}"`,
+    limit: safeLimit,
+    offset: safeOffset,
   });
-  const artists: MusicBrainzArtist[] = Array.isArray(data?.artists) ? data.artists : [];
+  const artists = Array.isArray(data?.artists) ? data.artists : [];
   const result = {
     total: Number(data?.count) || 0,
     nextOffset: safeOffset + artists.length,

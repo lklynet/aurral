@@ -217,7 +217,7 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
             timeout: 5000,
             headers: {
               Accept: "application/json",
-              "User-Agent": "Aurral/1.0 (+https://github.com/leekelly/aurral)",
+              "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
             },
             signal,
           },
@@ -255,7 +255,7 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
         timeout: 6000,
         headers: {
           Accept: "application/json",
-          "User-Agent": "Aurral/1.0 (+https://github.com/leekelly/aurral)",
+          "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
         },
         signal,
       });
@@ -294,7 +294,7 @@ const resolveIpLocation = async (publicIp: string) => {
       timeout: 5000,
       headers: {
         Accept: "application/json",
-        "User-Agent": "Aurral/1.0 (+https://github.com/leekelly/aurral)",
+        "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
       },
       signal,
     });

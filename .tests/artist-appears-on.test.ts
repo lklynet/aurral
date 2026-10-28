@@ -186,3 +186,34 @@ test("a failed MusicBrainz lookup reports an error and the next request retries"
     ["rg-retry-feature"],
   );
 });
+
+test("a busy MusicBrainz response is retried once after a pause", async (t) => {
+  const mbid = "77777777-7777-4777-8777-777777777777";
+  let requests = 0;
+  stubFetch(t, (url) => {
+    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
+    requests += 1;
+    if (requests === 1) return json({ error: "busy" }, 503);
+    return json({
+      "release-count": 1,
+      "release-offset": 0,
+      releases: [
+        mbRelease({
+          id: "r-busy-feature",
+          groupId: "rg-busy-feature",
+          title: "Host Album",
+          date: "2012-02-02",
+          by: credit(GUEST_HOST, "Host Artist"),
+        }),
+      ],
+    });
+  });
+
+  const result = await postAppearsOn(mbid, { limit: 24 });
+  assert.equal(result.status, 200);
+  assert.deepEqual(
+    result.body.items.map((item: { id: string }) => item.id),
+    ["rg-busy-feature"],
+  );
+  assert.equal(requests, 2);
+});

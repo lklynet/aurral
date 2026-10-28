@@ -87,6 +87,17 @@ function responses(
   );
 }
 
+test("an artist name search accepts only the same name, not the first result", async (t) => {
+  responses(t, () => ({
+    data: [
+      { id: 7, name: "Lowkey" },
+      { id: 8, name: "Sigur Rós", picture_big: photo },
+    ],
+  }));
+  assert.equal(await deezer.getDeezerArtist("Low"), null);
+  assert.equal((await deezer.getDeezerArtist("sigur ros"))?.imageUrl, photo);
+});
+
 test("a failed artist ID lookup can recover without clearing its cache", async (t) => {
   let failed = true;
   responses(t, () => {

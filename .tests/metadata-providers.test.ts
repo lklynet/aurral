@@ -24,6 +24,7 @@ const [
     getMetadataProviderBudget,
   },
   { db },
+  { default: axios },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
@@ -31,6 +32,7 @@ const [
   () => import("../backend/services/providers/brainzmashProvider.ts"),
   () => import("../backend/services/metadataProviderBudget.ts"),
   () => import("../backend/config/db-sqlite.ts"),
+  () => import("../lib/axiosFetch.ts"),
 );
 
 const { getMusicbrainzApiBaseUrl } = apiClients;
@@ -755,6 +757,40 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     assert.equal(first.items[0].id, "artist-1");
     assert.equal(second.items[0].id, "artist-1");
     assert.equal(requests, 1);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("album search shows no results when its MusicBrainz fallback is down", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end("[]");
+  });
+  const providerGet = axios.get.bind(axios);
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+    if (url.startsWith("https://musicbrainz.org/")) throw new Error("MusicBrainz unavailable");
+    return providerGet(url, options);
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: true,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    assert.deepEqual((await searchAlbums("Missing Album")).items, []);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);

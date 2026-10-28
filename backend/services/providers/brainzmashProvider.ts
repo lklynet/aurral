@@ -3,12 +3,7 @@ import axios from "../../../lib/axiosFetch.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import {
-  APP_NAME,
-  APP_VERSION,
-  DEFAULT_METADATA_BASE_URL,
-  MUSICBRAINZ_API,
-} from "../../config/constants.ts";
+import { APP_NAME, APP_VERSION, DEFAULT_METADATA_BASE_URL } from "../../config/constants.ts";
 import {
   getNormalizedText,
   rankAlbumCandidates,
@@ -29,6 +24,7 @@ import {
 import { selectBestAlbumImage } from "../imageService.ts";
 import { withoutFeaturedArtists } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
+import { musicbrainzGet } from "../apiClients/musicbrainzHttp.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -70,6 +66,16 @@ interface AlbumSearchEntry {
   secondarytypes?: string[];
   releasedate?: string;
   images?: SearchImage[];
+}
+
+interface MusicBrainzReleaseGroupHit {
+  id?: string;
+  title?: string;
+  score?: number;
+  "primary-type"?: string | null;
+  "secondary-types"?: string[];
+  "first-release-date"?: string;
+  "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
 }
 
 interface AlbumSearchItem {
@@ -783,25 +789,19 @@ export async function searchAlbums(
     const mbQuery = artistName
       ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
       : String(query || "").trim();
-    const response = await axios.get(`${MUSICBRAINZ_API}/release-group`, {
-      params: {
-        fmt: "json",
-        query: mbQuery,
-        limit: requestedLimit,
-        offset: 0,
-      },
-      timeout: 8000,
-      headers: {
-        "User-Agent": `${APP_NAME}/${APP_VERSION} (metadata album fallback)`,
-      },
-      signal,
+    const data = await musicbrainzGet<{ "release-groups"?: MusicBrainzReleaseGroupHit[] }>(
+      "/release-group",
+      { query: mbQuery, limit: requestedLimit },
+      { signal },
+    ).catch((error) => {
+      signal?.throwIfAborted();
+      failure = error;
+      return null;
     });
-    const source = Array.isArray(response?.data?.["release-groups"])
-      ? response.data["release-groups"]
-      : [];
+    const source = Array.isArray(data?.["release-groups"]) ? data["release-groups"] : [];
     items = source.map((entry, index) => {
       const artistCredit = Array.isArray(entry?.["artist-credit"]) ? entry["artist-credit"] : [];
-      const primaryArtist = artistCredit[0]?.artist || {};
+      const primaryArtist = artistCredit[0]?.artist;
       return {
         id: entry?.id,
         title: entry?.title || "Untitled Release",
@@ -813,7 +813,7 @@ export async function searchAlbums(
         coverUrl: null,
         images: [],
         inLibrary: false,
-        score: Number(entry?.score || entry?.["ext:score"] || Math.max(0, 100 - index)) || 0,
+        score: Number(entry?.score || Math.max(0, 100 - index)) || 0,
         releaseStatuses: [],
       };
     });

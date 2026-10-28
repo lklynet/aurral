@@ -7,7 +7,6 @@ export {
   normalizeNewsGroups,
   DEFAULT_NEWS_FEEDS,
   DEFAULT_NEWS_GROUPS,
-  getMusicBrainzContact,
   getMusicbrainzApiBaseUrl,
   getMetadataProviderHealthSnapshot,
 } from "./config.ts";
