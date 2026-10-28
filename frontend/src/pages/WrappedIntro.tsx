@@ -76,7 +76,7 @@ function drawCover(
   );
 }
 
-function measureOpening(slide: HTMLElement) {
+function measureOpening(slide: HTMLElement, images: HTMLImageElement[]) {
   const frame = slide.getBoundingClientRect();
   const scale = WIDTH / frame.width;
   const box = (rect: DOMRect) => ({
@@ -86,8 +86,11 @@ function measureOpening(slide: HTMLElement) {
     height: rect.height,
   });
   const field = getComputedStyle(slide).backgroundColor;
-  const covers = [...slide.querySelectorAll<HTMLImageElement>(".wrapped-stack img")].map(
-    (image) => ({ image, box: box(image.getBoundingClientRect()) }),
+  const covers = [...slide.querySelectorAll<HTMLImageElement>(".wrapped-stack img")].flatMap(
+    (element) => {
+      const image = images.find((loaded) => loaded.src === element.src);
+      return image ? [{ image, box: box(element.getBoundingClientRect()) }] : [];
+    },
   );
   return (context: CanvasRenderingContext2D) => {
     context.save();
@@ -226,7 +229,7 @@ export default function WrappedIntro({
           context.shadowBlur = 0;
           if (t < REVEAL) context.drawImage(video, 0, 0, WIDTH, HEIGHT);
           else {
-            opening ??= slide.current ? measureOpening(slide.current) : null;
+            opening ??= slide.current ? measureOpening(slide.current, covers) : null;
             if (opening) opening(context);
           }
           context.fillStyle = "#fff";
