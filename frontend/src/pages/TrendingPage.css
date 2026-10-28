@@ -154,11 +154,30 @@
 
 .trending-songs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(15.5rem, calc((100% - 3.375rem) / 4)), 1fr));
   gap: 0.25rem 1.125rem;
   margin: 0;
   padding: 0;
   list-style: none;
+  container-type: inline-size;
+}
+
+@container (width < 32.125rem) {
+  .trending-songs > li:nth-child(n + 4) {
+    display: none;
+  }
+}
+
+@container (32.125rem <= width < 48.75rem) {
+  .trending-songs > li:nth-child(n + 7) {
+    display: none;
+  }
+}
+
+@container (width >= 65.375rem) {
+  .trending-songs > li:nth-child(n + 9) {
+    display: none;
+  }
 }
 
 .trending-song {

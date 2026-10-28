@@ -32,7 +32,7 @@ type Songs = NonNullable<TrendingCharts["songs"]>;
 type Spotlight = NonNullable<Songs["spotlight"]>;
 type GenreShare = NonNullable<TrendingCharts["genreShare"]>;
 
-const SONG_GRID_END = 9;
+const SONG_GRID_END = 10;
 const SPARK_WIDTH = 220;
 const SPARK_HEIGHT = 56;
 const SPARK_PAD = 6;
