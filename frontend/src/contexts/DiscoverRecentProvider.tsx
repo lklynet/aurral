@@ -167,7 +167,6 @@ function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) 
       const tag = params.get("tag");
       return tag ? `Because you like ${tag}` : "Recommended";
     }
-    if (type === "trending") return "Trending";
     if (type === "tag") {
       const query = params.get("q") || "";
       const tag = query.startsWith("#") ? query.slice(1) : query;
@@ -185,6 +184,7 @@ function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) 
   }
 
   if (pathname.startsWith("/discover/playlists")) return "Playlists";
+  if (pathname.startsWith("/discover/trending")) return "Trending";
   if (pathname.startsWith("/shows")) return "Shows";
   if (pathname.startsWith("/playlists")) return "Playlist";
   if (pathname === "/library") return "Library";
@@ -352,7 +352,7 @@ export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
   const isDiscoverDiscoverSubnavPage = useMemo(() => {
     const sp = new URLSearchParams(location.search);
     const type = sp.get("type");
-    return location.pathname === "/search" && (type === "recommended" || type === "trending");
+    return location.pathname === "/search" && type === "recommended";
   }, [location.pathname, location.search]);
 
   const isDiscoverSectionActive = useMemo(

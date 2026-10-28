@@ -10,5 +10,6 @@ export const API_CONTRACT = {
     "linkSearch",
     "downloadCancel",
     "shareImports",
+    "trending",
   ],
 };

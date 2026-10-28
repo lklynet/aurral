@@ -551,6 +551,20 @@ db.exec(`
     published_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS trending_charts (
+    chart TEXT PRIMARY KEY NOT NULL,
+    region TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    data TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS trending_chart_days (
+    chart TEXT NOT NULL,
+    day TEXT NOT NULL,
+    item_keys TEXT NOT NULL,
+    PRIMARY KEY (chart, day)
+  );
+
   CREATE TABLE IF NOT EXISTS slskd_transfer_history (
     id TEXT PRIMARY KEY,
     job_id TEXT,

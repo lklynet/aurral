@@ -562,6 +562,19 @@ export interface SubsonicStarsRow {
   created_at: number;
 }
 
+export interface TrendingChartDaysRow {
+  chart: string;
+  day: string;
+  item_keys: string;
+}
+
+export interface TrendingChartsRow {
+  chart: string;
+  region: string;
+  updated_at: number;
+  data: string;
+}
+
 export interface UserIdentitiesRow {
   id: number;
   user_id: number;

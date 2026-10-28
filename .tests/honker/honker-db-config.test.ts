@@ -107,6 +107,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "library-index-bootstrap",
     "release-metadata-refresh",
     "news-refresh",
+    "trending-charts-refresh",
   ]);
 
   dbOps.setJSONSetting(honkerDb.PLAYLIST_STARTUP_MIGRATION_SETTING, {
@@ -128,6 +129,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "library-index-bootstrap",
     "release-metadata-refresh",
     "news-refresh",
+    "trending-charts-refresh",
   ]);
 });
 

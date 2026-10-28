@@ -73,7 +73,7 @@ export function validateDeezerPlaylistId(value: unknown) {
   throw providerError("Enter a valid Deezer playlist", 400, "DEEZER_PLAYLIST_INVALID");
 }
 
-async function deezerRequest<T = unknown>(
+export async function deezerRequest<T = unknown>(
   path: string,
   params: Record<string, string | number> = {},
 ): Promise<T & { error?: { code?: number } }> {

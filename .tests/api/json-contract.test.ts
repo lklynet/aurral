@@ -153,6 +153,46 @@ beforeAll(async () => {
     getUserDiscoveryNamespace(requireFixture(user).id),
   );
   reloadDiscoveryPersistedCache();
+  const chartSong = {
+    key: "3135556",
+    trackName: "Chart Song",
+    artistName: "Chart Artist",
+    albumName: "Chart Album",
+    deezerAlbumId: "302127",
+    durationMs: 180000,
+    artworkUrl: "https://e-cdns-images.dzcdn.net/images/cover/1/250x250.jpg",
+    largeArtworkUrl: "https://e-cdns-images.dzcdn.net/images/cover/1/1000x1000.jpg",
+    preview_url: "/api/deezer/preview/3135556.mp3",
+  };
+  const saveChart = db.prepare<[string, string]>(
+    "INSERT INTO trending_charts (chart, region, updated_at, data) VALUES (?, 'US', 1767225600000, ?)",
+  );
+  saveChart.run(
+    "songs",
+    JSON.stringify({ playlistId: "1313621735", playlistName: "Top USA", items: [chartSong] }),
+  );
+  saveChart.run(
+    "albums",
+    JSON.stringify({
+      items: [
+        {
+          key: "1",
+          name: "Chart Record",
+          artistName: "Chart Artist",
+          artworkUrl: null,
+          releaseDate: "2026-01-01",
+          genre: "Pop",
+        },
+      ],
+    }),
+  );
+  saveChart.run(
+    "artists",
+    JSON.stringify({
+      items: [{ key: "27", name: "Chart Artist", imageUrl: null, fans: 1000, mbid: null }],
+    }),
+  );
+  saveChart.run("genre:132", JSON.stringify({ name: "Pop", items: [chartSong] }));
   artist = libraryStore.upsertLibraryArtist({
     identityKey: "contract:artist",
     mbid: artistMbid,
@@ -231,6 +271,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
     "linkSearch",
     "downloadCancel",
     "shareImports",
+    "trending",
   ]) {
     assert.ok(
       bootstrap.api.features.includes(feature),
@@ -358,6 +399,67 @@ test("discovery, search, artist details, and release details preserve their publ
     coverUrl: "string|null",
   });
   assert.equal(release.id, albumMbid);
+});
+
+test("trending charts preserve their public response fields", async () => {
+  const trending = await call("/api/discover/trending");
+  fields(trending, {
+    region: "string|null",
+    updatedAt: "number|null",
+    songs: "object|null",
+    albums: "array|null",
+    artists: "array|null",
+    genreShare: "object|null",
+    genres: "array",
+  });
+  fields(trending.songs, {
+    playlistId: "string",
+    playlistName: "string",
+    libraryPlaylistId: "string|null",
+    items: "array",
+    spotlight: "object|null",
+  });
+  const song = {
+    key: "string",
+    position: "number",
+    trackName: "string",
+    artistName: "string",
+    albumName: "string|null",
+    durationMs: "number|null",
+    artworkUrl: "string|null",
+    preview_url: "string|null",
+  };
+  fields(trending.songs.items[0], { ...song, movement: "number|string|null" });
+  fields(trending.albums[0], {
+    key: "string",
+    position: "number",
+    name: "string",
+    artistName: "string",
+    artworkUrl: "string|null",
+    releaseDate: "string|null",
+    genre: "string|null",
+  });
+  fields(trending.artists[0], {
+    key: "string",
+    position: "number",
+    name: "string",
+    imageUrl: "string|null",
+    fans: "number|null",
+    mbid: "string|null",
+  });
+  fields(trending.genreShare, { total: "number", other: "number", genres: "array" });
+  fields(trending.genreShare.genres[0], { name: "string", count: "number" });
+  fields(trending.genres[0], { id: "number", name: "string", covers: "array", artists: "array" });
+  const genre = await call(`/api/discover/trending/genres/${trending.genres[0].id}`);
+  fields(genre, {
+    id: "number",
+    name: "string",
+    region: "string",
+    updatedAt: "number",
+    items: "array",
+  });
+  fields(genre.items[0], song);
+  fields(await call("/api/discover/trending/genres/999", { status: 404 }), { error: "string" });
 });
 
 test("library pages, lookups, album requests, and track requests preserve their public response fields", async () => {

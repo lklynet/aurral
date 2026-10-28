@@ -225,6 +225,11 @@ export async function processSystemTask(
       await refreshNewsFeeds();
       return;
     }
+    case "trending-charts-refresh": {
+      const { refreshTrendingCharts } = await import("./discovery/trendingCharts.ts");
+      await refreshTrendingCharts();
+      return;
+    }
     case "playlist-startup-migration": {
       const [
         migrationModule,

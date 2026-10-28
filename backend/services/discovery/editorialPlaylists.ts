@@ -17,7 +17,7 @@ const FOR_YOU_PER_TERM = 2;
 const FOR_YOU_LIMIT = 12;
 const pendingAdds = new Map<string, Promise<EditorialLibraryAddResponse>>();
 
-const findLibraryPlaylist = (userId: number, deezerPlaylistId: string) =>
+export const findLibraryPlaylist = (userId: number, deezerPlaylistId: string) =>
   flowPlaylistConfig
     .getStaticPlaylistsOwnedByUser(userId)
     .find(

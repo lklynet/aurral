@@ -3,6 +3,7 @@ import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../utils/api/endpoints/library.ts";
+import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { usersClient } from "../utils/api/clients/users.ts";
 
@@ -28,6 +29,8 @@ import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
+import { TrendingArtistsRail } from "./TrendingArtistsRail";
+import { trendingChartsQueryOptions } from "../queryOptions.ts";
 import { AlbumCard, ArtistCard, ViewAllCard, type DiscoverCardArtist } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
@@ -182,8 +185,10 @@ function DiscoverPage() {
   const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
   const isActuallyUpdating = isUpdating && !hasData;
 
-  const { recommendations = [], globalTop = [], topGenres = [], basedOn = [] } = data || {};
+  const { recommendations = [], topGenres = [], basedOn = [] } = data || {};
   const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
+  const { data: trending } = useQuery(trendingChartsQueryOptions(authUser?.id));
+  const trendingArtists = trending?.artists;
 
   const nearbyShows: NonNullable<typeof nearbyShowsData>["shows"][number][] =
     nearbyShowsData?.shows || [];
@@ -202,7 +207,7 @@ function DiscoverPage() {
       news: newsConfigured,
       recommended: true,
       recommendedShows: ticketmasterConfigured,
-      globalTop: globalTop.length > 0,
+      globalTop: Boolean(trendingArtists?.length),
       genreSections: genreSections.length > 0,
     }),
     [
@@ -210,7 +215,7 @@ function DiscoverPage() {
       featuredPlaylists,
       recentReleases,
       newsConfigured,
-      globalTop,
+      trendingArtists,
       genreSections,
       ticketmasterConfigured,
     ],
@@ -262,10 +267,6 @@ function DiscoverPage() {
   const discoverArtistIds = useMemo(() => {
     const ids = new Set<string>();
     for (const artist of data?.recommendations || []) {
-      const id = getArtistId(artist);
-      if (id) ids.add(id);
-    }
-    for (const artist of data?.globalTop || []) {
       const id = getArtistId(artist);
       if (id) ids.add(id);
     }
@@ -609,27 +610,12 @@ function DiscoverPage() {
     if (id === "globalTop") {
       if (!sectionAvailability.globalTop) return null;
       return (
-        <DiscoverRail key="globalTop" title="Global trending" viewAllTo="/search?type=trending">
-          <>
-            {globalTop.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
-              <div key={artist.id} className="artist-discover-shelf-card">
-                <ArtistCard
-                  artist={{
-                    ...artist,
-                    metaText: "",
-                  }}
-                  isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
-                  getLibraryLink={getArtistLibraryLink}
-                  onFeedback={handleDiscoveryFeedback}
-                  feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
-                />
-              </div>
-            ))}
-            <div className="artist-discover-shelf-card">
-              <ViewAllCard to="/search?type=trending" />
-            </div>
-          </>
-        </DiscoverRail>
+        <TrendingArtistsRail
+          key="globalTop"
+          title="Trending artists"
+          viewAllTo="/discover/trending"
+          artists={(trendingArtists ?? []).slice(0, DISCOVER_PREVIEW_ITEM_LIMIT)}
+        />
       );
     }
 

@@ -265,8 +265,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
     if (item.section === "discover") {
       const isRecommendedActive =
         location.pathname === "/search" && location.search === "?type=recommended";
-      const isTrendingActive =
-        location.pathname === "/search" && location.search === "?type=trending";
+      const isTrendingActive = location.pathname.startsWith("/discover/trending");
       return (
         <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
           <RouteLink
@@ -284,7 +283,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
             Recommended
           </RouteLink>
           <RouteLink
-            to="/search?type=trending"
+            to="/discover/trending"
             className={`sidebar-subnav-link${isTrendingActive ? " is-active" : ""}`}
             aria-current={isTrendingActive ? "page" : undefined}
           >

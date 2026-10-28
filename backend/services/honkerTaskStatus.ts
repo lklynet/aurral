@@ -31,7 +31,7 @@ export const QUEUE_DEFINITIONS = [
     queue: "system-task-maintenance",
     label: "Background maintenance",
     workerLabel: "Background maintenance worker",
-    description: "Runs cleanup, news refreshes, and playlist schedule checks.",
+    description: "Runs cleanup, news and chart refreshes, and playlist schedule checks.",
     worker: "system-task-maintenance",
   },
   {
@@ -160,6 +160,10 @@ export const SYSTEM_TASK_LABELS = {
   "discovery-bootstrap": {
     label: "Discovery startup check",
     description: "Initializes discovery data and schedules the next refresh.",
+  },
+  "trending-charts-refresh": {
+    label: "Trending charts refresh",
+    description: "Updates the Trending charts from Deezer and Apple Music.",
   },
   "inbox-refresh": {
     label: "Inbox refresh",

@@ -33,6 +33,27 @@ export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: strin
     staleTime: 5 * 60 * 1000,
   });
 
+export const trendingChartsQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.trendingCharts(userId),
+    queryFn: ({ signal }) =>
+      parseResponse(discoveryClient.trending.$get(undefined, { init: { signal } })),
+    staleTime: 30 * 60 * 1000,
+  });
+
+export const trendingGenreQueryOptions = (genreId: string) =>
+  queryOptions({
+    queryKey: queryKeys.trendingGenre(genreId),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        discoveryClient.trending.genres[":genreId"].$get(
+          { param: { genreId: encodeURIComponent(genreId) } },
+          { init: { signal } },
+        ),
+      ),
+    staleTime: 30 * 60 * 1000,
+  });
+
 export const releaseGroupDetailsQueryOptions = (releaseMbid: MaybeText) =>
   queryOptions({
     queryKey: queryKeys.releaseGroupDetails(releaseMbid),

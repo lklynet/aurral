@@ -29,6 +29,8 @@ const RESET_TABLES = [
   "share_links",
   "inbox_items",
   "news_articles",
+  "trending_chart_days",
+  "trending_charts",
   "users",
   "discovery_cache",
   "images_cache",

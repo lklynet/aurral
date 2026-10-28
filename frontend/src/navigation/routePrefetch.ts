@@ -7,6 +7,8 @@ import {
   playlistJobsQueryOptions,
   playlistStatusQueryOptions,
   releaseGroupDetailsQueryOptions,
+  trendingChartsQueryOptions,
+  trendingGenreQueryOptions,
 } from "../queryOptions.ts";
 import { canPrefetchInBackground } from "../utils/requestScheduling.ts";
 import { resolveLinkQueryOptions } from "./resolveLinks.ts";
@@ -66,6 +68,18 @@ const ROUTES = [
     ],
   },
   { path: "/discover/news", module: routeModules.news },
+  {
+    path: "/discover/trending/genres/:genreId",
+    module: routeModules.trendingGenre,
+    queries: ({ genreId }: Params<string>) => [prefetchable(trendingGenreQueryOptions(genreId!))],
+  },
+  {
+    path: "/discover/trending",
+    module: routeModules.trending,
+    queries: (_params: Params<string>, { userId }: RouteContext) => [
+      prefetchable(trendingChartsQueryOptions(userId)),
+    ],
+  },
   {
     path: "/library/playlists/:playlistId",
     module: routeModules.playlist,

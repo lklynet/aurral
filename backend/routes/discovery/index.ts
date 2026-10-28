@@ -7,6 +7,7 @@ import main from "./handlers/main.ts";
 import preferences from "./handlers/preferences.ts";
 import shows from "./handlers/shows.ts";
 import tags from "./handlers/tags.ts";
+import trending from "./handlers/trending.ts";
 
 export default new Hono<AppEnv>()
   .basePath("/discover")
@@ -15,5 +16,6 @@ export default new Hono<AppEnv>()
   .route("/", tags)
   .route("/", feedback)
   .route("/", editorial)
+  .route("/", trending)
   .route("/", shows)
   .route("/", preferences);

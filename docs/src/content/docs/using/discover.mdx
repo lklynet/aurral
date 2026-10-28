@@ -29,9 +29,9 @@ Feedback reorders your list right away. Aurral saves it for the next scheduled r
 
 ## ListenBrainz and Last.fm
 
-Discover works without an account or API key. Aurral finds similar and trending artists on ListenBrainz, genres on MusicBrainz, and the top tracks that flows use on Deezer.
+Discover works without an account or API key. Aurral finds similar artists on ListenBrainz, genres on MusicBrainz, and the top tracks that flows use on Deezer. **Trending artists** comes from the Deezer charts. See [Trending](#trending).
 
-ListenBrainz similar artists lean toward well-known names, so Last.fm usually gives closer matches. When an admin adds a Last.fm API key in **Settings > Connect > Last.fm**, Aurral uses Last.fm for recommendations, trending artists, tag search, and flows. **Settings > Discover** shows which one is in use. When an admin adds or removes the key, Aurral rebuilds everyone's recommendations.
+ListenBrainz similar artists lean toward well-known names, so Last.fm usually gives closer matches. When an admin adds a Last.fm API key in **Settings > Connect > Last.fm**, Aurral uses Last.fm for recommendations, tag search, and flows, including the trending artists that flows and shows use. **Settings > Discover** shows which one is in use. When an admin adds or removes the key, Aurral rebuilds everyone's recommendations.
 
 ## Discovery modes
 
@@ -86,6 +86,16 @@ Select **Add synced playlist** to save it as a synced playlist. Aurral checks De
 To keep only some tracks, use a track's menu to add it to your Library or to a playlist. To add several at once, select the tracks first. Selecting an artist or album name looks it up in MusicBrainz and opens its page.
 
 Earlier versions built their own playlists, such as Discover Weekly and Release Radar, during each discovery refresh. Those are now flow templates. See [Flows](/using/flows/#start-from-a-template). Flows you created from editorial Last.fm playlists keep their tracks, but they no longer update.
+
+## Trending
+
+**Discover > Trending** shows what's popular right now: top songs, albums, and artists, a chart for each genre, and popular playlists. It needs no account or API key. Songs, artists, and genre charts come from Deezer, and albums come from Apple Music. Aurral updates them every 6 hours. The **Trending artists** row on Discover shows the same top artists.
+
+The charts follow the country your server is in. If Deezer or Apple Music has no chart for that country, Aurral shows the worldwide songs chart or the US albums chart instead.
+
+Aurral saves the songs chart once a day, so rank changes and days at No. 1 appear after your server has been running for two days.
+
+Select **Save as playlist** to add the top songs as a synced playlist that follows the chart. Open a genre chart to play its previews, or to add its tracks to your Library or a playlist.
 
 ## Per-user listening history
 

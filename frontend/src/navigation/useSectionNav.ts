@@ -5,8 +5,6 @@ import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavCo
 import { LIBRARY_VIEWS } from "./libraryNavConfig";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "./showsNavConfig";
 
-const DISCOVER_BROWSE_TYPES = new Set<string | null>(["recommended", "trending"]);
-
 function firstSegment(pathname: string, prefix: string) {
   return pathname.slice(prefix.length).replace(/^\//, "").split("/")[0];
 }
@@ -24,7 +22,8 @@ export function useSectionNav() {
       pathname === "/" ||
       pathname === "/discover/playlists" ||
       pathname === "/discover/news" ||
-      (pathname === "/search" && DISCOVER_BROWSE_TYPES.has(searchType));
+      pathname.startsWith("/discover/trending") ||
+      (pathname === "/search" && searchType === "recommended");
     if (isDiscoverBrowse) {
       const items = [
         { id: "home", label: "For you", path: "/", active: pathname === "/" },
@@ -43,8 +42,8 @@ export function useSectionNav() {
         {
           id: "trending",
           label: "Trending",
-          path: "/search?type=trending",
-          active: pathname === "/search" && searchType === "trending",
+          path: "/discover/trending",
+          active: pathname.startsWith("/discover/trending"),
         },
       ];
       if (bootstrap?.newsConfigured) {

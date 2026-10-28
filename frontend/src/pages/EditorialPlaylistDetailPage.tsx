@@ -9,7 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { asApiError } from "../utils/api/core.ts";
-import { queryClient } from "../queryClient.ts";
+import { queryClient, queryKeys } from "../queryClient.ts";
 import { editorialPlaylistQueryOptions } from "../queryOptions.ts";
 import {
   CollectionHeader,
@@ -35,36 +35,7 @@ import { playlistPath } from "../navigation/playlistPaths";
 import { readRouteSeed } from "../navigation/routeSeed.ts";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
 import { useTrackSaveActions } from "./useTrackSaveActions";
-
-type DeezerPreviewTrack = {
-  artistName: string;
-  trackName: string;
-  albumName: string | null;
-  durationMs: number | null;
-  preview_url: string | null;
-  artworkUrl: string | null;
-  deezerAlbumId: string | null;
-};
-
-const mapPreviewTracks = (
-  tracks: DeezerPreviewTrack[] | undefined,
-  playlistId: string | undefined,
-) =>
-  (Array.isArray(tracks) ? tracks : []).map((track, index) => ({
-    id: `deezer-${playlistId}-${index}`,
-    artistName: track?.artistName || "Unknown Artist",
-    trackName: track?.trackName || "Unknown Track",
-    albumName: track?.albumName || null,
-    durationMs: track?.durationMs || null,
-    reason: "Deezer playlist",
-    status: track?.preview_url ? ("done" as const) : ("pending" as const),
-    streamUrl: track?.preview_url || null,
-    artworkUrl: track?.artworkUrl || null,
-    deezerAlbumId: track?.deezerAlbumId || null,
-    resolvesLinks: true,
-  }));
-
-type PreviewTrack = ReturnType<typeof mapPreviewTracks>[number];
+import { mapPreviewTracks, type PreviewTrack } from "./deezerPreviewTracks.ts";
 
 export default function EditorialPlaylistDetailPage() {
   const playlistId = useParams().playlistId!;
@@ -124,6 +95,7 @@ export default function EditorialPlaylistDetailPage() {
       queryClient.setQueryData(queryKey, (current) =>
         current ? { ...current, libraryPlaylistId: result.playlistId } : current,
       );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trendingPrefix });
       showSuccess(
         result.alreadyAdded
           ? `${result.name} is already in your playlists`

@@ -147,6 +147,12 @@ export const SCHEDULED_SYSTEM_TASKS: ScheduledSystemTask[] = [
     payload: { kind: "news-refresh" },
   },
   {
+    name: "trending-charts-refresh",
+    queue: "system-task-maintenance",
+    schedule: "@every 6h",
+    payload: { kind: "trending-charts-refresh" },
+  },
+  {
     name: "import-list-sync",
     queue: "system-task",
     schedule: "@every 30m",
@@ -438,7 +444,12 @@ export function getSystemTaskQueueName(kind: string) {
   if (kind === "release-metadata-refresh") return "release-metadata-refresh";
   if (PLAYBACK_TASK_KINDS.includes(kind)) return "playback";
   if (kind === "inbox-refresh") return "system-task-inbox";
-  if (kind === "session-cleanup" || kind === "news-refresh" || kind === "weekly-flow-refresh")
+  if (
+    kind === "session-cleanup" ||
+    kind === "news-refresh" ||
+    kind === "trending-charts-refresh" ||
+    kind === "weekly-flow-refresh"
+  )
     return "system-task-maintenance";
   return "system-task";
 }
@@ -687,6 +698,7 @@ export function enqueueHonkerStartupTasks() {
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
   enqueueIfAbsent({ kind: "release-metadata-refresh" }, { delaySeconds: 12, priority: -5 });
   enqueueIfAbsent({ kind: "news-refresh" }, { delaySeconds: 20, priority: -5 });
+  enqueueIfAbsent({ kind: "trending-charts-refresh" }, { delaySeconds: 25, priority: -5 });
 }
 
 export function findActiveHonkerJob(

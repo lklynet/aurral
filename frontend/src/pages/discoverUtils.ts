@@ -51,7 +51,7 @@ export const DEFAULT_DISCOVER_SECTIONS = [
   { id: "recentReleases", label: "Recent releases", enabled: true },
   { id: "news", label: "Artist news", enabled: true },
   { id: "recommended", label: "Recommended", enabled: true },
-  { id: "globalTop", label: "Global trending", enabled: true },
+  { id: "globalTop", label: "Trending artists", enabled: true },
   { id: "genreSections", label: "Because you like", enabled: true },
 ];
 

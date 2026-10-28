@@ -66,7 +66,7 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { artistMatchesGenre } from "./discoverUtils";
 import {
@@ -169,7 +169,7 @@ const sortRecommendedArtists = (
     if (difference !== 0) return sortDirection === "asc" ? difference : -difference;
     return getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
   });
-function SearchResultsPage() {
+function SearchResults() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const type = searchParams.get("type");
@@ -219,7 +219,7 @@ function SearchResultsPage() {
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
-    if (type === "recommended" || type === "trending") return type;
+    if (type === "recommended") return type;
     if (type === "album") return "album";
     if (type === "tag" || trimmedQuery.startsWith("#")) return "tag";
     if (type === "artist") return "artist";
@@ -243,7 +243,6 @@ function SearchResultsPage() {
     if (normalizedType === "recommended") {
       return recommendedTag ? `Because you like ${recommendedTag}` : "Recommended";
     }
-    if (normalizedType === "trending") return "Global trending";
     if (isTagSearch && trimmedQuery) {
       return trimmedQuery.startsWith("#") ? trimmedQuery : `#${trimmedQuery.replace(/^#/, "")}`;
     }
@@ -301,7 +300,7 @@ function SearchResultsPage() {
   }, [trimmedQuery, isAlbumSearch]);
 
   const searchQueryKey = useMemo(() => {
-    if (normalizedType === "recommended" || normalizedType === "trending") {
+    if (normalizedType === "recommended") {
       return queryKeys.searchDiscovery(0, pagedRecommendations ? PAGE_SIZE : undefined);
     }
     if (isUnifiedSearch) {
@@ -331,12 +330,10 @@ function SearchResultsPage() {
     number
   >({
     queryKey: searchQueryKey,
-    enabled: Boolean(
-      trimmedQuery || normalizedType === "recommended" || normalizedType === "trending",
-    ),
+    enabled: Boolean(trimmedQuery || normalizedType === "recommended"),
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }): Promise<SearchPage> => {
-      if (normalizedType === "recommended" || normalizedType === "trending") {
+      if (normalizedType === "recommended") {
         return parseResponse(
           discoveryClient.$get(
             {
@@ -366,7 +363,7 @@ function SearchResultsPage() {
       });
     },
     getNextPageParam: (lastPage, pages) => {
-      if (normalizedType === "trending" || isUnifiedSearch) return undefined;
+      if (isUnifiedSearch) return undefined;
       if (normalizedType === "recommended") {
         const loaded = (pages as DiscoverPage[]).reduce(
           (count, page) => count + (page?.recommendations?.length || 0),
@@ -414,9 +411,6 @@ function SearchResultsPage() {
       return recommendedTag
         ? recommendations.filter((artist) => artistMatchesGenre(artist, recommendedTag))
         : recommendations;
-    }
-    if (normalizedType === "trending") {
-      return (searchPages as DiscoverPage[])[0]?.globalTop || [];
     }
     const items: SearchResultItem[] = (searchPages as CatalogSearchPage[]).flatMap(
       (page): SearchResultItem[] => page?.items || [],
@@ -484,7 +478,7 @@ function SearchResultsPage() {
         : [],
     [libraryResults],
   );
-  const fullList = normalizedType === "trending" || recommendedTag ? rawResults : null;
+  const fullList = recommendedTag ? rawResults : null;
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
   const { fetchNextPage } = searchQuery;
@@ -498,7 +492,7 @@ function SearchResultsPage() {
           (searchPages as DiscoverPage[])[searchPages.length - 1]?.recommendationCount ||
             results.length,
         )
-      : normalizedType === "recommended" || normalizedType === "trending"
+      : normalizedType === "recommended"
         ? results.length
         : Number(
             (searchPages as CatalogSearchPage[])[searchPages.length - 1]?.count ?? results.length,
@@ -513,7 +507,7 @@ function SearchResultsPage() {
   }, [albumReleaseTab, isAlbumSearch, results]);
 
   const discoveryArtists = useMemo(() => {
-    if (!["recommended", "trending", "tag"].includes(normalizedType)) return [];
+    if (!["recommended", "tag"].includes(normalizedType)) return [];
     const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
     const filtered = normalizedSearch
       ? results.filter((artist) =>
@@ -533,7 +527,7 @@ function SearchResultsPage() {
 
   const displayedResults = useMemo(
     () =>
-      ["recommended", "trending", "tag"].includes(normalizedType)
+      ["recommended", "tag"].includes(normalizedType)
         ? discoveryArtists.slice(0, fullList ? visibleCount : undefined)
         : isAlbumSearch
           ? albumResultsForTab
@@ -1269,19 +1263,14 @@ function SearchResultsPage() {
     };
   }, [activeFilter, isUnifiedSearch, searchLibraryFlags, unifiedResults]);
 
-  const showContent =
-    !loading && (query || normalizedType === "recommended" || normalizedType === "trending");
+  const showContent = !loading && (query || normalizedType === "recommended");
   const showLibraryResults = isUnifiedSearch && activeFilter === "all" && libraryItems.length > 0;
   const isEmpty = isUnifiedSearch
     ? unifiedView.isEmpty && !showLibraryResults
     : displayedResults.length === 0;
   const showLoadMore =
     hasMore &&
-    (["recommended", "trending", "tag"].includes(normalizedType)
-      ? true
-      : normalizedType === "trending"
-        ? results.length > PAGE_SIZE
-        : displayedResults.length >= PAGE_SIZE);
+    (["recommended", "tag"].includes(normalizedType) || displayedResults.length >= PAGE_SIZE);
 
   useEffect(() => {
     if (!albumOptionsOpen) return undefined;
@@ -1326,7 +1315,7 @@ function SearchResultsPage() {
 
   const localSearchConfigured = unifiedResults?.localSearchConfigured !== false;
 
-  const emptyMessage = ["recommended", "trending", "tag"].includes(normalizedType)
+  const emptyMessage = ["recommended", "tag"].includes(normalizedType)
     ? "Nothing to show here yet."
     : isUnifiedSearch && !localSearchConfigured
       ? "Set up the metadata server in Settings → Metadata to search music."
@@ -1346,17 +1335,15 @@ function SearchResultsPage() {
   const pageSubtitle =
     normalizedType === "recommended"
       ? `${discoveryCount} recommendations`
-      : normalizedType === "trending"
-        ? "Trending right now"
-        : isUnifiedSearch && trimmedQuery
-          ? "Artists, releases, and songs"
-          : isTagSearch && trimmedQuery
-            ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
-            : isAlbumSearch && trimmedQuery
-              ? null
-              : trimmedQuery
-                ? `${displayedResults.length} results`
-                : null;
+      : isUnifiedSearch && trimmedQuery
+        ? "Artists, releases, and songs"
+        : isTagSearch && trimmedQuery
+          ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
+          : isAlbumSearch && trimmedQuery
+            ? null
+            : trimmedQuery
+              ? `${displayedResults.length} results`
+              : null;
   const selectedRecommendedSort =
     recommendedSortOptions.find((option) => option.value === recommendedSortKey) ||
     recommendedSortOptions[0];
@@ -1383,7 +1370,7 @@ function SearchResultsPage() {
           </div>
         )}
 
-        {["recommended", "trending", "tag"].includes(normalizedType) && (
+        {["recommended", "tag"].includes(normalizedType) && (
           <div ref={recommendedToolbarRef} className="library-page__toolbar global-search">
             <div className="global-search__box">
               {!isTagSearch && (
@@ -1631,14 +1618,13 @@ function SearchResultsPage() {
                 ? ({ all: "all", artists: "round-artists" } as const)[activeFilter] || "albums"
                 : isAlbumSearch
                   ? "albums"
-                  : ["recommended", "trending", "tag"].includes(normalizedType) &&
+                  : ["recommended", "tag"].includes(normalizedType) &&
                       recommendedViewMode === "list"
                     ? "artist-list"
                     : "artists"
             }
             gridColumns={
-              ["recommended", "trending", "tag"].includes(normalizedType) &&
-              recommendedViewMode === "grid"
+              ["recommended", "tag"].includes(normalizedType) && recommendedViewMode === "grid"
                 ? recommendedGridColumns
                 : undefined
             }
@@ -1738,12 +1724,10 @@ function SearchResultsPage() {
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
                   variant={
-                    ["recommended", "trending", "tag"].includes(normalizedType)
-                      ? recommendedViewMode
-                      : "square"
+                    ["recommended", "tag"].includes(normalizedType) ? recommendedViewMode : "square"
                   }
                   gridColumns={
-                    ["recommended", "trending", "tag"].includes(normalizedType) &&
+                    ["recommended", "tag"].includes(normalizedType) &&
                     recommendedViewMode === "grid"
                       ? recommendedGridColumns
                       : undefined
@@ -1767,4 +1751,8 @@ function SearchResultsPage() {
   );
 }
 
-export default SearchResultsPage;
+export default function SearchResultsPage() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("type") === "trending") return <Navigate to="/discover/trending" replace />;
+  return <SearchResults />;
+}
