@@ -36,6 +36,7 @@ import {
   acquireMetadataRequest,
   clearMetadataRequestStates,
   completeMetadataRequest,
+  deferMetadataRequest,
   failMetadataRequest,
   getMetadataProviderBudget,
   getMetadataRequestState,
@@ -105,6 +106,7 @@ const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
+const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 15 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
 const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
@@ -266,7 +268,10 @@ function getMetadataCircuitError(baseUrl: string) {
 }
 
 function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
-  const cooldownMs = status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
+  const cooldownMs =
+    status === 403
+      ? METADATA_FORBIDDEN_COOLDOWN_MS
+      : Math.min(getRetryAfterMs(error), METADATA_RATE_LIMIT_MAX_COOLDOWN_MS);
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
@@ -484,6 +489,14 @@ function refreshMetadata<T>(
             status != null
               ? `HTTP ${status}`
               : String(failure?.code || failure?.message || "Unknown error");
+          // BrainzMash answers 429 when the same album is asked for again within
+          // a week, so only that entity waits out the Retry-After.
+          if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
+            const retryAt = Date.now() + getRetryAfterMs(error);
+            deferMetadataRequest(cacheKey, leaseToken, retryAt);
+            if (fallbackValue !== undefined) return fallbackValue;
+            throw createMetadataCooldownError(retryAt - Date.now());
+          }
           if (status === 403 || status === 429) {
             if (!isMetadataCircuitError(error)) {
               openMetadataCircuit(baseUrl, status, error);

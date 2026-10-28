@@ -39,6 +39,7 @@ const {
   getAlbumByMbid,
   getArtistByMbid,
   listArtistAlbums,
+  searchAlbums,
   searchArtists,
 } = brainzmashProvider;
 
@@ -529,19 +530,65 @@ test("forced refreshes serve stale album metadata when the provider fails", asyn
   }
 });
 
-test("a metadata 429 opens a shared cooldown for the full retry-after period", async () => {
+test("an album 429 makes only that album wait out its retry-after", async () => {
+  const previousSettings = dbOps.getSettings();
+  const requested: string[] = [];
+  const server = await createMockHttpServer((request, response) => {
+    requested.push(request.url || "");
+    if (request.url?.startsWith("/album/repeat-album")) {
+      response.statusCode = 429;
+      response.setHeader("retry-after", "604800");
+      response.end(JSON.stringify({ error: "album request is temporarily rate limited" }));
+      return;
+    }
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "other-album", title: "Other Album" }));
+  });
+  const waitsAboutAWeek = () =>
+    assert.rejects(
+      () => getAlbumByMbid("repeat-album"),
+      (error) =>
+        asAppError(error)?.code === "ERR_METADATA_COOLDOWN" &&
+        error instanceof Error &&
+        "retryAfterMs" in error &&
+        Number(error.retryAfterMs) > 6 * 24 * 60 * 60 * 1000,
+    );
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await waitsAboutAWeek();
+    await waitsAboutAWeek();
+    assert.equal((await getAlbumByMbid("other-album")).title, "Other Album");
+    assert.deepEqual(requested, ["/album/repeat-album", "/album/other-album"]);
+    assert.equal(Number(getMetadataProviderBudget(server.url).rate_limited_until), 0);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("a search 429 pauses every metadata request for at most fifteen minutes", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
   const server = await createMockHttpServer((_request, response) => {
     requests += 1;
-    if (requests === 1) {
-      response.statusCode = 429;
-      response.setHeader("retry-after", "3600");
-      response.end("rate limited");
-      return;
-    }
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "artist-2", name: "Artist" }));
+    response.statusCode = 429;
+    response.setHeader("retry-after", "604800");
+    response.end("rate limited");
   });
 
   try {
@@ -560,7 +607,7 @@ test("a metadata 429 opens a shared cooldown for the full retry-after period", a
     clearMetadataProviderCaches();
 
     await assert.rejects(
-      () => getArtistByMbid("rate-limited-artist"),
+      () => searchAlbums("Rate Limited", { throwOnFailure: true }),
       (error) => asAppError(error)?.response?.status === 429,
     );
     await assert.rejects(
@@ -568,10 +615,9 @@ test("a metadata 429 opens a shared cooldown for the full retry-after period", a
       (error) => asAppError(error)?.code === "ERR_METADATA_RATE_LIMITED",
     );
     assert.equal(requests, 1);
-    assert.ok(
-      Number(getMetadataProviderBudget(server.url).rate_limited_until) - Date.now() >=
-        59 * 60 * 1000,
-    );
+    const cooldownMs =
+      Number(getMetadataProviderBudget(server.url).rate_limited_until) - Date.now();
+    assert.ok(cooldownMs > 14 * 60 * 1000 && cooldownMs <= 15 * 60 * 1000);
     const providerUrl = new URL(
       "../backend/services/providers/brainzmashProvider.ts",
       import.meta.url,

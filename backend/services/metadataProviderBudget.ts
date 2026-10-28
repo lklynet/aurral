@@ -133,6 +133,21 @@ export function failMetadataRequest(cacheKey: string, token: string, now = Date.
   return failRequest.immediate(cacheKey, token, now);
 }
 
+const deferRequest = db.prepare<[number, number, string, string]>(`
+  UPDATE metadata_request_state
+  SET retry_after = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+  WHERE cache_key = ? AND lease_token = ?
+`);
+
+export function deferMetadataRequest(
+  cacheKey: string,
+  token: string,
+  retryAfter: number,
+  now = Date.now(),
+) {
+  return deferRequest.run(retryAfter, now, cacheKey, token).changes;
+}
+
 export function forgetMetadataRequestState(cacheKey: string) {
   return clearRequestState.run(cacheKey).changes;
 }
