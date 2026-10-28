@@ -1,50 +1,68 @@
 .wrapped-announcement {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--aurral-space-stack);
+  min-height: 56px;
   margin: var(--aurral-space-page);
-  padding: var(--aurral-space-stack);
+  overflow: hidden;
+  border: 1px solid var(--aurral-border-strong);
   border-radius: var(--aurral-radius);
   color-scheme: dark;
   color: var(--aurral-overlay-foreground);
-  background: var(--aurral-surface);
+  background: var(--aurral-overlay-base);
 }
 .wrapped-announcement h2 {
-  flex: 1 1 14rem;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
+  padding: 0 0.875rem;
   font-family: "Wrapped Display", var(--font-sans);
-  font-size: 1.375rem;
+  font-size: 1.5rem;
   font-weight: 900;
+  line-height: 1.05;
   letter-spacing: -0.01em;
+  word-spacing: 0.08em;
 }
-.wrapped-announcement-art {
-  display: grid;
-  grid-template-columns: repeat(2, 22px);
+.wrapped-announcement-strip {
+  display: flex;
   flex-shrink: 0;
+  align-self: stretch;
 }
-.wrapped-announcement-art img {
-  width: 22px;
-  height: 22px;
+.wrapped-announcement-strip img {
+  width: 56px;
+  height: 100%;
+  min-height: 56px;
   object-fit: cover;
 }
 .wrapped-announcement-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
   gap: var(--aurral-space-outer);
-}
-.wrapped-announcement .btn {
-  border-radius: var(--aurral-radius-round);
+  padding-right: var(--aurral-space-outer);
 }
 .wrapped-announcement .btn-primary {
+  border-radius: var(--aurral-radius-round);
   color: var(--aurral-overlay-base);
   background: var(--aurral-overlay-foreground);
   border-color: var(--aurral-overlay-foreground);
+}
+.wrapped-announcement .wrapped-announcement-more {
+  border-radius: var(--aurral-radius-round);
+  color: var(--aurral-overlay-foreground);
 }
 @media (hover: hover) and (pointer: fine) {
   .wrapped-announcement .btn-primary:hover:not(:disabled) {
     color: var(--aurral-overlay-base);
     background: var(--aurral-overlay-foreground-soft);
     border-color: var(--aurral-overlay-foreground-soft);
+  }
+}
+@media (max-width: 640px) {
+  .wrapped-announcement h2 {
+    padding: 0 0.625rem;
+    font-size: 1.125rem;
+  }
+  .wrapped-announcement-strip img:nth-child(n + 3) {
+    display: none;
   }
 }

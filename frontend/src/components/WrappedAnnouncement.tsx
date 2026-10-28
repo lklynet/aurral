@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
+import { LibraryItemMenu } from "./LibraryItemMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
@@ -58,7 +59,7 @@ export default function WrappedAnnouncement() {
   return (
     <section className="wrapped-announcement" aria-labelledby={headingId}>
       {artwork.length > 0 && (
-        <div className="wrapped-announcement-art" aria-hidden="true">
+        <div className="wrapped-announcement-strip" aria-hidden="true">
           {artwork.map((url) => (
             <img key={url} src={wrappedImageUrl(url)} alt="" loading="lazy" />
           ))}
@@ -73,17 +74,20 @@ export default function WrappedAnnouncement() {
         >
           Open
         </Link>
-        <button type="button" className="btn btn-secondary" onClick={hideSession}>
-          Hide
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={dismissal.isPending}
-          onClick={() => dismissal.mutate(true)}
-        >
-          Hide for this year
-        </button>
+        <LibraryItemMenu
+          label="Wrapped"
+          triggerClassName="btn btn-ghost btn-icon wrapped-announcement-more"
+          contextMenu={false}
+          items={[
+            { id: "now", label: "Hide for now", onSelect: hideSession },
+            {
+              id: "year",
+              label: "Hide for this year",
+              disabled: dismissal.isPending,
+              onSelect: () => dismissal.mutate(true),
+            },
+          ]}
+        />
       </div>
     </section>
   );
