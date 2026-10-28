@@ -27,8 +27,8 @@ import {
 import {
   buildRecommendedRails,
   firstGenre,
-  likedSeeds,
   matchesFilter,
+  pickReason,
   recommendationContext,
   recommendationReason,
   type RecommendationContext,
@@ -97,7 +97,8 @@ function TopPick({
   const mbid = artist.navigateTo || artist.id;
   const { canPlayArtistPreview, isArtistPreviewActive, isLoadingPreview, playArtistPreview } =
     useArtistPreviewPlayback({ mbid, artistName: artist.name });
-  const seeds = likedSeeds(artist, context.seeds);
+  const reason = pickReason(artist, context.seeds);
+  const seeds = reason.kind === "like" ? reason.names : [];
   const seedIds = new Map(basedOn.flatMap((seed) => (seed.name ? [[seed.name, seed.id]] : [])));
   const feedbackUsed = getArtistFeedbackFlags(artistFeedbackLookup, artist);
   const to = artistPath(artist);
@@ -140,6 +141,8 @@ function TopPick({
                 );
               })}
             </>
+          ) : reason.names.length > 0 ? (
+            ` · via ${listFormat.format(reason.names.slice(0, 3))}`
           ) : null}
         </p>
         <div className="recommended-spotlight__actions">
