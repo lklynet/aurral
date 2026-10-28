@@ -132,7 +132,7 @@ export async function getDeezerArtist(
 ) {
   const wanted = artistNameKey(artistName);
   if (!wanted) return null;
-  const cacheKey = `name:${wanted}`;
+  const cacheKey = `name:${artistName.toLowerCase().trim()}`;
 
   try {
     return await cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
