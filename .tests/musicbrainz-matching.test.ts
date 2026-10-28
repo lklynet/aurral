@@ -235,6 +235,16 @@ test("an untagged Library artist links to the namesake whose discography has its
   assert.equal(mbidOf(artistId), SIXTIES);
 });
 
+test("an untagged Library artist links through store labels and featured credits", async () => {
+  const labeled = libraryArtist("Nirvana", ["Local Anaesthetic - Single"]);
+  const featuring = libraryArtist("Nirvana feat. Someone", ["Nevermind"]);
+
+  await scan();
+
+  assert.equal(mbidOf(labeled), SIXTIES);
+  assert.equal(mbidOf(featuring), GRUNGE);
+});
+
 test("an untagged Library artist stays unlinked when no namesake has its albums", async () => {
   const artistId = libraryArtist("Nirvana", ["Bootleg Nobody Released"]);
 

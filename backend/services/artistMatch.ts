@@ -6,7 +6,7 @@ import {
   searchArtists,
 } from "./providers/brainzmashProvider.ts";
 import { normalizeTitle } from "./providers/brainzmashRanking.ts";
-import { withoutFeaturedArtists } from "./trackMatching/titleText.ts";
+import { coreAlbumTitle, withoutFeaturedArtists } from "./trackMatching/titleText.ts";
 
 type NamedArtist = Awaited<ReturnType<typeof searchArtists>>["items"][number];
 
@@ -27,7 +27,11 @@ async function namedArtists(name: string) {
 }
 
 const albumKeys = (titles: string[]) =>
-  new Set(titles.map((title) => normalizeTitle(title)).filter(Boolean));
+  new Set(
+    titles
+      .map((title) => normalizeTitle(coreAlbumTitle(title)).replaceAll(" ", ""))
+      .filter(Boolean),
+  );
 
 async function heldAlbumCount(artist: NamedArtist, wanted: Set<string>) {
   const albums = await listArtistAlbums(artist.id, { hydrateLimit: 0 }).catch((error) => {
@@ -39,9 +43,13 @@ async function heldAlbumCount(artist: NamedArtist, wanted: Set<string>) {
 
 // Throws when the provider cannot answer, so a scan can tell an outage from no
 // match.
-export async function matchLibraryArtist(name: string, albums: string[]) {
+export async function matchLibraryArtist(name: string, albums: string[]): Promise<string | null> {
   const named = await namedArtists(name);
-  if (named.length <= 1) return named[0]?.id || null;
+  if (named.length === 0) {
+    const lead = withoutFeaturedArtists(name);
+    return lead && lead !== name ? matchLibraryArtist(lead, albums) : null;
+  }
+  if (named.length === 1) return named[0].id;
   const wanted = albumKeys(albums);
   if (wanted.size === 0) return null;
   const counts = await Promise.all(named.map((artist) => heldAlbumCount(artist, wanted)));
