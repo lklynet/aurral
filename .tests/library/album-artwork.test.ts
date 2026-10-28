@@ -414,6 +414,27 @@ describe("with sign-in required", () => {
     assert.equal(await isBlue((await requestCover(album.id)).body), true);
   });
 
+  test("a cover that vanishes before it is sent is not cached as missing for a year", async () => {
+    const album = await albumFixture("vanishing", [image]);
+    assert.equal((await requestCover(album.id)).status, 200);
+    const version = requireFixture(
+      getLibraryArtworkVersions("album", [album.id]).get(String(album.id)),
+    );
+    const stored = path.join(
+      isolatedState.dataDir,
+      "library-artwork",
+      `album-${album.id}`,
+      `${version}.webp`,
+    );
+    await fs.rm(stored);
+    await mkdir(stored);
+    const response = await realFetch(
+      `${baseUrl}/api/library/albums/${album.id}/cover?v=${version}&token=${requireFixture(session).token}`,
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("cache-control"), "private, max-age=300");
+  });
+
   test("a slow lookup that finishes after a newer version keeps the newer art", async (t) => {
     const replies: ((response: Response) => void)[] = [];
     const waiters: (() => void)[] = [];

@@ -167,11 +167,12 @@ type LibraryPage = ReturnType<typeof getLibraryPage>;
 
 async function sendLibraryArtwork(c: Context<AppEnv>, kind: LibraryArtworkKind, id: string) {
   if (!c.var.user && isAuthRequiredByConfig()) return c.json({ error: "Unauthorized" }, 401);
-  const artwork = await getLibraryArtwork(kind, id).catch(() => null);
-  if (!artwork) {
+  const notFound = () => {
     c.header("Cache-Control", "private, max-age=300");
     return c.json({ error: "Artwork not found" }, 404);
-  }
+  };
+  const artwork = await getLibraryArtwork(kind, id).catch(() => null);
+  if (!artwork) return notFound();
   c.header(
     "Cache-Control",
     c.req.query("v") ? "private, max-age=31536000, immutable" : "private, max-age=3600",
@@ -180,7 +181,7 @@ async function sendLibraryArtwork(c: Context<AppEnv>, kind: LibraryArtworkKind, 
     (await sendViaNode(c, sendFile, artwork.filePath, {
       contentType: artwork.contentType,
       dotfiles: "deny",
-    })) ?? c.json({ error: "Artwork not found" }, 404)
+    })) ?? notFound()
   );
 }
 
