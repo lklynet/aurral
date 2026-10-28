@@ -5,6 +5,7 @@ import createRateLimiter from "./rateLimiter.ts";
 interface DeezerArtist {
   id?: number | string;
   name?: string;
+  picture_xl?: string;
   picture_big?: string;
   picture_medium?: string;
   picture?: string;
@@ -29,6 +30,7 @@ interface DeezerAlbum {
   record_type?: string;
   type?: string;
   release_date?: string;
+  cover_xl?: string;
   cover_big?: string;
   cover_medium?: string;
   cover?: string;
@@ -143,7 +145,12 @@ export async function getDeezerArtist(
         ? {
             id: match.id,
             name: match.name,
-            imageUrl: match.picture_big || match.picture_medium || match.picture || null,
+            imageUrl:
+              match.picture_xl ||
+              match.picture_big ||
+              match.picture_medium ||
+              match.picture ||
+              null,
           }
         : null;
       deezerArtistCache.set(cacheKey, result);
@@ -177,7 +184,8 @@ export async function getDeezerArtistById(
       const result = {
         id: data.id,
         name: data.name || null,
-        imageUrl: data.picture_big || data.picture_medium || data.picture || null,
+        imageUrl:
+          data.picture_xl || data.picture_big || data.picture_medium || data.picture || null,
       };
       deezerArtistCache.set(cacheKey, result);
       return result;
@@ -212,6 +220,38 @@ async function getDeezerArtistTopTracksById(artistId: DeezerArtistId) {
       }));
     deezerTopTrackCache.set(cacheKey, tracks);
     return tracks;
+  });
+}
+
+export async function deezerGetRelatedArtists(
+  artistId: DeezerArtistId,
+  { limit = 25 }: { limit?: number } = {},
+) {
+  const normalizedId = String(artistId || "").trim();
+  if (!normalizedId) return [];
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
+  const cacheKey = `related:${normalizedId}:${safeLimit}`;
+  return cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
+    const response = await deezerLimiter.schedule(() =>
+      axios.get(`https://api.deezer.com/artist/${normalizedId}/related`, {
+        params: { limit: safeLimit },
+        timeout: 5000,
+      }),
+    );
+    if (isDeezerOutage(response.data)) throw new Error("Deezer related artists unavailable");
+    const rows: DeezerArtist[] = response.data?.data || [];
+    const artists = rows.flatMap((artist) =>
+      artist?.id && artist.name?.trim()
+        ? [
+            {
+              name: artist.name.trim(),
+              image: artist.picture_xl || artist.picture_big || artist.picture_medium || null,
+            },
+          ]
+        : [],
+    );
+    deezerArtistCache.set(cacheKey, artists);
+    return artists;
   });
 }
 
@@ -265,56 +305,6 @@ export async function deezerGetArtistTopTracksById(artistId: DeezerArtistId) {
     return await getDeezerArtistTopTracksById(artistId);
   } catch {
     return [];
-  }
-}
-
-export function selectDeezerTrackPreview(
-  candidates: DeezerTrack[] | null | undefined,
-  { artistName, trackName }: { artistName: string; trackName: string },
-) {
-  const targetArtist = normalizeTitle(artistName);
-  const targetTrack = normalizeTitle(trackName);
-  if (!targetArtist || !targetTrack) return null;
-
-  return (
-    (Array.isArray(candidates) ? candidates : []).find((candidate) => {
-      const candidateArtist = normalizeTitle(candidate?.artist?.name);
-      const candidateTrack = normalizeTitle(candidate?.title_short || candidate?.title);
-      return (
-        candidate?.preview &&
-        candidateTrack &&
-        candidateArtist === targetArtist &&
-        (candidateTrack === targetTrack ||
-          candidateTrack.includes(targetTrack) ||
-          targetTrack.includes(candidateTrack))
-      );
-    }) || null
-  );
-}
-
-export async function deezerGetTrackPreview({
-  artistName,
-  trackName,
-}: {
-  artistName: string;
-  trackName: string;
-}) {
-  if (!String(artistName || "").trim() || !String(trackName || "").trim()) return null;
-  try {
-    const response = await axios.get("https://api.deezer.com/search", {
-      params: { q: `${artistName} ${trackName}`, limit: 10 },
-      timeout: 3000,
-    });
-    const track = selectDeezerTrackPreview(response.data?.data, { artistName, trackName });
-    if (!track) return null;
-    return {
-      preview_url: deezerPreviewPath(track.id),
-      previewProvider: "deezer",
-      previewTrackId: String(track.id),
-      durationMs: track.duration ? track.duration * 1000 : null,
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -413,7 +403,7 @@ export async function getDeezerAlbumsForArtist(
           "first-release-date": releaseDate ? releaseDate.slice(0, 4) : null,
           "primary-type": primaryType,
           "secondary-types": [],
-          _coverUrl: a.cover_big || a.cover_medium || a.cover || null,
+          _coverUrl: a.cover_xl || a.cover_big || a.cover_medium || a.cover || null,
           fans: typeof a.fans === "number" ? a.fans : 0,
           _normalizedTitle: normalizeTitle(title),
           _releaseDate: releaseDate,

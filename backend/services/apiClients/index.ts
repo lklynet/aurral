@@ -36,6 +36,8 @@ export {
   deezerGetArtistTopTracks,
   deezerGetArtistTopTracksById,
   deezerGetArtistTopTrackList,
+  deezerGetRelatedArtists,
+  getDeezerArtist,
   deezerGetAlbumTracks,
   enrichTracksWithDeezerPreviews,
   getDeezerPreviewLink,

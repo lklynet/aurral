@@ -13,6 +13,7 @@ import {
   deezerTopTrackCache,
 } from "./deezer.ts";
 import { youtubeVideoCache } from "./youtube.ts";
+import { lrclibCache } from "./lrclib.ts";
 import { clearMetadataProviderCaches } from "../providers/brainzmashProvider.ts";
 import { clearReleaseManifests } from "../releaseResolver.ts";
 
@@ -31,4 +32,5 @@ export function clearApiCaches() {
   deezerPreviewMatchCache.flushAll();
   deezerTopTrackCache.flushAll();
   youtubeVideoCache.flushAll();
+  lrclibCache.flushAll();
 }

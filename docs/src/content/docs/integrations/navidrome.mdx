@@ -25,7 +25,7 @@ Subsonic clients can save a personal play queue with `savePlayQueue` and restore
 
 Subsonic `stream` can convert audio to MP3, Opus in an Ogg container, or AAC when a client requests `format=mp3`, `format=opus`, or `format=aac`. A lower `maxBitRate` converts to MP3 by default. `timeOffset` seeks in seconds when converting. `format=raw`, an unlimited request, or a bitrate limit above the source bitrate keeps the original file. `download` always sends the original file. Conversion requires ffmpeg, which is included in the Docker image.
 
-`getLyricsBySongId` returns local lyrics from a `.lrc` sidecar next to the audio file, then embedded lyrics tags. Timed lyrics include millisecond timestamps. `getLyrics` returns the same text when the artist and title identify one Library track. Aurral does not query external lyrics services.
+`getLyricsBySongId` returns local lyrics from a `.lrc` sidecar next to the audio file, then embedded lyrics tags. When a track has neither, Aurral looks it up on [LRCLIB](https://lrclib.net), a free lyrics database, using the track's artist, title, album, and length. Timed lyrics include millisecond timestamps. `getLyrics` returns the same text when the artist and title identify one Library track.
 
 ### Connect a Subsonic client
 

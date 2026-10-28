@@ -11,6 +11,7 @@ import {
   searchArtists,
 } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
 import {
   fetchDeezerArtistImageUrl,
   fetchReleaseGroupCoverUrl,
@@ -371,19 +372,30 @@ export const getArtistImage = async (
 
       const resolvedArtistName = metadataArtist?.name || artistName || null;
       let sawTransientError = false;
-      let deezerImage = null;
-      try {
-        deezerImage = await fetchDeezerArtistImageUrl({
-          artistName: resolvedArtistName || "",
-          deezerArtistId:
-            override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links),
-          throwOnError: true,
+      const deezerArtistId =
+        override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links);
+      const photoSources = [
+        async () =>
+          deezerArtistId ? fetchDeezerArtistImageUrl({ deezerArtistId, throwOnError: true }) : null,
+        () => wikimediaGetArtistPhotoUrl(metadataArtist?.links),
+        async () =>
+          deezerArtistId
+            ? null
+            : fetchDeezerArtistImageUrl({
+                artistName: resolvedArtistName || "",
+                throwOnError: true,
+              }),
+      ];
+      let photo: string | null = null;
+      for (const source of photoSources) {
+        photo = await source().catch(() => {
+          sawTransientError = true;
+          return null;
         });
-      } catch {
-        sawTransientError = true;
+        if (photo) break;
       }
-      if (deezerImage) {
-        const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(deezerImage), ["Artist"]);
+      if (photo) {
+        const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(photo), ["Artist"]);
         if (isCurrentRequest()) {
           negativeImageCache.delete(mbid);
           dbOps.setImage(mbid, result.url, result.images);

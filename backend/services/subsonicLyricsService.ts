@@ -4,6 +4,7 @@ import { parseFile, type ILyricsTag } from "music-metadata";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.ts";
+import { lrclibGetLyrics } from "./apiClients/lrclib.ts";
 
 function textLyrics(text: string | undefined) {
   const lines = String(text || "")
@@ -65,13 +66,22 @@ export async function getLyricsBySongId(id: string, user: RequestUser) {
     const code = asAppError(error)?.code;
     if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
   }
-  try {
-    const metadata = await parseFile(filePath, { skipCovers: true });
-    return (metadata.common.lyrics || []).flatMap((tag) => {
-      const lyrics = embeddedLyrics(tag);
-      return lyrics ? [{ ...display, lang: tag.language || "und", ...lyrics }] : [];
-    });
-  } catch {
-    return [];
-  }
+  const embedded = await parseFile(filePath, { skipCovers: true })
+    .then((metadata) =>
+      (metadata.common.lyrics || []).flatMap((tag) => {
+        const lyrics = embeddedLyrics(tag);
+        return lyrics ? [{ ...display, lang: tag.language || "und", ...lyrics }] : [];
+      }),
+    )
+    .catch(() => []);
+  if (embedded.length) return embedded;
+  const online = textLyrics(
+    (await lrclibGetLyrics({
+      artist: song.artist,
+      title: song.title || "",
+      album: song.album,
+      durationSec: song.duration,
+    })) || "",
+  );
+  return online ? [{ ...display, lang: "und", ...online }] : [];
 }

@@ -31,6 +31,9 @@ const [
 const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const LIBRARY = { name: "Library One", mbid: mbid(2) };
+const QUIET = { name: "Quiet Artist", mbid: mbid(3) };
+const RELATED = { name: "Related Pick", mbid: mbid(31) };
+const RELATED_PHOTO = "https://cdn-images.dzcdn.net/images/artist/related/1000x1000.jpg";
 const CLOSE_PICK = { name: "Close Pick", mbid: mbid(11) };
 const SHARED_PICK = { name: "Shared Pick", mbid: mbid(12) };
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
@@ -111,12 +114,29 @@ const respond = (url: URL) => {
     });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
+    if (url.searchParams.get("q") === QUIET.name)
+      return json({ data: [{ id: 9, name: QUIET.name }] });
     return json({
       data: [
         { id: 8, name: "Library Onesie" },
         { id: 7, name: "Library One" },
       ],
     });
+  }
+  if (url.hostname === "api.deezer.com" && url.pathname === "/artist/9/related") {
+    return json({
+      data: [
+        { id: 31, name: RELATED.name, picture_xl: RELATED_PHOTO },
+        { id: 32, name: "Unknown To MusicBrainz" },
+      ],
+    });
+  }
+  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === "/search/artist") {
+    return json(
+      url.searchParams.get("query") === RELATED.name
+        ? [{ id: RELATED.mbid, artistname: RELATED.name }]
+        : [],
+    );
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/7/top") {
     return json({
@@ -230,6 +250,20 @@ test("without a Last.fm key artist pages list ListenBrainz similar artists", asy
       [LIBRARY.name, 33],
     ],
   );
+});
+
+test("without a Last.fm key artist pages fall back to Deezer's related artists when ListenBrainz has none", async () => {
+  const response = await similar.request(
+    `/artists/${QUIET.mbid}/similar?${new URLSearchParams({ artistName: QUIET.name })}`,
+  );
+  const body: { artists: { id: string; name: string; image: string | null }[] } =
+    await response.json();
+
+  assert.deepEqual(
+    body.artists.map((artist) => [artist.id, artist.name]),
+    [[RELATED.mbid, RELATED.name]],
+  );
+  assert.ok(body.artists[0].image);
 });
 
 test("without a Last.fm key a Mix flow picks the library artist's own Deezer top track", async () => {

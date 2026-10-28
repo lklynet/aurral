@@ -7,6 +7,8 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
+import { getFreshReleasesByArtists } from "../../../services/discovery/freshReleases.ts";
+import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.ts";
 import { logger } from "../../../services/logger.ts";
@@ -398,7 +400,14 @@ export default new Hono<AppEnv>()
     try {
       const { getRecentMissingReleases } =
         await import("../../../services/discovery/recentReleases.ts");
-      const recentMissing = await getRecentMissingReleases(24);
+      const fromLibrary = await getRecentMissingReleases(24);
+      const libraryReleaseIds = new Set(fromLibrary.map((album) => album.mbid));
+      const fromRecommendations = getFreshReleasesByArtists(
+        getUserDiscovery(c.var.user?.id ?? null, 0).body.recommendations.map((artist) => artist.id),
+      ).filter((album) => !libraryReleaseIds.has(album.mbid));
+      const recentMissing = [...fromLibrary, ...fromRecommendations]
+        .sort((left, right) => right.releaseDate.localeCompare(left.releaseDate))
+        .slice(0, 24);
 
       const cachedCovers = dbOps.getImages(
         recentMissing
