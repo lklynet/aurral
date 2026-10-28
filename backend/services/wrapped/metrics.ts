@@ -1,3 +1,4 @@
+import type { WrappedBeats } from "./beats.ts";
 export const WRAPPED_SOURCES = [
   "aurral",
   "lastfm",
@@ -143,6 +144,7 @@ type Tally = {
   artwork: string | null;
   color: string | null;
   preview: string | null;
+  beats: WrappedBeats | null;
   mbid: string | null;
   libraryTrackId: number | null;
   libraryAlbumId: number | null;
@@ -202,6 +204,7 @@ export function calculateWrapped(
       artwork: null,
       color: null,
       preview: null,
+      beats: null,
       mbid: null,
       libraryTrackId: null,
       libraryAlbumId: null,

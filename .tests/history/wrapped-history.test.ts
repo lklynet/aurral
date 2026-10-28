@@ -167,7 +167,7 @@ test("a saved recap serves cached covers from Aurral and keeps the link for one 
     one.id,
     Date.parse("2026-12-01T00:00:00Z"),
     JSON.stringify({
-      version: 2,
+      version: 3,
       topSongs: [{ name: "Song", artwork: "https://covers.example/cached.png" }],
       topArtists: [{ name: "Artist", artwork: "https://covers.example/missing.png" }],
       topAlbums: [],

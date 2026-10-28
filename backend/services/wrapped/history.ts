@@ -16,6 +16,7 @@ import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
 import { buildImageProxyUrl, warmImageProxy, warmPublicImageUrl } from "../imageProxyService.ts";
 import getSharp from "../sharpConfig.ts";
 import { getArtistImage } from "../imageService.ts";
+import { songBeats } from "./beats.ts";
 import { calculateWrapped, wrappedKey, type WrappedPeriod, type WrappedPlay } from "./metrics.ts";
 
 const MAX_PLAYS = 100_000;
@@ -594,6 +595,17 @@ export async function buildWrappedSummary(userId: number, period: Period) {
       song.preview = preview?.preview_url ?? null;
     }),
   ]);
+  await Promise.all(
+    summary.topSongs
+      .filter(
+        (song) =>
+          song.preview !== null || (song.libraryTrackId !== null && song.libraryAlbumId !== null),
+      )
+      .slice(0, 4)
+      .map(async (song) => {
+        song.beats = await songBeats(song);
+      }),
+  );
   const rows = [...summary.topSongs, ...summary.topArtists, ...summary.topAlbums];
   for (const row of rows) row.artwork = buildImageProxyUrl(row.artwork);
   await Promise.all(rows.map((row) => row.artwork && warmPublicImageUrl(row.artwork)));

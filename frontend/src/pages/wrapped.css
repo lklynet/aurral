@@ -221,7 +221,7 @@
   animation-name: wrapped-word;
 }
 .wrapped-slide--still .wrapped-in,
-.wrapped-slide--revealed .wrapped-stack .wrapped-in {
+.wrapped-slide--revealed .wrapped-in {
   animation: none;
 }
 .wrapped-slide--leaving .wrapped-stack img {

@@ -37,7 +37,7 @@ const setBannerHidden = db.prepare<[number, number]>(
   "UPDATE wrapped_reports SET banner_hidden = ? WHERE user_id = ?",
 );
 
-const SUMMARY_VERSION = 2;
+const SUMMARY_VERSION = 3;
 
 export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
 

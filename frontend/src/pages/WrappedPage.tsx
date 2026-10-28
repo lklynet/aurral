@@ -227,7 +227,7 @@ function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
   }
 }
 
-function useSoundtrack(src: string | null, seek: boolean, muted: boolean, vintage: boolean) {
+function useSoundtrack(src: string | null, seek: number | null, muted: boolean, vintage: boolean) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const graph = useRef<ReturnType<typeof vintageGraph>>(null);
   const startAt = useRef(0);
@@ -291,13 +291,16 @@ function useSoundtrack(src: string | null, seek: boolean, muted: boolean, vintag
     };
     const start = () => {
       element.src = src;
-      startAt.current = 0;
-      if (seek)
+      startAt.current = seek ?? 0;
+      if (seek !== 0)
         element.addEventListener(
           "loadedmetadata",
           () => {
-            if (element.src !== src || !(element.duration > 60)) return;
-            startAt.current = Math.round(element.duration * 0.3);
+            if (element.src !== src) return;
+            if (seek === null) {
+              if (!(element.duration > 60)) return;
+              startAt.current = Math.round(element.duration * 0.3);
+            }
             element.currentTime = startAt.current;
           },
           { once: true },
@@ -315,6 +318,12 @@ function useSoundtrack(src: string | null, seek: boolean, muted: boolean, vintag
 
   return {
     current,
+    position: () => {
+      const element = audio.current;
+      if (!element?.src || element.paused || element.seeking) return null;
+      const time = element.currentTime - startAt.current;
+      return time >= 0 ? time : null;
+    },
     resume: () => {
       const element = audio.current;
       graph.current?.context.resume().catch(() => {});
@@ -939,6 +948,7 @@ function Story({
     leaving: null,
   });
   const [intro, setIntro] = useState(() => introPending(summary.year));
+  const [waiting, setWaiting] = useState(intro);
   const [vintage, setVintage] = useState(intro);
   const [fromIntro, setFromIntro] = useState(intro);
   const [held, setHeld] = useState(false);
@@ -962,7 +972,12 @@ function Story({
   );
   const cue = soundtrack[index];
   const source = cue && wrappedSongSource(cue.song);
-  const audio = useSoundtrack(source, cue?.song.preview === null, muted, vintage);
+  const audio = useSoundtrack(
+    intro && waiting ? null : source,
+    !cue || cue.song.preview !== null ? 0 : (cue.song.beats?.start ?? null),
+    muted,
+    vintage,
+  );
   const hasAudio = soundtrack.some(Boolean);
   const audible = !muted && Boolean(source) && audio.current === source;
   const playing = audible && cue?.named === true;
@@ -1008,6 +1023,7 @@ function Story({
     setIntro(false);
   }, [summary.year]);
   const reveal = useCallback(() => setVintage(false), []);
+  const begin = useCallback(() => setWaiting(false), []);
 
   const go = (step: number) => {
     audio.resume();
@@ -1124,7 +1140,15 @@ function Story({
         aria-label={intro ? "Intro" : `${index + 1} of ${slides.length}`}
       >
         {intro && (
-          <WrappedIntro summary={summary} slide={slideRef} onReveal={reveal} onDone={finishIntro} />
+          <WrappedIntro
+            summary={summary}
+            beats={soundtrack[0]?.song.beats ?? null}
+            slide={slideRef}
+            position={soundtrack[0] ? audio.position : null}
+            onStart={begin}
+            onReveal={reveal}
+            onDone={finishIntro}
+          />
         )}
         <div className="wrapped-progress" aria-hidden="true">
           {slides.map((entry, position) => (
