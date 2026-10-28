@@ -6,9 +6,8 @@ export function wrappedSeason(appVersion: string, now = Date.now()) {
     return { year: new Date(now).getUTCFullYear(), cutoff: now, preview: true };
   const nightly = appVersion.startsWith("nightly.");
   const release = (year: number) => (nightly ? Date.UTC(year, 10, 28) : Date.UTC(year, 11, 1));
-  if (now < release(2026)) return null;
-  const currentYear = new Date(now).getUTCFullYear();
-  const year = now >= release(currentYear) ? currentYear : currentYear - 1;
+  const year = new Date(now).getUTCFullYear();
+  if (year < 2026 || now < release(year)) return null;
   return { year, cutoff: release(year), preview: false };
 }
 

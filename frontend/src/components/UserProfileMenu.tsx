@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
-import { User, Heart, LogOut, ExternalLink } from "./icons";
+import { BellRinging, User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useWrappedSeason } from "../hooks/useWrapped.ts";
 import TooltipButton from "./TooltipButton";
@@ -74,6 +74,7 @@ function UserProfileMenu() {
                   className="app-profile-menu__item"
                   onClick={closeMenu}
                 >
+                  <BellRinging className="app-profile-menu__item-icon" />
                   <span>Your Wrapped</span>
                 </Link>
               </li>

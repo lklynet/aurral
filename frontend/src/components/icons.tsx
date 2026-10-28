@@ -38,6 +38,7 @@ export const ArrowUpCircle = createIcon(icons.ArrowCircleUp);
 export const AudioWaveform = createIcon(icons.Waves);
 export const Ban = createIcon(icons.SlashCircle01);
 export const Bell = createIcon(icons.Bell01);
+export const BellRinging = createIcon(icons.BellRinging04);
 export const CalendarDays = createIcon(icons.Calendar);
 export const Check = createIcon(icons.Check);
 export const CheckCircle = createIcon(icons.CheckCircle);
