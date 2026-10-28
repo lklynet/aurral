@@ -427,7 +427,7 @@ export const getNearbyShows = async ({
   const sanitizedCountryCode = sanitizeCountryCode(countryCode);
   const publicIp = getPublicRequestIp(req);
   const locationKey = sanitizedZipCode
-    ? `${sanitizedCountryCode || "auto"}:${sanitizedZipCode}`
+    ? `${sanitizedCountryCode || `auto:${publicIp || "server"}`}:${sanitizedZipCode}`
     : `ip:${publicIp || "server"}`;
   const resultCacheKey = responseCacheKey
     ? JSON.stringify([responseCacheKey, locationKey, radiusMiles])
