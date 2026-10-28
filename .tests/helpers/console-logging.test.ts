@@ -14,6 +14,10 @@ test("log diagnostics mask credentials, collapse lines, and cap length", () => {
     safeLogDiagnostic(error),
     "Request to https://example.test/api?token=*** failed Authorization=*** ARL=***",
   );
+  assert.equal(
+    safeLogDiagnostic("Testing https://alice:my-password@lidarr.example/api"),
+    "Testing https://***@lidarr.example/api",
+  );
   assert.equal(safeLogDiagnostic("Cookie: session=cookie-secret"), "Cookie=***");
   assert.equal(
     safeLogDiagnostic('client_secret=snake-value "clientSecret": "camel-value"'),

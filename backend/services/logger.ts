@@ -45,6 +45,7 @@ export function safeLogDiagnostic(value: unknown) {
     ? `Upstream HTML error${Number.isInteger(status) && status >= 400 ? ` (${status})` : ""}${title ? `: ${title}` : ""}`
     : raw;
   const masked = diagnostic
+    .replace(/(https?:\/\/)[^/@\s]*@/gi, "$1***@")
     .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=***")
     .replace(
       /["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi,
