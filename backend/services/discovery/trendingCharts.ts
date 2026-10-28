@@ -252,7 +252,6 @@ const upsertChartStmt = db.prepare<[string, string, number, string]>(`
     updated_at = excluded.updated_at,
     data = excluded.data
 `);
-const deleteGenreChartsStmt = db.prepare("DELETE FROM trending_charts WHERE chart GLOB 'genre:*'");
 const selectDaysStmt = db.prepare<
   [string, number],
   Pick<TrendingChartDaysRow, "day" | "item_keys">
@@ -362,7 +361,6 @@ export async function refreshTrendingCharts({
     genres: async () => {
       const charts = await fetchGenreCharts();
       db.transaction(() => {
-        deleteGenreChartsStmt.run();
         for (const chart of charts) {
           saveChart(`genre:${chart.id}`, region, { name: chart.name, items: chart.items }, now);
         }
@@ -391,29 +389,23 @@ export function getTrendingCharts(userId: number) {
   const albums = readChart<{ items: TrendingAlbum[] }>(byChart.get("albums"));
   const artists = readChart<{ items: TrendingArtist[] }>(byChart.get("artists"));
   const history = songsRow
-    ? summarizeChartHistory(readDays(songHistoryKey(songsRow.region), SPOTLIGHT_DAYS))
+    ? summarizeChartHistory(readDays(songHistoryKey(songsRow.region), HISTORY_DAYS))
     : null;
-  const genres = rows
-    .filter((row) => row.chart.startsWith("genre:"))
-    .flatMap((row) => {
-      const chart = readChart<GenreChart>(row);
-      const id = Number(row.chart.slice("genre:".length));
-      return chart ? [{ id, ...chart }] : [];
-    })
-    .sort(
-      (left, right) =>
-        EDITORIAL_GENRES.findIndex((genre) => genre.id === left.id) -
-        EDITORIAL_GENRES.findIndex((genre) => genre.id === right.id),
-    )
-    .map(({ id, name, items }) => ({
-      id,
-      name,
-      covers: items
-        .map((item) => item.artworkUrl)
-        .filter((url) => url !== null)
-        .slice(0, GENRE_COVER_COUNT),
-      artists: [...new Set(items.map((item) => item.artistName))].slice(0, 2),
-    }));
+  const genres = EDITORIAL_GENRES.flatMap(({ id }) => {
+    const chart = readChart<GenreChart>(byChart.get(`genre:${id}`));
+    if (!chart) return [];
+    return [
+      {
+        id,
+        name: chart.name,
+        covers: chart.items
+          .map((item) => item.artworkUrl)
+          .filter((url) => url !== null)
+          .slice(0, GENRE_COVER_COUNT),
+        artists: [...new Set(chart.items.map((item) => item.artistName))].slice(0, 2),
+      },
+    ];
+  });
 
   return {
     region: songsRow?.region || byChart.get("albums")?.region || null,

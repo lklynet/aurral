@@ -46,6 +46,7 @@ type Source = {
   playlists: { id: number; title: string }[];
   chartTracks: number[];
   appleStorefronts: Record<string, ReturnType<typeof appleAlbum>[]>;
+  genreTracks: Record<string, number[]>;
   artistsFail?: boolean;
 };
 
@@ -72,7 +73,8 @@ const respond = (url: URL) => {
     return json({ data: [{ id: 77, name: "Chart Star", picture_xl: "https://img/star.jpg" }] });
   }
   if (url.pathname === "/artist/77") return json({ id: 77, nb_fan: 4200 });
-  if (url.pathname === "/chart/132/tracks") return json({ data: [track(501), track(502)] });
+  const genreTracks = source.genreTracks[url.pathname.match(/^\/chart\/(\d+)\/tracks$/)?.[1] ?? ""];
+  if (genreTracks) return json({ data: genreTracks.map((id) => track(id)) });
   return json({ error: { code: 800 } });
 };
 
@@ -90,6 +92,7 @@ beforeEach(() => {
     ],
     chartTracks: [1, 2, 3],
     appleStorefronts: { gb: [appleAlbum(1, "Pop"), appleAlbum(2, "Pop"), appleAlbum(3, "Rock")] },
+    genreTracks: { 132: [501, 502] },
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
@@ -196,11 +199,21 @@ test("stored days drive song movement and the No. 1 spotlight", async () => {
   assert.deepEqual(afterGap?.spotlight?.ranks.slice(-4), [1, 1, null, 1]);
 });
 
+test("a No. 1 streak keeps counting past the 14 days the rank line shows", async () => {
+  for (let day = 0; day < 20; day += 1) await refreshAt(DAY_ONE + day * DAY_MS);
+
+  const spotlight = getTrendingCharts(USER_ID).songs?.spotlight;
+  assert.equal(spotlight?.daysAtTop, 20);
+  assert.equal(spotlight?.ranks.length, 14);
+});
+
 test("a failing source keeps its last chart while the others update", async () => {
+  source.genreTracks = { 132: [501], 152: [601] };
   await refreshAt(DAY_ONE);
   source.chartTracks = [2, 1];
   source.appleStorefronts = {};
   source.artistsFail = true;
+  source.genreTracks = { 152: [602] };
 
   assert.equal(await refreshAt(DAY_ONE + DAY_MS), true);
 
@@ -216,6 +229,13 @@ test("a failing source keeps its last chart while the others update", async () =
   assert.deepEqual(
     charts.artists?.map((artist) => artist.name),
     ["Chart Star"],
+  );
+  assert.deepEqual(
+    charts.genres.map((genre) => [genre.name, genre.artists]),
+    [
+      ["Pop", ["Artist 501"]],
+      ["Rock", ["Artist 602"]],
+    ],
   );
 });
 

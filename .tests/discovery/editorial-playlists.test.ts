@@ -44,7 +44,12 @@ const { playlistOperationQueue } = operationQueueModule;
 const downloadWorker = localDownloadWorker(workerModule.downloadWorker);
 const { downloadTracker } = trackerModule;
 const { syncStaticPlaylistImport } = importSyncModule;
-const { addEditorialPlaylistToLibrary, getEditorialPlaylist, getEditorialShelf } = editorialModule;
+const {
+  addEditorialPlaylistToLibrary,
+  getEditorialPlaylist,
+  getEditorialShelf,
+  resolveEditorialTrackLinks,
+} = editorialModule;
 
 const { synchronizeDiscoveryCacheFromWorker } = persistenceModule;
 const { buildFlowFromTemplate, listFlowTemplates } = flowTemplatesModule;
@@ -325,6 +330,22 @@ test("For you matches Deezer editor playlists to the user's top genres and tags"
     ["Shoegaze Essentials", "Dream Pop & Shoegaze"],
   );
   assert.ok(genres.length > 0);
+});
+
+test("an album link without a Deezer album ID still finds the album", async () => {
+  const artistMbid = "00000000-0000-4000-8000-000000000001";
+  const albumMbid = "00000000-0000-4000-8000-000000000002";
+  dbOps.setMusicbrainzArtistMbidCache("chart artist", artistMbid);
+  dbOps.setDeezerMbidCache("aa:chart artist\0chart record", albumMbid);
+
+  assert.deepEqual(
+    await resolveEditorialTrackLinks({
+      artistName: "Chart Artist",
+      albumName: "Chart Record",
+      deezerAlbumId: undefined,
+    }),
+    { artistMbid, albumMbid },
+  );
 });
 
 test("flow templates keep their recipe and need history for Listening History", async () => {

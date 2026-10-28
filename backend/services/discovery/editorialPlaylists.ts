@@ -99,8 +99,8 @@ export async function resolveEditorialTrackLinks({
   const albumId = String(deezerAlbumId || "").trim();
   return resolveArtistAndAlbumMbids({
     artistName: artist,
-    albumName: /^\d+$/.test(albumId) ? albumName : "",
-    deezerAlbumId: albumId,
+    albumName,
+    deezerAlbumId: /^\d+$/.test(albumId) ? albumId : null,
   });
 }
 
