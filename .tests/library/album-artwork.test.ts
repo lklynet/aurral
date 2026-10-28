@@ -180,7 +180,7 @@ function stubImageHost(t: TestContext, body: Buffer) {
   return requests;
 }
 
-async function replaceFirstFile(album: { folder: string }, picture: Buffer) {
+async function replaceFirstFile(album: { folder: string }, picture: Buffer | null) {
   const filePath = path.join(album.folder, "000.mp3");
   await writeFile(filePath, audioWithPicture(picture));
   const stat = await fs.stat(filePath);
@@ -412,6 +412,48 @@ describe("with sign-in required", () => {
     assert.equal(await isBlue((await requestCover(album.id)).body), false);
     await replaceFirstFile(album, blue);
     assert.equal(await isBlue((await requestCover(album.id)).body), true);
+  });
+
+  test("a slow lookup that finishes after a newer version keeps the newer art", async (t) => {
+    const replies: ((response: Response) => void)[] = [];
+    const waiters: (() => void)[] = [];
+    const fetched = (count: number) =>
+      replies.length >= count
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => waiters.push(resolve));
+    vi.stubGlobal(
+      "fetch",
+      () =>
+        new Promise<Response>((resolve) => {
+          replies.push(resolve);
+          waiters.splice(0).forEach((wake) => wake());
+        }),
+    );
+    t.onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const reply = (index: number, body: Buffer) =>
+      replies[index](
+        new Response(new Uint8Array(body), { headers: { "content-type": "image/png" } }),
+      );
+    const album = await albumFixture("overlapping", [null], {
+      metadata: { images: [{ remoteUrl: "https://images.example/overlapping.png" }] },
+    });
+    const stale = requestCover(album.id);
+    await fetched(1);
+    await replaceFirstFile(album, null);
+    const current = requestCover(album.id);
+    await fetched(2);
+    reply(1, blue);
+    assert.equal((await current).status, 200);
+    reply(0, image);
+    assert.equal((await stale).status, 200);
+
+    const version = getLibraryArtworkVersions("album", [album.id]).get(String(album.id));
+    const stored = await fs.readdir(
+      path.join(isolatedState.dataDir, "library-artwork", `album-${album.id}`),
+    );
+    assert.ok(stored.some((name) => name.startsWith(`${version}.`)));
   });
 
   test("an artist without a provider photo shows its album's art", async () => {

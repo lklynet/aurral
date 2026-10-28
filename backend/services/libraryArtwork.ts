@@ -300,17 +300,25 @@ async function readStoredArtwork(folder: string, version: string) {
   return name && contentType ? { filePath: path.join(folder, name), contentType } : null;
 }
 
-async function storeArtwork(folder: string, version: string, artwork: Artwork) {
+async function storeArtwork(
+  kind: LibraryArtworkKind,
+  id: number,
+  version: string,
+  artwork: Artwork,
+) {
   const extension = STORED_EXTENSIONS[artwork.contentType];
   if (!extension) return null;
+  const folder = itemFolder(kind, id);
   await fs.mkdir(folder, { recursive: true });
   const name = `${version}.${extension}`;
   const filePath = path.join(folder, name);
   const temporary = `${filePath}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(temporary, artwork.buffer);
   await fs.rename(temporary, filePath);
+  const current = getLibraryArtworkVersions(kind, [id]).get(String(id));
   for (const entry of await fs.readdir(folder)) {
-    if (entry !== name) await fs.rm(path.join(folder, entry), { force: true });
+    if (entry === name || entry.endsWith(".tmp") || entry.startsWith(`${current}.`)) continue;
+    await fs.rm(path.join(folder, entry), { force: true });
   }
   return { filePath, contentType: artwork.contentType };
 }
@@ -323,7 +331,7 @@ async function loadArtwork(kind: LibraryArtworkKind, id: number, version: string
   if (missingArtwork.get(key) === scannedAt) return null;
   const { artwork, transient } =
     kind === "album" ? await findAlbumArtwork(id) : await findArtistArtwork(id);
-  const created = artwork && (await storeArtwork(folder, version, artwork));
+  const created = artwork && (await storeArtwork(kind, id, version, artwork));
   if (!created) {
     missingArtwork.set(key, scannedAt, transient ? TRANSIENT_TTL_SECONDS : MISSING_TTL_SECONDS);
   }
