@@ -301,10 +301,29 @@ test("allows looping motion only for playback and loader indicators", () => {
       animation: shimmer 1.2s var(--aurral-ease-in-out) infinite;
       animation-iteration-count: infinite;
       animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
+      animation: wrapped-spin var(--spin) var(--aurral-ease-linear) infinite paused;
     }
   `,
     { filePath: "indicator.css", tokenNames },
   );
 
   assert.deepEqual(ruleFindings(findings, "aurral/design-scale"), [4, 5]);
+});
+
+test("lets Wrapped posters set their own type but not loop motion", () => {
+  const findings = lintCss(
+    `
+    .wrapped-word {
+      font-family: "Wrapped Display", var(--font-sans);
+      font-size: 46cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      border-radius: 1cqw;
+      animation: shimmer 1.2s var(--aurral-ease-in-out) infinite;
+    }
+  `,
+    { filePath: "frontend/src/pages/wrapped.css", tokenNames },
+  );
+
+  assert.deepEqual(ruleFindings(findings, "aurral/design-scale"), [8]);
 });

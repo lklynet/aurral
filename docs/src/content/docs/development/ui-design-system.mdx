@@ -35,6 +35,8 @@ Use weights 400, 500, 600, and 700 only. Titles and section headings use 700. Bu
 
 Titles tighten with `--aurral-tracking-title`, and the display size uses `--aurral-tracking-display`. All other text uses normal tracking. Write labels in sentence case. Do not add uppercase labels, wide tracking, or a small eyebrow above a title.
 
+Wrapped's story cards are posters, not interface. They set their own type in `frontend/src/pages/wrapped.css`, which the checker exempts from the type and radius rules.
+
 ## Layout and hierarchy
 
 Every page starts with one `.page-title` in the top left, at the page gutter. Detail pages use `CollectionHeader`. Put the page's actions beside or under the title, never in a bar with a border.
@@ -93,7 +95,7 @@ Loading states use skeletons shaped like the ready state. Use `DotLoader` only w
 
 ## Motion
 
-Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The two exceptions are the now-playing equalizer and `DotLoader`. Both animate only transform or opacity and stop when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
+Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The exceptions are the now-playing equalizer, `DotLoader`, and the Wrapped record, which spins only while its song plays. All three animate only transform or opacity and stop when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
 
 ## Run the UI checks
 

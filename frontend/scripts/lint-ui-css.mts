@@ -173,7 +173,9 @@ const loopingAnimations = new Set([
   "track-playing-pulse",
   "aurral-dot-loader-helix",
   "aurral-dot-loader-pulse",
+  "wrapped-spin",
 ]);
+const posterStylesheets = new Set(["frontend/src/pages/wrapped.css"]);
 const radiusProperty = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/;
 
 function withoutTokens(value: string, prefix: string) {
@@ -291,6 +293,7 @@ export function lintCss(
 
   const findings: CssFinding[] = [];
   const localPropertySuggestions = new Map<string, string>();
+  const poster = posterStylesheets.has(filePath);
 
   root.walkDecls((declaration) => {
     if (declaration.prop.startsWith("--")) return;
@@ -354,9 +357,10 @@ export function lintCss(
       );
     }
 
-    const typeOrShapeIssue = property.startsWith("--")
-      ? null
-      : findTypeOrShapeIssue(property, declaration.value);
+    const typeOrShapeIssue =
+      property.startsWith("--") || (poster && !property.startsWith("animation"))
+        ? null
+        : findTypeOrShapeIssue(property, declaration.value);
     if (typeOrShapeIssue) {
       findings.push(createFinding(filePath, line, "aurral/design-scale", typeOrShapeIssue));
     }
