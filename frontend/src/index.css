@@ -10008,6 +10008,18 @@ button.native-library-genre-row:focus-visible {
     opacity: 1;
   }
 
+  .native-library-card__title-row .native-library-favorite {
+    position: relative;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .native-library-card__title-row .native-library-favorite::after {
+    content: "";
+    position: absolute;
+    inset: -0.625rem;
+  }
+
   .native-library-detail__actions {
     --native-library-detail-action-size: 2.75rem;
   }
