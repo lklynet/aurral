@@ -120,7 +120,7 @@ export const AURRAL_THEME = {
   id: DEFAULT_THEME_ID,
   name: "Aurral",
   light: { background: "#ffffff", text: "#171717", accent: "#525252" },
-  dark: { background: "#121212", text: "#ffffff", accent: "#b3b3b3" },
+  dark: { background: "#000000", text: "#ffffff", accent: "#b3b3b3" },
 } satisfies Theme;
 
 export const BUILT_IN_THEMES: Theme[] = [AURRAL_THEME, ...THEME_PRESETS];
@@ -144,11 +144,12 @@ export function createThemePalette(seed: ThemeSeed) {
   const dark = isDarkColor(seed.background);
   const surface = normalizeHexColor(seed.background);
   const base = hexToOklch(surface);
-  const shade = (delta: number) => oklchToHex({ ...base, l: base.l + delta });
+  const shade = (delta: number, from = base.l) => oklchToHex({ ...base, l: from + delta });
+  const ladder = dark ? Math.max(base.l, 0.16) : base.l;
   const toward = dark ? 1 : -1;
-  const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035));
-  const surfacePopover = shade(toward * (dark ? 0.1 : 0.075));
-  const surfaceHover = shade(toward * (dark ? 0.17 : 0.13));
+  const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035), ladder);
+  const surfacePopover = shade(toward * (dark ? 0.1 : 0.075), ladder);
+  const surfaceHover = shade(toward * (dark ? 0.17 : 0.13), ladder);
   const chrome = shade(dark ? -0.06 : -0.07);
 
   const textSeed =
@@ -311,7 +312,7 @@ export function createDefaultThemeDocument(): ThemeDocument {
     version: THEME_DOCUMENT_VERSION,
     themeId: DEFAULT_THEME_ID,
     appearance: "system",
-    matchArtwork: false,
+    matchArtwork: true,
     themes: [],
   };
 }

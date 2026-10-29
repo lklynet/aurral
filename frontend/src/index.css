@@ -5683,46 +5683,29 @@ textarea {
   line-height: 1.5;
 }
 
-.artist-discover-hero__based-on {
+.discover-tags {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.75rem;
-  color: var(--aurral-text-subtle);
-  font-size: var(--aurral-font-sm);
+  gap: 0.5rem;
 }
 
-.artist-discover-hero__based-on-intro {
-  color: var(--aurral-text-subtle);
-}
-
-.artist-discover-hero__artists-collapsed,
-.artist-discover-hero__artists-expanded {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.75rem;
-}
-
-.artist-discover-hero__artist-tag,
-.artist-discover-hero__view-toggle-badge {
+.discover-tag {
   display: inline-flex;
   align-items: center;
-  color: var(--aurral-text-muted);
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--aurral-radius-round);
+  background: color-mix(in srgb, var(--aurral-text) 10%, transparent);
+  color: var(--aurral-text);
   font-size: var(--aurral-font-sm);
   font-weight: 500;
-  transition: color var(--aurral-duration-base) var(--aurral-ease-standard);
-  cursor: pointer;
-}
-
-.artist-discover-hero__view-toggle-badge {
-  color: var(--aurral-text-subtle);
+  white-space: nowrap;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .artist-discover-hero__artist-tag:hover,
-  .artist-discover-hero__view-toggle-badge:hover {
-    color: var(--aurral-text);
+  .discover-tag:hover {
+    background: color-mix(in srgb, var(--aurral-text) 16%, transparent);
   }
 }
 
@@ -6432,8 +6415,10 @@ textarea {
     padding-bottom: 1.25rem;
   }
 
-  .artist-discover-hero__based-on--tags {
-    display: none;
+  .discover-tags {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .artist-discover-rail {
@@ -9351,7 +9336,8 @@ button.native-library-genre-row:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.collection-page {
+.collection-page,
+.artist-discover-page {
   --collection-tint-bleed: 1rem;
 
   position: relative;
@@ -9359,12 +9345,14 @@ button.native-library-genre-row:focus-visible {
 }
 
 @media (min-width: 1024px) {
-  .collection-page {
+  .collection-page,
+  .artist-discover-page {
     --collection-tint-bleed: 1.5rem;
   }
 }
 
-.collection-page::before {
+.collection-page::before,
+.artist-discover-page::before {
   position: absolute;
   z-index: var(--aurral-z-below);
   top: calc(-1 * var(--collection-tint-bleed, 0px));

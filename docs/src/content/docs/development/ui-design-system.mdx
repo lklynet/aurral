@@ -59,13 +59,13 @@ Text uses `--aurral-text` (white), `--aurral-text-muted` for secondary text, and
 
 ## Shape
 
-| Token                   | Value | Use                                   |
-| ----------------------- | ----- | ------------------------------------- |
-| `--aurral-radius-xs`    | 4px   | Small chips, key hints, progress bars |
-| `--aurral-radius-sm`    | 6px   | Buttons, inputs, rows, menu items     |
-| `--aurral-radius`       | 8px   | Artwork, cards, menus, search         |
-| `--aurral-radius-lg`    | 12px  | Modals and sheets                     |
-| `--aurral-radius-round` | pill  | Play buttons and round toggles        |
+| Token                   | Value | Use                                    |
+| ----------------------- | ----- | -------------------------------------- |
+| `--aurral-radius-xs`    | 4px   | Small chips, key hints, progress bars  |
+| `--aurral-radius-sm`    | 6px   | Buttons, inputs, rows, menu items      |
+| `--aurral-radius`       | 8px   | Artwork, cards, menus, search          |
+| `--aurral-radius-lg`    | 12px  | Modals and sheets                      |
+| `--aurral-radius-round` | pill  | Play buttons, round toggles, tag pills |
 
 Artist images are circles. Album and playlist artwork uses `--aurral-radius`.
 
@@ -108,9 +108,9 @@ Name a new token for its role. Use `light-dark()` when the role needs different 
 
 Artwork can use colors extracted from the artwork. Keep those values tied to artwork content. Do not use artwork colors for Aurral controls or page chrome. The checker allows the fallback used by the discover playlist artwork treatment.
 
-The stylesheet owns Aurral's own light and dark colors. Other themes are stored as a few input colors, and `frontend/src/utils/theme.ts` generates the color roles from them with contrast targets and writes them over the stylesheet values. A token outside those roles keeps Aurral's value in every theme, so derive a new color token from a role token when it should follow the theme. The opt-in **Immersive mode** setting is the one exception to the artwork rule above. It feeds the cover color through the same contrast checks, so components should not apply artwork colors to controls themselves.
+The stylesheet owns Aurral's own light and dark colors. Other themes are stored as a few input colors, and `frontend/src/utils/theme.ts` generates the color roles from them with contrast targets and writes them over the stylesheet values. A token outside those roles keeps Aurral's value in every theme, so derive a new color token from a role token when it should follow the theme. The **Immersive mode** setting, on by default, is the one exception to the artwork rule above. It feeds the cover color through the same contrast checks, so components should not apply artwork colors to controls themselves.
 
-Immersive mode also controls artwork washes in detail pages and the player, plus decorative artwork backdrops in search. Use `useArtworkWash` for extracted background colors so they follow this preference. The theme document keeps the stored `matchArtwork` field so existing account and browser preferences carry over.
+Immersive mode also controls artwork washes at the top of Discover and detail pages and in the player, plus decorative artwork backdrops in search. Use `useArtworkWash` for extracted background colors so they follow this preference. The theme document keeps the stored `matchArtwork` field so existing account and browser preferences carry over.
 
 ## Reuse shared controls
 

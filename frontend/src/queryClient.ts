@@ -182,6 +182,7 @@ export const queryKeys = {
     playlistId || null,
     options,
   ],
+  artistCover: (mbid: MaybeText): QueryKey => ["artists", "cover", mbid || null],
   releaseGroupDetails: (id: MaybeText): QueryKey => ["artists", "release-group", id],
   releaseGroupTracks: (id: MaybeText, context: unknown): QueryKey => [
     "artists",

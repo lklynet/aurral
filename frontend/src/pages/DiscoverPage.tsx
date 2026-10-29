@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useCallback, type ComponentProps } from "react";
+import { useEffect, useMemo, useCallback, type ComponentProps } from "react";
 import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../utils/api/endpoints/library.ts";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { usersClient } from "../utils/api/clients/users.ts";
 
@@ -48,17 +48,18 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
+import { useCollectionTint } from "../components/CollectionHeader";
+import { getArtistCover } from "../utils/api/endpoints/artists.ts";
+import { queryKeys } from "../queryClient.ts";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
-import type { DiscoveryBasedOn } from "../../../backend/db/helpers/discovery.ts";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
 const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$get());
 const saveServerLayout = (layout: DiscoverSection[]) =>
   parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } }));
 
-const TOP_TAG_PREVIEW = 8;
-const TOP_TAG_LIMIT = 30;
+const TOP_TAG_LIMIT = 12;
 
 const SECTION_CARD_KINDS = new Map<
   string,
@@ -187,7 +188,6 @@ function DiscoverPage() {
       (data.topGenres && data.topGenres.length > 0));
   const isUpdating = Boolean(discoveryStatus?.isUpdating);
   const updateProgressMessage = discoveryStatus?.updateProgressMessage || null;
-  const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
   const isActuallyUpdating = isUpdating && !hasData;
 
   const { recommendations = [], topGenres = [], basedOn = [] } = data || {};
@@ -226,41 +226,6 @@ function DiscoverPage() {
       ticketmasterConfigured,
     ],
   );
-
-  const heroBasedOn = useMemo(() => {
-    if (basedOn && basedOn.length > 0) return basedOn;
-    const seen = new Set();
-    const names = [];
-    for (const r of recommendations || []) {
-      const name = r.sourceArtist;
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        names.push({ name });
-      }
-    }
-    return names;
-  }, [basedOn, recommendations]);
-
-  const renderBasedOnArtist = (artist: DiscoveryBasedOn, key: number) => {
-    const routeId = artist?.id || (artist?.name ? encodeURIComponent(artist.name) : "");
-    if (!routeId) {
-      return (
-        <span key={key} className="artist-discover-hero__artist-tag">
-          {artist?.name}
-        </span>
-      );
-    }
-    return (
-      <RouteLink
-        key={key}
-        to={`/artist/${routeId}`}
-        state={{ artistName: artist.name }}
-        className="artist-discover-hero__artist-tag"
-      >
-        {artist.name}
-      </RouteLink>
-    );
-  };
 
   const getArtistLibraryLink = useCallback((artist: DiscoverCardArtist) => {
     if (artist.canonicalId) {
@@ -667,8 +632,20 @@ function DiscoverPage() {
     return null;
   };
 
-  const [showFullBasedOnList, setShowFullBasedOnList] = useState(false);
-  const [showAllTags, setShowAllTags] = useState(false);
+  const newestArtist = recentlyAdded[0];
+  const newestArtistImage = getLibraryArtistImage(newestArtist);
+  const newestArtistMbid = newestArtistImage ? null : newestArtist?.mbid;
+  const { data: newestArtistCover } = useQuery({
+    queryKey: queryKeys.artistCover(newestArtistMbid),
+    queryFn: newestArtistMbid
+      ? () => getArtistCover(newestArtistMbid, newestArtist.artistName)
+      : skipToken,
+    staleTime: Infinity,
+  });
+  const coverImages = newestArtistCover?.images || [];
+  const tint = useCollectionTint(
+    newestArtistImage || (coverImages.find((image) => image.front) || coverImages[0])?.image,
+  );
 
   const sectionMayRender = (id: string) =>
     (id !== "news" || newsConfigured) && (id !== "recommendedShows" || ticketmasterConfigured);
@@ -723,7 +700,7 @@ function DiscoverPage() {
   }
 
   return (
-    <div className="artist-discover-page">
+    <div className="artist-discover-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <section className="artist-discover-hero">
         <div className="artist-discover-hero__content">
           <div className="artist-discover-hero__header">
@@ -732,76 +709,10 @@ function DiscoverPage() {
                 <h1 className="page-title">Discover</h1>
                 <DiscoveryStatusPill
                   isUpdating={isUpdating}
-                  lastUpdated={lastUpdated}
                   updateProgressMessage={updateProgressMessage}
                   error={discoveryStatus?.error}
                 />
               </div>
-              {heroBasedOn.length > 0 && (
-                <div className="artist-discover-hero__based-on">
-                  <div className="artist-discover-hero__based-on-intro">Based on</div>
-                  {showFullBasedOnList ? (
-                    <div className="artist-discover-hero__artists-expanded">
-                      {heroBasedOn.map((artist, index) => renderBasedOnArtist(artist, index))}
-                      <button
-                        onClick={() => setShowFullBasedOnList(false)}
-                        className="artist-discover-hero__view-toggle-badge"
-                      >
-                        Show fewer
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="artist-discover-hero__artists-collapsed">
-                      {heroBasedOn.length === 1 ? (
-                        renderBasedOnArtist(heroBasedOn[0], 0)
-                      ) : (
-                        <>
-                          {heroBasedOn
-                            .slice(0, 4)
-                            .map((artist, index) => renderBasedOnArtist(artist, index))}
-                          {heroBasedOn.length > 4 && (
-                            <button
-                              onClick={() => setShowFullBasedOnList(true)}
-                              className="artist-discover-hero__view-toggle-badge"
-                            >
-                              +{heroBasedOn.length - 4} more
-                            </button>
-                          )}{" "}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {topGenres.length > 0 && (
-                <div className="artist-discover-hero__based-on artist-discover-hero__based-on--tags">
-                  <div className="artist-discover-hero__based-on-intro">Top tags</div>
-                  <div className="artist-discover-hero__artists-collapsed">
-                    {topGenres
-                      .slice(0, showAllTags ? TOP_TAG_LIMIT : TOP_TAG_PREVIEW)
-                      .map((genre) => (
-                        <RouteLink
-                          key={genre}
-                          to={`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`}
-                          className="artist-tag--discover"
-                        >
-                          #{genre}
-                        </RouteLink>
-                      ))}
-                    {topGenres.length > TOP_TAG_PREVIEW && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllTags((shown) => !shown)}
-                        className="artist-discover-hero__view-toggle-badge"
-                      >
-                        {showAllTags
-                          ? "Show fewer"
-                          : `+${Math.min(topGenres.length, TOP_TAG_LIMIT) - TOP_TAG_PREVIEW} more`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             <TooltipButton
@@ -814,6 +725,19 @@ function DiscoverPage() {
               <LayoutTemplate className="artist-discover-hero__customize-icon" />
             </TooltipButton>
           </div>
+          {topGenres.length > 0 && (
+            <div className="discover-tags">
+              {topGenres.slice(0, TOP_TAG_LIMIT).map((genre) => (
+                <RouteLink
+                  key={genre}
+                  to={`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`}
+                  className="discover-tag"
+                >
+                  {genre}
+                </RouteLink>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
