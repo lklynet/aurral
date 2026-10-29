@@ -2587,6 +2587,7 @@
   .settings-arr .arr-btn--primary:hover:not(:disabled),
   .arr-portal .arr-btn--primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--aurral-text) 86%, var(--aurral-surface));
+    color: var(--aurral-surface);
   }
 }
 
