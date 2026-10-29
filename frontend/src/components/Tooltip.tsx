@@ -9,7 +9,6 @@ import {
   type FocusEvent,
   type PointerEvent,
   type ReactNode,
-  type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { getTooltipDescribedBy, hasAccessibleTextContent } from "./tooltip-accessibility.ts";
@@ -28,6 +27,7 @@ interface TriggerProps {
   children?: ReactNode;
   onBlur?: (event: FocusEvent<HTMLElement>) => void;
   onFocus?: (event: FocusEvent<HTMLElement>) => void;
+  onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onPointerEnter?: (event: PointerEvent<HTMLElement>) => void;
   onPointerLeave?: (event: PointerEvent<HTMLElement>) => void;
 }
@@ -61,14 +61,21 @@ function needsTooltipLabel(element: ReactNode) {
 interface TooltipProps {
   content?: ReactNode;
   placement?: TooltipPlacement;
+  delay?: number;
   children: ReactNode;
 }
 
-export default function Tooltip({ content, placement = "side", children }: TooltipProps) {
+export default function Tooltip({
+  content,
+  placement = "side",
+  delay = 0,
+  children,
+}: TooltipProps) {
   const tooltipId = useId();
   const tooltipRef = useRef<HTMLSpanElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const interactionRef = useRef<ReturnType<typeof createTooltipInteractionState> | null>(null);
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: string; top: string } | null>(
     null,
   );
@@ -116,14 +123,21 @@ export default function Tooltip({ content, placement = "side", children }: Toolt
   }, [placement]);
 
   const showTooltip = useCallback(
-    (event: SyntheticEvent<HTMLElement>, source: TooltipSource) => {
-      triggerRef.current = event.currentTarget;
+    (trigger: HTMLElement, source: TooltipSource) => {
+      triggerRef.current = trigger;
       interactionRef.current!.enter(source);
       updateTooltipPosition();
       setIsTooltipVisible(interactionRef.current!.isVisible());
     },
     [updateTooltipPosition],
   );
+
+  const cancelPendingShow = useCallback(() => {
+    if (showTimerRef.current) clearTimeout(showTimerRef.current);
+    showTimerRef.current = null;
+  }, []);
+
+  useEffect(() => cancelPendingShow, [cancelPendingShow]);
 
   const hideTooltip = useCallback((source: TooltipSource) => {
     interactionRef.current!.leave(source);
@@ -165,12 +179,22 @@ export default function Tooltip({ content, placement = "side", children }: Toolt
     }),
     onBlur: chainHandlers(children.props.onBlur, () => hideTooltip("focus")),
     onFocus: chainHandlers(children.props.onFocus, (event) => {
-      if (event.target.matches(":focus-visible")) showTooltip(event, "focus");
+      if (event.target.matches(":focus-visible")) showTooltip(event.currentTarget, "focus");
     }),
-    onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) =>
-      showTooltip(event, "pointer"),
-    ),
-    onPointerLeave: chainHandlers(children.props.onPointerLeave, () => hideTooltip("pointer")),
+    onPointerDown: chainHandlers(children.props.onPointerDown, cancelPendingShow),
+    onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => {
+      const trigger = event.currentTarget;
+      cancelPendingShow();
+      if (delay <= 0) return showTooltip(trigger, "pointer");
+      showTimerRef.current = setTimeout(() => {
+        showTimerRef.current = null;
+        showTooltip(trigger, "pointer");
+      }, delay);
+    }),
+    onPointerLeave: chainHandlers(children.props.onPointerLeave, () => {
+      cancelPendingShow();
+      hideTooltip("pointer");
+    }),
   };
 
   if (needsLabel && content) triggerProps["aria-label"] = String(content);
