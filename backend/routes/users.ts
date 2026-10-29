@@ -711,7 +711,7 @@ export default new Hono<AppEnv>()
       }
       deleteSessionsByUserId(id);
       userOps.deleteUser(id);
-      dbOps.deleteUserTheme(id);
+      dbOps.deleteUserSettings(id);
       dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
       reconcileLocalBypassAfterUserMutation();
       return c.json({ success: true }, 200);

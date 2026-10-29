@@ -1,8 +1,9 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
+import { signedInAs } from "./helpers/honoApp.ts";
 
 const [
   isolatedState,
@@ -13,6 +14,7 @@ const [
   systemTaskWorker,
   { upsertLibraryArtist },
   axios,
+  { api },
 ] = await setupIsolatedBackend(
   "inbox-refresh-queue",
   () => import("../backend/config/db-sqlite.ts"),
@@ -22,6 +24,7 @@ const [
   () => import("../backend/services/systemTaskWorker.ts"),
   () => import("../backend/services/libraryMediaStore.ts"),
   () => import("../lib/axiosFetch.ts"),
+  () => import("../backend/routes/api.ts"),
 );
 
 const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refreshInboxForUser } =
@@ -36,7 +39,9 @@ function clearRefreshState() {
   transaction.execute("DELETE FROM _honker_live");
   transaction.commit();
   db.prepare("DELETE FROM inbox_items").run();
-  db.prepare("DELETE FROM settings WHERE key LIKE 'inboxRefresh:%'").run();
+  db.prepare(
+    "DELETE FROM settings WHERE key LIKE 'inboxRefresh:%' OR key LIKE 'user:%:nearbyLocation'",
+  ).run();
 }
 
 beforeAll(() => {
@@ -284,6 +289,61 @@ test("refresh adds nearby shows for library artists only", async () => {
     );
   } finally {
     axios.default.get = originalAxiosGet;
+    if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = originalTicketmasterKey;
+  }
+});
+
+test("scheduled refresh finds shows near the location last used on Discover", async () => {
+  const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
+  process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
+  vi.spyOn(axios.default, "get").mockImplementation(async (url) => {
+    if (String(url).includes("zippopotam.us/us/60614")) {
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: { places: [{ "place name": "Chicago", latitude: "41.92", longitude: "-87.65" }] },
+      };
+    }
+    if (String(url).includes("ticketmaster.com")) {
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: {
+          _embedded: {
+            events: [
+              {
+                id: "chicago-show",
+                name: "Inbox Refresh Artist in Chicago",
+                dates: { start: { localDate: "2026-12-01" } },
+                _embedded: { attractions: [{ name: "Inbox Refresh Artist" }] },
+              },
+            ],
+          },
+        },
+      };
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  try {
+    const user = { id: userId, username: "inbox-refresh-user", role: "user", permissions: {} };
+    const discover = await signedInAs(user)
+      .route("/", api)
+      .request("/discover/nearby-shows?zip=60614&country=US");
+    assert.equal(discover.status, 200);
+
+    await processSystemTask({ kind: "inbox-refresh", userId }, { id: 9003 } as Parameters<
+      typeof processSystemTask
+    >[1]);
+
+    assert.deepEqual(
+      dbOps.getInboxItems(userId, { kinds: ["show"] }).map((item) => item?.sourceKey),
+      ["chicago-show"],
+    );
+  } finally {
     if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
     else process.env.TICKETMASTER_API_KEY = originalTicketmasterKey;
   }

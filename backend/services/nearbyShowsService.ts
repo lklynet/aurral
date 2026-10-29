@@ -1,5 +1,7 @@
 import { BlockList, isIP } from "node:net";
+import { isDeepStrictEqual } from "node:util";
 import axios from "../../lib/axiosFetch.ts";
+import { dbOps } from "../db/helpers/index.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
 import { runSharedInflight } from "./sharedInflight.ts";
@@ -42,6 +44,18 @@ type TicketmasterEvent = {
 type ArtistInput = { artistName?: unknown; name?: unknown };
 
 type ArtistSource = "library" | "recommended" | "trending";
+
+type NearbyLocationChoice = { zipCode: string; countryCode: string; ip: string };
+
+const nearbyLocationKey = (userId: number) => `user:${userId}:nearbyLocation`;
+
+export const rememberNearbyLocation = (userId: number, choice: NearbyLocationChoice) => {
+  const key = nearbyLocationKey(userId);
+  if (!isDeepStrictEqual(dbOps.getJSONSetting(key), choice)) dbOps.setJSONSetting(key, choice);
+};
+
+export const getRememberedNearbyLocation = (userId: number) =>
+  dbOps.getJSONSetting<NearbyLocationChoice>(nearbyLocationKey(userId));
 
 const ticketmasterEventCache = createCache(15 * 60);
 const ipLocationCache = createCache(30 * 60);

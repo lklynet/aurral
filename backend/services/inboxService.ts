@@ -2,7 +2,7 @@ import { db } from "../config/db-sqlite.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
 import { getLibraryAlbumsByReleaseDate, getLibraryArtistNames } from "./libraryQueryService.ts";
-import { getNearbyShows } from "./nearbyShowsService.ts";
+import { getNearbyShows, getRememberedNearbyLocation } from "./nearbyShowsService.ts";
 import { getUserDiscovery } from "./discovery/userDiscovery.ts";
 import { logger } from "./logger.ts";
 import type { InboxItemInput, InboxItemUpdates } from "../db/helpers/inbox.ts";
@@ -20,7 +20,7 @@ const RELEASE_FUTURE_DAYS = 90;
 const CONTENT_TTL_MS = 30 * DAY_MS;
 const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 const INBOX_REFRESH_STATUS_PREFIX = "inboxRefresh:";
-const refreshState = new Map<number, { at: number; hadLocationRequest: boolean }>();
+const refreshState = new Map<number, { at: number; hadLocation: boolean }>();
 const refreshInflight = new Map<number, Promise<boolean>>();
 
 const encode = (value: string) => encodeURIComponent(String(value || ""));
@@ -247,23 +247,14 @@ type NearbyShow = {
 async function buildShowItems(
   userId: number,
   now: number,
-  req: { ip?: string } | null,
-  ipAddress: string,
-  zipCode: string,
+  location: ReturnType<typeof getRememberedNearbyLocation>,
   libraryArtists: ReturnType<typeof getLibraryArtistNames>,
 ) {
-  const apiKey = getTicketmasterApiKey();
-  if (
-    !apiKey ||
-    (!req && !ipAddress) ||
-    !Array.isArray(libraryArtists) ||
-    libraryArtists.length === 0
-  ) {
-    return [];
-  }
+  if (!getTicketmasterApiKey() || !location || libraryArtists.length === 0) return [];
   const { shows }: { shows: NearbyShow[] } = await getNearbyShows({
-    req: req || { ip: ipAddress },
-    zipCode,
+    req: { ip: location.ip },
+    zipCode: location.zipCode,
+    countryCode: location.countryCode,
     libraryArtists,
   });
   return shows.slice(0, 60).map((show) => {
@@ -327,7 +318,6 @@ async function buildNewsItems(userId: number, now: number, enabledKinds: Set<str
 }
 
 interface RefreshInboxOptions {
-  req?: { ip?: string } | null;
   ipAddress?: string;
   zipCode?: string;
   force?: boolean;
@@ -338,7 +328,6 @@ interface RefreshInboxOptions {
 export async function refreshInboxForUser(
   userId: number,
   {
-    req = null,
     ipAddress = "",
     zipCode = "",
     force = false,
@@ -349,12 +338,16 @@ export async function refreshInboxForUser(
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) return false;
   const state = refreshState.get(normalizedUserId);
-  const hasLocationRequest = Boolean(req || ipAddress);
+  const location =
+    zipCode || ipAddress
+      ? { zipCode, countryCode: "", ip: ipAddress }
+      : getRememberedNearbyLocation(normalizedUserId);
+  const hasLocation = Boolean(location);
   if (
     !force &&
     state &&
     Date.now() - state.at < REFRESH_COOLDOWN_MS &&
-    (!hasLocationRequest || state.hadLocationRequest)
+    (!hasLocation || state.hadLocation)
   ) {
     return false;
   }
@@ -376,9 +369,7 @@ export async function refreshInboxForUser(
     const results: PromiseSettledResult<InboxItemInput[]>[] = await Promise.allSettled([
       preferences.releases ? buildReleaseItems(normalizedUserId, now) : [],
       preferences.discoveries ? buildDiscoveryItems(normalizedUserId, now) : [],
-      preferences.shows
-        ? buildShowItems(normalizedUserId, now, req, ipAddress, zipCode, libraryArtists)
-        : [],
+      preferences.shows ? buildShowItems(normalizedUserId, now, location, libraryArtists) : [],
       enabledNewsKinds.size > 0 ? buildNewsItems(normalizedUserId, now, enabledNewsKinds) : [],
     ]);
     const sourceNames = ["releases", "discoveries", "shows", "news"];
@@ -400,7 +391,7 @@ export async function refreshInboxForUser(
     db.transaction(() => {
       upsertAll(items);
     })();
-    refreshState.set(normalizedUserId, { at: now, hadLocationRequest: hasLocationRequest });
+    refreshState.set(normalizedUserId, { at: now, hadLocation: hasLocation });
     const refreshStatus =
       failures.length === 0 ? "complete" : failures.length === results.length ? "failed" : "stale";
     const errorMessage =
@@ -428,10 +419,7 @@ export async function refreshInboxForUser(
         userId: normalizedUserId,
         error: error.message,
       });
-      refreshState.set(normalizedUserId, {
-        at: Date.now(),
-        hadLocationRequest: hasLocationRequest,
-      });
+      refreshState.set(normalizedUserId, { at: Date.now(), hadLocation: hasLocation });
       if (!error.inboxStatusWritten) {
         setStoredRefreshStatus(normalizedUserId, {
           status: "failed",

@@ -222,7 +222,7 @@ export interface SettingsOps {
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
   getUserTheme: (userId: number) => unknown;
   setUserTheme: (userId: number, theme: unknown) => void;
-  deleteUserTheme: (userId: number) => void;
+  deleteUserSettings: (userId: number) => void;
   setLidarrRootFolderPaths: (paths: unknown) => string[];
   getSettings: () => AppSettings;
   updateSettings: (settings: SettingsUpdate) => void;
@@ -243,6 +243,9 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 const deleteSettingStmt = db.prepare<[string]>("DELETE FROM settings WHERE key = ?");
+const deleteSettingsByPrefixStmt = db.prepare<[string]>(
+  "DELETE FROM settings WHERE key LIKE ? || '%'",
+);
 
 const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
 
@@ -348,8 +351,8 @@ export const dbOps = {
     dbOps.setJSONSetting(`user:${parseInt(String(userId), 10)}:theme`, theme);
   },
 
-  deleteUserTheme(userId) {
-    deleteSettingStmt.run(`user:${parseInt(String(userId), 10)}:theme`);
+  deleteUserSettings(userId) {
+    deleteSettingsByPrefixStmt.run(`user:${parseInt(String(userId), 10)}:`);
   },
 
   setLidarrRootFolderPaths(paths) {

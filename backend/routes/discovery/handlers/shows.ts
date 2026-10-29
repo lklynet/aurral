@@ -9,7 +9,7 @@ import { getTicketmasterApiKey } from "../../../services/apiClients/index.ts";
 import { getLibraryArtistNames } from "../../../services/libraryQueryService.ts";
 import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
-import { getNearbyShows } from "../../../services/nearbyShowsService.ts";
+import { getNearbyShows, rememberNearbyLocation } from "../../../services/nearbyShowsService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
 type NearbyShowsOptions = Parameters<typeof getNearbyShows>[0];
@@ -60,6 +60,12 @@ export default new Hono<AppEnv>().get(
 
       const query = c.req.valid("query");
       const userId = c.var.user.id;
+      const location = {
+        zipCode: query.zip?.trim() ?? "",
+        countryCode: query.country?.trim() ?? "",
+        ip: c.var.clientIp,
+      };
+      rememberNearbyLocation(userId, location);
       const settings = dbOps.getSettings();
       const configuredRadius = Number(settings.integrations?.ticketmaster?.searchRadiusMiles);
       const localDiscoveryPreferences = getLocalDiscoveryPreferences();
@@ -75,9 +81,9 @@ export default new Hono<AppEnv>().get(
         : [];
       const libraryArtists = getLibraryArtistNames();
       const nearbyShows = await getNearbyShows({
-        req: { ip: c.var.clientIp },
-        zipCode: query.zip?.trim() ?? "",
-        countryCode: query.country?.trim() ?? "",
+        req: { ip: location.ip },
+        zipCode: location.zipCode,
+        countryCode: location.countryCode,
         libraryArtists,
         recommendedArtists,
         trendingArtists,
