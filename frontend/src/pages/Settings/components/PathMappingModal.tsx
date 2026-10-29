@@ -6,6 +6,7 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import type { PathMapping } from "../../../../../backend/services/pathMappings.ts";
+import TooltipButton from "../../../components/TooltipButton.tsx";
 
 const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "all", label: "All sources" },
@@ -76,14 +77,14 @@ export function PathMappingModal({
             <h3 id="path-mapping-modal-title" className="arr-modal__title">
               {title}
             </h3>
-            <button
+            <TooltipButton
               type="button"
-              className="arr-btn arr-btn--ghost arr-btn--icon"
+              className="btn btn-ghost btn-icon-square"
               onClick={onClose}
-              aria-label="Close"
+              label="Close"
             >
               <X className="artist-icon-md" />
-            </button>
+            </TooltipButton>
           </div>
           <div className="arr-modal__body">
             <SettingsArrFormGroup

@@ -75,8 +75,6 @@
   --aurral-shadow-toggle-thumb: 0 1px 2px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.08);
   --aurral-shadow-toggle-thumb-checked: 0 1px 3px rgba(0, 0, 0, 0.42);
   --aurral-shadow-toggle-focus-inset: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  --aurral-shadow-flow-popover: 0 10px 24px rgb(0 0 0 / 0.2);
-  --aurral-shadow-flow-modal: 0 16px 36px rgb(0 0 0 / 0.24);
   --aurral-stage-blueprint-top: #3a7ad1;
   --aurral-stage-blueprint-mid: #2050ae;
   --aurral-stage-blueprint-bottom: #101f6e;
@@ -1393,7 +1391,7 @@ textarea {
   max-height: calc(100dvh - 4rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.5rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.5rem 0.5rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--aurral-border-strong);
   border-radius: var(--aurral-radius-lg) var(--aurral-radius-lg) 0 0;
   background: var(--aurral-surface-popover);
@@ -1422,17 +1420,17 @@ textarea {
 
 .app-mobile-menu__item {
   display: flex;
-  min-height: 3.25rem;
+  min-height: 3rem;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   padding: 0 0.75rem;
   border: 0;
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-sm);
   background: transparent;
   color: var(--aurral-text);
   font: inherit;
   font-size: var(--aurral-font-md);
-  font-weight: 600;
+  font-weight: 500;
   text-align: left;
   transition:
     background-color var(--aurral-duration-fast) var(--aurral-ease-out),
@@ -2204,7 +2202,7 @@ textarea {
   color: var(--aurral-text);
   box-shadow: var(--aurral-shadow-popover);
   font-size: var(--aurral-font-xs);
-  font-weight: 700;
+  font-weight: 500;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
@@ -2367,7 +2365,7 @@ textarea {
   position: absolute;
   z-index: var(--aurral-z-popover);
   overflow: hidden;
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   background: var(--aurral-surface-popover);
 }
 
@@ -2511,7 +2509,7 @@ textarea {
   z-index: var(--aurral-z-popover);
   min-width: 11.5rem;
   overflow: hidden;
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   background: var(--aurral-surface-popover);
 }
 
@@ -2540,7 +2538,7 @@ textarea {
   width: 100%;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.625rem 0.75rem;
   border-radius: var(--aurral-radius-sm);
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-base);
@@ -2600,7 +2598,7 @@ textarea {
   max-height: min(34rem, calc(100dvh - 5rem));
   overflow: visible;
   border: 1px solid var(--aurral-border);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   background: var(--aurral-overlay);
   box-shadow: var(--aurral-shadow-lg);
 }
@@ -2676,22 +2674,22 @@ textarea {
   right: 0.75rem;
   z-index: var(--aurral-z-popover);
   display: grid;
-  width: min(12rem, calc(100vw - 3rem));
-  gap: 0.25rem;
-  padding: 0.375rem;
+  width: min(14rem, calc(100vw - 3rem));
+  padding: 0.25rem;
   border: 1px solid var(--aurral-border-strong);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   background: var(--aurral-overlay);
-  box-shadow: var(--aurral-shadow-lg);
+  box-shadow: var(--aurral-shadow-popover);
 }
 
 .app-inbox-menu__filter-option {
-  padding: 0.5rem 0.625rem;
+  padding: 0.625rem 0.75rem;
   border: 0;
   border-radius: var(--aurral-radius-sm);
   background: transparent;
   color: var(--aurral-gray-light);
-  font-size: var(--aurral-font-xs);
+  font-size: var(--aurral-font-base);
+  font-weight: 400;
   text-align: left;
 }
 
@@ -2710,14 +2708,13 @@ textarea {
 .app-inbox-menu__read-all {
   padding: 0;
   background: transparent;
-  font-size: var(--aurral-font-xs);
+  font-size: var(--aurral-font-sm);
   white-space: nowrap;
 }
 
 .app-inbox-menu__list {
   display: grid;
   max-height: min(29rem, calc(100dvh - 10rem));
-  gap: 0.5rem;
   overflow-y: auto;
   padding: 0.5rem;
   scrollbar-width: none;
@@ -2735,14 +2732,8 @@ textarea {
   align-items: center;
   gap: 0.25rem;
   min-height: 3.25rem;
-  border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius-sm);
-  background: var(--aurral-surface);
-}
-
-.app-inbox-menu__item.is-unread {
-  border-color: var(--aurral-border-strong);
-  background: var(--aurral-surface-mid);
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .app-inbox-menu__item.is-read {
@@ -2750,6 +2741,10 @@ textarea {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .app-inbox-menu__item:hover {
+    background: var(--aurral-surface-hover);
+  }
+
   .app-inbox-menu__item.is-read:hover {
     opacity: 0.82;
   }
@@ -2782,8 +2777,6 @@ textarea {
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: var(--aurral-radius-round);
-  background: var(--aurral-surface);
   color: var(--aurral-gray);
 }
 
@@ -2792,8 +2785,8 @@ textarea {
 }
 
 .app-inbox-menu__item-icon svg {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .app-inbox-menu__item-copy {
@@ -2828,7 +2821,7 @@ textarea {
 
 .app-inbox-menu__item-subtitle {
   color: var(--aurral-gray);
-  font-size: var(--aurral-font-2xs);
+  font-size: var(--aurral-font-xs);
 }
 
 .app-inbox-menu__item-actions {
@@ -3565,7 +3558,6 @@ textarea {
   border-bottom: 1px solid var(--aurral-border);
   border-radius: 0 !important;
   background: var(--aurral-surface-glass);
-  backdrop-filter: blur(16px);
 }
 
 .artist-action-bar__inner,
@@ -3620,7 +3612,7 @@ textarea {
   margin-top: 0.5rem;
   overflow: hidden;
   background: var(--aurral-surface-popover);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   top: 100%;
   min-width: 14rem;
   padding: 0.25rem;
@@ -3664,6 +3656,11 @@ textarea {
     color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
+.artist-menu-item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .artist-menu-item:hover:not(:disabled) {
     background: var(--aurral-surface-hover);
@@ -3685,11 +3682,6 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.artist-menu-section {
-  margin: 0.25rem 0;
-  padding: 0.25rem 0;
 }
 
 .artist-menu-submenu {
@@ -3721,7 +3713,7 @@ textarea {
   display: none;
   width: 16rem;
   background: var(--aurral-surface-popover);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
 }
 
 .artist-menu-submenu:focus-within .artist-menu-submenu__panel,
@@ -4413,7 +4405,7 @@ textarea {
   width: 12rem;
   padding: 0.25rem;
   background: var(--aurral-surface-popover);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
 }
 
 .artist-empty-message {
@@ -4811,7 +4803,7 @@ textarea {
   overflow: hidden;
   padding: 0.25rem;
   background: var(--aurral-surface-popover);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
 }
 
 .artist-options-menu {
@@ -4915,7 +4907,7 @@ textarea {
   max-width: 28rem;
   padding: 1.5rem;
   background: var(--aurral-surface-glass);
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-lg);
 }
 
 .artist-modal__header {
@@ -4929,7 +4921,7 @@ textarea {
 .artist-modal__title {
   margin: 0;
   color: var(--aurral-text);
-  font-size: var(--aurral-font-xl);
+  font-size: var(--aurral-font-lg);
   font-weight: 700;
 }
 
@@ -4947,10 +4939,6 @@ textarea {
 .artist-modal__fields {
   display: grid;
   gap: 1rem;
-}
-
-.aurral-radius-round {
-  border-radius: var(--aurral-radius-round);
 }
 
 .artist-modal-field {
@@ -5003,19 +4991,6 @@ textarea {
 
 .artist-modal__actions .btn {
   min-height: 2.5rem;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.artist-modal__actions .btn-secondary {
-  background-color: var(--aurral-surface-raised);
-  color: var(--aurral-text-muted);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .artist-modal__actions .btn-secondary:hover:not(:disabled) {
-    background-color: var(--aurral-surface-hover);
-    color: var(--aurral-text);
-  }
 }
 
 .artist-field-label {
@@ -5060,7 +5035,7 @@ textarea {
 .artist-modal__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-top: 1.5rem;
 }
 
@@ -5135,8 +5110,7 @@ textarea {
 .file-browser-modal {
   width: min(100%, 36rem);
   padding: 0;
-  background: var(--aurral-surface-glass);
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-lg);
   overflow: hidden;
 }
 
@@ -5154,23 +5128,6 @@ textarea {
   color: var(--aurral-text);
   font-size: var(--aurral-font-lg);
   font-weight: 700;
-}
-
-.file-browser-modal__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: transparent;
-  color: var(--aurral-text-muted);
-  cursor: pointer;
-  padding: 0.25rem;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .file-browser-modal__close:hover {
-    color: var(--aurral-text);
-  }
 }
 
 .file-browser-modal__path {
@@ -5283,7 +5240,7 @@ textarea {
   padding: 0.25rem;
   overflow: visible;
   background: var(--aurral-surface-popover);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
 }
 
 .artist-playlist-menu--preview-tracks {
@@ -5305,10 +5262,6 @@ textarea {
     background: var(--aurral-surface-hover);
     color: var(--aurral-text);
   }
-}
-
-.artist-playlist-menu--search-suggestion .artist-menu-item:disabled {
-  color: var(--aurral-text-subtle);
 }
 
 .artist-playlist-menu--search-suggestion .artist-playlist-menu__check {
@@ -6824,7 +6777,7 @@ textarea {
   max-width: 32rem;
   height: min(600px, 90dvh);
   overflow: hidden;
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-lg);
   background-color: var(--aurral-surface-glass);
 }
 
@@ -6837,21 +6790,10 @@ textarea {
   background-color: transparent;
 }
 
-.artist-customize-modal .btn-icon-square {
-  width: 2.25rem;
-  height: 2.25rem;
-  color: var(--aurral-text-muted);
-}
-
-.artist-customize-modal .btn-icon-square:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--aurral-text) 32%, transparent);
-  outline-offset: 2px;
-}
-
 .artist-customize-modal__title {
   margin: 0;
   color: var(--aurral-text);
-  font-size: var(--aurral-font-xl);
+  font-size: var(--aurral-font-lg);
   font-weight: 700;
 }
 
@@ -7003,21 +6945,7 @@ textarea {
 
 .artist-customize-modal__actions {
   display: flex;
-  gap: 0.75rem;
-}
-
-.artist-customize-modal__save {
-  border-color: var(--aurral-border-strong);
-  background: var(--aurral-surface-raised);
-  color: var(--aurral-text);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .artist-customize-modal__save:hover:not(:disabled) {
-    border-color: var(--aurral-border-strong);
-    background: var(--aurral-surface-hover);
-    color: var(--aurral-text);
-  }
+  gap: 0.5rem;
 }
 
 /* ZIP Editor */
@@ -8495,7 +8423,7 @@ textarea {
   max-height: calc(100dvh - 1rem);
   overflow: visible;
   padding: 0.25rem;
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
 }
 
 .native-library-item-menu__panel .artist-menu-item.is-selected {
@@ -10308,6 +10236,41 @@ button.native-library-genre-row:focus-visible {
   transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
+@media (min-width: 768px) {
+  .activity-list {
+    display: grid;
+    grid-template-columns:
+      [icon] auto [details] minmax(0, 1fr) [kind] auto [status] fit-content(10rem)
+      [time] auto [actions] auto [end];
+    column-gap: 0.75rem;
+  }
+
+  .activity-list > *,
+  .activity-album > *,
+  .activity-album__tracks > * {
+    grid-column: 1 / -1;
+  }
+
+  .activity-album,
+  .activity-album__tracks,
+  .activity-row {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .activity-row {
+    content-visibility: visible;
+  }
+
+  .activity-row__time {
+    justify-self: end;
+  }
+
+  .activity-album__tracks .activity-row__details {
+    padding-inline-start: 1.5rem;
+  }
+}
+
 .activity-row:focus-within {
   background: var(--aurral-surface-selected);
 }
@@ -10334,10 +10297,6 @@ button.native-library-genre-row:focus-visible {
 .activity-album__toggle span {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.activity-album__tracks {
-  margin-inline-start: 2.5rem;
 }
 
 .activity-album .activity-row__hint {
@@ -10579,12 +10538,6 @@ button.native-library-genre-row:focus-visible {
   max-width: 44rem;
 }
 
-.library-info-modal .activity-info-modal__eyebrow {
-  font-size: var(--aurral-font-xs);
-  font-weight: 600;
-  text-transform: none;
-}
-
 .library-info-modal .activity-info-modal__row dt,
 .library-info-modal .activity-info-modal__row dd {
   font-size: var(--aurral-font-sm);
@@ -10598,11 +10551,10 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text);
 }
 
-.activity-info-modal__eyebrow {
-  margin: 0 0 0.25rem;
+.activity-info-modal__subtitle {
+  margin: 0.25rem 0 0;
   color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-xs);
-  font-weight: 600;
+  font-size: var(--aurral-font-sm);
 }
 
 .activity-info-modal__rows {
@@ -11523,7 +11475,7 @@ button.native-library-genre-row:focus-visible {
   overflow-y: auto;
   padding: 1.5rem;
   background: var(--aurral-surface-glass);
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-lg);
 }
 
 .settings-page__modal--integration {
@@ -12647,7 +12599,7 @@ button.native-library-genre-row:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 0.25rem;
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   background: var(--aurral-surface-popover);
 }
 
@@ -13203,32 +13155,6 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-xs);
   cursor: pointer;
-}
-
-.flow-page__btn--destructive {
-  border-color: color-mix(in srgb, var(--aurral-danger) 36%, var(--aurral-border));
-  background: color-mix(in srgb, var(--aurral-danger) 8%, var(--aurral-surface));
-  color: var(--aurral-danger);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .flow-page__btn--destructive:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--aurral-danger) 56%, var(--aurral-border));
-    background: color-mix(in srgb, var(--aurral-danger) 14%, var(--aurral-surface));
-    color: var(--aurral-danger);
-  }
-}
-
-.playlist-page .artist-dropdown,
-.playlist-page .flow-page__token-suggestions {
-  box-shadow: var(--aurral-shadow-flow-popover);
-  backdrop-filter: none;
-}
-
-.playlist-page .artist-modal,
-.playlist-page .playlist-modal {
-  box-shadow: var(--aurral-shadow-flow-modal);
-  backdrop-filter: none;
 }
 
 .flow-page__field-input {
@@ -14251,7 +14177,7 @@ button.native-library-genre-row:focus-visible {
   width: 100%;
   max-width: 42rem;
   background: var(--aurral-surface-glass);
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius-lg);
   overflow: hidden;
 }
 
@@ -14287,7 +14213,7 @@ button.native-library-genre-row:focus-visible {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem 1.25rem 1rem;
+  padding: 1.5rem 1.5rem 1rem;
 }
 
 .playlist-modal__heading {
@@ -14310,7 +14236,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .playlist-modal__body {
-  padding: 0 1.25rem 1.25rem;
+  padding: 0 1.5rem 1.5rem;
 }
 
 .playlist-modal__footer {
@@ -14319,7 +14245,7 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
-  padding: 0 1.25rem 1.25rem;
+  padding: 0 1.5rem 1.5rem;
 }
 
 .playlist-modal__fields {
@@ -15456,7 +15382,6 @@ button.native-library-genre-row:focus-visible {
   border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-glass);
   box-shadow: var(--aurral-shadow-popover);
-  backdrop-filter: blur(18px) saturate(1.1);
 }
 
 .artist-modal,
@@ -15468,7 +15393,6 @@ button.native-library-genre-row:focus-visible {
   border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-raised);
   box-shadow: var(--aurral-shadow-modal);
-  backdrop-filter: blur(22px) saturate(1.1);
 }
 
 .artist-modal-backdrop,
@@ -15574,7 +15498,6 @@ button.native-library-genre-row:focus-visible {
   border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-glass);
   box-shadow: var(--aurral-shadow-popover);
-  backdrop-filter: blur(18px) saturate(1.1);
 }
 
 .app-toast--success .app-toast__icon {
@@ -15632,7 +15555,6 @@ button.native-library-genre-row:focus-visible {
   padding-inline: var(--artist-gutter);
   border-bottom: 0;
   background: color-mix(in srgb, var(--artwork-wash, transparent) 30%, var(--aurral-surface));
-  backdrop-filter: none;
 }
 
 .artist-details-page {
@@ -15879,34 +15801,6 @@ button.native-library-genre-row:focus-visible {
 .artist-customize-modal__footer,
 .settings-page__modal--integration .settings-page__modal-actions {
   background: transparent;
-}
-
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .global-search__suggestions,
-  .app-profile-menu__dropdown,
-  .sidebar-tooltip,
-  .artist-dropdown,
-  .artist-menu-submenu__panel,
-  .artist-floating-menu,
-  .artist-options-menu,
-  .native-library-item-menu__panel,
-  .artist-playlist-menu,
-  .artist-nearby-zip-editor:not(.artist-nearby-zip-editor--menu),
-  .flow-page__token-suggestions,
-  .reload-prompt {
-    background: var(--aurral-surface-popover);
-  }
-
-  .artist-modal,
-  .artist-customize-modal,
-  .file-browser-modal,
-  .settings-page__modal,
-  .settings-arr__modal,
-  .playlist-modal,
-  .arr-modal,
-  .app-toast {
-    background: var(--aurral-surface-raised);
-  }
 }
 
 .shows-page,
@@ -16749,7 +16643,6 @@ button.native-library-genre-row:focus-visible {
   padding: 0.375rem;
 }
 
-.app-profile-menu__item,
 .app-inbox-menu__item-link,
 .app-inbox-menu__filter-option {
   min-height: 2.5rem;

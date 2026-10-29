@@ -59,12 +59,12 @@ export function ModalShell({
           <TooltipButton
             type="button"
             onClick={disableClose ? undefined : onClose}
-            className="btn btn-ghost btn-sm btn-icon"
+            className="btn btn-ghost btn-icon-square"
             aria-label="Close"
             title="Close"
             disabled={disableClose}
           >
-            <X className="artist-icon-sm" />
+            <X className="artist-icon-md" aria-hidden="true" />
           </TooltipButton>
         </div>
         <div className="playlist-modal__body">{children}</div>
@@ -122,18 +122,13 @@ export function CreatePlaylistModal({
       disableClose={saving}
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-secondary btn-sm"
-            disabled={saving}
-          >
+          <button type="button" onClick={onClose} className="btn btn-secondary" disabled={saving}>
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             disabled={saving}
           >
             {saving ? <DotLoader size="sm" label={null} /> : <Plus className="artist-icon-sm" />}

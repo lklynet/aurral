@@ -2,6 +2,7 @@ import { useId } from "react";
 import type { ReactNode } from "react";
 import { Pencil, X } from "../../../components/icons";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import TooltipButton from "../../../components/TooltipButton.tsx";
 
 type IntegrationStatus = { label: string; className: string };
 
@@ -83,14 +84,14 @@ export function SettingsIntegrationModal({
           <h3 id={titleId} className="settings-page__modal-title">
             {title}
           </h3>
-          <button
+          <TooltipButton
             type="button"
-            className="arr-btn arr-btn--ghost arr-btn--icon"
+            className="btn btn-ghost btn-icon-square"
             onClick={onClose}
-            aria-label="Close"
+            label="Close"
           >
             <X className="artist-icon-md" aria-hidden="true" />
-          </button>
+          </TooltipButton>
         </div>
         <div className="settings-page__modal-body">
           <div className="settings-modal">{children}</div>

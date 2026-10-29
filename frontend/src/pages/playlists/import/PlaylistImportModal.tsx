@@ -786,7 +786,7 @@ export function PlaylistImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary"
             disabled={importing}
           >
             Cancel
@@ -794,7 +794,7 @@ export function PlaylistImportModal({
           <button
             type="button"
             onClick={source === "aurral" ? handleImportShare : handleImportExternal}
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             disabled={importing || !(source === "aurral" ? sharedPlaylist : canImportExternal)}
           >
             {importing ? (

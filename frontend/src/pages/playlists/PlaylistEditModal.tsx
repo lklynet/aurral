@@ -181,17 +181,12 @@ export function PlaylistEditModal({ entry, title, onClose, onRename }: PlaylistE
           <button
             type="button"
             onClick={onClose}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary"
             disabled={busy === "save"}
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={save}
-            className="btn btn-primary btn-sm"
-            disabled={disabled}
-          >
+          <button type="button" onClick={save} className="btn btn-primary" disabled={disabled}>
             {busy === "save" ? (
               <DotLoader size="sm" label={null} />
             ) : (

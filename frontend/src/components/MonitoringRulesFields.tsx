@@ -138,7 +138,7 @@ export function MonitoringRulesFields({
           Back catalogue
         </label>
         <div className="monitoring-rules__row">
-          <div className="artist-modal-field aurral-radius-round monitoring-rules__select">
+          <div className="artist-modal-field monitoring-rules__select">
             <select
               id={`${id}-catalog`}
               className="artist-modal-select"
@@ -223,7 +223,7 @@ export function MonitoringRulesFields({
           <label className="artist-field-label" htmlFor={`${id}-edition`}>
             Edition
           </label>
-          <div className="artist-modal-field aurral-radius-round">
+          <div className="artist-modal-field">
             <select
               id={`${id}-edition`}
               className="artist-modal-select"

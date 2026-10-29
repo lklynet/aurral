@@ -1325,7 +1325,7 @@ function SearchResults() {
                         <span>{option.label}</span>
                       </button>
                     ))}
-                    <div className="artist-menu-section" />
+                    <div className="native-library-item-menu__separator" role="separator" />
                     <div className="artist-options-view-grid">
                       <TooltipButton
                         type="button"

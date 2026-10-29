@@ -791,12 +791,12 @@ function EditArtistIdsModal({
           </h3>
           <TooltipButton
             type="button"
-            className="btn btn-surface btn-icon-square"
+            className="btn btn-ghost btn-icon-square"
             onClick={onClose}
             aria-label="Close"
             title="Close"
           >
-            <X className="artist-icon-md" />
+            <X className="artist-icon-md" aria-hidden="true" />
           </TooltipButton>
         </div>
         {artistName ? <p className="artist-modal__subcopy">{artistName}</p> : null}

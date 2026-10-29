@@ -195,29 +195,19 @@ export function DiscoverLayoutModal({
         </DndContext>
 
         <div className="artist-customize-modal__footer">
-          <button
-            type="button"
-            onClick={onReset}
-            className="btn btn-ghost btn-sm"
-            disabled={isSaving}
-          >
+          <button type="button" onClick={onReset} className="btn btn-ghost" disabled={isSaving}>
             Reset to default
           </button>
           <div className="artist-customize-modal__actions">
             <button
               type="button"
               onClick={onClose}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary"
               disabled={isSaving}
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={onSave}
-              className="btn btn-secondary btn-sm artist-customize-modal__save"
-              disabled={isSaving}
-            >
+            <button type="button" onClick={onSave} className="btn btn-primary" disabled={isSaving}>
               {isSaving ? <DotLoader size="sm" label={null} /> : null}
               {isSaving ? "Saving..." : "Save layout"}
             </button>

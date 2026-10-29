@@ -71,7 +71,7 @@ export default function ArtistMbidModal({
             <button
               type="button"
               onClick={() => void save(null)}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary"
               disabled={Boolean(saving)}
             >
               {saving === "clear" ? <DotLoader size="sm" label={null} /> : null}
@@ -81,7 +81,7 @@ export default function ArtistMbidModal({
           <button
             type="button"
             onClick={onClose}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary"
             disabled={Boolean(saving)}
           >
             Cancel
@@ -89,7 +89,7 @@ export default function ArtistMbidModal({
           <button
             type="button"
             onClick={handleSubmit}
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             disabled={Boolean(saving)}
           >
             {saving === "save" ? (

@@ -89,7 +89,7 @@ export function AddArtistCustomizeModal({
               <label className="artist-field-label" htmlFor={`${titleId}-monitor`}>
                 Monitoring
               </label>
-              <div className="artist-modal-field aurral-radius-round">
+              <div className="artist-modal-field">
                 <select
                   id={`${titleId}-monitor`}
                   className="artist-modal-select"
@@ -111,7 +111,7 @@ export function AddArtistCustomizeModal({
 
             <div>
               <label className="artist-field-label">Root folder</label>
-              <div className="artist-modal-field aurral-radius-round">
+              <div className="artist-modal-field">
                 <select
                   className="artist-modal-select"
                   value={rootFolderPath}
@@ -132,7 +132,7 @@ export function AddArtistCustomizeModal({
 
             <div>
               <label className="artist-field-label">Quality profile</label>
-              <div className="artist-modal-field aurral-radius-round">
+              <div className="artist-modal-field">
                 <select
                   className="artist-modal-select"
                   value={qualityProfileId}
@@ -153,7 +153,7 @@ export function AddArtistCustomizeModal({
 
             <div>
               <label className="artist-field-label">Tag</label>
-              <div className="artist-modal-field aurral-radius-round">
+              <div className="artist-modal-field">
                 <select
                   className="artist-modal-select"
                   value={tagId}

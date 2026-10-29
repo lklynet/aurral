@@ -141,7 +141,7 @@ export default function ManualMissingSearchModal({
         <>
           <button
             type="button"
-            className="btn btn-secondary btn-sm manual-search-modal__action"
+            className="btn btn-secondary manual-search-modal__action"
             onClick={onClose}
             disabled={submitting}
           >
@@ -149,7 +149,7 @@ export default function ManualMissingSearchModal({
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-sm manual-search-modal__action"
+            className="btn btn-primary manual-search-modal__action"
             onClick={queueSelection}
             disabled={!selectedResult || busy}
           >

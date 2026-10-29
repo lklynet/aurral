@@ -274,7 +274,7 @@ export default function ArtworkEditorModal({
           {hasCustomArtwork ? (
             <button
               type="button"
-              className="btn btn-danger btn-sm"
+              className="btn btn-ghost-danger"
               onClick={handleRemove}
               disabled={busy}
             >
@@ -284,17 +284,12 @@ export default function ArtworkEditorModal({
             <span />
           )}
           <div className="artwork-editor__actions-main">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onClose}
-              disabled={busy}
-            >
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
               Cancel
             </button>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary"
               onClick={handleSave}
               disabled={busy || !source}
             >

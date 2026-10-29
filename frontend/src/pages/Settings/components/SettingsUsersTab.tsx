@@ -18,6 +18,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import type { useSettingsData } from "../hooks/useSettingsData";
 import { readApiError } from "../utils/apiError.ts";
 import type { useSettingsUsers } from "../hooks/useSettingsUsers";
+import TooltipButton from "../../../components/TooltipButton.tsx";
 
 type UsersHook = ReturnType<typeof useSettingsUsers>;
 type SettingsData = ReturnType<typeof useSettingsData>;
@@ -528,15 +529,15 @@ export function SettingsUsersTab({
                         <h3 id="delete-user-modal-title" className="arr-modal__title">
                           Delete user
                         </h3>
-                        <button
+                        <TooltipButton
                           type="button"
-                          className="arr-btn arr-btn--ghost arr-btn--icon"
+                          className="btn btn-ghost btn-icon-square"
                           onClick={() => !deletingUser && setDeleteUserTarget(null)}
-                          aria-label="Close"
+                          label="Close"
                           disabled={deletingUser}
                         >
                           <X className="artist-icon-md" />
-                        </button>
+                        </TooltipButton>
                       </div>
                       <div className="arr-modal__body">
                         <p className="arr-modal__copy">
@@ -598,14 +599,14 @@ export function SettingsUsersTab({
                         <h3 id="add-user-modal-title" className="arr-modal__title">
                           Add user
                         </h3>
-                        <button
+                        <TooltipButton
                           type="button"
-                          className="arr-btn arr-btn--ghost arr-btn--icon"
+                          className="btn btn-ghost btn-icon-square"
                           onClick={() => setShowAddUserModal(false)}
-                          aria-label="Close"
+                          label="Close"
                         >
                           <X className="artist-icon-md" />
-                        </button>
+                        </TooltipButton>
                       </div>
                       <form
                         onSubmit={async (event) => {
@@ -713,14 +714,14 @@ export function SettingsUsersTab({
                         <h3 id="edit-user-modal-title" className="arr-modal__title">
                           Manage {editUser.username}
                         </h3>
-                        <button
+                        <TooltipButton
                           type="button"
-                          className="arr-btn arr-btn--ghost arr-btn--icon"
+                          className="btn btn-ghost btn-icon-square"
                           onClick={() => setEditUser(null)}
-                          aria-label="Close"
+                          label="Close"
                         >
                           <X className="artist-icon-md" />
-                        </button>
+                        </TooltipButton>
                       </div>
                       <form
                         onSubmit={async (event) => {

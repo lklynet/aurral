@@ -212,12 +212,12 @@ export function ShareModal({
 
   const footer = created ? (
     <>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+      <button type="button" className="btn btn-secondary" onClick={onClose}>
         Done
       </button>
       <button
         type="button"
-        className="btn btn-primary btn-sm"
+        className="btn btn-primary"
         onClick={() =>
           sendLink(created.url, created.shareFiles ? "Listen link copied" : "Link copied")
         }
@@ -227,12 +227,12 @@ export function ShareModal({
     </>
   ) : (
     <>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={busy}>
+      <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
         Cancel
       </button>
       <button
         type="button"
-        className="btn btn-primary btn-sm"
+        className="btn btn-primary"
         onClick={() => create.mutate()}
         disabled={
           busy || !manifest || (!hasAccount && kind === "playlist") || (listen && !canListen)
@@ -323,7 +323,7 @@ export function ShareModal({
                 <label className="share-modal__label" htmlFor={ids.expires}>
                   Expires
                 </label>
-                <div className="artist-modal-field aurral-radius-round share-modal__select">
+                <div className="artist-modal-field share-modal__select">
                   <select
                     id={ids.expires}
                     className="artist-modal-select"

@@ -234,13 +234,12 @@ export default function LibraryInfoModal({
       >
         <div className="artist-modal__header">
           <div>
-            <p className="activity-info-modal__eyebrow">
-              {item.kind === "artist" ? "Artist" : item.kind === "album" ? "Album" : "Track"}{" "}
-              information
-            </p>
             <h2 id={titleId} className="artist-modal__title">
               {title}
             </h2>
+            <p className="activity-info-modal__subtitle">
+              {item.kind === "artist" ? "Artist" : item.kind === "album" ? "Album" : "Track"}
+            </p>
           </div>
           <TooltipButton
             className="btn btn-ghost btn-icon-square"

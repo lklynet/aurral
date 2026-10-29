@@ -57,6 +57,7 @@ function getRows(item: Partial<ActivityRequest>) {
   const details = item.error || item.subtitle;
   const id = item.jobId || item.id;
   return [
+    ["Status", item.statusLabel || item.status],
     ["Type", item.upgrade ? "Quality upgrade" : formatKind(item.kind)],
     [
       "Download method",
@@ -104,7 +105,6 @@ export default function ActivityInfoModal({
   if (!item) return null;
 
   const title = text(item.trackName || item.albumName || item.title) || "Activity details";
-  const status = text(item.statusLabel || item.status);
   const rows = getRows(item);
 
   return (
@@ -118,12 +118,9 @@ export default function ActivityInfoModal({
         tabIndex={-1}
       >
         <div className="artist-modal__header">
-          <div>
-            {status ? <p className="activity-info-modal__eyebrow">{status}</p> : null}
-            <h2 id={titleId} className="artist-modal__title">
-              {title}
-            </h2>
-          </div>
+          <h2 id={titleId} className="artist-modal__title">
+            {title}
+          </h2>
           <TooltipButton
             className="btn btn-ghost btn-icon-square"
             onClick={onClose}

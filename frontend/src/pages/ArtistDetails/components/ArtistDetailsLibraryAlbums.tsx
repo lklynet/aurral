@@ -463,7 +463,10 @@ export function ArtistDetailsLibraryAlbums({
                           </a>
                           {canReSearch && canReSearchAlbum && (
                             <>
-                              <div className="artist-menu-section" />
+                              <div
+                                className="native-library-item-menu__separator"
+                                role="separator"
+                              />
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -490,7 +493,10 @@ export function ArtistDetailsLibraryAlbums({
                           )}
                           {canDeleteAlbum && (
                             <>
-                              <div className="artist-menu-section" />
+                              <div
+                                className="native-library-item-menu__separator"
+                                role="separator"
+                              />
                               <button
                                 type="button"
                                 onClick={(e) => {

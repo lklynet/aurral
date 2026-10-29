@@ -54,12 +54,7 @@ export function ConfirmModal({
           <button type="button" onClick={onCancel} className="btn btn-secondary" disabled={busy}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="btn btn-secondary flow-page__btn--destructive"
-            disabled={busy}
-          >
+          <button type="button" onClick={onConfirm} className="btn btn-danger" disabled={busy}>
             {busy ? <DotLoader size="sm" label={null} /> : null}
             {busy ? busyLabel : confirmLabel}
           </button>

@@ -8,6 +8,7 @@ import { getApiErrorText } from "../pages/onboardingUtils.tsx";
 import { asApiError } from "../utils/api/core.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
+import TooltipButton from "./TooltipButton";
 interface FilesystemEntry {
   name: string;
   path: string;
@@ -187,14 +188,14 @@ export default function DownloadFolderPickerModal({
           <h3 id="file-browser-title" className="file-browser-modal__title">
             File browser
           </h3>
-          <button
+          <TooltipButton
             type="button"
-            className="file-browser-modal__close"
+            className="btn btn-ghost btn-icon-square"
             onClick={onCancel}
-            aria-label="Close"
+            label="Close"
           >
-            <X className="artist-icon-xs" />
-          </button>
+            <X className="artist-icon-md" aria-hidden="true" />
+          </TooltipButton>
         </div>
 
         <input
