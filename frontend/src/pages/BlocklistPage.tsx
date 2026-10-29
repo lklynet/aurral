@@ -19,6 +19,8 @@ type Suggestion =
   | { kind: "artist"; key: string; artist: ArtistSuggestion }
   | { kind: "genre"; key: string; genre: string };
 
+const NO_SUGGESTIONS = { query: "", items: [] };
+
 const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const TABS = [
@@ -75,7 +77,9 @@ export default function BlocklistPage() {
     isLoading: genresLoading,
   } = useBlockedGenres();
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<{ query: string; items: Suggestion[] }>(
+    NO_SUGGESTIONS,
+  );
   const [searching, setSearching] = useState(false);
   const [pendingArtist, setPendingArtist] = useState("");
 
@@ -90,7 +94,7 @@ export default function BlocklistPage() {
   useEffect(() => {
     const trimmed = query.trim().replace(/^#/, "");
     if (trimmed.length < 2) {
-      setSuggestions([]);
+      setSuggestions(NO_SUGGESTIONS);
       setSearching(false);
       return undefined;
     }
@@ -99,9 +103,9 @@ export default function BlocklistPage() {
       setSearching(true);
       try {
         const next = await findSuggestions(tab, trimmed);
-        if (!cancelled) setSuggestions(next);
+        if (!cancelled) setSuggestions({ query: trimmed, items: next });
       } catch {
-        if (!cancelled) setSuggestions([]);
+        if (!cancelled) setSuggestions(NO_SUGGESTIONS);
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -112,13 +116,16 @@ export default function BlocklistPage() {
     };
   }, [query, tab]);
 
-  const visibleSuggestions = suggestions.filter(
+  const typed = query.trim().replace(/^#/, "");
+  const visibleSuggestions = suggestions.items.filter(
     (suggestion) => suggestion.kind === "artist" || !isGenreBlocked(suggestion.genre),
   );
+  const enterTarget =
+    tab === "artists" && suggestions.query === typed ? visibleSuggestions[0] : undefined;
 
   const clearSearch = () => {
     setQuery("");
-    setSuggestions([]);
+    setSuggestions(NO_SUGGESTIONS);
   };
 
   const blockArtist = async (artist: ArtistSuggestion) => {
@@ -138,12 +145,10 @@ export default function BlocklistPage() {
 
   const submitTyped = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = query.trim().replace(/^#/, "");
-    if (!trimmed) return;
-    const [first] = visibleSuggestions;
-    if (first) void block(first);
-    else if (tab === "genres") void blockGenre(trimmed);
-    else void blockArtist({ id: null, name: trimmed });
+    if (!typed) return;
+    if (tab === "genres") void blockGenre(typed);
+    else if (enterTarget) void block(enterTarget);
+    else void blockArtist({ id: null, name: typed });
   };
 
   const counts: Record<BlocklistTab, number> = {
@@ -183,7 +188,7 @@ export default function BlocklistPage() {
               className="blocklist-page__suggestions"
               onMouseDown={(event) => event.preventDefault()}
             >
-              {visibleSuggestions.map((suggestion, index) => {
+              {visibleSuggestions.map((suggestion) => {
                 const pending =
                   suggestion.kind === "artist"
                     ? pendingArtist === suggestion.key
@@ -194,7 +199,7 @@ export default function BlocklistPage() {
                   <button
                     type="button"
                     key={suggestion.key}
-                    className={`artist-menu-item${index === 0 ? " is-active" : ""}`}
+                    className={`artist-menu-item${suggestion === enterTarget ? " is-active" : ""}`}
                     onClick={() => void block(suggestion)}
                     disabled={pending}
                     aria-label={`Block ${label}`}
