@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
@@ -6,7 +6,7 @@ import { LibraryItemMenu } from "./LibraryItemMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
-import { loadWrappedFonts, wrappedCovers, wrappedImageUrl } from "../utils/wrappedShare.ts";
+import { wrappedCovers, wrappedImageUrl } from "../utils/wrappedShare.ts";
 import { useWrapped, wrappedTimeZone } from "../hooks/useWrapped.ts";
 import "./wrapped-announcement.css";
 
@@ -39,9 +39,6 @@ export default function WrappedAnnouncement() {
     onError: () => toast.showError("Wrapped could not be hidden. Try again."),
   });
   const summary = query.data?.summary;
-  useEffect(() => {
-    if (year) void loadWrappedFonts(`Your ${year} Wrapped is ready.`);
-  }, [year]);
   if (
     !summary?.totalPlays ||
     query.data?.bannerHidden ||
@@ -49,7 +46,8 @@ export default function WrappedAnnouncement() {
     location.pathname === "/wrapped"
   )
     return null;
-  const artwork = wrappedCovers(summary);
+  const covers = wrappedCovers(summary);
+  const artwork = covers.length < 4 ? covers.slice(0, 1) : covers;
   const hideSession = () => {
     setHiddenSession(sessionKey);
     try {
@@ -59,35 +57,37 @@ export default function WrappedAnnouncement() {
   return (
     <section className="wrapped-announcement" aria-labelledby={headingId}>
       {artwork.length > 0 && (
-        <div className="wrapped-announcement-strip" aria-hidden="true">
+        <div className="wrapped-announcement-art" aria-hidden="true">
           {artwork.map((url) => (
             <img key={url} src={wrappedImageUrl(url)} alt="" loading="lazy" />
           ))}
         </div>
       )}
-      <h2 id={headingId}>Your {year} Wrapped is ready.</h2>
-      <div className="wrapped-announcement-actions">
-        <Link
-          className="btn btn-primary"
-          to="/wrapped"
-          state={{ wrappedFrom: `${location.pathname}${location.search}${location.hash}` }}
-        >
-          Open
-        </Link>
-        <LibraryItemMenu
-          label="Wrapped"
-          triggerClassName="btn btn-ghost btn-icon wrapped-announcement-more"
-          contextMenu={false}
-          items={[
-            { id: "now", label: "Hide for now", onSelect: hideSession },
-            {
-              id: "year",
-              label: "Hide for this year",
-              disabled: dismissal.isPending,
-              onSelect: () => dismissal.mutate(true),
-            },
-          ]}
-        />
+      <div className="wrapped-announcement-body">
+        <h2 id={headingId}>Your {year} Wrapped is ready.</h2>
+        <div className="wrapped-announcement-actions">
+          <Link
+            className="btn btn-primary"
+            to="/wrapped"
+            state={{ wrappedFrom: `${location.pathname}${location.search}${location.hash}` }}
+          >
+            Open
+          </Link>
+          <LibraryItemMenu
+            label="Wrapped"
+            triggerClassName="btn btn-ghost btn-icon"
+            contextMenu={false}
+            items={[
+              { id: "now", label: "Hide for now", onSelect: hideSession },
+              {
+                id: "year",
+                label: "Hide for this year",
+                disabled: dismissal.isPending,
+                onSelect: () => dismissal.mutate(true),
+              },
+            ]}
+          />
+        </div>
       </div>
     </section>
   );

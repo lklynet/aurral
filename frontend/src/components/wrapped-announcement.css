@@ -1,68 +1,53 @@
 .wrapped-announcement {
+  position: absolute;
+  top: var(--aurral-space-page);
+  right: var(--aurral-space-page);
+  z-index: var(--aurral-z-overlay);
   display: flex;
-  align-items: center;
-  min-height: 56px;
-  margin: var(--aurral-space-page);
+  width: min(340px, calc(100% - 2 * var(--aurral-space-page)));
   overflow: hidden;
   border: 1px solid var(--aurral-border-strong);
-  border-radius: var(--aurral-radius);
-  color-scheme: dark;
-  color: var(--aurral-overlay-foreground);
-  background: var(--aurral-overlay-base);
+  border-radius: var(--aurral-radius-lg);
+  background: var(--aurral-surface-popover);
+  box-shadow: var(--aurral-shadow-modal);
+}
+.wrapped-announcement-art {
+  display: grid;
+  flex: 0 0 104px;
+  grid-template-columns: 1fr 1fr;
+}
+.wrapped-announcement-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wrapped-announcement-art img:only-child {
+  grid-column: 1 / -1;
+}
+.wrapped-announcement-body {
+  display: grid;
+  flex: 1;
+  align-content: space-between;
+  gap: 0.625rem;
+  min-width: 0;
+  padding: 0.875rem 0.75rem 0.75rem 1rem;
 }
 .wrapped-announcement h2 {
-  flex: 1 1 auto;
-  min-width: 0;
   margin: 0;
-  padding: 0 0.875rem;
-  font-family: "Wrapped Display", var(--font-sans);
-  font-size: 1.5rem;
-  font-weight: 900;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-  word-spacing: 0.08em;
-}
-.wrapped-announcement-strip {
-  display: flex;
-  flex-shrink: 0;
-  align-self: stretch;
-}
-.wrapped-announcement-strip img {
-  width: 56px;
-  height: 100%;
-  min-height: 56px;
-  object-fit: cover;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-xl);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: var(--aurral-tracking-title);
 }
 .wrapped-announcement-actions {
   display: flex;
-  flex-shrink: 0;
   align-items: center;
-  gap: var(--aurral-space-outer);
-  padding-right: var(--aurral-space-outer);
-}
-.wrapped-announcement .btn-primary {
-  border-radius: var(--aurral-radius-round);
-  color: var(--aurral-overlay-base);
-  background: var(--aurral-overlay-foreground);
-  border-color: var(--aurral-overlay-foreground);
-}
-.wrapped-announcement .wrapped-announcement-more {
-  border-radius: var(--aurral-radius-round);
-  color: var(--aurral-overlay-foreground);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wrapped-announcement .btn-primary:hover:not(:disabled) {
-    color: var(--aurral-overlay-base);
-    background: var(--aurral-overlay-foreground-soft);
-    border-color: var(--aurral-overlay-foreground-soft);
-  }
+  justify-content: space-between;
 }
 @media (max-width: 640px) {
-  .wrapped-announcement h2 {
-    padding: 0 0.625rem;
-    font-size: 1.125rem;
-  }
-  .wrapped-announcement-strip img:nth-child(n + 3) {
-    display: none;
+  .wrapped-announcement {
+    left: var(--aurral-space-page);
+    width: auto;
   }
 }

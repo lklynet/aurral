@@ -227,13 +227,15 @@ function ProtectedLayout() {
                 visible={!user || user.role === "admin"}
               />
             }
+            overlay={
+              wrappedSeason && (
+                <Suspense fallback={null}>
+                  <WrappedAnnouncement />
+                </Suspense>
+              )
+            }
           >
             <SpotifyReconnectNotice />
-            {wrappedSeason && (
-              <Suspense fallback={null}>
-                <WrappedAnnouncement />
-              </Suspense>
-            )}
             {healthIssue === "lidarr" && isHealthy && (
               <div className="app-status-banner app-status-banner--warning">
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
