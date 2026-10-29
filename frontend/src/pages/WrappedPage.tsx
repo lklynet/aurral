@@ -300,25 +300,33 @@ function CountUp({ value, from }: { value: number; from: number }) {
   return <span ref={ref}>{value.toLocaleString()}</span>;
 }
 
+const OLD_GAIN = 0.4;
+
 function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
   try {
     const context = new AudioContext();
     const source = context.createMediaElementSource(element);
     const clean = new GainNode(context, { gain: vintage ? 0 : 1 });
     const mono = new GainNode(context, { channelCount: 1, channelCountMode: "explicit" });
-    const old = new GainNode(context, { gain: vintage ? 2 : 0 });
+    const old = new GainNode(context, { gain: vintage ? OLD_GAIN : 0 });
     const hiss = new GainNode(context, { gain: vintage ? 1 : 0 });
+    const wow = new DelayNode(context, { delayTime: 0.004 });
+    const wobble = new OscillatorNode(context, { frequency: 0.55 });
+    const curve = new Float32Array(1024).map((_, index) => Math.tanh((index / 511.5 - 1) * 2.5));
     const noise = context.createBuffer(1, context.sampleRate * 4, context.sampleRate);
     const samples = noise.getChannelData(0);
     for (let index = 0; index < samples.length; index++)
       samples[index] =
-        (Math.random() * 2 - 1) * 0.012 + (Math.random() < 0.0007 ? Math.random() - 0.5 : 0);
+        (Math.random() * 2 - 1) * 0.03 + (Math.random() < 0.0012 ? (Math.random() - 0.5) * 1.4 : 0);
     const crackle = new AudioBufferSourceNode(context, { buffer: noise, loop: true });
     source.connect(clean).connect(context.destination);
+    wobble.connect(new GainNode(context, { gain: 0.0016 })).connect(wow.delayTime);
     source
       .connect(mono)
-      .connect(new BiquadFilterNode(context, { type: "highpass", frequency: 380 }))
-      .connect(new BiquadFilterNode(context, { type: "lowpass", frequency: 3000 }))
+      .connect(new BiquadFilterNode(context, { type: "highpass", frequency: 500, Q: 1 }))
+      .connect(new BiquadFilterNode(context, { type: "lowpass", frequency: 2400, Q: 1 }))
+      .connect(new WaveShaperNode(context, { curve, oversample: "2x" }))
+      .connect(wow)
       .connect(old)
       .connect(context.destination);
     crackle
@@ -326,16 +334,30 @@ function vintageGraph(element: HTMLAudioElement, vintage: boolean) {
       .connect(hiss)
       .connect(context.destination);
     crackle.start();
+    wobble.start();
     return { context, clean, old, hiss };
   } catch {
     return null;
   }
 }
 
+function mix(
+  sound: NonNullable<ReturnType<typeof vintageGraph>>,
+  vintage: boolean,
+  muted: boolean,
+  when: number,
+  ease: number,
+) {
+  sound.clean.gain.setTargetAtTime(!vintage && !muted ? 1 : 0, when, ease);
+  sound.old.gain.setTargetAtTime(vintage && !muted ? OLD_GAIN : 0, when, ease);
+  sound.hiss.gain.setTargetAtTime(vintage && !muted ? 1 : 0, when, ease);
+}
+
 function useSoundtrack(src: string | null, seek: number | null, muted: boolean, vintage: boolean) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const graph = useRef<ReturnType<typeof vintageGraph>>(null);
   const startAt = useRef(0);
+  const cut = useRef(0);
   const [current, setCurrent] = useState<string | null>(null);
   const queue = useAudioQueue();
   const queueRef = useRef(queue);
@@ -374,10 +396,7 @@ function useSoundtrack(src: string | null, seek: number | null, muted: boolean, 
   useEffect(() => {
     const sound = graph.current;
     if (!sound) return;
-    const now = sound.context.currentTime;
-    sound.clean.gain.setTargetAtTime(!vintage && !muted ? 1 : 0, now, 0.15);
-    sound.old.gain.setTargetAtTime(vintage && !muted ? 2 : 0, now, 0.15);
-    sound.hiss.gain.setTargetAtTime(vintage && !muted ? 1 : 0, now, 0.15);
+    mix(sound, vintage, muted, Math.max(sound.context.currentTime, cut.current), 0.15);
   }, [muted, vintage]);
 
   useEffect(() => {
@@ -433,6 +452,13 @@ function useSoundtrack(src: string | null, seek: number | null, muted: boolean, 
       const element = audio.current;
       graph.current?.context.resume().catch(() => {});
       if (element?.src && element.paused) element.play().catch(() => {});
+    },
+    reveal: (lead: number) => {
+      const sound = graph.current;
+      if (!sound) return;
+      const when = sound.context.currentTime + lead;
+      mix(sound, false, muted, when, 0.005);
+      cut.current = when + 0.05;
     },
     restart: () => {
       const element = audio.current;
@@ -1160,7 +1186,10 @@ function Story({
     setVintage(false);
     setIntro(false);
   }, [summary.year]);
-  const reveal = useCallback(() => setVintage(false), []);
+  const reveal = (lead: number) => {
+    audio.reveal(lead);
+    setVintage(false);
+  };
   const begin = useCallback(() => setWaiting(false), []);
 
   const go = (step: number) => {

@@ -1345,7 +1345,7 @@ export function createReel({
 
   return {
     draw,
-    drop: at(16),
+    drop: flood.t,
     end: at(35),
     dispose: () => {
       for (const piece of pieces) if (piece.video) release(piece.video);

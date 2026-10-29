@@ -7,6 +7,7 @@ import footage from "./wrapped-intro.mp4?url";
 const GLYPHS = "Youryearinmusic.playsJFMAMJJASOND0123456789,";
 const WAIT = 1500;
 const FADE = 0.6;
+const LEAD = 0.25;
 
 function findSlide(slide: RefObject<HTMLDivElement | null>, alive: () => boolean) {
   const started = performance.now();
@@ -35,7 +36,7 @@ export default function WrappedIntro({
   slide: RefObject<HTMLDivElement | null>;
   position: (() => number | null) | null;
   onStart: () => void;
-  onReveal: () => void;
+  onReveal: (lead: number) => void;
   onDone: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -46,7 +47,7 @@ export default function WrappedIntro({
     const canvas = ref.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) {
-      callbacks.current.onReveal();
+      callbacks.current.onReveal(0);
       callbacks.current.onDone();
       return;
     }
@@ -57,7 +58,7 @@ export default function WrappedIntro({
       if (!active) return;
       active = false;
       callbacks.current.onStart();
-      callbacks.current.onReveal();
+      callbacks.current.onReveal(0);
       callbacks.current.onDone();
     };
 
@@ -103,9 +104,9 @@ export default function WrappedIntro({
           if (heard !== null && Math.abs(heard - (now / 1000 - origin)) < 0.5)
             origin -= (heard - (now / 1000 - origin)) * 0.1;
           const t = now / 1000 - origin;
-          if (!dropped && t >= film.drop) {
+          if (!dropped && t >= film.drop - LEAD) {
             dropped = true;
-            callbacks.current.onReveal();
+            callbacks.current.onReveal(Math.max(0, film.drop - t));
           }
           if (t >= film.end) return finish();
           film.draw(context, t);
