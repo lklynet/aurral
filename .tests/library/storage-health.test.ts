@@ -297,6 +297,34 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
   assert.doesNotMatch(configured?.fix || "", /Settings .* Download Clients .* slskd/i);
 });
 
+test("slskd that hides its settings from the API key fails with the key role fix", async (t: import("vite-plus/test").TestContext) => {
+  const server = await createMockHttpServer((request, response) => {
+    if (request.url?.startsWith("/api/v0/options")) {
+      response.writeHead(403);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ server: { state: "Connected, LoggedIn", isLoggedIn: true } }));
+  });
+  t.onTestFinished(server.close);
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      slskd: { enabled: true, url: server.url, apiKey: "test-key" },
+    },
+  });
+
+  const result = await runStorageHealthCheck({ force: true });
+  const slskd = result.sections.find((section) => section.id === "slskd");
+  const reported = slskd?.steps.find((step) => step.id === "path-reported");
+
+  assert.equal(slskd?.status, "fail");
+  assert.equal(reported?.status, "fail");
+  assert.match(reported?.fix || "", /administrator role/);
+});
+
 test("unrelated Navidrome libraries do not fail local storage health", async (t: import("vite-plus/test").TestContext) => {
   const playlistLibrary = "/music-aurral";
   const server = await createMockHttpServer((request, response) => {

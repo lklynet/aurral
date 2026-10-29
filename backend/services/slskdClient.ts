@@ -58,6 +58,7 @@ interface SlskdConnectionStatus {
   warning?: boolean;
   serverState?: string;
   downloadPath?: string | null;
+  downloadPathDenied?: boolean;
 }
 
 interface SlskdSearch {
@@ -725,16 +726,20 @@ export class SlskdClient {
       const downloadPath = Array.isArray(rawDownloadPath)
         ? String(rawDownloadPath[0] || "").trim() || null
         : String(rawDownloadPath || "").trim() || null;
+      const downloadPathDenied = optionsRes.status === 401 || optionsRes.status === 403;
       const result = {
         ok: true,
         configured: true,
         connected: soulseekConnected,
         soulseekConnected,
-        warning: !soulseekConnected,
+        warning: !soulseekConnected || downloadPathDenied,
         serverState,
         downloadPath,
+        downloadPathDenied,
         message: soulseekConnected
-          ? "slskd is connected"
+          ? downloadPathDenied
+            ? "slskd won't share its download folder with this API key. Give the key the administrator role in slskd."
+            : "slskd is connected"
           : server.isConnected === true
             ? "slskd is connected to Soulseek but not logged in. Soulseek downloads wait until it logs in."
             : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
