@@ -78,8 +78,7 @@
   --aurral-stage-blueprint-top: #3a7ad1;
   --aurral-stage-blueprint-mid: #2050ae;
   --aurral-stage-blueprint-bottom: #101f6e;
-  --aurral-surface-grain: none;
-  --aurral-sidebar-grain: none;
+  --aurral-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   --aurral-space-outer: 0.25rem;
   --aurral-space-page: 0.75rem;
   --aurral-space-page-lg: 1rem;
@@ -2304,15 +2303,14 @@ textarea {
 
 .app-shell,
 .app-topbar,
-.app-mobile-nav {
-  background-image: var(--aurral-surface-grain);
-  background-repeat: repeat;
-  background-size: 256px 256px;
-}
-
+.app-mobile-nav,
+.app-section-bar,
 .sidebar-shell,
-.app-main {
-  background-image: var(--aurral-sidebar-grain);
+.app-main,
+.global-player,
+.login-page,
+.onboarding-page {
+  background-image: var(--aurral-grain);
   background-repeat: repeat;
   background-size: 256px 256px;
 }
@@ -10862,7 +10860,7 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: var(--aurral-chrome);
+  background-color: var(--aurral-chrome);
 }
 
 .login-card {
@@ -14425,7 +14423,7 @@ a.blocklist-page__name:focus-visible {
   z-index: var(--aurral-z-player);
   flex-shrink: 0;
   margin-top: 0.5rem;
-  background: var(--aurral-chrome);
+  background-color: var(--aurral-chrome);
 }
 
 .global-player::before {
@@ -15085,7 +15083,7 @@ a.blocklist-page__name:focus-visible {
   .global-player {
     margin: 0;
     border-top: 1px solid var(--aurral-border);
-    background: var(--aurral-chrome);
+    background-color: var(--aurral-chrome);
   }
 
   .global-player__inner {

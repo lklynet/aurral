@@ -1,5 +1,5 @@
 .app-main--settings {
-  background: var(--aurral-surface);
+  background-color: var(--aurral-surface);
   overflow-y: auto;
   overflow-x: hidden;
 }
