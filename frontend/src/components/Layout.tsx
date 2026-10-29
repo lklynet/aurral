@@ -12,7 +12,6 @@ import {
 import RouteLink from "./RouteLink";
 import { useLocation, useNavigate, useNavigationType } from "react-router";
 import {
-  Menu,
   Sparkles,
   Library,
   Activity,
@@ -30,7 +29,6 @@ import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";
 import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
-import TooltipButton from "./TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { DEFAULT_SETTINGS_TAB } from "../pages/Settings/settingsTabsConfig";
@@ -437,7 +435,12 @@ function Layout({ children, headerActions }: LayoutProps) {
       data-resizing={isResizing || undefined}
       style={{ "--sidebar-width": `${sidebarWidth}px` }}
     >
-      <Sidebar mode={sidebarMode} width={sidebarWidth} settingsMode={isSettingsRoute} />
+      <Sidebar
+        mode={sidebarMode}
+        width={sidebarWidth}
+        settingsMode={isSettingsRoute}
+        onToggle={toggleSidebarPin}
+      />
 
       <div
         className={`sidebar-resize-handle${isResizing ? " is-active" : ""}`}
@@ -467,15 +470,6 @@ function Layout({ children, headerActions }: LayoutProps) {
         }${isPlayerActive ? " app-content--player-active" : ""}`}
       >
         <header className="app-topbar">
-          <TooltipButton
-            label={sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"}
-            type="button"
-            onClick={toggleSidebarPin}
-            className="app-nav-toggle"
-          >
-            <Menu aria-hidden="true" />
-          </TooltipButton>
-
           {!sectionNav ? (
             <button
               type="button"
