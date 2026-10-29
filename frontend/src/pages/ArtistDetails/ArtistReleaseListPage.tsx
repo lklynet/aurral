@@ -14,6 +14,7 @@ import {
   List,
   Music,
   Search,
+  AlertCircle,
 } from "../../components/icons";
 import { ReleaseMetric } from "./components/ReleaseMetric";
 import AddActionButton from "../../components/AddActionButton";
@@ -401,8 +402,14 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
   if (error || !artist) {
     return (
-      <div className="artist-empty-panel">
-        <p className="artist-modal__subcopy">{error || "Artist not found"}</p>
+      <div className="search-empty-panel" role="alert">
+        <div className="search-empty-panel__icon" aria-hidden="true">
+          <AlertCircle />
+        </div>
+        <h2 className="search-empty-panel__title">
+          {error ? "Couldn't load this artist" : "Artist not found"}
+        </h2>
+        {error ? <p className="search-empty-panel__message">{error}</p> : null}
       </div>
     );
   }

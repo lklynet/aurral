@@ -67,7 +67,7 @@ export function ArtistDetailsActionBar({
   const renderLibraryAction = () => {
     if (loadingLibrary) {
       return (
-        <div className="btn btn-secondary btn--bold btn-min-h">
+        <div className="btn btn-secondary btn-min-h">
           <DotLoader size="sm" label={null} />
           {existsInLibrary ? "Loading library" : "Checking library"}
         </div>
@@ -117,7 +117,7 @@ export function ArtistDetailsActionBar({
                 type="button"
                 onClick={library.handleRefreshArtist}
                 disabled={library.refreshingArtist}
-                className="btn btn-secondary btn--bold btn-min-h"
+                className="btn btn-secondary btn-min-h"
                 aria-label="Refresh artist"
               >
                 {library.refreshingArtist ? (

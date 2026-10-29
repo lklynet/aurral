@@ -329,7 +329,6 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
             </TooltipButton>
           ) : null
         }
-        kicker="Playlist"
         title={playlist.name}
         meta={metaParts.filter(Boolean).join(" · ")}
         actions={

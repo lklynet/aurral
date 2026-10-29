@@ -99,12 +99,7 @@ export function DiscoverRail({
         <div className="artist-discover-rail__actions">
           {headerActions}
           {viewAllTo ? (
-            <RouteLink
-              to={viewAllTo}
-              className="artist-discover-rail__show-all"
-              aria-hidden="true"
-              tabIndex={-1}
-            >
+            <RouteLink to={viewAllTo} className="section-show-all" aria-hidden="true" tabIndex={-1}>
               Show all
             </RouteLink>
           ) : null}

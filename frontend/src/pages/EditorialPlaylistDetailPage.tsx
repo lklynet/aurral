@@ -124,7 +124,7 @@ export default function EditorialPlaylistDetailPage() {
     return (
       <CollectionPage>
         <SkeletonStatus label="Loading playlist" className="native-library-detail">
-          <SkeletonCollectionHeader kicker={false} description icons={2} />
+          <SkeletonCollectionHeader description icons={2} />
           <SkeletonCollectionTracks />
         </SkeletonStatus>
       </CollectionPage>

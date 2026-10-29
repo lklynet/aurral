@@ -14,7 +14,7 @@ import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
 import { Link, useLocation, useParams } from "react-router";
-import { Share } from "../../components/icons";
+import { AlertCircle, Share } from "../../components/icons";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
@@ -53,6 +53,7 @@ import Tooltip from "../../components/Tooltip";
 import TooltipButton from "../../components/TooltipButton";
 import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
+import { SkeletonShape, SkeletonText } from "../../components/Skeletons";
 import type { ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import type { ReleaseFocusState } from "../../utils/searchNavigation.ts";
 import type { DownloadStatuses } from "./hooks/useArtistDetailsLibrary.ts";
@@ -130,6 +131,7 @@ function ReleasePage() {
     (Array.isArray(artistCredits)
       ? artistCredits.find((credit) => credit?.artist?.id === artistMbid)?.name || ""
       : "");
+  const headerPending = releaseDetailsQuery.isPending && !release.title;
 
   const [coverUrl, setCoverUrl] = useState(release._coverUrl || "");
   const [coverRetryUrl, setCoverRetryUrl] = useState("");
@@ -239,10 +241,7 @@ function ReleasePage() {
   const pageTitle = artistName ? `${releaseTitle} — ${artistName}` : releaseTitle;
   useDocumentTitle(pageTitle);
 
-  const { typeLabel: releaseTypeLabel, meta: releaseMeta } = useMemo(
-    () => buildReleaseHeaderMeta(release, tracks),
-    [release, tracks],
-  );
+  const releaseMeta = useMemo(() => buildReleaseHeaderMeta(release, tracks), [release, tracks]);
   const trackCount = tracks.length;
   const libraryDisplay = useMemo(
     () => resolveReleaseLibraryDisplay(countReleaseTracks(libraryInfo, trackCount), downloadStatus),
@@ -547,6 +546,28 @@ function ReleasePage() {
     libraryArtist: locationState?.libraryArtist,
   };
 
+  if (releaseDetailsQuery.isError && !release.title) {
+    return (
+      <div className="search-empty-panel" role="alert">
+        <div className="search-empty-panel__icon" aria-hidden="true">
+          <AlertCircle />
+        </div>
+        <h1 className="search-empty-panel__title">Couldn’t load this release</h1>
+        <p className="search-empty-panel__message">
+          The metadata service didn’t respond. Try again in a moment.
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={releaseDetailsQuery.isFetching}
+          onClick={() => void releaseDetailsQuery.refetch()}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <CollectionPage tintSrc={coverUrl}>
       <CollectionHeader
@@ -559,14 +580,15 @@ function ReleasePage() {
               decoding="async"
               onError={() => void handleCoverError()}
             />
+          ) : headerPending ? (
+            <SkeletonShape className="skeleton-fill" />
           ) : (
             <span className="native-library-cover-fallback" aria-hidden="true">
               {releaseTitle.trim().charAt(0).toUpperCase() || "—"}
             </span>
           )
         }
-        kicker={releaseTypeLabel || "Release"}
-        title={releaseTitle}
+        title={headerPending ? <SkeletonText width="8em" /> : releaseTitle}
         subtitle={
           artistMbid ? (
             <Link
@@ -574,11 +596,11 @@ function ReleasePage() {
               state={artistLinkState}
               className="native-library-detail__artist"
             >
-              {artistName || "Artist"}
+              {artistName || (headerPending ? <SkeletonText width="7em" /> : "Artist")}
             </Link>
           ) : null
         }
-        meta={releaseMeta}
+        meta={headerPending ? <SkeletonText width="11em" /> : releaseMeta}
         actions={
           <>
             <CollectionPlayButtons

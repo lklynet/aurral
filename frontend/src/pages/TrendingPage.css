@@ -8,22 +8,13 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 1rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--aurral-border);
-}
-
-.trending-page .page-title {
-  font-size: clamp(1.75rem, 3vw, 2.25rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  margin-bottom: 1.5rem;
 }
 
 .trending-page__meta {
   margin: 0;
   color: var(--aurral-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--aurral-font-sm);
 }
 
 .trending-spotlight {
@@ -49,9 +40,9 @@
 
 .trending-spotlight__title {
   margin: 0 0 0.375rem;
-  font-size: clamp(1.75rem, 4vw, 2.875rem);
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-size: var(--aurral-font-3xl);
+  font-weight: 700;
+  letter-spacing: var(--aurral-tracking-display);
   line-height: 1.02;
   overflow-wrap: anywhere;
 }
@@ -59,7 +50,7 @@
 .trending-spotlight__by {
   margin: 0 0 1rem;
   color: var(--aurral-text-muted);
-  font-size: 0.9375rem;
+  font-size: var(--aurral-font-md);
 }
 
 .trending-spotlight__by a {
@@ -86,15 +77,15 @@
 
 .trending-spotlight__stat {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--aurral-font-2xl);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--aurral-tracking-title);
 }
 
 .trending-spotlight__stat span {
   margin-left: 0.375rem;
   color: var(--aurral-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--aurral-font-sm);
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -102,7 +93,7 @@
 .trending-spotlight__caption {
   margin: 0.25rem 0 0;
   color: var(--aurral-text-subtle);
-  font-size: 0.75rem;
+  font-size: var(--aurral-font-xs);
 }
 
 .trending-spark {
@@ -278,7 +269,7 @@
 
 .trending-song__artist {
   color: var(--aurral-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--aurral-font-sm);
 }
 
 .trending-movement {
@@ -287,7 +278,7 @@
   justify-content: flex-end;
   gap: 0.125rem;
   color: var(--aurral-text-subtle);
-  font-size: 0.6875rem;
+  font-size: var(--aurral-font-2xs);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -303,7 +294,6 @@
 
 .trending-movement.is-new {
   color: var(--aurral-text);
-  text-transform: uppercase;
 }
 
 .trending-album__rank {
@@ -311,9 +301,9 @@
   bottom: 0.375rem;
   left: 0.5rem;
   color: var(--aurral-overlay-foreground);
-  font-size: 1.875rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: var(--aurral-font-3xl);
+  font-weight: 700;
+  letter-spacing: var(--aurral-tracking-display);
   line-height: 1;
   text-shadow: var(--aurral-shadow-action-icon);
   pointer-events: none;
@@ -358,7 +348,7 @@
   grid-template-columns: 7rem minmax(0, 1fr) 1.75rem;
   align-items: center;
   gap: 0.625rem;
-  font-size: 0.8125rem;
+  font-size: var(--aurral-font-sm);
 }
 
 .trending-genres__name {
@@ -382,7 +372,7 @@
 .trending-genres__bar {
   display: block;
   height: 0.625rem;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--aurral-radius-xs) var(--aurral-radius-xs) 0;
   background: var(--aurral-text-subtle);
   transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
@@ -406,7 +396,7 @@
 .trending-genres__other {
   margin: 0.625rem 0 0;
   color: var(--aurral-text-subtle);
-  font-size: 0.75rem;
+  font-size: var(--aurral-font-xs);
 }
 
 @media (max-width: 1100px) {

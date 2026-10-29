@@ -107,10 +107,7 @@ function ShowsPage() {
           <p className="search-empty-panel__message">
             Add a Ticketmaster key in Settings → Connect to find nearby shows.
           </p>
-          <RouteLink
-            to="/settings"
-            className="btn btn-primary btn--bold btn-min-h shows-page__panel-action"
-          >
+          <RouteLink to="/settings" className="btn btn-primary">
             Open Settings
           </RouteLink>
         </div>
@@ -125,10 +122,12 @@ function ShowsPage() {
           </div>
         </SkeletonStatus>
       ) : showsError ? (
-        <div className="artist-error-panel" role="alert">
-          <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Unable to load nearby shows</h2>
-          <p className="artist-error-copy">{showsError}</p>
+        <div className="search-empty-panel" role="alert">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <AlertCircle />
+          </div>
+          <h2 className="search-empty-panel__title">Couldn’t load nearby shows</h2>
+          <p className="search-empty-panel__message">{showsError}</p>
         </div>
       ) : zipModeActive && !appliedZip.trim() ? (
         <div className="search-empty-panel">
@@ -149,7 +148,7 @@ function ShowsPage() {
               ))}
             </div>
           ) : (
-            <div className="search-empty-panel shows-page__empty">
+            <div className="search-empty-panel">
               <div className="search-empty-panel__icon" aria-hidden="true">
                 <Music className="artist-icon-lg" />
               </div>

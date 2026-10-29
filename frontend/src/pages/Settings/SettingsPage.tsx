@@ -317,7 +317,6 @@ function SettingsPage() {
           <div className="settings-arr__content">
             <header className="settings-arr__header">
               <div className="settings-arr__heading">
-                <p className="settings-arr__eyebrow">Settings</p>
                 <h1 className="settings-arr__title">{tabs.activeTabMeta?.label || "Settings"}</h1>
               </div>
               {tabs.activeTab !== "tasks" ? (

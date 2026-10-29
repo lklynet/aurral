@@ -497,12 +497,10 @@ export function SkeletonPlayButtons({ icons = 2 }: { icons?: number }) {
 }
 
 export function SkeletonCollectionHeader({
-  kicker = true,
   subtitle = false,
   description = false,
   icons = 2,
 }: {
-  kicker?: boolean;
   subtitle?: boolean;
   description?: boolean;
   icons?: number;
@@ -510,7 +508,6 @@ export function SkeletonCollectionHeader({
   return (
     <CollectionHeader
       cover={<SkeletonShape className="skeleton-fill" />}
-      kicker={kicker ? <SkeletonText width="4em" /> : null}
       title={<SkeletonText width="8em" />}
       subtitle={
         description ? (
@@ -546,9 +543,6 @@ export function SkeletonLibraryArtist({ label }: { label: string }) {
           <SkeletonShape className="skeleton-fill" />
         </div>
         <div className="native-library-detail__body">
-          <p className="native-library-kicker">
-            <SkeletonText width="3em" />
-          </p>
           <h2>
             <SkeletonText width="6em" />
           </h2>

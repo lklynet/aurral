@@ -456,17 +456,15 @@ function ActivityPage() {
       />
 
       {error && (
-        <div className="artist-error-panel activity-page__error" role="alert">
-          <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Could not load activity.</h2>
+        <div className="search-empty-panel" role="alert">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <AlertCircle />
+          </div>
+          <h2 className="search-empty-panel__title">Couldn’t load activity</h2>
           {error !== "Failed to load activity." ? (
-            <p className="artist-error-copy">{error}</p>
+            <p className="search-empty-panel__message">{error}</p>
           ) : null}
-          <button
-            type="button"
-            onClick={() => fetchRequests()}
-            className="btn btn-secondary btn--bold btn-min-h"
-          >
+          <button type="button" onClick={() => fetchRequests()} className="btn btn-secondary">
             Try again
           </button>
         </div>
@@ -474,7 +472,7 @@ function ActivityPage() {
 
       {filteredRequests.length === 0 ? (
         !error && (
-          <div className="search-empty-panel activity-page__empty">
+          <div className="search-empty-panel">
             <div className="search-empty-panel__icon" aria-hidden="true">
               <Music className="artist-icon-lg" />
             </div>
@@ -485,7 +483,7 @@ function ActivityPage() {
               <p className="search-empty-panel__message">No activity matches the current filter.</p>
             ) : null}
             {isQueueView && !hasActivityFilter && (
-              <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
+              <RouteLink to="/" className="btn btn-primary">
                 Start discovering
               </RouteLink>
             )}
@@ -534,7 +532,7 @@ function ActivityPage() {
               <button
                 type="button"
                 onClick={() => setVisibleCount((count) => count + ACTIVITY_PAGE_SIZE)}
-                className="btn btn-secondary btn--bold btn-min-h"
+                className="btn btn-secondary btn-min-h"
               >
                 Load more
               </button>

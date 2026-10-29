@@ -28,7 +28,7 @@
 }
 .share-import__choice span > span {
   color: var(--aurral-text-muted);
-  font-size: 0.875rem;
+  font-size: var(--aurral-font-base);
 }
 .share-import__tracks {
   list-style-position: inside;

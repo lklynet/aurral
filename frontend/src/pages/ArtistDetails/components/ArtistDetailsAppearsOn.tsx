@@ -1,6 +1,6 @@
 import ArtworkImage from "../../../components/ArtworkImage";
 import { useEffect, useMemo } from "react";
-import { ArrowRight, Music } from "../../../components/icons";
+import { Music } from "../../../components/icons";
 import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
 import ReleaseStatusCheck from "./ReleaseStatusCheck";
@@ -90,9 +90,8 @@ export function ArtistDetailsAppearsOn({
           </div>
         </div>
         {viewAllLink ? (
-          <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="artist-link-button">
-            View all
-            <ArrowRight className="artist-icon-sm" />
+          <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="section-show-all">
+            Show all
           </RouteLink>
         ) : null}
       </div>

@@ -15,7 +15,7 @@
   background-color: var(--aurral-surface-raised);
   box-shadow: inset 0 0 0 1px var(--aurral-border);
   cursor: pointer;
-  font-size: 17px;
+  font-size: var(--aurral-font-md);
   transition:
     background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
     box-shadow var(--aurral-duration-fast) var(--aurral-ease-standard),

@@ -241,7 +241,7 @@ export default function TrendingPage() {
           </p>
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary"
             disabled={isFetching}
             onClick={() => refetch()}
           >
@@ -305,11 +305,7 @@ export default function TrendingPage() {
                   onClick={() => playFrom(0)}
                   disabled={!leadTrack.streamUrl}
                 >
-                  {leadPlaying ? (
-                    <Pause aria-hidden="true" fill="currentColor" />
-                  ) : (
-                    <Play aria-hidden="true" fill="currentColor" />
-                  )}
+                  {leadPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
                   {leadPlaying ? "Pause" : "Preview"}
                 </button>
                 {trackSaveActions.onAddTrackToLibrary ? (
@@ -352,7 +348,7 @@ export default function TrendingPage() {
                 {canSavePlaylist && songs.libraryPlaylistId ? (
                   <RouteLink
                     to={playlistPath(songs.libraryPlaylistId)}
-                    className="artist-discover-rail__show-all trending-section__saved"
+                    className="section-show-all trending-section__saved"
                   >
                     <Check aria-hidden="true" />
                     Saved as playlist
@@ -370,7 +366,7 @@ export default function TrendingPage() {
                 ) : null}
                 <RouteLink
                   to={editorialPlaylistPath(songs.playlistId)}
-                  className="artist-discover-rail__show-all"
+                  className="section-show-all"
                 >
                   Show all {songs.items.length}
                 </RouteLink>
@@ -395,11 +391,7 @@ export default function TrendingPage() {
                           <ArtworkImage src={song.artworkUrl} alt="" loading="lazy" />
                         ) : null}
                         <span className="trending-song__play">
-                          {playing ? (
-                            <Pause aria-hidden="true" fill="currentColor" />
-                          ) : (
-                            <Play aria-hidden="true" fill="currentColor" />
-                          )}
+                          {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
                         </span>
                       </span>
                       <span className="trending-song__text">

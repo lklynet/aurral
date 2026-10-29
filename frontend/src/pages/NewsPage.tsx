@@ -57,7 +57,7 @@ export default function NewsPage() {
           <Newspaper aria-hidden="true" />
           <h2>Enable News</h2>
           <p>Enable RSS news in Settings → RSS news.</p>
-          <RouteLink to="/settings/rss-news" className="btn btn-primary btn--bold">
+          <RouteLink to="/settings/rss-news" className="btn btn-primary">
             Open News settings
           </RouteLink>
         </section>

@@ -484,18 +484,20 @@ export default function ActivityMissingPage() {
         placeholder={filterPlaceholder}
       />
       {error ? (
-        <div className="artist-error-panel activity-page__error" role="alert">
-          <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Unable to load wanted tracks</h2>
-          <p className="artist-error-copy">{error}</p>
-          <button type="button" className="btn btn-secondary btn--bold" onClick={() => loadJobs()}>
+        <div className="search-empty-panel" role="alert">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <AlertCircle />
+          </div>
+          <h2 className="search-empty-panel__title">Couldn’t load wanted tracks</h2>
+          <p className="search-empty-panel__message">{error}</p>
+          <button type="button" className="btn btn-secondary" onClick={() => loadJobs()}>
             Try again
           </button>
         </div>
       ) : null}
 
       {!error && visibleJobs.length === 0 ? (
-        <div className="search-empty-panel activity-page__empty">
+        <div className="search-empty-panel">
           <div className="search-empty-panel__icon" aria-hidden="true">
             <CheckCircle2 className="artist-icon-lg" />
           </div>
@@ -535,7 +537,7 @@ export default function ActivityMissingPage() {
             <div className="activity-list__load-more">
               <button
                 type="button"
-                className="btn btn-secondary btn--bold btn-min-h"
+                className="btn btn-secondary btn-min-h"
                 onClick={() => setVisibleCount((count) => count + WANTED_PAGE_SIZE)}
               >
                 Load more

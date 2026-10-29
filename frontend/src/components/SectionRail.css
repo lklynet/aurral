@@ -81,7 +81,7 @@
   width: 20rem;
   padding: 0.875rem 1rem;
   border: 1px solid var(--aurral-border-strong);
-  border-radius: calc(var(--aurral-radius) * 1.6);
+  border-radius: var(--aurral-radius-lg);
   background: var(--aurral-surface-popover);
   box-shadow: var(--aurral-shadow-popover);
   pointer-events: none;
@@ -91,7 +91,7 @@
 .section-rail__card-title {
   overflow: hidden;
   color: var(--aurral-text);
-  font-size: 0.9375rem;
+  font-size: var(--aurral-font-md);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -101,7 +101,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--aurral-text-muted);
-  font-size: 0.875rem;
+  font-size: var(--aurral-font-base);
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;

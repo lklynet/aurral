@@ -360,6 +360,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.3.1)
+      '@fontsource-variable/inter':
+        specifier: 5.3.0
+        version: 5.3.0
       '@tanstack/react-query':
         specifier: ^5.104.3
         version: 5.104.3(react@19.3.1)
@@ -1152,6 +1155,9 @@ packages:
 
   '@expressive-code/plugin-text-markers@0.44.3':
     resolution: {integrity: sha512-4Ae2xRSDV5kdWPsi40xWbOtoihbzM0zLVjQKkDAnD5KzFXl+6/kd+VhuWOlTRVaJ5cqGk++vCbAaf0MR1XbZlw==}
+
+  '@fontsource-variable/inter@5.3.0':
+    resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
 
   '@hono/node-server@2.1.5':
     resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
@@ -5736,6 +5742,8 @@ snapshots:
   '@expressive-code/plugin-text-markers@0.44.3':
     dependencies:
       '@expressive-code/core': 0.44.3
+
+  '@fontsource-variable/inter@5.3.0': {}
 
   '@hono/node-server@2.1.5(hono@4.13.13)':
     dependencies:

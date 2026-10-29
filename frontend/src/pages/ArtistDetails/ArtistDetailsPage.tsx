@@ -30,7 +30,7 @@ import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
 import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
-import { Music, X } from "../../components/icons";
+import { AlertCircle, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
 import { useToast } from "../../contexts/ToastContext";
@@ -494,15 +494,15 @@ function ArtistDetailsPage() {
 
   if (error) {
     return (
-      <div className="artist-error-panel">
-        <div>
-          <Music className="artist-error-icon" />
-          <h3 className="artist-error-title">Error loading artist</h3>
-          <p className="artist-error-copy">{error}</p>
-          <RouteLink to="/search" className="btn btn-primary artist-hidden-mobile">
-            Back to search
-          </RouteLink>
+      <div className="search-empty-panel" role="alert">
+        <div className="search-empty-panel__icon" aria-hidden="true">
+          <AlertCircle />
         </div>
+        <h2 className="search-empty-panel__title">Couldn’t load this artist</h2>
+        <p className="search-empty-panel__message">{error}</p>
+        <RouteLink to="/search" className="btn btn-secondary">
+          Back to search
+        </RouteLink>
       </div>
     );
   }

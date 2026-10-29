@@ -338,11 +338,7 @@ export function TrackList({
                   label={playLabel}
                   aria-label={playLabel}
                 >
-                  {row.playing ? (
-                    <Pause aria-hidden="true" fill="currentColor" />
-                  ) : (
-                    <Play aria-hidden="true" fill="currentColor" />
-                  )}
+                  {row.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
                 </TooltipButton>
               ) : (
                 <span aria-hidden="true" />

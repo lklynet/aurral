@@ -300,7 +300,7 @@ const ArtistImage = ({
         {isLoadingPreview ? (
           <DotLoader size="md" label={null} className="artist-image-preview-button__icon" />
         ) : (
-          <Play className="artist-image-preview-button__icon" fill="currentColor" />
+          <Play className="artist-image-preview-button__icon" />
         )}
       </button>
     </Tooltip>

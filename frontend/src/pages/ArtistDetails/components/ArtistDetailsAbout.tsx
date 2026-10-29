@@ -164,7 +164,7 @@ export function ArtistDetailsAbout({
 
   return (
     <section className="artist-section">
-      <h2 className="artist-section-title artist-section-title--large">About</h2>
+      <h2 className="artist-section-title">About</h2>
       <div className="artist-about-grid">
         <div className="artist-about-card">
           {aboutImage ? (

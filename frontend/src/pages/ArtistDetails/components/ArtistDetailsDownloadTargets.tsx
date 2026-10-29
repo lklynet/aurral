@@ -269,7 +269,7 @@ export function ArtistDetailsDownloadTargets({
   const releaseGroupId = missingReleasePick.releaseGroupId;
   const title = release!.title || missingReleasePick.title;
   const displayArtistName = artistName || artist?.name || "";
-  const { typeLabel, meta } = buildReleaseHeaderMeta(release!, tracks);
+  const meta = buildReleaseHeaderMeta(release!, tracks);
   const titleLink = getReleaseGroupLink(releaseGroup, {
     artistMbid: artist?.id,
     artistName: displayArtistName,
@@ -293,7 +293,6 @@ export function ArtistDetailsDownloadTargets({
                 </span>
               )
             }
-            kicker={typeLabel || "Release"}
             title={<OptionalLink link={titleLink}>{title}</OptionalLink>}
             meta={meta}
             actions={

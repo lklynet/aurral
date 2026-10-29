@@ -155,9 +155,9 @@ function TopPick({
             {isLoadingPreview ? (
               <DotLoader size="sm" label={null} />
             ) : isArtistPreviewActive ? (
-              <Pause aria-hidden="true" fill="currentColor" />
+              <Pause aria-hidden="true" />
             ) : (
-              <Play aria-hidden="true" fill="currentColor" />
+              <Play aria-hidden="true" />
             )}
             {isArtistPreviewActive ? "Pause" : "Preview"}
           </button>
@@ -409,7 +409,7 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
             <p className="search-empty-panel__message">{error}</p>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary"
               disabled={isFetching}
               onClick={() => refetch()}
             >
@@ -435,7 +435,7 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
           <p className="search-empty-panel__message">
             Add artists you like to get recommendations.
           </p>
-          <RouteLink to="/search" className="btn btn-primary btn-sm">
+          <RouteLink to="/search" className="btn btn-primary">
             Search artists
           </RouteLink>
         </div>

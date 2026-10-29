@@ -638,7 +638,7 @@ function GlobalSearch({ settingsMode = false }) {
     <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
   ) : (
     <>
-      <span className="global-search__scope-label--short">Search...</span>
+      <span className="global-search__scope-label--short">Search</span>
       <span className="global-search__scope-label--full">Type</span>
       <span className="global-search__key">/</span>
       <span className="global-search__scope-label--full">to search</span>

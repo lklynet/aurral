@@ -2712,7 +2712,7 @@ function LibraryPage() {
             label={"Play " + (album.title || "album")}
             aria-label={"Play " + (album.title || "album")}
           >
-            <Play aria-hidden="true" fill="currentColor" />
+            <Play aria-hidden="true" />
           </TooltipButton>
           <LibraryItemMenu
             label={album.title || "Album"}
@@ -2816,20 +2816,15 @@ function LibraryPage() {
     );
   };
 
-  const renderSectionHeader = (
-    title: string,
-    count?: number | null,
-    path = "",
-    actionLabel = "View all",
-  ) => (
+  const renderSectionHeader = (title: string, count?: number | null, path = "") => (
     <div className="native-library-section-heading">
       <div>
         <h2>{title}</h2>
         {count != null && <span>{count}</span>}
       </div>
       {path && (
-        <RouteLink to={path} className="btn">
-          {actionLabel}
+        <RouteLink to={path} className="section-show-all">
+          Show all
         </RouteLink>
       )}
     </div>
@@ -2839,7 +2834,7 @@ function LibraryPage() {
     <div className="native-library-home">
       {homeGenres.length > 0 && (
         <section className="native-library-section">
-          {renderSectionHeader("Genres", null, "/library/genres" + previewQuery, "View more")}
+          {renderSectionHeader("Genres", null, "/library/genres" + previewQuery)}
           <div className="native-library-genre-grid">
             {homeGenres.map((genre) => (
               <Link
@@ -2954,7 +2949,6 @@ function LibraryPage() {
           cover={
             <Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} thumbnail={false} />
           }
-          kicker={releaseTypeOf(libraryAlbum) || "Album"}
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
             artist ? (
@@ -2969,6 +2963,7 @@ function LibraryPage() {
             <>
               {[
                 yearOf(libraryAlbum.releaseDate),
+                releaseTypeOf(libraryAlbum),
                 availability.total + " tracks",
                 formatLongDuration(durationMs),
               ]
@@ -3148,7 +3143,6 @@ function LibraryPage() {
             <Cover src={libraryArtist.coverUrl} label={libraryArtist.name} thumbnail={false} />
           </div>
           <div className="native-library-detail__body">
-            <p className="native-library-kicker">Artist</p>
             <h2>{libraryArtist.name || "Unknown Artist"}</h2>
             <p className="native-library-detail__meta">
               {[
@@ -3342,7 +3336,6 @@ function LibraryPage() {
                   cover={
                     <Cover src={albumSeed.coverUrl} label={albumSeed.title} thumbnail={false} />
                   }
-                  kicker="Album"
                   title={albumSeed.title}
                   subtitle={
                     albumSeed.artistName ? (
@@ -3523,7 +3516,7 @@ function LibraryPage() {
               disabled={!collectionPlayable}
               label={"Play " + pageTitle}
             >
-              <Play aria-hidden="true" fill="currentColor" />
+              <Play aria-hidden="true" />
             </TooltipButton>
             <h1 className="page-title">
               {pageTitle}

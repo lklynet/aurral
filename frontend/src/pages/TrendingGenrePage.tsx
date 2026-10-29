@@ -64,7 +64,7 @@ export default function TrendingGenrePage() {
     return (
       <CollectionPage>
         <SkeletonStatus label="Loading chart" className="native-library-detail">
-          <SkeletonCollectionHeader kicker={false} icons={1} />
+          <SkeletonCollectionHeader icons={1} />
           <SkeletonCollectionTracks />
         </SkeletonStatus>
       </CollectionPage>

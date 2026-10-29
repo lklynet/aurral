@@ -428,7 +428,7 @@ function Onboarding() {
 
           <div className="onboarding-actions">
             {step > 0 && (
-              <button type="button" onClick={handleBack} className="btn btn-secondary btn--bold">
+              <button type="button" onClick={handleBack} className="btn btn-secondary">
                 <ChevronLeft className="artist-icon-xs" />
                 Back
               </button>
@@ -437,7 +437,7 @@ function Onboarding() {
               type="button"
               onClick={primaryAction}
               disabled={isPrimaryDisabled}
-              className="btn btn-primary btn--bold btn--grow"
+              className="btn btn-primary btn--grow"
               aria-busy={testingLidarr || submitting}
             >
               {primaryLabel === "Next" ? (

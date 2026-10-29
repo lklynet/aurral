@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { usersClient } from "../utils/api/clients/users.ts";
 
-import { Sparkles, LayoutTemplate } from "../components/icons";
+import { AlertCircle, LayoutTemplate } from "../components/icons";
 import { DotLoader } from "../components/DotLoader";
 import {
   SkeletonDiscoverCard,
@@ -702,11 +702,17 @@ function DiscoverPage() {
 
   if (error) {
     return (
-      <div className="artist-error-panel--discover">
-        <Sparkles className="artist-error-icon--discover" />
-        <h2 className="artist-error-title--discover">Unable to load discovery</h2>
-        <p className="artist-empty-message--discover">{error}</p>
-        <button onClick={() => window.location.reload()} className="btn btn-primary">
+      <div className="search-empty-panel" role="alert">
+        <div className="search-empty-panel__icon" aria-hidden="true">
+          <AlertCircle />
+        </div>
+        <h2 className="search-empty-panel__title">Couldn’t load Discover</h2>
+        <p className="search-empty-panel__message">{error}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="btn btn-secondary"
+        >
           Try again
         </button>
       </div>
@@ -730,7 +736,7 @@ function DiscoverPage() {
               </div>
               {heroBasedOn.length > 0 && (
                 <div className="artist-discover-hero__based-on">
-                  <div className="artist-discover-hero__based-on-intro">Based on:</div>
+                  <div className="artist-discover-hero__based-on-intro">Based on</div>
                   {showFullBasedOnList ? (
                     <div className="artist-discover-hero__artists-expanded">
                       {heroBasedOn.map((artist, index) => renderBasedOnArtist(artist, index))}
@@ -780,7 +786,7 @@ function DiscoverPage() {
           <div className="artist-discover-hero__tags-section">
             {topGenres.length > 0 && (
               <div>
-                <h3 className="artist-discover-hero__tags-section-title">Top tags:</h3>
+                <h3 className="artist-discover-hero__tags-section-title">Top tags</h3>
                 <div className="artist-tag-list--discover">
                   {topGenres.slice(0, 30).map((genre, i) => (
                     <RouteLink

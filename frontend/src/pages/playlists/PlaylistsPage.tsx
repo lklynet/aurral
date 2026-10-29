@@ -143,7 +143,7 @@ export default function PlaylistsPage() {
             </button>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary"
               onClick={() => setImportRequest({})}
             >
               <Upload aria-hidden="true" />

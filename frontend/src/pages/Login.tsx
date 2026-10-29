@@ -138,7 +138,7 @@ const Login = () => {
             {oidcEnabled && (
               <button
                 type="button"
-                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                className="btn btn-secondary btn--full login-sso-button"
                 onClick={handleOidcLogin}
                 disabled={startingSso}
               >
@@ -149,7 +149,7 @@ const Login = () => {
             {googleEnabled && (
               <button
                 type="button"
-                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                className="btn btn-secondary btn--full login-sso-button"
                 onClick={handleGoogleLogin}
               >
                 Sign in with Google
@@ -158,7 +158,7 @@ const Login = () => {
             {plexEnabled && (
               <button
                 type="button"
-                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                className="btn btn-secondary btn--full login-sso-button"
                 onClick={handlePlexLogin}
                 disabled={plexConnecting}
               >
@@ -223,7 +223,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="btn btn-primary btn--full btn--bold login-submit"
+              className="btn btn-primary btn--full login-submit"
             >
               {submitting ? <DotLoader size="sm" label={null} /> : null}
               {submitting ? "Signing in…" : "Sign in"}

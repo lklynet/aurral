@@ -95,7 +95,9 @@ export const Music = createIcon(icons.MusicNote01);
 export const Music2 = createIcon(icons.MusicNote02);
 export const Newspaper = createIcon(icons.Rss01);
 export const Pencil = createIcon(icons.Edit03);
-export const Play = createIcon(icons.Play);
+export function Play(props: IconProps) {
+  return <icons.Play strokeWidth={1.5} fill="currentColor" {...props} />;
+}
 export const Plus = createIcon(icons.Plus);
 export const RefreshCw = createIcon(icons.RefreshCw01);
 export const Repeat = createIcon(icons.Repeat01);
@@ -135,7 +137,7 @@ export const XCircle = createIcon(icons.XCircle);
 
 export function Pause(props: IconProps) {
   return (
-    <IconSvg {...props}>
+    <IconSvg fill="currentColor" {...props}>
       <path d="M7 5h3v14H7zM14 5h3v14h-3z" />
     </IconSvg>
   );

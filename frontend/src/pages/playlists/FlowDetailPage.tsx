@@ -326,7 +326,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
             {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
           </TooltipButton>
         }
-        kicker="Flow"
         title={flow.name}
         meta={metaParts.filter(Boolean).join(" · ")}
         status={

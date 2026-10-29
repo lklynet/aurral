@@ -77,6 +77,7 @@ import {
   Music,
   Search,
   SlidersHorizontal,
+  AlertCircle,
 } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
@@ -1380,8 +1381,12 @@ function SearchResults() {
       )}
 
       {error && (
-        <div className="artist-error-panel" role="alert">
-          <p className="artist-error-text">{error}</p>
+        <div className="search-empty-panel" role="alert">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <AlertCircle />
+          </div>
+          <h2 className="search-empty-panel__title">Couldn’t load results</h2>
+          <p className="search-empty-panel__message">{error}</p>
         </div>
       )}
 

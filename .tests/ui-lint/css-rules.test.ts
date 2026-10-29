@@ -276,3 +276,49 @@ test("reports hover styles that would stick after a tap on touch screens", () =>
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-ungated-hover"), [2, 5, 10]);
 });
+
+test("keeps type, tracking, and radius on the Aurral scale", () => {
+  const findings = lintCss(
+    `
+    .card {
+      font-size: var(--aurral-font-sm);
+      font-size: max(var(--aurral-font-md), 1em) !important;
+      font-size: inherit;
+      font-size: 13px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      font-family: Arial, sans-serif;
+      letter-spacing: var(--aurral-tracking-title);
+      letter-spacing: 0;
+      letter-spacing: 0.08em;
+      border-radius: var(--aurral-radius-sm);
+      border-radius: 0 var(--aurral-radius-xs) var(--aurral-radius-xs) 0;
+      border-radius: calc(var(--aurral-radius-sm) - 2px);
+      border-radius: 50%;
+      border-radius: 10px;
+      border-top-left-radius: 0.5rem;
+    }
+  `,
+    { filePath: "card.css", tokenNames },
+  );
+
+  assert.deepEqual(ruleFindings(findings, "aurral/design-scale"), [6, 7, 9, 11, 14, 19, 20]);
+});
+
+test("allows looping motion only for playback and loader indicators", () => {
+  const findings = lintCss(
+    `
+    .indicator {
+      animation: track-playing-bar 0.9s var(--aurral-ease-in-out) infinite alternate;
+      animation: shimmer 1.2s var(--aurral-ease-in-out) infinite;
+      animation-iteration-count: infinite;
+      animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
+    }
+  `,
+    { filePath: "indicator.css", tokenNames },
+  );
+
+  assert.deepEqual(ruleFindings(findings, "aurral/design-scale"), [4, 5]);
+});

@@ -171,6 +171,63 @@ export function findRawMotion(property: string, value: string) {
     : null;
 }
 
+const fontWeights = new Set(["400", "500", "600", "700", "inherit"]);
+const loopingAnimations = new Set([
+  "track-playing-bar",
+  "track-playing-pulse",
+  "aurral-dot-loader-helix",
+  "aurral-dot-loader-pulse",
+]);
+const radiusProperty = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/;
+
+function withoutTokens(value: string, prefix: string) {
+  const token = String.raw`var\(\s*${prefix}[\w-]*\s*\)`;
+  return value
+    .replace(new RegExp(String.raw`calc\([^()]*${token}[^()]*\)`, "g"), "")
+    .replace(new RegExp(token, "g"), "");
+}
+
+export function findTypeOrShapeIssue(property: string, value: string) {
+  const trimmed = value
+    .replace(/\s*!important\s*$/i, "")
+    .trim()
+    .toLowerCase();
+  if (
+    property === "font-size" &&
+    trimmed !== "inherit" &&
+    !trimmed.includes("var(--aurral-font-")
+  ) {
+    return "uses a raw font-size; use a --aurral-font-* step.";
+  }
+  if (property === "font-weight" && !fontWeights.has(trimmed)) {
+    return "uses a font-weight outside 400, 500, 600, and 700.";
+  }
+  if (property === "font-family" && !/^(?:inherit|var\(--font-(?:sans|mono)\))$/.test(trimmed)) {
+    return "uses a raw font-family; use var(--font-sans) or var(--font-mono).";
+  }
+  if (
+    property === "letter-spacing" &&
+    !/^(?:0|normal|inherit|var\(--aurral-tracking-[\w-]+\))$/.test(trimmed)
+  ) {
+    return "uses raw letter-spacing; use 0 or a --aurral-tracking-* token.";
+  }
+  if (
+    radiusProperty.test(property) &&
+    withoutTokens(trimmed, "--aurral-radius")
+      .replace(/(?<![\w.])0(?![\w.%])|50%|inherit|\//g, "")
+      .trim()
+  ) {
+    return "uses a raw radius; use 0, 50%, or a --aurral-radius-* token.";
+  }
+  if (property === "animation" || property === "animation-iteration-count") {
+    if (!/\binfinite\b/.test(trimmed)) return null;
+    const names = trimmed.split(",").map((part) => part.trim().split(/\s+/)[0]);
+    if (property === "animation" && names.every((name) => loopingAnimations.has(name))) return null;
+    return "loops an animation forever; looping motion repaints every frame, so keep it to the playback and loader exceptions.";
+  }
+  return null;
+}
+
 const zIndexKeywords = new Set(["auto", "inherit", "initial", "unset", "revert", "revert-layer"]);
 
 export function hasRawZIndex(value: string) {
@@ -299,6 +356,13 @@ export function lintCss(
           "uses a raw z-index; use a --aurral-z-* layer token.",
         ),
       );
+    }
+
+    const typeOrShapeIssue = property.startsWith("--")
+      ? null
+      : findTypeOrShapeIssue(property, declaration.value);
+    if (typeOrShapeIssue) {
+      findings.push(createFinding(filePath, line, "aurral/design-scale", typeOrShapeIssue));
     }
 
     const rawMotion = findRawMotion(property, declaration.value);

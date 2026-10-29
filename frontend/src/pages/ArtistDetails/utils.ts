@@ -415,19 +415,17 @@ export const buildReleaseHeaderMeta = (
   release: ReleaseGroup,
   tracks: ReleaseTrack[] | null | undefined = [],
 ) => {
-  const typeLabel = getReleaseTypeLabel(release);
   const trackCount = Array.isArray(tracks) ? tracks.length : 0;
   const metric = getReleaseMetric(release);
-  const meta = [
+  return [
     formatReleaseDate(release),
-    typeLabel,
+    getReleaseTypeLabel(release),
     trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
     formatAlbumDuration(sumTrackDurationMs(tracks)),
     metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  return { typeLabel, meta };
 };
 
 export const resolveReleaseLibraryDisplay = (
