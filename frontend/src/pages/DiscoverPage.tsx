@@ -11,6 +11,7 @@ import { AlertCircle, LayoutTemplate } from "../components/icons";
 import { DotLoader } from "../components/DotLoader";
 import {
   SkeletonDiscoverCard,
+  SkeletonFeedTile,
   SkeletonRail,
   SkeletonShape,
   SkeletonStatus,
@@ -22,10 +23,9 @@ import { useAuth } from "../contexts/AuthContext";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import NearbyLocationControl from "../components/NearbyLocationControl";
-import ShowCard from "../components/ShowCard";
+import { NewsFeedTile, ShowFeedTile } from "../components/DiscoverFeed";
 import { useToast } from "../contexts/ToastContext";
 import { DiscoverRail } from "../components/DiscoverRail";
-import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
@@ -44,6 +44,7 @@ import {
   type DiscoverSection,
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
+import type { DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
@@ -58,6 +59,18 @@ const saveServerLayout = (layout: DiscoverSection[]) =>
   parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } }));
 
 const TOP_TAG_LIMIT = 12;
+const FEED_LIST_LIMIT = 6;
+
+const feedRailClass = (feedStyle: DiscoverFeedStyle) =>
+  `discover-feed-rail discover-feed-rail--${feedStyle}`;
+
+const feedItemLimit = (feedStyle: DiscoverFeedStyle) =>
+  feedStyle === "list" ? FEED_LIST_LIMIT : DISCOVER_PREVIEW_ITEM_LIMIT;
+
+const feedSkeletons = (feedStyle: DiscoverFeedStyle, round = false) =>
+  Array.from({ length: FEED_LIST_LIMIT }, (_, index) => (
+    <SkeletonFeedTile key={index} feedStyle={feedStyle} round={round} />
+  ));
 
 const SECTION_CARD_KINDS = new Map<
   string,
@@ -65,8 +78,6 @@ const SECTION_CARD_KINDS = new Map<
 >([
   ["playlists", "playlist"],
   ["recentReleases", "album"],
-  ["recommendedShows", "show"],
-  ["news", "news"],
 ]);
 
 function DiscoverPage() {
@@ -301,7 +312,7 @@ function DiscoverPage() {
     ["recentReleases", recentReleasesPending],
   ]);
 
-  const renderSection = (id: string) => {
+  const renderSection = ({ id, style: feedStyle = "list" }: DiscoverSection) => {
     if (sectionPending.get(id)) {
       return (
         <SkeletonStatus key={id} label="Loading section">
@@ -384,29 +395,33 @@ function DiscoverPage() {
 
     if (id === "news") {
       if (!sectionAvailability.news) return null;
+      const newsStatus = newsLoading
+        ? null
+        : newsError || newsRefresh?.warning || "No recent artist news";
       return (
-        <DiscoverRail key="news" title="Artist news" viewAllTo="/discover/news">
-          {newsLoading && newsArticles.length === 0 ? (
-            <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
-              <DotLoader size="sm" label={null} /> Checking recent stories…
-            </div>
-          ) : newsArticles.length > 0 ? (
-            newsArticles.map((article) => (
-              <div
-                key={article.id}
-                className="artist-discover-shelf-card artist-discover-shelf-card--news"
-              >
-                <NewsArticleCard
+        <DiscoverRail
+          key="news"
+          title="Artist news"
+          viewAllTo="/discover/news"
+          className={feedRailClass(feedStyle)}
+        >
+          {newsArticles.length > 0 ? (
+            newsArticles
+              .slice(0, feedItemLimit(feedStyle))
+              .map((article) => (
+                <NewsFeedTile
+                  key={article.id}
                   article={article}
-                  compact
+                  feedStyle={feedStyle}
                   onDisableFeed={authUser?.role === "admin" ? disableNewsFeed : undefined}
                 />
-              </div>
-            ))
+              ))
+          ) : newsStatus ? (
+            <p className="discover-feed-rail__status">{newsStatus}</p>
           ) : (
-            <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
-              {newsError || newsRefresh?.warning || "No recent artist news"}
-            </div>
+            <SkeletonStatus label="Loading artist news" className="discover-feed-rail__skeleton">
+              {feedSkeletons(feedStyle)}
+            </SkeletonStatus>
           )}
         </DiscoverRail>
       );
@@ -509,9 +524,16 @@ function DiscoverPage() {
 
       if (nearbyShowsLoading && !nearbyShowsData) {
         return (
-          <SkeletonStatus key="recommendedShows" label="Loading shows near you">
-            <SkeletonRail kind="show" />
-          </SkeletonStatus>
+          <DiscoverRail
+            key="recommendedShows"
+            title="Shows near you"
+            viewAllTo="/shows"
+            className={feedRailClass(feedStyle)}
+          >
+            <SkeletonStatus label="Loading shows near you" className="discover-feed-rail__skeleton">
+              {feedSkeletons(feedStyle, feedStyle === "list")}
+            </SkeletonStatus>
+          </DiscoverRail>
         );
       }
 
@@ -553,14 +575,11 @@ function DiscoverPage() {
             title="Shows near you"
             viewAllTo="/shows"
             headerActions={nearbyHeaderActions}
+            className={feedRailClass(feedStyle)}
           >
-            <>
-              {nearbyShows.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((show) => (
-                <div key={show.id} className="artist-discover-show-rail-card">
-                  <ShowCard show={show} />
-                </div>
-              ))}
-            </>
+            {nearbyShows.slice(0, feedItemLimit(feedStyle)).map((show) => (
+              <ShowFeedTile key={show.id} show={show} feedStyle={feedStyle} />
+            ))}
           </DiscoverRail>
         );
       }
@@ -731,9 +750,7 @@ function DiscoverPage() {
         </div>
       </section>
 
-      {discoverSections
-        .filter((section) => section.enabled)
-        .map((section) => renderSection(section.id))}
+      {discoverSections.filter((section) => section.enabled).map(renderSection)}
 
       <DiscoverLayoutModal
         open={showDiscoverModal}

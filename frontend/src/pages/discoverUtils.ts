@@ -1,16 +1,20 @@
 import type { InferResponseType } from "hono/client";
 import type { LibraryArtistImage } from "../../../backend/services/libraryQueryService.ts";
 import type { discoveryClient } from "../utils/api/clients/discovery.ts";
+import {
+  DISCOVER_SECTION_IDS,
+  normalizeDiscoverLayout as normalizeLayoutEntries,
+  type DiscoverLayoutEntry,
+  type DiscoverSectionId,
+} from "../../../lib/discoverLayout.ts";
 
 export type DiscoverResponse = InferResponseType<typeof discoveryClient.$get, 200>;
 export type DiscoverArtist = DiscoverResponse["recommendations"][number];
 
 export type DiscoverUserId = number | string | null | undefined;
 
-export interface DiscoverSection {
-  id: string;
+export interface DiscoverSection extends DiscoverLayoutEntry {
   label: string;
-  enabled: boolean;
 }
 
 export const TAG_COLORS = [
@@ -44,16 +48,22 @@ const DISCOVERY_CACHE_KEY = "discoverData";
 const DISCOVER_RECENTLY_ADDED_KEY = "discoverRecentlyAdded";
 const DISCOVER_RECENT_RELEASES_KEY = "discoverRecentReleases";
 
-export const DEFAULT_DISCOVER_SECTIONS = [
-  { id: "recentlyAdded", label: "Recently added", enabled: true },
-  { id: "playlists", label: "Playlists", enabled: true },
-  { id: "recommendedShows", label: "Shows near you", enabled: true },
-  { id: "recentReleases", label: "Recent releases", enabled: true },
-  { id: "news", label: "Artist news", enabled: true },
-  { id: "recommended", label: "Recommended", enabled: true },
-  { id: "globalTop", label: "Trending artists", enabled: true },
-  { id: "genreSections", label: "Because you like", enabled: true },
-];
+const DISCOVER_SECTION_LABELS: Record<DiscoverSectionId, string> = {
+  recentlyAdded: "Recently added",
+  playlists: "Playlists",
+  recommendedShows: "Shows near you",
+  recentReleases: "Recent releases",
+  news: "Artist news",
+  recommended: "Recommended",
+  globalTop: "Trending artists",
+  genreSections: "Because you like",
+};
+
+export const DEFAULT_DISCOVER_SECTIONS: DiscoverSection[] = DISCOVER_SECTION_IDS.map((id) => ({
+  id,
+  label: DISCOVER_SECTION_LABELS[id],
+  enabled: true,
+}));
 
 export const DISCOVER_NEARBY_MODE_KEY = "discoverNearbyMode";
 export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
@@ -270,25 +280,11 @@ export const writeStoredDiscoveryData = (
   }
 };
 
-export const normalizeDiscoverLayout = (value: unknown): DiscoverSection[] | null => {
-  if (!Array.isArray(value)) return null;
-  const defaultsById = new Map(DEFAULT_DISCOVER_SECTIONS.map((item) => [item.id, item]));
-  const normalized: DiscoverSection[] = [];
-  value.forEach((item) => {
-    const id = String(item?.id || "").trim();
-    if (!id) return;
-    const enabled = typeof item?.enabled === "boolean" ? item.enabled : undefined;
-    if (!defaultsById.has(id)) return;
-    const base = defaultsById.get(id)!;
-    normalized.push({
-      ...base,
-      enabled: enabled ?? base.enabled,
-    });
-    defaultsById.delete(id);
-  });
-  defaultsById.forEach((item) => normalized.push({ ...item }));
-  return normalized;
-};
+export const normalizeDiscoverLayout = (value: unknown): DiscoverSection[] | null =>
+  normalizeLayoutEntries(value)?.map((entry) => ({
+    ...entry,
+    label: DISCOVER_SECTION_LABELS[entry.id],
+  })) ?? null;
 
 export const readStoredDiscoverLayout = (userId: DiscoverUserId) => {
   try {

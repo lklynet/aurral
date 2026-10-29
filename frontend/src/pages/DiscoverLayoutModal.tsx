@@ -23,14 +23,23 @@ import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import TooltipButton from "../components/TooltipButton";
 import type { DiscoverSection } from "./discoverUtils";
+import { isStyledSection, type DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
+
+const FEED_STYLE_OPTIONS = [
+  { value: "list", label: "List", name: "List" },
+  { value: "square", label: "1:1", name: "Square" },
+  { value: "wide", label: "16:9", name: "Wide" },
+] as const satisfies readonly { value: DiscoverFeedStyle; label: string; name: string }[];
 
 function SortableSectionRow({
   item,
   onToggle,
+  onStyleChange,
   showUnavailable,
 }: {
   item: DiscoverSection;
   onToggle: (id: string) => void;
+  onStyleChange: (id: string, style: DiscoverFeedStyle) => void;
   showUnavailable: boolean;
 }) {
   const {
@@ -76,6 +85,29 @@ function SortableSectionRow({
           <span className="artist-customize-section-subtitle">Not enough data yet</span>
         )}
       </div>
+      {isStyledSection(item.id) ? (
+        <div
+          className="artist-segmented discover-feed-style-picker"
+          role="group"
+          aria-label={`${item.label} style`}
+        >
+          {FEED_STYLE_OPTIONS.map((option) => {
+            const active = (item.style ?? "list") === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`artist-segmented-button${active ? " is-active" : ""}`}
+                aria-pressed={active}
+                aria-label={option.name}
+                onClick={() => onStyleChange(item.id, option.value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={() => onToggle(item.id)}
@@ -183,6 +215,13 @@ export function DiscoverLayoutModal({
                       onSectionsChange((prev) =>
                         prev.map((section) =>
                           section.id === id ? { ...section, enabled: !section.enabled } : section,
+                        ),
+                      )
+                    }
+                    onStyleChange={(id, style) =>
+                      onSectionsChange((prev) =>
+                        prev.map((section) =>
+                          section.id === id ? { ...section, style } : section,
                         ),
                       )
                     }

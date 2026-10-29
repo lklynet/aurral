@@ -1,9 +1,10 @@
 import { Play } from "./icons";
 import type { ElementType, ReactNode, Ref } from "react";
 import { CollectionHeader } from "./CollectionHeader";
+import type { DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
 
 type LibraryCardKind = "album" | "artist" | "playlist";
-type RailKind = "album" | "artist" | "news" | "playlist" | "show";
+type RailKind = "album" | "artist" | "playlist";
 type SearchResultsMode = "all" | "albums" | "artist-list" | "artists" | "round-artists";
 
 const range = (count: number) => Array.from({ length: count }, (_, index) => index);
@@ -123,29 +124,22 @@ export function SkeletonShowCard({ index = 0 }: { index?: number }) {
   );
 }
 
-export function SkeletonNewsCard({ compact = false }: { compact?: boolean }) {
+export function SkeletonNewsCard() {
   return (
     <article className="discover-news-card-shell">
-      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}`}>
+      <div className="discover-news-card">
         <div className="discover-news-card__link">
           <SkeletonShape as="div" className="discover-news-card__image-wrap" />
           <div className="discover-news-card__content">
-            {compact ? (
-              <span className="discover-news-card__artist">
-                <SkeletonText width="30%" />
-              </span>
-            ) : null}
             <h3 className="discover-news-card__title">
               <SkeletonText width="100%" />
               <SkeletonText width="65%" />
             </h3>
-            {compact ? null : (
-              <p className="discover-news-card__description">
-                <SkeletonText width="100%" />
-                <SkeletonText width="100%" />
-                <SkeletonText width="80%" />
-              </p>
-            )}
+            <p className="discover-news-card__description">
+              <SkeletonText width="100%" />
+              <SkeletonText width="100%" />
+              <SkeletonText width="80%" />
+            </p>
           </div>
         </div>
         <div className="discover-news-card__footer">
@@ -305,18 +299,31 @@ export function SkeletonSearchResults({
   );
 }
 
-const RAIL_CARDS: Partial<Record<RailKind, (index: number) => ReactNode>> = {
-  show: (index) => (
-    <div key={index} className="artist-discover-show-rail-card">
-      <SkeletonShowCard index={index} />
+export function SkeletonFeedTile({
+  feedStyle,
+  round = false,
+}: {
+  feedStyle: DiscoverFeedStyle;
+  round?: boolean;
+}) {
+  return (
+    <div className={`discover-feed-tile discover-feed-tile--${feedStyle}`}>
+      <div className="discover-feed-tile__body">
+        <SkeletonShape
+          className={`discover-feed-tile__art${round ? " discover-feed-tile__art--round" : ""}`}
+        />
+        <span className="discover-feed-tile__text">
+          <span className="discover-feed-tile__title">
+            <SkeletonText width="80%" />
+          </span>
+          <span className="discover-feed-tile__meta">
+            <SkeletonText width="50%" />
+          </span>
+        </span>
+      </div>
     </div>
-  ),
-  news: (index) => (
-    <div key={index} className="artist-discover-shelf-card artist-discover-shelf-card--news">
-      <SkeletonNewsCard compact />
-    </div>
-  ),
-};
+  );
+}
 
 export function SkeletonRail({ count = 8, kind = "artist" }: { count?: number; kind?: RailKind }) {
   return (
@@ -329,15 +336,11 @@ export function SkeletonRail({ count = 8, kind = "artist" }: { count?: number; k
         </div>
       </div>
       <div className="artist-discover-rail__content">
-        {range(count).map((index) =>
-          RAIL_CARDS[kind] ? (
-            RAIL_CARDS[kind](index)
-          ) : (
-            <div key={index} className="artist-discover-shelf-card">
-              <SkeletonDiscoverCard kind={kind} index={index} />
-            </div>
-          ),
-        )}
+        {range(count).map((index) => (
+          <div key={index} className="artist-discover-shelf-card">
+            <SkeletonDiscoverCard kind={kind} index={index} />
+          </div>
+        ))}
       </div>
     </section>
   );

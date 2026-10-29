@@ -35,6 +35,7 @@ import { normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
 import { disconnectUserPlex, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
+import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
 import { isErrorStatus } from "./shared/errorStatus.ts";
 
 type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;
@@ -135,37 +136,6 @@ const normalizeQualityProfileId = (value: unknown) => {
     return null;
   }
   return Math.trunc(parsed);
-};
-
-const DEFAULT_DISCOVER_LAYOUT = [
-  { id: "recentlyAdded", enabled: true },
-  { id: "playlists", enabled: true },
-  { id: "recommendedShows", enabled: true },
-  { id: "recentReleases", enabled: true },
-  { id: "news", enabled: true },
-  { id: "recommended", enabled: true },
-  { id: "globalTop", enabled: true },
-  { id: "genreSections", enabled: true },
-];
-
-const normalizeDiscoverLayout = (value: unknown) => {
-  if (!Array.isArray(value)) return null;
-  const defaultsById = new Map(DEFAULT_DISCOVER_LAYOUT.map((item) => [item.id, item]));
-  const normalized = [];
-  for (const item of value) {
-    const id = String(item?.id || "").trim();
-    if (!id) continue;
-    if (!defaultsById.has(id)) continue;
-    normalized.push({
-      id,
-      enabled: typeof item?.enabled === "boolean" ? item.enabled : defaultsById.get(id)!.enabled,
-    });
-    defaultsById.delete(id);
-  }
-  for (const item of defaultsById.values()) {
-    normalized.push({ ...item });
-  }
-  return normalized;
 };
 
 const refreshDiscoveryForListenHistoryChange = (

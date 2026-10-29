@@ -5,7 +5,7 @@ import { getArtistCover } from "../utils/api/endpoints/artists.ts";
 import TooltipButton from "./TooltipButton";
 import RelativeTime from "./RelativeTime";
 
-interface NewsArticle {
+export interface NewsArticle {
   title: string;
   description: string;
   url: string;
@@ -18,11 +18,10 @@ interface NewsArticle {
 
 interface NewsArticleCardProps {
   article: NewsArticle;
-  compact?: boolean;
   onDisableFeed?: (sourceUrl: string) => unknown;
 }
 
-export function NewsArticleCard({ article, compact = false, onDisableFeed }: NewsArticleCardProps) {
+export function useNewsArticleImage(article: Pick<NewsArticle, "imageUrl" | "artists">) {
   const [imageFailed, setImageFailed] = useState(false);
   const [fallbackImage, setFallbackImage] = useState("");
   const [fallbackFailed, setFallbackFailed] = useState(false);
@@ -49,18 +48,27 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }: New
     };
   }, [fallbackMbid, fallbackName, shouldLoadFallback]);
 
-  if (!article?.url || !article?.title) return null;
-
   const imageUrl =
     article.imageUrl && !imageFailed ? article.imageUrl : fallbackFailed ? "" : fallbackImage;
+  const onImageError = () => {
+    if (article.imageUrl && !imageFailed) setImageFailed(true);
+    else setFallbackFailed(true);
+  };
+  return { imageUrl, onImageError };
+}
+
+export function NewsArticleCard({ article, onDisableFeed }: NewsArticleCardProps) {
+  const { imageUrl, onImageError } = useNewsArticleImage(article);
+
+  if (!article?.url || !article?.title) return null;
+
+  const artists = Array.isArray(article?.artists) ? article.artists : [];
   const publisher = String(article.source || "").trim();
   const artistNames = artists.map((artist) => artist.artistName).join(", ");
 
   return (
     <article className="discover-news-card-shell">
-      <div
-        className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${artistNames ? " discover-news-card--highlighted" : ""}`}
-      >
+      <div className={`discover-news-card${artistNames ? " discover-news-card--highlighted" : ""}`}>
         <a
           className="discover-news-card__link"
           href={article.url}
@@ -74,10 +82,7 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }: New
                 alt=""
                 className="discover-news-card__image"
                 loading="lazy"
-                onError={() => {
-                  if (article.imageUrl && !imageFailed) setImageFailed(true);
-                  else setFallbackFailed(true);
-                }}
+                onError={onImageError}
               />
             ) : (
               <div className="discover-news-card__image-placeholder" aria-hidden="true">
@@ -88,7 +93,7 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }: New
           <div className="discover-news-card__content">
             {artistNames ? <span className="discover-news-card__artist">{artistNames}</span> : null}
             <h3 className="discover-news-card__title">{article.title}</h3>
-            {!compact && article.description ? (
+            {article.description ? (
               <p className="discover-news-card__description">{article.description}</p>
             ) : null}
           </div>
