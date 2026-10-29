@@ -115,20 +115,6 @@ test("allows runtime artwork colors and geometry variables", () => {
   assert.deepEqual([...findings], []);
 });
 
-test("allows the DotLoader runtime geometry properties", () => {
-  const findings = lintCss(
-    `
-    .loader {
-      grid-template-columns: repeat(3, var(--aurral-dot-loader-tile-size));
-      gap: var(--aurral-dot-loader-gap);
-    }
-  `,
-    { filePath: "loader.css", tokenNames },
-  );
-
-  assert.deepEqual([...findings], []);
-});
-
 test("catches hard-coded colors hidden behind local custom properties", () => {
   const findings = lintCss(
     `

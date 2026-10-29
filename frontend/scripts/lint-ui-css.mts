@@ -9,10 +9,6 @@ import { readAurralTokens } from "./ui-token-source.mts";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const sourceDirectory = path.join(repositoryRoot, "frontend/src");
-export const runtimeAurralGeometryProperties = new Set([
-  "--aurral-dot-loader-tile-size",
-  "--aurral-dot-loader-gap",
-]);
 
 const colorBearingProperties = new Set([
   "accent-color",
@@ -316,7 +312,7 @@ export function lintCss(
     );
 
     for (const reference of references) {
-      if (tokenNames.has(reference) || runtimeAurralGeometryProperties.has(reference)) continue;
+      if (tokenNames.has(reference)) continue;
 
       const suggestion = getClosestToken(reference, tokenNames);
       const correction = suggestion

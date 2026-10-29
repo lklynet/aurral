@@ -26,8 +26,8 @@ export function DotLoader({ size = "sm", label = "Loading", className = "" }: Do
   const style = {
     width: `${footprint}px`,
     height: `${footprint}px`,
-    "--aurral-dot-loader-tile-size": `${tileSize}px`,
-    "--aurral-dot-loader-gap": `${gap}px`,
+    "--dot-loader-tile-size": `${tileSize}px`,
+    "--dot-loader-gap": `${gap}px`,
   };
 
   return (

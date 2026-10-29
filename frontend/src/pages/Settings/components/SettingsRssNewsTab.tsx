@@ -135,7 +135,7 @@ export function SettingsRssNewsTab({
             <Tooltip content={`Delete ${feed.name}`}>
               <button
                 type="button"
-                className="arr-btn arr-btn--danger arr-btn--icon"
+                className="arr-btn arr-btn--ghost arr-btn--icon"
                 onClick={() => removeFeed(index)}
                 aria-label={`Delete ${feed.name}`}
               >

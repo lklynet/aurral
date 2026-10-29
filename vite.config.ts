@@ -1,14 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { defineConfig } from "vite-plus";
 import { readAurralTokens } from "./frontend/scripts/ui-token-source.mts";
 
-const [tokenSource, sharedControlExceptions] = await Promise.all([
-  readAurralTokens(),
-  readFile(
-    new URL("./frontend/lint-rules/shared-control-exceptions.json", import.meta.url),
-    "utf8",
-  ).then(JSON.parse),
-]);
+const tokenSource = await readAurralTokens();
 const tokenNames = tokenSource.declarations.map(({ name }) => name);
 
 const testSetup = {
@@ -102,7 +95,7 @@ export default defineConfig({
           "react/set-state-in-effect": "off",
           "aurral/no-hard-coded-style-color": ["error", { tokenNames }],
           "aurral/no-undefined-style-token": ["error", { tokenNames }],
-          "aurral/shared-control-patterns": ["error", { exceptions: sharedControlExceptions }],
+          "aurral/shared-control-patterns": "error",
           "aurral/no-native-tooltip": "error",
         },
       },

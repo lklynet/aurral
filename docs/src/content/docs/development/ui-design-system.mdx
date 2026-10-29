@@ -165,12 +165,6 @@ function ProfilePage({ sections }) {
 }
 ```
 
-## Add a narrow exception
-
-Add an entry to `frontend/lint-rules/shared-control-exceptions.json` only when an existing control must keep a different pattern. Each entry needs a unique `id`, a source `file`, one exact class, class expression, or role, and a reason.
-
-The checker matches exceptions by both file and selector. It does not support file or directory-wide ignores. Add a rule test for each exception.
-
 ## Review the visual result
 
 The linter checks token use and a few shared controls. It cannot judge spacing, visual hierarchy, interaction states, keyboard flow, responsive behavior, or whether a new component fits Aurral's existing patterns. Review those details against the current interface and style references when you change UI.

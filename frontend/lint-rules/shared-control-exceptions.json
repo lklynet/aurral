@@ -1,8 +1,0 @@
-[
-  {
-    "id": "settings-arr-confirmation-action",
-    "file": "src/pages/Settings/components/SettingsUsersTab.tsx",
-    "className": "arr-btn",
-    "reason": "The settings confirmation modal keeps its established Arr button surface."
-  }
-]

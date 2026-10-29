@@ -23,7 +23,7 @@ const tester = new RuleTester({
   },
 });
 
-test("Aurral JSX style color rule allows tokens and dynamic artwork values", () => {
+test("Aurral JSX style color rule allows tokens and dynamic values", () => {
   tester.run(
     "aurral/no-hard-coded-color",
     noHardCodedStyleColor as Parameters<typeof tester.run>[1],
@@ -31,18 +31,6 @@ test("Aurral JSX style color rule allows tokens and dynamic artwork values", () 
       valid: [
         {
           code: 'const view = <div style={{ color: "var(--aurral-text)" }} />;',
-          options: tokenOptions,
-        },
-        {
-          code: 'const view = <div style={{ backgroundColor: playlist.artworkColor || "#555" }} />;',
-          options: tokenOptions,
-        },
-        {
-          code: 'const heroColor = extractedColor || playlist?.artworkColor || "#555"; const view = <div style={{ "--discover-playlist-hero-color": heroColor }} />;',
-          options: tokenOptions,
-        },
-        {
-          code: 'const heroColor = extractedColor || playlist?.artworkColor || "#555"; const view = <div style={{ color: getPlaylistTextColor(heroColor) }} />;',
           options: tokenOptions,
         },
         {
@@ -98,10 +86,6 @@ test("Aurral JSX style token rule reports unknown references and allows runtime 
       valid: [
         {
           code: 'const view = <div style={{ color: "var(--aurral-text)" }} />;',
-          options: tokenOptions,
-        },
-        {
-          code: 'const view = <div style={{ "--aurral-dot-loader-tile-size": `${size}px`, width: "var(--aurral-dot-loader-tile-size)" }} />;',
           options: tokenOptions,
         },
       ],

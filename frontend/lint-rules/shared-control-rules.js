@@ -1,8 +1,3 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const frontendRoot = fileURLToPath(new URL("../", import.meta.url));
-
 function readAttribute(element, name) {
   return element.openingElement.attributes.find(
     (attribute) => attribute.type === "JSXAttribute" && attribute.name.name === name,
@@ -290,62 +285,6 @@ function isUnstyled(classNameAttribute) {
   return value?.type === "Literal" && typeof value.value === "string" && !value.value.trim();
 }
 
-function getRelativeFile(fileName) {
-  return path.isAbsolute(fileName)
-    ? path.relative(frontendRoot, fileName).split(path.sep).join("/")
-    : fileName.replaceAll("\\", "/");
-}
-
-function matchesException(exception, { file, classTokens, role, classNameAttribute }) {
-  if (
-    !exception ||
-    typeof exception.id !== "string" ||
-    typeof exception.reason !== "string" ||
-    !exception.reason.trim() ||
-    exception.file !== file
-  ) {
-    return false;
-  }
-
-  const hasSelector = Boolean(
-    exception.className || exception.classNameExpression || exception.role,
-  );
-  if (!hasSelector) return false;
-  if (exception.className && !classTokens.has(exception.className)) return false;
-  if (exception.role && role !== exception.role) return false;
-
-  if (exception.classNameExpression) {
-    const expression =
-      classNameAttribute?.value?.type === "JSXExpressionContainer"
-        ? classNameAttribute.value.expression
-        : null;
-    if (expression?.type !== "Identifier" || expression.name !== exception.classNameExpression) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function readAttributeStrings(element, names, scope) {
-  return names.flatMap((name) => {
-    const attribute = readAttribute(element, name);
-    if (!attribute) return [];
-    if (attribute.value?.type === "JSXExpressionContainer") {
-      return collectStaticStrings(attribute.value, scope);
-    }
-    return collectStaticStrings(attribute.value, scope);
-  });
-}
-
-function isLidarrAdd(element, scope) {
-  const labels = [
-    ...readAttributeStrings(element, ["aria-label", "title", "label"], scope),
-    ...element.children.flatMap((child) => collectStaticStrings(child, scope)),
-  ];
-  return labels.some((label) => /\badd\s+to\s+lidarr\b/i.test(label));
-}
-
 export const sharedControlRules = {
   meta: {
     type: "problem",
@@ -356,36 +295,10 @@ export const sharedControlRules = {
       standardAction: "Use the shared .btn base class for standard action buttons.",
       iconAction: "Use TooltipButton with a .btn class for icon-only actions.",
       sharedButtonBase: "Add the .btn base class to TooltipButton.",
-      addAction: "Use AddActionButton for add-to-Lidarr actions.",
     },
-    schema: [
-      {
-        type: "object",
-        properties: {
-          exceptions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                file: { type: "string" },
-                className: { type: "string" },
-                classNameExpression: { type: "string" },
-                role: { type: "string" },
-                reason: { type: "string" },
-              },
-              required: ["id", "file", "reason"],
-              additionalProperties: false,
-            },
-          },
-        },
-        additionalProperties: false,
-      },
-    ],
+    schema: [],
   },
   create(context) {
-    const exceptions = context.options[0]?.exceptions ?? [];
-
     return {
       JSXElement(element) {
         const name = element.openingElement.name;
@@ -399,20 +312,10 @@ export const sharedControlRules = {
         const classNameAttribute = readAttribute(element, "className");
         const classTokens = collectClassTokens(classNameAttribute, scope);
         const guaranteedClassTokens = collectGuaranteedClassTokens(classNameAttribute, scope);
-        const role = readAttributeStrings(element, ["role"], scope)[0] ?? null;
-        const file = getRelativeFile(context.filename ?? context.getFilename?.() ?? "<input>");
 
         if (isNativeButton) {
-          const excludedRole = role === "menuitem" || role === "switch";
-          const excludedPattern = exceptions.some((exception) =>
-            matchesException(exception, { file, classTokens, role, classNameAttribute }),
-          );
-          if (excludedRole || excludedPattern) return;
-
-          if (isLidarrAdd(element, scope)) {
-            context.report({ node: element.openingElement, messageId: "addAction" });
-            return;
-          }
+          const role = collectStaticStrings(readAttribute(element, "role")?.value, scope)[0];
+          if (role === "menuitem" || role === "switch") return;
 
           const iconOnly = isIconOnly(element);
           const unstyled = isUnstyled(classNameAttribute);
@@ -426,11 +329,6 @@ export const sharedControlRules = {
           if (unstyled || (usesSharedVariant && !guaranteedClassTokens.has("btn"))) {
             context.report({ node: element.openingElement, messageId: "standardAction" });
           }
-          return;
-        }
-
-        if (isLidarrAdd(element, scope)) {
-          context.report({ node: element.openingElement, messageId: "addAction" });
           return;
         }
 

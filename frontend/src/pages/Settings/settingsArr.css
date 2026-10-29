@@ -2569,16 +2569,16 @@
   color: var(--aurral-surface);
 }
 
-.settings-arr .arr-btn.btn-danger,
-.arr-portal .arr-btn.btn-danger {
+.settings-arr .arr-btn.arr-btn--danger,
+.arr-portal .arr-btn.arr-btn--danger {
   border-color: color-mix(in srgb, var(--aurral-danger) 35%, var(--aurral-border));
   background: color-mix(in srgb, var(--aurral-danger) 12%, var(--aurral-surface));
   color: color-mix(in srgb, var(--aurral-danger) 72%, var(--aurral-text));
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .settings-arr .arr-btn.btn-danger:hover:not(:disabled),
-  .arr-portal .arr-btn.btn-danger:hover:not(:disabled) {
+  .settings-arr .arr-btn.arr-btn--danger:hover:not(:disabled),
+  .arr-portal .arr-btn.arr-btn--danger:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--aurral-danger) 52%, var(--aurral-border));
     background: color-mix(in srgb, var(--aurral-danger) 18%, var(--aurral-surface));
     color: var(--aurral-danger);

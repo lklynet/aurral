@@ -3,16 +3,7 @@ import {
   getSuggestedToken,
   hasStaticColor,
   isColorBearingProperty,
-  runtimeAurralGeometryProperties,
 } from "../scripts/lint-ui-css.mts";
-
-const artworkColorNames = new Set([
-  "artworkColor",
-  "coverColor",
-  "dominantColor",
-  "extractedColor",
-  "imageColor",
-]);
 
 function toCssProperty(property) {
   return property.startsWith("--")
@@ -153,78 +144,6 @@ function collectStaticStrings(expression, scope, seen = new Set()) {
   return [];
 }
 
-function includesArtworkColorReference(expression) {
-  if (!expression) return false;
-  if (expression.type === "Identifier") return artworkColorNames.has(expression.name);
-  if (expression.type === "MemberExpression") {
-    return artworkColorNames.has(
-      expression.computed ? expression.property.value : expression.property.name,
-    );
-  }
-  if (expression.type === "ChainExpression")
-    return includesArtworkColorReference(expression.expression);
-  if (expression.type === "LogicalExpression") {
-    return (
-      includesArtworkColorReference(expression.left) ||
-      includesArtworkColorReference(expression.right)
-    );
-  }
-  return false;
-}
-
-function collectArtworkFallbackNodes(property, expression, scope, seen = new Set()) {
-  if (!expression || (!property.startsWith("--") && !isColorBearingProperty(property))) {
-    return new Set();
-  }
-
-  if (expression.type === "Identifier") {
-    if (seen.has(expression.name)) return new Set();
-    const initializer = resolveConstantInitializer(expression, scope);
-    if (!initializer) return new Set();
-    seen.add(expression.name);
-    return collectArtworkFallbackNodes(property, initializer, scope, seen);
-  }
-
-  if (expression.type === "ChainExpression") {
-    return collectArtworkFallbackNodes(property, expression.expression, scope, seen);
-  }
-
-  if (expression.type === "LogicalExpression") {
-    const fallback =
-      ["||", "??"].includes(expression.operator) &&
-      expression.right.type === "Literal" &&
-      typeof expression.right.value === "string" &&
-      includesArtworkColorReference(expression.left) &&
-      hasStaticColor(expression.right.value)
-        ? new Set([expression.right])
-        : new Set();
-
-    for (const child of [expression.left, expression.right]) {
-      for (const node of collectArtworkFallbackNodes(property, child, scope, seen)) {
-        fallback.add(node);
-      }
-    }
-    return fallback;
-  }
-
-  if (expression.type === "ConditionalExpression") {
-    return new Set([
-      ...collectArtworkFallbackNodes(property, expression.consequent, scope, seen),
-      ...collectArtworkFallbackNodes(property, expression.alternate, scope, seen),
-    ]);
-  }
-
-  if (expression.type === "CallExpression" || expression.type === "NewExpression") {
-    return new Set(
-      expression.arguments.flatMap((argument) => [
-        ...collectArtworkFallbackNodes(property, argument, scope, seen),
-      ]),
-    );
-  }
-
-  return new Set();
-}
-
 function collectObjectProperties(objects, scope) {
   const properties = [];
   const visited = new Set();
@@ -286,14 +205,7 @@ function createStyleRule({ messages, analyze }) {
             if (!name) continue;
 
             const cssProperty = toCssProperty(name);
-            analyze({
-              context,
-              property,
-              cssProperty,
-              tokenNames,
-              objects,
-              scope,
-            });
+            analyze({ context, property, cssProperty, tokenNames, scope });
           }
         },
       };
@@ -318,11 +230,9 @@ export const noHardCodedStyleColor = createStyleRule({
     const suggestion =
       getSuggestedToken(cssProperty, tokenNames) ||
       (tokenNames.has("--aurral-text") ? "--aurral-text" : null);
-    const staticStrings = collectStaticStrings(property.value, scope);
-    const artworkFallbacks = collectArtworkFallbackNodes(cssProperty, property.value, scope);
 
-    for (const entry of staticStrings) {
-      if (artworkFallbacks.has(entry.node) || !hasStaticColor(entry.value)) continue;
+    for (const entry of collectStaticStrings(property.value, scope)) {
+      if (!hasStaticColor(entry.value)) continue;
 
       const propertySuggestion = cssProperty.startsWith("--") ? null : suggestion;
       context.report({
@@ -354,7 +264,7 @@ export const noUndefinedStyleToken = createStyleRule({
       );
 
       for (const reference of references) {
-        if (tokenNames.has(reference) || runtimeAurralGeometryProperties.has(reference)) continue;
+        if (tokenNames.has(reference)) continue;
 
         const suggestion = getClosestToken(reference, tokenNames);
         context.report({
