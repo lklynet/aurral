@@ -11006,16 +11006,28 @@ button.native-library-genre-row:focus-visible {
     grid-template-columns: 1.75rem minmax(0, 1fr) auto;
     grid-template-areas:
       "status details time"
-      "status actions actions";
+      "status details actions";
     align-items: start;
-    gap: 0.5rem;
+    gap: 0.25rem 0.5rem;
     min-height: 3.25rem;
     padding: 0.65rem 0;
+  }
+
+  .activity-row:has(.activity-row__actions > :nth-child(4)) {
+    grid-template-areas:
+      "status details time"
+      "status actions actions";
   }
 
   .activity-row__status {
     grid-area: status;
     margin-top: 0.05rem;
+  }
+
+  .activity-row__kind {
+    grid-area: status;
+    align-self: end;
+    justify-self: center;
   }
 
   .activity-row__details {
@@ -11028,15 +11040,13 @@ button.native-library-genre-row:focus-visible {
 
   .activity-row__time {
     grid-area: time;
+    justify-self: end;
     padding-top: 0.15rem;
     font-size: 0.65rem;
   }
 
   .activity-row__actions {
     grid-area: actions;
-    justify-content: flex-start;
-    min-height: 2.75rem;
-    margin-top: 0.05rem;
     opacity: 1;
   }
 
