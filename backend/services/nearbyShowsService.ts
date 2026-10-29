@@ -64,7 +64,8 @@ const nearbyShowsResponseCache = createCache(5 * 60, 100);
 const nearbyShowsInflight = new Map();
 
 const DEFAULT_RADIUS_MILES = 250;
-const MAX_EVENT_RESULTS = 200;
+const EVENT_PAGE_SIZE = 200;
+const MAX_EVENT_PAGES = 5;
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
 
 const toArtistKey = (value: unknown) =>
@@ -349,21 +350,26 @@ const fetchTicketmasterEvents = async ({
   const cached = ticketmasterEventCache.get(cacheKey);
   if (cached) return cached;
   return runSharedInflight(nearbyShowsInflight, `events:${cacheKey}`, async (signal) => {
-    const response = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
-      params: {
-        apikey: apiKey,
-        classificationName: "music",
-        size: MAX_EVENT_RESULTS,
-        locale: "*",
-        includeTBA: "no",
-        includeTBD: "no",
-        ...buildDateRange(),
-        ...getTicketmasterLocationParams(location, radiusMiles),
-      },
-      timeout: 10000,
-      signal,
-    });
-    const listedEvents: TicketmasterEvent[] = response.data?._embedded?.events || [];
+    const params = {
+      apikey: apiKey,
+      classificationName: "music",
+      size: EVENT_PAGE_SIZE,
+      locale: "*",
+      includeTBA: "no",
+      includeTBD: "no",
+      ...buildDateRange(),
+      ...getTicketmasterLocationParams(location, radiusMiles),
+    };
+    const listedEvents: TicketmasterEvent[] = [];
+    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+      const response = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+        params: { ...params, page },
+        timeout: 10000,
+        signal,
+      });
+      listedEvents.push(...(response.data?._embedded?.events || []));
+      if (page + 1 >= (response.data?.page?.totalPages ?? 0)) break;
+    }
     const events = listedEvents
       .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
       .map(toEventRecord)

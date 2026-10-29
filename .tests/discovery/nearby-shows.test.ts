@@ -266,3 +266,37 @@ test("searches Ticketmaster by postal code when the location has no coordinates"
     ["berlin"],
   );
 });
+
+test("matches shows from every Ticketmaster results page, not just the nearest", async (t: import("vite-plus/test").TestContext) => {
+  withTicketmasterKey(t);
+  const requestedPages: unknown[] = [];
+  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+    if (url.includes("zippopotam")) {
+      return ok({
+        places: [{ "place name": "Daytona Beach", latitude: "29.2", longitude: "-81.0" }],
+      });
+    }
+    if (url.includes("ticketmaster.com")) {
+      const page = Number(options.params?.page);
+      requestedPages.push(page);
+      const events = [
+        [ticketmasterEvent("nearby", "2026-11-03", ["Library Band"])],
+        [ticketmasterEvent("filler", "2026-11-04", ["Someone Else"])],
+        [ticketmasterEvent("far", "2026-11-05", ["Far Band"])],
+      ][page];
+      return ok({ _embedded: { events }, page: { number: page, totalPages: 3 } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({
+    zipCode: "32114",
+    libraryArtists: [{ name: "Library Band" }, { name: "Far Band" }],
+  });
+
+  assert.deepEqual(
+    result.shows.map(({ id }) => id),
+    ["nearby", "far"],
+  );
+  assert.deepEqual(requestedPages, [0, 1, 2]);
+});
