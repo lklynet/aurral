@@ -48,6 +48,9 @@ function getStatusMeta(request: ActivityRequest) {
   if (request.status === "completed" || request.status === "available") {
     return { icon: CheckCircle2, label: request.statusLabel || "Done", tone: "success" };
   }
+  if (request.status === "unchanged") {
+    return { icon: CheckCircle2, label: request.statusLabel || "Unchanged", tone: "muted" };
+  }
   if (request.status === "failed") {
     return { icon: AlertCircle, label: request.statusLabel || "Failed", tone: "failed" };
   }

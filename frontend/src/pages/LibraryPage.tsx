@@ -321,7 +321,7 @@ const activityDownloadStatus = (
 ) => {
   if (request?.status === "failed") return "failed";
   if (request?.status === "cancelled") return "cancelled";
-  if (request?.status === "completed") return "completed";
+  if (request?.status === "completed" || request?.status === "unchanged") return "completed";
   if (request?.status === "blocked") return "blocked";
   const label = text(request?.statusLabel).toLocaleLowerCase();
   if (label.includes("download")) return "downloading";

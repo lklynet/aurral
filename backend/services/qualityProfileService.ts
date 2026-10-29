@@ -536,7 +536,7 @@ export async function finalizeQualityUpgradeFailure(
           ? "No replacement file was available"
           : "No better file was available"),
     ),
-    status: "failed",
+    status: upgradeJob.manualReplacementSearch ? "failed" : "unchanged",
     statusLabel: upgradeJob.manualReplacementSearch ? "No replacement" : "No upgrade",
     downloadSource: upgradeJob.downloadSource,
     downloadClient: upgradeJob.downloadClient,
