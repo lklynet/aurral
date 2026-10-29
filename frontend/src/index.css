@@ -16635,12 +16635,14 @@ a.blocklist-page__name:focus-visible {
 }
 
 .global-search__box--unified {
-  border: 1px solid var(--aurral-border);
   background: var(--aurral-surface-raised);
 }
 
+:root[data-theme="light"] .global-search__box--unified {
+  background: var(--aurral-surface);
+}
+
 .global-search__box--unified:focus-within {
-  border-color: var(--aurral-border-strong);
   outline: 2px solid var(--aurral-ring);
   outline-offset: 2px;
 }
