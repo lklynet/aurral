@@ -172,11 +172,72 @@
 }
 
 .wrapped-slide {
+  --wrapped-groove-at: 116cqw 8cqw;
+  --wrapped-groove-from: 6cqw -6cqw;
   position: absolute;
   inset: 0;
+  isolation: isolate;
   overflow: hidden;
   color: var(--wrapped-ink);
-  background: var(--wrapped-field);
+  background:
+    radial-gradient(
+      140% 95% at 50% 42%,
+      transparent 55%,
+      color-mix(in srgb, var(--aurral-overlay-base) 28%, transparent)
+    ),
+    var(--wrapped-field);
+}
+.wrapped-slide::before,
+.wrapped-slide::after {
+  content: "";
+  position: absolute;
+  z-index: var(--aurral-z-below);
+  pointer-events: none;
+}
+.wrapped-slide::before {
+  inset: -12cqw;
+  background: repeating-radial-gradient(
+    circle at var(--wrapped-groove-at),
+    transparent 0 1cqw,
+    var(--wrapped-ink) 1cqw 1.25cqw
+  );
+  opacity: 0.12;
+  mask: radial-gradient(
+    circle at var(--wrapped-groove-at),
+    transparent 0 24cqw,
+    var(--wrapped-ink) 24.5cqw 112cqw,
+    transparent 112.5cqw
+  );
+  animation: wrapped-groove calc(var(--wrapped-t) * 40) var(--aurral-ease-out) both;
+}
+.wrapped-slide::after {
+  inset: 0;
+  background: var(--wrapped-ink);
+  opacity: 0.09;
+  mask: url("./wrapped-grain.svg") 0 0 / 200px 200px;
+}
+.wrapped-slide--variety,
+.wrapped-slide--song,
+.wrapped-slide--day {
+  --wrapped-groove-at: 116cqw 194cqw;
+  --wrapped-groove-from: 6cqw 6cqw;
+}
+.wrapped-slide--genre,
+.wrapped-slide--songs,
+.wrapped-slide--streak {
+  --wrapped-groove-at: 8cqw 8cqw;
+  --wrapped-groove-from: -6cqw -6cqw;
+}
+.wrapped-slide--opening,
+.wrapped-slide--artist,
+.wrapped-slide--album {
+  --wrapped-groove-at: 8cqw 194cqw;
+  --wrapped-groove-from: -6cqw 6cqw;
+}
+@keyframes wrapped-groove {
+  from {
+    translate: var(--wrapped-groove-from);
+  }
 }
 .wrapped-slide--wipe {
   animation: wrapped-wipe calc(var(--wrapped-t) * 7) var(--aurral-ease-in-out) both;

@@ -1144,7 +1144,7 @@ function Story({
   };
   const stop = (event: MouseEvent | PointerEvent<HTMLDivElement>) => event.stopPropagation();
   const settle = (event: AnimationEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget)
+    if (event.target === event.currentTarget && !event.pseudoElement)
       setView((current) => (current.leaving === null ? current : { ...current, leaving: null }));
   };
   const replay = () => {

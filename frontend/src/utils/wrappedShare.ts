@@ -101,6 +101,55 @@ export const WRAPPED_CARD_BUILD = 3.6;
 const progress = (time: number, start: number, length: number) =>
   1 - (1 - Math.min(1, Math.max(0, (time - start) / length))) ** 3;
 
+function wrappedTexture(width: number, height: number, ink: string) {
+  const u = width / 100;
+  const texture = document.createElement("canvas");
+  texture.width = width;
+  texture.height = height;
+  const grain = document.createElement("canvas");
+  grain.width = 200;
+  grain.height = 200;
+  const paint = texture.getContext("2d");
+  const speck = grain.getContext("2d");
+  if (!paint || !speck) return texture;
+
+  const noise = speck.createImageData(200, 200);
+  for (let index = 3; index < noise.data.length; index += 4)
+    noise.data[index] = Math.max(0, Math.random() * 2.4 - 0.95) * 255;
+  speck.putImageData(noise, 0, 0);
+  speck.globalCompositeOperation = "source-in";
+  speck.fillStyle = ink;
+  speck.fillRect(0, 0, 200, 200);
+
+  paint.save();
+  paint.translate(width / 2, height * 0.42);
+  paint.scale(1.4 * width, 0.95 * height);
+  const shade = paint.createRadialGradient(0, 0, 0, 0, 0, 1);
+  shade.addColorStop(0.55, "rgba(0, 0, 0, 0)");
+  shade.addColorStop(1, "rgba(0, 0, 0, 0.28)");
+  paint.fillStyle = shade;
+  paint.fillRect(-1, -1, 2, 2);
+  paint.restore();
+
+  paint.globalAlpha = 0.12;
+  paint.strokeStyle = ink;
+  paint.lineWidth = 0.25 * u;
+  for (let radius = 24.875 * u; radius < 112 * u; radius += 1.25 * u) {
+    paint.beginPath();
+    paint.arc(104 * u, -4 * u, radius, 0, Math.PI * 2);
+    paint.stroke();
+  }
+
+  const pattern = paint.createPattern(grain, "repeat");
+  if (pattern) {
+    pattern.setTransform(new DOMMatrix().scale(width / 430));
+    paint.globalAlpha = 0.09;
+    paint.fillStyle = pattern;
+    paint.fillRect(0, 0, width, height);
+  }
+  return texture;
+}
+
 export async function prepareWrappedCard(summary: WrappedRecap, field: string, username: string) {
   const names = summary.topArtists.map((artist) => artist.name);
   const [covers, mark] = await Promise.all([
@@ -114,6 +163,7 @@ export async function prepareWrappedCard(summary: WrappedRecap, field: string, u
   const left = 5 * u;
   const room = width - 10 * u;
   const ink = wrappedInk(field);
+  const texture = wrappedTexture(width, height, ink);
   const year = String(summary.year);
   const stats = [
     ...(summary.minutes === null ? [] : [{ value: summary.minutes, label: "minutes" }]),
@@ -138,6 +188,7 @@ export async function prepareWrappedCard(summary: WrappedRecap, field: string, u
     context.globalAlpha = 1;
     context.fillStyle = field;
     context.fillRect(0, 0, width, height);
+    context.drawImage(texture, 0, 0);
     context.fillStyle = ink;
 
     context.letterSpacing = `${-0.06 * 44 * u}px`;
