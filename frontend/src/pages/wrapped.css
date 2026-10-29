@@ -918,9 +918,9 @@
   stroke-linejoin: round;
   stroke-dasharray: 1 2;
   animation: wrapped-draw calc(var(--wrapped-t) * 8) var(--aurral-ease-out) backwards;
-  animation-delay: calc(var(--wrapped-t) * var(--i, 0));
+  animation-delay: calc(var(--wrapped-t) * (var(--i, 0) + var(--s, 0) * 3));
 }
-.wrapped-doodle path + path {
+.wrapped-doodle path:nth-child(even) {
   stroke-width: 0.52;
   opacity: 0.6;
 }
@@ -929,6 +929,26 @@
 }
 .wrapped-crown {
   position: absolute;
+}
+.wrapped-genres li:first-child .wrapped-genre-share {
+  position: relative;
+  opacity: 1;
+}
+.wrapped-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16cqw;
+  translate: -50% -50%;
+}
+.wrapped-bang {
+  position: absolute;
+  right: calc(100% + 3.5cqw);
+  bottom: 30%;
+  width: 8cqw;
+}
+.wrapped-bang path {
+  animation-duration: calc(var(--wrapped-t) * 3);
 }
 .wrapped-heart {
   display: inline-block;
