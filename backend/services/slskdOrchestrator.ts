@@ -1668,18 +1668,14 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
     transfer,
   });
   if (typeof sourcePath !== "string" || !sourcePath.trim()) {
-    const searchRoot = slskdRoot || playlistRoot;
-    const [predictedPath] = predictSlskdLocalPathCandidates(searchRoot, remoteFile);
-    const expectedPath = predictedPath || fileName;
-    const nextPayload = retrySameCandidateOrNext(
-      payload,
-      job,
-      "missing_file",
-      `Downloaded file missing: ${expectedPath}`,
-      { transfer },
-    );
+    const reason = slskdRoot
+      ? `Downloaded file missing: ${predictSlskdLocalPathCandidates(slskdRoot, remoteFile)[0] || fileName}`
+      : "Aurral doesn't know slskd's download folder. Check slskd under Settings > Storage health.";
+    const nextPayload = retrySameCandidateOrNext(payload, job, "missing_file", reason, {
+      transfer,
+    });
     if (nextPayload) return nextPayload;
-    return helpers.failOrTryNextSource(payload, job, `Downloaded file missing: ${expectedPath}`);
+    return helpers.failOrTryNextSource(payload, job, reason);
   }
   const ext = path.extname(sourcePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);

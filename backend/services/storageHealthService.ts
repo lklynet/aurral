@@ -596,6 +596,7 @@ type DownloadClientConnection = {
   soulseekConnected?: boolean;
   serverState?: string;
   downloadPath?: string | null;
+  downloadPathDenied?: boolean;
   directories?: { completedPath?: string | null; destDir?: string | null };
 };
 type DownloadClientSectionOptions = {
@@ -732,21 +733,24 @@ async function checkSlskdSection() {
         ? "slskd reports a host path Aurral cannot read inside Docker. Mount the shared parent folder into both containers, or add an slskd mapping under Settings → Download Clients → Remote Path Mappings."
         : `Mount the same host folder into Aurral at the path slskd uses, or add an slskd mapping for ${downloadPath} under Settings → Download Clients → Remote Path Mappings.`,
     connectionLabel: "slskd API is reachable",
-    extraSteps: (connection) => {
-      if (connection.soulseekConnected === false) {
-        return [
-          healthStep("soulseek", "warn", "Soulseek is not logged in", {
+    extraSteps: (connection) => [
+      connection.soulseekConnected === false
+        ? healthStep("soulseek", "warn", "Soulseek is not logged in", {
             detail: connection.message,
             fix: "Open slskd and check that it connects and logs in to the Soulseek server. Soulseek downloads wait until it does.",
+          })
+        : healthStep("soulseek", "pass", "Soulseek is logged in", {
+            detail: connection.serverState || "Connected",
           }),
-        ];
-      }
-      return [
-        healthStep("soulseek", "pass", "Soulseek is logged in", {
-          detail: connection.serverState || "Connected",
-        }),
-      ];
-    },
+      ...(connection.downloadPathDenied
+        ? [
+            healthStep("path-reported", "fail", "slskd shares its completed folder with Aurral", {
+              detail: "slskd denied this API key access to /api/v0/options",
+              fix: "Give Aurral's slskd API key the administrator role in slskd, then run the checks again.",
+            }),
+          ]
+        : []),
+    ],
   });
 }
 
