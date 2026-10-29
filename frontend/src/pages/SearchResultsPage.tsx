@@ -73,6 +73,7 @@ import {
   Grid3X3,
   LayoutGrid,
   List,
+  MoreVertical,
   Music,
   Search,
   SlidersHorizontal,
@@ -178,6 +179,7 @@ function SearchResults() {
   const { isGenreBlocked, setGenreBlocked, pendingGenre } = useBlockedGenres();
   const tagName = isTagSearch ? trimmedQuery.replace(/^#/, "").trim() : "";
   const tagBlocked = tagName ? isGenreBlocked(tagName) : false;
+  const [genreMenuOpen, setGenreMenuOpen] = useState(false);
   const canAddAlbum = hasPermission("addAlbum");
   const updateAlbumSort = useCallback(
     (nextSort: string) => {
@@ -1143,27 +1145,55 @@ function SearchResults() {
       <header className="search-page__header">
         <div className="search-page__title-row">
           <h1 className="search-page__title">{pageTitle}</h1>
+          {tagBlocked ? (
+            <span className="search-page__genre-blocked">
+              <Ban aria-hidden="true" />
+              Blocked
+            </span>
+          ) : null}
           {tagName ? (
-            <Tooltip
-              content={
-                tagBlocked ? "Unblock genre" : "Hide this genre from your recommendations and flows"
-              }
-            >
-              <button
+            <div className="artist-relative search-page__genre-menu">
+              <TooltipButton
                 type="button"
-                className={`btn ${tagBlocked ? "btn-danger" : "btn-secondary"} btn--bold btn-min-h search-page__block-genre`}
-                onClick={() => setGenreBlocked(tagName, !tagBlocked)}
-                disabled={pendingGenre === tagName}
-                aria-pressed={tagBlocked}
+                onClick={() => setGenreMenuOpen((open) => !open)}
+                className="btn btn-surface btn-icon-square"
+                aria-label="More genre actions"
+                title="More genre actions"
+                aria-expanded={genreMenuOpen}
               >
                 {pendingGenre === tagName ? (
-                  <DotLoader size="xs" label={null} />
+                  <DotLoader size="sm" label={null} />
                 ) : (
-                  <Ban aria-hidden="true" />
+                  <MoreVertical className="artist-icon-md" />
                 )}
-                {tagBlocked ? "Blocked" : "Block genre"}
-              </button>
-            </Tooltip>
+              </TooltipButton>
+              {genreMenuOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="artist-backdrop-button"
+                    onClick={() => setGenreMenuOpen(false)}
+                    aria-label="Close genre actions"
+                  />
+                  <div className="artist-dropdown artist-dropdown--right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGenreMenuOpen(false);
+                        void setGenreBlocked(tagName, !tagBlocked);
+                      }}
+                      disabled={pendingGenre === tagName}
+                      className="artist-menu-item artist-menu-item--danger"
+                    >
+                      <span className="artist-menu-item__main">
+                        <Ban className="artist-icon-sm" />
+                        {tagBlocked ? "Unblock genre" : "Block genre"}
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

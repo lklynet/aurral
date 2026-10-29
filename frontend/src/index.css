@@ -7293,8 +7293,24 @@ textarea {
   gap: 0.75rem 1rem;
 }
 
-.search-page__block-genre {
+.search-page__genre-blocked {
+  display: inline-flex;
   align-self: center;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--aurral-danger);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.search-page__genre-blocked svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.search-page__genre-menu {
+  align-self: center;
+  margin-left: auto;
 }
 
 .search-page__subtitle {
