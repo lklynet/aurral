@@ -7294,7 +7294,7 @@ textarea {
 }
 
 .search-page__block-genre {
-  margin-left: auto;
+  align-self: center;
 }
 
 .search-page__subtitle {

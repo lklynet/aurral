@@ -1144,19 +1144,26 @@ function SearchResults() {
         <div className="search-page__title-row">
           <h1 className="search-page__title">{pageTitle}</h1>
           {tagName ? (
-            <button
-              type="button"
-              className={`btn ${tagBlocked ? "btn-neutral-active" : "btn-secondary"} search-page__block-genre`}
-              onClick={() => setGenreBlocked(tagName, !tagBlocked)}
-              disabled={pendingGenre === tagName}
+            <Tooltip
+              content={
+                tagBlocked ? "Unblock genre" : "Hide this genre from your recommendations and flows"
+              }
             >
-              {pendingGenre === tagName ? (
-                <DotLoader size="xs" label={null} />
-              ) : (
-                <Ban aria-hidden="true" />
-              )}
-              {tagBlocked ? "Unblock genre" : "Block genre"}
-            </button>
+              <button
+                type="button"
+                className={`btn ${tagBlocked ? "btn-danger" : "btn-secondary"} btn--bold btn-min-h search-page__block-genre`}
+                onClick={() => setGenreBlocked(tagName, !tagBlocked)}
+                disabled={pendingGenre === tagName}
+                aria-pressed={tagBlocked}
+              >
+                {pendingGenre === tagName ? (
+                  <DotLoader size="xs" label={null} />
+                ) : (
+                  <Ban aria-hidden="true" />
+                )}
+                {tagBlocked ? "Blocked" : "Block genre"}
+              </button>
+            </Tooltip>
           ) : null}
         </div>
 
