@@ -1492,7 +1492,7 @@ export default function WrappedPage() {
         <div className="wrapped-actions" />
       </>
     );
-  else if (query.isError)
+  else if (query.isError && !query.data)
     content = (
       <Notice title="Not loaded" body="Your Wrapped could not be loaded." onClose={close}>
         <button type="button" className="btn btn-primary" onClick={() => query.refetch()}>
