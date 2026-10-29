@@ -7,6 +7,7 @@ import { RotateCcw, X } from "./icons";
 import { DotLoader } from "./DotLoader";
 import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
+import { SettingsLink } from "../pages/Settings/settingsRoute";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import { queryKeys } from "../queryClient.ts";
 import { cancelAurralAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
@@ -112,7 +113,13 @@ export function AurralAlbumStatus({
           {state.recovery.link && (
             <>
               {" "}
-              <Link to={state.recovery.link.to}>{state.recovery.link.label}</Link>
+              {"settings" in state.recovery.link ? (
+                <SettingsLink to={state.recovery.link.settings}>
+                  {state.recovery.link.label}
+                </SettingsLink>
+              ) : (
+                <Link to={state.recovery.link.to}>{state.recovery.link.label}</Link>
+              )}
             </>
           )}
         </p>

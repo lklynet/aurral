@@ -209,7 +209,7 @@ export default function ManualMissingSearchModal({
       ) : null}
       {!loadingSources && !error && sources.length === 0 ? (
         <p className="manual-search-modal__empty">
-          Set up a download client in Settings → Download clients.
+          Set up a download client in Settings → Downloads.
         </p>
       ) : null}
       {error ? (

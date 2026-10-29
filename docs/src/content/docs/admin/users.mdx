@@ -94,14 +94,14 @@ You can configure native OIDC and reverse-proxy authentication together. Choose 
 A user who already has an Aurral account can link SSO to it:
 
 1. Sign in another way, for example with the local password.
-2. Open **Settings > Account** and select **Connect single sign-on** under **Connected accounts**.
+2. Open **Settings > Profile** and select **Connect** next to **Single sign-on** under **Sign-in methods**.
 3. Confirm the password if Aurral asks, then sign in with the identity provider.
 
 Later SSO sign-ins open this account. Aurral refuses the link if the SSO account already belongs to another Aurral account. After the link, the identity provider sets the role at each SSO sign-in, as for any OIDC account. If it does not give the user the admin role, an admin who signs in with SSO becomes a regular user. The protected recovery admin keeps its role.
 
 ### Claim existing accounts after an upgrade
 
-Users can link SSO themselves with **Connect single sign-on**. An admin can also approve a claim for them.
+Users can link SSO themselves in **Settings > Profile**. An admin can also approve a claim for them.
 
 Aurral links an OIDC user to an account by the issuer and subject in the token, not by the username. An account created before identity linking has no linked identity. If that person signs in with SSO, Aurral creates a new account instead of using the old one.
 
@@ -128,22 +128,22 @@ Google and Plex sign-in let a user sign in to an account that already exists. Th
 ### Set up Google sign-in
 
 1. In the Google Cloud Console, create an OAuth client. Add the redirect URI `https://aurral.example.com/sso/google/callback`, with your Aurral host.
-2. In Aurral, open **Settings > Connect > Google**.
+2. In Aurral, open **Settings > Users > Google**.
 3. Enter the **Client ID**, **Client secret**, and **Redirect URI**.
 4. Turn on **Enabled**.
 
-Each user then opens **Profile > Connected accounts** and selects **Connect Google**. After that, the user can select **Sign in with Google** on the sign-in page.
+Each user then opens **Settings > Profile > Sign-in methods** and selects **Connect** next to **Google**. After that, the user can select **Sign in with Google** on the sign-in page.
 
 ### Set up Plex sign-in
 
 1. Connect Plex in **Settings > Playback > Plex**.
 2. In the same place, turn on **Allow signing in to Aurral with Plex**.
 
-Each user then links their own Plex account in **Profile > Plex account**. After that, the user can select **Sign in with Plex**. A Plex Home managed user that an admin linked cannot sign in with Plex. See [Plex](/integrations/plex/#sign-in-to-aurral-with-plex).
+Each user then links their own Plex account in **Settings > Profile > Plex account**. After that, the user can select **Sign in with Plex**. A Plex Home managed user that an admin linked cannot sign in with Plex. See [Plex](/integrations/plex/#sign-in-to-aurral-with-plex).
 
 ### Manage connected accounts
 
-**Profile > Connected accounts** lists the SSO, Google, and Plex identities linked to your account. To remove one, select **Disconnect**.
+**Settings > Profile > Sign-in methods** lists the SSO, Google, and Plex identities linked to your account. To remove one, select **Disconnect**.
 
 You cannot remove your last way to sign in. If your account has no local password, set a password or link another account first.
 
@@ -158,7 +158,7 @@ If you signed in more than 15 minutes ago, Aurral asks for your current password
 
 ## SSO-only sign-in mode
 
-To hide the username and password form on the sign-in page, open **Settings > Users > Sign-in Mode** and turn on **SSO-only**. The setting has an effect only when OIDC, Google, or Plex sign-in is configured.
+To hide the username and password form on the sign-in page, open **Settings > Users > Sign-in** and turn on **SSO-only**. The setting has an effect only when OIDC, Google, or Plex sign-in is configured.
 
 The sign-in page still shows **Sign in with a local account instead**, so local accounts and the recovery admin cannot be locked out.
 
@@ -208,7 +208,7 @@ An account created by the proxy has no local password until an admin sets one. A
 
 ## Per-user Plex accounts
 
-Each user can send their flows and static playlists to their own Plex account instead of the admin's. An admin links a Plex Home managed user from **Manage** in **Settings > Users**. A user with their own Plex.tv account links it in **Profile > Plex account**. See [Plex: Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts).
+Each user can send their flows and static playlists to their own Plex account instead of the admin's. An admin links a Plex Home managed user from **Manage** in **Settings > Users**. A user with their own Plex.tv account links it in **Settings > Profile > Plex account**. See [Plex: Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts).
 
 ## Reset the admin password
 

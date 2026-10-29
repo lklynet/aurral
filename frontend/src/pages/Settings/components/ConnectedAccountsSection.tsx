@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { authClient } from "../../../utils/api/clients/auth.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
-import type { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/ToastContext";
+import { queryKeys } from "../../../queryClient.ts";
 import { readApiError } from "../utils/apiError.ts";
+import { SettingsGroup, SettingsNote, SettingsRow } from "../SettingsLayout";
 
-type Toast = ReturnType<typeof useToast>["showSuccess"];
 type Identity = InferResponseType<typeof usersClient.me.identities.$get, 200>["identities"][number];
 type StartLink = () => Promise<{ authUrl: string }>;
 
@@ -20,131 +22,106 @@ const PROVIDER_LABELS: Partial<Record<string, string>> = {
   plex: "Plex",
 };
 
-export function ConnectedAccountsSection({
-  showSuccess,
-  showError,
-  className = "",
-}: {
-  showSuccess: Toast;
-  showError: Toast;
-  className?: string;
-}) {
-  const { bootstrap } = useAuth();
-  const [identities, setIdentities] = useState<Identity[]>([]);
-  const [hasLocalPassword, setHasLocalPassword] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+const providerLabel = (identity: Identity) =>
+  PROVIDER_LABELS[identity.providerType] || identity.providerType;
+
+export function useMyIdentities() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.myIdentities(user?.id),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me.identities.$get({}, { init: { signal } })),
+  });
+}
+
+export function ConnectedAccountsSection() {
+  const { bootstrap, user } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const queryClient = useQueryClient();
+  const identitiesQuery = useMyIdentities();
   const [unlinkingId, setUnlinkingId] = useState<number | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    return parseResponse(usersClient.me.identities.$get())
-      .then((data) => {
-        setIdentities(data?.identities || []);
-        setHasLocalPassword(data?.hasLocalPassword !== false);
-        setLoadError(false);
-      })
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) });
 
   const handleUnlink = async (identity: Identity) => {
     setUnlinkingId(identity.id);
-    try {
+    const unlink = async () => {
       await unlinkIdentity(identity.id);
-      showSuccess?.(
-        `Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`,
-      );
-      await load();
-    } catch (err) {
-      if (isReauthRequiredError(err)) {
-        const shouldRetry = await promptReauth();
-        if (shouldRetry) {
-          try {
-            await unlinkIdentity(identity.id);
-            showSuccess?.(
-              `Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`,
-            );
-            await load();
-          } catch (retryErr) {
-            showError?.(readApiError(retryErr).message || "Failed to disconnect");
-          }
-        }
-      } else {
-        const failure = readApiError(err);
-        showError?.(failure.message || failure.error || "Failed to disconnect");
+      showSuccess(`Disconnected ${providerLabel(identity)}.`);
+      await refresh();
+    };
+    try {
+      try {
+        await unlink();
+      } catch (err) {
+        if (!isReauthRequiredError(err)) throw err;
+        if (await promptReauth()) await unlink();
       }
+    } catch (err) {
+      const failure = readApiError(err);
+      showError(failure.message || failure.error || "Failed to disconnect");
     } finally {
       setUnlinkingId(null);
     }
   };
 
   const connectProvider = async (startLink: StartLink, label: string) => {
-    const shouldProceed = await promptReauth();
-    if (!shouldProceed) return;
+    if (!(await promptReauth())) return;
     try {
       const result = await startLink();
       if (!result?.authUrl) throw new Error(`${label} did not return an authorization URL`);
       window.location.assign(result.authUrl);
     } catch (err) {
       const failure = readApiError(err);
-      showError?.(failure.message || failure.error || failure.text || `Failed to connect ${label}`);
+      showError(failure.message || failure.error || failure.text || `Failed to connect ${label}`);
     }
   };
 
-  if (loading) return null;
+  if (identitiesQuery.isPending) return null;
 
-  const hasGoogle = identities.some((identity) => identity.providerType === "google");
-  const googleAvailable = !!bootstrap?.googleLoginEnabled;
-  const hasOidc = identities.some((identity) => identity.providerType === "oidc");
+  const identities = identitiesQuery.data?.identities ?? [];
   const oidcAvailable = !!bootstrap?.oidcEnabled;
+  const googleAvailable = !!bootstrap?.googleLoginEnabled;
+  const canConnectOidc =
+    oidcAvailable && !identities.some((identity) => identity.providerType === "oidc");
+  const canConnectGoogle =
+    googleAvailable && !identities.some((identity) => identity.providerType === "google");
+
+  if (!identitiesQuery.isError && !identities.length && !canConnectOidc && !canConnectGoogle) {
+    return null;
+  }
 
   return (
-    <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
-      <div className="settings-page__section-intro">
-        <h3 className="settings-page__section-title">Connected accounts</h3>
-        <p className="settings-page__section-note">Additional sign-in methods.</p>
-      </div>
-
-      {loadError ? (
-        <p className="settings-page__hint settings-page__hint--warning">
-          Failed to load your connected accounts.{" "}
-          <button type="button" className="settings-page__link" onClick={() => load()}>
+    <SettingsGroup title="Sign-in methods">
+      {identitiesQuery.isError ? (
+        <SettingsNote tone="warning">
+          Couldn&apos;t load your sign-in methods.{" "}
+          <button type="button" className="settings-link" onClick={() => refresh()}>
             Try again
           </button>
-        </p>
-      ) : identities.length === 0 ? (
-        <p className="settings-page__muted-copy">No other sign-in methods connected.</p>
-      ) : (
-        <div className="connected-account-list">
-          {identities.map((identity) => (
-            <div key={identity.id} className="connected-account-row">
-              <span>
-                <strong>{PROVIDER_LABELS[identity.providerType] || identity.providerType}</strong>
-                {identity.displayName ? ` — ${identity.displayName}` : ""}
-              </span>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleUnlink(identity)}
-                disabled={unlinkingId === identity.id}
-              >
-                {unlinkingId === identity.id ? "Disconnecting…" : "Disconnect"}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loadError && oidcAvailable && !hasOidc && (
-        <>
+        </SettingsNote>
+      ) : null}
+      {identities.map((identity) => (
+        <SettingsRow key={identity.id} label={providerLabel(identity)} help={identity.displayName}>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleUnlink(identity)}
+            disabled={unlinkingId === identity.id}
+          >
+            {unlinkingId === identity.id ? "Disconnecting…" : "Disconnect"}
+          </button>
+        </SettingsRow>
+      ))}
+      {canConnectOidc ? (
+        <SettingsRow
+          label="Single sign-on"
+          help="Your identity provider sets your role when you sign in."
+        >
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
             onClick={() =>
               connectProvider(
                 () => parseResponse(authClient.oidc.link.start.$post()),
@@ -152,29 +129,23 @@ export function ConnectedAccountsSection({
               )
             }
           >
-            Connect single sign-on
+            Connect
           </button>
-          <p className="settings-page__hint">
-            Your identity provider sets your role when you sign in.
-          </p>
-        </>
-      )}
-      {!loadError && googleAvailable && !hasGoogle && (
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() =>
-            connectProvider(() => parseResponse(authClient.google.link.start.$post()), "Google")
-          }
-        >
-          Connect Google
-        </button>
-      )}
-      {!loadError && !hasLocalPassword && (
-        <p className="settings-page__hint">
-          Set a local password to sign in when a connected provider is unavailable.
-        </p>
-      )}
-    </div>
+        </SettingsRow>
+      ) : null}
+      {canConnectGoogle ? (
+        <SettingsRow label="Google">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() =>
+              connectProvider(() => parseResponse(authClient.google.link.start.$post()), "Google")
+            }
+          >
+            Connect
+          </button>
+        </SettingsRow>
+      ) : null}
+    </SettingsGroup>
   );
 }

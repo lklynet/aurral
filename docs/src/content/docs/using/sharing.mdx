@@ -40,7 +40,7 @@ A playlist imported once is an independent copy. A synced playlist follows the s
 
 When file access expires or the sender goes offline, the share keeps its details and available previews. People can still import the details.
 
-**Profile → Shared links** lists your file shares and playlists. For a track, album, or artist, **Stop files** ends access to your files at once and the link keeps working with details and previews. For a playlist, **Stop sharing** ends file access and removes the link, and synced imports stop updating. Neither removes details or files someone has already imported or downloaded. A track, album, or artist share leaves the list when its file access expires.
+**Settings > Shared links** lists your file shares and playlists. For a track, album, or artist, **Stop files** ends access to your files at once and the link keeps working with details and previews. For a playlist, **Stop sharing** ends file access and removes the link, and synced imports stop updating. Neither removes details or files someone has already imported or downloaded. A track, album, or artist share leaves the list when its file access expires.
 
 The Docker image includes `cloudflared`, which file sharing needs. If you run Aurral another way, install it on your server. Aurral opens one tunnel while file shares are active and closes it when none remain. Cloudflare offers quick tunnels without an uptime guarantee, so playback can be temporarily unavailable.
 

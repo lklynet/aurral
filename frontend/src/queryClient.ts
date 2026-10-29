@@ -252,6 +252,7 @@ export const queryKeys = {
   scrobbleStatus: ["scrobbling", "status"],
   apiKey: ["auth", "api-key"],
   myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],
+  myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   plexHomeUsers: ["auth", "plex-home-users"],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",

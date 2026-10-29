@@ -17,7 +17,7 @@ not API compatibility.
 
 ## Authenticate with the API key
 
-Open **Settings > System** and copy the API key. Send it in the `X-Api-Key` header:
+Open **Settings > General > API access** and copy the API key. Send it in the `X-Api-Key` header:
 
 ```bash
 curl --fail \
@@ -38,7 +38,7 @@ With the API key, you do not need to sign in first. The key gives administrator 
 
 The key belongs to the Aurral installation, not to a user. For actions on user data, use a user's sign-in session instead. These actions include linking Last.fm, ListenBrainz, or Koito, recording plays, and changing favorites. When the API key calls one of them, Aurral returns `403`.
 
-Keep the key in a secret store. If an integration only needs to read, send only `GET` requests. To replace the key, select **Rotate API key** in **Settings > System**. The old key stops working at once.
+Keep the key in a secret store. If an integration only needs to read, send only `GET` requests. To replace the key, select **Rotate API key** in **Settings > General**. The old key stops working at once.
 
 Do not put the key in public browser JavaScript. Call Aurral from a server-side widget or a same-origin proxy instead.
 

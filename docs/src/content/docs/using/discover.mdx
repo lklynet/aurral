@@ -27,17 +27,17 @@ Each recommendation names the seeds it came from, such as "like Slowdive". A pic
 
 **Block genre** excludes a genre for you only. Use it on a genre's page or in **Blocklist**. Aurral hides recommended artists tagged with that genre, drops the genre from your top tags, and keeps flows from picking new artists in it. Artists in your Library are never hidden.
 
-Feedback reorders your list right away. Aurral saves it for the next scheduled rebuild, which uses artists you liked as seeds to bring in new picks. An admin sets the schedule in **Settings > Discover**. A new user sees **Building your personal recommendations** until their first set is ready.
+Feedback reorders your list right away. Aurral saves it for the next scheduled rebuild, which uses artists you liked as seeds to bring in new picks. An admin sets the schedule in **Settings > Discovery**. A new user sees **Building your personal recommendations** until their first set is ready.
 
 ## ListenBrainz and Last.fm
 
 Discover works without an account or API key. Aurral finds similar artists on ListenBrainz, genres on MusicBrainz, and the top tracks that flows use on Deezer. **Trending artists** comes from the Deezer charts. See [Trending](#trending).
 
-ListenBrainz similar artists lean toward well-known names, so Last.fm usually gives closer matches. When an admin adds a Last.fm API key in **Settings > Connect > Last.fm**, Aurral uses Last.fm for recommendations, tag search, and flows, including the trending artists that flows and shows use. **Settings > Discover** shows which one is in use. When an admin adds or removes the key, Aurral rebuilds everyone's recommendations.
+ListenBrainz similar artists lean toward well-known names, so Last.fm usually gives closer matches. When an admin adds a Last.fm API key in **Settings > Discovery > Last.fm**, Aurral uses Last.fm for recommendations, tag search, and flows, including the trending artists that flows and shows use. **Settings > Discovery** shows which one is in use. When an admin adds or removes the key, Aurral rebuilds everyone's recommendations.
 
 ## Discovery modes
 
-An admin sets the mode in **Settings > Discover**.
+An admin sets the mode in **Settings > Discovery**.
 
 | Mode     | Best for                                      |
 | -------- | --------------------------------------------- |
@@ -67,7 +67,7 @@ To get a release, select **Download album**. Lidarr downloads it when Lidarr is 
 
 ![Aurral artist news](../../../assets/screenshots/news.webp)
 
-When an admin turns on news in **Settings > RSS news**, Discover shows recent stories from the enabled feeds. Stories that mention a library artist or a recommended artist are highlighted with the artist's name. Aurral keeps stories for 30 days, even after they leave a feed.
+When an admin turns on news in **Settings > Discovery > News**, Discover shows recent stories from the enabled feeds. Stories that mention a library artist or a recommended artist are highlighted with the artist's name. Aurral keeps stories for 30 days, even after they leave a feed.
 
 Aurral highlights a story when an artist's full name appears in its headline, or when the publisher tags the story with that artist. One-word names such as Ghost or Live are common words, so for publishers that tag their stories, Aurral highlights those artists only when the tag names them.
 
@@ -114,7 +114,7 @@ Select **Save as playlist** to add the top songs as a synced playlist that follo
 
 ## Per-user listening history
 
-Each user chooses a listening-history provider in **Profile > Listening history**. Choose **Local only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider. When you change the provider, Aurral rebuilds your recommendations.
+Each user chooses a listening-history provider in **Settings > Listening > History**. Choose **Local only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider. When you change the provider, Aurral rebuilds your recommendations.
 
 ## Shows
 

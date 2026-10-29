@@ -93,6 +93,19 @@ Use `.search-empty-panel` for empty and error states: an icon in `.search-empty-
 
 Loading states use skeletons shaped like the ready state. Use `DotLoader` only where content cannot be predicted.
 
+## Settings
+
+Settings is one modal over the current page. Its location is the `settings` search param, as `?settings=<section>` or `?settings=<section>/<item>`. Link to it with `SettingsLink` from `pages/Settings/settingsRoute.tsx`, so it opens over the page the user is on.
+
+Build every section from the primitives in `pages/Settings/SettingsLayout.tsx`:
+
+- `SettingsPage` holds the section title, the saving state, and the back control of a detail.
+- `SettingsGroup` is a heading at `--aurral-font-lg`. Spacing separates groups. Do not add boxes, borders, or eyebrows.
+- `SettingsRow` puts the label and one line of help on the left and the control on the right. Use `stack` for wide controls such as text areas.
+- `SettingsServiceRow` shows a service name, a short status (**On**, **Off**, **Not set up**, or **Needs setup**), and a chevron. It opens the service's detail in the same pane. Do not add card grids or a modal per service.
+
+Account sections show for everyone. Server sections show only to people who can manage the server, and their data never loads for anyone else. Changes save automatically. A detail that edits a draft, such as a webhook, saves with its own button.
+
 ## Motion
 
 Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The two exceptions are the now-playing equalizer and `DotLoader`. Both animate only transform or opacity and stop when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
@@ -150,27 +163,6 @@ Use `AddActionButton` for actions that add an artist or album to the Library. It
 Keep a component-specific control class when the control has a dedicated layout or interaction. The button rule checks bare buttons and classes in the `.btn-*` family. The theme-token checks still apply to custom CSS and inline styles.
 
 Menu items and switches have different roles. Use `role="menuitem"` or `role="switch"` only when the control has that behavior.
-
-Use `SectionRail` on long pages with several titled sections. Render it as the first child of the page's content column and point it at the sections. It finds them in the page, so sections that appear later or only in some setups are picked up. It shows only when the column has a left margin wide enough for it, and never on touch screens.
-
-```jsx
-function ProfilePage({ sections }) {
-  const pageRef = useRef(null);
-
-  return (
-    <div ref={pageRef} className="profile-page">
-      <SectionRail
-        containerRef={pageRef}
-        sectionSelector=".profile-settings__section"
-        titleSelector=".settings-page__section-title"
-        descriptionSelector=".settings-page__section-note"
-        label="Profile sections"
-      />
-      {sections}
-    </div>
-  );
-}
-```
 
 ## Review the visual result
 

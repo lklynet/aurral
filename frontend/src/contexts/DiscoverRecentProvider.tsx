@@ -60,8 +60,6 @@ function isDiscoverExitPath(pathname: string) {
   if (pathname.startsWith("/shows")) return true;
   if (pathname.startsWith("/playlists")) return true;
   if (pathname.startsWith("/activity")) return true;
-  if (pathname.startsWith("/settings")) return true;
-  if (pathname === "/profile") return true;
   return false;
 }
 

@@ -1,0 +1,178 @@
+import { createContext, useContext, useId, type ReactNode } from "react";
+import { AlertCircle, ChevronLeft, ChevronRight } from "../../components/icons";
+import { DotLoader } from "../../components/DotLoader";
+import { SettingsLink, useSettingsRoute } from "./settingsRoute";
+
+export const SettingsSavingContext = createContext(false);
+
+export function SettingsPage({
+  title,
+  back,
+  actions,
+  children,
+}: {
+  title: ReactNode;
+  back?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const saving = useContext(SettingsSavingContext);
+  const route = useSettingsRoute();
+  return (
+    <div className="settings-pane">
+      <header className="settings-pane__head">
+        <button
+          type="button"
+          className={`settings-pane__back${back ? "" : " settings-pane__back--phone"}`}
+          onClick={route.back}
+        >
+          <ChevronLeft aria-hidden="true" />
+          {back ?? "Settings"}
+        </button>
+        <h2 className="settings-pane__title">{title}</h2>
+        <span className="settings-pane__saving" role="status" aria-live="polite">
+          {saving ? (
+            <>
+              <DotLoader size="xs" label={null} /> Saving…
+            </>
+          ) : null}
+        </span>
+        {actions ? <div className="settings-pane__actions">{actions}</div> : null}
+      </header>
+      {children}
+    </div>
+  );
+}
+
+export function SettingsGroup({
+  title,
+  note,
+  actions,
+  children,
+}: {
+  title?: ReactNode;
+  note?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <section className="settings-group" aria-labelledby={title ? headingId : undefined}>
+      {title || actions ? (
+        <div className="settings-group__head">
+          {title ? (
+            <h3 id={headingId} className="settings-group__title">
+              {title}
+            </h3>
+          ) : null}
+          {actions ? <div className="settings-group__actions">{actions}</div> : null}
+        </div>
+      ) : null}
+      {note ? <p className="settings-group__note">{note}</p> : null}
+      {children}
+    </section>
+  );
+}
+
+type Tone = "default" | "warning" | "error";
+
+export function SettingsRow({
+  label,
+  htmlFor,
+  help,
+  tone = "default",
+  stack = false,
+  children,
+}: {
+  label?: ReactNode;
+  htmlFor?: string;
+  help?: ReactNode;
+  tone?: Tone;
+  stack?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`settings-row${stack ? " settings-row--stack" : ""}`}>
+      {label || help ? (
+        <div className="settings-row__copy">
+          {label ? (
+            htmlFor ? (
+              <label className="settings-row__label" htmlFor={htmlFor}>
+                {label}
+              </label>
+            ) : (
+              <span className="settings-row__label">{label}</span>
+            )
+          ) : null}
+          {help ? <p className={`settings-row__help settings-row__help--${tone}`}>{help}</p> : null}
+        </div>
+      ) : null}
+      {children ? <div className="settings-row__control">{children}</div> : null}
+    </div>
+  );
+}
+
+export type ServiceStatus = { label: ReactNode; tone?: "default" | "muted" | "error" };
+
+export function SettingsServiceRow({
+  to,
+  name,
+  status,
+}: {
+  to: string;
+  name: ReactNode;
+  status?: ServiceStatus | null;
+}) {
+  const tone = status?.tone ?? "default";
+  return (
+    <SettingsLink to={to} className="settings-service">
+      <span className="settings-service__name">{name}</span>
+      {status ? (
+        <span className={`settings-service__status settings-service__status--${tone}`}>
+          {tone === "error" ? <AlertCircle aria-hidden="true" /> : null}
+          {status.label}
+        </span>
+      ) : null}
+      <ChevronRight className="settings-service__chevron" aria-hidden="true" />
+    </SettingsLink>
+  );
+}
+
+export function SettingsNote({ tone = "default", children }: { tone?: Tone; children: ReactNode }) {
+  return (
+    <p
+      className={`settings-note settings-note--${tone}`}
+      role={tone === "error" ? "alert" : undefined}
+    >
+      {tone !== "default" ? <AlertCircle aria-hidden="true" /> : null}
+      <span>{children}</span>
+    </p>
+  );
+}
+
+export function SettingsActions({
+  status,
+  children,
+}: {
+  status?: { tone: "success" | "error"; message: ReactNode } | null;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-actions">
+      {children}
+      {status ? (
+        <p
+          className={`settings-actions__status settings-actions__status--${status.tone}`}
+          role={status.tone === "error" ? "alert" : "status"}
+        >
+          {status.message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function useSettingsItem() {
+  const { path } = useSettingsRoute();
+  return path?.split("/")[1] || null;
+}

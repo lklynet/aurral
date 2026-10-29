@@ -51,7 +51,7 @@ A flow builds a new tracklist on a schedule. A static playlist keeps a fixed tra
 
 ![Aurral artist news](../../../assets/screenshots/news.webp)
 
-**News** in the sidebar lists recent stories from your RSS feeds that mention library artists or recommended artists. An admin turns on news in **Settings > RSS news**.
+**News** in the sidebar lists recent stories from your RSS feeds that mention library artists or recommended artists. An admin turns on news in **Settings > Discovery > News**.
 
 ### Activity and Wanted
 
@@ -71,49 +71,49 @@ The blocklist holds the artists and genres that you excluded. Aurral removes blo
 
 When an admin configures Ticketmaster, **Shows** lists nearby concerts for library, recommended, and trending artists.
 
-### Profile
-
-![Aurral profile appearance and themes](../../../assets/screenshots/themes.webp)
-
-Profile holds your personal settings:
-
-- **Appearance.** Choose **System**, **Light**, or **Dark** mode and a theme. Every theme has a light and a dark version. When a theme has only one, Aurral generates the other. Your choice is saved to your account, so it follows you to other devices.
-  - **Create theme** starts from the current theme. Pick a background, text, and accent color for each mode. Aurral adjusts text and accent colors that would be hard to read.
-  - **Import** accepts an exported Aurral theme or a base16 or base24 scheme. Find schemes in the [Tinted Gallery](https://tinted-theming.github.io/tinted-gallery/) and paste the scheme's source file.
-  - **Immersive mode** is on by default. It takes the accent color from the cover of what's playing and enables artwork colors in background gradients and the player. It also enables decorative search backdrops and tints Discover, search, and similar artist cards on hover. Turn it off to use your theme's colors without these effects.
-- **Listening history.** Choose **Local only**, Last.fm, ListenBrainz, or Koito.
-- **Connected accounts.** Link a Google or Plex account that you can use to sign in. See [Users and authentication](/admin/users/#sign-in-with-google-or-plex).
-- **Plex account.** Link your own Plex account for your playlists.
-- **Library defaults.** Choose your default Lidarr root folder and quality profile. This section shows only while Lidarr is connected.
-- **Discovery tastes.** Reset your recommendation feedback, or open your blocklist.
-
 ### Settings
 
 ![Aurral user settings](../../../assets/screenshots/settings-user.webp)
 
-Settings holds the admin configuration. It has these tabs:
+Open Settings from the gear in the sidebar, or select **Profile** in the user menu. Settings opens over the page you are on, and closing it returns you there. On a phone it fills the screen.
 
-| Tab                  | What it covers                                                                                                   |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **System**           | Runtime details, date format, Subsonic behavior, and the API key                                                 |
-| **Storage health**   | Checks for storage, downloads, Lidarr files, path mappings, and playback                                         |
-| **Tasks**            | Scheduled jobs, workers, and the job queue                                                                       |
-| **Lidarr**           | Lidarr connection, the **Enabled** switch, defaults, and library display                                         |
-| **Indexers**         | Prowlarr connection, indexers, and indexer priorities                                                            |
-| **Download clients** | Quality profile, Downloads Folder, remote path mappings, and download clients                                    |
-| **Monitoring**       | Default monitoring rules for Aurral's artists, searches for missing tracks, and what you removed from monitoring |
-| **Playback**         | Navidrome, Plex, Jellyfin, and scrobbling                                                                        |
-| **Connect**          | Gotify, webhooks, Last.fm, Ticketmaster, Google sign-in, and Inbox                                               |
-| **RSS news**         | RSS feeds and feed groups                                                                                        |
-| **Discover**         | Recommendation refresh and discovery mode                                                                        |
-| **Users**            | Accounts, permissions, account status, sign-in mode, and local-network auto-login                                |
+Everyone sees the **Account** sections:
+
+| Section          | What it covers                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Profile**      | Username, password, sign-in methods, your Plex account, and your Lidarr defaults while Lidarr is connected |
+| **Listening**    | Listening history source, scrobbling to Last.fm or ListenBrainz, and resetting your discovery tastes       |
+| **Appearance**   | Mode, theme, immersive mode, and environment art                                                           |
+| **Shared links** | The links you created                                                                                      |
+
+**Appearance** follows your account to other devices:
+
+- Choose **System**, **Light**, or **Dark** mode and a theme. Every theme has a light and a dark version. When a theme has only one, Aurral generates the other.
+- **Create theme** starts from the current theme. Pick a background, text, and accent color for each mode. Aurral adjusts text and accent colors that would be hard to read.
+- **Import** accepts an exported Aurral theme or a base16 or base24 scheme. Find schemes in the [Tinted Gallery](https://tinted-theming.github.io/tinted-gallery/) and paste the scheme's source file.
+- **Immersive mode** is on by default. It takes the accent color from the cover of what's playing and enables artwork colors in background gradients and the player. It also enables decorative search backdrops and tints Discover, search, and similar artist cards on hover. Turn it off to use your theme's colors without these effects.
+
+Admins also see the **Server** sections:
+
+| Section           | What it covers                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| **General**       | Date format, Subsonic behavior, and the API key                                             |
+| **Users**         | Accounts, permissions, sign-in mode, Google and Plex sign-in, and local-network auto-login  |
+| **Library**       | The Downloads folder, read-only folders, importing a folder, and cleaning up the Library    |
+| **Monitoring**    | Default monitoring rules, searches for missing tracks, and what you removed from monitoring |
+| **Downloads**     | Download clients, Prowlarr, the quality profile, the review queue, and remote path mappings |
+| **Playback**      | Navidrome, Plex, and Jellyfin                                                               |
+| **Discovery**     | Recommendations, Last.fm, Ticketmaster, and news feeds                                      |
+| **Notifications** | Inbox, Gotify, and webhooks                                                                 |
+| **Lidarr**        | Connection, the **Enabled** switch, defaults, and the community guide                       |
+| **Status**        | Storage checks, tasks, the version, and data paths                                          |
 
 Use the search field in Settings to find a setting by name.
 
-Settings and Profile save each change automatically. Connection tests and sync actions have their own buttons. The default monitoring rules have a **Save** button, and Aurral shows what a change would download before it applies it.
+Settings saves each change automatically. Connection tests and sync actions have their own buttons. The default monitoring rules have a **Save** button, and Aurral shows what a change would download before it applies it.
 
-To set the date and time format for all users, open **Settings > System > Display**. Choose the browser default, day first, or year first.
+To set the date and time format for all users, open **Settings > General > Display**. Choose the browser default, day first, or year first.
 
-Advanced metadata settings are at `/settings/metadata`. This page is not in the Settings navigation. See [Metadata and search](/integrations/metadata/).
+Advanced metadata settings are not in the Settings navigation. Search Settings for **Metadata** to open them. See [Metadata and search](/integrations/metadata/).
 
-Release catalogue refreshes have a separate worker in **Settings > Tasks**, so a slow metadata provider does not hold up playlist maintenance. An **Interrupted** run means unfinished work was returned to the queue after shutdown or loss of its execution lease.
+Release catalogue refreshes have a separate worker in **Settings > Status > Tasks**, so a slow metadata provider does not hold up playlist maintenance. An **Interrupted** run means unfinished work was returned to the queue after shutdown or loss of its execution lease.

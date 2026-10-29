@@ -31,7 +31,10 @@ test("recovery codes link to the place that fixes them", () => {
   assert.ok(sourceMissing != null);
   assert.deepEqual(actionLabels(sourceMissing), []);
   assert.equal(sourceMissing.recovery?.message, "Configure a download client.");
-  assert.equal(sourceMissing.recovery?.link?.to, "/settings/download-clients");
+  assert.deepEqual(sourceMissing.recovery?.link, {
+    settings: "downloads",
+    label: "Set up a download client",
+  });
 
   const review = describeAurralAlbumStatus({
     status: "blocked",
@@ -39,7 +42,7 @@ test("recovery codes link to the place that fixes them", () => {
   });
   assert.ok(review != null);
   assert.equal(review.recovery?.message, "Some tracks need review.");
-  assert.equal(review.recovery?.link?.to, "/activity/queue");
+  assert.deepEqual(review.recovery?.link, { to: "/activity/queue", label: "Review in Activity" });
 
   const failed = describeAurralAlbumStatus({
     status: "failed",

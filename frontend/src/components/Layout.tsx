@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useState,
   useEffect,
   useRef,
@@ -20,7 +22,6 @@ import {
   Workflow,
   Settings,
   LogOut,
-  User,
   Ban,
   ChevronLeft,
 } from "./icons";
@@ -31,7 +32,11 @@ import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
-import { DEFAULT_SETTINGS_TAB } from "../pages/Settings/settingsTabsConfig";
+import {
+  SettingsLink,
+  readSettingsPath,
+  withoutSettingsParam,
+} from "../pages/Settings/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
@@ -41,6 +46,8 @@ const SIDEBAR_MIN = 56;
 const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 208;
 const MOBILE_SHEET_EXIT_MS = 180;
+
+const SettingsModal = lazy(() => import("../pages/Settings/SettingsModal"));
 
 type ScrollbarDrag = { pointerId: number; grabOffset: number };
 type SidebarResizeSession = { pointerId: number; left: number; grabOffset: number };
@@ -88,14 +95,15 @@ function Layout({ children, headerActions }: LayoutProps) {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const scrollPositionsRef = useRef(new Map<string, number>());
-  const scrolledPathnameRef = useRef<string | null>(null);
+  const scrolledPageRef = useRef<{ pathname: string; search: string } | null>(null);
   const sectionNav = useSectionNav();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef<HTMLElement>(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
   const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(location.pathname);
-  const isSettingsRoute = location.pathname.startsWith("/settings");
+  const settingsOpen = readSettingsPath(location.search) !== null;
+  const pageSearch = withoutSettingsParam(location.search);
   const closeMobileMenu = useCallback(() => setIsMobileMenuOpen(false), []);
   const mobileMenuDialog = useModalDialog({
     open: mobileMenuPresence !== "closed",
@@ -142,9 +150,6 @@ function Layout({ children, headerActions }: LayoutProps) {
   const isActive = useCallback(
     (path: string) => {
       if (path === "/") return isDiscoverSectionActive;
-      if (path.startsWith("/settings")) {
-        return location.pathname.startsWith("/settings");
-      }
       if (path.startsWith("/shows")) {
         return location.pathname.startsWith("/shows");
       }
@@ -180,13 +185,6 @@ function Layout({ children, headerActions }: LayoutProps) {
         ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]
         : []),
       { path: "/blocklist", label: "Blocklist", icon: Ban },
-      { path: "/profile", label: "Profile", icon: User },
-      {
-        path: `/settings/${DEFAULT_SETTINGS_TAB}`,
-        label: "Settings",
-        icon: Settings,
-        permission: "accessSettings",
-      },
     ];
     return items.filter(
       (item) =>
@@ -374,9 +372,11 @@ function Layout({ children, headerActions }: LayoutProps) {
 
   useEffect(() => {
     const node = mainScrollRef.current;
-    const previousPathname = scrolledPathnameRef.current;
-    scrolledPathnameRef.current = location.pathname;
-    if (navigationType === "REPLACE" && previousPathname === location.pathname) {
+    const previous = scrolledPageRef.current;
+    scrolledPageRef.current = { pathname: location.pathname, search: pageSearch };
+    const samePath = previous?.pathname === location.pathname;
+    const samePage = samePath && previous?.search === pageSearch;
+    if ((navigationType === "REPLACE" && samePath) || samePage) {
       if (node) scrollPositionsRef.current.set(location.key, node.scrollTop);
       return undefined;
     }
@@ -399,7 +399,7 @@ function Layout({ children, headerActions }: LayoutProps) {
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [location.key, location.pathname, navigationType, updateMainScrollbar]);
+  }, [location.key, location.pathname, navigationType, pageSearch, updateMainScrollbar]);
 
   useEffect(() => {
     const update = () => updateMainScrollbar();
@@ -435,12 +435,7 @@ function Layout({ children, headerActions }: LayoutProps) {
       data-resizing={isResizing || undefined}
       style={{ "--sidebar-width": `${sidebarWidth}px` }}
     >
-      <Sidebar
-        mode={sidebarMode}
-        width={sidebarWidth}
-        settingsMode={isSettingsRoute}
-        onToggle={toggleSidebarPin}
-      />
+      <Sidebar mode={sidebarMode} width={sidebarWidth} onToggle={toggleSidebarPin} />
 
       <div
         className={`sidebar-resize-handle${isResizing ? " is-active" : ""}`}
@@ -481,7 +476,7 @@ function Layout({ children, headerActions }: LayoutProps) {
             </button>
           ) : null}
 
-          <GlobalSearch settingsMode={isSettingsRoute} />
+          <GlobalSearch />
 
           <div className="app-header-actions">
             <InboxMenu />
@@ -508,9 +503,7 @@ function Layout({ children, headerActions }: LayoutProps) {
 
         <div className="app-main-wrap">
           <main
-            className={`app-main${
-              isArtistDetailsRoute ? " app-main--artist-details" : ""
-            }${isSettingsRoute ? " app-main--settings" : ""}${
+            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}${
               isPlayerActive ? " app-main--player-active" : ""
             }`}
             ref={mainScrollRef}
@@ -578,6 +571,10 @@ function Layout({ children, headerActions }: LayoutProps) {
                     </RouteLink>
                   );
                 })}
+                <SettingsLink to="" className="app-mobile-menu__item" onClick={closeMobileMenu}>
+                  <Settings aria-hidden="true" />
+                  <span>Settings</span>
+                </SettingsLink>
                 {authRequired && canLogOut && (
                   <button
                     type="button"
@@ -631,6 +628,11 @@ function Layout({ children, headerActions }: LayoutProps) {
           </div>
         </nav>
       </div>
+      {settingsOpen ? (
+        <Suspense fallback={null}>
+          <SettingsModal />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

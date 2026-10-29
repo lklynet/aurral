@@ -2,7 +2,6 @@ import { useLocation } from "react-router";
 import RouteLink from "./RouteLink";
 import { useState, useEffect, useCallback, useMemo, type SyntheticEvent } from "react";
 import {
-  ArrowLeft,
   Activity,
   AudioWaveform,
   AlertTriangle,
@@ -17,7 +16,7 @@ import {
 } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
-import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
+import { SettingsLink } from "../pages/Settings/settingsRoute";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
 import {
   ACTIVITY_VIEWS,
@@ -41,7 +40,6 @@ import SidebarStageBackdrop, {
 type SidebarProps = {
   mode: "hidden" | "icons" | "full";
   width?: number;
-  settingsMode?: boolean;
   onToggle: () => void;
 };
 
@@ -57,7 +55,7 @@ type SidebarNavItem = {
   subnav?: SidebarNavView[];
 };
 
-function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarProps) {
+function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
   const logo = useSiteLogo();
@@ -66,12 +64,12 @@ function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarP
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
-  const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
+  const canManageServer = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
   });
   const { hasFailure: hasStorageFailure } = useStorageHealth({
-    enabled: canAccessSettings,
+    enabled: canManageServer,
   });
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
@@ -92,23 +90,11 @@ function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarP
   }, [user?.id]);
 
   const isIcons = mode === "icons" && isDesktop;
-  const isOnSettings = location.pathname.startsWith("/settings");
   const isOnLibrary = location.pathname === "/library" || location.pathname.startsWith("/library/");
   const isOnShows = location.pathname.startsWith("/shows");
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnWanted = location.pathname.startsWith("/activity/missing");
   const isOnActivity = !isOnWanted && location.pathname.startsWith("/activity");
-
-  const settingsTabs = useMemo(() => {
-    if (!canAccessSettings) return [];
-    return SETTINGS_NAV_TABS;
-  }, [canAccessSettings]);
-
-  const activeSettingsTab = useMemo(() => {
-    if (!isOnSettings) return null;
-    const segment = location.pathname.replace(/^\/settings\/?/, "").split("/")[0];
-    return segment || DEFAULT_SETTINGS_TAB;
-  }, [isOnSettings, location.pathname]);
 
   const activeShowsFilter = useMemo(() => {
     if (!isOnShows) return null;
@@ -343,36 +329,6 @@ function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarP
     return classes.join(" ");
   };
 
-  const renderSettingsNav = () =>
-    settingsTabs.map((tab) => {
-      const Icon = tab.icon;
-      const active = activeSettingsTab === tab.id;
-      return (
-        <div key={tab.id} className={`sidebar-nav-group${active ? " is-active-row" : ""}`}>
-          <RouteLink
-            to={`/settings/${tab.id}`}
-            onMouseEnter={(event) => {
-              if (isIcons) positionSidebarTooltip(event);
-            }}
-            onFocus={(event) => {
-              if (isIcons) positionSidebarTooltip(event);
-            }}
-            className={`sidebar-link ${isIcons ? "sidebar-link--icons" : "sidebar-link--full"}${
-              active ? " is-active" : ""
-            }`}
-            aria-label={isIcons ? tab.label : undefined}
-            aria-current={active ? "page" : undefined}
-          >
-            <span className="sidebar-link__icon-wrap">
-              <Icon className="sidebar-link__icon" aria-hidden="true" />
-            </span>
-            {!isIcons && <span className="sidebar-link__label">{tab.label}</span>}
-            {isIcons && <span className="sidebar-tooltip">{tab.label}</span>}
-          </RouteLink>
-        </div>
-      );
-    });
-
   return (
     <>
       <div
@@ -394,7 +350,7 @@ function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarP
       </div>
       <aside
         className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"} ${translateClass}`}
-        aria-label={settingsMode ? "Settings navigation" : "Primary navigation"}
+        aria-label="Primary navigation"
         style={{
           width: `${width}px`,
         }}
@@ -402,158 +358,96 @@ function Sidebar({ mode, width = 208, settingsMode = false, onToggle }: SidebarP
         <div className={`sidebar-body${isIcons ? " sidebar-body--icons" : ""}`}>
           <div className={`sidebar-nav-wrap${isIcons ? " sidebar-nav-wrap--icons" : ""}`}>
             <nav className="sidebar-nav">
-              {settingsMode
-                ? renderSettingsNav()
-                : navItems.map((item) => {
-                    const Icon = item.icon;
-                    const active = isNavItemActive(item);
-                    const showActivityDot = item.section === "activity" && hasReviewAlert;
-                    const activeSubnavId =
-                      item.section === "library"
-                        ? activeLibraryView
-                        : item.section === "shows"
-                          ? activeShowsFilter
-                          : item.section === "activity"
-                            ? activeActivityView
-                            : item.section === "wanted"
-                              ? activeWantedView
-                              : null;
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const active = isNavItemActive(item);
+                const showActivityDot = item.section === "activity" && hasReviewAlert;
+                const activeSubnavId =
+                  item.section === "library"
+                    ? activeLibraryView
+                    : item.section === "shows"
+                      ? activeShowsFilter
+                      : item.section === "activity"
+                        ? activeActivityView
+                        : item.section === "wanted"
+                          ? activeWantedView
+                          : null;
 
-                    return (
-                      <div key={item.path} className={getNavGroupClassName(item, active)}>
-                        <RouteLink
-                          to={item.path}
-                          onMouseEnter={(event) => {
-                            if (isIcons) positionSidebarTooltip(event);
-                          }}
-                          onFocus={(event) => {
-                            if (isIcons) positionSidebarTooltip(event);
-                          }}
-                          className={`sidebar-link ${
-                            isIcons ? "sidebar-link--icons" : "sidebar-link--full"
-                          }${active ? " is-active" : ""}`}
-                          aria-label={
-                            isIcons
-                              ? showActivityDot
-                                ? `${item.label} (active)`
-                                : item.label
-                              : undefined
-                          }
-                          aria-current={active ? "page" : undefined}
-                        >
-                          <span className="sidebar-link__icon-wrap">
-                            <Icon className="sidebar-link__icon" aria-hidden="true" />
-                            {showActivityDot ? (
-                              <span
-                                className="sidebar-link__activity sidebar-link__activity--review"
-                                aria-hidden="true"
-                              />
-                            ) : null}
-                          </span>
-                          {!isIcons && (
-                            <span className="sidebar-link__label">
-                              {item.label}
-                              {showActivityDot ? <span className="sr-only"> (active)</span> : null}
-                            </span>
-                          )}
-                          {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
-                        </RouteLink>
-                        {renderSubnav(item, activeSubnavId)}
-                      </div>
-                    );
-                  })}
+                return (
+                  <div key={item.path} className={getNavGroupClassName(item, active)}>
+                    <RouteLink
+                      to={item.path}
+                      onMouseEnter={(event) => {
+                        if (isIcons) positionSidebarTooltip(event);
+                      }}
+                      onFocus={(event) => {
+                        if (isIcons) positionSidebarTooltip(event);
+                      }}
+                      className={`sidebar-link ${
+                        isIcons ? "sidebar-link--icons" : "sidebar-link--full"
+                      }${active ? " is-active" : ""}`}
+                      aria-label={
+                        isIcons
+                          ? showActivityDot
+                            ? `${item.label} (active)`
+                            : item.label
+                          : undefined
+                      }
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <span className="sidebar-link__icon-wrap">
+                        <Icon className="sidebar-link__icon" aria-hidden="true" />
+                        {showActivityDot ? (
+                          <span
+                            className="sidebar-link__activity sidebar-link__activity--review"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </span>
+                      {!isIcons && (
+                        <span className="sidebar-link__label">
+                          {item.label}
+                          {showActivityDot ? <span className="sr-only"> (active)</span> : null}
+                        </span>
+                      )}
+                      {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
+                    </RouteLink>
+                    {renderSubnav(item, activeSubnavId)}
+                  </div>
+                );
+              })}
             </nav>
           </div>
 
-          {canAccessSettings && (
-            <div
-              className={`sidebar-settings-group${
-                isIcons || settingsMode ? "" : isOnSettings ? " sidebar-nav-group is-expanded" : ""
-              }`}
+          <div className="sidebar-settings-group">
+            <SettingsLink
+              to={hasStorageFailure ? "status" : ""}
+              onMouseEnter={isIcons ? positionSidebarTooltip : undefined}
+              onFocus={isIcons ? positionSidebarTooltip : undefined}
+              className={`sidebar-link sidebar-link--${isIcons ? "icons" : "full"}`}
+              aria-label={
+                isIcons ? (hasStorageFailure ? "Settings (storage issues)" : "Settings") : undefined
+              }
             >
-              {settingsMode ? (
-                <RouteLink
-                  to="/"
-                  onMouseEnter={positionSidebarTooltip}
-                  onFocus={positionSidebarTooltip}
-                  className={`sidebar-link sidebar-link--${isIcons ? "icons" : "full"}`}
-                  aria-label="Back to Aurral"
-                >
-                  <span className="sidebar-link__icon-wrap">
-                    <ArrowLeft className="sidebar-link__icon" aria-hidden="true" />
-                  </span>
-                  {!isIcons && <span className="sidebar-link__label">Back</span>}
-                  {isIcons && <span className="sidebar-tooltip">Back</span>}
-                </RouteLink>
-              ) : isIcons ? (
-                <RouteLink
-                  to={`/settings/${DEFAULT_SETTINGS_TAB}`}
-                  onMouseEnter={positionSidebarTooltip}
-                  onFocus={positionSidebarTooltip}
-                  className={`sidebar-link sidebar-link--icons${isOnSettings ? " is-active" : ""}`}
-                  aria-label={hasStorageFailure ? "Settings (storage issues)" : "Settings"}
-                  aria-current={isOnSettings ? "page" : undefined}
-                >
-                  <span className="sidebar-link__icon-wrap">
-                    <Settings className="sidebar-link__icon" aria-hidden="true" />
-                    {hasStorageFailure ? (
-                      <span
-                        className="sidebar-link__activity sidebar-link__activity--alert"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                  </span>
-                  <span className="sidebar-tooltip">Settings</span>
-                </RouteLink>
+              <span className="sidebar-link__icon-wrap">
+                <Settings className="sidebar-link__icon" aria-hidden="true" />
+                {hasStorageFailure ? (
+                  <span
+                    className="sidebar-link__activity sidebar-link__activity--alert"
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </span>
+              {isIcons ? (
+                <span className="sidebar-tooltip">Settings</span>
               ) : (
-                <>
-                  <RouteLink
-                    to={`/settings/${DEFAULT_SETTINGS_TAB}`}
-                    className={`sidebar-link sidebar-link--full${isOnSettings ? " is-active" : ""}`}
-                    aria-current={isOnSettings ? "page" : undefined}
-                  >
-                    <span className="sidebar-link__icon-wrap">
-                      <Settings className="sidebar-link__icon" aria-hidden="true" />
-                      {hasStorageFailure ? (
-                        <span
-                          className="sidebar-link__activity sidebar-link__activity--alert"
-                          aria-hidden="true"
-                        />
-                      ) : null}
-                    </span>
-                    <span className="sidebar-link__label">
-                      Settings
-                      {hasStorageFailure ? (
-                        <span className="sr-only"> (storage issues)</span>
-                      ) : null}
-                    </span>
-                  </RouteLink>
-
-                  {isOnSettings && (
-                    <nav className="sidebar-subnav" aria-label="Settings sections">
-                      {settingsTabs.map((tab) => {
-                        const tabActive = activeSettingsTab === tab.id;
-                        const showStorageAlert = tab.id === "storage-health" && hasStorageFailure;
-                        return (
-                          <RouteLink
-                            key={tab.id}
-                            to={`/settings/${tab.id}`}
-                            className={`sidebar-subnav-link${tabActive ? " is-active" : ""}`}
-                            aria-current={tabActive ? "page" : undefined}
-                          >
-                            {showStorageAlert ? (
-                              <span className="sidebar-subnav-link__alert" aria-hidden="true" />
-                            ) : null}
-                            <span>{tab.label}</span>
-                          </RouteLink>
-                        );
-                      })}
-                    </nav>
-                  )}
-                </>
+                <span className="sidebar-link__label">
+                  Settings
+                  {hasStorageFailure ? <span className="sr-only"> (storage issues)</span> : null}
+                </span>
               )}
-            </div>
-          )}
+            </SettingsLink>
+          </div>
         </div>
       </aside>
     </>

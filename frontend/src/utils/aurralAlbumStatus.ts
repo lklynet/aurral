@@ -19,8 +19,10 @@ const RETRY_STATUSES = new Set<string | null | undefined>(["failed", "cancelled"
 
 type RecoveryCode = "download_source_missing" | "review_required" | "source_failed";
 
-const RECOVERY_LINKS: Partial<Record<RecoveryCode, { to: string; label: string }>> = {
-  download_source_missing: { to: "/settings/download-clients", label: "Set up a download client" },
+type RecoveryLink = { label: string } & ({ to: string } | { settings: string });
+
+const RECOVERY_LINKS: Partial<Record<RecoveryCode, RecoveryLink>> = {
+  download_source_missing: { settings: "downloads", label: "Set up a download client" },
   review_required: { to: "/activity/queue", label: "Review in Activity" },
 };
 

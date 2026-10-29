@@ -5,21 +5,21 @@ description: Download tracks and albums from Usenet through Prowlarr and SABnzbd
 
 Usenet downloads need two parts:
 
-- **Prowlarr** searches your Usenet indexers. Connect it in **Settings > Indexers**.
-- **SABnzbd** or **NZBGet** downloads the results. Connect one of them in **Settings > Download clients**. You need only one.
+- **Prowlarr** searches your Usenet indexers. Connect it in **Settings > Downloads > Prowlarr**.
+- **SABnzbd** or **NZBGet** downloads the results. Connect one of them in **Settings > Downloads**. You need only one.
 
 ## Setup
 
 1. Run Prowlarr with one or more Usenet audio indexers.
 2. Run SABnzbd or NZBGet with a category for Aurral. The default category is `aurral`.
 3. Mount the same media root in Aurral and SABnzbd or NZBGet, at the same container path, so that Aurral can read the completed files. See [Filesystem and mounts](/getting-started/storage/).
-4. Open **Settings > Indexers**.
+4. Open **Settings > Downloads > Prowlarr**.
 5. Turn on **Enable Prowlarr**.
 6. Enter the Prowlarr URL and API key.
 7. Select **Test connection**.
 8. Select **Refresh indexers**.
 9. Turn on each indexer that Aurral can use, and set its priority.
-10. Open **Settings > Download clients**.
+10. Open **Settings > Downloads**.
 11. Turn on **Enable SABnzbd** or **Enable NZBGet**.
 12. Enter the URL and credentials.
 13. Select **Test connection**.
@@ -28,7 +28,7 @@ Settings save automatically after each change.
 
 ## Prowlarr
 
-The **Prowlarr** card in **Settings > Indexers** has these fields:
+**Settings > Downloads > Prowlarr** has these fields:
 
 - **Server URL**: the Prowlarr URL that Aurral can reach, for example `http://prowlarr:9696` in Docker.
 - **API key**: the Prowlarr API key.
@@ -39,7 +39,7 @@ After the connection test, Aurral lists the Usenet indexers from Prowlarr. Open 
 
 ## SABnzbd
 
-The **SABnzbd** card in **Settings > Download clients** has these fields:
+**Settings > Downloads > SABnzbd** has these fields:
 
 - **Server URL**: the SABnzbd URL that Aurral can reach, for example `http://sabnzbd:8080` in Docker.
 - **API key**: the SABnzbd API key.
@@ -49,7 +49,7 @@ The **SABnzbd** card in **Settings > Download clients** has these fields:
 
 ## NZBGet
 
-The **NZBGet** card in **Settings > Download clients** has these fields:
+**Settings > Downloads > NZBGet** has these fields:
 
 - **Server URL**: the NZBGet URL that Aurral can reach, for example `http://nzbget:6789` in Docker.
 - **Username** and **Password**.
@@ -62,7 +62,7 @@ The **NZBGet** card in **Settings > Download clients** has these fields:
 
 Aurral skips NZBGet's duplicate check for the releases it sends. Upgrading tracks one at a time can grab the same album release more than once, and NZBGet would otherwise delete the repeat as a duplicate.
 
-If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **NZBGet**.
+If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **NZBGet**.
 
 ## Behavior
 
@@ -90,7 +90,7 @@ Upgrades that start together look for their album's release together and share o
 
 ## Quality and upgrades
 
-The quality profile in **Settings > Download clients > Quality profile** sets the accepted tiers and the cutoff. Aurral reads each downloaded file before it accepts its quality. A quality rejection does not go to Queue review.
+The quality profile in **Settings > Downloads > Quality profile** sets the accepted tiers and the cutoff. Aurral reads each downloaded file before it accepts its quality. A quality rejection does not go to Queue review.
 
 Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playlists/#track-upgrades).
 

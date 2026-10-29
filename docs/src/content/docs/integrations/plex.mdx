@@ -69,7 +69,7 @@ A flow can include songs that you already have in another Plex library, for exam
 
 Aurral does not download a song again when it finds the song in Lidarr or in another playlist, whatever this setting says. But without this setting, Aurral cannot find that song in Plex, so the Plex playlist leaves it out.
 
-1. Open **Settings > Playback > Plex > Main library (optional)**.
+1. Open **Settings > Playback > Plex > Main library**.
 2. In **Include tracks from an existing library**, select the Plex library that holds those songs.
 3. Aurral checks whether it can read that library directly. If it cannot, it shows the path that Plex reported. Enter the same folder, as Aurral sees it, in **Local path for this library (optional)**.
 
@@ -111,7 +111,7 @@ Only an admin can do this, because only the admin's Plex connection can see the 
 
 A person invited to your Plex server signs in to Plex with their own Plex.tv account. They link it themselves:
 
-1. Open **Profile > Plex account**.
+1. Open **Settings > Profile > Plex account**.
 2. Select **Connect Plex account**.
 3. Approve the PIN in the Plex pop-up window.
 
@@ -121,7 +121,7 @@ A user can link only their own Plex account to their own Aurral account.
 
 Aurral creates the user's flows and static playlists in their own Plex account. The **Aurral** library itself stays on the admin connection. Only the playlist owner changes.
 
-If a linked Plex token stops working, Aurral tries once to reconnect a managed user through the admin connection. An invited user must reconnect from **Profile**. Until then, only that user's Plex playlists stop updating.
+If a linked Plex token stops working, Aurral tries once to reconnect a managed user through the admin connection. An invited user must reconnect from **Settings > Profile**. Until then, only that user's Plex playlists stop updating.
 
 ### Unlink or switch accounts
 
@@ -134,7 +134,7 @@ When you delete a flow or static playlist in Aurral, Aurral deletes every Plex p
 Users can sign in to Aurral with their Plex account.
 
 1. An admin opens **Settings > Playback > Plex** and turns on **Allow signing in to Aurral with Plex**. Plex must be connected first.
-2. Each user links their own Plex account in **Profile > Plex account**.
+2. Each user links their own Plex account in **Settings > Profile > Plex account**.
 3. The user can then select **Sign in with Plex** on the Aurral sign-in page.
 
 Plex sign-in never creates an Aurral account and never changes a role. A Plex account that is not linked cannot sign in. A Plex Home managed user linked by an admin cannot sign in this way. See [Users and authentication](/admin/users/#sign-in-with-google-or-plex).

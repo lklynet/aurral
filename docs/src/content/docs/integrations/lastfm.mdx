@@ -9,14 +9,13 @@ On artist pages, Aurral reads genres from BrainzMash first. For artists that Bra
 
 ## Add the API key
 
-An admin adds the Last.fm **API key** and **API secret** in **Settings > Connect > Last.fm**. Aurral uses the key for discovery data. It uses the key and the secret together to connect scrobbling accounts.
+An admin adds the Last.fm **API key** and **Shared secret** in **Settings > Discovery > Last.fm**. Aurral uses the key for discovery data. It uses the key and the secret together to connect scrobbling accounts.
 
 ## Scrobble to Last.fm
 
-1. Open **Settings > Playback > Scrobbling**.
-2. Turn on **Last.fm**.
-3. Select **Connect Last.fm account**.
-4. Approve access in the Last.fm window.
+1. Open **Settings > Listening > Scrobbling > Last.fm**.
+2. Select **Connect Last.fm**.
+3. Approve access in the Last.fm window.
 
 Aurral stores a Last.fm session key for each user. Navidrome is not required.
 
@@ -24,7 +23,7 @@ Each user connects their own account while signed in. The instance API key canno
 
 ## Per-user listening history
 
-Each user chooses a history source in **Profile > Listening history**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. Aurral reads it with the admin's API key, so without a key, choose ListenBrainz or Koito instead. To use only the plays recorded in Aurral, choose **Local only**.
+Each user chooses a history source in **Settings > Listening > History**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. Aurral reads it with the admin's API key, so without a key, choose ListenBrainz or Koito instead. To use only the plays recorded in Aurral, choose **Local only**.
 
 When a user chooses Last.fm, ListenBrainz, or Koito, Aurral combines the provider's history with the plays recorded in Aurral.
 
@@ -38,6 +37,6 @@ Aurral queues each play and retries temporary failures. Because of the retries, 
 
 ## Discovery settings
 
-An admin sets the refresh interval and the discovery mode in **Settings > Discover**. The modes are Safer, Balanced, and Deeper.
+An admin sets the refresh interval and the discovery mode in **Settings > Discovery**. The modes are Safer, Balanced, and Deeper.
 
-If Last.fm is unavailable, users can choose ListenBrainz or [Koito](/integrations/koito/) as their history source in **Profile**.
+If Last.fm is unavailable, users can choose ListenBrainz or [Koito](/integrations/koito/) as their history source in **Settings > Listening**.

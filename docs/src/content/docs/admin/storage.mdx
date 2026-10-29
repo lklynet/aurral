@@ -9,13 +9,13 @@ For the full mount setup, follow [Filesystem and mounts](/getting-started/storag
 
 ## Storage locations
 
-| Path             | Contents                                                                                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/config`        | The database, settings, users, sessions, caches, playlist jobs, and the default yt-dlp staging folder. Mount it with `./config:/config`. Do not share it with other applications.  |
-| `/data`          | The shared media root. Mount the same host folder here in Aurral, Lidarr, your download clients, and your playback servers.                                                        |
-| Downloads Folder | Aurral's permanent tracks, temporary flow tracks, and playlist artwork. Set it in **Settings > Download clients > Downloads Folder > Path**, for example `/data/downloads/aurral`. |
+| Path             | Contents                                                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/config`        | The database, settings, users, sessions, caches, playlist jobs, and the default yt-dlp staging folder. Mount it with `./config:/config`. Do not share it with other applications. |
+| `/data`          | The shared media root. Mount the same host folder here in Aurral, Lidarr, your download clients, and your playback servers.                                                       |
+| Downloads Folder | Aurral's permanent tracks, temporary flow tracks, and playlist artwork. Set it in **Settings > Library > Downloads folder > Path**, for example `/data/downloads/aurral`.         |
 
-yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount it and select it in **Settings > Download clients > yt-dlp > Staging path**. Keep this folder outside every media server library, so that servers do not scan unfinished files.
+yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount it and select it in **Settings > Downloads > yt-dlp > Staging path**. Keep this folder outside every media server library, so that servers do not scan unfinished files.
 
 ## Back up your data
 

@@ -84,7 +84,7 @@ function unreadableSampleFix(samplePath: string, rootPaths: string[]) {
     return `Lidarr reports this track outside its root folders (${rootPaths.join(", ")}), which usually means the artist folder was left behind by a root folder change. In Lidarr, open the artist, choose Edit, and move the files into the current root folder, or add the old location as a Lidarr root folder and mount it into Aurral.`;
   }
   return looksLikeExternalOnlyPath(samplePath)
-    ? "Lidarr reports a host path Aurral cannot read inside Docker. Mount the parent folder into Aurral, then add a manual Lidarr path mapping under Settings → System → Storage."
+    ? "Lidarr reports a host path Aurral cannot read inside Docker. Mount the parent folder into Aurral, then add a Lidarr path mapping under Settings → Downloads → Remote path mappings."
     : "Lidarr reports this file path, but Aurral cannot read it. Check Docker mounts and folder permissions (PUID/PGID). If Lidarr and Aurral intentionally use different container paths, add a manual Lidarr path mapping.";
 }
 

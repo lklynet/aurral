@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { SettingsLink } from "../pages/Settings/settingsRoute";
 import { User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import TooltipButton from "./TooltipButton";
@@ -63,15 +63,15 @@ function UserProfileMenu() {
         <div className="app-profile-menu__dropdown" role="menu">
           <ul className="app-profile-menu__list">
             <li role="none">
-              <Link
-                to="/profile"
+              <SettingsLink
+                to="profile"
                 role="menuitem"
                 className="app-profile-menu__item"
                 onClick={closeMenu}
               >
                 <User className="app-profile-menu__item-icon" />
                 <span>Profile</span>
-              </Link>
+              </SettingsLink>
             </li>
             <li role="none">
               <a

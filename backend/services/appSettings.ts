@@ -441,7 +441,7 @@ export async function saveAppSettings(
       : null;
   if (readOnlyOverlap) {
     return {
-      error: `The Downloads Folder cannot overlap the read-only folder ${readOnlyOverlap}. Choose another folder, or remove the read-only folder in Settings > Library files.`,
+      error: `The Downloads Folder cannot overlap the read-only folder ${readOnlyOverlap}. Choose another folder, or remove the read-only folder in Settings → Library.`,
     };
   }
 
