@@ -145,12 +145,12 @@ export function createThemePalette(seed: ThemeSeed) {
   const surface = normalizeHexColor(seed.background);
   const base = hexToOklch(surface);
   const shade = (delta: number, from = base.l) => oklchToHex({ ...base, l: from + delta });
-  const ladder = dark ? Math.max(base.l, 0.16) : base.l;
+  const ladder = dark ? Math.max(base.l, 0.11) : base.l;
   const toward = dark ? 1 : -1;
-  const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035), ladder);
-  const surfacePopover = shade(toward * (dark ? 0.1 : 0.075), ladder);
-  const surfaceHover = shade(toward * (dark ? 0.17 : 0.13), ladder);
-  const chrome = shade(dark ? -0.06 : -0.07);
+  const surfaceRaised = shade(toward * (dark ? 0.055 : 0.035), ladder);
+  const surfacePopover = dark ? surfaceRaised : shade(-0.075, ladder);
+  const surfaceHover = shade(toward * (dark ? 0.11 : 0.13), ladder);
+  const chrome = dark ? shade(0.02, ladder) : shade(-0.07);
 
   const textSeed =
     seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
@@ -177,12 +177,12 @@ export function createThemePalette(seed: ThemeSeed) {
     surfaceRaised,
     surfacePopover,
     surfaceHover,
-    surfaceSelected: mixColors(surface, accent, dark ? 0.16 : 0.1),
+    surfaceSelected: mixColors(dark ? shade(0, ladder) : surface, accent, dark ? 0.19 : 0.1),
     text,
     textMuted,
     textSubtle,
     border: withAlpha(text, 0.08),
-    borderStrong: withAlpha(text, 0.14),
+    borderStrong: withAlpha(text, dark ? 0.11 : 0.14),
     accent,
     accentContrast,
     ...status,

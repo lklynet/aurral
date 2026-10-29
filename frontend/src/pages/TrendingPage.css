@@ -123,7 +123,7 @@
 
 .trending-spark__dot {
   fill: var(--aurral-text);
-  stroke: var(--aurral-chrome);
+  stroke: var(--aurral-surface);
   stroke-width: 2;
   pointer-events: none;
 }

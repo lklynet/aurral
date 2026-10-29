@@ -138,7 +138,7 @@
   height: 2rem;
   margin-right: -0.5rem;
   overflow: hidden;
-  border: 2px solid var(--aurral-chrome);
+  border: 2px solid var(--aurral-surface);
   border-radius: 50%;
   background: var(--aurral-surface-raised);
 }

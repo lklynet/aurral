@@ -22,18 +22,25 @@
   --aurral-icon: 1.25rem;
   --aurral-icon-lg: 1.5rem;
   --aurral-icon-xl: 2rem;
-  --aurral-chrome: light-dark(#efefef, #000000);
+  --aurral-chrome: light-dark(#efefef, #070707);
   --aurral-surface: light-dark(#ffffff, #000000);
   --aurral-text-subtle: light-dark(#737373, #8a8a8a);
   --aurral-text-muted: light-dark(#525252, #b3b3b3);
   --aurral-text: light-dark(#171717, #ffffff);
   --aurral-accent: light-dark(#171717, #ffffff);
   --aurral-accent-contrast: light-dark(#ffffff, #000000);
-  --aurral-surface-raised: light-dark(#f1f1f1, #181818);
-  --aurral-surface-popover: light-dark(#e4e4e4, #282828);
-  --aurral-surface-glass: var(--aurral-surface-popover);
-  --aurral-surface-hover: light-dark(#d0d0d0, #3a3a3a);
-  --aurral-surface-selected: light-dark(#e2e2e2, #232323);
+  --aurral-surface-raised: light-dark(#f1f1f1, #0e0e0e);
+  --aurral-surface-popover: light-dark(#e4e4e4, #0e0e0e);
+  --aurral-surface-glass: light-dark(
+    var(--aurral-surface-popover),
+    color-mix(in srgb, var(--aurral-surface-popover) 84%, transparent)
+  );
+  --aurral-surface-modal: light-dark(
+    var(--aurral-surface-raised),
+    color-mix(in srgb, var(--aurral-surface) 80%, transparent)
+  );
+  --aurral-surface-hover: light-dark(#d0d0d0, #1b1b1b);
+  --aurral-surface-selected: light-dark(#e2e2e2, #1e1e1e);
   --aurral-surface-mid: var(--aurral-surface-raised);
   --aurral-overlay: var(--aurral-surface-popover);
   --aurral-overlay-hover: var(--aurral-surface-hover);
@@ -66,8 +73,8 @@
   --aurral-warning: light-dark(#b45309, #f59e0b);
   --aurral-ring: light-dark(#17171775, #ffffff75);
   --aurral-scrim: light-dark(#e5e7ebb8, #000000b8);
-  --aurral-border: light-dark(#17171714, #ffffff1a);
-  --aurral-border-strong: light-dark(#17171724, #ffffff24);
+  --aurral-border: light-dark(#17171714, #ffffff14);
+  --aurral-border-strong: light-dark(#17171724, #ffffff1c);
   --aurral-shadow-popover: 0 12px 32px rgb(0 0 0 / 0.28);
   --aurral-shadow-modal: 0 24px 64px rgb(0 0 0 / 0.38);
   --aurral-shadow-action-icon: 0 1px 1px rgb(0 0 0 / 55%);
@@ -15527,6 +15534,7 @@ a.blocklist-page__name:focus-visible {
   border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-glass);
   box-shadow: var(--aurral-shadow-popover);
+  backdrop-filter: blur(16px) saturate(1.08);
 }
 
 .artist-modal,
@@ -15536,7 +15544,7 @@ a.blocklist-page__name:focus-visible {
 .playlist-modal,
 .arr-modal {
   border: 1px solid var(--aurral-border-strong);
-  background: var(--aurral-surface-raised);
+  background: var(--aurral-surface-modal);
   box-shadow: var(--aurral-shadow-modal);
 }
 
@@ -15643,6 +15651,7 @@ a.blocklist-page__name:focus-visible {
   border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-glass);
   box-shadow: var(--aurral-shadow-popover);
+  backdrop-filter: blur(16px) saturate(1.08);
 }
 
 .app-toast--success .app-toast__icon {
@@ -16605,10 +16614,6 @@ a.blocklist-page__name:focus-visible {
   padding-inline: 0.5rem;
 }
 
-.sidebar-shell {
-  border-inline-end: 1px solid var(--aurral-border);
-}
-
 .sidebar-nav-wrap {
   padding-top: 0.875rem;
 }
@@ -16658,14 +16663,10 @@ a.blocklist-page__name:focus-visible {
   box-shadow: var(--aurral-shadow-popover);
 }
 
-.app-profile-menu__dropdown,
-.app-update-indicator__popover,
-.reload-prompt {
-  background: var(--aurral-surface-popover);
-}
-
-.app-inbox-menu__dropdown {
-  background: var(--aurral-overlay);
+.app-inbox-menu__dropdown,
+.app-update-indicator__popover {
+  background: var(--aurral-surface-glass);
+  backdrop-filter: blur(16px) saturate(1.08);
 }
 
 .app-profile-menu__list,

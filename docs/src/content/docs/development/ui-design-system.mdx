@@ -45,15 +45,18 @@ Track rows have no dividers. On devices with a mouse, the track number turns int
 
 ## Color and surfaces
 
-The dark theme uses a true black page. Raised and selected surfaces step up in small, neutral increments:
+The dark theme uses a true black page. The sidebar and top bar sit one step lighter, and everything else steps up in small, neutral increments:
 
-| Token                                 | Dark value | Use                               |
-| ------------------------------------- | ---------- | --------------------------------- |
-| `--aurral-surface`, `--aurral-chrome` | `#000`     | Page and app chrome               |
-| `--aurral-surface-raised`             | `#181818`  | Inputs, cards that need a surface |
-| `--aurral-surface-selected`           | `#232323`  | Row hover and the active row      |
-| `--aurral-surface-popover`            | `#282828`  | Menus and popovers                |
-| `--aurral-surface-hover`              | `#3a3a3a`  | Hover on raised controls          |
+| Token                       | Dark value              | Use                               |
+| --------------------------- | ----------------------- | --------------------------------- |
+| `--aurral-surface`          | `#000`                  | Page                              |
+| `--aurral-chrome`           | `#070707`               | Sidebar, top bar, player          |
+| `--aurral-surface-raised`   | `#0e0e0e`               | Inputs, cards that need a surface |
+| `--aurral-surface-popover`  | `#0e0e0e`               | Opaque popovers and sheets        |
+| `--aurral-surface-glass`    | popover at 84%, blurred | Menus, suggestions, toasts        |
+| `--aurral-surface-modal`    | black at 80%            | Modals                            |
+| `--aurral-surface-hover`    | `#1b1b1b`               | Hover on rows and controls        |
+| `--aurral-surface-selected` | `#1e1e1e`               | The active row                    |
 
 Text uses `--aurral-text` (white), `--aurral-text-muted` for secondary text, and `--aurral-text-subtle` for metadata and placeholders. `--aurral-accent` is white in the dark theme. Immersive mode tints it from artwork, so components use the token and never pick a color.
 

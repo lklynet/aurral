@@ -91,6 +91,17 @@ test("every theme is readable in light and dark, including low-contrast and one-
         mode === "dark",
         `${label} surface matches its mode`,
       );
+      assert.equal(
+        luminance(palette.chrome) > luminance(palette.surface),
+        mode === "dark",
+        `${label} rails sit a step toward the text`,
+      );
+      if (mode === "dark") {
+        assert.ok(
+          luminance(palette.surfaceSelected) > luminance(palette.chrome),
+          `${label} selected rows stand out from the rails`,
+        );
+      }
       assert.ok(contrast(palette.text, palette.surfacePopover) >= 7, `${label} text`);
       assert.ok(contrast(palette.textMuted, palette.surfacePopover) >= 4.5, `${label} muted text`);
       assert.ok(contrast(palette.textSubtle, palette.surfacePopover) >= 3, `${label} subtle text`);
@@ -411,7 +422,7 @@ test("album art tints the accent while immersive mode is on, which it is by defa
   const surface = variables.get("--aurral-surface");
   assert.ok(accent && surface);
   assert.equal(surface, "#000000");
-  assert.equal(variables.get("--aurral-surface-raised"), "#181818");
+  assert.equal(variables.get("--aurral-surface-raised"), "#0e0e0e");
   assert.ok(
     Number.parseInt(accent.slice(1, 3), 16) > Number.parseInt(accent.slice(5, 7), 16),
     "accent stays red",
