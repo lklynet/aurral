@@ -6,6 +6,7 @@ import footage from "./wrapped-intro.mp4?url";
 
 const GLYPHS = "Youryearinmusic.playsJFMAMJJASOND0123456789,";
 const WAIT = 1500;
+const FADE = 0.6;
 
 function findSlide(slide: RefObject<HTMLDivElement | null>, alive: () => boolean) {
   const started = performance.now();
@@ -108,6 +109,7 @@ export default function WrappedIntro({
           }
           if (t >= film.end) return finish();
           film.draw(context, t);
+          canvas.style.opacity = String(Math.min(1, (film.end - t) / FADE));
           frame = requestAnimationFrame(tick);
         };
         frame = requestAnimationFrame(tick);
