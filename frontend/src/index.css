@@ -26,6 +26,7 @@
   --aurral-surface: light-dark(#ffffff, #000000);
   --aurral-text-subtle: light-dark(#737373, #8a8a8a);
   --aurral-text-muted: light-dark(#525252, #b3b3b3);
+  --aurral-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23b3b3b3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
   --aurral-text: light-dark(#171717, #ffffff);
   --aurral-accent: light-dark(#171717, #ffffff);
   --aurral-accent-contrast: light-dark(#ffffff, #000000);
@@ -134,6 +135,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --aurral-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23525252' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="dark"] {
@@ -143,6 +145,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
+    --aurral-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23525252' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
   }
 }
 
@@ -249,6 +252,16 @@ textarea {
   color: inherit;
   margin: 0;
   border: 0;
+}
+
+select {
+  --select-inset: 0.75rem;
+  appearance: none;
+  padding-right: calc(var(--select-inset) * 2 + 0.75rem);
+  background-image: var(--aurral-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right var(--select-inset) center;
+  background-size: 0.75rem 0.5rem;
 }
 
 option {
@@ -910,6 +923,10 @@ textarea {
 
 .input--tall {
   height: 2.75rem;
+}
+
+select.input {
+  padding-right: 2.25rem;
 }
 
 .label {
@@ -4960,35 +4977,17 @@ textarea {
   width: 100%;
   height: 2.5rem;
   padding: 0 2.25rem 0 0.75rem;
-  background: transparent;
+  background-color: transparent;
   color: var(--aurral-text);
   font-size: var(--aurral-font-base);
   outline: none;
   border-radius: 0 !important;
-  appearance: none;
   cursor: pointer;
 }
 
 .artist-modal-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.artist-modal-field::after {
-  content: "";
-  position: absolute;
-  right: 0.875rem;
-  top: 50%;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-right: 2px solid var(--aurral-text-muted);
-  border-bottom: 2px solid var(--aurral-text-muted);
-  transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
-}
-
-.artist-modal-field--text::after {
-  display: none;
 }
 
 .artist-modal__actions .btn {
@@ -8286,11 +8285,12 @@ textarea {
 }
 
 .native-library-sort select {
+  --select-inset: 0rem;
   max-width: 8rem;
   padding: 0 1.25rem 0 0.25rem;
   border: 0;
   outline: 0;
-  background: transparent;
+  background-color: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -8332,10 +8332,11 @@ textarea {
 .native-library-filter-panel select {
   min-width: 10rem;
   height: 1.9rem;
-  padding: 0 1.5rem 0 0.45rem;
+  --select-inset: 0.45rem;
+  padding: 0 1.65rem 0 0.45rem;
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius-sm);
-  background: transparent;
+  background-color: transparent;
   color: var(--aurral-text);
   font: inherit;
 }
@@ -12408,7 +12409,7 @@ button.native-library-genre-row:focus-visible {
   height: 2.5rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--aurral-border);
-  background: var(--aurral-surface-raised);
+  background-color: var(--aurral-surface-raised);
   color: var(--aurral-text);
   box-sizing: border-box;
   font-family: inherit;
@@ -12431,7 +12432,7 @@ button.native-library-genre-row:focus-visible {
 @media (hover: hover) and (pointer: fine) {
   .flow-page__field-control:hover:not(:disabled) {
     border-color: var(--aurral-border-strong);
-    background: var(--aurral-surface-hover);
+    background-color: var(--aurral-surface-hover);
   }
 }
 
@@ -12465,7 +12466,7 @@ button.native-library-genre-row:focus-visible {
   height: 2.25rem;
   min-height: 2.25rem;
   padding: 0 0.75rem;
-  background: transparent;
+  background-color: transparent;
   border: 0;
   border-radius: var(--aurral-radius-sm);
 }
@@ -12477,18 +12478,7 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__field-round--select .flow-page__field-select {
   width: 100%;
-  padding-right: 2.5rem;
-}
-
-.flow-page__field-round--select .flow-page__select-icon {
-  position: absolute;
-  top: 50%;
-  right: 0.75rem;
-  width: 1rem;
-  height: 1rem;
-  color: var(--aurral-text-muted);
-  pointer-events: none;
-  transform: translateY(-50%);
+  padding-right: 2.25rem;
 }
 
 .flow-page__field-input--size {
@@ -12887,12 +12877,6 @@ button.native-library-genre-row:focus-visible {
   display: none;
 }
 
-.flow-page__field-select {
-  width: 100%;
-  padding-right: 2.5rem;
-  appearance: none;
-}
-
 .flow-page__track-status-dot {
   display: inline-block;
   width: 0.5rem;
@@ -13273,7 +13257,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .playlist-import__config .input {
-  background: var(--aurral-surface-raised);
+  background-color: var(--aurral-surface-raised);
   border: 1px solid var(--aurral-border);
 }
 
