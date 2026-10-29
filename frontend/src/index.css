@@ -3951,12 +3951,20 @@ textarea {
 }
 
 .artist-release-card:focus-within {
-  background-color: var(--aurral-surface-selected);
+  background-color: var(--card-tint-surface, var(--aurral-surface-selected));
+}
+
+.artist-release-card:focus-within .artist-release-card__meta {
+  color: var(--card-tint-text, var(--aurral-text-muted));
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-release-card:hover:not(:disabled) {
-    background-color: var(--aurral-surface-selected);
+    background-color: var(--card-tint-surface, var(--aurral-surface-selected));
+  }
+
+  .artist-release-card:hover:not(:disabled) .artist-release-card__meta {
+    color: var(--card-tint-text, var(--aurral-text-muted));
   }
 }
 
@@ -4615,12 +4623,12 @@ textarea {
 }
 
 .artist-similar-card:focus-within {
-  background-color: var(--aurral-surface-raised);
+  background-color: var(--card-tint-surface, var(--aurral-surface-raised));
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-similar-card:hover {
-    background-color: var(--aurral-surface-raised);
+    background-color: var(--card-tint-surface, var(--aurral-surface-raised));
   }
 }
 
@@ -5692,26 +5700,21 @@ textarea {
   transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
-.artist-discover-card.is-tinted {
-  --card-hover-surface: color-mix(in oklch, var(--card-tint) 35%, var(--aurral-surface-raised));
-  --card-hover-meta: color-mix(in oklch, var(--card-tint-text) 65%, var(--aurral-text-muted));
-}
-
 .artist-discover-card:focus-within {
-  background-color: var(--card-hover-surface, var(--aurral-surface-selected));
+  background-color: var(--card-tint-surface, var(--aurral-surface-selected));
 }
 
-.artist-discover-card.is-tinted:focus-within .artist-card-meta--discover {
-  color: var(--card-hover-meta);
+.artist-discover-card:focus-within .artist-card-meta--discover {
+  color: var(--card-tint-text, var(--aurral-text-muted));
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-discover-card:hover {
-    background-color: var(--card-hover-surface, var(--aurral-surface-selected));
+    background-color: var(--card-tint-surface, var(--aurral-surface-selected));
   }
 
-  .artist-discover-card.is-tinted:hover .artist-card-meta--discover {
-    color: var(--card-hover-meta);
+  .artist-discover-card:hover .artist-card-meta--discover {
+    color: var(--card-tint-text, var(--aurral-text-muted));
   }
 }
 

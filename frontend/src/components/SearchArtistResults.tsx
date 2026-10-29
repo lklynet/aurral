@@ -7,6 +7,7 @@ import Tooltip from "./Tooltip";
 import RouteLink from "./RouteLink";
 import type { SearchImageMap } from "./SearchMixedResultList";
 import type { ArtistFeedbackAction } from "../utils/artistTaste";
+import { artworkHoverTint } from "../utils/imageColors.ts";
 
 type SearchArtistLifeSpan = {
   begin?: string | null;
@@ -195,6 +196,7 @@ function SearchArtistResults({
             className="artist-discover-card artist-discover-card--artist"
             data-artwork-scope
             data-library-menu-target
+            {...artworkHoverTint}
           >
             {cover}
 

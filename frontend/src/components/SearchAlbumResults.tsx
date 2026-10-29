@@ -9,6 +9,7 @@ import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { OptionalLink } from "./RouteLink";
 import Tooltip from "./Tooltip";
 import type { SearchImageMap } from "./SearchMixedResultList";
+import { artworkHoverTint } from "../utils/imageColors.ts";
 
 export type SearchAlbum = {
   id: string;
@@ -205,7 +206,11 @@ function SearchAlbumResults({
     }
 
     return (
-      <article key={album.id} className="artist-release-card search-album-results__item">
+      <article
+        key={album.id}
+        className="artist-release-card search-album-results__item"
+        {...artworkHoverTint}
+      >
         <div className="search-album-results__cover-wrap">
           <OptionalLink
             link={openAlbum}

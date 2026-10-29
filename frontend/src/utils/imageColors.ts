@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FocusEvent, type PointerEvent } from "react";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 import { cacheImageLocally } from "./api/endpoints/images.ts";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.ts";
+import { getThemeDocument } from "./theme.ts";
 import { hexToOklch, oklchToHex, pickVividColor } from "./themeColor.ts";
 
 type ArtworkWash = NonNullable<ReturnType<typeof pickArtworkWash>>;
@@ -135,3 +136,29 @@ export function useArtworkWash(src: string | null | undefined) {
   }, [artwork]);
   return artwork && wash?.src === artwork ? wash.value : null;
 }
+
+function tintCard(card: HTMLElement) {
+  if (!getThemeDocument().matchArtwork) {
+    card.style.removeProperty("--card-tint-surface");
+    card.style.removeProperty("--card-tint-text");
+    return;
+  }
+  void extractArtworkWash(card.querySelector("img")?.currentSrc).then((wash) => {
+    if (!wash || !getThemeDocument().matchArtwork) return;
+    card.style.setProperty(
+      "--card-tint-surface",
+      `color-mix(in oklch, light-dark(${wash.light}, ${wash.dark}) 35%, var(--aurral-surface-raised))`,
+    );
+    card.style.setProperty(
+      "--card-tint-text",
+      `color-mix(in oklch, light-dark(${wash.dark}, ${wash.light}) 65%, var(--aurral-text-muted))`,
+    );
+  });
+}
+
+export const artworkHoverTint = {
+  onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "touch") tintCard(event.currentTarget);
+  },
+  onFocus: (event: FocusEvent<HTMLElement>) => tintCard(event.currentTarget),
+};

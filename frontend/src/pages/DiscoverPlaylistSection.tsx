@@ -4,6 +4,7 @@ import { ListMusic } from "../components/icons";
 import { DiscoverRail } from "../components/DiscoverRail";
 import RouteLink from "../components/RouteLink";
 import Tooltip from "../components/Tooltip";
+import { artworkHoverTint } from "../utils/imageColors.ts";
 
 export interface EditorialShelfPlaylist {
   id: string;
@@ -19,7 +20,11 @@ function EditorialPlaylistCard({ playlist }: { playlist: EditorialShelfPlaylist 
   const [failedArtwork, setFailedArtwork] = useState(false);
   return (
     <div className="artist-discover-shelf-card">
-      <div className="artist-discover-card artist-discover-card--playlist" data-artwork-scope>
+      <div
+        className="artist-discover-card artist-discover-card--playlist"
+        data-artwork-scope
+        {...artworkHoverTint}
+      >
         <div className="artist-discover-card__cover" data-artwork>
           {playlist.artworkUrl && !failedArtwork ? (
             <ArtworkImage

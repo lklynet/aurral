@@ -15,6 +15,7 @@ import ArtistImage from "../../../components/ArtistImage";
 import { ArtistContextMenu } from "../../../components/ArtistContextMenu";
 import TooltipButton from "../../../components/TooltipButton";
 import RouteLink from "../../../components/RouteLink";
+import { artworkHoverTint } from "../../../utils/imageColors.ts";
 
 type SimilarArtist = SimilarArtistsResponse["artists"][number];
 
@@ -158,6 +159,7 @@ export function ArtistDetailsSimilar({
                   className="artist-similar-card"
                   data-artwork-scope
                   data-library-menu-target
+                  {...artworkHoverTint}
                 >
                   <div className="artist-similar-avatar" data-artwork>
                     <ArtistImage

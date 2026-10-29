@@ -25,6 +25,7 @@ import { getApiErrorMessage } from "./onboardingUtils";
 import { TrendingArtistsRail } from "./TrendingArtistsRail";
 import { useEditorialShelf } from "./useEditorialShelf";
 import { useTrackSaveActions } from "./useTrackSaveActions";
+import { artworkHoverTint } from "../utils/imageColors.ts";
 import "./TrendingPage.css";
 
 type TrendingCharts = InferResponseType<typeof discoveryClient.trending.$get, 200>;
@@ -427,6 +428,7 @@ export default function TrendingPage() {
                   <div
                     className="artist-discover-card artist-discover-card--album"
                     data-artwork-scope
+                    {...artworkHoverTint}
                   >
                     <div className="artist-discover-card__cover" data-artwork>
                       {album.artworkUrl ? (
