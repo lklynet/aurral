@@ -17,7 +17,7 @@ export function useBlockedGenres() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const queryKey = queryKeys.blockedTags(user?.id);
-  const { data: blockedGenres = EMPTY_GENRES } = useQuery({
+  const { data: blockedGenres = EMPTY_GENRES, isLoading } = useQuery({
     queryKey,
     queryFn: async () => (await parseResponse(blockedTagsClient.$get())).tags,
     enabled: user?.id != null,
@@ -68,5 +68,6 @@ export function useBlockedGenres() {
     isGenreBlocked,
     setGenreBlocked,
     pendingGenre: isPending ? variables.genre : null,
+    isLoading,
   };
 }

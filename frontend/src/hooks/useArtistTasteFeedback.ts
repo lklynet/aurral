@@ -213,5 +213,6 @@ export function useArtistTasteFeedback() {
     lookup,
     getFeedbackFlags,
     submitFeedback,
+    isLoading: feedbackQuery.isLoading,
   };
 }
