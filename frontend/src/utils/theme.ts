@@ -150,7 +150,7 @@ export function createThemePalette(seed: ThemeSeed) {
   const surfaceRaised = shade(toward * (dark ? 0.055 : 0.035), ladder);
   const surfacePopover = dark ? surfaceRaised : shade(-0.075, ladder);
   const surfaceHover = shade(toward * (dark ? 0.11 : 0.13), ladder);
-  const chrome = dark ? shade(0.02, ladder) : shade(-0.07);
+  const chrome = dark ? shade(0.005, ladder) : shade(-0.07);
 
   const textSeed =
     seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
