@@ -1,7 +1,7 @@
 import axios from "../../../lib/axiosFetch.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
-import type { LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
+import type { LibraryArtistsRow, LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
 import { lastfmRequest } from "../apiClients/lastfm.ts";
 import { listenbrainzRequest } from "../apiClients/listenbrainz.ts";
 import { getListenHistoryProfile } from "../listeningHistory.ts";
@@ -12,6 +12,8 @@ import { PlexClient } from "../plex.ts";
 import { plexConnectionStore } from "../plex/plexConnectionStore.ts";
 import { JellyfinClient } from "../jellyfin.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
+import { guessArtistMbid } from "../artistMatch.ts";
+import { fetchDeezerArtistImageUrl } from "../releaseGroupCoverService.ts";
 import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
 import { buildImageProxyUrl, warmImageProxy, warmPublicImageUrl } from "../imageProxyService.ts";
 import getSharp from "../sharpConfig.ts";
@@ -558,16 +560,49 @@ async function artworkColor(source: string) {
   );
 }
 
+async function cachedImage(...sources: (string | null | undefined)[]) {
+  for (const source of sources) {
+    const url = buildImageProxyUrl(source);
+    if (url && (await warmPublicImageUrl(url))) return url;
+  }
+  return null;
+}
+
+async function artistPhoto({
+  name,
+  album,
+  mbid,
+}: {
+  name: string;
+  album: string | null;
+  mbid: string | null;
+}) {
+  const known =
+    mbid ||
+    db
+      .prepare<[string], Pick<LibraryArtistsRow, "mbid">>(
+        "SELECT mbid FROM library_artists WHERE name = ? COLLATE NOCASE AND mbid IS NOT NULL",
+      )
+      .get(name)?.mbid ||
+    (await guessArtistMbid(name, { album }));
+  const photo = known
+    ? (await getArtistImage(known, { artistName: name }).catch(() => null))?.url
+    : null;
+  return photo || fetchDeezerArtistImageUrl({ artistName: name });
+}
+
 export async function buildWrappedSummary(userId: number, period: Period) {
   const history = await collectWrappedHistory(userId, period);
   const summary = calculateWrapped(history.plays, period, enrichFromLibrary);
+  const covers = [...summary.topSongs, ...summary.topAlbums];
+  await Promise.all(covers.map(async (row) => (row.artwork = await cachedImage(row.artwork))));
   await Promise.all(
     summary.topArtists.map(async (artist) => {
-      if (!artist.mbid) return;
-      try {
-        artist.artwork =
-          (await getArtistImage(artist.mbid, { artistName: artist.name })).url || artist.artwork;
-      } catch {}
+      artist.artwork = await cachedImage(
+        await artistPhoto(artist),
+        artist.artwork,
+        ...covers.filter((row) => wrappedKey(row.artist) === artist.key).map((row) => row.artwork),
+      );
     }),
   );
   const featured = summary.topSongs.slice(0, 5);
@@ -606,8 +641,5 @@ export async function buildWrappedSummary(userId: number, period: Period) {
         song.beats = await songBeats(song);
       }),
   );
-  const rows = [...summary.topSongs, ...summary.topArtists, ...summary.topAlbums];
-  for (const row of rows) row.artwork = buildImageProxyUrl(row.artwork);
-  await Promise.all(rows.map((row) => row.artwork && warmPublicImageUrl(row.artwork)));
   return { ...summary, sources: history.sources };
 }
