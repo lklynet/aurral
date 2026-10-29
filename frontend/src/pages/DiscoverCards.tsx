@@ -83,13 +83,14 @@ export const ArtistCard = memo(
     getLibraryLink,
     onFeedback,
     feedbackUsed = {},
+    hideLibraryCheck = false,
   }: {
     artist: DiscoverCardArtist;
     isInLibrary: boolean;
     getLibraryLink: (artist: DiscoverCardArtist) => { to: string } | null;
     onFeedback?: DiscoverFeedbackHandler;
     feedbackUsed?: Partial<Record<"more_like_this" | "less_like_this" | "block_artist", boolean>>;
-    status?: string;
+    hideLibraryCheck?: boolean;
   }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
@@ -134,7 +135,7 @@ export const ArtistCard = memo(
                   {artist.name}
                 </span>
               </Tooltip>
-              {isInLibrary && <SearchLibraryCheck size="discover" />}
+              {isInLibrary && !hideLibraryCheck && <SearchLibraryCheck size="discover" />}
             </div>
             {artistMetaText ? (
               <Tooltip content={artistMetaText}>
@@ -172,7 +173,7 @@ export const ArtistCard = memo(
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       prevProps.artist.subtitleDetail === nextProps.artist.subtitleDetail &&
       prevProps.artist.metaText === nextProps.artist.metaText &&
-      prevProps.status === nextProps.status &&
+      prevProps.hideLibraryCheck === nextProps.hideLibraryCheck &&
       prevProps.isInLibrary === nextProps.isInLibrary &&
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&
       prevProps.feedbackUsed?.less_like_this === nextProps.feedbackUsed?.less_like_this &&

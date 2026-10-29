@@ -4196,8 +4196,16 @@ textarea {
 }
 
 .artist-track-row--preview {
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 2.5rem 2.5rem minmax(0, 1fr) auto;
   gap: 0.75rem;
+}
+
+.artist-track-thumb {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--aurral-radius-xs);
+  background: var(--aurral-surface-raised);
+  object-fit: cover;
 }
 
 .artist-track-row--preview > :is(.artist-track-number, .btn-track-play-lg) {
@@ -5736,33 +5744,6 @@ textarea {
   height: 1rem;
 }
 
-.artist-discover-hero__tags-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  padding-top: 0.25rem;
-  color: var(--aurral-text-subtle);
-  font-size: var(--aurral-font-sm);
-}
-
-.artist-discover-hero__tags-section > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.75rem;
-}
-
-.artist-discover-hero__tags-section-title {
-  color: var(--aurral-text-subtle);
-  font-weight: 400;
-}
-
-.artist-tag-list--discover {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.125rem 0.75rem;
-}
-
 .artist-discover-card {
   position: relative;
   display: flex;
@@ -5915,6 +5896,17 @@ textarea {
   ) {
   position: relative;
   z-index: calc(var(--aurral-z-raised) + 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .artist-discover-card .artist-discover-card__menu {
+    opacity: 0;
+  }
+
+  .artist-discover-card:is(:hover, :focus-within) .artist-discover-card__menu,
+  .artist-discover-card__menu:has([aria-expanded="true"]) {
+    opacity: 1;
+  }
 }
 
 .artist-discover-card__menu,
@@ -6440,7 +6432,7 @@ textarea {
     padding-bottom: 1.25rem;
   }
 
-  .artist-discover-hero__tags-section {
+  .artist-discover-hero__based-on--tags {
     display: none;
   }
 
@@ -9577,6 +9569,12 @@ button.native-library-genre-row:focus-visible {
   --native-library-track-columns: 2rem 2rem minmax(10rem, 1fr) 4.5rem 1.7rem 1.7rem 1.7rem;
 
   min-width: 0;
+}
+
+.native-library-track-list--release .native-library-track:not(.native-library-track--heading) {
+  min-height: 3rem;
+  padding-block: 0.125rem;
+  contain-intrinsic-block-size: auto 3rem;
 }
 
 @media (max-width: 760px) {
@@ -15625,6 +15623,21 @@ button.native-library-genre-row:focus-visible {
   font-size: var(--aurral-font-display);
   font-weight: 700;
   letter-spacing: var(--aurral-tracking-display);
+}
+
+@media (min-width: 768px) {
+  .artist-details-page .artist-action-bar__inner {
+    justify-content: flex-start;
+  }
+
+  .artist-details-page .artist-action-bar__group {
+    flex: 0 1 auto;
+  }
+
+  .artist-details-page .artist-action-bar .artist-dropdown--right {
+    right: auto;
+    left: 0;
+  }
 }
 
 .artist-details-page .artist-action-bar {

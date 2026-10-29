@@ -86,6 +86,17 @@ export function ArtistDetailsPreviewTracks({
                       <Play className="artist-icon-sm" />
                     )}
                   </TooltipButton>
+                  {track.artworkUrl ? (
+                    <img
+                      className="artist-track-thumb"
+                      src={track.artworkUrl}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span className="artist-track-thumb" aria-hidden="true" />
+                  )}
                   <div className="artist-track-cell">
                     <p className="artist-track-title">{track.title}</p>
                     <p className="artist-track-subtitle">{track.album || "Preview available"}</p>

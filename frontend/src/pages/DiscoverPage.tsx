@@ -57,6 +57,9 @@ const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$
 const saveServerLayout = (layout: DiscoverSection[]) =>
   parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } }));
 
+const TOP_TAG_PREVIEW = 8;
+const TOP_TAG_LIMIT = 30;
+
 const SECTION_CARD_KINDS = new Map<
   string,
   NonNullable<ComponentProps<typeof SkeletonRail>["kind"]>
@@ -355,7 +358,7 @@ function DiscoverPage() {
               return (
                 <div key={`artist-${artist.id}`} className="artist-discover-shelf-card">
                   <ArtistCard
-                    status="available"
+                    hideLibraryCheck
                     isInLibrary={true}
                     getLibraryLink={getArtistLibraryLink}
                     artist={{
@@ -665,6 +668,7 @@ function DiscoverPage() {
   };
 
   const [showFullBasedOnList, setShowFullBasedOnList] = useState(false);
+  const [showAllTags, setShowAllTags] = useState(false);
 
   const sectionMayRender = (id: string) =>
     (id !== "news" || newsConfigured) && (id !== "recommendedShows" || ticketmasterConfigured);
@@ -686,7 +690,6 @@ function DiscoverPage() {
               </div>
               <SkeletonShape className="btn btn-icon-square btn-surface discover-page__customize-btn" />
             </div>
-            <div className="artist-discover-hero__tags-section" />
           </div>
         </section>
         <div aria-hidden="true">
@@ -744,7 +747,7 @@ function DiscoverPage() {
                         onClick={() => setShowFullBasedOnList(false)}
                         className="artist-discover-hero__view-toggle-badge"
                       >
-                        view less
+                        Show fewer
                       </button>
                     </div>
                   ) : (
@@ -770,6 +773,35 @@ function DiscoverPage() {
                   )}
                 </div>
               )}
+              {topGenres.length > 0 && (
+                <div className="artist-discover-hero__based-on artist-discover-hero__based-on--tags">
+                  <div className="artist-discover-hero__based-on-intro">Top tags</div>
+                  <div className="artist-discover-hero__artists-collapsed">
+                    {topGenres
+                      .slice(0, showAllTags ? TOP_TAG_LIMIT : TOP_TAG_PREVIEW)
+                      .map((genre) => (
+                        <RouteLink
+                          key={genre}
+                          to={`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`}
+                          className="artist-tag--discover"
+                        >
+                          #{genre}
+                        </RouteLink>
+                      ))}
+                    {topGenres.length > TOP_TAG_PREVIEW && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllTags((shown) => !shown)}
+                        className="artist-discover-hero__view-toggle-badge"
+                      >
+                        {showAllTags
+                          ? "Show fewer"
+                          : `+${Math.min(topGenres.length, TOP_TAG_LIMIT) - TOP_TAG_PREVIEW} more`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <TooltipButton
@@ -781,25 +813,6 @@ function DiscoverPage() {
             >
               <LayoutTemplate className="artist-discover-hero__customize-icon" />
             </TooltipButton>
-          </div>
-
-          <div className="artist-discover-hero__tags-section">
-            {topGenres.length > 0 && (
-              <div>
-                <h3 className="artist-discover-hero__tags-section-title">Top tags</h3>
-                <div className="artist-tag-list--discover">
-                  {topGenres.slice(0, 30).map((genre, i) => (
-                    <RouteLink
-                      key={i}
-                      to={`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`}
-                      className="artist-tag--discover"
-                    >
-                      #{genre}
-                    </RouteLink>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </section>
