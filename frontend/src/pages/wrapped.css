@@ -917,8 +917,8 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 1 2;
-  animation: wrapped-draw calc(var(--wrapped-t) * 8) var(--aurral-ease-out) backwards;
-  animation-delay: calc(var(--wrapped-t) * (var(--i, 0) + var(--s, 0) * var(--gap, 3)));
+  animation: wrapped-draw calc(var(--wrapped-t) * var(--d)) var(--aurral-ease-out) backwards;
+  animation-delay: calc(var(--wrapped-t) * (var(--i, 0) + var(--at)));
 }
 .wrapped-doodle path:nth-child(even) {
   stroke-width: 0.52;
@@ -947,9 +947,6 @@
   bottom: 30%;
   width: 8cqw;
 }
-.wrapped-bang path {
-  animation-duration: calc(var(--wrapped-t) * 3);
-}
 .wrapped-heart {
   display: inline-block;
   width: 12cqw;
@@ -971,7 +968,6 @@
   vertical-align: middle;
 }
 .wrapped-stopwatch {
-  --gap: 2;
   width: 13.5cqw;
   margin: -4cqw 0 -4cqw 3cqw;
 }
@@ -984,14 +980,7 @@
   width: 15cqw;
   margin: -3cqw 0 -3cqw 2.5cqw;
 }
-.wrapped-tally {
-  --gap: 1.5;
-}
-.wrapped-sky {
-  --gap: 1;
-}
 .wrapped-rays {
-  --gap: 1.5;
   display: inline-block;
   width: 12.5cqw;
   margin: calc(-0.15em - 3cqw) 0 0 1.5cqw;
