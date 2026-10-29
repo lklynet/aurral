@@ -9280,7 +9280,9 @@ button.native-library-genre-row:focus-visible {
 }
 
 .collection-page,
-.artist-discover-page {
+.artist-discover-page,
+.recommended-page,
+.trending-page {
   --collection-tint-bleed: 1rem;
 
   position: relative;
@@ -9289,13 +9291,17 @@ button.native-library-genre-row:focus-visible {
 
 @media (min-width: 1024px) {
   .collection-page,
-  .artist-discover-page {
+  .artist-discover-page,
+  .recommended-page,
+  .trending-page {
     --collection-tint-bleed: 1.5rem;
   }
 }
 
 .collection-page::before,
-.artist-discover-page::before {
+.artist-discover-page::before,
+.recommended-page::before,
+.trending-page::before {
   position: absolute;
   z-index: var(--aurral-z-below);
   top: calc(-1 * var(--collection-tint-bleed, 0px));
@@ -9310,6 +9316,17 @@ button.native-library-genre-row:focus-visible {
   content: "";
   pointer-events: none;
   transition: background var(--aurral-duration-base) var(--aurral-ease-standard);
+}
+
+.artist-discover-page::before,
+.recommended-page::before,
+.trending-page::before {
+  height: 34rem;
+  background: radial-gradient(
+    ellipse 115% 100% at 0% 0%,
+    color-mix(in srgb, var(--collection-tint, transparent) 44%, transparent) 0%,
+    transparent 100%
+  );
 }
 
 .collection-header__subtitle {

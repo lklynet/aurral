@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import ArtistImage from "../components/ArtistImage";
+import { useArtistTint } from "../components/CollectionHeader";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
 import { Pause, Play, ThumbsDown, ThumbsUp } from "../components/icons";
@@ -378,6 +379,12 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
   useEffect(() => rememberRecommendedView(view), [view]);
 
   const recommendations = data?.recommendations ?? [];
+  const topMatch = recommendations[0];
+  const tint = useArtistTint(
+    topMatch?.image,
+    topMatch ? topMatch.navigateTo || topMatch.id : null,
+    topMatch?.name,
+  );
   const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
   const updating = Boolean(discoveryStatus?.isUpdating);
   const meta = [
@@ -449,7 +456,7 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
   };
 
   return (
-    <div className="recommended-page">
+    <div className="recommended-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="recommended-page__header">
         <h1 className="page-title">Recommended</h1>
         {meta ? <p className="recommended-page__meta">{meta}</p> : null}

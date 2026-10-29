@@ -3,7 +3,7 @@ import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../utils/api/endpoints/library.ts";
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { usersClient } from "../utils/api/clients/users.ts";
 
@@ -48,9 +48,7 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
-import { useCollectionTint } from "../components/CollectionHeader";
-import { getArtistCover } from "../utils/api/endpoints/artists.ts";
-import { queryKeys } from "../queryClient.ts";
+import { useArtistTint } from "../components/CollectionHeader";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
@@ -633,18 +631,10 @@ function DiscoverPage() {
   };
 
   const newestArtist = recentlyAdded[0];
-  const newestArtistImage = getLibraryArtistImage(newestArtist);
-  const newestArtistMbid = newestArtistImage ? null : newestArtist?.mbid;
-  const { data: newestArtistCover } = useQuery({
-    queryKey: queryKeys.artistCover(newestArtistMbid),
-    queryFn: newestArtistMbid
-      ? () => getArtistCover(newestArtistMbid, newestArtist.artistName)
-      : skipToken,
-    staleTime: Infinity,
-  });
-  const coverImages = newestArtistCover?.images || [];
-  const tint = useCollectionTint(
-    newestArtistImage || (coverImages.find((image) => image.front) || coverImages[0])?.image,
+  const tint = useArtistTint(
+    getLibraryArtistImage(newestArtist),
+    newestArtist?.mbid,
+    newestArtist?.artistName,
   );
 
   const sectionMayRender = (id: string) =>

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { ArrowDown, ArrowUp, Check, Pause, Play, Plus } from "../components/icons";
 import ArtworkImage from "../components/ArtworkImage";
+import { useCollectionTint } from "../components/CollectionHeader";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
 import RouteLink from "../components/RouteLink";
@@ -159,6 +160,9 @@ export default function TrendingPage() {
   const [savingPlaylist, setSavingPlaylist] = useState(false);
 
   const songs = data?.songs ?? null;
+  const lead = songs?.items[0];
+  const leadArtwork = lead?.largeArtworkUrl || lead?.artworkUrl;
+  const tint = useCollectionTint(leadArtwork);
   const tracks = useMemo(
     () => mapPreviewTracks(songs?.items, songs?.playlistId ?? "trending"),
     [songs],
@@ -251,7 +255,6 @@ export default function TrendingPage() {
         </div>
       );
     }
-    const lead = songs?.items[0];
     const leadTrack = tracks[0];
     const leadPlaying = isTrackPlaying(0);
     const leadAlbumPath = lead
@@ -262,7 +265,6 @@ export default function TrendingPage() {
         })
       : null;
     const leadArtistPath = lead ? resolveArtistPath({ name: lead.artistName }) : null;
-    const leadArtwork = lead?.largeArtworkUrl || lead?.artworkUrl;
     const canSavePlaylist = hasPermission("accessFlow");
 
     return (
@@ -510,7 +512,7 @@ export default function TrendingPage() {
   };
 
   return (
-    <div className="trending-page">
+    <div className="trending-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="trending-page__header">
         <h1 className="page-title">Trending</h1>
         {region || updated ? (

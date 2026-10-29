@@ -1,12 +1,30 @@
 import { Pause, Play, Shuffle } from "./icons";
 import type { ReactNode } from "react";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useArtworkWash } from "../utils/imageColors";
 import TooltipButton from "./TooltipButton";
 import { useSharedArtworkStyle } from "../navigation/viewTransitions.ts";
+import { getArtistCover } from "../utils/api/endpoints/artists.ts";
+import { queryKeys } from "../queryClient.ts";
 
 export function useCollectionTint(src: string | null | undefined) {
   const wash = useArtworkWash(src || null);
   return wash ? `light-dark(${wash.light}, ${wash.dark})` : null;
+}
+
+export function useArtistTint(
+  image: string | null | undefined,
+  mbid: string | null | undefined,
+  name: string | null | undefined,
+) {
+  const lookupMbid = image ? null : mbid;
+  const { data } = useQuery({
+    queryKey: queryKeys.artistCover(lookupMbid),
+    queryFn: lookupMbid ? () => getArtistCover(lookupMbid, name) : skipToken,
+    staleTime: Infinity,
+  });
+  const covers = data?.images ?? [];
+  return useCollectionTint(image || (covers.find((cover) => cover.front) ?? covers[0])?.image);
 }
 
 export function CollectionPage({
