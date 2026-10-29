@@ -15,7 +15,13 @@ import { readApiError } from "../../utils/apiError.ts";
 import { formatBytes } from "../../utils/formatBytes";
 import { runStorageHealthAction } from "../../utils/runStorageHealthAction";
 import { useServerSettings } from "../../SettingsProviders";
-import { SettingsGroup, SettingsNote } from "../../SettingsLayout";
+import {
+  SettingsGroup,
+  SettingsNote,
+  SettingsPage,
+  type ServiceStatus,
+} from "../../SettingsLayout";
+import { StatusLine } from "./StatusLine";
 
 type StorageResult = NonNullable<ReturnType<typeof useStorageHealth>["result"]>;
 type StorageCheck = StorageResult["sections"][number];
@@ -53,6 +59,23 @@ function CheckIcon({ status }: { status: string }) {
   );
 }
 
+function summarizeChecks(result: StorageResult) {
+  const active = result.sections.filter((section) => section.status !== "skip");
+  return {
+    total: active.length,
+    failed: active.filter((section) => section.status === "fail").length,
+    warnings: active.filter((section) => section.status === "warn").length,
+  };
+}
+
+export function storageServiceStatus(result: StorageResult | null): ServiceStatus {
+  if (!result?.sections.length) return { label: "Not checked", tone: "muted" };
+  const { total, failed, warnings } = summarizeChecks(result);
+  if (failed) return { label: `${failed} of ${plural(total, "check")} failed`, tone: "error" };
+  if (warnings) return { label: plural(warnings, "warning") };
+  return { label: "All checks passed" };
+}
+
 function StorageSummary({ result, loading }: { result: StorageResult | null; loading: boolean }) {
   if (!result?.sections.length) {
     return loading ? (
@@ -66,16 +89,14 @@ function StorageSummary({ result, loading }: { result: StorageResult | null; loa
     );
   }
 
-  const active = result.sections.filter((section) => section.status !== "skip");
-  const failed = active.filter((section) => section.status === "fail").length;
-  const warnings = active.filter((section) => section.status === "warn").length;
+  const { total, failed, warnings } = summarizeChecks(result);
   const checkedAt = formatCheckedAt(result.checkedAt);
   const checked = checkedAt ? ` · Checked ${checkedAt}` : "";
 
   if (failed) {
     return (
       <SettingsNote tone="error">
-        {failed} of {plural(active.length, "check")} failed
+        {failed} of {plural(total, "check")} failed
         {warnings ? `, ${plural(warnings, "warning")}` : ""}
         {checked}
       </SettingsNote>
@@ -84,14 +105,14 @@ function StorageSummary({ result, loading }: { result: StorageResult | null; loa
   if (warnings) {
     return (
       <SettingsNote tone="warning">
-        {plural(warnings, "warning")} in {plural(active.length, "check")}
+        {plural(warnings, "warning")} in {plural(total, "check")}
         {checked}
       </SettingsNote>
     );
   }
   return (
     <p className="settings-group__note">
-      All {plural(active.length, "check")} passed{checked}
+      All {plural(total, "check")} passed{checked}
     </p>
   );
 }
@@ -124,91 +145,65 @@ function CheckRow({ check }: { check: StorageCheck }) {
   );
 
   if (check.status === "skip" || !check.steps.length) {
-    return <li className="status-check__head">{head}</li>;
+    return <div className="status-check__head">{head}</div>;
   }
 
   return (
-    <li>
-      <details className="status-check" open={check.status === "fail" || check.status === "warn"}>
-        <summary className="status-check__head">
-          {head}
-          <ChevronDown className="status-check__chevron" aria-hidden="true" />
-        </summary>
-        <ul className="status-steps">
-          {check.steps.map((step) => (
-            <li key={step.id} className="status-step">
-              <CheckIcon status={step.status} />
-              <div className="status-step__body">
-                <span>{step.label}</span>
-                {step.detail ? <StepDetail detail={step.detail} /> : null}
-                {step.fix ? <p className="status-step__fix">{step.fix}</p> : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </li>
+    <details className="status-check" open={check.status === "fail" || check.status === "warn"}>
+      <summary className="status-check__head">
+        {head}
+        <ChevronDown className="status-check__chevron" aria-hidden="true" />
+      </summary>
+      <ul className="status-steps">
+        {check.steps.map((step) => (
+          <li key={step.id} className="status-step">
+            <CheckIcon status={step.status} />
+            <div className="status-step__body">
+              <span>{step.label}</span>
+              {step.detail ? <StepDetail detail={step.detail} /> : null}
+              {step.fix ? <p className="status-step__fix">{step.fix}</p> : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
-function DiskSpace({ entries }: { entries: DiskEntry[] }) {
-  if (!entries.length) {
-    return <p className="settings-group__note">Disk space isn&apos;t available.</p>;
-  }
+function DiskRow({ entry }: { entry: DiskEntry }) {
+  const usage = "usedPercent" in entry && entry.available ? entry : null;
+  const statTarget = "statTarget" in entry ? entry.statTarget : null;
   return (
-    <div className="settings-table-wrap">
-      <table className="settings-table status-table">
-        <thead>
-          <tr>
-            <th scope="col">Location</th>
-            <th scope="col">Role</th>
-            <th scope="col">Free</th>
-            <th scope="col">Total</th>
-            <th scope="col">Used</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => {
-            const usage = "usedPercent" in entry && entry.available ? entry : null;
-            const statTarget = "statTarget" in entry ? entry.statTarget : null;
-            return (
-              <tr key={`${entry.role}-${entry.location}`}>
-                <td>
-                  <code className="settings-code">{entry.location}</code>
-                  {statTarget && statTarget !== entry.location ? (
-                    <span className="status-cell__sub">Stats from {statTarget}</span>
-                  ) : null}
-                </td>
-                <td>{entry.role}</td>
-                <td>{usage ? formatBytes(usage.freeBytes) : null}</td>
-                <td>{usage ? formatBytes(usage.totalBytes) : null}</td>
-                <td>
-                  {usage ? (
-                    <span className="status-meter">
-                      <span className="status-meter__bar" aria-hidden="true">
-                        <span
-                          className="status-meter__fill"
-                          style={{ width: `${usage.usedPercent}%` }}
-                        />
-                      </span>
-                      {usage.usedPercent}%
-                    </span>
-                  ) : (
-                    <span className="status-tone--subtle">
-                      {("error" in entry && entry.error) || "Unavailable"}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <StatusLine
+      name={<code className="settings-code">{entry.location}</code>}
+      sub={
+        <>
+          {entry.role}
+          {statTarget && statTarget !== entry.location ? (
+            <span>Stats from {statTarget}</span>
+          ) : null}
+        </>
+      }
+      meta={
+        usage ? `${formatBytes(usage.freeBytes)} free of ${formatBytes(usage.totalBytes)}` : null
+      }
+      metaSub={
+        usage ? (
+          <span className="status-meter">
+            <span className="status-meter__bar" aria-hidden="true">
+              <span className="status-meter__fill" style={{ width: `${usage.usedPercent}%` }} />
+            </span>
+            {usage.usedPercent}% used
+          </span>
+        ) : (
+          ("error" in entry && entry.error) || "Unavailable"
+        )
+      }
+    />
   );
 }
 
-export function StorageGroup() {
+export function StoragePage() {
   const { health, hasUnsavedChanges, handleSaveSettings, showSuccess, showError } =
     useServerSettings();
   const storageHealth = useStorageHealth({ enabled: true, pollMs: 120000 });
@@ -238,31 +233,38 @@ export function StorageGroup() {
     }
   };
 
+  const diskSpace = health?.system?.diskSpace ?? [];
+
   return (
-    <SettingsGroup
-      title="Storage"
-      actions={
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={runChecks}
-          disabled={checking}
-        >
-          {checking ? <DotLoader size="xs" label={null} /> : <RefreshCw aria-hidden="true" />}
-          {checking ? "Checking…" : "Run checks"}
-        </button>
-      }
-    >
-      <StorageSummary result={result} loading={checking || storageHealth.loading} />
-      {checks.length ? (
-        <ul className="status-checks">
-          {checks.map((check) => (
-            <CheckRow key={`${result?.checkedAt}-${check.id}`} check={check} />
-          ))}
-        </ul>
-      ) : null}
-      <h4 className="status-subhead">Disk space</h4>
-      <DiskSpace entries={health?.system?.diskSpace ?? []} />
-    </SettingsGroup>
+    <SettingsPage title="Storage" back="Status">
+      <SettingsGroup
+        title="Checks"
+        actions={
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={runChecks}
+            disabled={checking}
+          >
+            {checking ? <DotLoader size="xs" label={null} /> : <RefreshCw aria-hidden="true" />}
+            {checking ? "Checking…" : "Run checks"}
+          </button>
+        }
+      >
+        <StorageSummary result={result} loading={checking || storageHealth.loading} />
+        {checks.map((check) => (
+          <CheckRow key={`${result?.checkedAt}-${check.id}`} check={check} />
+        ))}
+      </SettingsGroup>
+      <SettingsGroup title="Disk space">
+        {diskSpace.length ? (
+          diskSpace.map((entry) => (
+            <DiskRow key={`${entry.role}-${entry.location}`} entry={entry} />
+          ))
+        ) : (
+          <p className="settings-group__note">Disk space isn&apos;t available.</p>
+        )}
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

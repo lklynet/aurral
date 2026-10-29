@@ -97,12 +97,15 @@ Loading states use skeletons shaped like the ready state. Use `DotLoader` only w
 
 Settings is one modal over the current page. Its location is the `settings` search param, as `?settings=<section>` or `?settings=<section>/<item>`. Link to it with `SettingsLink` from `pages/Settings/settingsRoute.tsx`, so it opens over the page the user is on.
 
+The modal fills the window, up to 80rem wide. Below 768px it becomes a full-screen list that opens one page at a time.
+
 Build every section from the primitives in `pages/Settings/SettingsLayout.tsx`:
 
-- `SettingsPage` holds the section title, the saving state, and the back control of a detail.
-- `SettingsGroup` is a heading at `--aurral-font-lg`. Spacing separates groups. Do not add boxes, borders, or eyebrows.
+- `SettingsPage` owns the header bar: a breadcrumb (**Settings / Section / Item**, where the section goes back), the saving state, and close. Its content sits in a centered column.
+- `SettingsGroup` is a heading at `--aurral-font-lg` above one card on `--aurral-surface-raised`, with a hairline between rows. A group's `note` is the first line inside the card. Put nothing between the heading and the card. Settings groups are the only cards that hold rows.
 - `SettingsRow` puts the label and one line of help on the left and the control on the right. Use `stack` for wide controls such as text areas.
 - `SettingsServiceRow` shows a service name, a short status (**On**, **Off**, **Not set up**, or **Needs setup**), and a chevron. It opens the service's detail in the same pane. Do not add card grids or a modal per service.
+- Use a table only for a few short columns. When each item has a description or several values, use two-line rows like **Status > Tasks**: name and description on the left, schedule and result on the right.
 
 Account sections show for everyone. Server sections show only to people who can manage the server, and their data never loads for anyone else. Changes save automatically. A detail that edits a draft, such as a webhook, saves with its own button.
 

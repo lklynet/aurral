@@ -135,7 +135,9 @@ function DefaultRulesForm({ defaults }: { defaults: MonitoringDefaults }) {
     : "";
 
   return (
-    <SettingsGroup>
+    <SettingsGroup
+      note={`Used by ${plural(defaults.artistCount, "artist")}.${defaults.updatedAt ? ` Changed ${shortDate(defaults.updatedAt)}.` : ""}`}
+    >
       <MonitoringRulesFields
         rules={rules}
         disabled={busy}
@@ -177,13 +179,7 @@ function DefaultRulesPage() {
   return (
     <SettingsPage title="Default rules" back="Monitoring">
       {defaults ? (
-        <>
-          <p className="settings-group__note">
-            {`Used by ${plural(defaults.artistCount, "artist")}.`}
-            {defaults.updatedAt ? ` Changed ${shortDate(defaults.updatedAt)}.` : ""}
-          </p>
-          <DefaultRulesForm key={defaults.updatedAt ?? 0} defaults={defaults} />
-        </>
+        <DefaultRulesForm key={defaults.updatedAt ?? 0} defaults={defaults} />
       ) : (
         <QueryFallback query={query} what="the default rules" />
       )}

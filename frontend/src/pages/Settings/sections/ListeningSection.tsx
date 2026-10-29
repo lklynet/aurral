@@ -139,7 +139,11 @@ function LastfmDetail({ status }: { status: ConnectionStatus }) {
 
   return (
     <SettingsGroup
-      note={status.connected ? undefined : "Sign in to Last.fm to send it your plays."}
+      note={
+        status?.connected
+          ? `${scrobbleServiceStatus(status).label}.`
+          : "Sign in to Last.fm to send it your plays."
+      }
     >
       <SettingsActions>
         <button type="button" className="btn btn-secondary btn-sm" onClick={connect}>
@@ -162,11 +166,12 @@ function LastfmDetail({ status }: { status: ConnectionStatus }) {
 
 function TokenDetail({
   provider,
-  connected,
+  status,
 }: {
   provider: "listenbrainz" | "koito";
-  connected: boolean;
+  status: ConnectionStatus;
 }) {
+  const connected = status?.connected === true;
   const { busy, run, disconnect } = useScrobbleActions(provider);
   const [token, setToken] = useState("");
   const [url, setUrl] = useState("");
@@ -185,7 +190,15 @@ function TokenDetail({
   };
 
   return (
-    <SettingsGroup note={provider === "koito" ? "Koito uses the ListenBrainz format." : undefined}>
+    <SettingsGroup
+      note={
+        connected
+          ? `${scrobbleServiceStatus(status).label}.`
+          : provider === "koito"
+            ? "Koito uses the ListenBrainz format."
+            : undefined
+      }
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -243,16 +256,12 @@ function ScrobbleDetail({
   provider: ScrobbleProvider;
   status: ScrobbleStatus;
 }) {
-  const current = status[provider];
   return (
     <SettingsPage title={PROVIDER_LABELS[provider]} back="Listening">
-      {current?.connected ? (
-        <p className="settings-group__note">{scrobbleServiceStatus(current).label}.</p>
-      ) : null}
       {provider === "lastfm" ? (
         <LastfmDetail status={status.lastfm} />
       ) : (
-        <TokenDetail provider={provider} connected={current?.connected === true} />
+        <TokenDetail provider={provider} status={status[provider]} />
       )}
     </SettingsPage>
   );

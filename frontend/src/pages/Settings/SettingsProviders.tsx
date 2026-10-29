@@ -4,7 +4,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { DotLoader } from "../../components/DotLoader";
 import { useSettingsData } from "./hooks/useSettingsData";
 import { useAccountSettings } from "./hooks/useAccountSettings";
-import { SettingsSavingContext } from "./SettingsLayout";
+import { SettingsPage, SettingsSavingContext } from "./SettingsLayout";
 import type { SettingsSectionId } from "./settingsSections";
 
 type ServerSettings = ReturnType<typeof useSettingsData> & ReturnType<typeof useToast>;
@@ -46,13 +46,15 @@ export function useServerSettings() {
   return value;
 }
 
-export function ServerSettingsGate({ children }: { children: ReactNode }) {
+export function ServerSettingsGate({ title, children }: { title: string; children: ReactNode }) {
   const { settingsLoaded } = useServerSettings();
   if (settingsLoaded) return children;
   return (
-    <p className="settings-loading">
-      <DotLoader size="sm" label={null} /> Loading settings…
-    </p>
+    <SettingsPage title={title}>
+      <p className="settings-loading">
+        <DotLoader size="sm" label={null} /> Loading settings…
+      </p>
+    </SettingsPage>
   );
 }
 

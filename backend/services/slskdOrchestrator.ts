@@ -1670,7 +1670,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
   if (typeof sourcePath !== "string" || !sourcePath.trim()) {
     const reason = slskdRoot
       ? `Downloaded file missing: ${predictSlskdLocalPathCandidates(slskdRoot, remoteFile)[0] || fileName}`
-      : "Aurral doesn't know slskd's download folder. Check slskd under Settings → Status.";
+      : "Aurral doesn't know slskd's download folder. Check slskd under Settings → Status → Storage.";
     const nextPayload = retrySameCandidateOrNext(payload, job, "missing_file", reason, {
       transfer,
     });

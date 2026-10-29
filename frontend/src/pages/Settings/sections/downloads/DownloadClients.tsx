@@ -134,20 +134,22 @@ export function DownloadClientDetail({ definition }: { definition: DownloadClien
   return (
     <SettingsPage title={definition.label} back="Downloads">
       <SettingsAdapterFields definition={definition} settings={config} onChange={update} />
-      <SettingsActions status={testStatus?.tone === "warning" ? null : testStatus}>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={testing}
-          onClick={test}
-        >
-          {testing ? <DotLoader size="xs" label={null} /> : null}
-          {testing ? "Testing…" : "Test connection"}
-        </button>
-      </SettingsActions>
-      {testStatus?.tone === "warning" ? (
-        <SettingsNote tone="warning">{testStatus.message}</SettingsNote>
-      ) : null}
+      <SettingsGroup>
+        <SettingsActions status={testStatus?.tone === "warning" ? null : testStatus}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={testing}
+            onClick={test}
+          >
+            {testing ? <DotLoader size="xs" label={null} /> : null}
+            {testing ? "Testing…" : "Test connection"}
+          </button>
+        </SettingsActions>
+        {testStatus?.tone === "warning" ? (
+          <SettingsNote tone="warning">{testStatus.message}</SettingsNote>
+        ) : null}
+      </SettingsGroup>
     </SettingsPage>
   );
 }

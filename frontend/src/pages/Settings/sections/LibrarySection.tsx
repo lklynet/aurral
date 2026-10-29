@@ -131,91 +131,93 @@ function ReadOnlyFoldersGroup({ onChanged }: { onChanged: () => Promise<void> })
   };
 
   return (
-    <SettingsGroup
-      title="Read-only folders"
-      note="Aurral adds the music in these folders to the Library and never changes, moves, or deletes it."
-    >
-      {query.isPending ? (
-        <p className="settings-loading">
-          <DotLoader size="sm" label={null} /> Loading folders…
-        </p>
-      ) : query.isError ? (
-        <SettingsNote tone="warning">
-          Couldn&apos;t load read-only folders.{" "}
-          <button type="button" className="settings-link" onClick={() => query.refetch()}>
-            Try again
-          </button>
-        </SettingsNote>
-      ) : folders.length > 0 ? (
-        <div className="settings-table-wrap">
-          <table className="settings-table">
-            <thead>
-              <tr>
-                <th scope="col">Folder</th>
-                <th scope="col">Library</th>
-                <th scope="col" className="settings-table__actions">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {folders.map((folder) => {
-                const status = folderStatus(folder, scanning);
-                return (
-                  <tr key={folder.path}>
-                    <td>
-                      <code className="settings-code">{folder.path}</code>
-                    </td>
-                    <td
-                      className={status.warning ? "library-folder__status--warning" : undefined}
-                      aria-live="polite"
-                    >
-                      {status.text}
-                    </td>
-                    <td className="settings-table__actions">
-                      <TooltipButton
-                        label="Remove"
-                        aria-label={`Remove read-only folder ${folder.path}`}
-                        className="btn btn-ghost btn-icon btn-sm"
-                        onClick={() => setRemoving(folder.path)}
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </TooltipButton>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      <SettingsRow
-        label="Add a folder"
-        htmlFor="library-read-only-folder"
-        help={addError || OUTSIDE_DOWNLOADS}
-        tone={addError ? "warning" : "default"}
+    <>
+      <SettingsGroup
+        title="Read-only folders"
+        note="Aurral adds the music in these folders to the Library and never changes, moves, or deletes it."
       >
-        <DownloadFolderField
-          key={fieldKey}
-          id="library-read-only-folder"
-          value={draft}
-          suggestFolder={false}
-          createOnConfirm={false}
-          onChange={(value: string) => {
-            setDraft(value);
-            setAddError("");
-          }}
-        />
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={!draft || adding}
-          onClick={add}
+        {query.isPending ? (
+          <p className="settings-loading">
+            <DotLoader size="sm" label={null} /> Loading folders…
+          </p>
+        ) : query.isError ? (
+          <SettingsNote tone="warning">
+            Couldn&apos;t load read-only folders.{" "}
+            <button type="button" className="settings-link" onClick={() => query.refetch()}>
+              Try again
+            </button>
+          </SettingsNote>
+        ) : folders.length > 0 ? (
+          <div className="settings-table-wrap">
+            <table className="settings-table">
+              <thead>
+                <tr>
+                  <th scope="col">Folder</th>
+                  <th scope="col">Library</th>
+                  <th scope="col" className="settings-table__actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {folders.map((folder) => {
+                  const status = folderStatus(folder, scanning);
+                  return (
+                    <tr key={folder.path}>
+                      <td>
+                        <code className="settings-code">{folder.path}</code>
+                      </td>
+                      <td
+                        className={status.warning ? "library-folder__status--warning" : undefined}
+                        aria-live="polite"
+                      >
+                        {status.text}
+                      </td>
+                      <td className="settings-table__actions">
+                        <TooltipButton
+                          label="Remove"
+                          aria-label={`Remove read-only folder ${folder.path}`}
+                          className="btn btn-ghost btn-icon btn-sm"
+                          onClick={() => setRemoving(folder.path)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </TooltipButton>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        <SettingsRow
+          label="Add a folder"
+          htmlFor="library-read-only-folder"
+          help={addError || OUTSIDE_DOWNLOADS}
+          tone={addError ? "warning" : "default"}
         >
-          {adding ? <DotLoader size="xs" label={null} /> : null}
-          Add
-        </button>
-      </SettingsRow>
+          <DownloadFolderField
+            key={fieldKey}
+            id="library-read-only-folder"
+            value={draft}
+            suggestFolder={false}
+            createOnConfirm={false}
+            onChange={(value: string) => {
+              setDraft(value);
+              setAddError("");
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!draft || adding}
+            onClick={add}
+          >
+            {adding ? <DotLoader size="xs" label={null} /> : null}
+            Add
+          </button>
+        </SettingsRow>
+      </SettingsGroup>
       <ConfirmModal
         open={Boolean(removing)}
         title="Remove this read-only folder?"
@@ -226,7 +228,7 @@ function ReadOnlyFoldersGroup({ onChanged }: { onChanged: () => Promise<void> })
         onCancel={() => setRemoving(null)}
         onConfirm={remove}
       />
-    </SettingsGroup>
+    </>
   );
 }
 
@@ -467,12 +469,14 @@ export function LibrarySection() {
         onChanged={refresh}
       />
       {files.isError ? (
-        <SettingsNote tone="warning">
-          Couldn&apos;t load Library file operations.{" "}
-          <button type="button" className="settings-link" onClick={() => files.refetch()}>
-            Try again
-          </button>
-        </SettingsNote>
+        <SettingsGroup>
+          <SettingsNote tone="warning">
+            Couldn&apos;t load Library file operations.{" "}
+            <button type="button" className="settings-link" onClick={() => files.refetch()}>
+              Try again
+            </button>
+          </SettingsNote>
+        </SettingsGroup>
       ) : null}
     </SettingsPage>
   );

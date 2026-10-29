@@ -86,7 +86,7 @@ export default function SettingsModal() {
   const Section = SECTION_COMPONENTS[section.id];
   const pane =
     section.group === "server" ? (
-      <ServerSettingsGate>
+      <ServerSettingsGate title={section.label}>
         <Section />
       </ServerSettingsGate>
     ) : (
@@ -195,13 +195,6 @@ export default function SettingsModal() {
             </nav>
           )}
         </div>
-        <TooltipButton
-          label="Close settings"
-          className="btn btn-ghost btn-icon settings-dialog__close"
-          onClick={route.close}
-        >
-          <X aria-hidden="true" />
-        </TooltipButton>
         <div className="settings-dialog__pane">
           <AccountSettingsProvider>
             {isAdmin ? (

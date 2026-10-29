@@ -97,8 +97,8 @@ function ConnectionGroup() {
       note={
         <>
           Optional. Path access is checked in{" "}
-          <SettingsLink to="status" className="settings-link">
-            Status
+          <SettingsLink to="status/storage" className="settings-link">
+            Storage
           </SettingsLink>
           .
         </>

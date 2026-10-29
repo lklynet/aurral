@@ -10,7 +10,10 @@
 .downloads-quality {
   display: flex;
   flex-direction: column;
-  margin: 0 -0.5rem 0.5rem;
+}
+
+.settings-card > .downloads-quality {
+  padding: 0.375rem 0.5rem;
 }
 
 .downloads-quality__tier {

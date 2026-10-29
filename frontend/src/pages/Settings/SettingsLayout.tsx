@@ -1,6 +1,7 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight } from "../../components/icons";
+import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
+import TooltipButton from "../../components/TooltipButton";
 import { SettingsLink, useSettingsRoute } from "./settingsRoute";
 
 export const SettingsSavingContext = createContext(false);
@@ -8,38 +9,51 @@ export const SettingsSavingContext = createContext(false);
 export function SettingsPage({
   title,
   back,
-  actions,
   children,
 }: {
   title: ReactNode;
   back?: string;
-  actions?: ReactNode;
   children: ReactNode;
 }) {
   const saving = useContext(SettingsSavingContext);
   const route = useSettingsRoute();
   return (
-    <div className="settings-pane">
-      <header className="settings-pane__head">
-        <button
-          type="button"
-          className={`settings-pane__back${back ? "" : " settings-pane__back--phone"}`}
+    <div className="settings-page">
+      <header className="settings-bar">
+        <TooltipButton
+          label={`Back to ${back ?? "Settings"}`}
+          className="btn btn-ghost btn-icon settings-bar__back"
           onClick={route.back}
         >
           <ChevronLeft aria-hidden="true" />
-          {back ?? "Settings"}
-        </button>
-        <h2 className="settings-pane__title">{title}</h2>
-        <span className="settings-pane__saving" role="status" aria-live="polite">
+        </TooltipButton>
+        <div className="settings-bar__crumbs">
+          <span className="settings-bar__root">Settings</span>
+          {back ? (
+            <button type="button" className="settings-bar__crumb" onClick={route.back}>
+              {back}
+            </button>
+          ) : null}
+          <h2 className="settings-bar__title">{title}</h2>
+        </div>
+        <span className="settings-bar__saving" role="status" aria-live="polite">
           {saving ? (
             <>
               <DotLoader size="xs" label={null} /> Saving…
             </>
           ) : null}
         </span>
-        {actions ? <div className="settings-pane__actions">{actions}</div> : null}
+        <TooltipButton
+          label="Close settings"
+          className="btn btn-ghost btn-icon settings-bar__close"
+          onClick={route.close}
+        >
+          <X aria-hidden="true" />
+        </TooltipButton>
       </header>
-      {children}
+      <div className="settings-page__scroll">
+        <div className="settings-page__content">{children}</div>
+      </div>
     </div>
   );
 }
@@ -68,8 +82,10 @@ export function SettingsGroup({
           {actions ? <div className="settings-group__actions">{actions}</div> : null}
         </div>
       ) : null}
-      {note ? <p className="settings-group__note">{note}</p> : null}
-      {children}
+      <div className="settings-card">
+        {note ? <p className="settings-group__note">{note}</p> : null}
+        {children}
+      </div>
     </section>
   );
 }
