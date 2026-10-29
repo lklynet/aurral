@@ -1,5 +1,12 @@
 import ArtworkImage from "../components/ArtworkImage";
-import { memo, useState, useEffect, type ReactNode } from "react";
+import {
+  memo,
+  useState,
+  useEffect,
+  type FocusEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
 
 import { Music } from "../components/icons";
@@ -11,6 +18,7 @@ import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { getAlbumAddAction } from "../utils/albumAddAction";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
+import { useArtworkWash } from "../utils/imageColors.ts";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
 import type { DiscoverArtist } from "./discoverUtils";
@@ -53,6 +61,28 @@ const formatReleaseStatus = (releaseDate: string | null | undefined) => {
   }
   return { text: `Released ${formatRelativeTime(date, { unit: "day" })}`, detail: formattedDate };
 };
+
+function useArtworkHoverTint() {
+  const [src, setSrc] = useState<string | null>(null);
+  const wash = useArtworkWash(src);
+  const pickArtwork = (card: HTMLElement) =>
+    setSrc(card.querySelector<HTMLImageElement>("[data-artwork] img")?.currentSrc || null);
+  return {
+    tinted: wash ? " is-tinted" : "",
+    tintProps: {
+      onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+        if (event.pointerType !== "touch") pickArtwork(event.currentTarget);
+      },
+      onFocus: (event: FocusEvent<HTMLElement>) => pickArtwork(event.currentTarget),
+      style: wash
+        ? {
+            "--card-tint": `light-dark(${wash.light}, ${wash.dark})`,
+            "--card-tint-text": `light-dark(${wash.dark}, ${wash.light})`,
+          }
+        : undefined,
+    },
+  };
+}
 
 function CardText({
   link,
@@ -108,11 +138,13 @@ export const ArtistCard = memo(
           }
         : null;
     const canOpen = Boolean(link);
+    const { tinted, tintProps } = useArtworkHoverTint();
     return (
       <div
-        className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
+        className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}${tinted}`}
         data-artwork-scope
         data-library-menu-target
+        {...tintProps}
       >
         <div className="artist-discover-card__cover" data-artwork>
           <ArtistImage
@@ -260,11 +292,13 @@ export const AlbumCard = memo(
     });
     const link = target ? { to: target.pathname, state: target.state } : null;
     const canOpen = Boolean(link);
+    const { tinted, tintProps } = useArtworkHoverTint();
 
     return (
       <div
-        className={`artist-discover-card artist-discover-card--album${canOpen ? "" : " is-disabled"}`}
+        className={`artist-discover-card artist-discover-card--album${canOpen ? "" : " is-disabled"}${tinted}`}
         data-artwork-scope
+        {...tintProps}
       >
         <div className="artist-discover-card__cover-wrap">
           <div

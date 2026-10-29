@@ -110,7 +110,7 @@ Artwork can use colors extracted from the artwork. Keep those values tied to art
 
 The stylesheet owns Aurral's own light and dark colors. Other themes are stored as a few input colors, and `frontend/src/utils/theme.ts` generates the color roles from them with contrast targets and writes them over the stylesheet values. A token outside those roles keeps Aurral's value in every theme, so derive a new color token from a role token when it should follow the theme. The **Immersive mode** setting, on by default, is the one exception to the artwork rule above. It feeds the cover color through the same contrast checks, so components should not apply artwork colors to controls themselves.
 
-Immersive mode also controls artwork washes at the top of Discover and detail pages and in the player, plus decorative artwork backdrops in search. Use `useArtworkWash` for extracted background colors so they follow this preference. The theme document keeps the stored `matchArtwork` field so existing account and browser preferences carry over.
+Immersive mode also controls artwork washes at the top of Discover and detail pages and in the player, the Discover card hover tint, and decorative artwork backdrops in search. Use `useArtworkWash` for extracted background colors so they follow this preference. The theme document keeps the stored `matchArtwork` field so existing account and browser preferences carry over.
 
 ## Reuse shared controls
 

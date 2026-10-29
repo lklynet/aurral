@@ -5692,13 +5692,26 @@ textarea {
   transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
+.artist-discover-card.is-tinted {
+  --card-hover-surface: color-mix(in oklch, var(--card-tint) 35%, var(--aurral-surface-raised));
+  --card-hover-meta: color-mix(in oklch, var(--card-tint-text) 65%, var(--aurral-text-muted));
+}
+
 .artist-discover-card:focus-within {
-  background-color: var(--aurral-surface-selected);
+  background-color: var(--card-hover-surface, var(--aurral-surface-selected));
+}
+
+.artist-discover-card.is-tinted:focus-within .artist-card-meta--discover {
+  color: var(--card-hover-meta);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-discover-card:hover {
-    background-color: var(--aurral-surface-selected);
+    background-color: var(--card-hover-surface, var(--aurral-surface-selected));
+  }
+
+  .artist-discover-card.is-tinted:hover .artist-card-meta--discover {
+    color: var(--card-hover-meta);
   }
 }
 
