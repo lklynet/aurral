@@ -6,6 +6,7 @@ import {
   getDiscoveryFeedback,
   type DiscoveryFeedbackEntry,
 } from "./feedback.ts";
+import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "./blockedTags.ts";
 import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.ts";
 import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.ts";
 import {
@@ -14,6 +15,8 @@ import {
   type DiscoveryRecommendation,
 } from "./recommendationPipeline.ts";
 import { getLibraryArtistKeys, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
+
+type VisibleArtist = ArtistMatchFields & { tags?: unknown };
 
 const FAILED_REFRESH_BACKOFF_MS = 15 * 60 * 1000;
 const servedRecommendationsByUser = new Map<
@@ -27,6 +30,7 @@ const getServedRecommendations = ({
   feedback,
   discoveryMode,
   library,
+  blockedTags,
   isVisible,
 }: {
   userId: string | number;
@@ -39,7 +43,8 @@ const getServedRecommendations = ({
   feedback: DiscoveryFeedbackEntry[];
   discoveryMode: string;
   library: ReturnType<typeof getLibraryArtistKeys>;
-  isVisible: (artist: ArtistMatchFields) => boolean;
+  blockedTags: Set<string>;
+  isVisible: (artist: VisibleArtist) => boolean;
 }) => {
   const key = [
     source.namespace,
@@ -48,6 +53,7 @@ const getServedRecommendations = ({
     discoveryMode,
     library.signature,
     feedback.map((entry) => `${entry.id}:${entry.action}`).join(","),
+    [...blockedTags].join(","),
   ].join("|");
   const cached = servedRecommendationsByUser.get(userId);
   if (cached?.key === key) return cached.recommendations;
@@ -140,10 +146,13 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
   const feedbackUserId = userId ?? "global";
   const feedback = getDiscoveryFeedback(feedbackUserId);
   const blockedKeys = getBlockedArtistKeys(feedbackUserId, feedback);
+  const blockedTags = getBlockedTagKeys(userId);
   const library = getLibraryArtistKeys();
   const discoveryMode = getDiscoveryMode();
-  const isVisible = (artist: ArtistMatchFields) =>
-    !matchesArtistKeys(artist, library.keys) && !matchesArtistKeys(artist, blockedKeys);
+  const isVisible = (artist: VisibleArtist) =>
+    !matchesArtistKeys(artist, library.keys) &&
+    !matchesArtistKeys(artist, blockedKeys) &&
+    !hasBlockedTag(artist.tags, blockedTags);
 
   const recommendations = getServedRecommendations({
     userId: feedbackUserId,
@@ -151,6 +160,7 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
     feedback,
     discoveryMode,
     library,
+    blockedTags,
     isVisible,
   });
   const globalTop = (globalCache.globalTop || []).filter(isVisible).map(withArtistRouteId);
@@ -166,8 +176,8 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
       recommendationCount: recommendations.length,
       globalTop,
       basedOn: source.basedOn || [],
-      topTags: source.topTags || [],
-      topGenres: source.topGenres || [],
+      topTags: withoutBlockedTags(source.topTags || [], blockedTags),
+      topGenres: withoutBlockedTags(source.topGenres || [], blockedTags),
       lastUpdated: source.lastUpdated || null,
       recommendationQuality: source.recommendationQuality || null,
       isEnriching: source.isEnriching === true,

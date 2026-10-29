@@ -69,7 +69,7 @@ export function SettingsAccountTab({
   const handleResetDiscoveryTastes = async () => {
     if (resettingTastes) return;
     const confirmed = window.confirm(
-      "Reset all More like this and Less like this preferences? Blocked artists will be kept.",
+      "Reset all More like this and Less like this preferences? Blocked artists and genres will be kept.",
     );
     if (!confirmed) return;
     setResettingTastes(true);
@@ -297,9 +297,9 @@ export function SettingsAccountTab({
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Discovery tastes</h3>
             <p className="settings-page__section-note">
-              Resets More like this and Less like this. Blocked artists stay.{" "}
+              Resets More like this and Less like this. Blocked artists and genres stay.{" "}
               <Link to="/blocklist" className="settings-page__link">
-                Blocked artists
+                Blocklist
               </Link>
             </p>
           </div>

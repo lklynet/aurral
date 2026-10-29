@@ -247,6 +247,7 @@ export const queryKeys = {
   settingsTasks: ["settings", "tasks"],
   prowlarrIndexers: ["settings", "prowlarr-indexers"],
   tasteFeedback: (userId: MaybeId): QueryKey => ["discovery", "feedback", userId],
+  blockedTags: (userId: MaybeId): QueryKey => ["discovery", "blocked-tags", userId],
   scrobbleStatus: ["scrobbling", "status"],
   apiKey: ["auth", "api-key"],
   myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],

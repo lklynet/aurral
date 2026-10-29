@@ -9,6 +9,7 @@ import { buildBlocklistArtistSuggestions } from "../utils/blocklistSearch.ts";
 import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
 import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 import TooltipButton from "../components/TooltipButton";
+import { BlocklistGenres } from "./BlocklistGenres";
 
 type BlocklistSuggestion = ReturnType<typeof buildBlocklistArtistSuggestions>[number];
 
@@ -18,7 +19,7 @@ const normalizeArtist = (artist: ArtistFeedbackSource | null | undefined) => ({
 });
 
 export default function BlocklistPage() {
-  useDocumentTitle("Blocked artists");
+  useDocumentTitle("Blocklist");
   const { feedbackList, submitFeedback } = useArtistTasteFeedback();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<BlocklistSuggestion[]>([]);
@@ -104,9 +105,10 @@ export default function BlocklistPage() {
     <div className="blocklist-page">
       <header className="blocklist-page__header">
         <div>
-          <h1 className="page-title">Blocked artists</h1>
+          <h1 className="page-title">Blocklist</h1>
           <p className="page-subtitle">
-            Blocked artists stay out of recommendations, playlists, and flows.
+            Blocked artists stay out of recommendations, playlists, and flows. Blocked genres stay
+            out of recommendations and flows.
           </p>
         </div>
       </header>
@@ -164,7 +166,7 @@ export default function BlocklistPage() {
 
       <section className="blocklist-page__panel">
         <div className="blocklist-page__panel-title">
-          <h2>Blocked ({blockedArtists.length})</h2>
+          <h2>Blocked artists ({blockedArtists.length})</h2>
         </div>
         {blockedArtists.length > 0 ? (
           <div className="blocklist-page__list">
@@ -195,6 +197,8 @@ export default function BlocklistPage() {
           <p className="blocklist-page__empty">No blocked artists.</p>
         )}
       </section>
+
+      <BlocklistGenres />
     </div>
   );
 }

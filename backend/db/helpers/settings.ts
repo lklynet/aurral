@@ -163,11 +163,6 @@ interface StoredInbox {
   discoveries?: boolean;
 }
 
-interface StoredBlocklist {
-  artists?: string[];
-  tags?: string[];
-}
-
 export type QualityProfile = ReturnType<typeof normalizeQualityProfile>;
 
 export interface AppSettings {
@@ -188,7 +183,6 @@ export interface AppSettings {
   missingTrackSearch: SettingsMissingTrackSearch;
   reviewTimeoutHours: number;
   inbox: SettingsInbox;
-  blocklist: StoredBlocklist;
   onboardingComplete: boolean;
 }
 
@@ -210,7 +204,6 @@ export interface SettingsUpdate {
   playlistWorker?: StoredPlaylistWorker;
   missingTrackSearch?: StoredMissingTrackSearch;
   reviewTimeoutHours?: number | string;
-  blocklist?: StoredBlocklist;
   onboardingComplete?: boolean;
 }
 
@@ -413,9 +406,6 @@ export const dbOps = {
       getSettingStmt.get("reviewTimeoutHours")?.value,
     );
     const inbox: StoredInbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
-    const blocklist: StoredBlocklist | null = dbHelpers.parseJSON(
-      getSettingStmt.get("blocklist")?.value,
-    );
     const onboardingComplete = getSettingStmt.get("onboardingComplete")?.value === "true";
 
     const decryptedIntegrations: StoredIntegrations =
@@ -458,7 +448,6 @@ export const dbOps = {
         recommendedNews: inbox.recommendedNews === true,
         discoveries: inbox.discoveries !== false,
       },
-      blocklist: blocklist && typeof blocklist === "object" ? blocklist : { artists: [], tags: [] },
       onboardingComplete: !!onboardingComplete,
     };
     if (result.integrations?.navidrome) {
@@ -587,9 +576,6 @@ export const dbOps = {
           "reviewTimeoutHours",
           String(normalizeReviewTimeoutHours(settings.reviewTimeoutHours)),
         );
-      }
-      if (settings.blocklist !== undefined) {
-        upsertSettingStmt.run("blocklist", dbHelpers.stringifyJSON(settings.blocklist));
       }
       if (settings.onboardingComplete !== undefined) {
         upsertSettingStmt.run("onboardingComplete", settings.onboardingComplete ? "true" : "false");

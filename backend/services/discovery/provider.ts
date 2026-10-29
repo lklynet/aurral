@@ -36,6 +36,8 @@ import {
   DISCOVERY_QUALITY_ENRICHED,
 } from "./helpers.ts";
 import { getDiscoveryFeedback, type DiscoveryFeedbackEntry } from "./feedback.ts";
+import { getBlockedTagKeys } from "./blockedTags.ts";
+import { genreKey } from "../musicGenres.ts";
 import {
   discoveryCache,
   getDiscoveryRefreshState,
@@ -476,7 +478,10 @@ const buildUserRecommendations = async ({
 
   progress("building_genres", "Building your genre and tag profile", 30);
   const { tagMap, tagWeights } = await collectSeedTags(seeds, sourceHealth);
-  const { profileTagWeights, topGenres } = buildTagProfile(tagWeights);
+  const blockedTags = getBlockedTagKeys(userId);
+  const { profileTagWeights, topGenres } = buildTagProfile(
+    new Map([...tagWeights].filter(([tag]) => !blockedTags.has(genreKey(tag)))),
+  );
 
   progress("generating_recommendations", "Finding similar artists", 50);
   const discoveryMode = getDiscoveryMode();

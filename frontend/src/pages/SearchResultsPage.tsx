@@ -37,6 +37,7 @@ import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
 import { readReleaseListViewMode, writeReleaseListViewMode } from "./ArtistDetails/utils";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
+import { useBlockedGenres } from "../hooks/useBlockedGenres";
 import type { ArtistFeedbackAction, ArtistFeedbackSource } from "../utils/artistTaste";
 import { queryKeys } from "../queryClient.ts";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
@@ -67,7 +68,15 @@ import {
 import { Navigate, useSearchParams } from "react-router";
 import { RECOMMENDED_PATH, recommendedListPath } from "../navigation/recommendedPath.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { Grid3X3, LayoutGrid, List, Music, Search, SlidersHorizontal } from "../components/icons";
+import {
+  Ban,
+  Grid3X3,
+  LayoutGrid,
+  List,
+  Music,
+  Search,
+  SlidersHorizontal,
+} from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 
@@ -166,6 +175,9 @@ function SearchResults() {
   useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
+  const { isGenreBlocked, setGenreBlocked, pendingGenre } = useBlockedGenres();
+  const tagName = isTagSearch ? trimmedQuery.replace(/^#/, "").trim() : "";
+  const tagBlocked = tagName ? isGenreBlocked(tagName) : false;
   const canAddAlbum = hasPermission("addAlbum");
   const updateAlbumSort = useCallback(
     (nextSort: string) => {
@@ -1131,6 +1143,21 @@ function SearchResults() {
       <header className="search-page__header">
         <div className="search-page__title-row">
           <h1 className="search-page__title">{pageTitle}</h1>
+          {tagName ? (
+            <button
+              type="button"
+              className={`btn ${tagBlocked ? "btn-neutral-active" : "btn-secondary"} search-page__block-genre`}
+              onClick={() => setGenreBlocked(tagName, !tagBlocked)}
+              disabled={pendingGenre === tagName}
+            >
+              {pendingGenre === tagName ? (
+                <DotLoader size="xs" label={null} />
+              ) : (
+                <Ban aria-hidden="true" />
+              )}
+              {tagBlocked ? "Unblock genre" : "Block genre"}
+            </button>
+          ) : null}
         </div>
 
         {pageSubtitle && (

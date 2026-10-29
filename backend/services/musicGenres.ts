@@ -2,7 +2,7 @@ import fs from "fs";
 
 const BROAD_LASTFM_GENRES = ["alternative", "indie", "rap", "rnb"];
 
-const genreKey = (value: string | null | undefined) =>
+export const genreKey = (value: unknown) =>
   String(value || "")
     .toLowerCase()
     .replace(/[\s_-]+/g, "");

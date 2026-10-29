@@ -6,6 +6,7 @@ import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
 import { normalizeWeightMap, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
+import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
 import { resolveTrackSearchContext } from "../downloadJobs/trackSearchContext.ts";
@@ -1206,6 +1207,14 @@ export class FlowTrackSource {
     return keys.map((key) => this.artistTopTagsCache.get(key)?.value || []);
   }
 
+  async _withoutBlockedTagArtists(tracks: FlowTrackEntry[], blockedTags: ReadonlySet<string>) {
+    if (blockedTags.size === 0 || tracks.length === 0) return tracks;
+    const tagLists = await this._getArtistTopTagLists(
+      tracks.map((track) => ({ name: track.artistName, artistMbid: track.artistMbid })),
+    );
+    return tracks.filter((_, index) => !hasBlockedTag(tagLists[index], blockedTags));
+  }
+
   async _buildRelatedArtistMatchMap(seedArtists: string[]) {
     const normalizedSeeds = this._normalizeFocusEntries(seedArtists);
     const cacheKey = normalizedSeeds.map((entry) => this._artistKey(entry)).join("\u0001");
@@ -1640,7 +1649,8 @@ export class FlowTrackSource {
     harvestTargets: Record<string, number>,
     options: FlowRunOptions = {},
   ) {
-    const tags = this._normalizeFocusEntries(flow?.tags);
+    const blockedTags = getBlockedTagKeys(flow?.ownerUserId);
+    const tags = withoutBlockedTags(this._normalizeFocusEntries(flow?.tags), blockedTags);
     const relatedArtists = this._normalizeFocusEntries(flow?.relatedArtists);
     const excludeArtistKeys = new Set(
       Array.isArray(options?.excludeArtistKeys)
@@ -1691,7 +1701,9 @@ export class FlowTrackSource {
             reason: "From trending artists",
             excludeArtistKeys: nonLibraryExcludeArtistKeys,
             listenHistoryProfile,
-          }).catch(skipSource("trending"))
+          })
+            .then((tracks) => this._withoutBlockedTagArtists(tracks, blockedTags))
+            .catch(skipSource("trending"))
         : [],
       harvestTargets.focus > 0
         ? this._getFocusCandidates(this._harvestLimitFor(harvestTargets.focus), {
@@ -1735,7 +1747,9 @@ export class FlowTrackSource {
               );
             }),
         ),
-        focus: this._sortSourceCandidates(focusCandidates),
+        focus: this._sortSourceCandidates(
+          focusCandidates.filter((candidate) => !hasBlockedTag(candidate.artistTags, blockedTags)),
+        ),
       },
       excludeArtistKeys,
     };

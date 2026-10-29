@@ -306,6 +306,9 @@ include `albumGrab.canonicalAlbumId`.
 | `POST`   | `/api/discover/feedback`                      | Record discovery feedback                                                                                        |
 | `DELETE` | `/api/discover/feedback/:id`                  | Delete discovery feedback                                                                                        |
 | `POST`   | `/api/discover/feedback/reset`                | Reset discovery feedback                                                                                         |
+| `GET`    | `/api/discover/blocked-tags`                  | Genres the current user blocked                                                                                  |
+| `POST`   | `/api/discover/blocked-tags`                  | Block a genre with `{ tag }`. Rejects tags that are not genres                                                   |
+| `DELETE` | `/api/discover/blocked-tags`                  | Unblock the genre in the `tag` query parameter                                                                   |
 | `GET`    | `/api/discover/preferences`                   | Discovery preferences                                                                                            |
 | `POST`   | `/api/discover/preferences`                   | Update discovery preferences                                                                                     |
 | `POST`   | `/api/discover/preferences/reset`             | Reset discovery preferences                                                                                      |

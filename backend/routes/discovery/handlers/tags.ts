@@ -12,6 +12,7 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { getUserDiscoveryNamespace } from "../../../services/discovery/index.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
+import { listMusicbrainzGenres } from "../../../services/musicGenres.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
 const rankTagSuggestions = (names: unknown[], prefix: string) => {
@@ -27,7 +28,11 @@ const rankTagSuggestions = (names: unknown[], prefix: string) => {
   return groups.flat();
 };
 
-const tagsQuery = v.object({ q: v.optional(v.string()), limit: v.optional(v.string()) });
+const tagsQuery = v.object({
+  q: v.optional(v.string()),
+  limit: v.optional(v.string()),
+  genres: v.optional(v.literal("1")),
+});
 
 const byTagQuery = v.object({
   tag: v.optional(v.union([v.string(), v.array(v.string())])),
@@ -40,7 +45,7 @@ const byTagQuery = v.object({
 export default new Hono<AppEnv>()
   .get("/tags", validate("query", tagsQuery), async (c) => {
     try {
-      const { q = "", limit = "10" } = c.req.valid("query");
+      const { q = "", limit = "10", genres } = c.req.valid("query");
       const limitInt = Math.min(parseInt(limit) || 10, 20);
       const rawPrefix = q.trim();
       const prefix = rawPrefix.toLowerCase();
@@ -49,8 +54,9 @@ export default new Hono<AppEnv>()
         userId != null
           ? dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId)).topGenres || []
           : [];
-      const suggestions = rankTagSuggestions([...userGenres, ...(await getPopularTags())], prefix);
-      if (prefix.length >= 2 && suggestions[0]?.toLowerCase() !== prefix) {
+      const pool = genres ? listMusicbrainzGenres() : await getPopularTags();
+      const suggestions = rankTagSuggestions([...userGenres, ...pool], prefix);
+      if (!genres && prefix.length >= 2 && suggestions[0]?.toLowerCase() !== prefix) {
         suggestions.unshift(rawPrefix);
       }
       return c.json({ tags: suggestions.slice(0, limitInt) }, 200);
