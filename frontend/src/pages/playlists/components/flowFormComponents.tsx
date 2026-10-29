@@ -1,4 +1,3 @@
-import { ChevronDown } from "../../../components/icons";
 import {
   MixSlider,
   getFocusDraftValidation,
@@ -92,7 +91,6 @@ export function FlowScheduleFields({
                 </option>
               ))}
             </select>
-            <ChevronDown className="flow-page__select-icon" />
           </div>
         </div>
         <div className="flow-page__field flow-page__field--schedule-days">
