@@ -4215,6 +4215,7 @@ select.input {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-base);
   text-align: center;
+  pointer-events: none;
 }
 
 .artist-track-row--preview > .btn-track-play-lg {
