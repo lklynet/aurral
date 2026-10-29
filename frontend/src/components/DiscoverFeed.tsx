@@ -93,25 +93,27 @@ export function ShowFeedTile({
     (show.venueName && show.city ? `${show.venueName}, ${show.city}` : null) ||
     show.venueName ||
     show.city;
-  const dayLabel = (options: Intl.DateTimeFormatOptions) => (day ? formatDate(day, options) : null);
+  const datePart = (options: Intl.DateTimeFormatOptions) =>
+    day ? day.toLocaleDateString(undefined, options) : null;
+  const date = day ? formatDate(day, { month: "short", day: "numeric" }) : null;
 
   const layouts = {
     list: {
-      meta: joinMeta(place, dayLabel({ weekday: "short" })),
+      meta: joinMeta(place, datePart({ weekday: "short" })),
       leading: day ? (
         <span className="discover-feed-tile__date">
-          <span className="discover-feed-tile__day">{dayLabel({ day: "numeric" })}</span>
-          <span className="discover-feed-tile__month">{dayLabel({ month: "short" })}</span>
+          <span className="discover-feed-tile__day">{day.getDate()}</span>
+          <span className="discover-feed-tile__month">{datePart({ month: "short" })}</span>
         </span>
       ) : null,
       trailing: distance ? <span className="discover-feed-tile__trailing">{distance}</span> : null,
     },
     square: {
-      meta: joinMeta(dayLabel({ weekday: "short", month: "short", day: "numeric" }), show.city),
+      meta: joinMeta(datePart({ weekday: "short" }), date, show.city),
     },
     wide: {
       meta: joinMeta(show.venueName || show.city, distance),
-      overlay: dayLabel({ month: "short", day: "numeric" }),
+      overlay: date,
     },
   } satisfies Record<
     DiscoverFeedStyle,
