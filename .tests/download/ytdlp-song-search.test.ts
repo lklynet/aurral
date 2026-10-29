@@ -73,7 +73,7 @@ execFileSync("ffmpeg", [
 await writeFile(
   path.join(binDir, "yt-dlp"),
   [
-    "#!/usr/bin/env node",
+    `#!${process.execPath}`,
     "const fs = require('node:fs');",
     "const { execFileSync } = require('node:child_process');",
     "let release;",

@@ -36,7 +36,7 @@ test(
     await writeFile(
       binaryPath,
       [
-        "#!/usr/bin/env node",
+        `#!${process.execPath}`,
         "const { execFileSync } = require('node:child_process');",
         "const args = process.argv.slice(2);",
         "const title = new URL(args.at(-1)).searchParams.get('title');",
@@ -133,7 +133,7 @@ test(
     await writeFile(
       binaryPath,
       [
-        "#!/usr/bin/env node",
+        `#!${process.execPath}`,
         "const fs = require('node:fs');",
         "const { spawn } = require('node:child_process');",
         "process.on('SIGTERM', () => {});",
@@ -242,7 +242,7 @@ test(
     await writeFile(
       binaryPath,
       [
-        "#!/usr/bin/env node",
+        `#!${process.execPath}`,
         "const fs = require('node:fs');",
         "const path = require('node:path');",
         "const args = process.argv.slice(2);",

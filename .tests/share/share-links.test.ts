@@ -17,7 +17,7 @@ const fakeBin = await mkdtemp(path.join(tmpdir(), "aurral-fake-cloudflared-"));
 const launchLog = path.join(fakeBin, "launches.jsonl");
 await writeFile(
   path.join(fakeBin, "cloudflared"),
-  `#!/usr/bin/env node
+  `#!${process.execPath}
 const fs = require("fs");
 if (process.argv[2] === "--version") process.exit(0);
 fs.appendFileSync(${JSON.stringify(launchLog)}, JSON.stringify({ pid: process.pid, args: process.argv.slice(2) }) + "\\n");
