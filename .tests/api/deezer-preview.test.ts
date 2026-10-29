@@ -121,3 +121,17 @@ test("a preview Deezer no longer has is a 404 and a Deezer outage is a 502", asy
   assert.equal((await requestPreview("/api/deezer/preview/11.mp3")).status, 502);
   assert.equal((await requestPreview("/api/deezer/preview/abc.mp3")).status, 404);
 });
+
+test("a downloaded preview comes from Aurral instead of redirecting to Deezer", async () => {
+  const link = signedLink("12", Date.now());
+  stubDeezer({
+    "https://api.deezer.com/track/12": () => ({ id: 12, preview: link }),
+    [link]: () => Buffer.from("clip"),
+  });
+
+  const response = await requestPreview("/api/deezer/preview/12.mp3?download");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "audio/mpeg");
+  assert.equal(await response.text(), "clip");
+});

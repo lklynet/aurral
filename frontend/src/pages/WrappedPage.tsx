@@ -470,6 +470,99 @@ function useSoundtrack(src: string | null, seek: number | null, muted: boolean, 
   };
 }
 
+type Prepared = { summary: WrappedRecap; songs: Map<string, string> };
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function retry<T>(work: () => Promise<T>) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await work();
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await wait(500 * 2 ** attempt);
+    }
+  }
+}
+
+async function prepareStory(summary: WrappedRecap, username: string): Promise<Prepared> {
+  const rows = [...summary.topArtists, ...summary.topSongs.slice(0, 5), ...summary.topAlbums];
+  const text = [
+    ...rows.flatMap((row) => [row.name, row.artist]),
+    ...summary.topGenres.map((genre) => genre.name),
+    summary.busiestDay?.topSong?.name ?? "",
+    username,
+  ].join("");
+  const artwork = new Set([...wrappedCovers(summary), ...rows.map((row) => row.artwork)]);
+  const clips = new Set(
+    wrappedSoundtrack(
+      summary,
+      storySlides(summary).map((slide) => slide.kind),
+    ).flatMap((cue) => (cue?.song.preview != null ? [wrappedSongSource(cue.song)] : [])),
+  );
+  const prepared: Prepared = { summary, songs: new Map() };
+  const broken = new Set<string>();
+  await Promise.race([
+    Promise.all([
+      loadWrappedFonts(`${text}0123456789,.%`).catch(() => {}),
+      ...[...artwork].map((url) =>
+        url
+          ? retry(() => {
+              const image = new Image();
+              image.src = wrappedImageUrl(url);
+              return image.decode();
+            }).catch(() => broken.add(url))
+          : null,
+      ),
+      ...[...clips].map((url) =>
+        retry(async () => {
+          const download = new URL(url);
+          download.searchParams.set("download", "");
+          const response = await fetch(download);
+          if (!response.ok) throw new Error(`Clip failed with ${response.status}`);
+          return URL.createObjectURL(await response.blob());
+        }).then(
+          (clip) => prepared.songs.set(url, clip),
+          () => {},
+        ),
+      ),
+    ]),
+    wait(15_000),
+  ]);
+  const usable = <Row extends { artwork: string | null }>(list: Row[]) =>
+    list.map((row) => (row.artwork && broken.has(row.artwork) ? { ...row, artwork: null } : row));
+  if (broken.size)
+    prepared.summary = {
+      ...summary,
+      topArtists: usable(summary.topArtists),
+      topSongs: usable(summary.topSongs),
+      topAlbums: usable(summary.topAlbums),
+    };
+  return prepared;
+}
+
+function usePreparedStory(summary: WrappedRecap | null, username: string) {
+  const [prepared, setPrepared] = useState<Prepared | null>(null);
+  useEffect(() => {
+    if (!summary) return;
+    let active = true;
+    prepareStory(summary, username).then((next) => {
+      if (active) setPrepared(next);
+      else for (const clip of next.songs.values()) URL.revokeObjectURL(clip);
+    });
+    return () => {
+      active = false;
+    };
+  }, [summary, username]);
+  useEffect(
+    () => () => {
+      for (const clip of prepared?.songs.values() ?? []) URL.revokeObjectURL(clip);
+    },
+    [prepared],
+  );
+  return prepared;
+}
+
 function useShareImage(summary: WrappedRecap, field: string, username: string) {
   const [image, setImage] = useState<ShareImage>(null);
   useEffect(() => {
@@ -1096,11 +1189,13 @@ function ShareCard({
 
 function Story({
   summary,
+  songs,
   username,
   onClose,
   actions,
 }: {
   summary: WrappedRecap;
+  songs: Map<string, string>;
   username: string;
   onClose: () => void;
   actions: (image: ShareImage) => ReactNode;
@@ -1117,7 +1212,6 @@ function Story({
   const [fromIntro, setFromIntro] = useState(intro);
   const [held, setHeld] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [fontsReady, setFontsReady] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
   const pressed = useRef(0);
@@ -1135,7 +1229,8 @@ function Story({
     [summary, slides],
   );
   const cue = soundtrack[index];
-  const source = cue && wrappedSongSource(cue.song);
+  const stream = cue && wrappedSongSource(cue.song);
+  const source = stream && (songs.get(stream) ?? stream);
   const audio = useSoundtrack(
     intro && waiting ? null : source,
     !cue || cue.song.preview !== null ? 0 : (cue.song.beats?.start ?? null),
@@ -1147,23 +1242,6 @@ function Story({
   const playing = audible && cue?.named === true;
   const last = index === slides.length - 1;
   const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
-
-  useEffect(() => {
-    let active = true;
-    const rows = [...summary.topArtists, ...summary.topSongs.slice(0, 5), ...summary.topAlbums];
-    const text = [
-      ...rows.flatMap((row) => [row.name, row.artist]),
-      ...summary.topGenres.map((genre) => genre.name),
-      summary.busiestDay?.topSong?.name ?? "",
-      username,
-    ].join("");
-    loadWrappedFonts(`${text}0123456789,.%`).finally(() => active && setFontsReady(true));
-    for (const url of new Set([...wrappedCovers(summary), ...rows.map((row) => row.artwork)]))
-      if (url) new Image().src = wrappedImageUrl(url);
-    return () => {
-      active = false;
-    };
-  }, [summary, username]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -1320,9 +1398,7 @@ function Story({
         <div className="wrapped-progress" aria-hidden="true">
           {slides.map((entry, position) => (
             <i key={entry.kind} className={position < index ? "wrapped-seen" : undefined}>
-              {position === index && fontsReady && (
-                <b onAnimationEnd={() => !last && goRef.current(1)} />
-              )}
+              {position === index && <b onAnimationEnd={() => !last && goRef.current(1)} />}
             </i>
           ))}
         </div>
@@ -1354,24 +1430,23 @@ function Story({
             <X aria-hidden="true" />
           </TooltipButton>
         </div>
-        {fontsReady &&
-          [leaving, index].map((position) => {
-            if (position === null) return null;
-            const entry = slides[position];
-            return (
-              <div
-                key={entry.kind}
-                ref={position === index ? slideRef : undefined}
-                data-slide={entry.kind}
-                className={`wrapped-slide wrapped-slide--${entry.kind}${arrival(position)}`}
-                style={fieldStyle(position)}
-                aria-hidden={position === index ? undefined : true}
-                onAnimationEnd={position === index ? settle : undefined}
-              >
-                {content(entry, position === index)}
-              </div>
-            );
-          })}
+        {[leaving, index].map((position) => {
+          if (position === null) return null;
+          const entry = slides[position];
+          return (
+            <div
+              key={entry.kind}
+              ref={position === index ? slideRef : undefined}
+              data-slide={entry.kind}
+              className={`wrapped-slide wrapped-slide--${entry.kind}${arrival(position)}`}
+              style={fieldStyle(position)}
+              aria-hidden={position === index ? undefined : true}
+              onAnimationEnd={position === index ? settle : undefined}
+            >
+              {content(entry, position === index)}
+            </div>
+          );
+        })}
       </div>
       <div className="wrapped-actions">{last && !intro && leaving === null && actions(image)}</div>
     </>
@@ -1417,6 +1492,8 @@ export default function WrappedPage() {
   const location = useLocation();
   const toast = useToast();
   const query = useWrapped();
+  const summary = query.data?.summary ?? null;
+  const prepared = usePreparedStory(summary, user?.username ?? "");
   const [sharing, setSharing] = useState(false);
   const close = () => {
     const from: unknown = location.state?.wrappedFrom;
@@ -1471,7 +1548,6 @@ export default function WrappedPage() {
     }
   };
 
-  const summary = query.data?.summary ?? null;
   const unavailable = summary?.sources.some((source) => source.state !== "ready") ?? false;
   const rebuild = (
     <button
@@ -1484,14 +1560,14 @@ export default function WrappedPage() {
     </button>
   );
 
+  const loading = (
+    <>
+      <div className="wrapped-frame" />
+      <div className="wrapped-actions" />
+    </>
+  );
   let content: ReactNode;
-  if (query.isPending)
-    content = (
-      <>
-        <div className="wrapped-frame" />
-        <div className="wrapped-actions" />
-      </>
-    );
+  if (query.isPending) content = loading;
   else if (query.isError && !query.data)
     content = (
       <Notice title="Not loaded" body="Your Wrapped could not be loaded." onClose={close}>
@@ -1529,11 +1605,13 @@ export default function WrappedPage() {
         {rebuild}
       </Notice>
     );
+  else if (!prepared) content = loading;
   else
     content = (
       <Story
-        key={summary.end}
-        summary={summary}
+        key={prepared.summary.end}
+        summary={prepared.summary}
+        songs={prepared.songs}
         username={user?.username ?? ""}
         onClose={close}
         actions={(image) => (

@@ -50,7 +50,7 @@ const headers = Object.entries({
     "script-src-attr 'none'",
     "style-src 'self' 'unsafe-inline'",
     `connect-src ${connectSources.join(" ")}`,
-    "media-src 'self' data: https:",
+    "media-src 'self' data: blob: https:",
     "frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com",
   ].join(";"),
   "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
