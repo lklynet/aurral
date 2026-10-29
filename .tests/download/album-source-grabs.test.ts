@@ -1806,7 +1806,7 @@ test("an upgrade still waiting for the worker when every download source is turn
   assert.equal(downloadTracker.findActiveUpgradeJob(trackedJob(downloadTracker, id)), null);
   assert.equal(trackedJob(downloadTracker, id).finalPath, original);
   const entry = (await getAurralHistoryRequests()).find((item) => item.jobId === upgradeId);
-  assert.deepEqual([entry?.status, entry?.title], ["failed", "No upgrade found for First"]);
+  assert.deepEqual([entry?.status, entry?.title], ["unchanged", "No upgrade found for First"]);
 });
 
 test("a static playlist track whose downloads were cancelled gets no upgrade", async (t) => {
