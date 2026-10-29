@@ -257,6 +257,11 @@ textarea {
   border: 0;
 }
 
+option {
+  background-color: var(--aurral-surface-popover);
+  color: var(--aurral-text);
+}
+
 button {
   background: transparent;
   padding: 0;
