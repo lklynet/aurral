@@ -918,7 +918,7 @@
   stroke-linejoin: round;
   stroke-dasharray: 1 2;
   animation: wrapped-draw calc(var(--wrapped-t) * 8) var(--aurral-ease-out) backwards;
-  animation-delay: calc(var(--wrapped-t) * (var(--i, 0) + var(--s, 0) * 3));
+  animation-delay: calc(var(--wrapped-t) * (var(--i, 0) + var(--s, 0) * var(--gap, 3)));
 }
 .wrapped-doodle path:nth-child(even) {
   stroke-width: 0.52;
@@ -962,6 +962,77 @@
   left: 50%;
   width: 11cqw;
   translate: -50% 0;
+}
+.wrapped-stopwatch,
+.wrapped-notes,
+.wrapped-tally,
+.wrapped-sky {
+  display: inline-block;
+  vertical-align: middle;
+}
+.wrapped-stopwatch {
+  --gap: 2;
+  width: 13.5cqw;
+  margin: -4cqw 0 -4cqw 3cqw;
+}
+.wrapped-notes {
+  width: 12.5cqw;
+  margin: -5cqw 0 -5cqw 3cqw;
+}
+.wrapped-tally,
+.wrapped-sky {
+  width: 15cqw;
+  margin: -3cqw 0 -3cqw 2.5cqw;
+}
+.wrapped-tally {
+  --gap: 1.5;
+}
+.wrapped-sky {
+  --gap: 1;
+}
+.wrapped-rays {
+  --gap: 1.5;
+  display: inline-block;
+  width: 12.5cqw;
+  margin: calc(-0.15em - 3cqw) 0 0 1.5cqw;
+  vertical-align: top;
+}
+.wrapped-artists li:first-child,
+.wrapped-rank li:first-child {
+  position: relative;
+}
+.wrapped-rays--rank,
+.wrapped-arrow {
+  position: absolute;
+}
+.wrapped-rays--rank {
+  width: 11.2cqw;
+  margin: 0;
+}
+.wrapped-rank li:first-child .wrapped-rank-title {
+  max-width: calc(100% - 9cqw);
+}
+.wrapped-album-name {
+  position: relative;
+  width: fit-content;
+}
+.wrapped-underline {
+  position: absolute;
+  top: calc(100% + 0.8cqw);
+  left: -1cqw;
+  width: calc(100% + 1cqw);
+  height: 6.3cqw;
+}
+.wrapped-date {
+  position: relative;
+  display: inline-block;
+}
+.wrapped-circle {
+  position: absolute;
+  top: -0.055em;
+  left: -0.01em;
+  width: calc(100% + 0.17em);
+  height: calc(100% + 0.07em);
 }
 @keyframes wrapped-draw {
   from {
