@@ -1,22 +1,16 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { parseResponse } from "hono/client";
 import { SettingsSelect } from "./SettingsField";
 import { DotLoader } from "../../../components/DotLoader";
-import { parseResponse, type InferResponseType } from "hono/client";
+import { useToast } from "../../../contexts/ToastContext";
 import { userPlexLinkClient } from "../../../utils/api/clients/userPlexLink.ts";
-import type { usersClient } from "../../../utils/api/clients/users.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { queryKeys } from "../../../queryClient.ts";
 import { readApiError } from "../utils/apiError.ts";
-import type { userOps } from "../../../../../backend/db/helpers/users.ts";
-import type { useToast } from "../../../contexts/ToastContext";
-
-type Toast = ReturnType<typeof useToast>["showSuccess"];
-type SettingsUser = ReturnType<typeof userOps.getAllUsers>[number] &
-  Partial<
-    Pick<InferResponseType<typeof usersClient.$get, 200>[number], "plexLink" | "plexGlobalAccount">
-  >;
+import { refreshUsers, type SettingsUser } from "../hooks/useSettingsUsers";
+import { SettingsLink } from "../settingsRoute";
+import { SettingsActions, SettingsGroup, SettingsNote, SettingsRow } from "../SettingsLayout";
 
 const unlinkPlex = (userId: number, force = false) =>
   parseResponse(
@@ -26,18 +20,29 @@ const unlinkPlex = (userId: number, force = false) =>
     }),
   );
 
-export function AdminPlexLinkField({
-  user,
-  onChanged,
-  showSuccess,
-  showError,
-}: {
-  user: SettingsUser;
-  onChanged?: () => unknown;
-  showSuccess: Toast;
-  showError: Toast;
-}) {
+function plexNote({ role, id, plexLink, plexGlobalAccount }: SettingsUser) {
+  if (plexLink.connected) {
+    return `${plexLink.linkType === "managed" ? "Managed user" : "Self-linked"}: ${
+      plexLink.plexUsername || "unknown"
+    }.`;
+  }
+  const ownsGlobalAccount =
+    role === "admin" &&
+    plexGlobalAccount.configured &&
+    (plexGlobalAccount.configuredByUserId == null ||
+      Number(plexGlobalAccount.configuredByUserId) === Number(id));
+  if (ownsGlobalAccount) {
+    return `Uses Aurral's Plex connection${
+      plexGlobalAccount.plexUsername ? `, ${plexGlobalAccount.plexUsername}` : ""
+    }.`;
+  }
+  return "Use a Plex Home managed user for this account's flows and playlists.";
+}
+
+export function AdminPlexLinkField({ user }: { user: SettingsUser }) {
+  const selectId = useId();
   const queryClient = useQueryClient();
+  const { showSuccess, showError } = useToast();
   const [showHomeUsers, setShowHomeUsers] = useState(false);
   const homeUsersQuery = useQuery({
     queryKey: queryKeys.plexHomeUsers,
@@ -50,7 +55,7 @@ export function AdminPlexLinkField({
       } catch (err) {
         if (!signal.aborted) {
           const failure = readApiError(err);
-          showError?.(failure.message || failure.error || "Failed to load Plex Home users");
+          showError(failure.message || failure.error || "Failed to load Plex Home users");
         }
         throw err;
       }
@@ -64,8 +69,7 @@ export function AdminPlexLinkField({
   const [selectedPlexUserId, setSelectedPlexUserId] = useState("");
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
-
-  const plexLink = user.plexLink || { connected: false };
+  const { plexLink } = user;
 
   const handleLink = async () => {
     if (!selectedPlexUserId) return;
@@ -90,16 +94,14 @@ export function AdminPlexLinkField({
           },
         }),
       );
-      showSuccess?.(
-        `Linked ${user.username} to Plex user "${picked?.title || selectedPlexUserId}".`,
-      );
+      showSuccess(`Linked ${user.username} to Plex user "${picked?.title || selectedPlexUserId}".`);
       setShowHomeUsers(false);
       setSelectedPlexUserId("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.plexHomeUsers });
-      await onChanged?.();
+      await refreshUsers();
     } catch (err) {
       const failure = readApiError(err);
-      showError?.(failure.message || failure.error || "Failed to link Plex user");
+      showError(failure.message || failure.error || "Failed to link Plex user");
     } finally {
       setLinking(false);
     }
@@ -109,8 +111,8 @@ export function AdminPlexLinkField({
     setUnlinking(true);
     try {
       await unlinkPlex(user.id);
-      showSuccess?.(`Unlinked ${user.username}'s Plex account.`);
-      await onChanged?.();
+      showSuccess(`Unlinked ${user.username}'s Plex account.`);
+      await refreshUsers();
     } catch (err) {
       const failure = readApiError(err);
       if (
@@ -131,101 +133,93 @@ export function AdminPlexLinkField({
           if (!isReauthRequiredError(forceError) || !(await promptReauth())) throw forceError;
           await forceUnlink();
         }
-        showSuccess?.(
+        showSuccess(
           `Forcibly unlinked ${user.username}'s final sign-in method. The account can no longer sign in.`,
         );
-        await onChanged?.();
+        await refreshUsers();
       } else {
-        showError?.(failure.message || "Failed to unlink Plex");
+        showError(failure.message || "Failed to unlink Plex");
       }
     } finally {
       setUnlinking(false);
     }
   };
 
-  if (plexLink.connected) {
-    return (
-      <div className="settings-page__inline-row">
-        <span className="settings-page__muted-copy">
-          {plexLink.linkType === "managed" ? "Managed user: " : "Self-linked: "}
-          <strong>{String(plexLink.plexUsername || "unknown")}</strong>
-        </span>
-        {plexLink.lastError && (
-          <span className="settings-page__hint settings-page__hint--warning">
-            Reconnect needed: {plexLink.lastError.message}
-          </span>
-        )}
-        <button
-          type="button"
-          className="arr-btn arr-btn--ghost"
-          onClick={handleUnlink}
-          disabled={unlinking}
-        >
-          {unlinking ? "Unlinking…" : "Unlink"}
-        </button>
-      </div>
-    );
-  }
-
-  if (!user.plexGlobalAccount?.configured) {
-    return (
-      <p className="settings-page__hint">
-        Connect the global Plex account in{" "}
-        <Link to="/settings/playback" className="settings-page__link">
-          Settings → Playback → Plex
-        </Link>{" "}
-        before linking a managed Plex user.
-      </p>
-    );
-  }
-
-  if (homeUsers === null) {
-    return (
-      <button
-        type="button"
-        className="arr-btn arr-btn--ghost"
-        onClick={() => setShowHomeUsers(true)}
-        disabled={loadingHomeUsers}
-      >
-        {loadingHomeUsers ? (
-          <>
-            <DotLoader size="sm" label={null} /> Loading Plex Home users…
-          </>
-        ) : (
-          "Link managed Plex user"
-        )}
-      </button>
-    );
-  }
-
-  const availableUsers = homeUsers.filter((u) => !u.alreadyLinked);
+  const availableUsers = homeUsers?.filter((u) => !u.alreadyLinked) ?? [];
 
   return (
-    <div className="settings-page__inline-row">
-      <SettingsSelect
-        value={selectedPlexUserId}
-        onChange={(e) => setSelectedPlexUserId(e.target.value)}
-      >
-        <option value="">
-          {availableUsers.length ? "Select a Plex Home user…" : "No unlinked Plex Home users found"}
-        </option>
-        {availableUsers.map((u) => (
-          <option key={u.id} value={String(u.id)}>
-            {u.title || u.username || u.id}
-          </option>
-        ))}
-      </SettingsSelect>
-      <button
-        type="button"
-        className="arr-btn arr-btn--primary"
-        onClick={handleLink}
-        disabled={!selectedPlexUserId || linking}
-      >
-        {linking ? "Linking…" : "Link"}
-      </button>
-      <button type="button" className="arr-btn" onClick={() => setShowHomeUsers(false)}>
-        Cancel
-      </button>
-    </div>
+    <SettingsGroup title="Plex account" note={plexNote(user)}>
+      {plexLink.connected ? (
+        <>
+          {plexLink.lastError ? (
+            <SettingsNote tone="warning">
+              Reconnect needed: {plexLink.lastError.message}
+            </SettingsNote>
+          ) : null}
+          <SettingsActions>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleUnlink}
+              disabled={unlinking}
+            >
+              {unlinking ? "Unlinking…" : "Unlink"}
+            </button>
+          </SettingsActions>
+        </>
+      ) : !user.plexGlobalAccount.configured ? (
+        <SettingsNote>
+          Connect Plex in{" "}
+          <SettingsLink to="playback/plex" className="settings-link">
+            Playback
+          </SettingsLink>{" "}
+          before linking a managed Plex user.
+        </SettingsNote>
+      ) : homeUsers === null ? (
+        <SettingsActions>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowHomeUsers(true)}
+            disabled={loadingHomeUsers}
+          >
+            {loadingHomeUsers ? <DotLoader size="xs" label={null} /> : null}
+            Link managed Plex user
+          </button>
+        </SettingsActions>
+      ) : (
+        <SettingsRow label="Plex Home user" htmlFor={selectId}>
+          <SettingsSelect
+            id={selectId}
+            value={selectedPlexUserId}
+            onChange={(e) => setSelectedPlexUserId(e.target.value)}
+          >
+            <option value="">
+              {availableUsers.length ? "Select a Plex Home user…" : "No unlinked Plex Home users"}
+            </option>
+            {availableUsers.map((u) => (
+              <option key={u.id} value={String(u.id)}>
+                {u.title || u.username || u.id}
+              </option>
+            ))}
+          </SettingsSelect>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleLink}
+            disabled={!selectedPlexUserId || linking}
+          >
+            {linking ? "Linking…" : "Link"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowHomeUsers(false)}
+          >
+            Cancel
+          </button>
+        </SettingsRow>
+      )}
+    </SettingsGroup>
   );
 }

@@ -2,40 +2,48 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
-  DEFAULT_SETTINGS_TAB,
-  normalizeSettingsTabId,
-  searchSettingsItems,
-} from "../../frontend/src/pages/Settings/settingsTabsConfig.ts";
+  resolveSettingsPath,
+  searchSettings,
+} from "../../frontend/src/pages/Settings/settingsSections.ts";
 
-test("custom settings layouts expose their fields to search", () => {
+const findsSection = (query: string, section: string, canManageServer = true) =>
+  searchSettings(query, canManageServer).some((item) => item.section.id === section);
+
+test("settings search finds fields by keyword, punctuation, and non-adjacent terms", () => {
   const expected = {
-    system: ["runtime", "version", "database path", "api key"],
-    "storage-health": ["disk space", "free space", "run checks"],
+    status: ["runtime", "version", "database path", "disk space", "run checks"],
+    general: ["api key", "date and time format"],
     metadata: ["metadata server", "base url", "brainzmash"],
+    users: ["auto login"],
+    downloads: ["yt dlp staging", "quality cutoff", "m4a 320"],
+    listening: ["listenbrainz", "scrobbling"],
   };
 
-  for (const [tab, queries] of Object.entries(expected)) {
+  for (const [section, queries] of Object.entries(expected)) {
     for (const query of queries) {
-      assert.ok(
-        searchSettingsItems(query).some((item) => item.id === tab),
-        `${tab} search metadata is missing "${query}"`,
-      );
+      assert.ok(findsSection(query, section), `${section} search is missing "${query}"`);
     }
   }
 });
 
-test("settings search handles punctuation and non-adjacent terms", () => {
-  assert.ok(searchSettingsItems("auto login").some((item) => item.id === "users"));
-  assert.ok(searchSettingsItems("yt dlp staging").some((item) => item.id === "download-clients"));
-  assert.ok(searchSettingsItems("quality cutoff").some((item) => item.id === "download-clients"));
-  assert.ok(searchSettingsItems("m4a 320").some((item) => item.id === "download-clients"));
+test("settings search only shows server settings to people who can manage the server", () => {
+  assert.ok(findsSection("scrobbling", "listening", false));
+  assert.equal(
+    searchSettings("api key", false).some((item) => item.section.group === "server"),
+    false,
+  );
+  assert.equal(findsSection("metadata server", "metadata", false), false);
 });
 
-test("settings tab ids map legacy names and fall back to the default for anything else", () => {
-  assert.equal(normalizeSettingsTabId("notifications"), "connect");
-  assert.equal(normalizeSettingsTabId("tasks"), "tasks");
-  assert.equal(normalizeSettingsTabId(null), DEFAULT_SETTINGS_TAB);
+test("settings paths fall back to the default section for unknown or forbidden ids", () => {
+  assert.deepEqual(resolveSettingsPath("downloads/slskd", true), {
+    section: resolveSettingsPath("downloads", true).section,
+    item: "slskd",
+  });
+  assert.equal(resolveSettingsPath("downloads", false).section.id, "profile");
+  assert.equal(resolveSettingsPath("", true).section.id, "general");
+  assert.equal(resolveSettingsPath(null, false).section.id, "profile");
   for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
-    assert.equal(normalizeSettingsTabId(inherited), DEFAULT_SETTINGS_TAB);
+    assert.equal(resolveSettingsPath(inherited, true).section.id, "general");
   }
 });

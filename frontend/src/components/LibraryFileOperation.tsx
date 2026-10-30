@@ -205,7 +205,12 @@ function StopButton({
     }
   };
   return (
-    <button type="button" className="arr-btn" disabled={stopping} onClick={stop}>
+    <button
+      type="button"
+      className="btn btn-secondary btn-sm library-file-op__stop"
+      disabled={stopping}
+      onClick={stop}
+    >
       {stopping ? <DotLoader size="sm" label={null} /> : null}
       Stop
     </button>

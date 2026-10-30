@@ -1,11 +1,8 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
-import {
-  SettingsModalField,
-  SettingsModalSection,
-  SettingsModalToggle,
-} from "./SettingsModalLayout";
+import { SettingsGroup, SettingsRow } from "../SettingsLayout";
 
 type AdapterValue = string | number | boolean;
 
@@ -52,10 +49,9 @@ function fieldValue(
   );
 }
 
-function groupFields(fields: readonly AdapterField[], advanced: boolean) {
+function groupFields(fields: readonly AdapterField[]) {
   const groups: FieldGroup[] = [];
   for (const field of fields) {
-    if (Boolean(field.advanced) !== advanced) continue;
     const title = field.section || "";
     let group = groups.at(-1);
     if (!group || group.title !== title) {
@@ -78,107 +74,105 @@ export function SettingsAdapterFields({
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const fields = (definition?.fields || []).filter((field) => !field.hidden);
-  const advancedGroups = groupFields(fields, true);
+  const advancedFields = fields.filter((field) => field.advanced);
 
-  const renderField = (field: AdapterField) => {
+  const renderControl = (field: AdapterField, id: string) => {
     const value = fieldValue(definition, settings, field);
     const updateValue = (nextValue: AdapterValue) => onChange({ [field.key]: nextValue });
 
     if (field.type === "toggle") {
       return (
-        <SettingsModalToggle
-          key={field.key}
-          label={field.label}
+        <PillToggle
+          id={id}
           checked={value === true}
+          aria-label={field.label}
           onChange={(event) => updateValue(event.target.checked)}
         />
       );
     }
 
-    const id = fieldId(definition, field);
     if (field.type === "path") {
       return (
-        <SettingsModalField key={field.key} label={field.label} htmlFor={id} hint={field.hint}>
-          <DownloadFolderField
-            id={id}
-            value={String(value || "")}
-            autoApplySuggestion={false}
-            onChange={updateValue}
-          />
-        </SettingsModalField>
+        <DownloadFolderField
+          id={id}
+          value={String(value || "")}
+          autoApplySuggestion={false}
+          onChange={updateValue}
+        />
       );
     }
 
     if (field.type === "select") {
       return (
-        <SettingsModalField key={field.key} label={field.label} htmlFor={id} hint={field.hint}>
-          <SettingsSelect
-            id={id}
-            required={field.required === true}
-            value={String(value)}
-            onChange={(event) => updateValue(event.target.value)}
-          >
-            {(field.options || []).map((option) => {
-              const item = typeof option === "object" ? option : { value: option, label: option };
-              return (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              );
-            })}
-          </SettingsSelect>
-        </SettingsModalField>
+        <SettingsSelect
+          id={id}
+          required={field.required === true}
+          value={String(value)}
+          onChange={(event) => updateValue(event.target.value)}
+        >
+          {(field.options || []).map((option) => {
+            const item = typeof option === "object" ? option : { value: option, label: option };
+            return (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            );
+          })}
+        </SettingsSelect>
       );
     }
 
     return (
-      <SettingsModalField key={field.key} label={field.label} htmlFor={id} hint={field.hint}>
-        <SettingsInput
-          id={id}
-          type={field.type || "text"}
-          required={field.required === true}
-          min={field.min}
-          max={field.max}
-          placeholder={field.placeholder}
-          autoComplete={field.secret ? "new-password" : "off"}
-          value={String(value)}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            updateValue(
-              field.type === "number" && nextValue !== "" ? Number(nextValue) : nextValue,
-            );
-          }}
-        />
-      </SettingsModalField>
+      <SettingsInput
+        id={id}
+        type={field.type || "text"}
+        required={field.required === true}
+        min={field.min}
+        max={field.max}
+        placeholder={field.placeholder}
+        autoComplete={field.secret ? "new-password" : "off"}
+        value={String(value)}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          updateValue(field.type === "number" && nextValue !== "" ? Number(nextValue) : nextValue);
+        }}
+      />
     );
   };
 
-  const renderGroups = (advanced: boolean) =>
-    groupFields(fields, advanced).map((group, index) =>
-      group.title ? (
-        <SettingsModalSection key={`${group.title}-${index}`} title={group.title}>
-          {group.fields.map(renderField)}
-        </SettingsModalSection>
-      ) : (
-        <Fragment key={`default-${index}`}>{group.fields.map(renderField)}</Fragment>
-      ),
+  const renderField = (field: AdapterField) => {
+    const id = fieldId(definition, field);
+    return (
+      <SettingsRow key={field.key} label={field.label} htmlFor={id} help={field.hint}>
+        {renderControl(field, id)}
+      </SettingsRow>
     );
+  };
 
   return (
     <>
-      {renderGroups(false)}
-      {advancedGroups.length > 0 ? (
-        <div className="settings-page__advanced-toggle-row">
-          <button
-            type="button"
-            className="settings-page__advanced-toggle"
-            onClick={() => setShowAdvanced((current) => !current)}
-          >
-            {showAdvanced ? "Hide advanced" : "Show advanced"}
-          </button>
-        </div>
+      {groupFields(fields.filter((field) => !field.advanced)).map((group, index) => (
+        <SettingsGroup key={`${group.title}-${index}`} title={group.title || undefined}>
+          {group.fields.map(renderField)}
+        </SettingsGroup>
+      ))}
+      {advancedFields.length > 0 ? (
+        <SettingsGroup
+          title="Advanced"
+          actions={
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced((current) => !current)}
+            >
+              {showAdvanced ? "Hide" : "Show"}
+            </button>
+          }
+        >
+          {showAdvanced ? advancedFields.map(renderField) : null}
+        </SettingsGroup>
       ) : null}
-      {showAdvanced ? renderGroups(true) : null}
     </>
   );
 }

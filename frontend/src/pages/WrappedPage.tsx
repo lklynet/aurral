@@ -1595,12 +1595,12 @@ export default function WrappedPage() {
         body={
           unavailable
             ? "Your listening history could not be reached. Check your connections, then try again."
-            : "Listen through Aurral or connect a scrobbler in your Profile to fill your Wrapped."
+            : "Listen through Aurral or connect a scrobbler in Settings to fill your Wrapped."
         }
         onClose={close}
       >
-        <Link className="btn btn-primary" to="/profile">
-          Open Profile
+        <Link className="btn btn-primary" to="/?settings=listening">
+          Open Settings
         </Link>
         {rebuild}
       </Notice>

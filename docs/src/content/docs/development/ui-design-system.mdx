@@ -95,6 +95,22 @@ Use `.search-empty-panel` for empty and error states: an icon in `.search-empty-
 
 Loading states use skeletons shaped like the ready state. Use `DotLoader` only where content cannot be predicted.
 
+## Settings
+
+Settings is one modal over the current page. Its location is the `settings` search param, as `?settings=<section>` or `?settings=<section>/<item>`. Link to it with `SettingsLink` from `pages/Settings/settingsRoute.tsx`, so it opens over the page the user is on.
+
+The modal fills the window, up to 80rem wide. Below 768px it becomes a full-screen list that opens one page at a time.
+
+Build every section from the primitives in `pages/Settings/SettingsLayout.tsx`:
+
+- `SettingsPage` owns the header bar: a breadcrumb (**Settings / Section / Item**, where the section goes back), the saving state, and close. Its content sits in a centered column.
+- `SettingsGroup` is a heading at `--aurral-font-lg` above one card on `--aurral-surface-raised`, with a hairline between rows. A group's `note` is the first line inside the card. Put nothing between the heading and the card. Settings groups are the only cards that hold rows.
+- `SettingsRow` puts the label and one line of help on the left and the control on the right. Use `stack` for wide controls such as text areas.
+- `SettingsServiceRow` shows a service name, a short status (**On**, **Off**, **Not set up**, or **Needs setup**), and a chevron. It opens the service's detail in the same pane. Do not add card grids or a modal per service.
+- Use a table only for a few short columns. When each item has a description or several values, use two-line rows like **Status > Tasks**: name and description on the left, schedule and result on the right.
+
+Account sections show for everyone. Server sections show only to people who can manage the server, and their data never loads for anyone else. Changes save automatically. A detail that edits a draft, such as a webhook, saves with its own button.
+
 ## Motion
 
 Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The exceptions are the now-playing equalizer, `DotLoader`, and the Wrapped record, which spins only while its song plays. All three animate only transform or opacity and stop when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
@@ -152,27 +168,6 @@ Use `AddActionButton` for actions that add an artist or album to the Library. It
 Keep a component-specific control class when the control has a dedicated layout or interaction. The button rule checks bare buttons and classes in the `.btn-*` family. The theme-token checks still apply to custom CSS and inline styles.
 
 Menu items and switches have different roles. Use `role="menuitem"` or `role="switch"` only when the control has that behavior.
-
-Use `SectionRail` on long pages with several titled sections. Render it as the first child of the page's content column and point it at the sections. It finds them in the page, so sections that appear later or only in some setups are picked up. It shows only when the column has a left margin wide enough for it, and never on touch screens.
-
-```jsx
-function ProfilePage({ sections }) {
-  const pageRef = useRef(null);
-
-  return (
-    <div ref={pageRef} className="profile-page">
-      <SectionRail
-        containerRef={pageRef}
-        sectionSelector=".profile-settings__section"
-        titleSelector=".settings-page__section-title"
-        descriptionSelector=".settings-page__section-note"
-        label="Profile sections"
-      />
-      {sections}
-    </div>
-  );
-}
-```
 
 ## Review the visual result
 

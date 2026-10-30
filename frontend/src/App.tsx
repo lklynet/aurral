@@ -46,8 +46,6 @@ const SearchResultsPage = lazy(routeModules.search);
 const DiscoverPage = lazy(routeModules.discover);
 const ShowsPage = lazy(routeModules.shows);
 const LibraryPage = lazy(routeModules.library);
-const SettingsPage = lazy(routeModules.settings);
-const ProfilePage = lazy(routeModules.profile);
 const WrappedPage = lazy(routeModules.wrapped);
 const WrappedAnnouncement = lazy(() => import("./components/WrappedAnnouncement.tsx"));
 const BlocklistPage = lazy(routeModules.blocklist);
@@ -270,7 +268,7 @@ function ProtectedLayout() {
               <div className="app-status-banner app-status-banner--warning">
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
                 <p className="app-status-banner__text app-status-banner__text--warning">
-                  Choose a Downloads Folder in Settings → Download clients.
+                  Choose a Downloads Folder in Settings → Library.
                 </p>
               </div>
             )}
@@ -357,15 +355,6 @@ const appRoutes = createRoutesFromElements(
       <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
       <Route path="/artist/:mbid/appears-on" element={<ArtistReleaseListPage mode="appearsOn" />} />
       <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
-      <Route
-        path="/settings/:tab?"
-        element={
-          <PermissionRoute permission="accessSettings">
-            <SettingsPage />
-          </PermissionRoute>
-        }
-      />
-      <Route path="/profile" element={<ProfilePage />} />
       <Route path="/wrapped" element={<WrappedPage />} />
       <Route path="/blocklist" element={<BlocklistPage />} />
       <Route path="/go/:kind" element={<ResolveLinkPage />} />

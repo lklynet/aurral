@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Newspaper } from "../components/icons";
-import RouteLink from "../components/RouteLink";
+import { SettingsLink } from "./Settings/settingsRoute";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";
@@ -10,7 +10,8 @@ import { SkeletonNewsCard, SkeletonStatus } from "../components/Skeletons";
 
 export default function NewsPage() {
   useDocumentTitle("Artist news");
-  const { user, bootstrap } = useAuth();
+  const { user, bootstrap, hasPermission } = useAuth();
+  const canManageServer = hasPermission("accessSettings");
   const newsConfigured = bootstrap?.newsConfigured === true;
   const [highlightedOnly, setHighlightedOnly] = useState(false);
   const loadMoreRef = useRef(null);
@@ -56,10 +57,16 @@ export default function NewsPage() {
         <section className="discover-news-page__status">
           <Newspaper aria-hidden="true" />
           <h2>Enable News</h2>
-          <p>Enable RSS news in Settings → RSS news.</p>
-          <RouteLink to="/settings/rss-news" className="btn btn-primary">
-            Open News settings
-          </RouteLink>
+          <p>
+            {canManageServer
+              ? "Turn on News in Settings → Discovery."
+              : "An admin needs to turn on News."}
+          </p>
+          {canManageServer ? (
+            <SettingsLink to="discovery/news" className="btn btn-primary">
+              Open News settings
+            </SettingsLink>
+          ) : null}
         </section>
       ) : loading && articles.length === 0 ? (
         <SkeletonStatus label="Loading news">

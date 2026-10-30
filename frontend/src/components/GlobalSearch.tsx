@@ -61,7 +61,6 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage, getApiErrorText } from "../pages/onboardingUtils";
 import { asApiError } from "../utils/api/core.ts";
-import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
 
 type SuggestionMode = "tag" | "unified";
 type SuggestionItem = SearchSuggestion & {
@@ -79,11 +78,10 @@ type SuggestionResults = {
   library: Awaited<ReturnType<typeof searchLibrary>> | null;
   catalog: Awaited<ReturnType<typeof searchUnified>> | null;
 };
-type SettingsSearchItem = ReturnType<typeof searchSettingsItems>[number];
 
 const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
 
-function GlobalSearch({ settingsMode = false }) {
+function GlobalSearch() {
   const [searchQuery, setSearchQuery] = useState("");
   const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
   const [suggestionRows, setSuggestionRows] = useState<SuggestionRow[]>([]);
@@ -120,27 +118,14 @@ function GlobalSearch({ settingsMode = false }) {
     return suggestionRows.filter((row) => row.kind === "item");
   }, [suggestionRows, suggestionMode]);
 
-  const settingsSearchResults = useMemo(() => {
-    if (!settingsMode) return [];
-    return searchSettingsItems(searchQuery);
-  }, [searchQuery, settingsMode]);
-
   const showRecentSearches = useMemo(
     () =>
       inputFocused &&
-      !settingsMode &&
       searchQuery.trim().length < 2 &&
       recentSearches.length > 0 &&
       !loadingSuggestions &&
       suggestionRows.length === 0,
-    [
-      inputFocused,
-      loadingSuggestions,
-      recentSearches.length,
-      searchQuery,
-      settingsMode,
-      suggestionRows.length,
-    ],
+    [inputFocused, loadingSuggestions, recentSearches.length, searchQuery, suggestionRows.length],
   );
 
   const recentSelectableRows = useMemo<RecentSuggestionRow[]>(
@@ -156,7 +141,6 @@ function GlobalSearch({ settingsMode = false }) {
   );
 
   const suggestionKeyboardRows = showRecentSearches ? recentSelectableRows : selectableRows;
-  const keyboardRows = settingsMode ? settingsSearchResults : suggestionKeyboardRows;
 
   const rememberSearch = useCallback((rawQuery: string) => {
     const next = addRecentSearch(rawQuery);
@@ -197,7 +181,7 @@ function GlobalSearch({ settingsMode = false }) {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
         return;
       }
-      if (isEditableTarget(event.target)) return;
+      if (isEditableTarget(event.target) || document.querySelector("[aria-modal='true']")) return;
       event.preventDefault();
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -213,12 +197,6 @@ function GlobalSearch({ settingsMode = false }) {
       cancelSuggest();
       cancelLibrarySuggest();
     };
-    if (settingsMode) {
-      cancelAll();
-      setLoadingSuggestions(false);
-      closeAutocomplete();
-      return cancelAll;
-    }
     const isTagShortcut = trimmed.startsWith("#");
     const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
 
@@ -320,7 +298,6 @@ function GlobalSearch({ settingsMode = false }) {
     scheduleLibrarySuggest,
     cancelLibrarySuggest,
     showUnifiedSuggestions,
-    settingsMode,
   ]);
 
   useEffect(() => {
@@ -339,7 +316,7 @@ function GlobalSearch({ settingsMode = false }) {
   const navigateToSearch = useCallback(
     (rawQuery: string) => {
       const trimmed = String(rawQuery || "").trim();
-      if (!trimmed || settingsMode) return;
+      if (!trimmed) return;
       rememberSearch(trimmed);
       if (trimmed.startsWith("#")) {
         navigate(`/search?q=${encodeURIComponent(trimmed.slice(1))}&type=tag`);
@@ -350,26 +327,11 @@ function GlobalSearch({ settingsMode = false }) {
       closeAutocomplete();
       setInputFocused(false);
     },
-    [navigate, closeAutocomplete, rememberSearch, settingsMode],
-  );
-
-  const navigateToSettings = useCallback(
-    (tab: SettingsSearchItem) => {
-      if (!tab) return;
-      navigate(`/settings/${tab.id}`);
-      setSearchQuery("");
-      closeAutocomplete();
-      setInputFocused(false);
-    },
-    [navigate, closeAutocomplete],
+    [navigate, closeAutocomplete, rememberSearch],
   );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (settingsMode) {
-      navigateToSettings(settingsSearchResults[0]);
-      return;
-    }
     navigateToSearch(searchQuery);
   };
 
@@ -609,32 +571,23 @@ function GlobalSearch({ settingsMode = false }) {
       closeAutocomplete();
       return;
     }
-    if (keyboardRows.length === 0) return;
+    if (suggestionKeyboardRows.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSuggestionIndex((current) => (current < keyboardRows.length - 1 ? current + 1 : current));
+      setSuggestionIndex((current) =>
+        current < suggestionKeyboardRows.length - 1 ? current + 1 : current,
+      );
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
     } else if (event.key === "Enter" && suggestionIndex >= 0) {
       event.preventDefault();
-      if (settingsMode) {
-        navigateToSettings(settingsSearchResults[suggestionIndex]);
-      } else {
-        handleSuggestionSelect(suggestionKeyboardRows[suggestionIndex]);
-      }
+      handleSuggestionSelect(suggestionKeyboardRows[suggestionIndex]);
     }
   };
 
   let selectableCursor = -1;
-  const emptySearchPlaceholder = settingsMode ? (
-    <>
-      <span className="global-search__scope-label--short">Search settings</span>
-      <span className="global-search__scope-label--full">Type</span>
-      <span className="global-search__key">/</span>
-      <span className="global-search__scope-label--full">to search</span>
-    </>
-  ) : inputFocused ? (
+  const emptySearchPlaceholder = inputFocused ? (
     <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
   ) : (
     <>
@@ -664,7 +617,7 @@ function GlobalSearch({ settingsMode = false }) {
             }}
             onKeyDown={handleKeyDown}
             placeholder=""
-            aria-label={settingsMode ? "Search settings" : "Search music, artists, or tags"}
+            aria-label="Search music, artists, or tags"
             className="global-search__input"
             autoComplete="off"
           />
@@ -679,29 +632,7 @@ function GlobalSearch({ settingsMode = false }) {
         </div>
       </div>
 
-      {!loadingSuggestions && settingsMode && settingsSearchResults.length > 0 && (
-        <div className="global-search__suggestions global-search__suggestions--grouped">
-          {settingsSearchResults.map((item, index) => (
-            <button
-              key={item.key}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => navigateToSettings(item)}
-              className={`global-search__suggestion${
-                index === suggestionIndex ? " is-highlighted" : ""
-              }`}
-            >
-              <span className="global-search__settings-result-label">{item.label}</span>
-              <span className="global-search__settings-result-meta">
-                {item.kind === "page" ? "Settings" : `${item.kind} · ${item.tabLabel}`}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {!loadingSuggestions &&
-        !settingsMode &&
         suggestionMode === "unified" &&
         !localSearchConfigured &&
         searchQuery.trim().length >= 2 && (
@@ -713,7 +644,7 @@ function GlobalSearch({ settingsMode = false }) {
           </div>
         )}
 
-      {!settingsMode && showRecentSearches && (
+      {showRecentSearches && (
         <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">
           <div className="global-search__recent-header">
             <span className="global-search__recent-label">Recent searches</span>
@@ -743,7 +674,7 @@ function GlobalSearch({ settingsMode = false }) {
         </div>
       )}
 
-      {!settingsMode && suggestionRows.length > 0 && (
+      {suggestionRows.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
           {suggestionMode === "tag"
             ? suggestionRows.map((row, index) =>

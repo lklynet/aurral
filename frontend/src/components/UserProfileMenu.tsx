@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
+import { SettingsLink } from "../pages/Settings/settingsRoute";
 import { BellRinging, User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useWrappedSeason } from "../hooks/useWrapped.ts";
@@ -80,15 +81,15 @@ function UserProfileMenu() {
               </li>
             )}
             <li role="none">
-              <Link
-                to="/profile"
+              <SettingsLink
+                to="profile"
                 role="menuitem"
                 className="app-profile-menu__item"
                 onClick={closeMenu}
               >
                 <User className="app-profile-menu__item-icon" />
                 <span>Profile</span>
-              </Link>
+              </SettingsLink>
             </li>
             <li role="none">
               <a

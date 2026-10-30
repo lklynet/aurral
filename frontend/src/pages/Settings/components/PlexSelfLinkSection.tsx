@@ -6,9 +6,8 @@ import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { readApiError } from "../utils/apiError.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryKeys } from "../../../queryClient.ts";
-import type { useToast } from "../../../contexts/ToastContext";
-
-type Toast = ReturnType<typeof useToast>["showSuccess"];
+import { useToast } from "../../../contexts/ToastContext";
+import { SettingsActions, SettingsGroup, SettingsNote } from "../SettingsLayout";
 type PlexLinkStatusResponse = InferResponseType<
   (typeof userPlexLinkClient.me)["plex-link"]["status"]["$get"],
   200
@@ -27,16 +26,9 @@ const EMPTY_STATUS: PlexLinkStatus = {
   isGlobalAccountOwner: false,
 };
 
-export function PlexSelfLinkSection({
-  showSuccess,
-  showError,
-  className = "",
-}: {
-  showSuccess: Toast;
-  showError: Toast;
-  className?: string;
-}) {
+export function PlexSelfLinkSection() {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const statusQueryKey = queryKeys.myPlexLinkStatus(user?.id);
   const statusQuery = useQuery({
@@ -88,13 +80,13 @@ export function PlexSelfLinkSection({
           if (popup && !popup.closed) popup.close();
           const failure = readApiError(pollErr);
           const message = failure.message || failure.error || failure.text;
-          showError?.(`Plex sign-in failed: ${message}`);
+          showError(`Plex sign-in failed: ${message}`);
           return;
         }
       }
       if (popup && !popup.closed) popup.close();
       if (!linked) {
-        showError?.("Plex sign-in timed out. Try again.");
+        showError("Plex sign-in timed out. Try again.");
         return;
       }
       updateStatus((prev) => ({
@@ -105,11 +97,11 @@ export function PlexSelfLinkSection({
         connectedAt: linked.connectedAt,
         lastError: null,
       }));
-      showSuccess?.(`Connected to Plex as "${linked.plexUsername || "your account"}".`);
+      showSuccess(`Connected to Plex as "${linked.plexUsername || "your account"}".`);
     } catch (err) {
       const failure = readApiError(err);
       const message = failure.message || failure.error || failure.text;
-      showError?.(`Plex sign-in failed: ${message}`);
+      showError(`Plex sign-in failed: ${message}`);
     } finally {
       setConnecting(false);
     }
@@ -124,7 +116,7 @@ export function PlexSelfLinkSection({
         globalAccount: prev.globalAccount,
         isGlobalAccountOwner: prev.isGlobalAccountOwner,
       }));
-      showSuccess?.("Disconnected your Plex account.");
+      showSuccess("Disconnected your Plex account.");
     } catch (err) {
       if (isReauthRequiredError(err)) {
         const shouldRetry = await promptReauth();
@@ -136,13 +128,13 @@ export function PlexSelfLinkSection({
               globalAccount: prev.globalAccount,
               isGlobalAccountOwner: prev.isGlobalAccountOwner,
             }));
-            showSuccess?.("Disconnected your Plex account.");
+            showSuccess("Disconnected your Plex account.");
           } catch (retryErr) {
-            showError?.(readApiError(retryErr).message || "Failed to disconnect Plex");
+            showError(readApiError(retryErr).message || "Failed to disconnect Plex");
           }
         }
       } else {
-        showError?.(readApiError(err).message || "Failed to disconnect Plex");
+        showError(readApiError(err).message || "Failed to disconnect Plex");
       }
     } finally {
       setDisconnecting(false);
@@ -151,89 +143,58 @@ export function PlexSelfLinkSection({
 
   if (statusQuery.isPending) return null;
 
-  return (
-    <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
-      <div className="settings-page__section-intro">
-        <h3 className="settings-page__section-title">Plex account</h3>
-        <p className="settings-page__section-note">
-          Use your Plex account for flows and playlists.
-        </p>
-      </div>
+  const linkedAs = String(status.plexUsername || "your Plex account");
+  const globalAccountNote = status.isGlobalAccountOwner
+    ? status.globalAccount?.configured
+      ? `Your flows and playlists sync through Aurral's Plex connection${
+          status.globalAccount.plexUsername ? `, ${status.globalAccount.plexUsername}` : ""
+        }.`
+      : "Set up Plex in Playback to sync flows and playlists."
+    : "Connect your Plex account to sync flows and playlists.";
 
-      {status.connected ? (
-        <>
-          <p className="settings-page__muted-copy">
-            {status.linkType === "managed" ? "Managed by an admin as" : "Connected as"}{" "}
-            <strong>{String(status.plexUsername || "your Plex account")}</strong>.
-          </p>
-          {status.lastError && (
-            <p className="settings-page__hint settings-page__hint--warning">
-              Reconnect needed: {status.lastError.message}
-              {status.linkType === "managed"
-                ? "Ask an admin to relink this in Settings → Users, or connect your Plex account below."
-                : ""}
-            </p>
-          )}
-          <div className="settings-page__inline-row">
-            {status.linkType === "self" ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleConnect}
-                disabled={connecting}
-              >
-                {connecting ? "Reconnecting..." : "Reconnect"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleConnect}
-                disabled={connecting}
-              >
-                {connecting ? "Connecting..." : "Connect your own Plex account instead"}
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-            >
-              {disconnecting ? "Disconnecting..." : "Disconnect"}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="settings-page__callout">
-            {status.isGlobalAccountOwner ? (
-              status.globalAccount?.configured ? (
-                status.globalAccount.plexUsername ? (
-                  <>
-                    Your flows and playlists sync through Aurral&apos;s global Plex connection:{" "}
-                    <strong>{status.globalAccount.plexUsername}</strong>.
-                  </>
-                ) : (
-                  "Your flows and playlists sync through Aurral’s global Plex connection."
-                )
-              ) : (
-                "Set up Plex as a playback source to sync flows and playlists."
-              )
-            ) : (
-              "Connect your Plex account to sync flows and playlists."
-            )}
-          </p>
+  return (
+    <SettingsGroup
+      title="Plex account"
+      note={
+        status.connected
+          ? `${status.linkType === "managed" ? "Managed by an admin as" : "Connected as"} ${linkedAs}.`
+          : globalAccountNote
+      }
+    >
+      {status.connected && status.lastError ? (
+        <SettingsNote tone="warning">
+          Reconnect needed: {status.lastError.message}
+          {status.linkType === "managed"
+            ? " Ask an admin to relink it, or connect your own Plex account."
+            : ""}
+        </SettingsNote>
+      ) : null}
+      <SettingsActions>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={handleConnect}
+          disabled={connecting}
+        >
+          {connecting
+            ? "Connecting…"
+            : !status.connected
+              ? "Connect Plex account"
+              : status.linkType === "self"
+                ? "Reconnect"
+                : "Use my own Plex account"}
+        </button>
+        {status.connected ? (
           <button
             type="button"
-            className="btn btn-secondary"
-            onClick={handleConnect}
-            disabled={connecting}
+            className="btn btn-ghost btn-sm"
+            onClick={handleDisconnect}
+            disabled={disconnecting}
           >
-            {connecting ? "Connecting..." : "Connect Plex account"}
+            {disconnecting ? "Disconnecting…" : "Disconnect"}
           </button>
-        </>
-      )}
-    </div>
+        ) : null}
+      </SettingsActions>
+    </SettingsGroup>
   );
 }

@@ -29,7 +29,7 @@ Aurral remembers the queue in this browser. After a reload, the player comes bac
 
 Each artist and album has a Discover view and a Library view. On a Library page, select **Open in Discover** to see releases, tags, similar artists, and previews. On a Discover page, select **Open in library** to go back.
 
-Album artwork comes from your files first: the cover embedded in a track, then a `cover`, `folder`, `front`, or `album` image in the album's folder. An album without one shows the artwork from its metadata. Artists show their photo, or the art of one of their albums. Aurral keeps a copy of each and updates an album's copy when its tracks change. After you replace an image file beside the tracks, select **Clear artwork cache** in **Settings > Discover**. To pick your own cover, select **Change artwork** in the album's menu.
+Album artwork comes from your files first: the cover embedded in a track, then a `cover`, `folder`, `front`, or `album` image in the album's folder. An album without one shows the artwork from its metadata. Artists show their photo, or the art of one of their albums. Aurral keeps a copy of each and updates an album's copy when its tracks change. After you replace an image file beside the tracks, select **Clear artwork cache** in **Settings > Discovery**. To pick your own cover, select **Change artwork** in the album's menu.
 
 Favorites belong to each user. They work in the built-in player and in Subsonic clients.
 
@@ -162,7 +162,7 @@ Flow tracks are temporary. They live under `_flows` and are not part of the Libr
 - To add one flow track to the Library, select **Add to library** in its menu.
 - To show all current tracks of a flow in the Library, turn on **Show in library** for the flow. See [Flows](/using/flows/#scrobbling-and-library).
 
-When a Subsonic client favorites a flow track, Aurral adds it to the Library. To turn this off, open **Settings > System > Subsonic** and turn off **Favorite flow tracks**.
+When a Subsonic client favorites a flow track, Aurral adds it to the Library. To turn this off, open **Settings > General > Subsonic** and turn off **Favorite flow tracks**.
 
 Aurral stores static playlist membership in its own database. Deleting a static playlist does not delete Library tracks.
 
@@ -196,7 +196,7 @@ A track shows the performer from its artist tag, such as `Owner feat. Guest`, an
 
 When a scan finishes, an open Library page reloads. **Recently added** sorting on albums, tracks, and artists and the home page use the time that a file entered the Library, not the release date.
 
-If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Storage health > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).
+If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Status > Storage > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).
 
 When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral removes Lidarr's music from the Library and stops watching the Lidarr root folders. See [Turning Lidarr off](#turning-lidarr-off).
 
@@ -221,7 +221,7 @@ The scan matches the file by its new MusicBrainz tags, or by its disc and track 
 
 ## Add music Aurral only reads
 
-To have Aurral see music it should never change, such as a library you organize yourself, add it as a read-only folder. Open **Settings > Library files**, choose the folder under **Read-only folders**, and select **Add folder**. You can add as many folders as you like. Aurral scans each one, and the table shows how many tracks it found.
+To have Aurral see music it should never change, such as a library you organize yourself, add it as a read-only folder. Open **Settings > Library**, choose the folder under **Read-only folders**, and select **Add folder**. You can add as many folders as you like. Aurral scans each one, and the table shows how many tracks it found.
 
 Aurral never renames, moves, tags, upgrades, or deletes a file in a read-only folder, and never writes anything into the folder. To make sure, mount the folder read-only. See [Mount a read-only folder](/getting-started/storage/#mount-a-read-only-folder).
 
@@ -238,7 +238,7 @@ To hand the music over to Aurral later, so that it can rename, tag, and upgrade 
 
 ## Bring your existing music
 
-To have Aurral manage music from another folder, such as an old library, a Lidarr root folder, or ripped CDs, open **Settings > Library files** and use **Import a folder**. Aurral files the music in the Downloads Folder. To let Aurral see a folder without changing it, [add it as a read-only folder](#add-music-aurral-only-reads) instead. Choose the folder and a mode:
+To have Aurral manage music from another folder, such as an old library, a Lidarr root folder, or ripped CDs, open **Settings > Library** and use **Import a folder**. Aurral files the music in the Downloads Folder. To let Aurral see a folder without changing it, [add it as a read-only folder](#add-music-aurral-only-reads) instead. Choose the folder and a mode:
 
 - **Move** moves each file into the Downloads Folder and removes the source folders it empties.
 - **Copy** copies each file and leaves the source folder as it is.
@@ -271,7 +271,7 @@ Music that you copy into the Downloads Folder yourself also joins the Library. I
 
 ## Clean up the Library
 
-Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When the metadata provider cannot be reached, files keep their tags and say so, and the next clean up tries again. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
+Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When the metadata provider cannot be reached, files keep their tags and say so, and the next clean up tries again. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
 Earlier versions of Aurral left the disc out of the name, so Clean up also renames tracks past the first disc from `07 - Title` to `2-07 - Title`. A file keeps the track number from its tags or name when the Library's album has no number for it.
 

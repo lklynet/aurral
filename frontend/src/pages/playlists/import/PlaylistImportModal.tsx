@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Music2 } from "../../../components/icons";
-import { Link } from "react-router";
+import { SettingsLink } from "../../Settings/settingsRoute";
 import { ModalShell } from "../../../components/PlaylistModals";
 import { DotLoader } from "../../../components/DotLoader";
 import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
@@ -1074,11 +1074,15 @@ export function PlaylistImportModal({
                 </div>
                 <p className="playlist-import__empty-title">Connect ListenBrainz first</p>
                 <p className="playlist-import__empty-copy">
-                  Connect ListenBrainz in Settings → Playback to import playlists.
+                  Connect ListenBrainz in Settings → Listening to import playlists.
                 </p>
-                <Link to="/settings/playback" className="btn btn-primary btn-sm" onClick={onClose}>
+                <SettingsLink
+                  to="listening/listenbrainz"
+                  className="btn btn-primary btn-sm"
+                  onClick={onClose}
+                >
                   Open ListenBrainz settings
-                </Link>
+                </SettingsLink>
               </div>
             ) : source === "lastfm" && !lastfmUsername ? (
               <div className="playlist-import__lastfm-setup">

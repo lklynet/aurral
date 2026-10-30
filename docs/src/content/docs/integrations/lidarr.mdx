@@ -25,13 +25,13 @@ Connect Lidarr during first-run setup, or later in **Settings > Lidarr**.
 5. Set the defaults for new artists: root folder, quality profile, metadata profile, tag, monitoring option, and **Search on add**.
 6. Optional: set **External URL** to the Lidarr address that your browser uses. Aurral uses it only for links that open Lidarr in the browser.
 
-To apply the quality profile, custom formats, and file naming from Davo's Community Lidarr Guide to Lidarr, select **Apply recommended settings** in the same tab. This action changes your Lidarr settings.
+To apply the quality profile, custom formats, and file naming from Davo's Community Lidarr Guide to Lidarr, select **Apply to Lidarr** under **Community guide**. This action changes your Lidarr settings.
 
 ## Turn Lidarr off
 
 Turning off **Enabled** and saving disconnects Lidarr's root folders. Aurral removes Lidarr's music from the Library, and downloads its own copy of playlist and flow tracks that used a Lidarr file. The files stay on disk, and Aurral keeps the connection details. Turn **Enabled** on again to add Lidarr's music back. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
 
-If Lidarr only stops answering, nothing is removed. The Lidarr tab says when Lidarr is off or unreachable.
+If Lidarr only stops answering, nothing is removed. **Settings > Lidarr** says when Lidarr is off or unreachable.
 
 If you want Aurral to manage the music that Lidarr downloaded, ingest Lidarr's root folder before you turn Lidarr off. Copy or Hardlink leaves Lidarr's library as it is. See [Bring your existing music](/using/library/#bring-your-existing-music).
 
@@ -57,11 +57,11 @@ If the artists do not match, search for the artist in Lidarr first, or switch Li
 
 ## Library access check
 
-To check that Aurral can read the Lidarr files, open **Settings > Storage health** and select **Run checks**. See the **Lidarr library** section. If the check fails, mount the Lidarr media root in Aurral. The recommended layout uses `/data` in both containers, with a Lidarr root folder such as `/data/music`.
+To check that Aurral can read the Lidarr files, open **Settings > Status > Storage** and select **Run checks**. See the **Lidarr library** section. If the check fails, mount the Lidarr media root in Aurral. The recommended layout uses `/data` in both containers, with a Lidarr root folder such as `/data/music`.
 
 The check reads one track of an artist inside a root folder. If no such artist exists, it reads a track of an artist outside the root folders, and reports that a root folder change left that artist behind. See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
 
-In a mixed Windows and Docker setup, the check shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **Lidarr**.
+In a mixed Windows and Docker setup, the check shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **Lidarr**.
 
 This mapping only helps Aurral read Lidarr files. For Navidrome playlists, Navidrome must also scan the Lidarr music folder. See [When paths cannot match](/getting-started/storage/#when-paths-cannot-match).
 
@@ -88,7 +88,7 @@ To send **Request available** notifications as soon as Lidarr imports an album, 
 1. Add a **Webhook** connection.
 2. Set the URL to `https://aurral.example.com/api/webhooks/lidarr`. Use an Aurral address that Lidarr can reach.
 3. Turn on the **On Import** event.
-4. Add an `X-Api-Key` header with the Aurral API key from **Settings > System**.
+4. Add an `X-Api-Key` header with the Aurral API key from **Settings > General**.
 
 Aurral accepts other Lidarr webhook events but ignores them. It updates request history only for the import event, which Lidarr sends as `Download`, and only for albums that users requested in Aurral. The Gotify and webhook event switches in Aurral still decide which notifications go out.
 

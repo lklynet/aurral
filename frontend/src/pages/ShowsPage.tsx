@@ -1,5 +1,6 @@
 import { Navigate, useParams } from "react-router";
-import RouteLink from "../components/RouteLink";
+import { useAuth } from "../contexts/AuthContext";
+import { SettingsLink } from "./Settings/settingsRoute";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "../components/icons";
 import { SkeletonShowCard, SkeletonStatus } from "../components/Skeletons";
@@ -27,6 +28,8 @@ const SHOW_FILTER_MATCHERS: Partial<
 };
 
 function ShowsPage() {
+  const { hasPermission } = useAuth();
+  const canManageServer = hasPermission("accessSettings");
   const { filter: filterParam } = useParams();
   const showFilter = normalizeShowsFilter(filterParam);
   const shouldRedirect = filterParam && normalizeShowsFilter(filterParam) !== filterParam;
@@ -105,11 +108,15 @@ function ShowsPage() {
           </div>
           <h2 className="search-empty-panel__title">Ticketmaster not configured</h2>
           <p className="search-empty-panel__message">
-            Add a Ticketmaster key in Settings → Connect to find nearby shows.
+            {canManageServer
+              ? "Add a Ticketmaster key in Settings → Discovery to find nearby shows."
+              : "An admin needs to add a Ticketmaster key to find nearby shows."}
           </p>
-          <RouteLink to="/settings" className="btn btn-primary">
-            Open Settings
-          </RouteLink>
+          {canManageServer ? (
+            <SettingsLink to="discovery/ticketmaster" className="btn btn-primary">
+              Open Settings
+            </SettingsLink>
+          ) : null}
         </div>
       ) : showsLoading ? (
         <SkeletonStatus label="Loading shows">

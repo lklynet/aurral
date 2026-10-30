@@ -12,7 +12,7 @@ Aurral stops its active search when it has enough suitable results, reaches its 
 ## Setup
 
 1. Mount the same media root in Aurral and slskd, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
-2. Open **Settings > Download clients > slskd**.
+2. Open **Settings > Downloads > slskd**.
 3. Turn on **Enable slskd**.
 4. Enter the **Server URL** and the **API key**.
 5. Select **Test connection**.
@@ -21,14 +21,14 @@ The API key is optional. Leave it empty when slskd runs without authentication, 
 
 Aurral reads each completed file at the path that slskd reports, and moves it into the Downloads Folder.
 
-If slskd runs on Windows and reports host paths such as `N:\...`, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **slskd**.
+If slskd runs on Windows and reports host paths such as `N:\...`, mount the parent folder in Aurral. Then add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **slskd**.
 
 ## Options
 
 - **Source priority** sets the order among download sources. The default is `10`.
 - **Clean up after runs** clears finished slskd transfers when a flow or playlist run ends.
 
-To choose the accepted FLAC, MP3, and M4A tiers, open **Settings > Download clients > Quality profile**. See [Quality profile](/using/playlists/#quality-profile).
+To choose the accepted FLAC, MP3, and M4A tiers, open **Settings > Downloads > Quality profile**. See [Quality profile](/using/playlists/#quality-profile).
 
 slskd can supply missing tracks and upgrades. Aurral reads each downloaded file before it accepts the quality.
 

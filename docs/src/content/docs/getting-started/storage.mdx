@@ -153,7 +153,7 @@ services:
       - ./config:/config
 ```
 
-Then add `/music` in **Settings > Library files > Read-only folders**. To pick it with **Browse folders**, set `FILE_BROWSE_ROOTS=/data,/music`. You can also type the path.
+Then add `/music` in **Settings > Library > Read-only folders**. To pick it with **Browse folders**, set `FILE_BROWSE_ROOTS=/data,/music`. You can also type the path.
 
 Aurral plays the folder's music itself and serves it to Subsonic clients. A playlist that Aurral publishes to Navidrome, Plex, or Jellyfin can include a read-only track only when that server also has the folder in its library.
 
@@ -163,14 +163,14 @@ The containers can use different Docker networks and service URLs. They still ne
 
 After you add the mounts, use these container paths:
 
-| Application       | Setting                                                   | Recommended value                                                                             |
-| ----------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Lidarr            | Root folder                                               | `/data/music`                                                                                 |
-| slskd             | Completed download folder                                 | `/data/downloads/slskd/complete`                                                              |
-| SABnzbd or NZBGet | Completed download folder                                 | `/data/downloads/usenet/complete`                                                             |
-| Aurral            | **Settings > Download clients > Downloads Folder > Path** | `/data/downloads/aurral`                                                                      |
-| Navidrome         | Aurral library                                            | Aurral creates the library at the Downloads Folder through the API.                           |
-| Plex              | Aurral library                                            | Aurral creates the library through the API, at the path where Plex sees the Downloads Folder. |
+| Application       | Setting                                          | Recommended value                                                                             |
+| ----------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Lidarr            | Root folder                                      | `/data/music`                                                                                 |
+| slskd             | Completed download folder                        | `/data/downloads/slskd/complete`                                                              |
+| SABnzbd or NZBGet | Completed download folder                        | `/data/downloads/usenet/complete`                                                             |
+| Aurral            | **Settings > Library > Downloads folder > Path** | `/data/downloads/aurral`                                                                      |
+| Navidrome         | Aurral library                                   | Aurral creates the library at the Downloads Folder through the API.                           |
+| Plex              | Aurral library                                   | Aurral creates the library through the API, at the path where Plex sees the Downloads Folder. |
 
 The folder names for download clients do not matter. These rules do:
 
@@ -187,9 +187,9 @@ Follow this order to check each connection separately.
 3. Use `/data/...` paths inside the containers. Set the Lidarr root folder and the completed download folders.
 4. Start the services.
 5. If you use Lidarr, open **Settings > Lidarr** in Aurral. Enter the URL and API key, then select **Test connection**.
-6. Open **Settings > Download clients** and set **Downloads Folder > Path** to a writable folder under `/data`, such as `/data/downloads/aurral`.
+6. Open **Settings > Library** and set **Downloads folder > Path** to a writable folder under `/data`, such as `/data/downloads/aurral`.
 7. Connect and test each download client that you use.
-8. Open **Settings > Storage health** and select **Run checks**. Fix each failed check.
+8. Open **Settings > Status > Storage** and select **Run checks**. Fix each failed check.
 9. Open **Settings > Playback** and connect Navidrome, Plex, or Jellyfin.
 
 ## Check the connections
@@ -197,7 +197,7 @@ Follow this order to check each connection separately.
 Do these checks in order:
 
 1. **API check.** The **Test connection** button for each integration passes.
-2. **File check.** **Settings > Storage health > Run checks** passes the **Aurral downloads** section, and the **Lidarr library** section if you use Lidarr.
+2. **File check.** **Settings > Status > Storage > Run checks** passes the **Aurral downloads** section, and the **Lidarr library** section if you use Lidarr.
 3. **Output check.** After a flow or playlist downloads a track, the file exists under one of these paths:
 
    ```text
@@ -215,7 +215,7 @@ Different container paths can work, but each difference needs its own setting. A
 
 ### Paths reported by Lidarr or download clients
 
-Open **Settings > Download clients > Remote path mappings** and select **Add path mapping**. Enter:
+Open **Settings > Downloads > Remote path mappings** and select **Add path mapping**. Enter:
 
 - **Applies to**: the application that reports the path, such as **Lidarr**, **slskd**, **NZBGet**, **SABnzbd**, or **deemix**. Select **All sources** to apply the mapping to every application.
 - **Remote path**: the absolute path that the other application reports.
@@ -231,7 +231,7 @@ Example:
 
 The local path must exist inside the Aurral container. If it does not, add or fix the Docker mount first.
 
-A native Windows service can report a path such as `N:\ServerFolders\Music`. Mount that host folder in Aurral, then map the Windows path to the Aurral container path. After you save the mapping, run **Settings > Storage health > Run checks**.
+A native Windows service can report a path such as `N:\ServerFolders\Music`. Mount that host folder in Aurral, then map the Windows path to the Aurral container path. After you save the mapping, run **Settings > Status > Storage > Run checks**.
 
 ### Navidrome sees a different path
 

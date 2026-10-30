@@ -60,7 +60,7 @@ const SsoComplete = () => {
       .then((result) => {
         if (result?.linked) {
           if (!cancelled) {
-            navigate(`/settings/account?connected=${provider}`, { replace: true });
+            navigate(`/?settings=profile&connected=${provider}`, { replace: true });
           }
           return null;
         }

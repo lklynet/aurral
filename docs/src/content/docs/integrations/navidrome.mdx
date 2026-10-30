@@ -48,7 +48,7 @@ When a Subsonic client adds a flow track or static playlist track to a playlist,
 
 Subsonic clients can edit static playlists but not flows. Editing a flow returns error `50`. A client removes songs by their positions in the playlist it last loaded. If a position no longer exists, Aurral returns error `70` and changes nothing, so the client can reload the playlist and try again.
 
-When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite flow tracks** in **Settings > System > Subsonic**. This setting does not affect tracks that are already in the Library.
+When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite flow tracks** in **Settings > General > Subsonic**. This setting does not affect tracks that are already in the Library.
 
 ### Play history
 
@@ -60,9 +60,9 @@ The built-in player records plays in the same way. Aurral keeps its own history 
 
 ## Scrobble without Navidrome
 
-To connect Last.fm, ListenBrainz, or Koito, open **Settings > Playback > Scrobbling**. Aurral sends plays to these services itself, so Navidrome is not required.
+To connect Last.fm, ListenBrainz, or Koito, open **Settings > Listening > Scrobbling**. Aurral sends plays to these services itself, so Navidrome is not required.
 
-Aurral uses the Last.fm API key and secret from **Settings > Connect > Last.fm**. It checks ListenBrainz tokens directly.
+Aurral uses the Last.fm API key and secret from **Settings > Discovery > Last.fm**. It checks ListenBrainz tokens directly.
 
 ## Publish playlists to Navidrome
 
@@ -82,7 +82,7 @@ volumes:
 ### Setup
 
 1. Mount the same media root in Aurral and Navidrome, at the same container path.
-2. Set **Settings > Download clients > Downloads Folder > Path** to a folder under that path, for example `/data/downloads/aurral`.
+2. Set **Settings > Library > Downloads folder > Path** to a folder under that path, for example `/data/downloads/aurral`.
 3. To play reused Lidarr tracks as well as Aurral downloads, make sure that Navidrome can read `/data/music` and `/data/downloads/aurral`.
 4. Open **Settings > Playback > Navidrome**.
 5. Enter the **Server URL**, **Username**, and **Password**, then select **Test connection**.
@@ -96,7 +96,7 @@ You do not need to create this library in Navidrome yourself. It stays empty unt
 
 When files change, Aurral asks Navidrome to scan only the changed folders. If a changed folder is outside every Navidrome library as Navidrome sees it, Aurral asks Navidrome to scan all libraries instead and logs a warning. A Navidrome path mapping fixes this. When more than 20 folders change at once, Aurral asks Navidrome to scan the libraries that hold them. Changes made close together share one request. If Navidrome is already scanning, Aurral asks again after that scan finishes. Navidrome 0.58 and earlier ignore the folders and scan every library.
 
-The Navidrome account must have permission to manage libraries through the API. If Aurral cannot create the library, open **Settings > Storage health** for the exact path and error. Then check the Navidrome account permissions and the mount.
+The Navidrome account must have permission to manage libraries through the API. If Aurral cannot create the library, open **Settings > Status > Storage** for the exact path and error. Then check the Navidrome account permissions and the mount.
 
 ### Existing Lidarr library
 
@@ -116,7 +116,7 @@ Aurral uploads its playlist artwork to Navidrome and updates it when you change 
 
 ### Filesystem paths
 
-Mount the Downloads Folder at the same path in both containers when possible. If the paths differ, add a mapping in **Settings > Download clients > Remote path mappings** with **Applies to** set to **Navidrome**. Set **Remote path** to the folder inside Navidrome and **Local path** to the same folder inside Aurral.
+Mount the Downloads Folder at the same path in both containers when possible. If the paths differ, add a mapping in **Settings > Downloads > Remote path mappings** with **Applies to** set to **Navidrome**. Set **Remote path** to the folder inside Navidrome and **Local path** to the same folder inside Aurral.
 
 Aurral finds each track in the Navidrome index by its exact file path, its MusicBrainz recording ID, or a unique title and artist match. It excludes files Navidrome has marked missing. A reused Lidarr track can therefore use a different path in Navidrome, but Navidrome must still have a library for it.
 

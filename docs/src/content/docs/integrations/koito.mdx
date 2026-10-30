@@ -11,11 +11,11 @@ Aurral can use your Koito history for personal recommendations. You do not need 
 
 Each user sets up Koito for their own account:
 
-1. Open **Profile > Listening history**.
+1. Open **Settings > Listening > History**.
 2. Choose **Koito**.
 3. Enter a Koito URL that the Aurral server can reach, for example `https://koito.example.com:4110`.
-4. Open **Settings > Playback > Scrobbling > Koito**.
-5. Enter the Koito **API key** and select **Connect Koito**.
+4. Open **Settings > Listening > Scrobbling > Koito**.
+5. Enter the Koito URL and **API key**, then select **Connect Koito**.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
@@ -31,10 +31,10 @@ Aurral sends finished plays to Koito through its ListenBrainz-compatible `submit
 
 ## Compared with Last.fm and ListenBrainz
 
-| Provider     | Admin setup                       | User setup                                                                   |
-| ------------ | --------------------------------- | ---------------------------------------------------------------------------- |
-| Last.fm      | API key in **Settings > Connect** | Username in **Profile**                                                      |
-| ListenBrainz | None                              | Username in **Profile**. User token in **Settings > Playback > Scrobbling**. |
-| Koito        | None                              | Koito URL in **Profile**. API key in **Settings > Playback > Scrobbling**.   |
+| Provider     | Admin setup                         | User setup                                                                                           |
+| ------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Last.fm      | API key in **Settings > Discovery** | Username in **Settings > Listening > History**                                                       |
+| ListenBrainz | None                                | Username in **Settings > Listening > History**. User token in **Settings > Listening > Scrobbling**. |
+| Koito        | None                                | Koito URL in **Settings > Listening > History**. API key in **Settings > Listening > Scrobbling**.   |
 
 Koito supplies listening history only. With a Last.fm API key, Last.fm still supplies similar artists and tags.

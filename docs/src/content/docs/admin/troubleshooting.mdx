@@ -3,7 +3,7 @@ title: Troubleshooting
 description: Fixes for common setup and runtime problems.
 ---
 
-Start with **Settings > Storage health > Run checks**. Most file problems show up there with the exact path and a suggested fix.
+Start with **Settings > Status > Storage > Run checks**. Most file problems show up there with the exact path and a suggested fix.
 
 ## Lidarr does not connect
 
@@ -15,18 +15,18 @@ Start with **Settings > Storage health > Run checks**. Most file problems show u
 ## Discover is empty
 
 - Make sure that your Library has artists, or that you have listening history. Aurral picks seed artists from both.
-- Set your listening-history provider in **Profile > Listening history**.
-- Without a Last.fm API key, Aurral finds similar artists only for seed artists that ListenBrainz knows. Adding a key in **Settings > Connect > Last.fm** often fills an empty list.
+- Set your listening-history provider in **Settings > Listening > History**.
+- Without a Last.fm API key, Aurral finds similar artists only for seed artists that ListenBrainz knows. Adding a key in **Settings > Discovery > Last.fm** often fills an empty list.
 - If the status next to the **Discover** title shows a refresh step, wait a minute. Each user's first set takes about as long as a few dozen ListenBrainz or Last.fm requests.
-- Start a refresh in **Settings > Discover**. It refreshes trending artists and then rebuilds every user's recommendations. Discover and **Settings > Discover** keep showing the refresh until your own recommendations are rebuilt, and they show **Refresh failed** if it stops.
+- Start a refresh in **Settings > Discovery**. It refreshes trending artists and then rebuilds every user's recommendations. Discover and **Settings > Discovery** keep showing the refresh until your own recommendations are rebuilt, and they show **Refresh failed** if it stops.
 
 ## Playlists do not download
 
-- Configure one or more download sources in **Settings > Download clients**. For Usenet, also configure **Settings > Indexers**.
+- Configure one or more download sources in **Settings > Downloads**. For Usenet, also connect **Prowlarr** there.
 - For yt-dlp, select **Test connection**. Outside Docker, make sure that the host has `yt-dlp` and `ffmpeg`. The Docker image includes both.
 - For slskd, check the connection and the Soulseek sign-in status.
 - For Usenet, turn on the Prowlarr indexers, and make sure that Aurral can read the completed files.
-- If few FLAC files are found, turn on MP3 or M4A tiers in **Settings > Download clients > Quality profile**.
+- If few FLAC files are found, turn on MP3 or M4A tiers in **Settings > Downloads > Quality profile**.
 - Make sure that the cutoff and the tier order match the quality that you want.
 - Check the job states on the playlist page and in **Activity**.
 - For a single track that keeps failing, choose the download yourself. See [Choose a download yourself](/using/activity/#choose-a-download-yourself).
@@ -54,7 +54,7 @@ Aurral removes Lidarr's music when **Settings > Lidarr > Enabled** is off or the
 
 The Library lists albums that have a file you can play, plus albums that Aurral is downloading. Follow a download on the album page and in **Activity**. Albums of an artist's discography that you don't have are on the artist's Discover page.
 
-An album whose files all went missing from disk leaves the list. If that happened to many albums at once, check the folders in **Settings > Storage health**, then select **Refresh** in Library.
+An album whose files all went missing from disk leaves the list. If that happened to many albums at once, check the folders in **Settings > Status > Storage**, then select **Refresh** in Library.
 
 ## Settings warn that roots overlap
 
@@ -62,7 +62,7 @@ Aurral shows this warning when the Downloads Folder and a Lidarr root folder are
 
 While the folders overlap, Aurral treats files in a Lidarr root folder as Lidarr's and never deletes them. A Lidarr root folder inside the Downloads Folder is scanned only as Lidarr's. Aurral never moves files to remove the overlap.
 
-To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
+To clear the warning, set **Settings > Library > Downloads folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
 
 ## Browse folders does not show my media folder
 
@@ -70,7 +70,7 @@ By default, **Browse folders** opens only `/data`, the app data folder, and the 
 
 ## Files do not appear in Navidrome
 
-- Make sure that **Settings > Download clients > Downloads Folder > Path** is under the shared media mount.
+- Make sure that **Settings > Library > Downloads folder > Path** is under the shared media mount.
 - If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr. See [Filesystem and mounts](/getting-started/storage/).
 - In **Settings > Playback > Navidrome**, test the connection.
 - Make sure that Navidrome scans the Downloads Folder, not only the Lidarr library.
@@ -86,9 +86,9 @@ The log can show `Lidarr track exists but file is not accessible from Aurral`. C
 2. Set **Downloads Folder > Path** under that mount, for example `/music/Aurral`.
 3. Set `FILE_BROWSE_ROOTS=/music`, so that **Browse folders** can open the mount.
 4. After you change `volumes` or `environment` in the Compose file, recreate the container: `docker compose up -d --force-recreate`.
-5. Run **Settings > Storage health > Run checks**. The **Lidarr library** section shows the exact path that Aurral cannot read.
-6. If necessary, add a mapping in **Settings > Download clients > Remote path mappings**, or set `PATH_MAPPINGS=N:/ServerFolders/Music|/music`.
-7. For NZBGet on Windows, open **Settings > Download clients > NZBGet**. If Aurral cannot find the finished downloads, set **Completed download path**.
+5. Run **Settings > Status > Storage > Run checks**. The **Lidarr library** section shows the exact path that Aurral cannot read.
+6. If necessary, add a mapping in **Settings > Downloads > Remote path mappings**, or set `PATH_MAPPINGS=N:/ServerFolders/Music|/music`.
+7. For NZBGet on Windows, open **Settings > Downloads > NZBGet**. If Aurral cannot find the finished downloads, set **Completed download path**.
 
 See [Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
 
@@ -117,7 +117,7 @@ See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 **Sync to Plex now** can succeed while the playlists have no tracks. The **Aurral** library can also stay empty while Plex scans.
 
 - Make sure that Plex can read the Downloads Folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
-- If Plex and Aurral use different paths, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees. If they use the same path, leave it blank.
+- If Plex and Aurral use different paths, set **Settings > Playback > Plex > Aurral Library path in Plex** to the folder that Plex sees. If they use the same path, leave it blank.
 - Wait for the Plex settings to save, then select **Sync to Plex now** again.
 - Wait for the first scan. It can take several minutes. Aurral syncs a playlist again for about 15 minutes while Plex indexes its tracks.
 - Make sure that the flow finished its downloads.
@@ -136,7 +136,7 @@ See [Navidrome and Subsonic](/integrations/navidrome/#connect-a-subsonic-client)
 
 ## Google or Plex sign-in says the account is not linked
 
-Google and Plex sign-in work only for accounts that already linked them. Sign in another way, then link the account in **Profile > Connected accounts** or **Profile > Plex account**. See [Sign in with Google or Plex](/admin/users/#sign-in-with-google-or-plex).
+Google and Plex sign-in work only for accounts that already linked them. Sign in another way, then link the account in **Settings > Profile > Sign-in methods** or **Settings > Profile > Plex account**. See [Sign in with Google or Plex](/admin/users/#sign-in-with-google-or-plex).
 
 ## Sign-in page or blank page behind a reverse proxy
 
@@ -154,13 +154,13 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 
 ## Media server scans wait after downloads
 
-Aurral batches scan requests for Navidrome, Plex, and Jellyfin after files change. **Settings > Tasks** shows the queued **Media server scan**. If a server is unavailable, the task retries and records the failure. A full Library scan requests another media server scan.
+Aurral batches scan requests for Navidrome, Plex, and Jellyfin after files change. **Settings > Status > Tasks** shows the queued **Media server scan**. If a server is unavailable, the task retries and records the failure. A full Library scan requests another media server scan.
 
 Playlist changes and deletions reach the servers through the **Media server playlist sync** task, a few seconds after the change. Changes made close together share one sync. Syncs and media server scans run one at a time in the **Media server updates** queue. If a server has not indexed some tracks yet, Aurral syncs that playlist to that server again after 30 seconds, 90 seconds, 3 minutes, and 10 minutes. After Aurral asks a server to scan a folder, it gives the server about 90 seconds to pick up the changes there before it reads the whole library again, so a playlist on that server can leave out new or changed tracks from that folder for a few minutes. If a server does not respond, the other servers still get the change. Aurral tries the unavailable server again on the same schedule, then every 10 minutes until it responds. If it then has not indexed some tracks, those retries start again from 30 seconds. Each retry goes only to the server that missed the change. If a server rejects Aurral's credentials or request, Aurral logs the error and waits for the next change to try that server again. Aurral syncs every playlist at startup and when you change media server settings. That sync also removes playlists you deleted in Aurral from servers that missed the deletion.
 
 ## Docker memory rises while tasks run
 
-Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Tasks** shows a stopped process as **Standby**.
+Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Status > Tasks** shows a stopped process as **Standby**.
 
 ## A background task restarts after it runs out of memory
 
@@ -189,7 +189,7 @@ A separate disk cache holds up to 256 MB of artwork outside the Library that Aur
 
 Aurral stores artwork links in SQLite, separately from the image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
 
-**Clear artwork cache** in **Settings > Discover** removes the stored links, the cached image files, and the Library artwork copies. It keeps your recommendations. Aurral rebuilds the artwork when it needs it.
+**Clear artwork cache** in **Settings > Discovery** removes the stored links, the cached image files, and the Library artwork copies. It keeps your recommendations. Aurral rebuilds the artwork when it needs it.
 
 ## The container exits with code 137
 

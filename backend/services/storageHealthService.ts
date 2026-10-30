@@ -646,7 +646,7 @@ async function checkDownloadClientSection({
     steps.push(
       healthStep("api", "fail", `Connected to ${title}`, {
         detail: connection.message || "Connection failed",
-        fix: `Check the ${key} URL and credentials in Settings → Download Clients.`,
+        fix: `Check the ${key} URL and credentials in Settings → Downloads.`,
       }),
     );
     return buildSection(key, title, steps);
@@ -730,8 +730,8 @@ async function checkSlskdSection() {
       "Configure the completed downloads folder in slskd, then make that reported path readable and writable by Aurral through a shared mount or an slskd remote path mapping.",
     pathFix: (downloadPath) =>
       looksLikeExternalOnlyPath(downloadPath)
-        ? "slskd reports a host path Aurral cannot read inside Docker. Mount the shared parent folder into both containers, or add an slskd mapping under Settings → Download Clients → Remote Path Mappings."
-        : `Mount the same host folder into Aurral at the path slskd uses, or add an slskd mapping for ${downloadPath} under Settings → Download Clients → Remote Path Mappings.`,
+        ? "slskd reports a host path Aurral cannot read inside Docker. Mount the shared parent folder into both containers, or add an slskd mapping under Settings → Downloads → Remote path mappings."
+        : `Mount the same host folder into Aurral at the path slskd uses, or add an slskd mapping for ${downloadPath} under Settings → Downloads → Remote path mappings.`,
     connectionLabel: "slskd API is reachable",
     extraSteps: (connection) => [
       connection.soulseekConnected === false
@@ -769,9 +769,9 @@ async function checkNzbgetSection() {
           "",
       ).trim(),
     missingPathFix:
-      "Set Completed download path under Settings → Download Clients → NZBGet, or configure NZBGet's DestDir so its API reports the completed folder.",
+      "Set Completed download path under Settings → Downloads → NZBGet, or configure NZBGet's DestDir so its API reports the completed folder.",
     pathFix: () =>
-      "Mount the same host folder into Aurral and NZBGet, or add an NZBGet mapping under Settings → Download Clients → Remote Path Mappings.",
+      "Mount the same host folder into Aurral and NZBGet, or add an NZBGet mapping under Settings → Downloads → Remote path mappings.",
   });
 }
 
@@ -787,7 +787,7 @@ async function checkSabnzbdSection() {
     missingPathFix:
       "Configure SABnzbd's Completed Download Folder, then make that reported path readable and writable by Aurral through a shared mount or a SABnzbd remote path mapping.",
     pathFix: () =>
-      "Mount the same host folder into Aurral and SABnzbd, or add a SABnzbd mapping under Settings → Download Clients → Remote Path Mappings.",
+      "Mount the same host folder into Aurral and SABnzbd, or add a SABnzbd mapping under Settings → Downloads → Remote path mappings.",
   });
 }
 

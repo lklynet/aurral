@@ -1,0 +1,53 @@
+.downloads-muted {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-sm);
+}
+
+.downloads-priority.input {
+  width: 5rem;
+}
+
+.downloads-quality {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-card > .downloads-quality {
+  padding: 0.375rem 0.5rem;
+}
+
+.downloads-quality__tier {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.125rem 0.5rem 0.125rem 0.125rem;
+  border-radius: var(--aurral-radius-sm);
+}
+
+.downloads-quality__tier.is-dragging {
+  position: relative;
+  z-index: var(--aurral-z-raised);
+  background: var(--aurral-surface-hover);
+  box-shadow: var(--aurral-shadow-popover);
+}
+
+.downloads-quality__grip {
+  color: var(--aurral-text-subtle);
+  cursor: grab;
+  touch-action: none;
+}
+
+.downloads-quality__grip:active {
+  cursor: grabbing;
+}
+
+.downloads-quality__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.downloads-quality__tier.is-off .downloads-quality__name {
+  color: var(--aurral-text-subtle);
+}

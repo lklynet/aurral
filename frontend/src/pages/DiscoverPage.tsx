@@ -49,6 +49,7 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
+import { SettingsLink } from "./Settings/settingsRoute";
 import { useArtistTint } from "../components/CollectionHeader";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
@@ -82,7 +83,8 @@ const SECTION_CARD_KINDS = new Map<
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
-  const { user: authUser, bootstrap } = useAuth();
+  const { user: authUser, bootstrap, hasPermission } = useAuth();
+  const canManageServer = hasPermission("accessSettings");
   const { showSuccess, showError } = useToast();
   const newsConfigured = bootstrap?.newsConfigured === true;
   const {
@@ -512,11 +514,19 @@ function DiscoverPage() {
             <div className="artist-nearby-status">
               <h3 className="artist-nearby-status__title">Ticketmaster not configured</h3>
               <p className="artist-nearby-status__text">
-                Add a Ticketmaster key in Settings → Connect to find nearby shows.
+                {canManageServer
+                  ? "Add a Ticketmaster key in Settings → Discovery to find nearby shows."
+                  : "An admin needs to add a Ticketmaster key to find nearby shows."}
               </p>
-              <RouteLink to="/settings" className="btn btn-primary" style={{ marginTop: "1rem" }}>
-                Open Settings
-              </RouteLink>
+              {canManageServer ? (
+                <SettingsLink
+                  to="discovery/ticketmaster"
+                  className="btn btn-primary"
+                  style={{ marginTop: "1rem" }}
+                >
+                  Open Settings
+                </SettingsLink>
+              ) : null}
             </div>
           </section>
         );

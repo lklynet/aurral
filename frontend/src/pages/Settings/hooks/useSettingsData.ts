@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import type { useToast } from "../../../contexts/ToastContext";
-import type { useSettingsTabs } from "./useSettingsTabs";
 import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
 import { lidarrCredentialParams } from "../../../utils/api/core.ts";
@@ -219,6 +218,20 @@ const defaultSettings = {
 const AUTOSAVE_DELAY_MS = 450;
 const SETTINGS_SAVE_KEY = ["settings", "save"];
 
+const settingsSaveSettled = () =>
+  new Promise<void>((resolve) => {
+    const idle = () => queryClient.isMutating({ mutationKey: SETTINGS_SAVE_KEY }) === 0;
+    if (idle()) {
+      resolve();
+      return;
+    }
+    const unsubscribe = queryClient.getMutationCache().subscribe(() => {
+      if (!idle()) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+
 const getLidarrResourceConfig = (settings: SettingsState) => {
   const lidarr = settings?.integrations?.lidarr || {};
   return {
@@ -270,15 +283,12 @@ export function useSettingsData(
   showSuccess: Toast,
   showError: Toast,
   showInfo: Toast,
-  activeTab: ReturnType<typeof useSettingsTabs>["activeTab"],
+  activeSection: string,
 ) {
   const [settings, setSettingsState] = useState<SettingsState>(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<SettingsState | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [testingLidarr, setTestingLidarr] = useState(false);
-  const [testingGotify, setTestingGotify] = useState(false);
-  const [showCommunityGuideModal, setShowCommunityGuideModal] = useState(false);
   const comparisonEnabledRef = useRef(false);
   const settingsRef = useRef<SettingsState>(defaultSettings);
   const originalSettingsRef = useRef<SettingsState | null>(null);
@@ -352,7 +362,7 @@ export function useSettingsData(
   const lidarrQueries = useQueries({
     queries: buildLidarrQueries(
       lidarrResourceConfig,
-      activeTab === "lidarr" && settings.integrations?.lidarr?.enabled !== false,
+      activeSection === "lidarr" && settings.integrations?.lidarr?.enabled !== false,
     ),
   });
   const [
@@ -394,6 +404,7 @@ export function useSettingsData(
     if (settingsActivationTimerRef.current) clearTimeout(settingsActivationTimerRef.current);
     try {
       void refreshHealth();
+      await settingsSaveSettled();
       const [settingsResult] = await Promise.all([
         refetchSettings({ throwOnError: true }),
         refetchPlayback({ throwOnError: false }),
@@ -526,9 +537,7 @@ export function useSettingsData(
         }
         return true;
       } catch (err) {
-        if (mountedRef.current) {
-          showError("Failed to save settings: " + readApiError(err).text);
-        }
+        showError("Failed to save settings: " + readApiError(err).text);
         return false;
       }
     },
@@ -626,7 +635,6 @@ export function useSettingsData(
   const { mutateAsync: applyCommunityGuide } = communityGuideMutation;
 
   const handleApplyCommunityGuide = useCallback(async () => {
-    setShowCommunityGuideModal(false);
     let result;
     try {
       result = await applyCommunityGuide();
@@ -710,13 +718,7 @@ export function useSettingsData(
     lidarrTags,
     loadingLidarrTags,
     refreshLidarrResources,
-    testingLidarr,
-    setTestingLidarr,
-    testingGotify,
-    setTestingGotify,
     applyingCommunityGuide,
-    showCommunityGuideModal,
-    setShowCommunityGuideModal,
     handleApplyCommunityGuide,
   };
 }

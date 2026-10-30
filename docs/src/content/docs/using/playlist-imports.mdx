@@ -61,7 +61,7 @@ This import supplies only the tracklist. Your download clients find and download
 The Last.fm tab offers three stations: **Library**, **Mix**, and **Recommended**.
 
 1. Select **Last.fm**.
-2. If Aurral does not show your username, enter it. Aurral fills it in when Last.fm is your listening-history provider in **Profile**.
+2. If Aurral does not show your username, enter it. Aurral fills it in when Last.fm is your listening-history provider in **Settings > Listening**.
 3. Select a station.
 4. Start the import.
 
@@ -69,7 +69,7 @@ Aurral saves the username with the playlist for future syncs. A synced station f
 
 ## Import from ListenBrainz
 
-Before you import, link ListenBrainz in **Settings > Playback > Scrobbling**. Aurral uses the same user token.
+Before you import, link ListenBrainz in **Settings > Listening > Scrobbling**. Aurral uses the same user token.
 
 1. Select **ListenBrainz**.
 2. Select a playlist.
@@ -133,6 +133,6 @@ One file can belong to several playlists. Aurral does not download a track again
 
 To reuse Lidarr files, Aurral must read them at the paths that Lidarr reports. Mount the same media root at the same container path in both services, for example `/data` with the Lidarr root folder `/data/music`. See [Filesystem and mounts](/getting-started/storage/).
 
-If Lidarr runs on Windows and Aurral runs in Docker, run **Settings > Storage health > Run checks**. The **Lidarr library** section shows the path that Lidarr reports. Add a mapping for that path in **Settings > Download clients > Remote path mappings**.
+If Lidarr runs on Windows and Aurral runs in Docker, run **Settings > Status > Storage > Run checks**. The **Lidarr library** section shows the path that Lidarr reports. Add a mapping for that path in **Settings > Downloads > Remote path mappings**.
 
 Navidrome must scan the Lidarr library before Aurral can add a reused track to a Navidrome playlist. See [Navidrome: Existing Lidarr library](/integrations/navidrome/#existing-lidarr-library).

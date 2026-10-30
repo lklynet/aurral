@@ -11,15 +11,15 @@ Set most options in the web UI. Use these variables for deployment settings.
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PUID`, `PGID`      | The user and group that run Aurral in the container. Set them to the owner of the mounted folders.                                                                                                                                                                         |
 | `AURRAL_DATA_DIR`   | The app data folder. Default `/config`.                                                                                                                                                                                                                                    |
-| `DOWNLOAD_FOLDER`   | The first Downloads Folder path. Use an absolute path under your media mount. After setup, change it in **Settings > Download clients > Downloads Folder > Path**.                                                                                                         |
+| `DOWNLOAD_FOLDER`   | The first Downloads Folder path. Use an absolute path under your media mount. After setup, change it in **Settings > Library > Downloads folder > Path**.                                                                                                                  |
 | `FILE_BROWSE_ROOTS` | Comma-separated folders that **Browse folders** can open, and where Aurral can create a Downloads Folder. By default these are `/data`, the app data folder, and the Downloads Folder. Set this variable when your media mount is not under `/data`, for example `/music`. |
 | `PORT`              | The port that Aurral listens on inside the container. Default `3001`.                                                                                                                                                                                                      |
 
 ## Path mappings
 
-| Variable        | Purpose                                                                                                                                                                                                                                                                      |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PATH_MAPPINGS` | Path translations for mixed Windows and Docker setups. Use the format `remote\|local`. Separate mappings with `;`. To limit a mapping to one application, use `source\|remote\|local`. You can also edit mappings in **Settings > Download clients > Remote path mappings**. |
+| Variable        | Purpose                                                                                                                                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PATH_MAPPINGS` | Path translations for mixed Windows and Docker setups. Use the format `remote\|local`. Separate mappings with `;`. To limit a mapping to one application, use `source\|remote\|local`. You can also edit mappings in **Settings > Downloads > Remote path mappings**. |
 
 ## Authentication
 
@@ -62,9 +62,9 @@ Google and Plex sign-in use settings in the web UI, not environment variables. S
 
 ## Metadata
 
-| Variable              | Purpose                                                                                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BRAINZMASH_BASE_URL` | The address of your own BrainzMash metadata server. A **Base URL** set in `/settings/metadata` takes precedence. See [Metadata and search](/integrations/metadata/). |
+| Variable              | Purpose                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BRAINZMASH_BASE_URL` | The address of your own BrainzMash metadata server. A **Base URL** set in **Settings > Metadata** takes precedence. See [Metadata and search](/integrations/metadata/). |
 
 ## Logging
 

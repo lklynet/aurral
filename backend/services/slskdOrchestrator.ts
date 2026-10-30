@@ -217,7 +217,7 @@ const POLL_DELAY_SECONDS = 3;
 const SOULSEEK_LOGIN_RECHECK_SECONDS = 60;
 const SOULSEEK_LOGIN_WAIT_LIMIT_MS = 45 * 60 * 1000;
 export const SLSKD_NOT_CONFIGURED_MESSAGE =
-  "slskd is not configured. Enable slskd and add its Server URL in Settings > Download clients to enable Soulseek downloads for flows and playlists.";
+  "slskd is not configured. Enable slskd and add its Server URL in Settings → Downloads to enable Soulseek downloads for flows and playlists.";
 
 export function buildSlskdSearchTierGroups(resolvedTrack: TrackSearchContext) {
   return buildTrackSearchTiers(resolvedTrack);
@@ -1670,7 +1670,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
   if (typeof sourcePath !== "string" || !sourcePath.trim()) {
     const reason = slskdRoot
       ? `Downloaded file missing: ${predictSlskdLocalPathCandidates(slskdRoot, remoteFile)[0] || fileName}`
-      : "Aurral doesn't know slskd's download folder. Check slskd under Settings > Storage health.";
+      : "Aurral doesn't know slskd's download folder. Check slskd under Settings → Status → Storage.";
     const nextPayload = retrySameCandidateOrNext(payload, job, "missing_file", reason, {
       transfer,
     });

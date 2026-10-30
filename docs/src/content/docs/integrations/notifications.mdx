@@ -16,15 +16,15 @@ Aurral can send notifications to Gotify, to webhooks, or to both. Gotify and web
 
 Gotify is a self-hosted push notification server.
 
-1. Open **Settings > Connect > Gotify**.
+1. Open **Settings > Notifications > Gotify**.
 2. Set **Server URL** to a Gotify address that Aurral can reach, for example `http://gotify:8888` in Docker.
 3. Enter the **Application token** of a Gotify application.
-4. Under **Notification events**, turn on the events that you want.
-5. Select **Test notification**.
+4. Under **Events**, turn on the events that you want.
+5. Select **Send test**.
 
 ## Webhooks
 
-A webhook sends one HTTP request for each event. Configure webhooks in the **Webhooks** section of **Settings > Connect**. Each webhook has these fields:
+A webhook sends one HTTP request for each event. Configure webhooks in **Settings > Notifications > Webhooks**. Each webhook has these fields:
 
 - **URL**: the endpoint to call. It must start with `http://` or `https://`.
 - **Body**: optional JSON. Leave it blank to send a `GET` request. Enter a body to send a `POST` request.
@@ -42,11 +42,11 @@ The body can use these placeholders:
 
 The album, user, and event placeholders apply to request events.
 
-Under **Notification events** in the same tab, turn on the events that your webhooks send.
+Under **Webhook events** in **Settings > Notifications**, turn on the events that your webhooks send.
 
 ### Test a webhook
 
-Select **Test webhook** on a webhook card. Aurral sends the current URL, body, and headers at once. The test ignores the event switches and does not save the settings. It fills the placeholders with these values:
+Open the webhook and select **Send test**. Aurral sends the current URL, body, and headers at once. The test ignores the event switches and does not save the webhook. It fills the placeholders with these values:
 
 | Placeholder   | Test value             |
 | ------------- | ---------------------- |

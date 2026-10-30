@@ -228,7 +228,7 @@ export async function handleGoogleCallback(
     if (!identity) {
       throw Object.assign(
         new Error(
-          "This Google account isn't linked to an Aurral account yet. Sign in another way and link it in Settings.",
+          "This Google account isn't linked to an Aurral account yet. Sign in another way and link it in Settings → Profile.",
         ),
         { status: 403 },
       );

@@ -15,7 +15,7 @@ const DEPRECATIONS = {
   "legacy-data-dir":
     "Aurral's data folder is /app/backend/data. Mount it at /config instead. Aurral 3.0 does not look in /app/backend/data.",
   "auth-password-env":
-    "AUTH_PASSWORD is set. Create accounts in Settings > Users, then remove AUTH_USER and AUTH_PASSWORD. Aurral 3.0 does not sign in with them.",
+    "AUTH_PASSWORD is set. Create accounts in Settings → Users, then remove AUTH_USER and AUTH_PASSWORD. Aurral 3.0 does not sign in with them.",
   "weekly-flow-api":
     "A client called /api/weekly-flow. Use /api/playlists instead. Aurral 3.0 removes /api/weekly-flow.",
   "weekly-flow-channel":

@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "../../../components/icons";
 import PillToggle from "../../../components/PillToggle";
+import { SettingsGroup, SettingsRow } from "../SettingsLayout";
 import TooltipButton from "../../../components/TooltipButton.tsx";
 import { ModalShell } from "../../../components/PlaylistModals.tsx";
 import { useToast } from "../../../contexts/ToastContext";
@@ -526,7 +527,7 @@ function ThemeImport({
         </label>
         <textarea
           id={textId}
-          className="arr-input arr-textarea theme-settings__import-text"
+          className="input settings-textarea theme-settings__import-text"
           value={text}
           rows={8}
           spellCheck={false}
@@ -620,16 +621,9 @@ export function ThemeSettings({
   };
 
   return (
-    <div className="theme-settings">
-      <section className="theme-settings__section" aria-labelledby="theme-mode-heading">
-        <div className="theme-settings__section-heading">
-          <h4 id="theme-mode-heading">Color scheme</h4>
-        </div>
-        <div
-          className="theme-settings__mode-grid"
-          role="group"
-          aria-labelledby="theme-mode-heading"
-        >
+    <>
+      <SettingsGroup title="Color scheme">
+        <div className="theme-settings__mode-grid" role="group" aria-label="Color scheme">
           {APPEARANCE_OPTIONS.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -646,25 +640,26 @@ export function ThemeSettings({
             </button>
           ))}
         </div>
-      </section>
+      </SettingsGroup>
 
-      <section className="theme-settings__section" aria-labelledby="theme-themes-heading">
-        <div className="theme-settings__section-heading">
-          <h4 id="theme-themes-heading">Themes</h4>
-          <div className="theme-settings__section-actions">
+      <SettingsGroup
+        title="Theme"
+        actions={
+          <>
             <button
               type="button"
-              className="btn btn-ghost"
+              className="btn btn-ghost btn-sm"
               onClick={() => setDialog({ type: "import" })}
             >
               <FileUp aria-hidden="true" /> Import
             </button>
-            <button type="button" className="btn btn-secondary" onClick={openCreate}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={openCreate}>
               <Plus aria-hidden="true" /> Create theme
             </button>
-          </div>
-        </div>
-        <div className="theme-settings__grid" role="group" aria-labelledby="theme-themes-heading">
+          </>
+        }
+      >
+        <div className="theme-settings__grid" role="group" aria-label="Themes">
           {[...BUILT_IN_THEMES, ...themeDocument.themes].map((theme) => (
             <ThemeCard
               key={theme.id}
@@ -676,23 +671,19 @@ export function ThemeSettings({
             />
           ))}
         </div>
-        <div className="theme-settings__switch-row">
-          <div className="theme-settings__switch-copy">
-            <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">
-              Immersive mode
-            </label>
-            <p className="settings-page__hint">
-              Use artwork colors for accents, backgrounds, and the player.
-            </p>
-          </div>
+        <SettingsRow
+          label="Immersive mode"
+          htmlFor="theme-immersive-mode"
+          help="Use artwork colors for accents, backgrounds, and the player."
+        >
           <PillToggle
             id="theme-immersive-mode"
             checked={themeDocument.matchArtwork}
             aria-label="Immersive mode"
             onChange={(event) => setImmersiveMode(event.target.checked)}
           />
-        </div>
-      </section>
+        </SettingsRow>
+      </SettingsGroup>
 
       {dialog?.type === "import" ? (
         <ThemeImport
@@ -714,6 +705,6 @@ export function ThemeSettings({
           onRemoved={handleRemoved}
         />
       ) : null}
-    </div>
+    </>
   );
 }
