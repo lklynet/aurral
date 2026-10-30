@@ -47,8 +47,9 @@ export function matchOption(
   query: string,
   from: number,
 ) {
-  const needle = query.toLocaleLowerCase();
-  const start = query.length === 1 ? from + 1 : Math.max(from, 0);
+  const lower = query.toLocaleLowerCase();
+  const needle = [...lower].every((char) => char === lower[0]) ? lower.slice(0, 1) : lower;
+  const start = needle.length === 1 ? from + 1 : Math.max(from, 0);
   for (let offset = 0; offset < options.length; offset += 1) {
     const index = (start + offset) % options.length;
     const option = options[index];

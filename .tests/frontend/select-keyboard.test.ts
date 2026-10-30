@@ -24,6 +24,8 @@ test("typing one letter cycles through enabled matches", () => {
   assert.equal(matchOption(options, "l", 0), 1);
   assert.equal(matchOption(options, "l", 1), 3);
   assert.equal(matchOption(options, "l", 3), 1);
+  assert.equal(matchOption(options, "ll", 1), 3);
+  assert.equal(matchOption(options, "lll", 3), 1);
 });
 
 test("typing a longer prefix narrows from the current option", () => {
