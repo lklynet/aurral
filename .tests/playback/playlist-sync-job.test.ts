@@ -201,6 +201,8 @@ function usePlex(
   };
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => ({
     key: "9",
+    type: "artist",
+    title: "Aurral",
     Location: [{ path: libraryPath }],
   }));
   vi.spyOn(PlexClient.prototype, "request").mockImplementation(
@@ -208,7 +210,15 @@ function usePlex(
       if (endpoint === "/library/sections") {
         return {
           MediaContainer: {
-            Directory: [{ key: "5", Location: plex.mainRoots.map((root) => ({ path: root })) }],
+            size: 1,
+            Directory: [
+              {
+                key: "5",
+                type: "artist",
+                title: "Music",
+                Location: plex.mainRoots.map((root) => ({ path: root })),
+              },
+            ],
           },
         };
       }
@@ -226,16 +236,16 @@ function usePlex(
         ({ addedAt }) => addedSince == null || addedAt >= addedSince,
       );
       const start = Number(params?.["X-Plex-Container-Start"]);
+      const page = tracks.slice(start, start + Number(params?.["X-Plex-Container-Size"]));
       return {
         MediaContainer: {
+          size: page.length,
           totalSize: tracks.length,
-          Metadata: tracks
-            .slice(start, start + Number(params?.["X-Plex-Container-Size"]))
-            .map(({ ratingKey, addedAt, file }) => ({
-              ratingKey,
-              addedAt: plexEpoch + addedAt,
-              Media: [{ Part: [{ file }] }],
-            })),
+          Metadata: page.map(({ ratingKey, addedAt, file }) => ({
+            ratingKey,
+            addedAt: plexEpoch + addedAt,
+            Media: [{ Part: [{ file }] }],
+          })),
         },
       };
     },

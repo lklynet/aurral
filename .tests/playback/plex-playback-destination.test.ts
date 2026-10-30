@@ -65,6 +65,8 @@ function makeDestination(
 function servePlex(sections: Record<string, { ratingKey: string; files: string[] }[]>) {
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({
     key: "7",
+    type: "artist",
+    title: "Aurral",
   }));
   vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async (sectionId) =>
     (sections[sectionId] ?? []).map((track) => ({
@@ -371,7 +373,12 @@ test("refreshes only changed folders inside the Aurral section", async () => {
   let reportedLocations: string[] = [];
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
-    return { key: "7", Location: reportedLocations.map((location) => ({ path: location })) };
+    return {
+      key: "7",
+      type: "artist",
+      title: "Aurral",
+      Location: reportedLocations.map((location) => ({ path: location })),
+    };
   });
   vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => []);
   vi.spyOn(PlexClient.prototype, "request").mockImplementation(
@@ -467,6 +474,7 @@ test("configures Plex with the download root and explicit flow location", async 
       : [
           {
             key: "7",
+            type: "artist",
             title: "Aurral",
             Location: [{ path: root }],
           },
@@ -484,6 +492,21 @@ test("configures Plex with the download root and explicit flow location", async 
     `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}`,
   );
   assert.equal(calls[0].options!.method, "POST");
+});
+
+test("a Plex library list Aurral can't read fails without creating another Aurral library", async () => {
+  const client = new PlexClient("http://plex.local:32400", "admin-token", "admin-client");
+  const methods: string[] = [];
+  vi.spyOn(client, "request").mockImplementation(async (requestPath, options = {}) => {
+    methods.push(`${options.method || "GET"} ${requestPath.split("?")[0]}`);
+    return "<html><body>Sign in</body></html>";
+  });
+
+  await assert.rejects(
+    client.ensureAurralLibrary("/downloads/aurral"),
+    /Plex sent \/library\/sections data Aurral can't read/,
+  );
+  assert.deepEqual(methods, ["GET /library/sections"]);
 });
 
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async () => {

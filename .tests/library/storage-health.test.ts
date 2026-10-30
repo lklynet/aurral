@@ -435,13 +435,16 @@ test("configured Plex is included and validates its Aurral library path", async 
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/identity")) {
-      response.end(JSON.stringify({ MediaContainer: { machineIdentifier: "plex-test" } }));
+      response.end(JSON.stringify({ MediaContainer: { size: 0, machineIdentifier: "plex-test" } }));
       return;
     }
     response.end(
       JSON.stringify({
         MediaContainer: {
-          Directory: [{ key: "7", title: "Aurral", Location: [{ path: expectedPath }] }],
+          size: 1,
+          Directory: [
+            { key: "7", type: "artist", title: "Aurral", Location: [{ path: expectedPath }] },
+          ],
         },
       }),
     );

@@ -169,6 +169,8 @@ function stubMediaServers(
   );
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({
     key: "7",
+    type: "artist",
+    title: "Aurral",
   }));
   vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => []);
   return requests;

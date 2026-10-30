@@ -1,8 +1,10 @@
+import * as v from "valibot";
 import axios from "../../lib/axiosFetch.ts";
 import { asAppError } from "../../lib/errors.ts";
 import crypto from "crypto";
 import { XMLParser } from "fast-xml-parser";
 import { AURRAL_FLOWS_DIR } from "./downloadPaths.ts";
+import { readMany, readOne } from "./integrationData.ts";
 import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage.ts";
 
 const PLEX_TV = "https://plex.tv";
@@ -15,20 +17,66 @@ const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 const READ_TIMEOUT_MS = 30_000;
 
-type PlexPart = { file?: string };
-type PlexMedia = { Part?: PlexPart[] };
-type PlexMetadata = {
-  ratingKey?: string | number;
-  playlistItemID?: string | number;
-  title?: string;
-  grandparentTitle?: string;
-  originalTitle?: string;
-  addedAt?: string | number;
-  Media?: PlexMedia[];
-};
-type PlexContainerPage = {
-  MediaContainer?: { Metadata?: PlexMetadata[]; size?: number; totalSize?: number };
-};
+const mediaContainer = <Entries extends v.ObjectEntries>(entries: Entries) =>
+  v.looseObject({ MediaContainer: v.looseObject(entries) });
+
+const pinSchema = v.looseObject({
+  id: v.number(),
+  code: v.string(),
+  authToken: v.nullish(v.string()),
+});
+
+const identitySchema = mediaContainer({
+  machineIdentifier: v.string(),
+  version: v.optional(v.string()),
+});
+
+const sectionsSchema = mediaContainer({ Directory: v.optional(v.array(v.unknown())) });
+
+const librarySchema = v.looseObject({
+  key: v.string(),
+  type: v.string(),
+  title: v.string(),
+  Location: v.optional(v.array(v.looseObject({ path: v.string() }))),
+});
+
+const pageSchema = mediaContainer({
+  size: v.number(),
+  totalSize: v.optional(v.number()),
+  Metadata: v.optional(v.array(v.unknown())),
+});
+
+const metadataSchema = v.looseObject({
+  ratingKey: v.string(),
+  title: v.optional(v.string()),
+  grandparentTitle: v.optional(v.string()),
+  originalTitle: v.optional(v.string()),
+  addedAt: v.optional(v.number()),
+  Media: v.optional(
+    v.array(
+      v.looseObject({
+        Part: v.optional(v.array(v.looseObject({ file: v.optional(v.string()) }))),
+      }),
+    ),
+  ),
+});
+
+const playlistSchema = v.looseObject({
+  ratingKey: v.string(),
+  title: v.string(),
+  leafCount: v.optional(v.number()),
+});
+
+const playlistItemSchema = v.looseObject({
+  ratingKey: v.string(),
+  playlistItemID: v.number(),
+});
+
+const trackFiles = (track: v.InferOutput<typeof metadataSchema>) =>
+  (track.Media ?? []).flatMap((media) =>
+    (media.Part ?? []).flatMap((part) => (part.file ? [part.file] : [])),
+  );
+
 type PlexConnection = { uri?: string; local?: unknown; address?: string; port?: number | string };
 type PlexResource = {
   name?: string;
@@ -39,7 +87,6 @@ type PlexResource = {
   connections?: PlexConnection | PlexConnection[];
   Connection?: PlexConnection | PlexConnection[];
 };
-type PlexLibrary = { key: string; title?: string; Location?: { path?: string }[] };
 type PlexUserRecord = {
   id: string | number;
   uuid?: string | null;
@@ -143,7 +190,8 @@ export class PlexClient {
       params: { strong: true },
       headers: PlexClient.plexHeaders(clientId),
     });
-    return { id: data.id, code: data.code };
+    const pin = readOne(pinSchema, data, { service: "Plex", endpoint: "/api/v2/pins" });
+    return { id: pin.id, code: pin.code };
   }
 
   static buildAuthUrl(clientId: string, code: string, forwardUrl?: string | null) {
@@ -161,7 +209,9 @@ export class PlexClient {
       params: { code },
       headers: PlexClient.plexHeaders(clientId),
     });
-    return data.authToken || null;
+    return (
+      readOne(pinSchema, data, { service: "Plex", endpoint: "/api/v2/pins" }).authToken || null
+    );
   }
 
   static async validateToken(
@@ -291,7 +341,7 @@ export class PlexClient {
   ) {
     if (!this.isConfigured()) throw new Error("Plex not configured");
     try {
-      const response = await axios({
+      const response: { data: unknown } = await axios({
         method,
         url: `${this.url}${path}`,
         params,
@@ -323,11 +373,18 @@ export class PlexClient {
     }
   }
 
+  async read<Schema extends v.GenericSchema>(
+    schema: Schema,
+    path: string,
+    options: PlexRequestOptions = {},
+  ) {
+    return readOne(schema, await this.request(path, options), { service: "Plex", endpoint: path });
+  }
+
   async ping() {
-    const data = await this.request("/identity");
-    const mc = data?.MediaContainer || {};
-    if (mc.machineIdentifier) this._machineIdentifier = mc.machineIdentifier;
-    return mc;
+    const { MediaContainer: identity } = await this.read(identitySchema, "/identity");
+    this._machineIdentifier = identity.machineIdentifier;
+    return identity;
   }
 
   async getMachineIdentifier() {
@@ -337,8 +394,11 @@ export class PlexClient {
   }
 
   async getLibraries() {
-    const data = await this.request("/library/sections", { timeout: READ_TIMEOUT_MS });
-    return data?.MediaContainer?.Directory || [];
+    const endpoint = "/library/sections";
+    const { MediaContainer } = await this.read(sectionsSchema, endpoint, {
+      timeout: READ_TIMEOUT_MS,
+    });
+    return readMany(librarySchema, MediaContainer.Directory ?? [], { service: "Plex", endpoint });
   }
 
   async ensureAurralLibrary(libraryPath: string) {
@@ -348,21 +408,19 @@ export class PlexClient {
     const locations = [libraryPath, `${flowRoot}/${AURRAL_FLOWS_DIR}`];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.
-    const findExisting = (libs: PlexLibrary[]) =>
+    const findExisting = (libs: Awaited<ReturnType<PlexClient["getLibraries"]>>) =>
       libs.find(
         (lib) =>
           lib.title === name ||
           lib.title === "Aurral Flow" ||
-          (lib.Location || []).some(
-            (loc) => loc.path !== undefined && locations.includes(loc.path),
-          ),
+          (lib.Location || []).some((loc) => locations.includes(loc.path)),
       );
 
     const existing = findExisting(await this.getLibraries());
     if (existing) {
       // Reconcile name + folder so a rename or a changed downloads-path setting
       // actually takes effect (Plex keeps the originals otherwise).
-      const currentLocations = (existing.Location || []).map((loc) => loc.path).filter(Boolean);
+      const currentLocations = (existing.Location || []).map((loc) => loc.path);
       const locationOk =
         currentLocations.length === locations.length &&
         locations.every((location) => currentLocations.includes(location));
@@ -449,10 +507,11 @@ export class PlexClient {
     { addedSince = null }: { addedSince?: number | null } = {},
   ) {
     const pageSize = 200;
+    const endpoint = `/library/sections/${sectionId}/all`;
     const out = [];
     let start = 0;
     for (;;) {
-      const data = await this.request(`/library/sections/${sectionId}/all`, {
+      const { MediaContainer: page } = await this.read(pageSchema, endpoint, {
         timeout: READ_TIMEOUT_MS,
         params: {
           type: TRACK_TYPE,
@@ -461,21 +520,17 @@ export class PlexClient {
           "X-Plex-Container-Size": pageSize,
         },
       });
-      const mc = data?.MediaContainer || {};
-      const items: PlexMetadata[] = mc.Metadata || [];
-      for (const t of items) {
-        const files = (t.Media || [])
-          .flatMap((m) => (m.Part || []).map((p) => p.file))
-          .filter(Boolean);
+      const items = page.Metadata ?? [];
+      for (const t of readMany(metadataSchema, items, { service: "Plex", endpoint })) {
         out.push({
           ratingKey: t.ratingKey,
           title: t.title,
           artist: t.grandparentTitle || t.originalTitle,
-          addedAt: Number(t.addedAt) || 0,
-          files,
+          addedAt: t.addedAt ?? 0,
+          files: trackFiles(t),
         });
       }
-      const total = Number(mc.totalSize ?? mc.size ?? items.length);
+      const total = page.totalSize ?? page.size;
       start += items.length;
       if (items.length === 0 || start >= total) break;
     }
@@ -483,32 +538,34 @@ export class PlexClient {
   }
 
   async getSampleTrack(sectionId: string | number) {
-    const data = await this.request(`/library/sections/${sectionId}/all`, {
+    const endpoint = `/library/sections/${sectionId}/all`;
+    const { MediaContainer: page } = await this.read(pageSchema, endpoint, {
       params: {
         type: TRACK_TYPE,
         "X-Plex-Container-Start": 0,
         "X-Plex-Container-Size": 1,
       },
     });
-    const item: PlexMetadata | undefined = data?.MediaContainer?.Metadata?.[0];
-    if (!item) return null;
-    const files = (item.Media || [])
-      .flatMap((m) => (m.Part || []).map((p) => p.file))
-      .filter(Boolean);
-    return { ratingKey: item.ratingKey, title: item.title, files };
+    const [first] = page.Metadata ?? [];
+    if (first === undefined) return null;
+    const item = readOne(metadataSchema, first, { service: "Plex", endpoint });
+    return { ratingKey: item.ratingKey, title: item.title, files: trackFiles(item) };
   }
 
   async getPlaylists() {
-    const data = await this.request("/playlists", {
+    const { MediaContainer: page } = await this.read(pageSchema, "/playlists", {
       params: { playlistType: "audio" },
     });
-    return data?.MediaContainer?.Metadata || [];
+    return readMany(playlistSchema, page.Metadata ?? [], {
+      service: "Plex",
+      endpoint: "/playlists",
+    });
   }
 
   async getPlaylistTrackPaths(excludedIds = new Set<string>()) {
     const read = (endpoint: string, params: PlexQueryParams = {}) =>
       readPlaylistPages(async (start) => {
-        const data: PlexContainerPage = await this.request(endpoint, {
+        const { MediaContainer: page } = await this.read(pageSchema, endpoint, {
           timeout: 30_000,
           params: {
             ...params,
@@ -516,16 +573,19 @@ export class PlexClient {
             "X-Plex-Container-Size": 200,
           },
         });
-        const container = data?.MediaContainer;
         return {
-          items: container?.Metadata ?? (container?.size === 0 ? [] : undefined),
-          total: container?.totalSize,
+          items: page.Metadata
+            ? readOne(v.array(metadataSchema), page.Metadata, { service: "Plex", endpoint })
+            : page.size === 0
+              ? []
+              : undefined,
+          total: page.totalSize,
         };
       });
     const playlists = await read("/playlists", { playlistType: "audio", type: 15 });
     const paths = new Set<string>();
     for (const playlist of playlists) {
-      if (!playlist?.ratingKey) throw new Error("Plex playlist is missing its ID");
+      if (!playlist.ratingKey) throw new Error("Plex playlist is missing its ID");
       if (excludedIds.has(String(playlist.ratingKey))) continue;
       const entries = await read(`/playlists/${encodeURIComponent(playlist.ratingKey)}/items`);
       for (const entry of entries) {
@@ -538,11 +598,11 @@ export class PlexClient {
   }
 
   async getPlaylistItems(playlistRatingKey: string | number) {
-    const data = await this.request(`/playlists/${playlistRatingKey}/items`);
-    const items: PlexMetadata[] = data?.MediaContainer?.Metadata || [];
-    return items
-      .map((i) => ({ ratingKey: i.ratingKey, playlistItemID: i.playlistItemID }))
-      .filter((i) => i.ratingKey && i.playlistItemID != null);
+    const endpoint = `/playlists/${playlistRatingKey}/items`;
+    const { MediaContainer: page } = await this.read(pageSchema, endpoint);
+    return readMany(playlistItemSchema, page.Metadata ?? [], { service: "Plex", endpoint }).map(
+      (item) => ({ ratingKey: item.ratingKey, playlistItemID: item.playlistItemID }),
+    );
   }
 
   _metadataUri(machineId: string | null, ratingKeys: (string | number) | (string | number)[]) {
@@ -553,7 +613,7 @@ export class PlexClient {
   async _createPlaylist(title: string, ratingKeys: (string | number)[]) {
     const machineId = await this.getMachineIdentifier();
     if (!machineId) throw new Error("Could not resolve Plex machineIdentifier");
-    const data = await this.request("/playlists", {
+    const { MediaContainer: page } = await this.read(pageSchema, "/playlists", {
       method: "POST",
       params: {
         type: "audio",
@@ -562,7 +622,10 @@ export class PlexClient {
         uri: this._metadataUri(machineId, ratingKeys),
       },
     });
-    return data?.MediaContainer?.Metadata?.[0] || null;
+    const [created] = page.Metadata ?? [];
+    return created === undefined
+      ? null
+      : readOne(playlistSchema, created, { service: "Plex", endpoint: "/playlists" });
   }
 
   async addToPlaylist(playlistRatingKey: string | number, ratingKeys: (string | number)[]) {
@@ -650,7 +713,7 @@ export class PlexClient {
 
     for (const item of toRemove) {
       try {
-        await this.removePlaylistItem(targetRatingKey, item.playlistItemID!);
+        await this.removePlaylistItem(targetRatingKey, item.playlistItemID);
       } catch (err) {
         console.warn(
           `[Plex] Failed to remove item ${item.playlistItemID} from playlist ${targetRatingKey}:`,

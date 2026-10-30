@@ -351,6 +351,8 @@ test("Plex does not add retained files back to a refreshed flow", async () => {
   playback.updateConfig({ url: "http://plex", token: "admin-token" });
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({
     key: "7",
+    type: "artist",
+    title: "Aurral",
   }));
   vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => [
     {

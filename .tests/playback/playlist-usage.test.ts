@@ -138,6 +138,7 @@ test("Plex paginates playlists and includes all file parts in smart playlists", 
     if (endpoint === "/playlists")
       return {
         MediaContainer: {
+          size: 1,
           totalSize: 2,
           Metadata: [offset === 0 ? { ratingKey: "flow" } : { ratingKey: "saved", smart: true }],
         },
@@ -145,6 +146,7 @@ test("Plex paginates playlists and includes all file parts in smart playlists", 
     assert.equal(endpoint, "/playlists/saved/items");
     return {
       MediaContainer: {
+        size: 1,
         totalSize: 2,
         Metadata: [
           {
@@ -172,6 +174,7 @@ test("Plex refuses missing media metadata and incomplete pages", async () => {
   await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
   client.request = async (endpoint) => ({
     MediaContainer: {
+      size: 1,
       totalSize: 1,
       Metadata: [endpoint === "/playlists" ? { ratingKey: "saved" } : { ratingKey: "track" }],
     },

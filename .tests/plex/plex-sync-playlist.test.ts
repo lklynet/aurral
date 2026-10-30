@@ -42,7 +42,9 @@ afterEach(() => {
 test("syncPlaylist creates fresh when no ratingKey is provided - no title search involved", async () => {
   const client = makeClient();
   const calls = mockRequests(client, {
-    "POST /playlists": { MediaContainer: { Metadata: [{ ratingKey: "500" }] } },
+    "POST /playlists": {
+      MediaContainer: { size: 1, Metadata: [{ ratingKey: "500", title: "Mix" }] },
+    },
   });
   const result = await client.syncPlaylist({
     ratingKey: null,
@@ -60,7 +62,9 @@ test("syncPlaylist creates fresh when no ratingKey is provided - no title search
 test("syncPlaylist sets the summary as a follow-up call right after creating a brand new playlist", async () => {
   const client = makeClient();
   const calls = mockRequests(client, {
-    "POST /playlists": { MediaContainer: { Metadata: [{ ratingKey: "700" }] } },
+    "POST /playlists": {
+      MediaContainer: { size: 1, Metadata: [{ ratingKey: "700", title: "Mix" }] },
+    },
     "PUT /playlists/700": {},
   });
   const result = await client.syncPlaylist({
@@ -91,7 +95,9 @@ test("syncPlaylist creates fresh when the stored ratingKey no longer exists in P
 
       throw error;
     },
-    "POST /playlists": { MediaContainer: { Metadata: [{ ratingKey: "222" }] } },
+    "POST /playlists": {
+      MediaContainer: { size: 1, Metadata: [{ ratingKey: "222", title: "Mix" }] },
+    },
   });
   const result = await client.syncPlaylist({
     ratingKey: "111",
@@ -128,14 +134,15 @@ test("syncPlaylist diffs items in place - removes only what's gone, adds only wh
   const calls = mockRequests(client, {
     "GET /playlists/111/items": {
       MediaContainer: {
+        size: 3,
         Metadata: [
-          { ratingKey: "1", playlistItemID: "pi-1" },
-          { ratingKey: "2", playlistItemID: "pi-2" },
-          { ratingKey: "3", playlistItemID: "pi-3" },
+          { ratingKey: "1", playlistItemID: 1 },
+          { ratingKey: "2", playlistItemID: 2 },
+          { ratingKey: "3", playlistItemID: 3 },
         ],
       },
     },
-    "DELETE /playlists/111/items/pi-2": {},
+    "DELETE /playlists/111/items/2": {},
     "PUT /playlists/111/items": {},
   });
   const result = await client.syncPlaylist({
@@ -148,7 +155,7 @@ test("syncPlaylist diffs items in place - removes only what's gone, adds only wh
 
   const deleteCalls = calls.filter((c) => c.method === "DELETE");
   assert.equal(deleteCalls.length, 1, "only the item that fell off should be removed");
-  assert.equal(deleteCalls[0].path, "/playlists/111/items/pi-2");
+  assert.equal(deleteCalls[0].path, "/playlists/111/items/2");
 
   const addCalls = calls.filter((c) => c.method === "PUT" && c.path === "/playlists/111/items");
   assert.equal(addCalls.length, 1, "additions are batched into a single call");
@@ -164,9 +171,10 @@ test("syncPlaylist makes no add/remove calls at all when the track set is alread
   const calls = mockRequests(client, {
     "GET /playlists/111/items": {
       MediaContainer: {
+        size: 2,
         Metadata: [
-          { ratingKey: "1", playlistItemID: "pi-1" },
-          { ratingKey: "2", playlistItemID: "pi-2" },
+          { ratingKey: "1", playlistItemID: 1 },
+          { ratingKey: "2", playlistItemID: 2 },
         ],
       },
     },
@@ -186,7 +194,7 @@ test("syncPlaylist updates title+summary together in one call when either change
   let detailsParams = null;
   const calls = mockRequests(client, {
     "GET /playlists/111/items": {
-      MediaContainer: { Metadata: [{ ratingKey: "1", playlistItemID: "pi-1" }] },
+      MediaContainer: { size: 1, Metadata: [{ ratingKey: "1", playlistItemID: 1 }] },
     },
     "PUT /playlists/111": (opts) => {
       detailsParams = opts.params;
@@ -215,7 +223,7 @@ test("syncPlaylist clears the Plex summary when the description is removed", asy
   let detailsParams = null;
   mockRequests(client, {
     "GET /playlists/111/items": {
-      MediaContainer: { Metadata: [{ ratingKey: "1", playlistItemID: "pi-1" }] },
+      MediaContainer: { size: 1, Metadata: [{ ratingKey: "1", playlistItemID: 1 }] },
     },
     "PUT /playlists/111": (opts) => {
       detailsParams = opts.params;
@@ -236,7 +244,7 @@ test("syncPlaylist clears the Plex summary when the description is removed", asy
 test("syncPlaylist deletes the whole playlist when the desired ratingKeys list is empty", async () => {
   const client = makeClient();
   const calls = mockRequests(client, {
-    "GET /playlists/111/items": { MediaContainer: { Metadata: [] } },
+    "GET /playlists/111/items": { MediaContainer: { size: 0 } },
     "DELETE /playlists/111": {},
   });
   const result = await client.syncPlaylist({ ratingKey: "111", title: "Gone", ratingKeys: [] });
@@ -250,17 +258,18 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
   mockRequests(client, {
     "GET /playlists/111/items": {
       MediaContainer: {
+        size: 2,
         Metadata: [
-          { ratingKey: "1", playlistItemID: "pi-1" },
-          { ratingKey: "2", playlistItemID: "pi-2" },
+          { ratingKey: "1", playlistItemID: 1 },
+          { ratingKey: "2", playlistItemID: 2 },
         ],
       },
     },
-    "DELETE /playlists/111/items/pi-1": () => {
+    "DELETE /playlists/111/items/1": () => {
       throw new Error("Plex hiccup");
     },
-    "DELETE /playlists/111/items/pi-2": () => {
-      deletedIds.push("pi-2");
+    "DELETE /playlists/111/items/2": () => {
+      deletedIds.push("2");
       return {};
     },
     "PUT /playlists/111/items": {},
@@ -272,7 +281,7 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
     ratingKeys: ["3"],
   });
   assert.deepEqual(result, { ratingKey: "111" }, "one bad removal shouldn't fail the whole sync");
-  assert.deepEqual(deletedIds, ["pi-2"]);
+  assert.deepEqual(deletedIds, ["2"]);
 });
 
 test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async () => {
@@ -285,7 +294,9 @@ test("getTracks rejects a timeout while reading a page body instead of returning
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, { signal } = {}) => {
     pages += 1;
     if (pages === 1)
-      return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
+      return Response.json({
+        MediaContainer: { size: 1, totalSize: 2, Metadata: [{ ratingKey: "1" }] },
+      });
     const response = Response.json({});
     response.json = () =>
       new Promise<void>((_resolve, reject) => {
