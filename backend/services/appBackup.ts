@@ -62,12 +62,10 @@ function checkDatabase(file: string) {
   let staged: Database.Database | undefined;
   try {
     staged = new Database(file, { fileMustExist: true });
-    const tables = staged
-      .prepare<[], { name: string }>(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('settings', 'users')",
-      )
-      .all();
-    if (tables.length !== 2) throw new BackupError(NOT_A_BACKUP);
+    const schemaVersion = staged
+      .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'schemaVersion'")
+      .get();
+    if (!schemaVersion) throw new BackupError(NOT_A_BACKUP);
     if (staged.pragma("quick_check", { simple: true }) !== "ok")
       throw new BackupError("The database in this backup is damaged.");
   } catch (error) {

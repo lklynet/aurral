@@ -12,6 +12,10 @@ import { sendViaNode } from "./shared/sendViaNode.ts";
 type Backup = Awaited<ReturnType<typeof createBackup>>;
 
 async function sendBackup(_req: IncomingMessage, res: ServerResponse, backup: Backup) {
+  if (res.destroyed) {
+    await backup.release();
+    return true;
+  }
   res.setHeader("Content-Length", String(backup.plan.totalSize));
   const body = zipStream(backup.plan);
   body.on("error", (error) => {

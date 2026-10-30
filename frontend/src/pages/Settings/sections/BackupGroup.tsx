@@ -21,8 +21,9 @@ const isUp = () =>
 const pause = () => new Promise((resolve) => setTimeout(resolve, 1000));
 
 async function reloadAfterRestart() {
+  const deadline = Date.now() + 30_000;
   do await pause();
-  while (await isUp());
+  while (Date.now() < deadline && (await isUp()));
   do await pause();
   while (!(await isUp()));
   window.location.reload();

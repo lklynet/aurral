@@ -8,6 +8,7 @@ const MAX16 = 0xffff;
 const MAX32 = 0xffffffff;
 const UTF8_FLAG = 0x0800;
 const UNIX_FILE_MODE = 0o100644;
+const MAX_CENTRAL_DIRECTORY = 64 * 1024 ** 2;
 
 type ZipEntry = {
   path: string;
@@ -209,7 +210,7 @@ export async function readZipEntries(file: string) {
       centralSize = Number(record.readBigUInt64LE(40));
       centralOffset = Number(record.readBigUInt64LE(48));
     }
-    if (centralOffset + centralSize > fileSize)
+    if (centralOffset + centralSize > fileSize || centralSize > MAX_CENTRAL_DIRECTORY)
       throw new ZipFormatError("The zip file is damaged.");
     const central = await read(centralSize, centralOffset);
     const entries = [];

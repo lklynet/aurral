@@ -5,11 +5,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import Database from "better-sqlite3";
 import { afterAll, test } from "vite-plus/test";
-import {
-  cleanupIsolatedState,
-  resetDatabase,
-  setupIsolatedBackend,
-} from "./helpers/backendTestHarness.ts";
+import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 
 const [state, { db }, { userOps }, { createSession }, backup, { applyStagedRestore }, zip] =
   await setupIsolatedBackend(
@@ -55,7 +51,6 @@ const exists = (file: string) =>
   );
 
 test("a restored backup brings back the database and custom artwork without sessions", async () => {
-  resetDatabase(db);
   const admin = userOps.createUser("backup-admin", "hash", "admin");
   assert.ok(admin);
   createSession(admin.id);
@@ -121,9 +116,14 @@ test("restore rejects files that are not Aurral backups and stages nothing", asy
   const withoutDatabase = await writeZip("no-database.zip", [
     { name: "custom-artwork/cover.image", path: text },
   ]);
+  const otherApp = path.join(state.baseDir, "other-app.db");
+  const other = new Database(otherApp);
+  other.exec("CREATE TABLE settings (name TEXT); CREATE TABLE users (id INTEGER)");
+  other.close();
+  const otherAppDatabase = await writeZip("other-app.zip", [{ name: "aurral.db", path: otherApp }]);
 
   await assert.rejects(backup.stageRestore(await upload(text)), backup.BackupError);
-  for (const file of [textAsDatabase, withoutDatabase]) {
+  for (const file of [textAsDatabase, withoutDatabase, otherAppDatabase]) {
     await assert.rejects(backup.stageRestore(await upload(file)), {
       message: "This file is not an Aurral backup.",
     });
