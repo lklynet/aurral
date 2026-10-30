@@ -3456,11 +3456,7 @@ select.input {
 }
 
 .artist-hero__wash {
-  --artist-scrim: color-mix(
-    in srgb,
-    var(--artwork-wash-dark, var(--aurral-overlay-base)) 34%,
-    var(--aurral-overlay-base)
-  );
+  --artist-scrim: color-mix(in srgb, var(--artwork-wash-dark) 34%, var(--aurral-overlay-base));
 
   background: linear-gradient(
     to top,
@@ -3469,7 +3465,6 @@ select.input {
     color-mix(in srgb, var(--artist-scrim) 22%, transparent) 70%,
     color-mix(in srgb, var(--artist-scrim) 8%, transparent) 100%
   );
-  transition: background var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 .artist-hero__content {
@@ -4283,12 +4278,13 @@ select.input {
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--collection-tint, transparent) 28%, transparent) 0%,
+      color-mix(in srgb, var(--collection-tint) 28%, transparent) 0%,
       transparent 100%
     ),
     var(--aurral-surface-raised);
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius);
+  transition: --collection-tint var(--aurral-duration-slow) var(--aurral-ease-in-out);
 }
 
 .artist-pick-panel__grid {
@@ -9451,6 +9447,24 @@ button.native-library-genre-row:focus-visible {
   overflow-wrap: anywhere;
 }
 
+@property --collection-tint {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --artwork-wash {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --artwork-wash-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 .collection-page,
 .artist-discover-page,
 .recommended-page,
@@ -9459,6 +9473,7 @@ button.native-library-genre-row:focus-visible {
 
   position: relative;
   isolation: isolate;
+  transition: --collection-tint var(--aurral-duration-slow) var(--aurral-ease-in-out);
 }
 
 @media (min-width: 1024px) {
@@ -9482,12 +9497,11 @@ button.native-library-genre-row:focus-visible {
   height: 26rem;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--collection-tint, transparent) 38%, transparent) 0%,
+    color-mix(in srgb, var(--collection-tint) 38%, transparent) 0%,
     transparent 100%
   );
   content: "";
   pointer-events: none;
-  transition: background var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-discover-page::before,
@@ -9496,7 +9510,7 @@ button.native-library-genre-row:focus-visible {
   height: 34rem;
   background: radial-gradient(
     ellipse 115% 100% at 0% 0%,
-    color-mix(in srgb, var(--collection-tint, transparent) 44%, transparent) 0%,
+    color-mix(in srgb, var(--collection-tint) 44%, transparent) 0%,
     transparent 100%
   );
 }
@@ -14989,18 +15003,22 @@ a.blocklist-page__name:focus-visible {
 .artist-details-page .artist-action-bar {
   padding-inline: var(--artist-gutter);
   border-bottom: 0;
-  background: color-mix(in srgb, var(--artwork-wash, transparent) 30%, var(--aurral-surface));
+  background: color-mix(in srgb, var(--artwork-wash) 30%, var(--aurral-surface));
 }
 
 .artist-details-page {
   --artist-hero-height: clamp(20rem, 36vw, 27rem);
+  --artwork-wash-dark: var(--aurral-overlay-base);
 
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--artwork-wash, transparent) 30%, transparent) var(--artist-hero-height),
+    color-mix(in srgb, var(--artwork-wash) 30%, transparent) var(--artist-hero-height),
     transparent calc(var(--artist-hero-height) + 24rem)
   );
   background-repeat: no-repeat;
+  transition:
+    --artwork-wash var(--aurral-duration-slow) var(--aurral-ease-in-out),
+    --artwork-wash-dark var(--aurral-duration-slow) var(--aurral-ease-in-out);
 }
 
 .artist-details-page .artist-section {
