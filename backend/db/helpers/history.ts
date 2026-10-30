@@ -51,7 +51,6 @@ const historyMetadataSchema = v.looseObject({
   flowId: text,
   tracksQueued: count,
   tracksReused: count,
-  reserveTracks: count,
   upgrade: lenient(trackUpgradeSchema),
 });
 

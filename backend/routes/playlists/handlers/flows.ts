@@ -106,9 +106,6 @@ export default new Hono<AppEnv>()
             flowId,
             queued: true,
             operationId: result.operationId,
-            tracksQueued: 0,
-            jobIds: [],
-            reserveTracks: 0,
           },
           200,
         );
@@ -259,7 +256,6 @@ export default new Hono<AppEnv>()
               success: true,
               flowId,
               enabled: true,
-              tracksQueued: 0,
               message: "Flow enabled. Queuing tracks…",
             },
             200,

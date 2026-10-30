@@ -111,10 +111,9 @@ When a flow runs, Aurral:
 3. Collects a separate set for Focus, if Focus is on.
 4. Picks the playlist with one song per artist.
 5. Moves any shortfall in one source to the other sources.
-6. Keeps a reserve of candidates from the same run.
-7. Sends the playlist to the download worker.
+6. Sends the playlist to the download worker.
 
-If a download fails, Aurral replaces the track with a reserve candidate. Only flows do this. A static playlist keeps its exact tracks. See [Playlist imports](/using/playlist-imports/#download-retries-and-failures).
+A track that fails to download stays failed until you re-search it or the flow runs again. See [Playlist imports](/using/playlist-imports/#download-retries-and-failures).
 
 ## Keep flow tracks
 

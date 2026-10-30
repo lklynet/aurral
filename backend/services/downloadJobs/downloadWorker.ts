@@ -2,16 +2,15 @@ import path from "path";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
-import { flowTrackSource, type FlowRunPlan, type FlowRunSpec } from "../flows/flowTrackSource.ts";
+import type { FlowRunSpec } from "../flows/flowTrackSource.ts";
 import { buildFlowRunPlanIsolated } from "../flows/flowPlanRunner.ts";
-import { dbOps, userOps } from "../../db/helpers/index.ts";
+import { dbOps } from "../../db/helpers/index.ts";
 import { resolveTrackSearchContext } from "./trackSearchContext.ts";
 import {
   MAX_RELEASE_WAITS,
   readReleaseManifest,
   RELEASE_WAIT_SECONDS,
 } from "../releaseResolver.ts";
-import { getListenHistoryProfile } from "../listeningHistory.ts";
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
 import { safeLogDiagnostic } from "../logger.ts";
 import {
@@ -365,67 +364,28 @@ export class DownloadWorker {
     return normalized;
   }
 
-  _getFlowListenHistoryProfile(flow: FlowRunSpec) {
-    const ownerUserId = Number(flow?.ownerUserId);
-    if (!Number.isFinite(ownerUserId)) return null;
-    const owner = userOps.getUserById(ownerUserId);
-    return owner ? getListenHistoryProfile(owner) : null;
-  }
-
-  async seedFlowRunWithTracks(
-    playlistType: string,
-    flow: FlowRunSpec,
-    tracks: DownloadTrackInput[],
-    _options = {},
-  ) {
-    const key = String(playlistType || "").trim();
-    if (!key || !flow) {
-      return { tracksQueued: 0, jobIds: [], reserveTracks: 0 };
-    }
-    const primaryTracks = flowTrackSource._filterTracksByArtists(
-      Array.isArray(tracks) ? tracks : [],
-      null,
-      new Set(flowTrackSource._buildFeedbackExcludeKeys(flow?.ownerUserId)),
-    );
-    const jobIds = downloadTracker.addJobs(primaryTracks, key);
-    flowPlaylistConfig.markLastRunAt(key);
-    return {
-      tracksQueued: primaryTracks.length,
-      jobIds,
-      reserveTracks: 0,
-      reservePending: false,
-    };
-  }
-
   async prepareFlowRunPlan(flow: FlowRunSpec, options: { size?: number } = {}) {
     const sizeOverride =
       Number.isFinite(Number(options?.size)) && Number(options.size) > 0
         ? Math.round(Number(options.size))
         : null;
-    return buildFlowRunPlanIsolated(sizeOverride ? { ...flow, size: sizeOverride } : flow, {
-      listenHistoryProfile: this._getFlowListenHistoryProfile(flow),
-    });
+    return buildFlowRunPlanIsolated(sizeOverride ? { ...flow, size: sizeOverride } : flow);
   }
 
   async seedFlowRun(
     playlistType: string,
     flow: FlowRunSpec,
-    options: { size?: number; plan?: FlowRunPlan | null } = {},
+    options: { size?: number; plan?: { primaryTracks: DownloadTrackInput[] } | null } = {},
   ) {
     const key = String(playlistType || "").trim();
     if (!key || !flow) {
-      return { tracksQueued: 0, jobIds: [], reserveTracks: 0 };
+      return { tracksQueued: 0, jobIds: [] };
     }
     const plan = options?.plan || (await this.prepareFlowRunPlan(flow, options));
     const primaryTracks = Array.isArray(plan?.primaryTracks) ? plan.primaryTracks : [];
     const jobIds = downloadTracker.addJobs(primaryTracks, key);
     flowPlaylistConfig.markLastRunAt(key);
-    return {
-      tracksQueued: primaryTracks.length,
-      jobIds,
-      reserveTracks: 0,
-      reservePending: false,
-    };
+    return { tracksQueued: primaryTracks.length, jobIds };
   }
 
   hasWork() {

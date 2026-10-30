@@ -234,18 +234,17 @@ test("tag search and flow plans read the user's own pool", async () => {
   assert.ok(tagged.body.recommendations.some((artist) => artist.name === FROM_LIKED.name));
 
   const source = new FlowTrackSource();
-  let basedOn: ArtistMatchFields[] = [];
-  source.getReleaseRadarTracks = async (_limit, options) => {
-    assert.ok(options != null);
-    basedOn = options.basedOn ?? [];
+  let harvested: (string | null | undefined)[] = [];
+  source._harvestTopTracksFromArtists = async (artists) => {
+    harvested = artists.map((artist) => artist.name);
     return [];
   };
   await source.buildFlowRunPlan({
     ownerUserId: alice.id,
-    discoverPresetId: "release-radar",
     size: 2,
+    mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
   });
-  assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
+  assert.ok(harvested.includes(FROM_LIKED.name));
 });
 
 test("flows without an owner read the first admin's pool", async () => {

@@ -194,13 +194,6 @@ export const lastfmSource = {
     };
   },
 
-  async getTagTracks(tag: string, { limit = 50 }: { limit?: number } = {}) {
-    const data = await callLastfm("tag.getTopTracks", { tag, limit });
-    return asArray(data?.tracks?.track)
-      .map(toTrack)
-      .filter((track) => track.artistName && track.name);
-  },
-
   async getTrendingArtists({ limit = 100 } = {}) {
     const data = await callLastfm("chart.getTopArtists", { limit });
     if (!data) throw new Error("Last.fm trending artists are unavailable");

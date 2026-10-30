@@ -174,14 +174,13 @@ function FlowDetail({ flow }: { flow: Flow }) {
   const handleRunNow = async () => {
     setRunning(true);
     try {
-      const response = await parseResponse(
+      await parseResponse(
         flowsClient.start[":flowId"].$post({
           param: { flowId: encodeURIComponent(flow.id) },
           json: { limit: flow.size },
         }),
       );
-      const queued = Number(response?.tracksQueued || 0);
-      showSuccess(queued > 0 ? `${flow.name} queued ${queued} tracks` : `${flow.name} run started`);
+      showSuccess(`${flow.name} run started`);
       await fetchStatus();
       await refresh();
     } catch (err) {

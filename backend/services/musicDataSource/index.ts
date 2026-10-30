@@ -48,9 +48,6 @@ export const getArtistTopTracks = (
 export const getTagArtists = (tag: string, options: SourceArg<"getTagArtists", 1>) =>
   activeSource().getTagArtists(tag, options);
 
-export const getTagTracks = (tag: string, options: SourceArg<"getTagTracks", 1>) =>
-  activeSource().getTagTracks(tag, options);
-
 export const getTrendingArtists = (options: SourceArg<"getTrendingArtists", 0>) =>
   activeSource().getTrendingArtists(options);
 

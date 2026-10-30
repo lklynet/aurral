@@ -113,14 +113,13 @@ before submitting it again because the action may already be queued.
 
 ## Download retries and failures
 
-A static playlist handles failed downloads differently from a flow:
+Aurral queues each track as a separate job:
 
-- Aurral queues each track as a separate job.
 - The download worker can try several candidates and several download sources.
 - If all of them fail, the track stays failed, also after a restart.
 - To search again, right-click the track and select **Re-search**.
 - To replace a finished track that Aurral downloaded, right-click it and select **Re-search**. Aurral keeps the current file until the replacement passes its checks.
-- A static playlist never swaps a failed track for a different track. Only flows do that.
+- Aurral never swaps a failed track for a different track.
 
 ## Reuse existing files
 

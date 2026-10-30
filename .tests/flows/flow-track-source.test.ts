@@ -70,10 +70,7 @@ test("assemble applies year range only to focus candidates", async () => {
     },
     excludeArtistKeys: new Set(),
     targetSize: 2,
-    reserveSize: 0,
     sourceTargets: { focus: 1, mix: 1, discover: 0, trending: 0 },
-    reserveTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
-    includeReserve: false,
     yearFrom: 1980,
     yearTo: 1989,
   });
@@ -101,10 +98,7 @@ test("shortfall backfill does not reintroduce out-of-range focus tracks", async 
     },
     excludeArtistKeys: new Set(),
     targetSize: 2,
-    reserveSize: 0,
     sourceTargets: { focus: 2, mix: 0, discover: 0, trending: 0 },
-    reserveTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
-    includeReserve: false,
     yearFrom: 1980,
     yearTo: 1989,
   });

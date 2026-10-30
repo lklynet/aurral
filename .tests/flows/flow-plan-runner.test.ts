@@ -36,11 +36,11 @@ test("flow planning returns a child result without moving playlist mutation stat
   const child = fakePlanner();
   try {
     const run = createFlowPlanRunner({ forkProcess: () => child, timeoutMs: 500 });
-    const pending = run({ id: "flow-1" }, { listenHistoryProfile: null });
+    const pending = run({ id: "flow-1" });
     assert.deepEqual(child.request, {
       type: "build-flow-plan",
       flow: { id: "flow-1" },
-      options: { listenHistoryProfile: null },
+      options: {},
     });
     child.emit("message", { type: "flow-plan-result", plan: { primaryTracks: [] } });
     assert.deepEqual(await pending, { primaryTracks: [] });

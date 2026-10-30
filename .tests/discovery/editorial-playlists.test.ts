@@ -421,11 +421,6 @@ test("retired Last.fm editorial flows keep their tracks and never run again", as
         reason: "Test plan",
       },
     ],
-    reserveTracks: [],
-    diagnostics: {
-      targets: { releaseRadar: 1, maxSize: 1 },
-      achieved: { primary: 1, reserve: 0 },
-    },
   }));
   const dueFlow = (
     id: string,

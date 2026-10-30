@@ -254,11 +254,7 @@ const importSourceOf = (playlistId: string) => {
   return playlist.importSource;
 };
 
-const emptyPlan = () => ({
-  primaryTracks: [],
-  reserveTracks: [],
-  diagnostics: { targets: { releaseRadar: 0, maxSize: 0 }, achieved: { primary: 0, reserve: 0 } },
-});
+const emptyPlan = () => ({ primaryTracks: [] });
 
 const captureLog = (level: "info" | "error", message: string) => {
   const logged = Promise.withResolvers<Record<string, unknown>>();
@@ -749,39 +745,6 @@ test("a queued flow stops before mutation when its owner becomes suspended", asy
   } finally {
     flowTrackSource.buildFlowRunPlan = originalBuildPlan;
     playlistManager.weeklyReset = originalReset;
-    downloadWorker.stop();
-  }
-});
-
-test("a queued discovery adoption cannot seed downloads for a suspended owner", async () => {
-  const originalSeed = downloadWorker.seedFlowRunWithTracks;
-  let seedCalls = 0;
-  try {
-    const owner = userOps.createUser("suspended-adoption-owner", "unused", "user");
-    assert.ok(owner != null);
-    const flow = flowPlaylistConfig.createFlow({
-      name: "Adopted Before Suspension",
-      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
-      size: 1,
-      scheduleDays: [1],
-      ownerUserId: owner.id,
-    });
-    downloadWorker.seedFlowRunWithTracks = async () => {
-      seedCalls += 1;
-      return { tracksQueued: 1, jobIds: [], reserveTracks: 0 };
-    };
-    userOps.updateUser(owner.id, { status: "suspended" });
-
-    const result = await processPlaylistOperation({
-      kind: "adopt-flow-seed",
-      flowId: flow.id,
-      tracks: [{ artistName: "Artist", trackName: "Track" }],
-    });
-
-    assert.deepEqual(result, { skipped: true, inactiveOwner: true });
-    assert.equal(seedCalls, 0);
-  } finally {
-    downloadWorker.seedFlowRunWithTracks = originalSeed;
     downloadWorker.stop();
   }
 });

@@ -920,16 +920,10 @@ test("rotating a flow shown in the library rescans the library", async () => {
   vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(() => true);
   vi.spyOn(downloadWorker, "prepareFlowRunPlan").mockImplementation(async () => ({
     primaryTracks: [],
-    reserveTracks: [],
-    diagnostics: {
-      targets: { releaseRadar: 0, maxSize: 0 },
-      achieved: { primary: 0, reserve: 0 },
-    },
   }));
   vi.spyOn(downloadWorker, "seedFlowRun").mockImplementation(async () => ({
     jobIds: [],
     tracksQueued: 0,
-    reserveTracks: 0,
   }));
   vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});

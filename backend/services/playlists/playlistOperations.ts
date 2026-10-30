@@ -146,7 +146,6 @@ interface FlowOutcome {
   inactiveOwner?: boolean;
   jobIds?: string[];
   tracksQueued?: number;
-  reserveTracks?: number;
   empty?: boolean;
   flowName?: string;
 }
@@ -368,7 +367,6 @@ async function runFlowSeed({
       return {
         jobIds: seeded?.jobIds || [],
         tracksQueued: Number(seeded?.tracksQueued || 0),
-        reserveTracks: Number(seeded?.reserveTracks || 0),
         empty: Number(seeded?.tracksQueued || 0) === 0,
         flowName: latestFlow.name,
       };
@@ -404,7 +402,6 @@ async function runFlowSeed({
     recordFlowTracksGenerated({
       flowId: safeFlowId,
       tracksQueued: result.tracksQueued,
-      reserveTracks: result.reserveTracks || 0,
     });
   } else {
     await restartWorkerIfPending();
@@ -483,33 +480,6 @@ async function resetPlaylists({ playlistTypes = [] }: OperationPayload = {}) {
   rescanLibraryForFlows(types);
   await restartWorkerIfPending();
   return { success: true, playlistTypes: types };
-}
-
-async function adoptFlowSeed({ flowId, tracks = [] }: OperationPayload = {}) {
-  const safeFlowId = String(flowId || "").trim();
-  const flow = flowPlaylistConfig.getFlow(safeFlowId);
-  if (!flow) return { missing: true };
-  if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
-  const normalizedTracks = normalizeTrackList(tracks);
-  await cancelPlaylistDownloadWork(safeFlowId, downloadTracker.getByPlaylistId(safeFlowId));
-  const result = await withPlaylistMutation(safeFlowId, async (): Promise<FlowOutcome> => {
-    const latestFlow = flowPlaylistConfig.getFlow(safeFlowId);
-    if (!latestFlow) return { missing: true };
-    if (!isOwnerActive(latestFlow.ownerUserId)) {
-      return { skipped: true, inactiveOwner: true };
-    }
-    activatePlaylistDownloadGeneration(safeFlowId);
-    return flowSeedingWorker().seedFlowRunWithTracks(safeFlowId, latestFlow, normalizedTracks);
-  });
-  if (result?.skipped || result?.missing) return result;
-  playlistManager.requestPlaylistSync([safeFlowId]);
-  await wakeDownloadWorker();
-  recordFlowTracksGenerated({
-    flowId: safeFlowId,
-    tracksQueued: result?.tracksQueued || normalizedTracks.length,
-    reserveTracks: 0,
-  });
-  return result;
 }
 
 async function withLibraryPlaylistMutation<T>(
@@ -1063,8 +1033,6 @@ export async function processPlaylistOperation(
           return deleteFlow(payload);
         case "reset-playlists":
           return resetPlaylists(payload);
-        case "adopt-flow-seed":
-          return adoptFlowSeed(payload);
         case "shared-playlist-create":
           return createStaticPlaylist(payload);
         case "shared-playlist-append-tracks":

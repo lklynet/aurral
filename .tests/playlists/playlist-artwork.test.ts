@@ -558,9 +558,9 @@ test("a failed tracklist commit does not advance the flow run time", async () =>
     throw new Error("write failed");
   });
   await assert.rejects(
-    downloadWorker.seedFlowRunWithTracks(flow.id, flow, [
-      { artistName: "Artist", trackName: "Track" },
-    ]),
+    downloadWorker.seedFlowRun(flow.id, flow, {
+      plan: { primaryTracks: [{ artistName: "Artist", trackName: "Track" }] },
+    }),
     /write failed/,
   );
   assert.equal(flowPlaylistConfig.getFlow(flow.id)?.lastRunAt, 1000);

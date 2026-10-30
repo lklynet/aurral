@@ -20,7 +20,6 @@ const LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM =
 const ARTIST_METADATA_BATCH_SIZE = 50;
 const TAG_SEARCH_PAGE_SIZE = 100;
 const RESOLVE_CONCURRENCY = 4;
-const TAG_TRACK_CONCURRENCY = 4;
 const TRENDING_ARTIST_COUNT = 100;
 const TRENDING_RECORDING_COUNT = 500;
 const SITEWIDE_STATS_TIMEOUT_MS = 20000;
@@ -102,22 +101,8 @@ const searchTagArtists = async (
   return { artists: artists.slice(0, limit), hasMore: nextOffset < total };
 };
 
-type TagArtist = Awaited<ReturnType<typeof searchTagArtists>>["artists"][number];
-
 const getTagArtists = (tag: string, options?: Parameters<typeof searchTagArtists>[1]) =>
   searchTagArtists(tag, options).catch(() => ({ artists: [], hasMore: false }));
-
-const getTopTrack = async (artist: TagArtist) => {
-  const [track] = await deezerGetArtistTopTrackList(artist.name, { limit: 5 }).catch(() => []);
-  return track
-    ? {
-        artistName: artist.name,
-        artistMbid: artist.mbid || null,
-        name: track.name,
-        albumName: track.albumName,
-      }
-    : null;
-};
 
 const getDeezerSimilarArtists = async (
   artist: MusicArtistRef,
@@ -204,12 +189,6 @@ export const listenbrainzSource = {
   },
 
   getTagArtists,
-
-  async getTagTracks(tag: string, { limit = 50 }: { limit?: number } = {}) {
-    const { artists } = await getTagArtists(tag, { limit });
-    const tracks = await mapWithConcurrency(artists, TAG_TRACK_CONCURRENCY, getTopTrack);
-    return tracks.filter((track) => track !== null);
-  },
 
   async getTrendingArtists({ limit = 100 } = {}) {
     const data: ListenbrainzTopArtists = await listenbrainzRequest(
