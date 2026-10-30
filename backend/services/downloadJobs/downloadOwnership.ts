@@ -27,8 +27,9 @@ const ownerStmt = db.prepare<
 );
 const pruneSettledTransfersStmt = db.prepare(`
   DELETE FROM settings WHERE key LIKE 'downloadJobTransfers:%' AND NOT EXISTS (
-    SELECT 1 FROM json_each(settings.value) AS transfer
-    JOIN playlist_download_jobs AS job ON job.id = json_extract(transfer.value, '$.toJobId')
+    SELECT 1 FROM json_each(CASE WHEN json_valid(settings.value) THEN settings.value ELSE '[]' END) AS transfer
+    JOIN playlist_download_jobs AS job
+      ON job.id = CASE transfer.type WHEN 'object' THEN json_extract(transfer.value, '$.toJobId') END
     WHERE job.status IN ('pending', 'downloading', 'blocked'))
 `);
 

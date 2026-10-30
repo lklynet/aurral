@@ -15,9 +15,13 @@ const saveAttemptStmt = db.prepare<[string, string]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
+const UNREADABLE_ATTEMPT = "unreadable-download-attempt";
+
 export function getActiveDownloadAttemptId(jobId: string) {
   const key = `activeDownloadAttempt:${jobId}`;
-  return dbHelpers.readJSON(v.string(), attemptStmt.get(key)?.value, key);
+  const value = attemptStmt.get(key)?.value;
+  if (value === undefined || value === "null") return null;
+  return dbHelpers.readJSON(v.string(), value, key) ?? UNREADABLE_ATTEMPT;
 }
 
 export function beginDownloadAttempt(jobId: string) {

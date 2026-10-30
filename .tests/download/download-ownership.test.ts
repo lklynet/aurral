@@ -241,6 +241,58 @@ test("completed and removed jobs release their active attempt records", () => {
   assert.equal(cancellation.getActiveDownloadAttemptId(pendingId), null);
 });
 
+test("a saved attempt Aurral can't read lets no queued download step through", () => {
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Unread attempt" },
+    "attempt-check",
+  );
+  assert.ok(jobId != null);
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '123')").run(
+    `activeDownloadAttempt:${jobId}`,
+  );
+  const owner: {
+    jobId: string;
+    playlistId: string;
+    playlistGeneration: number;
+    downloadAttemptId?: null;
+  } = { jobId, playlistId: "attempt-check", playlistGeneration: 0 };
+
+  assert.equal(cancellation.isPipelinePayloadActive({ ...owner, downloadAttemptId: null }), false);
+  for (const payload of [owner, { ...owner, downloadAttemptId: null }]) {
+    assert.equal(
+      ownership.resolveTransferredDownloadPayload(payload).downloadAttemptId,
+      "unmatched-download-attempt",
+    );
+  }
+});
+
+test("a saved handoff list Aurral can't read never blocks another handoff", () => {
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "Unread list source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "Unread list target" });
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Moves" },
+    source.id,
+  );
+  assert.ok(jobId != null);
+  const save = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+  save.run("downloadJobTransfers:not-json", "{");
+  save.run("downloadJobTransfers:not-objects", '["bad"]');
+
+  db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
+
+  assert.deepEqual(
+    db
+      .prepare<[], { key: string }>(
+        "SELECT key FROM settings WHERE key LIKE 'downloadJobTransfers:%' ORDER BY key",
+      )
+      .all()
+      .map((row) => row.key),
+    [`downloadJobTransfers:${jobId}`],
+  );
+});
+
 test("recording a transfer prunes transfer history for settled downloads only", () => {
   const source = flowPlaylistConfig.createStaticPlaylist({ name: "History source" });
   const target = flowPlaylistConfig.createStaticPlaylist({ name: "History target" });
