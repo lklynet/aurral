@@ -6,6 +6,7 @@ import { logger } from "../services/logger.ts";
 import artists from "./artists/index.ts";
 import artistStream from "./artists/handlers/stream.ts";
 import auth from "./auth.ts";
+import backup from "./backup.ts";
 import deezer from "./deezer.ts";
 import discovery from "./discovery/index.ts";
 import filesystem from "./filesystem.ts";
@@ -80,6 +81,7 @@ export const api = new Hono<AppEnv>()
   .route("/", settingsPlayback)
   .route("/", settingsDownloadClients)
   .route("/", updates)
+  .route("/", backup)
   .route("/", auth)
   .route("/", users)
   .route("/", userPlexLink)

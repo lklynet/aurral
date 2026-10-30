@@ -1,3 +1,4 @@
+import "./config/restoreOnBoot.ts";
 import dns from "node:dns";
 import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";

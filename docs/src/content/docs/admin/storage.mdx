@@ -19,9 +19,18 @@ yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount 
 
 ## Back up your data
 
-- Back up the `/config` folder.
-- Back up the Downloads Folder. Without Lidarr, it holds all of your music.
-- Back up the Compose file and the environment file with your host paths.
+Admins can download a backup in **Settings > General > Backup**. It holds settings, users, playlists, flows, listening history, and custom artwork. It also holds your integration passwords and API keys, so keep it private.
+
+To restore, choose the backup file in the same place. Aurral replaces all of its data with the backup and restarts, and everyone signs in again. The data it replaced stays in `/config/before-restore-<date>`. Aurral comes back on its own when the container has a restart policy such as `restart: unless-stopped`. Otherwise, start it again to finish the restore.
+
+A restore keeps the folder paths from the backup. On a new host, mount your media at the same paths, or update them in Settings.
+
+A backup does not include music. Also back up:
+
+- The Downloads Folder. Without Lidarr, it holds all of your music.
+- The Compose file and the environment file with your host paths.
+
+You can also copy the whole `/config` folder while Aurral is stopped.
 
 ## Library safety
 

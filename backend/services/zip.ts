@@ -1,6 +1,7 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
+import { createReadStream, createWriteStream } from "node:fs";
+import { open, stat } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
 
 const MAX16 = 0xffff;
@@ -175,4 +176,103 @@ async function* zipChunks(plan: ZipPlan) {
 
 export function zipStream(plan: ZipPlan) {
   return Readable.from(zipChunks(plan), { objectMode: false });
+}
+
+export class ZipFormatError extends Error {}
+
+export type ZipFileEntry = Awaited<ReturnType<typeof readZipEntries>>[number];
+
+export async function readZipEntries(file: string) {
+  const handle = await open(file, "r");
+  const read = async (length: number, position: number) => {
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, position);
+    if (bytesRead !== length) throw new ZipFormatError("The zip file is truncated.");
+    return buffer;
+  };
+  try {
+    const { size: fileSize } = await handle.stat();
+    const tailSize = Math.min(fileSize, 22 + MAX16);
+    const tail = await read(tailSize, fileSize - tailSize);
+    const end = tail.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    if (end < 0 || end + 22 > tail.length) throw new ZipFormatError("The file is not a zip file.");
+    let count = tail.readUInt16LE(end + 10);
+    let centralSize = tail.readUInt32LE(end + 12);
+    let centralOffset = tail.readUInt32LE(end + 16);
+    if (count === MAX16 || centralSize === MAX32 || centralOffset === MAX32) {
+      if (end < 20 || tail.readUInt32LE(end - 20) !== 0x07064b50)
+        throw new ZipFormatError("The zip file is damaged.");
+      const record = await read(56, Number(tail.readBigUInt64LE(end - 12)));
+      if (record.readUInt32LE(0) !== 0x06064b50)
+        throw new ZipFormatError("The zip file is damaged.");
+      count = Number(record.readBigUInt64LE(32));
+      centralSize = Number(record.readBigUInt64LE(40));
+      centralOffset = Number(record.readBigUInt64LE(48));
+    }
+    if (centralOffset + centralSize > fileSize)
+      throw new ZipFormatError("The zip file is damaged.");
+    const central = await read(centralSize, centralOffset);
+    const entries = [];
+    let at = 0;
+    for (let index = 0; index < count; index++) {
+      if (at + 46 > central.length || central.readUInt32LE(at) !== 0x02014b50)
+        throw new ZipFormatError("The zip file is damaged.");
+      const nameEnd = at + 46 + central.readUInt16LE(at + 28);
+      const extraEnd = nameEnd + central.readUInt16LE(at + 30);
+      if (extraEnd > central.length) throw new ZipFormatError("The zip file is damaged.");
+      const values = [
+        central.readUInt32LE(at + 24),
+        central.readUInt32LE(at + 20),
+        central.readUInt32LE(at + 42),
+      ];
+      for (
+        let extra = nameEnd;
+        extra + 4 <= extraEnd;
+        extra += 4 + central.readUInt16LE(extra + 2)
+      ) {
+        if (central.readUInt16LE(extra) !== 0x0001) continue;
+        let field = extra + 4;
+        for (const [slot, value] of values.entries()) {
+          if (value !== MAX32) continue;
+          values[slot] = Number(central.readBigUInt64LE(field));
+          field += 8;
+        }
+      }
+      const [size, compressedSize, localOffset] = values;
+      const local = await read(30, localOffset);
+      if (local.readUInt32LE(0) !== 0x04034b50)
+        throw new ZipFormatError("The zip file is damaged.");
+      entries.push({
+        name: central.toString("utf8", at + 46, nameEnd),
+        stored: central.readUInt16LE(at + 10) === 0 && size === compressedSize,
+        crc: central.readUInt32LE(at + 16),
+        size,
+        dataOffset: localOffset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28),
+      });
+      at = extraEnd + central.readUInt16LE(at + 32);
+    }
+    return entries;
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function extractZipEntry(file: string, entry: ZipFileEntry, target: string) {
+  if (!entry.stored)
+    throw new ZipFormatError(
+      `${entry.name} is compressed. Only uncompressed zip files are supported.`,
+    );
+  let crc = 0;
+  const checksum = new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      crc = zlib.crc32(chunk, crc);
+      done(null, chunk);
+    },
+  });
+  const source =
+    entry.size > 0
+      ? createReadStream(file, { start: entry.dataOffset, end: entry.dataOffset + entry.size - 1 })
+      : Readable.from([]);
+  await pipeline(source, checksum, createWriteStream(target));
+  if (crc !== entry.crc) throw new ZipFormatError(`${entry.name} is damaged.`);
 }

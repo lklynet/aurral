@@ -14,7 +14,7 @@ import { streamSubsonicAudio } from "../subsonicTranscodeService.ts";
 import { playsInBrowsers, resolveShareTarget } from "./library.ts";
 import { getLiveShareLink, getShareInstance, getShareLinkSchedule } from "./store.ts";
 import { startShareTunnel, stopShareTunnel } from "./tunnel.ts";
-import { planZip, zipStream } from "./zipStream.ts";
+import { planZip, zipStream } from "../zip.ts";
 
 declare function clearTimeout(timeout: NodeJS.Timeout | string | number | null | undefined): void;
 

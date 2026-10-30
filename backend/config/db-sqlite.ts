@@ -6,14 +6,12 @@ import { initializeLibrarySearchIndex } from "./library-search-index.ts";
 import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.ts";
-import { ensureDataDir } from "./data-dir.ts";
+import { ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 const DATA_DIR = ensureDataDir();
 
-const DB_PATH = process.env.AURRAL_DB_PATH
-  ? path.resolve(process.env.AURRAL_DB_PATH)
-  : path.join(DATA_DIR, "aurral.db");
+const DB_PATH = resolveAurralDbPath();
 
 if (!fs.existsSync(path.dirname(DB_PATH))) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });

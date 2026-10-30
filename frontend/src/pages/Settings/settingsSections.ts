@@ -106,11 +106,13 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
     fields: { "Shared links": "share playlist artist album revoke" },
   },
   general: {
-    sections: ["Display", "Subsonic", "API access"],
+    sections: ["Display", "Subsonic", "API access", "Backup"],
     fields: {
       "Date and time format": "display all users",
       "Favorite flow tracks": "Subsonic keep library",
       "API key": "X-Api-Key api_key authentication copy rotate",
+      "Back up": "backup export download config database",
+      Restore: "restore import upload backup migrate move server",
     },
   },
   users: {

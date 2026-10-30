@@ -362,6 +362,7 @@
 .settings-row__label {
   display: block;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .settings-row__help {

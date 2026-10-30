@@ -82,6 +82,7 @@ const DEFAULT_VISIBLE_MESSAGES = [
   /Unhandled Rejection:/,
   /Server error:/,
   /Playlist import (queued|job completed|sync completed)/,
+  /Restored a backup\./,
 ];
 
 const messageText = (args: unknown[]) =>

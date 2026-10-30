@@ -11,6 +11,7 @@ import { queryKeys } from "../../../queryClient.ts";
 import { SettingsSelect } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
 import { SettingsGroup, SettingsNote, SettingsPage, SettingsRow } from "../SettingsLayout";
+import { BackupGroup } from "./BackupGroup";
 
 const COPY_FAILED = "Could not copy the API key. Select it and copy manually.";
 
@@ -145,6 +146,7 @@ export function GeneralSection() {
       <SettingsGroup title="API access">
         <ApiKeyRow />
       </SettingsGroup>
+      <BackupGroup />
     </SettingsPage>
   );
 }

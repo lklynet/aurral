@@ -11,7 +11,7 @@ import type {
 } from "@russellthehippo/honker-node";
 import type { PipelinePayload } from "./downloadPipeline.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
-import { resolveAurralDataDir } from "../config/data-dir.ts";
+import { resolveAurralDbPath } from "../config/data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -41,12 +41,6 @@ export const HONKER_QUEUE_NAMES = [
   "_outbox:notifications",
   "_outbox:play-events",
 ] as const;
-
-function resolveHonkerDbPath() {
-  return process.env.AURRAL_DB_PATH
-    ? path.resolve(process.env.AURRAL_DB_PATH)
-    : path.join(resolveAurralDataDir(), "aurral.db");
-}
 
 let honkerDb: Database | null = null;
 let openedHonkerDbPath: string | null = null;
@@ -205,7 +199,7 @@ function getPipelinePriorityForPhase(phase: JsonValue | undefined) {
 }
 
 export function getHonkerDb() {
-  const dbPath = resolveHonkerDbPath();
+  const dbPath = resolveAurralDbPath();
   if (honkerDb && openedHonkerDbPath !== dbPath) {
     closeHonkerDb();
   }

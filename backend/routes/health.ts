@@ -33,7 +33,7 @@ import { resolveDownloadRoot } from "../services/downloadPaths.ts";
 import { getFilesystemBrowseRoots } from "../services/downloadFolderConfig.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
-import { resolveAurralDataDir } from "../config/data-dir.ts";
+import { resolveAurralDataDir, resolveAurralDbPath } from "../config/data-dir.ts";
 import { websocketService } from "../services/websocketService.ts";
 import { noCache } from "../middleware/cacheHeaders.ts";
 import { requireAuth } from "../middleware/guards.ts";
@@ -63,13 +63,6 @@ async function isRunningInDocker() {
   } catch {
     return false;
   }
-}
-
-function resolveDatabasePath() {
-  const dataDir = resolveAurralDataDir();
-  return process.env.AURRAL_DB_PATH
-    ? path.resolve(process.env.AURRAL_DB_PATH)
-    : path.join(dataDir, "aurral.db");
 }
 
 async function resolveExistingFilesystemPath(targetPath: string) {
@@ -152,7 +145,7 @@ async function buildDiskSpacePayload(settings: AppSettings) {
 
 async function computeDiskSpacePayload(settings: AppSettings) {
   const dataDir = resolveAurralDataDir();
-  const dbPath = resolveDatabasePath();
+  const dbPath = resolveAurralDbPath();
   const downloadRoot = resolveDownloadRoot();
   const candidates = [
     { location: dataDir, role: "App data" },
@@ -204,7 +197,7 @@ function readSqliteVersion() {
 
 async function buildSystemPayload(settings: AppSettings) {
   const dataDir = resolveAurralDataDir();
-  const dbPath = resolveDatabasePath();
+  const dbPath = resolveAurralDbPath();
   const sqliteVersion = readSqliteVersion();
   return {
     startedAt: new Date(STARTED_AT).toISOString(),

@@ -526,6 +526,8 @@ Every route in this section requires an administrator.
 | `POST` | `/api/settings/navidrome/test`                         | Test Navidrome credentials                                                     |
 | `GET`  | `/api/settings/playback`                               | Read playback settings                                                         |
 | `POST` | `/api/settings/playback/:key/test`                     | Test a playback integration                                                    |
+| `GET`  | `/api/backup`                                          | Download a backup zip. Requires a password entered in the last 15 minutes      |
+| `POST` | `/api/backup/restore`                                  | Restore a backup zip sent as the request body, then restart                    |
 
 ## Scrobbling and play events
 

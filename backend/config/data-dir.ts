@@ -42,6 +42,12 @@ export function resolveAurralDataDir() {
   return DEFAULT_DATA_DIR;
 }
 
+export function resolveAurralDbPath() {
+  return process.env.AURRAL_DB_PATH
+    ? path.resolve(process.env.AURRAL_DB_PATH)
+    : path.join(resolveAurralDataDir(), "aurral.db");
+}
+
 export function ensureDataDir(dir = resolveAurralDataDir()) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
