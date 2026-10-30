@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { asAppError } from "../../lib/errors.ts";
 import type { StorageHealthStep } from "./storageHealthService.ts";
-import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
+import type { LidarrAlbum, LidarrArtist, LidarrClient } from "./lidarrClient.ts";
 import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.ts";
 import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
 
@@ -12,12 +12,7 @@ type LidarrTrackEntry = Awaited<ReturnType<LidarrClient["getTracksByAlbumId"]>>[
   trackFile?: LidarrTrackFileEntry | null;
 };
 type LidarrAlbumEntry = LidarrAlbum & { albumTitle?: string | null };
-interface LidarrArtistEntry {
-  id?: number;
-  artistName?: string;
-  name?: string;
-  path?: string | null;
-}
+type LidarrArtistEntry = LidarrArtist & { name?: string };
 
 function step(
   id: StorageHealthStep["id"],
@@ -91,11 +86,10 @@ function unreadableSampleFix(samplePath: string, rootPaths: string[]) {
 export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths: string[] = []) {
   let artists: LidarrArtistEntry[] = [];
   try {
-    artists = await lidarrClient.request<LidarrArtistEntry[]>("/artist");
+    artists = await lidarrClient.getArtists();
   } catch {
     return null;
   }
-  if (!Array.isArray(artists)) return null;
 
   const orderedArtists = [
     ...artists.filter((artist) => !artistIsOutsideRoots(artist, rootPaths)),
@@ -106,11 +100,10 @@ export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths:
     if (!artist?.id) continue;
     let albums: LidarrAlbumEntry[] = [];
     try {
-      albums = await lidarrClient.request<LidarrAlbumEntry[]>(`/album?artistId=${artist.id}`);
+      albums = await lidarrClient.getAllAlbums({ artistIds: [artist.id] });
     } catch {
       continue;
     }
-    if (!Array.isArray(albums)) continue;
 
     const album = albums.find((entry) => (entry?.statistics?.sizeOnDisk ?? 0) > 0);
     if (!album?.id) continue;

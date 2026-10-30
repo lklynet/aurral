@@ -53,15 +53,12 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
     if (fail) throw new Error("provider unavailable");
     return { records: [] };
   });
-  vi.spyOn(lidarrClient, "request").mockImplementation(
-    async (endpoint, method, data, skip, options) => {
-      assert.equal(endpoint, "/command");
-      assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
-      calls.command += 1;
-      if (fail) throw new Error("provider unavailable");
-      return [];
-    },
-  );
+  vi.spyOn(lidarrClient, "getCommands").mockImplementation(async (options) => {
+    assert.equal(options?.forceRefresh, true);
+    calls.command += 1;
+    if (fail) throw new Error("provider unavailable");
+    return [];
+  });
   vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
     albumCalls += 1;
     return [];

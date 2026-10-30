@@ -100,13 +100,10 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
       ? null
       : { id: 41, foreignArtistId: mbid, artistName: "Stale Artist", monitored: true };
   });
-  vi.spyOn(lidarrClient, "request").mockImplementation(
-    async (path, method, data, skip, options) => {
-      assert.equal(path, "/album?artistId=41");
-      assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
-      return [];
-    },
-  );
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async (options) => {
+    assert.deepEqual(options, { artistIds: [41], forceRefresh: true });
+    return [];
+  });
 
   try {
     const found = await lookupArtist(mbid);

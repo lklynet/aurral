@@ -4,30 +4,21 @@ import type {
   LidarrCustomFormat,
   LidarrMetadataProfile,
   LidarrNamingConfig,
+  LidarrQualityDefinition,
+  LidarrQualityProfile,
+  LidarrReleaseProfile,
 } from "./lidarrClient.ts";
 
-export type LidarrQualityDefinition = {
-  id: number;
-  title?: string;
-  quality?: { id?: number; name?: string };
-};
 type LidarrCustomFormatInput = {
   name: string;
   includeCustomFormatWhenRenaming: boolean;
   specifications: unknown[];
 };
-export type LidarrReleaseProfile = { id: number; name: string; ignored?: string[] };
 type LidarrQualityItem = {
   id?: number;
-  name?: string;
-  quality?: { id?: number; name?: string };
+  name?: string | null;
+  quality?: { id?: number; name?: string | null };
   allowed?: boolean;
-  items?: LidarrQualityItem[];
-};
-export type LidarrQualityProfile = {
-  id: number;
-  name: string;
-  cutoff?: number;
   items?: LidarrQualityItem[];
 };
 type LidarrCommunityGuideClient = {
@@ -51,7 +42,7 @@ type LidarrSavedRecord = { id: number; name: string; updated?: boolean };
 type LidarrCommunityGuideResult = {
   qualityDefinitions: { name: string; updated: { min: number; max: number; preferred: number } }[];
   customFormats: LidarrCustomFormat[];
-  releaseProfile: LidarrSavedRecord | null;
+  releaseProfile: { id: number; name?: string | null; updated?: boolean } | null;
   metadataProfile: LidarrSavedRecord | null;
   namingConfig: Record<string, unknown> | null;
   qualityProfile: LidarrSavedRecord | null;
@@ -290,7 +281,7 @@ export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGui
   const desiredSecondaryTypes = ["Studio", "Soundtrack", "Remix", "DJ-mix", "Compilation"];
 
   const applyTypeSelection = (
-    available: LidarrAlbumTypeOption[] | undefined,
+    available: LidarrAlbumTypeOption[] | null | undefined,
     desired: string[],
   ) => {
     if (!Array.isArray(available) || available.length === 0) {

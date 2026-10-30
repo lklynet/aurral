@@ -2,7 +2,6 @@ import { validateLidarrTestCredentials, withTemporaryLidarrClient } from "./lida
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { applyLidarrCommunityGuide } from "./lidarrCommunityGuide.ts";
 import { logger } from "./logger.ts";
-import type { LidarrNamedProfile, LidarrRootFolder, LidarrTag } from "./lidarrClient.ts";
 
 type LidarrCredentials = { url: string; apiKey: string };
 
@@ -14,28 +13,22 @@ function resolve({ url, apiKey }: LidarrCredentials) {
   return { url: validation.url, apiKey };
 }
 
-export async function fetchQualityProfiles(
-  credentials: LidarrCredentials,
-): Promise<LidarrNamedProfile[]> {
+export async function fetchQualityProfiles(credentials: LidarrCredentials) {
   const { url, apiKey } = resolve(credentials);
   return withTemporaryLidarrClient(url, apiKey, (client) => client.getQualityProfiles(true));
 }
 
-export async function fetchMetadataProfiles(
-  credentials: LidarrCredentials,
-): Promise<LidarrNamedProfile[]> {
+export async function fetchMetadataProfiles(credentials: LidarrCredentials) {
   const { url, apiKey } = resolve(credentials);
   return withTemporaryLidarrClient(url, apiKey, (client) => client.getMetadataProfiles(true));
 }
 
-export async function fetchRootFolders(
-  credentials: LidarrCredentials,
-): Promise<LidarrRootFolder[]> {
+export async function fetchRootFolders(credentials: LidarrCredentials) {
   const { url, apiKey } = resolve(credentials);
   return withTemporaryLidarrClient(url, apiKey, (client) => client.getRootFolders());
 }
 
-export async function fetchTags(credentials: LidarrCredentials): Promise<LidarrTag[]> {
+export async function fetchTags(credentials: LidarrCredentials) {
   const { url, apiKey } = resolve(credentials);
   return withTemporaryLidarrClient(url, apiKey, (client) => client.getTags(true));
 }

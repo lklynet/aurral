@@ -37,7 +37,7 @@ type Artist = NonNullable<Awaited<ReturnType<LidarrClient["getArtist"]>>> & {
   qualityProfile?: (typeof DEFAULT_QUALITY_PROFILES)[number] | null;
   statistics?: { albumCount: number; trackCount: number; sizeOnDisk: number };
 };
-type PostedArtist = Omit<Artist, "id">;
+type PostedArtist = Partial<Artist>;
 type Command = LidarrCommand & { artistIds?: number[] };
 type Preferences = Awaited<ReturnType<LidarrClient["getArtistAddPreferenceSummary"]>>;
 

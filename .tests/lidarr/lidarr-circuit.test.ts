@@ -54,9 +54,8 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   client._artistListCache = { data: [{ id: 1, artistName: "Test" }], at: 0 };
 
   assert.equal(client.isCircuitOpen(), true);
-  const artists = await client.request<{ artistName: string }[]>("/artist", "GET", null, true);
-  assert.equal(artists.length, 1);
-  assert.equal(artists[0].artistName, "Test");
+  const artists = await client.request("/artist", "GET", null, true);
+  assert.deepEqual(artists, [{ id: 1, artistName: "Test" }]);
 });
 
 test("bulk track reads use Lidarr artist selectors", async (t: import("vite-plus/test").TestContext) => {

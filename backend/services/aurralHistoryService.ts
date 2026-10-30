@@ -12,7 +12,7 @@ import type {
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
-import type { LidarrAlbum, LidarrClient, LidarrCommand, LidarrPage } from "./lidarrClient.ts";
+import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 
 type HistoryRequester = { userId: number; username?: string };
@@ -847,15 +847,14 @@ export const syncAlbumSearchHistory = async (
   const [queue, history, commands] = await Promise.all([
     lidarrClient.getQueue().catch(() => []),
     lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
-    lidarrClient.request<LidarrCommand[] | LidarrPage<LidarrCommand>>("/command").catch(() => []),
+    lidarrClient.getCommands().catch(() => []),
   ]);
   const context = parseLidarrSearchContext({ queue, history, commands });
 
   let lidarrAlbums: LidarrAlbum[] | null = null;
   const loadLidarrAlbums = async () => {
     if (lidarrAlbums) return lidarrAlbums;
-    lidarrAlbums = await lidarrClient.request<LidarrAlbum[]>("/album").catch(() => []);
-    if (!Array.isArray(lidarrAlbums)) lidarrAlbums = [];
+    lidarrAlbums = await lidarrClient.getAllAlbums().catch(() => []);
     return lidarrAlbums;
   };
 

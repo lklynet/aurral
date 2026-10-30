@@ -195,13 +195,7 @@ const computeLidarrStatusSnapshot = async () => {
   const [queue, history, commands] = await Promise.all([
     lidarrClient.getQueue({ forceRefresh: true }),
     lidarrClient.getHistory(1, 200, "date", "descending", { forceRefresh: true }),
-    lidarrClient.request<LidarrCommand[] | LidarrPage<LidarrCommand>>(
-      "/command",
-      "GET",
-      null,
-      false,
-      { forceRefresh: true },
-    ),
+    lidarrClient.getCommands({ forceRefresh: true }),
   ]);
   const provider: LidarrProviderSnapshot = { queue, history, commands };
   const queueItems = Array.isArray(provider.queue) ? provider.queue : provider.queue.records || [];

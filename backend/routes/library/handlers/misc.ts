@@ -139,14 +139,10 @@ export async function getArtistLibraryLookup(mbid: string) {
     try {
       lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
       if (lidarrArtist) {
-        const albums = await lidarrClient.request(
-          `/album?artistId=${encodeURIComponent(lidarrArtist.id)}`,
-          "GET",
-          null,
-          false,
-          { forceRefresh: true },
-        );
-        if (!Array.isArray(albums)) throw new Error("Invalid Lidarr album response");
+        const albums = await lidarrClient.getAllAlbums({
+          artistIds: [lidarrArtist.id],
+          forceRefresh: true,
+        });
         lidarrAlbums = albums.map((album) =>
           toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist!)),
         );

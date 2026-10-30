@@ -23,7 +23,7 @@ import {
   type LibraryTrack,
 } from "./libraryQueryService.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
-import type { LidarrAlbum, LidarrClient, LidarrPage } from "./lidarrClient.ts";
+import type { LidarrAlbum, LidarrAlbumTypeOption, LidarrClient } from "./lidarrClient.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -168,27 +168,21 @@ type LibraryTrackRecord = Omit<LibraryTrack, "metadata"> & { metadata: TrackMeta
 
 type LidarrArtist = NonNullable<Awaited<ReturnType<LidarrClient["getArtist"]>>> & {
   name?: string;
-  added?: string;
   monitor?: string;
-  sortName?: string;
-  statistics?: { albumCount?: number; trackCount?: number; sizeOnDisk?: number };
   qualityProfile?: { name?: string };
   metadataProfile?: { id?: number };
 };
 type LidarrTrackFileRecord = Awaited<ReturnType<LidarrClient["getTrackFilesByAlbumId"]>>[number] & {
   trackIds?: number[];
   relativePath?: string;
-  size?: number;
   sizeOnDisk?: number;
   mediaInfo?: { audioFormat?: string | null } | null;
-  quality?: { quality?: { name?: string | null } } | null;
 };
 type LidarrTrackRecord = Awaited<ReturnType<LidarrClient["getTracksByAlbumId"]>>[number] & {
   added?: string;
   path?: string | null;
   size?: number;
   sizeOnDisk?: number;
-  foreignRecordingId?: string | null;
   trackTitle?: string | null;
   trackFile?: LidarrTrackFileRecord | null;
   file?: LidarrTrackFileRecord | null;
@@ -203,7 +197,6 @@ type LidarrAlbumRecord = LidarrAlbum & {
   tracks?: LidarrTrackRecord[];
   albumReleases?: { tracks?: LidarrTrackRecord[] }[];
   media?: { tracks?: LidarrTrackRecord[] }[];
-  artist?: { id?: number };
 };
 type MappedLidarrArtist = ReturnType<LibraryManager["mapLidarrArtist"]>;
 type MappedLidarrTrack = ReturnType<LibraryManager["mapLidarrTrack"]>;
@@ -355,9 +348,6 @@ type LibraryCollection = {
 type CodedError = Error & { statusCode?: number; code?: string };
 type LibraryUser = Pick<RequestUser, "id" | "username" | "role" | "permissions"> | null;
 type MonitoringArtist = { id?: string | number | null; mbid: string | null; name: string };
-type PrimaryAlbumType =
-  | string
-  | { name?: string; value?: string; albumType?: { name?: string }; allowed?: boolean };
 type ArtistAddOptions = {
   managedBy?: string | null;
   user?: LibraryUser;
@@ -1074,7 +1064,7 @@ function normalizeReleaseTypeName(value: unknown) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function getMetadataProfileTypeName(item: PrimaryAlbumType | null | undefined) {
+function getMetadataProfileTypeName(item: LidarrAlbumTypeOption | null | undefined) {
   if (!item) return "";
   if (typeof item === "string") return item;
   if (typeof item.name === "string") return item.name;
@@ -1386,25 +1376,15 @@ export class LibraryManager {
       } catch {}
 
       try {
-        const albums = await lidarr.request<LidarrAlbumRecord[] | LidarrPage<LidarrAlbumRecord>>(
-          `/album?artistId=${encodeURIComponent(normalizedArtistId)}`,
-          "GET",
-          null,
-          false,
-          { forceRefresh: true },
-        );
-        const list = Array.isArray(albums)
-          ? albums
-          : Array.isArray(albums?.records)
-            ? albums.records
-            : [];
+        const albums = await lidarr.getAllAlbums({
+          artistIds: [normalizedArtistId],
+          forceRefresh: true,
+        });
         return (
-          list.find(
+          albums.find(
             (album) =>
-              String(album?.foreignAlbumId ?? "")
-                .trim()
-                .toLowerCase() === normalizedAlbumMbidKey &&
-              String(album?.artistId) === normalizedArtistId,
+              album.foreignAlbumId.trim().toLowerCase() === normalizedAlbumMbidKey &&
+              String(album.artistId) === normalizedArtistId,
           ) || null
         );
       } catch {
@@ -1448,10 +1428,9 @@ export class LibraryManager {
           lidarrArtist?.metadataProfile?.id ||
           fallbackMetadataProfileId;
         const profiles = metadataProfileId ? await lidarr.getMetadataProfiles() : null;
-        const metadataProfile: { primaryAlbumTypes?: PrimaryAlbumType[] } | null | undefined =
-          Array.isArray(profiles)
-            ? profiles.find((profile) => String(profile?.id) === String(metadataProfileId))
-            : null;
+        const metadataProfile = profiles?.find(
+          (profile) => String(profile.id) === String(metadataProfileId),
+        );
 
         let allowedPrimaryTypes = null;
         if (metadataProfile?.primaryAlbumTypes) {
@@ -1806,13 +1785,8 @@ export class LibraryManager {
           return _cachedArtists;
         }
         try {
-          const lidarrArtists = await lidarr.request("/artist", "GET", null, false, {
-            forceRefresh: forceRefresh === true,
-          });
+          const lidarrArtists = await lidarr.getArtists({ forceRefresh: forceRefresh === true });
           _lastLidarrFailureAt = 0;
-          if (!Array.isArray(lidarrArtists)) {
-            return _cachedArtists;
-          }
           await this.backfillLidarrArtistMappings(lidarrArtists);
           _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
           _artistsCachedAt = Date.now();
@@ -4172,16 +4146,11 @@ export class LibraryManager {
       if (!resolvedArtist) {
         return [];
       }
-      const allAlbums = await lidarr.request(
-        `/album?artistId=${encodeURIComponent(String(artistId))}`,
-        "GET",
-        null,
-        false,
-        options,
-      );
-      const artistAlbums = Array.isArray(allAlbums)
-        ? allAlbums.filter((a) => a.artistId === parseInt(String(artistId)))
-        : [];
+      const allAlbums = await lidarr.getAllAlbums({
+        artistIds: [String(artistId)],
+        forceRefresh: options.forceRefresh,
+      });
+      const artistAlbums = allAlbums.filter((a) => a.artistId === parseInt(String(artistId)));
       const lidarrAlbums = artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
       if (!options.includeAurral) return lidarrAlbums;
       const lidarrMbids = new Set<string | null>(

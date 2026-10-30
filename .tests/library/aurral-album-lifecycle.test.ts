@@ -1010,7 +1010,7 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
     if (endpoint.startsWith("/queue")) {
       return [{ albumId: 7, status: "downloading", size: 100, sizeleft: 40 }];
     }
-    if (endpoint.startsWith("/history")) return { records: [] };
+    if (endpoint.startsWith("/history")) return [];
     if (endpoint.startsWith("/command")) return [];
     if (endpoint.startsWith("/album")) {
       return [

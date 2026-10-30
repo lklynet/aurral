@@ -201,7 +201,7 @@ beforeEach(() => {
   downloadTracker.clearAll();
   lidarrCalls = [];
   originalRequest = lidarrClient.request;
-  lidarrClient.request = async (...args) => {
+  lidarrClient.request = async (...args: Parameters<typeof lidarrClient.request>) => {
     lidarrCalls.push(args);
     throw new Error("Lidarr must not be called");
   };
