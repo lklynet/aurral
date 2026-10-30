@@ -559,6 +559,11 @@ test("saves a personal play queue through form POST, filters missing songs, and 
       responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry[0].id,
       song.id,
     );
+    db.prepare("UPDATE subsonic_play_queues SET song_ids = '{}' WHERE user_id = ?").run(bob.id);
+    assert.deepEqual(
+      [...responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry],
+      [],
+    );
     const removed = db
       .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryMediaFilesRow["id"] }>(
         "SELECT id FROM library_media_files WHERE path = ?",

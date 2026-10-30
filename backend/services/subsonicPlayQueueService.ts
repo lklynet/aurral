@@ -1,5 +1,7 @@
 import { APP_NAME } from "../config/constants.ts";
-import { db } from "../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { listOf } from "../db/helpers/storedSchemas.ts";
 import type { SubsonicPlayQueuesRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { getSong } from "./subsonicLibraryService.ts";
@@ -43,7 +45,7 @@ export function getPlayQueue(user: RequestUser) {
       changedBy: APP_NAME,
       entry: [],
     };
-  const entry = (JSON.parse(saved.song_ids) as string[])
+  const entry = (dbHelpers.readJSON(listOf(v.string()), saved.song_ids, "play queue") ?? [])
     .map((id) => getSong(id, user))
     .filter((song): song is NonNullable<typeof song> => Boolean(song));
   const hasCurrent = entry.some((song) => song.id === saved.current_song);

@@ -1,5 +1,6 @@
 import * as v from "valibot";
-import { db } from "../config/db-sqlite.ts";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { listOf } from "../db/helpers/storedSchemas.ts";
 import { buildImageProxyUrl } from "./imageProxyService.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { getLibraryArtistKeyProjection } from "./libraryQueryService.ts";
@@ -88,14 +89,8 @@ const normalizeName = (value: unknown) =>
 
 const isSingleWordName = (name: string) => !name.includes(" ");
 
-const parseCategories = (value: string | null): string[] => {
-  try {
-    const categories = JSON.parse(value || "[]");
-    return Array.isArray(categories) ? categories : [];
-  } catch {
-    return [];
-  }
-};
+const parseCategories = (value: string | null) =>
+  dbHelpers.readJSON(listOf(v.string()), value, "news categories") ?? [];
 
 type RecommendedArtist = { mbid?: unknown; id?: unknown; name?: unknown; artistName?: unknown };
 

@@ -285,3 +285,32 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("a cached image whose saved extension points outside the cache is never served", async () => {
+  const state = await createIsolatedStateDir("image-cache-extension");
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  process.env.AURRAL_DATA_DIR = state.dataDir;
+  try {
+    vi.resetModules();
+    const { findCachedImage } = await import("../backend/services/imageProxyService.ts");
+    const cacheKey = "a".repeat(64);
+    await fs.mkdir(path.join(state.dataDir, "image-proxy"), { recursive: true });
+    await fs.writeFile(path.join(state.dataDir, "outside.txt"), "not an image");
+    await fs.writeFile(
+      path.join(state.dataDir, "image-proxy", `${cacheKey}.json`),
+      JSON.stringify({
+        extension: "/../../outside.txt",
+        contentType: "image/webp",
+        profile: "library",
+        fetchedAt: Date.now(),
+        size: 12,
+      }),
+    );
+
+    assert.equal(await findCachedImage(cacheKey), null);
+  } finally {
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    await fs.rm(state.baseDir, { recursive: true, force: true });
+  }
+});

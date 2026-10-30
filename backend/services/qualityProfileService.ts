@@ -1,7 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
-import { db } from "../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { lenient } from "../db/helpers/storedSchemas.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.ts";
@@ -49,12 +51,12 @@ type QualityJob = Pick<
 type AudioQuality = ReturnType<typeof classifyAudioQuality>;
 type QualityProfile = ReturnType<typeof getQualityProfile>;
 
-interface StoredQuality {
-  format?: string | null;
-  bitrate?: number | null;
-  sampleRate?: number | null;
-  bitsPerSample?: number | null;
-}
+const storedQualitySchema = v.looseObject({
+  format: lenient(v.nullable(v.string())),
+  bitrate: lenient(v.nullable(v.number())),
+  sampleRate: lenient(v.nullable(v.number())),
+  bitsPerSample: lenient(v.nullable(v.number())),
+});
 
 interface UpgradePlan {
   status?: string;
@@ -283,10 +285,7 @@ export async function queueQualityUpgrade(job: QualityJob | null | undefined) {
 }
 
 function classifyLibraryFileQuality(file: Pick<LibraryMediaFilesRow, "path" | "quality_json">) {
-  let stored: StoredQuality = {};
-  try {
-    stored = JSON.parse(file.quality_json || "{}") || {};
-  } catch {}
+  const stored = dbHelpers.readJSON(storedQualitySchema, file.quality_json, file.path) ?? {};
   return classifyAudioQuality(
     {
       format: {

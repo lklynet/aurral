@@ -5,23 +5,15 @@ import fs from "fs";
 import path from "path";
 import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import PQueue from "p-queue";
+import * as v from "valibot";
 import getSharp from "./sharpConfig.ts";
 import BoundedMap from "./boundedMap.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
+import { dbHelpers } from "../config/db-sqlite.ts";
+import { lenient } from "../db/helpers/storedSchemas.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.ts";
-
-type CachedImageMeta = {
-  sourceUrl: string | null;
-  contentType: string;
-  extension: string;
-  fetchedAt: number;
-  size: number;
-  profile: string;
-};
-
-type StoredCachedImageMeta = Partial<CachedImageMeta>;
 
 type CachedImageEntry = {
   cacheKey: string;
@@ -70,6 +62,20 @@ const MIME_EXTENSION_MAP = {
   "image/avif": "avif",
   "image/svg+xml": "svg",
 };
+
+const cachedImageMetaSchema = v.looseObject({
+  sourceUrl: lenient(v.nullable(v.string())),
+  contentType: lenient(v.string()),
+  extension: lenient(v.picklist([...new Set([...Object.values(MIME_EXTENSION_MAP), "img"])])),
+  fetchedAt: lenient(v.number()),
+  size: lenient(v.number()),
+  profile: lenient(v.string()),
+});
+
+type StoredCachedImageMeta = v.InferOutput<typeof cachedImageMetaSchema>;
+
+const readCacheMetadata = (text: string, metaPath: string) =>
+  dbHelpers.readJSON(cachedImageMetaSchema, text, metaPath);
 const IMAGE_FORMATS_BY_CONTENT_TYPE = {
   "image/jpeg": new Set(["jpeg"]),
   "image/png": new Set(["png"]),
@@ -184,13 +190,10 @@ const pruneImageProxyCacheToLimit = async () => {
       if (!file.isFile() || !/^[a-f0-9]{64}\.json$/i.test(file.name)) continue;
       const cacheKey = file.name.slice(0, 64).toLowerCase();
       const metaPath = path.join(IMAGE_PROXY_DIR, file.name);
-      let meta = null;
-      try {
-        meta = JSON.parse(await fs.promises.readFile(metaPath, "utf8"));
-      } catch {
-        continue;
-      }
-      const extension = meta?.extension || "webp";
+      const text = await fs.promises.readFile(metaPath, "utf8").catch(() => null);
+      const meta = text === null ? null : readCacheMetadata(text, metaPath);
+      if (!meta) continue;
+      const extension = meta.extension || "webp";
       const imagePath = path.join(IMAGE_PROXY_DIR, `${cacheKey}.${extension}`);
       let imageStat = null;
       let metaStat = null;
@@ -354,9 +357,9 @@ export const resolveImageProxyLocalUrl = (value: string | null | undefined) => {
   return entry?.localUrl || null;
 };
 
-const _readCacheMetadata = (metaPath: string): StoredCachedImageMeta | null => {
+const _readCacheMetadata = (metaPath: string) => {
   try {
-    return JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    return readCacheMetadata(fs.readFileSync(metaPath, "utf8"), metaPath);
   } catch {
     return null;
   }

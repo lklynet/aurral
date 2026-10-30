@@ -1,4 +1,5 @@
-import { db } from "../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
 import { DEFAULT_METADATA_BASE_URL } from "../config/constants.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -14,14 +15,6 @@ const RENAMED_SETTING_KEYS = [
 ];
 const RETIRED_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 
-const parseJson = (value: string | null | undefined) => {
-  try {
-    return value == null ? null : JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
 function moveRenamedSettingKeys() {
   const read = db.prepare<[string], Pick<SettingsRow, "value">>(
     "SELECT value FROM settings WHERE key = ?",
@@ -34,7 +27,10 @@ function moveRenamedSettingKeys() {
     for (const [oldKey, key] of RENAMED_SETTING_KEYS) {
       const old = read.get(oldKey);
       if (!old) continue;
-      if (parseJson(read.get(key)?.value) == null && parseJson(old.value) != null) {
+      if (
+        dbHelpers.parseJSON(read.get(key)?.value) == null &&
+        dbHelpers.parseJSON(old.value) != null
+      ) {
         write.run(key, old.value);
       }
       remove.run(oldKey);
@@ -44,12 +40,14 @@ function moveRenamedSettingKeys() {
 }
 
 function storeExistingFileMode() {
-  const stored = parseJson(
+  const stored = dbHelpers.readJSON(
+    v.record(v.string(), v.unknown()),
     db
       .prepare<[], Pick<SettingsRow, "value">>(
         "SELECT value FROM settings WHERE key = 'playlistWorker'",
       )
       .get()?.value,
+    "playlistWorker",
   );
   const mode = stored?.existingFileMode;
   if (mode == null || mode === normalizeExistingFileMode(mode)) return;

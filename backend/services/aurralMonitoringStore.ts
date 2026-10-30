@@ -1,4 +1,5 @@
-import { db } from "../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { LibraryMonitoringExclusionsRow, SettingsRow } from "../db/rows.ts";
 import {
   DEFAULT_MONITORING,
@@ -20,11 +21,12 @@ const writeSettingStmt = db.prepare(`
 `);
 
 export function getMonitoringDefaults() {
-  let stored = null;
-  try {
-    stored = JSON.parse(readSettingStmt.get(DEFAULTS_KEY) || "null");
-  } catch {}
-  if (!stored || typeof stored !== "object") return DEFAULT_MONITORING;
+  const stored = dbHelpers.readJSON(
+    v.record(v.string(), v.unknown()),
+    readSettingStmt.get(DEFAULTS_KEY),
+    DEFAULTS_KEY,
+  );
+  if (!stored) return DEFAULT_MONITORING;
   return {
     rules: storedRules(stored.rules),
     updatedAt: Number(stored.updatedAt) || 0,

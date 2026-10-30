@@ -1,4 +1,5 @@
-import { db } from "../../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { APP_VERSION } from "../../config/constants.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import type { LibraryTracksRow, WrappedReportsRow } from "../../db/rows.ts";
@@ -39,6 +40,17 @@ const setBannerHidden = db.prepare<[number, number]>(
 
 const SUMMARY_VERSION = 4;
 
+const artworkRows = v.array(v.looseObject({ artwork: v.nullable(v.string()) }));
+const currentSummary = v.looseObject({
+  version: v.literal(SUMMARY_VERSION),
+  topSongs: artworkRows,
+  topArtists: artworkRows,
+  topAlbums: artworkRows,
+});
+const storedSummarySchema = v.custom<Awaited<ReturnType<typeof buildWrappedSummary>>>((input) =>
+  v.is(currentSummary, input),
+);
+
 export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
 
 const activeBuild = (userId: number) =>
@@ -63,17 +75,15 @@ function cachedArtwork<Row extends { artwork: string | null }>(rows: Row[]) {
 
 export function getWrapped(season: WrappedSeason, userId: number, timeZone: string) {
   const stored = readReport.get(userId);
-  const parsed: (Awaited<ReturnType<typeof buildWrappedSummary>> & { version?: number }) | null =
-    stored?.summary ? JSON.parse(stored.summary) : null;
-  const summary =
-    parsed?.version === SUMMARY_VERSION
-      ? {
-          ...parsed,
-          topSongs: cachedArtwork(parsed.topSongs),
-          topArtists: cachedArtwork(parsed.topArtists),
-          topAlbums: cachedArtwork(parsed.topAlbums),
-        }
-      : null;
+  const parsed = dbHelpers.parseJSON(stored?.summary);
+  const summary = v.is(storedSummarySchema, parsed)
+    ? {
+        ...parsed,
+        topSongs: cachedArtwork(parsed.topSongs),
+        topArtists: cachedArtwork(parsed.topArtists),
+        topAlbums: cachedArtwork(parsed.topAlbums),
+      }
+    : null;
   const row =
     stored?.year === season.year &&
     (season.preview || stored.cutoff === season.cutoff) &&

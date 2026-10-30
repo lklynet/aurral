@@ -1,4 +1,6 @@
-import { db } from "../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { listOf } from "../db/helpers/storedSchemas.ts";
 import type {
   LibraryArtistsRow,
   LibraryReleaseCalendarArtistsRow,
@@ -14,14 +16,8 @@ type CalendarEntryRow = LibraryReleaseCalendarRow & {
   size_on_disk: number;
 };
 
-const parseJsonArray = (value: string | null) => {
-  try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
+const parseStringList = (value: string | null) =>
+  dbHelpers.readJSON(listOf(v.string()), value, "release calendar") ?? [];
 
 const upsertRelease = db.prepare(`
   INSERT INTO library_release_calendar (
@@ -311,8 +307,8 @@ export function getReleaseCalendarEntries({
       title: row.title,
       releaseDate: row.release_date,
       albumType: row.release_type || null,
-      secondaryTypes: parseJsonArray(row.secondary_types_json),
-      releaseStatuses: parseJsonArray(row.release_statuses_json),
+      secondaryTypes: parseStringList(row.secondary_types_json),
+      releaseStatuses: parseStringList(row.release_statuses_json),
       available: false,
       trackCount,
       availableTrackCount,

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { parseFile, type ICommonTagsResult, type IFormat, type IOptions } from "music-metadata";
 import { db } from "../config/db-sqlite.ts";
+import { readRawLibraryMetadata } from "./libraryMetadata.ts";
 import { asAppError } from "../../lib/errors.ts";
 import type { LibraryAlbumsRow } from "../db/rows.ts";
 import {
@@ -520,10 +521,6 @@ export async function scanMusicRoot({
           });
           if (record.artistMbids.length) setLibraryAlbumCredits(album.id, record.artistMbids);
           if (source === "aurral" || source === "readonly") claimUnownedAlbum(album);
-          let listedMetadata = null;
-          try {
-            listedMetadata = JSON.parse(listedTrack?.metadata_json || "null");
-          } catch {}
           const track = upsertLibraryTrack({
             identityKey: trackKey,
             mbid: listedTrack?.mbid || record.trackMbid,
@@ -531,7 +528,10 @@ export async function scanMusicRoot({
             artistName:
               trackPerformerStmt.get(trackKey, filePath, filePath, record.trackArtistName || null)
                 ?.artist_tag ?? (trackCreditedStmt.get(trackKey) ? null : record.artistName),
-            metadata: { ...listedMetadata, ...record.trackMetadata },
+            metadata: {
+              ...readRawLibraryMetadata(listedTrack?.metadata_json),
+              ...record.trackMetadata,
+            },
             monitored: source === "readonly" ? false : source !== "aurral" || downloadedByAurral,
             syncSearch,
           });
