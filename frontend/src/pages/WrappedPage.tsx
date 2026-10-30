@@ -545,12 +545,12 @@ async function prepareStory(summary: WrappedRecap, username: string): Promise<Pr
 }
 
 function usePreparedStory(summary: WrappedRecap | null, username: string) {
-  const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const [prepared, setPrepared] = useState<(Prepared & { id: number }) | null>(null);
   useEffect(() => {
     if (!summary) return;
     let active = true;
     prepareStory(summary, username).then((next) => {
-      if (active) setPrepared(next);
+      if (active) setPrepared((current) => ({ ...next, id: (current?.id ?? 0) + 1 }));
       else for (const clip of next.songs.values()) URL.revokeObjectURL(clip);
     });
     return () => {
@@ -1612,7 +1612,7 @@ export default function WrappedPage() {
   else
     content = (
       <Story
-        key={prepared.summary.end}
+        key={prepared.id}
         summary={prepared.summary}
         songs={prepared.songs}
         username={user?.username ?? ""}

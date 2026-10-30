@@ -87,7 +87,7 @@ export function getWrapped(season: WrappedSeason, userId: number, timeZone: stri
     building: !row || Boolean(activeBuild(userId)),
     bannerHidden: row?.banner_hidden === 1,
     error: row?.error ?? null,
-    summary,
+    summary: row ? summary : null,
   };
 }
 

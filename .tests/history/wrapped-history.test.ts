@@ -133,8 +133,12 @@ test("hiding the banner sticks to the account and resets for the next year's Wra
 
 test("a recap built on another release channel is rebuilt with this channel's cutoff", async () => {
   db.prepare(
-    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', '{}', 0)",
-  ).run(one.id, Date.parse("2026-10-27T00:00:00Z"));
+    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', ?, 0)",
+  ).run(
+    one.id,
+    Date.parse("2026-10-27T00:00:00Z"),
+    JSON.stringify({ version: 4, topSongs: [], topArtists: [], topAlbums: [] }),
+  );
   const response = await signedInAs(one).route("/", wrapped).request("/wrapped?timeZone=UTC");
   const body = await response.json();
   assert.equal(body.summary, null);
@@ -220,6 +224,19 @@ test("a disabled account keeps the shared Navidrome history out of another liste
   userOps.updateUser(two.id, { status: "disabled" });
   dbOps.updateSettings({
     integrations: { navidrome: { url: "http://navidrome.test", username: "two", password: "pw" } },
+  });
+  const { sources } = await history.collectWrappedHistory(one.id, period);
+  assert.deepEqual(
+    sources.map((status) => status.source),
+    ["aurral"],
+  );
+});
+
+test("a Navidrome account whose name only differs by punctuation stays out of a listener's recap", async () => {
+  dbOps.updateSettings({
+    integrations: {
+      navidrome: { url: "http://navidrome.test", username: "o.n.e", password: "pw" },
+    },
   });
   const { sources } = await history.collectWrappedHistory(one.id, period);
   assert.deepEqual(

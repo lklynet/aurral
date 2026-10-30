@@ -360,6 +360,8 @@ export function jellyfinReader(client: JellyfinClient, account: string, period: 
   };
 }
 
+const sameAccount = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
 export async function collectWrappedHistory(userId: number, period: Period) {
   const user = userOps.getUserById(userId);
   if (!user || user.status !== "active") throw new Error("User account unavailable");
@@ -391,10 +393,7 @@ export async function collectWrappedHistory(userId: number, period: Period) {
     readers.push({ source: "koito", read: koitoReader(koito, connections.koito?.token, period) });
   const soleUser = userOps.getAllUsers().length === 1;
   const navidrome = settings.integrations?.navidrome;
-  if (
-    navidrome?.url &&
-    (soleUser || wrappedKey(navidrome.username || "") === wrappedKey(user.username))
-  ) {
+  if (navidrome?.url && (soleUser || sameAccount(navidrome.username || "", user.username))) {
     readers.push({
       source: "navidrome",
       read: navidromeReader(
@@ -431,9 +430,7 @@ export async function collectWrappedHistory(userId: number, period: Period) {
             );
           const matches = byId.length
             ? byId
-            : accounts.filter(
-                (account) => username && wrappedKey(text(account.name)) === wrappedKey(username),
-              );
+            : accounts.filter((account) => username && sameAccount(text(account.name), username));
           if (matches.length !== 1) throw new Error("Plex account could not be identified");
           const id = matches[0].id;
           if (typeof id !== "string" && typeof id !== "number")
@@ -451,10 +448,7 @@ export async function collectWrappedHistory(userId: number, period: Period) {
     readers.push({
       source: "jellyfin",
       read: async (page) => {
-        if (
-          !soleUser &&
-          wrappedKey(text(object(await client.getUser()).Name)) !== wrappedKey(user.username)
-        )
+        if (!soleUser && !sameAccount(text(object(await client.getUser()).Name), user.username))
           throw new Error("Link your playback account first");
         return read(page);
       },
