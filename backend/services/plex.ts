@@ -398,7 +398,10 @@ export class PlexClient {
     const { MediaContainer } = await this.read(sectionsSchema, endpoint, {
       timeout: READ_TIMEOUT_MS,
     });
-    return readMany(librarySchema, MediaContainer.Directory ?? [], { service: "Plex", endpoint });
+    return readOne(v.array(librarySchema), MediaContainer.Directory ?? [], {
+      service: "Plex",
+      endpoint,
+    });
   }
 
   async ensureAurralLibrary(libraryPath: string) {
@@ -600,9 +603,10 @@ export class PlexClient {
   async getPlaylistItems(playlistRatingKey: string | number) {
     const endpoint = `/playlists/${playlistRatingKey}/items`;
     const { MediaContainer: page } = await this.read(pageSchema, endpoint);
-    return readMany(playlistItemSchema, page.Metadata ?? [], { service: "Plex", endpoint }).map(
-      (item) => ({ ratingKey: item.ratingKey, playlistItemID: item.playlistItemID }),
-    );
+    return readOne(v.array(playlistItemSchema), page.Metadata ?? [], {
+      service: "Plex",
+      endpoint,
+    }).map((item) => ({ ratingKey: item.ratingKey, playlistItemID: item.playlistItemID }));
   }
 
   _metadataUri(machineId: string | null, ratingKeys: (string | number) | (string | number)[]) {

@@ -509,6 +509,26 @@ test("a Plex library list Aurral can't read fails without creating another Aurra
   assert.deepEqual(methods, ["GET /library/sections"]);
 });
 
+test("one Plex library Aurral can't read fails the list instead of hiding the Aurral library", async () => {
+  const client = new PlexClient("http://plex.local:32400", "admin-token", "admin-client");
+  const methods: string[] = [];
+  vi.spyOn(client, "request").mockImplementation(async (requestPath, options = {}) => {
+    methods.push(`${options.method || "GET"} ${requestPath.split("?")[0]}`);
+    return {
+      MediaContainer: {
+        size: 2,
+        Directory: [
+          { key: "3", type: "artist", title: "Music", Location: [{ path: "/music" }] },
+          { key: 7, type: "artist", title: "Aurral", Location: [{ path: "/downloads/aurral" }] },
+        ],
+      },
+    };
+  });
+
+  await assert.rejects(client.ensureAurralLibrary("/downloads/aurral"), /can't read/);
+  assert.deepEqual(methods, ["GET /library/sections"]);
+});
+
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Isolation" });
