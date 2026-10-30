@@ -423,10 +423,19 @@ test("blocks migration when DL_FOLDER overlaps the Lidarr root", async () => {
   await assert.rejects(() => fs.access(path.join(root, "Artist", "Album", "Protected.flac")));
 });
 
-test("startup migration skips without failing when DL_FOLDER overlaps the Lidarr root", async () => {
-  dbOps.updateSettings({ integrations: { lidarr: { rootFolderPath: resolveDownloadRoot() } } });
+test("startup migration skips without failing only while Lidarr is on and overlaps DL_FOLDER", async () => {
+  const lidarr = {
+    url: "http://lidarr.test",
+    apiKey: "key",
+    rootFolderPath: resolveDownloadRoot(),
+  };
+  const completed = () => dbOps.getJSONSetting("playlistStartupMigration", v.unknown());
 
+  dbOps.updateSettings({ integrations: { lidarr: { ...lidarr, enabled: true } } });
   await processSystemTask({ kind: "playlist-startup-migration" });
+  assert.equal(completed(), null);
 
-  assert.equal(dbOps.getJSONSetting("playlistStartupMigration", v.unknown()), null);
+  dbOps.updateSettings({ integrations: { lidarr: { ...lidarr, enabled: false } } });
+  await processSystemTask({ kind: "playlist-startup-migration" });
+  assert.notEqual(completed(), null);
 });

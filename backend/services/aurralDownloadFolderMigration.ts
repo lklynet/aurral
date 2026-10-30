@@ -19,6 +19,7 @@ import {
 } from "./downloadPaths.ts";
 import { sanitizePathPart } from "./downloadUtils.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { lidarrClient } from "./lidarrClient.ts";
 import type { createPlaybackDeletionGuard } from "./playback/playbackFileRetention.ts";
 
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION = 1;
@@ -149,6 +150,7 @@ function pathsOverlap(left: string, right: string) {
 function configuredLidarrRoots(options: MigrationOptions) {
   if (Array.isArray(options.lidarrRoots))
     return options.lidarrRoots.filter((root): root is string => Boolean(root));
+  if (!lidarrClient.isConfigured()) return [];
   const settings = dbOps.getSettings();
   const users = typeof userOps.getAllUsers === "function" ? userOps.getAllUsers() : [];
   return [
