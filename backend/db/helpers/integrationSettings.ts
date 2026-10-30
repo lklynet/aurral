@@ -28,10 +28,10 @@ const recordOf = <Schema extends v.GenericSchema>(schema: Schema) =>
     ),
   );
 
-const number = v.union([
-  v.number(),
-  v.pipe(v.string(), v.trim(), v.nonEmpty(), v.transform(Number), v.number()),
-]);
+const number = v.pipe(
+  v.union([v.number(), v.pipe(v.string(), v.trim(), v.nonEmpty(), v.transform(Number))]),
+  v.finite(),
+);
 
 const text = setting(v.string());
 const nullableText = setting(v.nullable(v.string()));
