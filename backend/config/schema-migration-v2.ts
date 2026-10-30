@@ -1,10 +1,21 @@
 import type Database from "better-sqlite3";
+import * as v from "valibot";
 import type { LibraryArtistsRow, LidarrArtistIdMapRow } from "../db/rows.ts";
 import type { StoredPlaylistWorker } from "../db/helpers/settings.ts";
 import type { dbHelpers as sqliteDbHelpers } from "./db-sqlite.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 type JsonHelpers = Pick<typeof sqliteDbHelpers, "parseJSON" | "stringifyJSON">;
+
+const settingObject = v.record(v.string(), v.unknown());
+
+const readSettingObject = (db: Database.Database, dbHelpers: JsonHelpers, key: string) => {
+  const value = dbHelpers.parseJSON(
+    db.prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?").get(key)
+      ?.value,
+  );
+  return v.is(settingObject, value) ? value : null;
+};
 
 export interface TableColumnRow {
   name: string;
@@ -114,16 +125,13 @@ function buildPlaylistWorkerSettings(
 }
 
 function backfillSlskdSettings(db: Database.Database, dbHelpers: JsonHelpers) {
-  const getSettingStmt = db.prepare<[string], { value: string }>(
-    "SELECT value FROM settings WHERE key = ?",
-  );
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
-  const integrations = dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value);
+  const integrations = readSettingObject(db, dbHelpers, "integrations");
   if (!integrations) return;
-  const weeklyFlowWorker = dbHelpers.parseJSON(getSettingStmt.get("weeklyFlowWorker")?.value);
-  const slskd = { ...(integrations.slskd || {}) };
+  const weeklyFlowWorker = readSettingObject(db, dbHelpers, "weeklyFlowWorker");
+  const slskd = { ...(v.is(settingObject, integrations.slskd) ? integrations.slskd : {}) };
   let changed = false;
   if (!slskd.preferredFormat) {
     slskd.preferredFormat =
@@ -164,8 +172,8 @@ export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: JsonHel
     upsertSettingStmt.run("sharedPlaylists", dbHelpers.stringifyJSON(sharedFlowPlaylists));
   }
 
-  const playlistWorker = dbHelpers.parseJSON(getSettingStmt.get("playlistWorker")?.value);
-  const weeklyFlowWorker = dbHelpers.parseJSON(getSettingStmt.get("weeklyFlowWorker")?.value);
+  const playlistWorker = readSettingObject(db, dbHelpers, "playlistWorker");
+  const weeklyFlowWorker = readSettingObject(db, dbHelpers, "weeklyFlowWorker");
   if (weeklyFlowWorker || playlistWorker) {
     upsertSettingStmt.run(
       "playlistWorker",

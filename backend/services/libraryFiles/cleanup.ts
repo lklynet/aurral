@@ -44,7 +44,7 @@ import {
 import { planTagFill } from "./tagFill.ts";
 import {
   addLibraryFileOperationItems,
-  type getLibraryFileOperation,
+  type CleanupOperation,
   type listLibraryFileOperationItems,
   restoreUnremovedDuplicates,
   updateLibraryFileOperation,
@@ -53,7 +53,7 @@ import {
 
 const TAKEN_NAME_REASON = "Another file already has this name.";
 
-type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
+type LibraryFileOperation = CleanupOperation;
 type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
 type AlbumFileRow = Pick<
   LibraryMediaFilesRow,
@@ -535,7 +535,7 @@ export async function applyCleanupItem(
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
   let current = path.resolve(item.sourcePath);
   if (details.results.rename === "done" && item.targetPath) current = item.targetPath;
-  const expected = details.results.tags === "done" ? details.tagged : details;
+  const expected = (details.results.tags === "done" && details.tagged) || details;
   const matchesExpected = (fileStat: Stats) =>
     Number(expected.size) === fileStat.size && Number(expected.mtimeMs) === fileStat.mtimeMs;
   let stat = await fs.stat(current).catch(() => null);

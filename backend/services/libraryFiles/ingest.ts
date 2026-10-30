@@ -48,7 +48,9 @@ import {
   addLibraryFileOperationItems,
   deleteLibraryFileOperationItems,
   getLibraryFileOperation,
+  type IngestOperation,
   listLibraryFileOperationItems,
+  readItemDetails,
   restoreUnremovedDuplicates,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
@@ -56,7 +58,7 @@ import {
 
 const CHUNK = 200;
 
-type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
+type LibraryFileOperation = IngestOperation;
 type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
 export type FiledItem = LibraryFileItem & { targetPath: string };
 type LibraryFileRecord = ReturnType<typeof buildMetadataRecord>;
@@ -541,7 +543,7 @@ const resolvesToSameFile = async (left: string, right: string) => {
 
 // A file that gains a release group ID would otherwise start a second copy of
 // the untagged album it joined.
-function keepAlbumTogether(albumId: number | null, tags: TagFillTags) {
+function keepAlbumTogether(albumId: number | null, tags: TagFillTags = {}) {
   if (!albumId || !tags.releaseGroupMbid) return;
   const album = db
     .prepare<[number], Pick<LibraryAlbumsRow, "release_group_mbid">>(
@@ -657,10 +659,11 @@ export async function finishIngest(operation: LibraryFileOperation) {
   for (const item of items) {
     const folder = path.dirname(item.source_path);
     if (item.status === "done") filedFrom.set(folder, [...(filedFrom.get(folder) || []), item]);
+    const details = readItemDetails(item.details_json);
     const kept =
       mode === "move" &&
       item.status === "duplicate" &&
-      JSON.parse(item.details_json || "{}").removable === true;
+      (details === null || details.removable === true);
     if (!["done", "duplicate"].includes(item.status) || !item.target_path || kept) {
       unfiled.add(folder);
       continue;
@@ -694,9 +697,11 @@ export async function finishIngest(operation: LibraryFileOperation) {
     }
     if (!art.length) continue;
     for (const item of filedFrom.get(folder) || []) {
-      updateLibraryFileOperationItem(operation.id, item.position, {
-        details: { ...JSON.parse(item.details_json || "{}"), art },
-      });
+      const details = readItemDetails(item.details_json);
+      if (details)
+        updateLibraryFileOperationItem(operation.id, item.position, {
+          details: { ...details, art },
+        });
     }
   }
   if (mode === "move") {
@@ -790,7 +795,8 @@ async function takeBackDouble(
       kept.push(other);
   }
   if (!kept.length) return null;
-  const details = JSON.parse(item.details_json || "{}");
+  const details = readItemDetails(item.details_json);
+  if (!details) return null;
   const title =
     db
       .prepare<[number], string>("SELECT title FROM library_tracks WHERE id = ?")
@@ -874,7 +880,7 @@ async function settleIngest(operation: LibraryFileOperation) {
         changed.push(...taken);
         const folder = path.dirname(entry.item.target_path);
         const images = art.get(folder) || new Map();
-        for (const name of JSON.parse(entry.item.details_json || "{}").art || []) {
+        for (const name of readItemDetails(entry.item.details_json)?.art || []) {
           images.set(name, path.dirname(entry.item.source_path));
         }
         art.set(folder, images);
@@ -914,7 +920,8 @@ export async function settleIngestedMusic() {
     .all();
   for (const id of pending) {
     try {
-      await settleIngest(getLibraryFileOperation(id)!);
+      const operation = getLibraryFileOperation(id);
+      if (operation?.kind === "ingest") await settleIngest(operation);
     } catch (error) {
       logger.warn("library-files", "Ingest could not finish checking its music", {
         operationId: id,

@@ -1151,6 +1151,64 @@ test("files Aurral cannot place are skipped with a reason and left alone", async
   assert.equal(await exists(loose), true);
 });
 
+test("a file whose saved plan Aurral can't read is left where it is, and the rest are filed", async () => {
+  const source = newSource();
+  const tags = { artist: "Saved Artist", album: "Saved Album" };
+  const first = await makeTrack(path.join(source, "a.flac"), {
+    ...tags,
+    title: "First",
+    track: "1",
+  });
+  await makeTrack(path.join(source, "b.flac"), { ...tags, title: "Second", track: "2" });
+  const id = await ingest(source, "move");
+  db.prepare(
+    "UPDATE library_file_operation_items SET details_json = ? WHERE operation_id = ? AND source_path = ?",
+  ).run('{"action":"file","actions":"tags"}', id, first);
+
+  const items = await apply(id);
+
+  assert.deepEqual(
+    items.map((item) => item.status),
+    ["failed", "done"],
+  );
+  assert.match(requireValue(items[0].reason), /can't read/);
+  assert.equal(await exists(first), true);
+  assert.equal(
+    await exists(path.join(root, "Saved Artist", "Saved Album", "01 - First.flac")),
+    false,
+  );
+});
+
+test("an ingest whose saved options Aurral can't read stops without filing anything", async () => {
+  const source = newSource();
+  const track = await makeTrack(path.join(source, "a.flac"), {
+    artist: "Unread Artist",
+    album: "Unread Album",
+    title: "Only",
+    track: "1",
+  });
+  const id = await ingest(source, "move");
+  db.prepare(
+    "UPDATE library_file_operations SET options_json = json_set(options_json, '$.mode', 'shuffle') WHERE id = ?",
+  ).run(id);
+
+  assert.deepEqual(await operations.runLibraryFileOperation(id), { done: true });
+
+  const row = db
+    .prepare<[number], Pick<Rows.LibraryFileOperationsRow, "status" | "error">>(
+      "SELECT status, error FROM library_file_operations WHERE id = ?",
+    )
+    .get(id);
+  assert.equal(row?.status, "failed");
+  assert.match(requireValue(row?.error), /can't read/);
+  assert.equal(await exists(track), true);
+  assert.equal(
+    await exists(path.join(root, "Unread Artist", "Unread Album", "01 - Only.flac")),
+    false,
+  );
+  assert.ok(await operations.startCleanup());
+});
+
 test("the source check rejects the Downloads Folder and unreadable folders, and flags a Lidarr root folder", async () => {
   await mkdir(root, { recursive: true });
   await assert.rejects(

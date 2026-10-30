@@ -1169,7 +1169,7 @@ db.exec(`
 `);
 
 export const dbHelpers = {
-  parseJSON: (text: string | null | undefined) => {
+  parseJSON: (text: string | null | undefined): unknown => {
     if (!text) return null;
     try {
       return JSON.parse(text);

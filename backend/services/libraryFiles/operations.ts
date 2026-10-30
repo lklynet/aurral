@@ -14,18 +14,21 @@ import {
 } from "./ingest.ts";
 import { applyCleanupItem, createCleanupContext, finishCleanup, planCleanup } from "./cleanup.ts";
 import {
+  UNREADABLE_ITEM,
   countLibraryFileOperationItems,
   countRemovableDuplicates,
   createLibraryFileOperation,
+  failUnreadableLibraryFileOperation,
   getLibraryFileOperation,
+  type LibraryFileOperation,
   listLibraryFileOperationItems,
+  listUnfinishedLibraryFileOperationIds,
   reopenToRemoveDuplicates,
   transitionLibraryFileOperation,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
 } from "./operationStore.ts";
 
-type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
 type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
 
 const BUDGET_MS = 20000;
@@ -79,11 +82,9 @@ const UNFINISHED_REASONS = {
 
 // A Move ingest keeps sources the Library has in another file, and Clean up
 // keeps the extra copies of a track, until the user asks to remove them.
-type DuplicateRemovingOperation = LibraryFileOperation & { kind: "ingest" | "cleanup" };
-
 const removesDuplicates = (
   operation: LibraryFileOperation | undefined,
-): operation is DuplicateRemovingOperation =>
+): operation is LibraryFileOperation =>
   operation?.kind === "cleanup" ||
   (operation?.kind === "ingest" && operation.options.mode === "move");
 
@@ -101,19 +102,14 @@ export function cancelLibraryFileOperation(id: number) {
 }
 
 export async function resumeLibraryFileOperations() {
-  const { listUnfinishedLibraryFileOperations } = await import("./operationStore.ts");
-  for (const operation of listUnfinishedLibraryFileOperations()) await enqueue(operation!.id);
+  for (const id of listUnfinishedLibraryFileOperationIds()) await enqueue(id);
 }
 
-const handlers = {
-  ingest: { plan: planIngest, finish: finishIngest },
-  cleanup: { plan: planCleanup, finish: finishCleanup },
-};
+const plan = (operation: LibraryFileOperation, deadline: number) =>
+  operation.kind === "ingest" ? planIngest(operation, deadline) : planCleanup(operation, deadline);
 
-type Handler = (typeof handlers)[keyof typeof handlers];
-
-const handlerFor = (kind: string): Handler | undefined =>
-  kind === "ingest" || kind === "cleanup" ? handlers[kind] : undefined;
+const finishWork = (operation: LibraryFileOperation) =>
+  operation.kind === "ingest" ? finishIngest(operation) : finishCleanup(operation);
 
 function assertFiled(item: LibraryFileItem): asserts item is FiledItem {
   if (item.targetPath === null) throw new TypeError("Ingest item has no target path");
@@ -126,18 +122,33 @@ async function requestScan(request: LibraryScanRequest) {
   scheduleLibraryScan({ includeLidarr: request.includeLidarr === true, changedPaths });
 }
 
-async function finish(operation: LibraryFileOperation, handler: Handler, status: string) {
-  const current = getLibraryFileOperation(operation.id)!;
+async function finish(operation: LibraryFileOperation, status: string) {
+  const current = getLibraryFileOperation(operation.id);
+  if (!current) return failUnreadableLibraryFileOperation(operation.id);
   if (current.summary.finished) return;
-  await requestScan(await handler.finish(current));
+  await requestScan(await finishWork(current));
   updateLibraryFileOperation(operation.id, {
     status,
     summary: { counts: countLibraryFileOperationItems(operation.id), finished: true },
   });
 }
 
+function itemApplier(operation: LibraryFileOperation) {
+  if (operation.kind === "ingest") {
+    return {
+      context: null,
+      apply: (item: LibraryFileItem) => {
+        assertFiled(item);
+        return applyIngestItem(operation, item);
+      },
+    };
+  }
+  const context = createCleanupContext();
+  return { context, apply: (item: LibraryFileItem) => applyCleanupItem(operation, item, context) };
+}
+
 async function applyBatch(operation: LibraryFileOperation, deadline: number) {
-  const context = operation.kind === "cleanup" ? createCleanupContext() : null;
+  const { context, apply } = itemApplier(operation);
   await context?.prepare();
   const processed = [];
   let cancelled = false;
@@ -154,12 +165,7 @@ async function applyBatch(operation: LibraryFileOperation, deadline: number) {
       }
       let result;
       try {
-        if (context) {
-          result = await applyCleanupItem(operation, item, context);
-        } else {
-          assertFiled(item);
-          result = await applyIngestItem(operation, item);
-        }
+        result = item.readable ? await apply(item) : { status: "failed", reason: UNREADABLE_ITEM };
       } catch (error) {
         result = { status: "failed", reason: safeLogDiagnostic(error) };
       }
@@ -181,30 +187,31 @@ export async function runLibraryFileOperation(
   { budgetMs = BUDGET_MS }: { budgetMs?: number } = {},
 ) {
   const operation = getLibraryFileOperation(id);
-  if (!operation) return { done: true };
-  const handler = handlerFor(operation.kind);
-  if (!handler) return { done: true };
+  if (!operation) {
+    failUnreadableLibraryFileOperation(id);
+    return { done: true };
+  }
   const deadline = Date.now() + budgetMs;
   try {
     if (operation.status === "planning") {
-      if (!(await handler.plan(operation, deadline))) return { done: false };
+      if (!(await plan(operation, deadline))) return { done: false };
       const next = countLibraryFileOperationItems(id).pending ? "running" : "complete";
       transitionLibraryFileOperation(id, ["planning"], next);
       return { done: next === "complete" };
     }
     if (operation.status === "cancelled") {
-      await finish(operation, handler, "cancelled");
+      await finish(operation, "cancelled");
       return { done: true };
     }
     if (operation.status !== "running") return { done: true };
     const { cancelled } = await applyBatch(operation, deadline);
     if (cancelled) {
-      await finish(operation, handler, "cancelled");
+      await finish(operation, "cancelled");
       return { done: true };
     }
     if (listLibraryFileOperationItems(id, { statuses: ["pending"], limit: 1 }).length)
       return { done: false };
-    await finish(operation, handler, "complete");
+    await finish(operation, "complete");
     return { done: true };
   } catch (error) {
     logger.warn("library-files", "Library file operation failed", {
@@ -234,10 +241,7 @@ export function describeLibraryFileOperation(operation: LibraryFileOperation | u
   const { cursor, finished: _finished, ...summary } = operation.summary;
   const removing = operation.status === "running" && summary.removingSources;
   return {
-    id: operation.id,
-    kind: operation.kind as "ingest" | "cleanup",
-    status: operation.status,
-    options: operation.options,
+    ...operation,
     summary,
     counts,
     progress:
@@ -251,10 +255,6 @@ export function describeLibraryFileOperation(operation: LibraryFileOperation | u
           ? { done: removing - (counts.pending || 0), total: removing, unit: "files" }
           : { done: total - (counts.pending || 0), total, unit: "files" },
     sources: removesDuplicates(operation) ? countRemovableDuplicates(operation.id) : null,
-    error: operation.error,
-    createdAt: operation.createdAt,
-    updatedAt: operation.updatedAt,
-    finishedAt: operation.finishedAt,
   };
 }
 
