@@ -33,7 +33,6 @@ const connectSources = [
   "'self'",
   "ws:",
   "wss:",
-  "https://api.github.com",
   process.env.AUTH_PROXY_DOMAIN,
   process.env.OIDC_DOMAIN,
 ].filter(Boolean);

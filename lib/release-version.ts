@@ -1,4 +1,5 @@
 const RELEASE_TAG_RE = /^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$/;
+const NIGHTLY_VERSION_RE = /^nightly\.(?<run>\d+)\+(?<sha>[0-9a-f]{7,40})$/;
 const CONVENTIONAL_SUBJECT_RE = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<breaking>!)?:/i;
 const RELEASE_NOTE_ITEM_RE = /^(?:[-*+]\s+|\d+[.)]\s+)/;
 
@@ -63,17 +64,15 @@ export function selectLatestRelease(refs: ReleaseRef[]) {
   return latest ? { parsed: latest, tagName: `v${latest.label}` } : null;
 }
 
-export function selectNightlyUpdate(
-  currentVersion: string | undefined,
-  latestSha: string | undefined,
-) {
-  const currentSha = String(currentVersion || "").split("+")[1] || "";
-  const latest = String(latestSha || "");
+export function parseNightlyVersion(value: string | undefined) {
+  const match = NIGHTLY_VERSION_RE.exec(String(value || ""));
+  return match?.groups ? { run: Number(match.groups.run), sha: match.groups.sha } : null;
+}
 
-  if (!currentSha || latest.length < 7 || latest.startsWith(currentSha)) {
-    return null;
-  }
-  return { current: currentSha, latest: latest.slice(0, 7) };
+export function releaseChannel(version: string | undefined) {
+  if (parseReleaseVersion(version)) return "stable";
+  if (parseNightlyVersion(version)) return "nightly";
+  return null;
 }
 
 export function extractReleaseNoteItems(body: string | null | undefined, maxItems = 8) {

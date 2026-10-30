@@ -161,6 +161,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Discovery startup check",
     description: "Initializes discovery data and schedules the next refresh.",
   },
+  "update-check": {
+    label: "Update check",
+    description: "Checks aurral.org for a newer Aurral build in this channel.",
+  },
   "trending-charts-refresh": {
     label: "Trending charts refresh",
     description: "Updates the Trending charts from Deezer and Apple Music.",

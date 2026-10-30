@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import {
   compareReleaseVersions,
   extractReleaseNoteItems,
+  parseNightlyVersion,
   parseReleaseVersion,
+  releaseChannel,
   resolveNextRelease,
   selectLatestRelease,
-  selectNightlyUpdate,
   suggestNextVersion,
 } from "../../lib/release-version.ts";
 
@@ -43,16 +44,13 @@ test("selectLatestRelease picks the newest stable tag and ignores legacy prerele
   assert.equal(selectLatestRelease([{ ref: "refs/tags/v2.1.0-dev.2" }]), null);
 });
 
-test("selectNightlyUpdate reports only a genuinely newer commit", () => {
-  const head = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
-
-  assert.deepEqual(selectNightlyUpdate("nightly.5+9999999", head), {
-    current: "9999999",
-    latest: "a1b2c3d",
-  });
-  assert.equal(selectNightlyUpdate("nightly.5+a1b2c3d", head), null);
-  assert.equal(selectNightlyUpdate("nightly.5", head), null);
-  assert.equal(selectNightlyUpdate("nightly.5+9999999", ""), null);
+test("releaseChannel recognizes stable and nightly builds only", () => {
+  assert.deepEqual(parseNightlyVersion("nightly.512+a1b2c3d"), { run: 512, sha: "a1b2c3d" });
+  assert.equal(releaseChannel("2.10.0"), "stable");
+  assert.equal(releaseChannel("nightly.512+a1b2c3d"), "nightly");
+  assert.equal(releaseChannel("pr.12+a1b2c3d"), null);
+  assert.equal(releaseChannel("ci-a1b2c3d4e5f6"), null);
+  assert.equal(releaseChannel("a1b2c3d"), null);
 });
 
 test("extractReleaseNoteItems keeps concise markdown change items", () => {

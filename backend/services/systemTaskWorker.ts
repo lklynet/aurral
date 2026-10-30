@@ -229,6 +229,11 @@ export async function processSystemTask(
       await refreshNewsFeeds();
       return;
     }
+    case "update-check": {
+      const { checkForUpdates } = await import("./updates.ts");
+      await checkForUpdates();
+      return;
+    }
     case "trending-charts-refresh": {
       const { refreshTrendingCharts } = await import("./discovery/trendingCharts.ts");
       await refreshTrendingCharts();

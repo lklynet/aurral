@@ -112,7 +112,6 @@ const PermissionRoute = ({ children, permission }: { children: ReactNode; permis
 type HealthIssue = "lidarr" | "degraded" | "backend";
 
 type AppOutletContext = {
-  appVersion: string | null;
   healthIssue: HealthIssue | null;
   isHealthy: boolean | null;
   rootFolderConfigured: boolean;
@@ -122,7 +121,6 @@ function AppContent() {
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [healthIssue, setHealthIssue] = useState<HealthIssue | null>(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
-  const [appVersion, setAppVersion] = useState<string | null>(null);
   const healthCheckInFlightRef = useRef(false);
   const { isAuthenticated, bootstrap, refreshAuth } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -145,7 +143,6 @@ function AppContent() {
   const applyBootstrapHealth = (payload: BootstrapPayload) => {
     setIsHealthy(payload.status === "ok");
     setRootFolderConfigured(payload.rootFolderConfigured || false);
-    setAppVersion(payload.appVersion || null);
     setHealthIssue(payload.lidarr?.circuitOpen ? "lidarr" : null);
   };
 
@@ -170,11 +167,9 @@ function AppContent() {
           );
           setIsHealthy(true);
           setHealthIssue("degraded");
-          setAppVersion(null);
         } catch {
           setIsHealthy(false);
           setHealthIssue("backend");
-          setAppVersion(null);
         }
         refreshAuth();
       } finally {
@@ -204,14 +199,13 @@ function AppContent() {
     };
   }, [appSocketConnected, isAuthenticated, refreshAuth]);
 
-  return <Outlet context={{ appVersion, healthIssue, isHealthy, rootFolderConfigured }} />;
+  return <Outlet context={{ healthIssue, isHealthy, rootFolderConfigured }} />;
 }
 
 function ProtectedLayout() {
   useLanternPreview();
   const wrappedSeason = useWrappedSeason();
-  const { appVersion, healthIssue, isHealthy, rootFolderConfigured } =
-    useOutletContext<AppOutletContext>();
+  const { healthIssue, isHealthy, rootFolderConfigured } = useOutletContext<AppOutletContext>();
   const { user, bootstrap } = useAuth();
 
   return (
@@ -219,12 +213,7 @@ function ProtectedLayout() {
       <ProtectedRoute>
         <PlaylistBulkActionsProvider>
           <Layout
-            headerActions={
-              <UpdateIndicator
-                currentVersion={appVersion}
-                visible={!user || user.role === "admin"}
-              />
-            }
+            headerActions={<UpdateIndicator visible={!user || user.role === "admin"} />}
             overlay={
               wrappedSeason && (
                 <Suspense fallback={null}>
