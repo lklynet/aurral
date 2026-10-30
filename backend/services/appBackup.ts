@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { db } from "../config/db-sqlite.ts";
 import { STAGED_RESTORE_DIR } from "../config/stagedRestore.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { extractZipEntry, planZip, readZipEntries, ZipFormatError } from "./zip.ts";
 
 export class BackupError extends Error {}
@@ -41,7 +42,10 @@ export async function createBackup() {
     } finally {
       snapshot.close();
     }
-    const artwork = await fs.readdir(ARTWORK_DIR, { withFileTypes: true }).catch(() => []);
+    const artwork = await fs.readdir(ARTWORK_DIR, { withFileTypes: true }).catch((error) => {
+      if (asAppError(error)?.code === "ENOENT") return [];
+      throw error;
+    });
     const plan = await planZip([
       { name: "aurral.db", path: SNAPSHOT_PATH },
       ...artwork
