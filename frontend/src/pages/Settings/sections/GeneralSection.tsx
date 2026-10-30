@@ -20,10 +20,13 @@ function ApiKeyRow() {
   const queryClient = useQueryClient();
   const apiKeyQuery = useQuery({
     queryKey: queryKeys.apiKey,
-    queryFn: async ({ signal }) =>
-      (await parseResponse(authClient["api-key"].$get({}, { init: { signal } }))).apiKey || null,
+    queryFn: async ({ signal }) => {
+      const res = await parseResponse(authClient["api-key"].$get({}, { init: { signal } }));
+      return { apiKey: res.apiKey || null, managedByEnv: res.managedByEnv };
+    },
   });
-  const apiKey = apiKeyQuery.data ?? null;
+  const apiKey = apiKeyQuery.data?.apiKey ?? null;
+  const managedByEnv = apiKeyQuery.data?.managedByEnv ?? false;
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -47,7 +50,9 @@ function ApiKeyRow() {
     setRotating(true);
     try {
       const res = await parseResponse(authClient["api-key"].rotate.$post());
-      queryClient.setQueryData(queryKeys.apiKey, res.apiKey || null);
+      queryClient.setQueryData(queryKeys.apiKey, {
+        apiKey: res.apiKey || null,
+      });
       showSuccess("API key rotated");
     } catch {
       showError("Failed to rotate API key");
@@ -61,8 +66,14 @@ function ApiKeyRow() {
       label="API key"
       help={
         <>
-          Send it as an <code>X-Api-Key</code> header or <code>api_key</code> query parameter. Keep
-          it private.
+          Send it as an <code>X-Api-Key</code> header or <code>api_key</code> query parameter.{" "}
+          {managedByEnv ? (
+            <>
+              Set by the <code>AURRAL_API_KEY</code> environment variable.
+            </>
+          ) : (
+            "Keep it private."
+          )}
         </>
       }
       stack
@@ -81,15 +92,19 @@ function ApiKeyRow() {
           >
             {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           </TooltipButton>
-          <button
-            type="button"
+          <TooltipButton
+            label={
+              managedByEnv
+                ? "Cannot rotate API Key when it is managed by an environment variable"
+                : undefined
+            }
             className="btn btn-secondary btn-sm"
             onClick={rotate}
-            disabled={rotating}
+            disabled={rotating || managedByEnv}
           >
             {rotating ? <DotLoader size="xs" label={null} /> : null}
             Rotate
-          </button>
+          </TooltipButton>
         </>
       ) : (
         <SettingsNote tone="error">Couldn&apos;t load the API key.</SettingsNote>
