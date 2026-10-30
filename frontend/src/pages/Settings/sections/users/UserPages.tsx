@@ -4,7 +4,8 @@ import { DotLoader } from "../../../../components/DotLoader";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { isReauthRequiredError, promptReauth } from "../../../../utils/reauth.ts";
 import { AdminPlexLinkField } from "../../components/AdminPlexLinkField";
-import { SettingsInput, SettingsSelect } from "../../components/SettingsField";
+import { SettingsInput } from "../../components/SettingsField";
+import { Select } from "../../../../components/Select";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../../constants";
 import {
   createUser,
@@ -234,17 +235,12 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
                 : undefined
             }
           >
-            <SettingsSelect
+            <Select
               id={`${formId}-status`}
               value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              {Object.entries(USER_STATUSES).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </SettingsSelect>
+              onChange={setStatus}
+              options={Object.entries(USER_STATUSES).map(([value, label]) => ({ value, label }))}
+            />
           </SettingsRow>
           <SettingsRow
             label="New password"

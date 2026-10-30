@@ -12,7 +12,8 @@ import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { PlexSelfLinkSection } from "../components/PlexSelfLinkSection";
-import { SettingsInput, SettingsSelect } from "../components/SettingsField";
+import { SettingsInput } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
 import { useAccountSettingsContext } from "../SettingsProviders";
 import {
@@ -190,32 +191,32 @@ function LidarrDefaultsGroup() {
       note="Used for artists you add. These override the server defaults."
     >
       <SettingsRow label="Root folder" htmlFor="profile-root-folder">
-        <SettingsSelect
+        <Select
           id="profile-root-folder"
           value={account.lidarrRootFolderPath}
-          onChange={(event) => account.setLidarrRootFolderPath(event.target.value)}
-        >
-          <option value="">Server default</option>
-          {account.lidarrRootFolders.map((folder) => (
-            <option key={folder.path} value={folder.path}>
-              {folder.path}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={account.setLidarrRootFolderPath}
+          options={[
+            { value: "", label: "Server default" },
+            ...account.lidarrRootFolders.map((folder) => ({
+              value: folder.path,
+              label: folder.path,
+            })),
+          ]}
+        />
       </SettingsRow>
       <SettingsRow label="Quality profile" htmlFor="profile-quality-profile">
-        <SettingsSelect
+        <Select
           id="profile-quality-profile"
           value={account.lidarrQualityProfileId}
-          onChange={(event) => account.setLidarrQualityProfileId(event.target.value)}
-        >
-          <option value="">Server default</option>
-          {account.lidarrQualityProfiles.map((profile) => (
-            <option key={profile.id} value={String(profile.id)}>
-              {profile.name}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={account.setLidarrQualityProfileId}
+          options={[
+            { value: "", label: "Server default" },
+            ...account.lidarrQualityProfiles.map((profile) => ({
+              value: String(profile.id),
+              label: profile.name,
+            })),
+          ]}
+        />
       </SettingsRow>
     </SettingsGroup>
   );

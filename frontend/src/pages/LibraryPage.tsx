@@ -44,6 +44,7 @@ import { useAurralTrackMonitoring } from "../components/AurralTrackMonitoring";
 import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu } from "../components/LibraryItemMenu";
+import { Select } from "../components/Select";
 import TooltipButton from "../components/TooltipButton";
 import { FavoriteButton, TrackList } from "../components/TrackList";
 import {
@@ -3588,31 +3589,20 @@ function LibraryPage() {
               )}
               {sortOptions.length > 0 && (
                 <>
-                  <label className="native-library-sort">
-                    <span className="sr-only">Sort {sectionLabel.toLocaleLowerCase()} by</span>
-                    <select
+                  <div className="native-library-sort">
+                    <Select
+                      className=""
                       value={sortMode}
-                      onChange={(event) =>
+                      onChange={(sort) =>
                         updateViewParams(
-                          {
-                            sort:
-                              event.target.value === LIBRARY_DEFAULT_SORT
-                                ? null
-                                : event.target.value,
-                            page: null,
-                          },
+                          { sort: sort === LIBRARY_DEFAULT_SORT ? null : sort, page: null },
                           { replace: true },
                         )
                       }
                       aria-label={"Sort " + sectionLabel.toLocaleLowerCase()}
-                    >
-                      {sortOptions.map((option) => (
-                        <option value={option.value} key={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      options={sortOptions}
+                    />
+                  </div>
                   <span className="native-library-toolbar-divider" aria-hidden="true" />
                   <TooltipButton
                     className="native-library-icon-button"
@@ -3673,18 +3663,16 @@ function LibraryPage() {
               <div className="native-library-filter-panel">
                 <label>
                   <span>Genre</span>
-                  <select
+                  <Select
+                    className=""
                     value={selectedGenre}
-                    onChange={(event) => updateGenreFilter(event.target.value)}
+                    onChange={updateGenreFilter}
                     aria-label="Filter by genre"
-                  >
-                    <option value="">All genres</option>
-                    {genreStats.map((genre) => (
-                      <option value={genre.name} key={genre.name}>
-                        {genre.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "", label: "All genres" },
+                      ...genreStats.map((genre) => ({ value: genre.name, label: genre.name })),
+                    ]}
+                  />
                 </label>
                 {selectedGenre && (
                   <button

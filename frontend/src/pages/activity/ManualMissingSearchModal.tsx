@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Search } from "../../components/icons";
 import { ModalShell } from "../../components/PlaylistModals.tsx";
 import { DotLoader } from "../../components/DotLoader.tsx";
+import { Select } from "../../components/Select.tsx";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { apiFetchWithin } from "../../utils/api/core.ts";
@@ -168,24 +169,19 @@ export default function ManualMissingSearchModal({
           Download client
         </label>
         <div className="manual-search-modal__source-row">
-          <select
+          <Select
             id="manual-search-source"
             className="input input--tall"
             value={sourceId}
-            onChange={(event) => {
-              setSelectedSourceId(event.target.value);
+            onChange={(nextSourceId) => {
+              setSelectedSourceId(nextSourceId);
               setSearch(null);
               setSelectedId("");
               setActionError("");
             }}
             disabled={busy}
-          >
-            {sources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.label}
-              </option>
-            ))}
-          </select>
+            options={sources.map((source) => ({ value: source.id, label: source.label }))}
+          />
           <button
             type="button"
             className="btn btn-secondary btn-sm manual-search-modal__action"

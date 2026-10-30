@@ -8,7 +8,7 @@ import TooltipButton from "../../../components/TooltipButton";
 import { authClient } from "../../../utils/api/clients/auth.ts";
 import { setDateTimeFormat } from "../../../utils/dateTime.ts";
 import { queryKeys } from "../../../queryClient.ts";
-import { SettingsSelect } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
 import { SettingsGroup, SettingsNote, SettingsPage, SettingsRow } from "../SettingsLayout";
 import { BackupGroup } from "./BackupGroup";
@@ -109,19 +109,19 @@ export function GeneralSection() {
           htmlFor="date-time-format"
           help="Applies to all users."
         >
-          <SettingsSelect
+          <Select
             id="date-time-format"
             value={settings.dateTimeFormat}
-            onChange={(event) => {
-              const dateTimeFormat = event.target.value;
+            onChange={(dateTimeFormat) => {
               setDateTimeFormat(dateTimeFormat);
               updateSettings({ ...settings, dateTimeFormat });
             }}
-          >
-            <option value="browser">Browser default</option>
-            <option value="day-first">14:30 09/08/2026</option>
-            <option value="year-first">2026/08/09 14:30</option>
-          </SettingsSelect>
+            options={[
+              { value: "browser", label: "Browser default" },
+              { value: "day-first", label: "14:30 09/08/2026" },
+              { value: "year-first", label: "2026/08/09 14:30" },
+            ]}
+          />
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup title="Subsonic">

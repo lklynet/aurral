@@ -53,8 +53,9 @@ The dark theme uses a true black page. The sidebar and top bar sit one step ligh
 | --------------------------- | ---------- | --------------------------------------- |
 | `--aurral-surface`          | `#000`     | Page                                    |
 | `--aurral-chrome`           | `#050505`  | Sidebar, top bar, player                |
-| `--aurral-surface-raised`   | `#0e0e0e`  | Inputs, cards that need a surface       |
+| `--aurral-surface-raised`   | `#0e0e0e`  | Cards that need a surface               |
 | `--aurral-surface-popover`  | `#0e0e0e`  | Tooltips, menus, toasts, modals, sheets |
+| `--aurral-surface-field`    | `#151515`  | Inputs and selects                      |
 | `--aurral-surface-hover`    | `#1b1b1b`  | Hover on rows and controls              |
 | `--aurral-surface-selected` | `#1e1e1e`  | The active row                          |
 
@@ -62,19 +63,21 @@ Everything that floats above the page shares one surface: `--aurral-surface-popo
 
 Two shared rules near the end of `frontend/src/index.css` apply the surface. One covers menus, popovers, suggestions, and toasts, and the other covers modals. Add a new floating element to the matching selector list instead of setting its border, radius, background, or shadow in its own rule. The shared rules come later in the file, so those values would never show. Tooltips set the surface themselves and use `--aurral-radius-sm`. Build a new menu on an existing menu class such as `.artist-options-menu` when you can. It already has the surface and opens as a bottom sheet on phones.
 
+Fields sit one step above whatever holds them, so an input reads the same on the page, in a settings card, or in a modal. Use `Select` from `components/Select.tsx` for every dropdown instead of a native `<select>`. It opens on the menu surface, and as a bottom sheet on phones.
+
 Text uses `--aurral-text` (white), `--aurral-text-muted` for secondary text, and `--aurral-text-subtle` for metadata and placeholders. `--aurral-accent` is white in the dark theme. Immersive mode tints it from artwork, so components use the token and never pick a color.
 
 ## Shape
 
-| Token                     | Value | Use                                         |
-| ------------------------- | ----- | ------------------------------------------- |
-| `--aurral-radius-xs`      | 4px   | Small chips, key hints, progress bars       |
-| `--aurral-radius-sm`      | 6px   | Buttons, inputs, rows, menu items, tooltips |
-| `--aurral-radius`         | 8px   | Artwork, cards, search                      |
-| `--aurral-radius-popover` | 10px  | Menus, popovers, suggestions, toasts        |
-| `--aurral-radius-lg`      | 12px  | Large cards and panels                      |
-| `--aurral-radius-modal`   | 16px  | Modals and sheets                           |
-| `--aurral-radius-round`   | pill  | Play buttons, round toggles, tag pills      |
+| Token                     | Value | Use                                     |
+| ------------------------- | ----- | --------------------------------------- |
+| `--aurral-radius-xs`      | 4px   | Small chips, key hints, progress bars   |
+| `--aurral-radius-sm`      | 6px   | Buttons, rows, menu items, tooltips     |
+| `--aurral-radius`         | 8px   | Artwork, cards, inputs, selects, search |
+| `--aurral-radius-popover` | 10px  | Menus, popovers, suggestions, toasts    |
+| `--aurral-radius-lg`      | 12px  | Large cards and panels                  |
+| `--aurral-radius-modal`   | 16px  | Modals and sheets                       |
+| `--aurral-radius-round`   | pill  | Play buttons, round toggles, tag pills  |
 
 Artist images are circles. Album and playlist artwork uses `--aurral-radius`.
 

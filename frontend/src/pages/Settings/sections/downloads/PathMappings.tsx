@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import DownloadFolderField from "../../../../components/DownloadFolderField";
 import { Pencil, Trash2 } from "../../../../components/icons";
 import TooltipButton from "../../../../components/TooltipButton";
-import { SettingsInput, SettingsSelect } from "../../components/SettingsField";
+import { SettingsInput } from "../../components/SettingsField";
+import { Select } from "../../../../components/Select";
 import { useServerSettings } from "../../SettingsProviders";
 import { useSettingsRoute } from "../../settingsRoute";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
@@ -155,17 +156,12 @@ export function PathMappingDetail({ index }: { index: number | null }) {
       <SettingsGroup>
         <form onSubmit={submit}>
           <SettingsRow label="Applies to" htmlFor="path-mapping-source">
-            <SettingsSelect
+            <Select
               id="path-mapping-source"
               value={draft.source}
-              onChange={(event) => edit({ source: event.target.value })}
-            >
-              {PATH_MAPPING_SOURCE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </SettingsSelect>
+              onChange={(source) => edit({ source })}
+              options={PATH_MAPPING_SOURCE_OPTIONS}
+            />
           </SettingsRow>
           <SettingsRow
             label="Remote path"

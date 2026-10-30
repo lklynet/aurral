@@ -4,6 +4,7 @@ import { Music2 } from "../../../components/icons";
 import { SettingsLink } from "../../Settings/settingsRoute";
 import { ModalShell } from "../../../components/PlaylistModals";
 import { DotLoader } from "../../../components/DotLoader";
+import { Select } from "../../../components/Select";
 import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
 import { playlistImportsClient } from "../../../utils/api/clients/playlistImports.ts";
 import { shareLinksClient } from "../../../utils/api/clients/shareLinks.ts";
@@ -114,19 +115,13 @@ function PlaylistImportConfig({
           <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
             Sync
           </label>
-          <select
+          <Select
             id="playlist-import-interval"
-            className="input"
             value={syncIntervalHours}
-            onChange={(event) => setSyncIntervalHours(Number(event.target.value))}
+            onChange={setSyncIntervalHours}
             disabled={importing}
-          >
-            {SYNC_INTERVAL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            options={SYNC_INTERVAL_OPTIONS}
+          />
         </div>
       </div>
 

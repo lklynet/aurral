@@ -2,6 +2,7 @@ import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import AddActionButton from "../../../components/AddActionButton";
+import { Select } from "../../../components/Select";
 import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 import type { InferResponseType } from "hono/client";
 import type { usersClient } from "../../../utils/api/clients/users.ts";
@@ -90,85 +91,86 @@ export function AddArtistCustomizeModal({
                 Monitoring
               </label>
               <div className="artist-modal-field">
-                <select
+                <Select
                   id={`${titleId}-monitor`}
                   className="artist-modal-select"
                   value={monitorOption}
-                  onChange={(e) => setMonitorOption(e.target.value)}
+                  onChange={setMonitorOption}
                   disabled={!configured || confirming}
-                >
-                  <option value="">
-                    {configured ? "Use default monitoring" : "Lidarr is not configured"}
-                  </option>
-                  {MONITOR_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.value === "none" ? "Add without monitoring" : option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    {
+                      value: "",
+                      label: configured ? "Use default monitoring" : "Lidarr is not configured",
+                    },
+                    ...MONITOR_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.value === "none" ? "Add without monitoring" : option.label,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
             <div>
               <label className="artist-field-label">Root folder</label>
               <div className="artist-modal-field">
-                <select
+                <Select
                   className="artist-modal-select"
+                  aria-label="Root folder"
                   value={rootFolderPath}
-                  onChange={(e) => setRootFolderPath(e.target.value)}
+                  onChange={setRootFolderPath}
                   disabled={!configured || confirming}
-                >
-                  <option value="">
-                    {configured ? "Use automatic default" : "Lidarr is not configured"}
-                  </option>
-                  {rootFolders.map((folder) => (
-                    <option key={folder.path} value={folder.path}>
-                      {folder.path}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    {
+                      value: "",
+                      label: configured ? "Use automatic default" : "Lidarr is not configured",
+                    },
+                    ...rootFolders.map((folder) => ({ value: folder.path, label: folder.path })),
+                  ]}
+                />
               </div>
             </div>
 
             <div>
               <label className="artist-field-label">Quality profile</label>
               <div className="artist-modal-field">
-                <select
+                <Select
                   className="artist-modal-select"
+                  aria-label="Quality profile"
                   value={qualityProfileId}
-                  onChange={(e) => setQualityProfileId(e.target.value)}
+                  onChange={setQualityProfileId}
                   disabled={!configured || confirming}
-                >
-                  <option value="">
-                    {configured ? "Use automatic default" : "Lidarr is not configured"}
-                  </option>
-                  {qualityProfiles.map((profile) => (
-                    <option key={profile.id} value={String(profile.id)}>
-                      {profile.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    {
+                      value: "",
+                      label: configured ? "Use automatic default" : "Lidarr is not configured",
+                    },
+                    ...qualityProfiles.map((profile) => ({
+                      value: String(profile.id),
+                      label: profile.name,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
             <div>
               <label className="artist-field-label">Tag</label>
               <div className="artist-modal-field">
-                <select
+                <Select
                   className="artist-modal-select"
+                  aria-label="Tag"
                   value={tagId}
-                  onChange={(e) => setTagId(e.target.value)}
+                  onChange={setTagId}
                   disabled={!configured || confirming}
-                >
-                  <option value="">
-                    {configured ? "Use saved global default" : "Lidarr is not configured"}
-                  </option>
-                  {tags.map((tag) => (
-                    <option key={tag.id} value={String(tag.id)}>
-                      {tag.label}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    {
+                      value: "",
+                      label: configured ? "Use saved global default" : "Lidarr is not configured",
+                    },
+                    ...tags.map((tag) => ({ value: String(tag.id), label: tag.label })),
+                  ]}
+                />
               </div>
             </div>
 

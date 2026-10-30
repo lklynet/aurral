@@ -2,7 +2,8 @@ import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { formatDateTime } from "../../../utils/dateTime.ts";
-import { SettingsInput, SettingsSelect } from "../components/SettingsField";
+import { SettingsInput } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
 import { SettingsLink } from "../settingsRoute";
 import type { SettingsState } from "../utils";
@@ -22,16 +23,16 @@ import { NewsDetail } from "./discovery/NewsDetail";
 type Integrations = SettingsState["integrations"];
 
 const AUTO_REFRESH_OPTIONS = [
-  [24, "Daily"],
-  [168, "Weekly"],
-  [720, "Monthly"],
-] as const;
+  { value: 24, label: "Daily" },
+  { value: 168, label: "Weekly" },
+  { value: 720, label: "Monthly" },
+];
 
 const MODE_OPTIONS = [
-  ["safer", "Safer"],
-  ["balanced", "Balanced"],
-  ["deeper", "Deeper"],
-] as const;
+  { value: "safer", label: "Safer" },
+  { value: "balanced", label: "Balanced" },
+  { value: "deeper", label: "Deeper" },
+];
 
 const clamp = (raw: string, min: number, max: number, fallback: number) => {
   const value = Number(raw);
@@ -165,36 +166,24 @@ function RecommendationsGroup() {
   return (
     <SettingsGroup title="Recommendations">
       <SettingsRow label="Refresh" htmlFor="discovery-refresh">
-        <SettingsSelect
+        <Select
           id="discovery-refresh"
-          value={String(lastfm.discoveryAutoRefreshHours || 168)}
-          onChange={(event) =>
-            update({ discoveryAutoRefreshHours: Number.parseInt(event.target.value, 10) })
-          }
-        >
-          {AUTO_REFRESH_OPTIONS.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </SettingsSelect>
+          value={lastfm.discoveryAutoRefreshHours || 168}
+          onChange={(discoveryAutoRefreshHours) => update({ discoveryAutoRefreshHours })}
+          options={AUTO_REFRESH_OPTIONS}
+        />
       </SettingsRow>
       <SettingsRow
         label="Mode"
         htmlFor="discovery-mode"
         help="Safer favors familiar artists. Balanced adds variety. Deeper explores further."
       >
-        <SettingsSelect
+        <Select
           id="discovery-mode"
           value={lastfm.discoveryMode || "balanced"}
-          onChange={(event) => update({ discoveryMode: event.target.value })}
-        >
-          {MODE_OPTIONS.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(discoveryMode) => update({ discoveryMode })}
+          options={MODE_OPTIONS}
+        />
       </SettingsRow>
       <SettingsRow label="Artists per refresh" htmlFor="discovery-count" help="50 to 500.">
         <SettingsInput

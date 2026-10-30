@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { SettingsSelect } from "./SettingsField";
+import { Select } from "../../../components/Select";
 import { DotLoader } from "../../../components/DotLoader";
 import { useToast } from "../../../contexts/ToastContext";
 import { userPlexLinkClient } from "../../../utils/api/clients/userPlexLink.ts";
@@ -189,20 +189,23 @@ export function AdminPlexLinkField({ user }: { user: SettingsUser }) {
         </SettingsActions>
       ) : (
         <SettingsRow label="Plex Home user" htmlFor={selectId}>
-          <SettingsSelect
+          <Select
             id={selectId}
             value={selectedPlexUserId}
-            onChange={(e) => setSelectedPlexUserId(e.target.value)}
-          >
-            <option value="">
-              {availableUsers.length ? "Select a Plex Home user…" : "No unlinked Plex Home users"}
-            </option>
-            {availableUsers.map((u) => (
-              <option key={u.id} value={String(u.id)}>
-                {u.title || u.username || u.id}
-              </option>
-            ))}
-          </SettingsSelect>
+            onChange={setSelectedPlexUserId}
+            options={[
+              {
+                value: "",
+                label: availableUsers.length
+                  ? "Select a Plex Home user…"
+                  : "No unlinked Plex Home users",
+              },
+              ...availableUsers.map((u) => ({
+                value: String(u.id),
+                label: String(u.title || u.username || u.id),
+              })),
+            ]}
+          />
           <button
             type="button"
             className="btn btn-primary btn-sm"

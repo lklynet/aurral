@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import type { MonitorRules as MonitoringRules } from "../../../backend/services/aurralMonitoring.ts";
 import PillToggle from "./PillToggle";
+import { Select } from "./Select";
 import {
   CATALOG_OPTIONS,
   EDITION_OPTIONS,
@@ -139,27 +140,20 @@ export function MonitoringRulesFields({
         </label>
         <div className="monitoring-rules__row">
           <div className="artist-modal-field monitoring-rules__select">
-            <select
+            <Select
               id={`${id}-catalog`}
               className="artist-modal-select"
               value={rules.catalog}
               disabled={disabled}
-              onChange={(event) =>
+              onChange={(catalog) =>
                 update({
-                  catalog: event.target.value as MonitoringRules["catalog"],
+                  catalog,
                   sinceYear:
-                    event.target.value === "since"
-                      ? rules.sinceYear || currentYear - 5
-                      : rules.sinceYear,
+                    catalog === "since" ? rules.sinceYear || currentYear - 5 : rules.sinceYear,
                 })
               }
-            >
-              {CATALOG_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              options={CATALOG_OPTIONS}
+            />
           </div>
           {rules.catalog === "since" ? (
             <NumberField
@@ -224,21 +218,14 @@ export function MonitoringRulesFields({
             Edition
           </label>
           <div className="artist-modal-field">
-            <select
+            <Select
               id={`${id}-edition`}
               className="artist-modal-select"
               value={rules.edition}
               disabled={disabled}
-              onChange={(event) =>
-                update({ edition: event.target.value as MonitoringRules["edition"] })
-              }
-            >
-              {EDITION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              onChange={(edition) => update({ edition })}
+              options={EDITION_OPTIONS}
+            />
           </div>
           <p className="monitoring-rules__hint">{EDITION_HINTS[rules.edition]}</p>
         </div>

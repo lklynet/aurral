@@ -8,7 +8,8 @@ import { queryKeys } from "../../../queryClient.ts";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { DotLoader } from "../../../components/DotLoader";
-import { SettingsInput, SettingsSelect } from "../components/SettingsField";
+import { SettingsInput } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
 import { useAccountSettingsContext } from "../SettingsProviders";
 import { SettingsLink } from "../settingsRoute";
@@ -327,22 +328,23 @@ function HistoryGroup() {
         htmlFor="listening-history-source"
         help="Used for your recommendations."
       >
-        <SettingsSelect
+        <Select
           id="listening-history-source"
           value={provider}
-          onChange={(event) => {
-            account.setListenHistoryProvider(event.target.value);
-            if (event.target.value === "local") {
+          onChange={(next) => {
+            account.setListenHistoryProvider(next);
+            if (next === "local") {
               account.setListenHistoryUsername("");
               account.setListenHistoryUrl("");
             }
           }}
-        >
-          <option value="local">Aurral plays only</option>
-          <option value="lastfm">Last.fm</option>
-          <option value="listenbrainz">ListenBrainz</option>
-          <option value="koito">Koito</option>
-        </SettingsSelect>
+          options={[
+            { value: "local", label: "Aurral plays only" },
+            { value: "lastfm", label: "Last.fm" },
+            { value: "listenbrainz", label: "ListenBrainz" },
+            { value: "koito", label: "Koito" },
+          ]}
+        />
       </SettingsRow>
       {provider === "koito" ? (
         <SettingsRow label="Koito URL" htmlFor="listening-history-url">

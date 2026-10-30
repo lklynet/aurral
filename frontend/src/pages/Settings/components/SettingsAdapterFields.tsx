@@ -1,7 +1,8 @@
 import { useState } from "react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import PillToggle from "../../../components/PillToggle";
-import { SettingsInput, SettingsSelect } from "./SettingsField";
+import { SettingsInput } from "./SettingsField";
+import { Select } from "../../../components/Select";
 import { SettingsGroup, SettingsRow } from "../SettingsLayout";
 
 type AdapterValue = string | number | boolean;
@@ -104,21 +105,14 @@ export function SettingsAdapterFields({
 
     if (field.type === "select") {
       return (
-        <SettingsSelect
+        <Select
           id={id}
-          required={field.required === true}
           value={String(value)}
-          onChange={(event) => updateValue(event.target.value)}
-        >
-          {(field.options || []).map((option) => {
-            const item = typeof option === "object" ? option : { value: option, label: option };
-            return (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            );
-          })}
-        </SettingsSelect>
+          onChange={updateValue}
+          options={(field.options || []).map((option) =>
+            typeof option === "object" ? option : { value: option, label: option },
+          )}
+        />
       );
     }
 

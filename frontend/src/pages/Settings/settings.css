@@ -338,10 +338,6 @@
   border-bottom-right-radius: inherit;
 }
 
-.settings-card :is(.input, .download-folder-field__input) {
-  background-color: var(--aurral-surface);
-}
-
 .settings-group__note {
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-sm);

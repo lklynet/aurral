@@ -3,7 +3,7 @@ import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
 export const MAX_LATEST_RELEASES = 10;
 export const MAX_TOP_TRACKS = 50;
 
-export const CATALOG_OPTIONS = [
+export const CATALOG_OPTIONS: { value: MonitoringRules["catalog"]; label: string }[] = [
   { value: "all", label: "Everything" },
   { value: "since", label: "Since a year" },
   { value: "latest", label: "Latest releases" },
@@ -26,7 +26,7 @@ export const EXTRA_TYPE_OPTIONS = [
   { value: "mixtape/street", label: "Mixtapes" },
 ];
 
-export const EDITION_OPTIONS = [
+export const EDITION_OPTIONS: { value: MonitoringRules["edition"]; label: string }[] = [
   { value: "standard", label: "Standard" },
   { value: "expanded", label: "Expanded" },
 ];

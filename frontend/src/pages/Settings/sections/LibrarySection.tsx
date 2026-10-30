@@ -16,7 +16,7 @@ import {
 } from "../../../hooks/useLibraryFileOperation.ts";
 import { libraryFilesClient } from "../../../utils/api/clients/libraryFiles.ts";
 import { RootOverlapWarning } from "../components/RootOverlapWarning";
-import { SettingsSelect } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
 import { useServerSettings } from "../SettingsProviders";
 import {
@@ -330,20 +330,16 @@ function ImportGroup({
             : MODE_HELP[mode]
         }
       >
-        <SettingsSelect
+        <Select
           id="library-ingest-mode"
           value={mode}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === "move" || next === "copy" || next === "hardlink") setMode(next);
-          }}
-        >
-          <option value="move">Move</option>
-          <option value="copy">Copy</option>
-          <option value="hardlink" disabled={hardlinkUnavailable}>
-            Hardlink
-          </option>
-        </SettingsSelect>
+          onChange={setMode}
+          options={[
+            { value: "move", label: "Move" },
+            { value: "copy", label: "Copy" },
+            { value: "hardlink", label: "Hardlink", disabled: hardlinkUnavailable },
+          ]}
+        />
       </SettingsRow>
       <SettingsRow
         label="Fill in missing tags"
@@ -358,18 +354,16 @@ function ImportGroup({
         />
       </SettingsRow>
       <SettingsRow label="Monitor" htmlFor="library-ingest-monitor" help={MONITOR_HELP[monitor]}>
-        <SettingsSelect
+        <Select
           id="library-ingest-monitor"
           value={monitor}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === "none" || next === "tracks" || next === "albums") setMonitor(next);
-          }}
-        >
-          <option value="none">None</option>
-          <option value="tracks">Tracks</option>
-          <option value="albums">Albums</option>
-        </SettingsSelect>
+          onChange={setMonitor}
+          options={[
+            { value: "none", label: "None" },
+            { value: "tracks", label: "Tracks" },
+            { value: "albums", label: "Albums" },
+          ]}
+        />
       </SettingsRow>
       {result?.readOnlyFolder ? (
         <SettingsNote tone="warning">

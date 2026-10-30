@@ -19,7 +19,8 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { GripVertical } from "../../../../components/icons";
 import PillToggle from "../../../../components/PillToggle";
 import TooltipButton from "../../../../components/TooltipButton";
-import { SettingsInput, SettingsSelect } from "../../components/SettingsField";
+import { SettingsInput } from "../../components/SettingsField";
+import { Select } from "../../../../components/Select";
 import { useServerSettings } from "../../SettingsProviders";
 import { SettingsGroup, SettingsPage, SettingsRow, type ServiceStatus } from "../../SettingsLayout";
 import type { QualityProfile } from "../../../../../../backend/db/helpers/settings.ts";
@@ -161,20 +162,17 @@ export function QualityProfileDetail() {
           </SortableContext>
         </DndContext>
         <SettingsRow label="Cutoff" htmlFor="quality-cutoff">
-          <SettingsSelect
+          <Select
             id="quality-cutoff"
             value={profile.cutoff ?? ""}
-            onChange={(event) => update({ cutoff: event.target.value })}
-          >
-            {profile.cutoff === undefined ? <option value="">Not set</option> : null}
-            {order
-              .filter((id) => enabled.has(id))
-              .map((id) => (
-                <option key={id} value={id}>
-                  {tierLabel(id)}
-                </option>
-              ))}
-          </SettingsSelect>
+            onChange={(cutoff) => update({ cutoff })}
+            options={[
+              ...(profile.cutoff === undefined ? [{ value: "", label: "Not set" }] : []),
+              ...order
+                .filter((id) => enabled.has(id))
+                .map((id) => ({ value: id, label: tierLabel(id) })),
+            ]}
+          />
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup title="Upgrades">

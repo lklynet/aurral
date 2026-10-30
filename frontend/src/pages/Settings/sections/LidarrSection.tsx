@@ -5,7 +5,8 @@ import { DotLoader } from "../../../components/DotLoader";
 import { lidarrCredentialParams } from "../../../utils/api/core.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { RootOverlapWarning } from "../components/RootOverlapWarning";
-import { SettingsInput, SettingsSelect } from "../components/SettingsField";
+import { SettingsInput } from "../components/SettingsField";
+import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
 import { SettingsLink } from "../settingsRoute";
 import { readApiError } from "../utils/apiError.ts";
@@ -23,16 +24,14 @@ type LidarrPatch = Partial<SettingsState["integrations"]["lidarr"]>;
 type TestStatus = { tone: "success" | "error"; message: string };
 
 const MONITOR_OPTIONS = [
-  ["none", "None (artist only)"],
-  ["existing", "Existing albums"],
-  ["all", "All albums"],
-  ["future", "Future albums"],
-  ["missing", "Missing albums"],
-  ["latest", "Latest album"],
-  ["first", "First album"],
-] as const;
-
-const parseId = (value: string) => (value ? Number.parseInt(value, 10) : null);
+  { value: "none", label: "None (artist only)" },
+  { value: "existing", label: "Existing albums" },
+  { value: "all", label: "All albums" },
+  { value: "future", label: "Future albums" },
+  { value: "missing", label: "Missing albums" },
+  { value: "latest", label: "Latest album" },
+  { value: "first", label: "First album" },
+];
 
 function useLidarr() {
   const { settings, updateSettings } = useServerSettings();
@@ -210,91 +209,80 @@ function DefaultsGroup() {
     >
       <RootOverlapWarning rootWarnings={settings.rootWarnings} />
       <SettingsRow label="Root folder" htmlFor="lidarr-root-folder">
-        <SettingsSelect
+        <Select
           id="lidarr-root-folder"
           value={lidarr.rootFolderPath || ""}
           disabled={loadingLidarrRootFolders}
-          onChange={(event) => update({ rootFolderPath: event.target.value || null })}
-        >
-          <option value="">
-            {placeholder(
-              loadingLidarrRootFolders,
-              lidarrRootFolders.length,
-              "Select a root folder",
-            )}
-          </option>
-          {lidarrRootFolders.map((folder) => (
-            <option key={folder.path} value={folder.path}>
-              {folder.path}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(path) => update({ rootFolderPath: path || null })}
+          options={[
+            {
+              value: "",
+              label: placeholder(
+                loadingLidarrRootFolders,
+                lidarrRootFolders.length,
+                "Select a root folder",
+              ),
+            },
+            ...lidarrRootFolders.map((folder) => ({ value: folder.path, label: folder.path })),
+          ]}
+        />
       </SettingsRow>
       <SettingsRow label="Quality profile" htmlFor="lidarr-quality-profile">
-        <SettingsSelect
+        <Select
           id="lidarr-quality-profile"
-          value={lidarr.qualityProfileId ? String(lidarr.qualityProfileId) : ""}
+          value={lidarr.qualityProfileId ?? 0}
           disabled={loadingLidarrProfiles}
-          onChange={(event) => update({ qualityProfileId: parseId(event.target.value) })}
-        >
-          <option value="">
-            {placeholder(loadingLidarrProfiles, lidarrProfiles.length, "Select a profile")}
-          </option>
-          {lidarrProfiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(id) => update({ qualityProfileId: id || null })}
+          options={[
+            {
+              value: 0,
+              label: placeholder(loadingLidarrProfiles, lidarrProfiles.length, "Select a profile"),
+            },
+            ...lidarrProfiles.map((profile) => ({ value: profile.id, label: profile.name })),
+          ]}
+        />
       </SettingsRow>
       <SettingsRow label="Metadata profile" htmlFor="lidarr-metadata-profile">
-        <SettingsSelect
+        <Select
           id="lidarr-metadata-profile"
-          value={lidarr.metadataProfileId ? String(lidarr.metadataProfileId) : ""}
+          value={lidarr.metadataProfileId ?? 0}
           disabled={loadingLidarrMetadataProfiles}
-          onChange={(event) => update({ metadataProfileId: parseId(event.target.value) })}
-        >
-          <option value="">
-            {placeholder(
-              loadingLidarrMetadataProfiles,
-              lidarrMetadataProfiles.length,
-              "Select a profile",
-            )}
-          </option>
-          {lidarrMetadataProfiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(id) => update({ metadataProfileId: id || null })}
+          options={[
+            {
+              value: 0,
+              label: placeholder(
+                loadingLidarrMetadataProfiles,
+                lidarrMetadataProfiles.length,
+                "Select a profile",
+              ),
+            },
+            ...lidarrMetadataProfiles.map((profile) => ({
+              value: profile.id,
+              label: profile.name,
+            })),
+          ]}
+        />
       </SettingsRow>
       <SettingsRow label="Tag" htmlFor="lidarr-tag">
-        <SettingsSelect
+        <Select
           id="lidarr-tag"
-          value={lidarr.tagId ? String(lidarr.tagId) : ""}
+          value={lidarr.tagId ?? 0}
           disabled={loadingLidarrTags}
-          onChange={(event) => update({ tagId: parseId(event.target.value) })}
-        >
-          <option value="">{loadingLidarrTags ? "Loading…" : "None"}</option>
-          {lidarrTags.map((tag) => (
-            <option key={tag.id} value={tag.id}>
-              {tag.label}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(id) => update({ tagId: id || null })}
+          options={[
+            { value: 0, label: loadingLidarrTags ? "Loading…" : "None" },
+            ...lidarrTags.map((tag) => ({ value: tag.id, label: tag.label ?? "" })),
+          ]}
+        />
       </SettingsRow>
       <SettingsRow label="Monitor" htmlFor="lidarr-monitor-option">
-        <SettingsSelect
+        <Select
           id="lidarr-monitor-option"
           value={lidarr.defaultMonitorOption || "none"}
-          onChange={(event) => update({ defaultMonitorOption: event.target.value })}
-        >
-          {MONITOR_OPTIONS.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </SettingsSelect>
+          onChange={(defaultMonitorOption) => update({ defaultMonitorOption })}
+          options={MONITOR_OPTIONS}
+        />
       </SettingsRow>
       <SettingsRow
         label="Search on add"

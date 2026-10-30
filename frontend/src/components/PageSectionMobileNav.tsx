@@ -1,5 +1,5 @@
-import type { ChangeEvent } from "react";
 import { useNavigate } from "react-router";
+import { Select } from "./Select";
 
 interface PageSectionMobileNavProps {
   basePath?: string;
@@ -25,24 +25,15 @@ export function PageSectionMobileNav({
       <label htmlFor={selectId} className="page-section-mobile-nav__label">
         {label}
       </label>
-      <select
+      <Select
         className="artist-modal-select"
         id={selectId}
         value={activeId}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-          navigate(
-            getSectionPath
-              ? getSectionPath(event.target.value)
-              : `${basePath}/${event.target.value}`,
-          )
+        onChange={(sectionId) =>
+          navigate(getSectionPath ? getSectionPath(sectionId) : `${basePath}/${sectionId}`)
         }
-      >
-        {sections.map((section) => (
-          <option key={section.id} value={section.id}>
-            {section.label}
-          </option>
-        ))}
-      </select>
+        options={sections.map((section) => ({ value: section.id, label: section.label }))}
+      />
     </div>
   );
 }

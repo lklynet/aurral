@@ -7,6 +7,7 @@ import { queryKeys } from "../queryClient";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { shareLinksClient } from "../utils/api/clients/shareLinks.ts";
 import { getApiErrorText } from "../pages/onboardingUtils";
+import { Select } from "./Select";
 import { shareLink, type ShareItem, type ShareKind } from "../utils/shareLink";
 import { formatDateTime } from "../utils/dateTime.ts";
 import { DotLoader } from "./DotLoader";
@@ -324,19 +325,14 @@ export function ShareModal({
                   Expires
                 </label>
                 <div className="artist-modal-field share-modal__select">
-                  <select
+                  <Select
                     id={ids.expires}
                     className="artist-modal-select"
                     value={expiresIn}
                     disabled={busy}
-                    onChange={(event) => setExpiresIn(event.target.value)}
-                  >
-                    {EXPIRY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setExpiresIn}
+                    options={EXPIRY_OPTIONS}
+                  />
                 </div>
               </div>
             </>

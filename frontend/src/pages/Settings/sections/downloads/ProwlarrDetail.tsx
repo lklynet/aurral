@@ -5,7 +5,8 @@ import { downloadClientSettingsClient } from "../../../../utils/api/clients/down
 import { queryClient, queryKeys } from "../../../../queryClient.ts";
 import { DotLoader } from "../../../../components/DotLoader";
 import PillToggle from "../../../../components/PillToggle";
-import { SettingsInput, SettingsSelect } from "../../components/SettingsField";
+import { SettingsInput } from "../../components/SettingsField";
+import { Select } from "../../../../components/Select";
 import { readApiError } from "../../utils/apiError.ts";
 import { providerStatus } from "../../utils/serviceStatus";
 import { useServerSettings } from "../../SettingsProviders";
@@ -271,27 +272,18 @@ export function ProwlarrDetail() {
                         />
                       </td>
                       <td>
-                        <SettingsSelect
+                        <Select
                           aria-label={`${indexer.name} download client`}
                           value={state.downloadClient ?? ""}
-                          onChange={(event) => {
-                            const client = DOWNLOAD_CLIENT_OPTIONS.find(
-                              (option) => option.value === event.target.value,
-                            );
+                          onChange={(downloadClient) =>
                             updateIndexer(indexer.id, {
                               enabled: state.enabled,
                               priority: state.priority,
-                              ...(client ? { downloadClient: client.value } : {}),
-                            });
-                          }}
-                        >
-                          <option value="">Automatic</option>
-                          {DOWNLOAD_CLIENT_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </SettingsSelect>
+                              ...(downloadClient ? { downloadClient } : {}),
+                            })
+                          }
+                          options={[{ value: "", label: "Automatic" }, ...DOWNLOAD_CLIENT_OPTIONS]}
+                        />
                       </td>
                       <td className="settings-table__actions">
                         <PillToggle

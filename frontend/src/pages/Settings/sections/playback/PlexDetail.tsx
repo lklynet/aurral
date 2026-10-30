@@ -5,7 +5,7 @@ import { DotLoader } from "../../../../components/DotLoader";
 import DownloadFolderField from "../../../../components/DownloadFolderField";
 import { playbackSettingsClient } from "../../../../utils/api/clients/playbackSettings.ts";
 import { SettingsAdapterFields } from "../../components/SettingsAdapterFields";
-import { SettingsSelect } from "../../components/SettingsField";
+import { Select } from "../../../../components/Select";
 import { readApiError } from "../../utils/apiError.ts";
 import { pickBestPlexConnection, resolvePlexConnectionUrl } from "../../utils/plexConnections";
 import { useServerSettings } from "../../SettingsProviders";
@@ -235,25 +235,32 @@ export function PlexDetail() {
       <SettingsGroup title="Connection">
         {plex.token ? (
           <SettingsRow label="Server" htmlFor="plex-server">
-            <SettingsSelect
+            <Select
               id="plex-server"
               value={plex.machineIdentifier || ""}
-              onChange={(event) => selectServer(event.target.value)}
-            >
-              <option value="" disabled>
-                {servers.isFetching
-                  ? "Loading servers…"
-                  : serverList.length
-                    ? "Select a server"
-                    : "No servers found"}
-              </option>
-              {serverList.map((server) => (
-                <option key={server.clientIdentifier} value={server.clientIdentifier}>
-                  {server.name}
-                  {server.owned ? "" : " (shared)"}
-                </option>
-              ))}
-            </SettingsSelect>
+              onChange={selectServer}
+              options={[
+                {
+                  value: "",
+                  disabled: true,
+                  label: servers.isFetching
+                    ? "Loading servers…"
+                    : serverList.length
+                      ? "Select a server"
+                      : "No servers found",
+                },
+                ...serverList.flatMap((server) =>
+                  server.clientIdentifier
+                    ? [
+                        {
+                          value: server.clientIdentifier,
+                          label: `${server.name}${server.owned ? "" : " (shared)"}`,
+                        },
+                      ]
+                    : [],
+                ),
+              ]}
+            />
           </SettingsRow>
         ) : null}
         <SettingsAdapterFields
@@ -293,19 +300,18 @@ export function PlexDetail() {
           htmlFor="plex-main-library"
           help="Include tracks from an existing Plex library."
         >
-          <SettingsSelect
+          <Select
             id="plex-main-library"
             value={sectionId}
-            onChange={(event) => updatePlex({ mainLibrarySectionId: event.target.value })}
+            onChange={(mainLibrarySectionId) => updatePlex({ mainLibrarySectionId })}
             disabled={!configured}
-          >
-            <option value="">None</option>
-            {(libraries.data ?? []).map((library) => (
-              <option key={library.key} value={library.key}>
-                {library.title}
-              </option>
-            ))}
-          </SettingsSelect>
+            options={[
+              { value: "", label: "None" },
+              ...(libraries.data ?? []).flatMap((library) =>
+                library.key ? [{ value: library.key, label: library.title }] : [],
+              ),
+            ]}
+          />
         </SettingsRow>
         {checkingAccess ? (
           <p className="settings-loading">

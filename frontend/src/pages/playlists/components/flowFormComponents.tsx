@@ -8,6 +8,7 @@ import {
   SCHEDULE_HOUR_OPTIONS,
 } from "./MixSlider.tsx";
 import Tooltip from "../../../components/Tooltip";
+import { Select } from "../../../components/Select";
 import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
 
 type FlowDraftUpdater = (updater: (prev: FlowDraft) => FlowDraft) => void;
@@ -75,22 +76,15 @@ export function FlowScheduleFields({
         <div className="flow-page__field">
           <label className="flow-page__field-label">Update hour</label>
           <div className="flow-page__field-round flow-page__field-round--select">
-            <select
+            <Select
               className={`${inputClassName} flow-page__field-select`}
+              aria-label="Update hour"
               value={scheduleTime}
-              onChange={(event) =>
-                updateDraft((prev) => ({
-                  ...prev,
-                  scheduleTime: event.target.value || "00:00",
-                }))
+              onChange={(time) =>
+                updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))
               }
-            >
-              {SCHEDULE_HOUR_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              options={SCHEDULE_HOUR_OPTIONS}
+            />
           </div>
         </div>
         <div className="flow-page__field flow-page__field--schedule-days">
