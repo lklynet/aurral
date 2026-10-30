@@ -132,12 +132,11 @@ test("hiding the banner sticks to the account and resets for the next year's Wra
 });
 
 test("a recap built on another release channel is rebuilt with this channel's cutoff", async () => {
-  db.prepare(
-    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', ?, 0)",
-  ).run(
-    one.id,
+  listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
+  await reports.processWrappedBuild(one.id, "UTC");
+  db.prepare("UPDATE wrapped_reports SET cutoff = ? WHERE user_id = ?").run(
     Date.parse("2026-10-27T00:00:00Z"),
-    JSON.stringify({ version: 4, topSongs: [], topArtists: [], topAlbums: [] }),
+    one.id,
   );
   const response = await signedInAs(one).route("/", wrapped).request("/wrapped?timeZone=UTC");
   const body = await response.json();
@@ -156,6 +155,20 @@ test("a recap saved by an older build is rebuilt instead of shown", async () => 
   assert.equal(body.building, true);
 });
 
+test("a damaged recap is rebuilt instead of shown or saved as a playlist", async () => {
+  listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
+  await reports.processWrappedBuild(one.id, "UTC");
+  db.prepare(
+    "UPDATE wrapped_reports SET summary = json_set(summary, '$.topSongs[0].libraryTrackId', json('{}')) WHERE user_id = ?",
+  ).run(one.id);
+  const app = signedInAs(one).route("/", wrapped);
+  const body = await (await app.request("/wrapped?timeZone=UTC")).json();
+  assert.equal(body.summary, null);
+  assert.equal(body.building, true);
+  const playlist = await app.request("/wrapped/playlist", json({ timeZone: "UTC" }));
+  assert.match((await playlist.json()).error, /Build your recap first/);
+});
+
 test("a saved recap serves cached covers from Aurral and keeps the link for one that is not cached", async () => {
   const png = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -169,18 +182,11 @@ test("a saved recap serves cached covers from Aurral and keeps the link for one 
   const { warmImageProxy } = await import("../../backend/services/imageProxyService.ts");
   const cached = await warmImageProxy("https://covers.example/cached.png");
   fetch.mockRejectedValue(new Error("offline"));
+  listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
+  await reports.processWrappedBuild(one.id, "UTC");
   db.prepare(
-    "INSERT INTO wrapped_reports (user_id, year, cutoff, time_zone, summary, built_at) VALUES (?, 2026, ?, 'UTC', ?, 0)",
-  ).run(
-    one.id,
-    Date.parse("2026-12-01T00:00:00Z"),
-    JSON.stringify({
-      version: 4,
-      topSongs: [{ name: "Song", artwork: "https://covers.example/cached.png" }],
-      topArtists: [{ name: "Artist", artwork: "https://covers.example/missing.png" }],
-      topAlbums: [],
-    }),
-  );
+    "UPDATE wrapped_reports SET summary = json_set(summary, '$.topSongs[0].artwork', ?, '$.topArtists[0].artwork', ?) WHERE user_id = ?",
+  ).run("https://covers.example/cached.png", "https://covers.example/missing.png", one.id);
   const body = await (
     await signedInAs(one).route("/", wrapped).request("/wrapped?timeZone=UTC")
   ).json();

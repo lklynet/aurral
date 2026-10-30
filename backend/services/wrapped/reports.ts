@@ -11,7 +11,6 @@ import { subsonicId } from "../libraryMediaStore.ts";
 import { createSubsonicPlaylist } from "../subsonicLibraryService.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 import { wrappedPeriod } from "./metrics.ts";
-import type { buildWrappedSummary } from "./history.ts";
 
 const BUILD_KIND = "wrapped-build";
 
@@ -40,16 +39,53 @@ const setBannerHidden = db.prepare<[number, number]>(
 
 const SUMMARY_VERSION = 4;
 
-const artworkRows = v.array(v.looseObject({ artwork: v.nullable(v.string()) }));
-const currentSummary = v.looseObject({
-  version: v.literal(SUMMARY_VERSION),
-  topSongs: artworkRows,
-  topArtists: artworkRows,
-  topAlbums: artworkRows,
-});
-const storedSummarySchema = v.custom<Awaited<ReturnType<typeof buildWrappedSummary>>>((input) =>
-  v.is(currentSummary, input),
+const leader = v.nullable(
+  v.looseObject({ name: v.string(), artist: v.string(), plays: v.number() }),
 );
+const rankedRow = {
+  key: v.string(),
+  name: v.string(),
+  artist: v.string(),
+  album: v.nullable(v.string()),
+  plays: v.number(),
+  minutes: v.number(),
+  firstPlayedAt: v.number(),
+  artwork: v.nullable(v.string()),
+  color: v.nullable(v.string()),
+  preview: v.nullable(v.string()),
+  beats: v.nullable(
+    v.looseObject({
+      start: v.number(),
+      bpm: v.number(),
+      beats: v.array(v.number()),
+      downbeat: v.number(),
+    }),
+  ),
+  libraryTrackId: v.nullable(v.number()),
+};
+const storedSummarySchema = v.looseObject({
+  version: v.literal(SUMMARY_VERSION),
+  year: v.number(),
+  timeZone: v.string(),
+  totalPlays: v.number(),
+  minutes: v.nullable(v.number()),
+  uniqueArtists: v.number(),
+  uniqueSongs: v.number(),
+  uniqueAlbums: v.number(),
+  activeDays: v.number(),
+  longestStreak: v.nullable(
+    v.looseObject({ days: v.number(), start: v.string(), end: v.string() }),
+  ),
+  topArtists: v.array(v.looseObject(rankedRow)),
+  topSongs: v.array(v.looseObject(rankedRow)),
+  topAlbums: v.array(v.looseObject({ ...rankedRow, songs: v.number() })),
+  topGenres: v.array(v.looseObject({ name: v.string(), plays: v.number() })),
+  busiestDay: v.nullable(v.looseObject({ date: v.string(), plays: v.number(), topSong: leader })),
+  months: v.array(v.looseObject({ month: v.string(), plays: v.number(), topArtist: leader })),
+  hours: v.array(v.number()),
+  calendar: v.array(v.number()),
+  sources: v.array(v.looseObject({ state: v.picklist(["ready", "partial", "unavailable"]) })),
+});
 
 export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
 
@@ -126,7 +162,7 @@ export async function processWrappedBuild(userId: number, timeZone: string) {
     summary = JSON.stringify({
       ...(await buildWrappedSummary(userId, wrappedPeriod(season.year, timeZone, season.cutoff))),
       version: SUMMARY_VERSION,
-    });
+    } satisfies v.InferInput<typeof storedSummarySchema>);
   } catch (cause) {
     logger.warn("wrapped", "Recap build failed", { userId, cause: String(cause) });
     error = "Your listening history could not be collected. Check your connections and try again.";
