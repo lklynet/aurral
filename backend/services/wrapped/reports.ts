@@ -62,6 +62,7 @@ const rankedRow = {
     }),
   ),
   libraryTrackId: v.nullable(v.number()),
+  libraryAlbumId: v.nullable(v.number()),
 };
 const storedSummarySchema = v.looseObject({
   version: v.literal(SUMMARY_VERSION),

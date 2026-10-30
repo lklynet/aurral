@@ -155,19 +155,22 @@ test("a recap saved by an older build is rebuilt instead of shown", async () => 
   assert.equal(body.building, true);
 });
 
-test("a damaged recap is rebuilt instead of shown or saved as a playlist", async () => {
-  listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
-  await reports.processWrappedBuild(one.id, "UTC");
-  db.prepare(
-    "UPDATE wrapped_reports SET summary = json_set(summary, '$.topSongs[0].libraryTrackId', json('{}')) WHERE user_id = ?",
-  ).run(one.id);
-  const app = signedInAs(one).route("/", wrapped);
-  const body = await (await app.request("/wrapped?timeZone=UTC")).json();
-  assert.equal(body.summary, null);
-  assert.equal(body.building, true);
-  const playlist = await app.request("/wrapped/playlist", json({ timeZone: "UTC" }));
-  assert.match((await playlist.json()).error, /Build your recap first/);
-});
+test.each(["libraryTrackId", "libraryAlbumId"])(
+  "a recap with a damaged %s is rebuilt instead of shown or saved as a playlist",
+  async (field) => {
+    listen(one.id, Date.parse("2026-06-01T12:00:00Z"));
+    await reports.processWrappedBuild(one.id, "UTC");
+    db.prepare(
+      "UPDATE wrapped_reports SET summary = json_set(summary, ?, json('{}')) WHERE user_id = ?",
+    ).run(`$.topSongs[0].${field}`, one.id);
+    const app = signedInAs(one).route("/", wrapped);
+    const body = await (await app.request("/wrapped?timeZone=UTC")).json();
+    assert.equal(body.summary, null);
+    assert.equal(body.building, true);
+    const playlist = await app.request("/wrapped/playlist", json({ timeZone: "UTC" }));
+    assert.match((await playlist.json()).error, /Build your recap first/);
+  },
+);
 
 test("a saved recap serves cached covers from Aurral and keeps the link for one that is not cached", async () => {
   const png = Buffer.from(
