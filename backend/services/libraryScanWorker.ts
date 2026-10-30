@@ -1,4 +1,5 @@
 import path from "node:path";
+import * as v from "valibot";
 import type { JsonValue } from "@russellthehippo/honker-node";
 import { asAppError } from "../../lib/errors.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
@@ -95,15 +96,18 @@ function normalizeChangedPaths(paths: unknown) {
   return normalized.length > MAX_CHANGED_PATHS ? null : normalized;
 }
 
+const libraryScanSchema = v.looseObject({
+  force: v.optional(v.boolean()),
+  includeLidarr: v.optional(v.boolean()),
+  changedPaths: v.nullish(v.array(v.string())),
+});
+
 function readScanRequest(payload: unknown) {
-  if (typeof payload !== "object" || payload === null) {
-    return { includeLidarr: false, force: false, changedPaths: undefined };
-  }
-  const changedPaths: unknown = Reflect.get(payload, "changedPaths");
+  const request = v.is(libraryScanSchema, payload) ? payload : {};
   return {
-    includeLidarr: Reflect.get(payload, "includeLidarr") === true,
-    force: Reflect.get(payload, "force") === true,
-    changedPaths: Array.isArray(changedPaths) ? changedPaths : undefined,
+    includeLidarr: request.includeLidarr === true,
+    force: request.force === true,
+    changedPaths: request.changedPaths ?? undefined,
   };
 }
 
@@ -435,6 +439,7 @@ const {
   isRunning: isLibraryScanWorkerRunning,
 } = createHonkerWorker({
   name: WORKER_NAME,
+  schema: libraryScanSchema,
   getQueue: getLibraryScanQueue,
   idlePollS: 10,
   retryDelayS: 60,

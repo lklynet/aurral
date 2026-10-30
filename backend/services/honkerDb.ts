@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import honker from "@russellthehippo/honker-node";
+import * as v from "valibot";
 import type {
   Database,
   JsonValue,
@@ -14,6 +15,7 @@ import type { HonkerLiveRow } from "../db/rows.ts";
 import { resolveAurralDbPath } from "../config/data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import { logger } from "./logger.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
@@ -529,12 +531,19 @@ export function getPlayEventOutbox() {
     playEventOutbox = getHonkerDb().outbox(
       "play-events",
       async (payload, job) => {
-        const { deliverPlayEvent } = await import("./playEventService.ts");
+        const { deliverPlayEvent, playEventDeliverySchema } = await import("./playEventService.ts");
+        const delivery = v.safeParse(playEventDeliverySchema, payload);
+        if (!delivery.success) {
+          logger.error("jobs", "Job payload unreadable", {
+            queue: "_outbox:play-events",
+            jobId: job.id,
+            reason: v.summarize(delivery.issues),
+          });
+          return;
+        }
         const { withJobHeartbeat } = await import("./honkerWorkerRuntime.ts");
         const outbox = getPlayEventOutbox();
-        await withJobHeartbeat(job, outbox.queue, () =>
-          deliverPlayEvent(payload as Parameters<typeof deliverPlayEvent>[0]),
-        );
+        await withJobHeartbeat(job, outbox.queue, () => deliverPlayEvent(delivery.output));
       },
       { visibilityTimeoutS: 120, maxAttempts: 5, baseBackoffS: 30 },
     );

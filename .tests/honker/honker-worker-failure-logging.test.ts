@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
@@ -50,6 +51,7 @@ test("background workers log retrying and final failures without exposing the jo
     };
     const worker = createHonkerWorker({
       name: "failure-logging-test",
+      schema: v.looseObject({ kind: v.string() }),
       getQueue: () => queue,
       processJob: () => {
         throw new Error("source unavailable");
@@ -72,6 +74,66 @@ test("background workers log retrying and final failures without exposing the jo
     assert.doesNotMatch(JSON.stringify(events), /do-not-log/);
   } finally {
     logger.warn = originalWarn;
+    logger.error = originalError;
+  }
+});
+
+test("background workers fail a job they can't read without running or retrying it", async () => {
+  const events: [string, string][] = [];
+  const originalError = logger.error;
+  logger.error = (category, message) => events.push([category, message]);
+  try {
+    const outcomes: string[] = [];
+    const job = {
+      id: 1,
+      attempts: 1,
+      queue: "unreadable-payload-test",
+      workerId: "test-worker",
+      claimExpiresAt: null,
+      payload: { kind: 42 },
+      ack() {
+        outcomes.push("ack");
+        return true;
+      },
+      heartbeat() {
+        return true;
+      },
+      retry() {
+        outcomes.push("retry");
+        return true;
+      },
+      fail(message?: string) {
+        outcomes.push(`fail: ${message}`);
+        return true;
+      },
+    };
+    const queue = {
+      name: "unreadable-payload-test",
+      maxAttempts: 3,
+      visibilityTimeoutS: 30,
+      getJob: () => ({ max_attempts: 3 }),
+      async *claim() {
+        yield job;
+      },
+    };
+    const worker = createHonkerWorker({
+      name: "unreadable-payload-test",
+      schema: v.looseObject({ kind: v.string() }),
+      getQueue: () => queue,
+      processJob: () => {
+        outcomes.push("processed");
+      },
+      onFinalFailure: () => {
+        outcomes.push("final failure");
+      },
+      shouldRestart: () => false,
+    });
+    await worker.start();
+
+    assert.equal(outcomes.length, 1);
+    assert.match(outcomes[0], /^fail: Aurral can't read this job: /);
+    assert.deepEqual(events, [["jobs", "Job payload unreadable"]]);
+  } finally {
     logger.error = originalError;
   }
 });

@@ -216,8 +216,7 @@ export async function runLibraryFileOperation(
   }
 }
 
-export async function processLibraryFileJob(payload: { operationId?: unknown } = {}) {
-  const operationId = Number(payload.operationId);
+export async function processLibraryFileJob(operationId: number) {
   const { done } = await runLibraryFileOperation(operationId);
   if (!done) await enqueue(operationId, { dedupe: false });
 }

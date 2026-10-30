@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import assert from "node:assert/strict";
 import { onTestFinished, test, vi } from "vite-plus/test";
 
@@ -49,6 +50,7 @@ test("Honker shutdown waits for in-flight worker work before closing infrastruct
 
   const worker = createHonkerWorker({
     name: "shutdown-regression-test",
+    schema: v.unknown(),
     getQueue: () => queue,
     processJob: async () => {
       workStarted.resolve();

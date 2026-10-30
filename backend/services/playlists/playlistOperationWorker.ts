@@ -1,12 +1,13 @@
-import type { Job, JsonValue } from "@russellthehippo/honker-node";
+import type { Job } from "@russellthehippo/honker-node";
 import createHonkerWorker from "../honkerWorkerFactory.ts";
 import { getPlaylistOperationQueue } from "../honkerDb.ts";
-import type { HonkerPayload } from "../honkerDb.ts";
-import { processPlaylistOperation } from "./playlistOperations.ts";
+import { playlistOperationSchema, processPlaylistOperation } from "./playlistOperations.ts";
 import { setPlaylistOperationWorkerState } from "./playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
+
+type PlaylistOperation = Record<string, unknown>;
 
 const PERMANENT_ERROR_CODES = new Set([
   "STATIC_PLAYLIST_NAME_CONFLICT",
@@ -14,23 +15,21 @@ const PERMANENT_ERROR_CODES = new Set([
   "NO_DOWNLOAD_SOURCE",
 ]);
 
-let currentLabel: JsonValue = null;
+let currentLabel: string | null = null;
 
-const isPlaylistImport = (payload: HonkerPayload) =>
-  payload?.kind === "shared-playlist-create" && payload?.importSource != null;
+const isPlaylistImport = (payload: PlaylistOperation) =>
+  payload.kind === "shared-playlist-create" && payload.importSource != null;
 
-const importProvider = (payload: HonkerPayload) => {
-  const importSource = payload?.importSource;
-  if (typeof importSource !== "object" || importSource === null || Array.isArray(importSource))
-    return null;
-  return importSource.provider || null;
-};
+const importProvider = ({ importSource }: PlaylistOperation) =>
+  typeof importSource === "object" && importSource !== null && "provider" in importSource
+    ? importSource.provider || null
+    : null;
 
-const importContext = (payload: HonkerPayload, job: Job) => ({
+const importContext = (payload: PlaylistOperation, job: Job) => ({
   provider: importProvider(payload),
-  playlistName: payload?.name || null,
-  playlistId: payload?.playlistId || null,
-  operationId: job?.id || null,
+  playlistName: payload.name || null,
+  playlistId: payload.playlistId || null,
+  operationId: job.id,
 });
 
 function syncWorkerState() {
@@ -41,8 +40,9 @@ function syncWorkerState() {
 
 const worker = createHonkerWorker({
   name: "weekly-flow-operation",
+  schema: playlistOperationSchema,
   getQueue: getPlaylistOperationQueue,
-  async processJob(payload: HonkerPayload, job) {
+  async processJob(payload, job) {
     if (payload.kind !== "shared-playlist-bulk") return processPlaylistOperation(payload);
     const record = getBulkOperation(job.id);
     if (!record || ["completed", "failed"].includes(record.state)) return;
@@ -55,7 +55,8 @@ const worker = createHonkerWorker({
   retryDelayS: 60,
   shouldLogFailure: (job) => !isPlaylistImport(job.payload),
   onJobDequeue(payload, job) {
-    currentLabel = payload?.label || payload?.kind || null;
+    currentLabel =
+      typeof payload.label === "string" && payload.label ? payload.label : payload.kind;
     syncWorkerState();
     if (isPlaylistImport(payload)) {
       logger.info("playlist-import", "Playlist import job started", {

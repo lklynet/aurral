@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { test, beforeEach, afterAll, afterEach, vi, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { playlistTrack } from "../playlists/fixtures.ts";
@@ -39,7 +40,7 @@ const [
 );
 
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
-const { processPlaylistOperation } = operationsModule;
+const { processPlaylistOperation, playlistOperationSchema } = operationsModule;
 const { playlistOperationQueue } = operationQueueModule;
 const downloadWorker = localDownloadWorker(workerModule.downloadWorker);
 const { downloadTracker } = trackerModule;
@@ -162,7 +163,7 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
   assert.equal(payloads.length, 1);
-  await processPlaylistOperation(payloads[0]);
+  await processPlaylistOperation(v.parse(playlistOperationSchema, payloads[0]));
 
   const playlist = flowPlaylistConfig.getStaticPlaylist(added.playlistId);
   assert.ok(playlist != null);
@@ -264,7 +265,7 @@ test("a Deezer playlist whose name is taken gets a distinct library name", async
   flowPlaylistConfig.createStaticPlaylist({ name: "rock essentials", ownerUserId: 7 });
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
-  await processPlaylistOperation(payloads[0]);
+  await processPlaylistOperation(v.parse(playlistOperationSchema, payloads[0]));
 
   assert.equal(
     flowPlaylistConfig.getStaticPlaylist(added.playlistId)?.name,

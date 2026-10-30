@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
@@ -248,7 +249,9 @@ test("adding library search results to a new static playlist keeps their MusicBr
   });
   assert.equal(created.status, 200);
   assert.equal(queuedOperations.length, 1);
-  await playlistOperations.processPlaylistOperation(queuedOperations[0]);
+  await playlistOperations.processPlaylistOperation(
+    v.parse(playlistOperations.playlistOperationSchema, queuedOperations[0]),
+  );
 
   const playlist = flowPlaylistConfig
     .getStaticPlaylistsForUser(user)

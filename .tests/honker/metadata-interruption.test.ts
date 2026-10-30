@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
@@ -21,6 +22,7 @@ test("shutdown preserves unfinished metadata at its final retry attempt", async 
   });
   const worker = createWorker({
     name: "system-task",
+    schema: v.unknown(),
     getQueue: () => queue,
     idlePollS: 1,
     interruptible: true,
@@ -51,7 +53,8 @@ test("shutdown preserves unfinished metadata at its final retry attempt", async 
 test("shutdown interrupts a contending metadata claim without executing it", async () => {
   const { acquireReleaseMetadataLease } =
     await import("../../backend/services/releaseMetadataLease.ts");
-  const { prepareSystemTask } = await import("../../backend/services/systemTaskWorker.ts");
+  const { prepareSystemTask, systemTaskSchema } =
+    await import("../../backend/services/systemTaskWorker.ts");
   const lease = await acquireReleaseMetadataLease();
   const queue = getSystemTaskQueue();
   const id = queue.enqueue({ kind: "release-metadata-refresh" });
@@ -62,6 +65,7 @@ test("shutdown interrupts a contending metadata claim without executing it", asy
   let executed = false;
   const worker = createWorker({
     name: "system-task",
+    schema: systemTaskSchema,
     getQueue: () => queue,
     idlePollS: 1,
     interruptible: true,

@@ -1,10 +1,11 @@
 import createHonkerWorker from "../../backend/services/honkerWorkerFactory.ts";
 import { getMaintenanceTaskQueue } from "../../backend/services/honkerDb.ts";
-import { processSystemTask } from "../../backend/services/systemTaskWorker.ts";
+import { processSystemTask, systemTaskSchema } from "../../backend/services/systemTaskWorker.ts";
 import { shutdownHonkerInfrastructure } from "../../backend/services/honkerWorkerRuntime.ts";
 
 const worker = createHonkerWorker({
   name: "system-task-maintenance",
+  schema: systemTaskSchema,
   getQueue: getMaintenanceTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,

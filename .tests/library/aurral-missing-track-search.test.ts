@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -20,7 +21,7 @@ const [
   { recordMissingTrackSearch },
   { runMissingTrackSearch },
   { SCHEDULED_SYSTEM_TASKS },
-  { processSystemTask },
+  { processSystemTask, systemTaskSchema },
   { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "aurral-missing-track-search",
@@ -644,7 +645,7 @@ test("the scheduled system task searches due albums", async () => {
   assert.ok(scheduled, "the missing-track search has a schedule");
   const { albumMbid } = createAlbum({ tracks: ["failed", "missing"] });
 
-  await processSystemTask(scheduled.payload);
+  await processSystemTask(v.parse(systemTaskSchema, scheduled.payload));
 
   assert.deepEqual(
     albumJobs(albumMbid).map((job) => job.status),

@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
@@ -36,7 +37,7 @@ const [
   { downloadWorker },
   { lidarrClient },
   { listHonkerJobs, getHonkerQueueByName },
-  { processSystemTask },
+  { processSystemTask, systemTaskSchema },
   { clearMetadataProviderCaches },
   { libraryManager },
   { scanMusicRoot },
@@ -280,7 +281,7 @@ function clearMonitoringTasks() {
 async function runQueuedMonitoringTasks() {
   const tasks = queuedMonitoringTasks();
   clearMonitoringTasks();
-  for (const payload of tasks) await processSystemTask(payload);
+  for (const payload of tasks) await processSystemTask(v.parse(systemTaskSchema, payload));
   return tasks;
 }
 
@@ -723,7 +724,7 @@ test("queued artist acquisition stops after monitoring is disabled or the rules 
   const [staleTask] = queuedMonitoringTasks();
   clearMonitoringTasks();
   await monitorWith(customRules({ types: ["ep"] }));
-  await processSystemTask(staleTask);
+  await processSystemTask(v.parse(systemTaskSchema, staleTask));
   assert.deepEqual(queuedAlbumMbids(), []);
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), [releases.latestEp.id]);
@@ -740,7 +741,7 @@ test("an artist disabled during metadata lookup does not acquire albums", async 
 
   const task = queuedMonitoringTasks()[0];
   clearMonitoringTasks();
-  const acquisition = processSystemTask(task);
+  const acquisition = processSystemTask(v.parse(systemTaskSchema, task));
   await started.promise;
   try {
     const disabled = await monitorWith({ monitored: false });
@@ -1153,7 +1154,7 @@ test("changing the default rules re-applies them to the artists that use them", 
   const [reconcile] = systemTasks("aurral-monitoring-reconcile");
   assert.ok(reconcile);
   clearMonitoringTasks();
-  await processSystemTask(reconcile);
+  await processSystemTask(v.parse(systemTaskSchema, reconcile));
   assert.deepEqual(queuedAlbumMbids(), [...defaultIds, releases.single.id].sort());
 
   assert.equal(

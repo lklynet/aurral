@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { getPipelineQueue } from "./honkerDb.ts";
@@ -15,6 +16,17 @@ import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { hasShareDownloads } from "./shareLinks/downloadStore.ts";
 import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.ts";
+
+const pipelineStepSchema = v.looseObject({
+  jobId: v.string(),
+  phase: v.string(),
+  downloadAttemptId: v.nullish(v.string()),
+  playlistId: v.nullish(v.string()),
+  albumGroupJobIds: v.nullish(v.array(v.string())),
+});
+
+// Each source writes the rest of its step state and reads it back in its next step.
+const pipelinePayloadSchema = v.custom<PipelinePayload>((input) => v.is(pipelineStepSchema, input));
 
 interface PipelineDependencies {
   processPipelinePayload?: typeof processPipelinePayload;
@@ -62,8 +74,9 @@ const {
   start: startDownloadPipelineWorker,
   stop: stopDownloadPipelineWorker,
   isRunning: isDownloadPipelineWorkerRunning,
-} = createHonkerWorker<PipelinePayload>({
+} = createHonkerWorker({
   name: "slskd-pipeline",
+  schema: pipelinePayloadSchema,
   getQueue: getPipelineQueue,
   idlePollS: 2,
   retryDelayS: 30,

@@ -1,7 +1,7 @@
 import { db } from "../../config/db-sqlite.ts";
 import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.ts";
 import { randomUUID } from "crypto";
-import type { JsonValue } from "@russellthehippo/honker-node";
+import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import {
@@ -47,7 +47,6 @@ import {
   withPlaylistMutationLock,
 } from "../downloadJobs/mutationGuards.ts";
 import { withHonkerLock } from "../honkerDb.ts";
-import type { HonkerPayload } from "../honkerDb.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { PlaylistTrack, StaticPlaylist } from "./flowPlaylistConfig.ts";
@@ -134,7 +133,9 @@ const isOwnerActive = (ownerUserId: unknown) => {
   return owner?.status === "active";
 };
 
-const isJsonRecord = (value: JsonValue | undefined): value is { [key: string]: JsonValue } =>
+type OperationPayload = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 interface FlowOutcome {
@@ -307,7 +308,7 @@ async function runFlowSeed({
   token = null,
   requireEnabled = false,
   scheduleNext = false,
-}: HonkerPayload = {}) {
+}: OperationPayload = {}) {
   const safeFlowId = String(flowId || "").trim();
   if (!safeFlowId) return { missing: true };
   if (!isLatestPlaylistOperationToken(tokenScope, token)) {
@@ -417,7 +418,7 @@ function rescanLibraryForFlows(flowIds: string[]) {
   if (shownInLibrary) playlistManager.scheduleScanLibrary();
 }
 
-async function runFlowCleanup({ flowId, tokenScope = null, token = null }: HonkerPayload = {}) {
+async function runFlowCleanup({ flowId, tokenScope = null, token = null }: OperationPayload = {}) {
   const safeFlowId = String(flowId || "").trim();
   if (!safeFlowId) return { missing: true };
   if (!isLatestPlaylistOperationToken(tokenScope, token)) {
@@ -437,7 +438,7 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null }: Honke
   return { success: true, flowId: safeFlowId };
 }
 
-async function deleteFlow({ flowId, tokenScope = null, token = null }: HonkerPayload = {}) {
+async function deleteFlow({ flowId, tokenScope = null, token = null }: OperationPayload = {}) {
   const safeFlowId = String(flowId || "").trim();
   if (!safeFlowId) return false;
   const flow = flowPlaylistConfig.getFlow(safeFlowId);
@@ -465,7 +466,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null }: HonkerPay
   return didDelete;
 }
 
-async function resetPlaylists({ playlistTypes = [] }: HonkerPayload = {}) {
+async function resetPlaylists({ playlistTypes = [] }: OperationPayload = {}) {
   const types = (Array.isArray(playlistTypes) ? playlistTypes : [playlistTypes])
     .map((entry) => String(entry || "").trim())
     .filter(Boolean);
@@ -483,7 +484,7 @@ async function resetPlaylists({ playlistTypes = [] }: HonkerPayload = {}) {
   return { success: true, playlistTypes: types };
 }
 
-async function adoptFlowSeed({ flowId, tracks = [] }: HonkerPayload = {}) {
+async function adoptFlowSeed({ flowId, tracks = [] }: OperationPayload = {}) {
   const safeFlowId = String(flowId || "").trim();
   const flow = flowPlaylistConfig.getFlow(safeFlowId);
   if (!flow) return { missing: true };
@@ -511,13 +512,13 @@ async function adoptFlowSeed({ flowId, tracks = [] }: HonkerPayload = {}) {
 }
 
 async function withLibraryPlaylistMutation<T>(
-  payload: HonkerPayload,
-  operation: (payload: HonkerPayload) => Promise<T>,
+  payload: OperationPayload,
+  operation: (payload: OperationPayload) => Promise<T>,
 ) {
   const playlistId = String(payload.playlistId || "").trim();
   const payloadTracks = Array.isArray(payload.tracks) ? payload.tracks : [];
   const libraryIds = payloadTracks
-    .map((track) => (isJsonRecord(track) ? track.canonicalJobId : undefined))
+    .map((track) => (isRecord(track) ? track.canonicalJobId : undefined))
     .filter((id): id is string => typeof id === "string" && id !== "");
   const libraryJobs = () =>
     libraryIds
@@ -531,7 +532,7 @@ async function withLibraryPlaylistMutation<T>(
       if (!getPlaylistRemovalLockIds(playlistId, currentJobs).every((id) => lockIds.includes(id)))
         return { retryLocks: true };
       for (const track of payloadTracks) {
-        if (!isJsonRecord(track) || !track.canonicalJobId) continue;
+        if (!isRecord(track) || !track.canonicalJobId) continue;
         const job =
           typeof track.canonicalJobId === "string"
             ? downloadTracker.getJob(track.canonicalJobId)
@@ -548,18 +549,18 @@ async function withLibraryPlaylistMutation<T>(
   }
 }
 
-async function createStaticPlaylist(payload: HonkerPayload = {}) {
+async function createStaticPlaylist(payload: OperationPayload = {}) {
   return withLibraryPlaylistMutation(
     { ...payload, playlistId: String(payload.playlistId || "").trim() || randomUUID() },
     createStaticPlaylistLocked,
   );
 }
 
-export async function appendStaticPlaylistTracks(payload: HonkerPayload = {}) {
+export async function appendStaticPlaylistTracks(payload: OperationPayload = {}) {
   return withLibraryPlaylistMutation(payload, appendStaticPlaylistTracksLocked);
 }
 
-export async function updateStaticPlaylist(payload: HonkerPayload = {}) {
+export async function updateStaticPlaylist(payload: OperationPayload = {}) {
   return withLibraryPlaylistMutation(payload, updateStaticPlaylistLocked);
 }
 
@@ -574,7 +575,7 @@ async function createStaticPlaylistLocked({
   ownerUserId = null,
   importSource = null,
   description = null,
-}: HonkerPayload = {}) {
+}: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim() || randomUUID();
   const normalizedTracks = filterBlockedPlaylistTracks(ownerUserId, normalizeTrackList(tracks));
   let playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
@@ -588,7 +589,7 @@ async function createStaticPlaylistLocked({
       type: typeof type === "string" ? type : null,
       tracks: normalizedTracks,
       ownerUserId,
-      importSource: isJsonRecord(importSource) ? importSource : null,
+      importSource: isRecord(importSource) ? importSource : null,
       description,
     });
   }
@@ -613,7 +614,10 @@ async function createStaticPlaylistLocked({
   };
 }
 
-async function appendStaticPlaylistTracksLocked({ playlistId, tracks = [] }: HonkerPayload = {}) {
+async function appendStaticPlaylistTracksLocked({
+  playlistId,
+  tracks = [],
+}: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!playlist) return { missing: true };
@@ -655,11 +659,11 @@ async function updateStaticPlaylistLocked({
   importSource = null,
   deleteUnsharedFiles = false,
   mergeImportSource = false,
-}: HonkerPayload = {}) {
+}: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const currentPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!currentPlaylist) return { missing: true };
-  const importSourcePatch = isJsonRecord(importSource) ? importSource : null;
+  const importSourcePatch = isRecord(importSource) ? importSource : null;
   const safeName = hasNameUpdate
     ? String(name || "").trim()
     : String(currentPlaylist.name || "").trim();
@@ -778,7 +782,7 @@ async function updateStaticPlaylistLocked({
   return { success: true, playlist, tracksQueued, tracksReused };
 }
 
-async function deleteStaticPlaylistTrack({ playlistId, jobId }: HonkerPayload = {}) {
+async function deleteStaticPlaylistTrack({ playlistId, jobId }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const safeJobId = String(jobId || "").trim();
   const playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
@@ -831,7 +835,7 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId }: HonkerPayload = 
   };
 }
 
-async function researchPlaylistTrack({ playlistId, jobId }: HonkerPayload = {}) {
+async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const safeJobId = String(jobId || "").trim();
   const isLibraryJob = safePlaylistId === "library";
@@ -926,7 +930,7 @@ async function researchPlaylistTrack({ playlistId, jobId }: HonkerPayload = {}) 
   };
 }
 
-async function researchLibraryTrack({ trackId, albumId }: HonkerPayload = {}) {
+async function researchLibraryTrack({ trackId, albumId }: OperationPayload = {}) {
   const sourceJob = resolveAurralOwnedTrackJob({ trackId, albumId });
   if (!sourceJob) return { missingAurralOwnedTrack: true };
   if (downloadTracker.findActiveUpgradeJob(sourceJob)) {
@@ -952,7 +956,7 @@ async function researchLibraryTrack({ trackId, albumId }: HonkerPayload = {}) {
   };
 }
 
-async function deleteStaticPlaylist({ playlistId }: HonkerPayload = {}) {
+async function deleteStaticPlaylist({ playlistId }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const exists = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!exists) {
@@ -1028,8 +1032,12 @@ async function deleteStaticPlaylist({ playlistId }: HonkerPayload = {}) {
   return deleted;
 }
 
-export async function processPlaylistOperation(payload: HonkerPayload = {}) {
-  const kind = String(payload?.kind || payload?.type || "").trim();
+export const playlistOperationSchema = v.looseObject({ kind: v.string() });
+
+export async function processPlaylistOperation(
+  payload: v.InferOutput<typeof playlistOperationSchema>,
+) {
+  const { kind } = payload;
   return withHonkerLock(
     "weekly-flow-operation",
     async () => {

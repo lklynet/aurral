@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
@@ -35,7 +36,7 @@ const [
   honker,
   scans,
   { playlistManager },
-  { processSystemTask },
+  { processSystemTask, systemTaskSchema },
   { NavidromeClient },
   { PlexClient },
   { JellyfinClient },
@@ -314,7 +315,7 @@ const cancelPendingScans = () => {
 async function runPendingScan() {
   const [job] = honker.listHonkerJobs("playback");
   honker.getPlaybackTaskQueue().cancel(job.id);
-  await processSystemTask(job.payload);
+  await processSystemTask(v.parse(systemTaskSchema, job.payload));
 }
 
 test("media scan requests batch changed folders into one durable job that keeps its first run time", async () => {

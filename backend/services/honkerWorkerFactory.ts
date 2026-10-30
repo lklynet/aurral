@@ -11,7 +11,8 @@ import { getWorkerId, requeueInterruptedHonkerJob, adjustHonkerClaimAttempts } f
 import { shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
-import type { Job, JsonValue, Queue } from "@russellthehippo/honker-node";
+import * as v from "valibot";
+import type { Job, Queue } from "@russellthehippo/honker-node";
 
 type PreparedJob = { release?: () => void };
 
@@ -25,6 +26,7 @@ type WorkerQueue = Pick<Queue, "name" | "claim" | "maxAttempts" | "visibilityTim
 
 type HonkerWorkerOptions<Payload> = {
   name: string;
+  schema: v.GenericSchema<Payload>;
   getQueue: () => WorkerQueue;
   processJob: (
     payload: Payload,
@@ -57,8 +59,9 @@ function payloadSummary(payload: unknown) {
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
-export default function createHonkerWorker<Payload = JsonValue>({
+export default function createHonkerWorker<Payload>({
   name,
+  schema,
   getQueue,
   processJob,
   prepareJob,
@@ -82,6 +85,15 @@ export default function createHonkerWorker<Payload = JsonValue>({
   let loopPromise: Promise<void> | null = null;
   let jobController: AbortController | null = null;
   let activeInterruptible = false;
+
+  const readable = (job: Job): job is TypedJob<Payload> => v.is(schema, job.payload);
+
+  function failUnreadable(job: Job) {
+    const result = v.safeParse(schema, job.payload);
+    const reason = result.success ? "unknown" : v.summarize(result.issues);
+    logger.error("jobs", "Job payload unreadable", { queue: name, jobId: job.id, reason });
+    job.fail(`Aurral can't read this job: ${reason}`);
+  }
 
   async function handleJobFailure(error: unknown, job: TypedJob<Payload>, queue: WorkerQueue) {
     const failure = asAppError(error);
@@ -159,8 +171,13 @@ export default function createHonkerWorker<Payload = JsonValue>({
       for await (const job of queue.claim(workerId, {
         idlePollS,
         signal: idleController.signal,
-      }) as AsyncIterableIterator<TypedJob<Payload>>) {
+      })) {
         idleController.disarm();
+        if (!readable(job)) {
+          failUnreadable(job);
+          idleController.arm();
+          continue;
+        }
         if (!running || stopRequested) {
           const canInterrupt =
             typeof interruptible === "function" ? interruptible(job.payload) : interruptible;

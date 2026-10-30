@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { getHonkerDb, getPlayEventOutbox } from "./honkerDb.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
@@ -181,17 +182,19 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
   return event;
 };
 
+export const playEventDeliverySchema = v.looseObject({
+  eventId: v.number(),
+  userId: v.number(),
+  provider: v.picklist(["lastfm", "listenbrainz", "koito"]),
+  connectionRevision: v.string(),
+});
+
 export const deliverPlayEvent = async ({
   eventId,
   userId,
   provider,
   connectionRevision,
-}: {
-  eventId: number;
-  userId: number;
-  provider: "lastfm" | "listenbrainz" | "koito";
-  connectionRevision: string;
-}) => {
+}: v.InferOutput<typeof playEventDeliverySchema>) => {
   const event = toPublicEvent(getEventStmt.get(eventId));
   const connection = scrobbleConnectionStore.getConnection(userId, provider);
   if (

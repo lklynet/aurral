@@ -1,16 +1,7 @@
+import * as v from "valibot";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { getDiscoveryUserRefreshQueue } from "./honkerDb.ts";
 import { updateUserDiscoveryCache } from "./discovery/index.ts";
-
-async function processDiscoveryUserRefresh(
-  payload: { userId?: unknown; requestedAt?: unknown } = {},
-) {
-  const userId = Number(payload?.userId);
-  if (!Number.isInteger(userId) || userId <= 0) {
-    return { skipped: true, reason: "invalid_payload" };
-  }
-  return updateUserDiscoveryCache(userId, { requestedAt: Number(payload?.requestedAt) });
-}
 
 const {
   start: startDiscoveryUserRefreshWorker,
@@ -18,8 +9,12 @@ const {
   isRunning: isDiscoveryUserRefreshWorkerRunning,
 } = createHonkerWorker({
   name: "discovery-user-refresh",
+  schema: v.looseObject({
+    userId: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    requestedAt: v.optional(v.number()),
+  }),
   getQueue: getDiscoveryUserRefreshQueue,
-  processJob: processDiscoveryUserRefresh,
+  processJob: ({ userId, requestedAt }) => updateUserDiscoveryCache(userId, { requestedAt }),
   idlePollS: 10,
   retryDelayS: 300,
 });

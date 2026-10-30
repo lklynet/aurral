@@ -6,7 +6,6 @@ import {
   parseShareManifest,
   type SharedTrack,
 } from "../../../lib/shareManifest.ts";
-import type { HonkerPayload } from "../honkerDb.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { selectCanonicalFile } from "../canonicalFileSelector.ts";
 import {
@@ -128,7 +127,7 @@ function saveTrack(track: SharedTrack) {
   return { artist, album, track: saved };
 }
 
-export async function importShare(payload: HonkerPayload) {
+export async function importShare(payload: Record<string, unknown>) {
   const manifest = parseShareManifest(payload.manifest);
   const owner = userOps.getUserById(Number(payload.ownerUserId));
   if (!manifest || owner?.status !== "active") return { skipped: true };

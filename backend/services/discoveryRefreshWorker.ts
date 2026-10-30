@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { getDiscoveryRefreshQueue } from "./honkerDb.ts";
 import { websocketService } from "./websocketService.ts";
@@ -22,8 +23,10 @@ function skipDiscoveryRefresh(progressMessage: string) {
   });
 }
 
-async function runDiscoveryRefresh(payload: { scheduleOnly?: boolean } | null) {
-  if (payload?.scheduleOnly === true && !discoveryNeedsRefresh()) {
+const discoveryRefreshSchema = v.looseObject({ scheduleOnly: v.optional(v.boolean()) });
+
+async function runDiscoveryRefresh({ scheduleOnly }: v.InferOutput<typeof discoveryRefreshSchema>) {
+  if (scheduleOnly === true && !discoveryNeedsRefresh()) {
     skipDiscoveryRefresh("Discovery cache is already current");
     return;
   }
@@ -37,6 +40,7 @@ const {
   isRunning: isDiscoveryRefreshWorkerRunning,
 } = createHonkerWorker({
   name: "discovery-refresh",
+  schema: discoveryRefreshSchema,
   getQueue: getDiscoveryRefreshQueue,
   processJob: runDiscoveryRefresh,
   idlePollS: 5,

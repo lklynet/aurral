@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
@@ -21,7 +22,7 @@ const [
   { dbOps },
   honker,
   { playlistManager, PlaylistManager },
-  { processSystemTask },
+  { processSystemTask, systemTaskSchema },
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { downloadTracker },
   { api },
@@ -345,7 +346,7 @@ async function runPendingScans() {
   for (const { id, payload } of honker.listHonkerJobs("playback")) {
     if (payload?.kind !== "playback-library-scan") continue;
     honker.getPlaybackTaskQueue().cancel(id);
-    await processSystemTask(payload);
+    await processSystemTask(v.parse(systemTaskSchema, payload));
   }
 }
 
@@ -378,7 +379,7 @@ test("a burst of twenty completed downloads queues one sync and publishes each p
   );
   const [{ payload }] = pendingSyncs();
   honker.getPlaybackTaskQueue().cancel(pendingSyncs()[0].id);
-  await processSystemTask(payload);
+  await processSystemTask(v.parse(systemTaskSchema, payload));
 
   assert.equal(
     navidrome.requests.filter((request) => request === "/rest/createPlaylist").length,
@@ -450,7 +451,7 @@ for (const outage of ["slow", "failing"]) {
     if (outage === "failing") {
       const [job] = pendingSyncs();
       honker.getPlaybackTaskQueue().cancel(job.id);
-      await processSystemTask(job.payload);
+      await processSystemTask(v.parse(systemTaskSchema, job.payload));
       assert.deepEqual(
         pendingSyncs().map(({ payload }) => payload),
         [followUp([flow.id], "navidrome", "outage", 1)],
@@ -857,7 +858,7 @@ test("deleting a playlist while a full sync is publishing leaves nothing behind 
   playlistManager.requestPlaylistSync();
   const [full] = pendingSyncs();
   honker.getPlaybackTaskQueue().cancel(full.id);
-  const running = processSystemTask(full.payload);
+  const running = processSystemTask(v.parse(systemTaskSchema, full.payload));
   await keptReached;
   await processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: doomed.id });
   releaseKept();

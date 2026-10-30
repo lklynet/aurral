@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import type { Job } from "@russellthehippo/honker-node";
 import { asAppError } from "../../lib/errors.ts";
 import type { libraryManager } from "./libraryManager.ts";
@@ -10,32 +11,28 @@ import {
   getSystemTaskQueue,
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
-  type HonkerPayload,
 } from "./honkerDb.ts";
 import { cleanExpiredSessions } from "../config/session-helpers.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
-type SystemTaskJob = Job & { payload: HonkerPayload | null };
+export const systemTaskSchema = v.looseObject({ kind: v.string() });
+
+type SystemTask = v.InferOutput<typeof systemTaskSchema>;
+type SystemTaskJob = Job & { payload: SystemTask };
 type SystemTaskContext = { signal?: AbortSignal; lease?: ReleaseMetadataLease };
-type PayloadValue = HonkerPayload[string] | undefined;
 type MonitoringApply = NonNullable<Parameters<typeof libraryManager.acquireAurralReleases>[0]>;
 
-const stringOrNull = (value: PayloadValue) => (typeof value === "string" ? value : null);
+const stringOrNull = (value: unknown) => (typeof value === "string" ? value : null);
 
-const stringList = (value: PayloadValue) =>
+const stringList = (value: unknown) =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : null;
 
-const recordList = (value: PayloadValue) =>
-  Array.isArray(value)
-    ? value.filter(
-        (entry): entry is HonkerPayload =>
-          typeof entry === "object" && entry !== null && !Array.isArray(entry),
-      )
-    : [];
+const recordList = (value: unknown) =>
+  v.is(v.array(v.unknown()), value) ? value.filter((entry) => v.is(v.looseObject({}), entry)) : [];
 
-function parseMonitoringApply(payload: HonkerPayload): MonitoringApply {
+function parseMonitoringApply(payload: SystemTask): MonitoringApply {
   return {
     artistMbid: stringOrNull(payload.artistMbid) ?? undefined,
     token: stringOrNull(payload.token),
@@ -58,14 +55,14 @@ function parseMonitoringApply(payload: HonkerPayload): MonitoringApply {
 }
 
 export async function processSystemTask(
-  payload: HonkerPayload | null = {},
+  payload: SystemTask,
   job: SystemTaskJob | null = null,
   context: SystemTaskContext = {},
 ) {
-  const kind = String(payload?.kind || "").trim();
+  const { kind } = payload;
   switch (kind) {
     case "wrapped-build": {
-      if (typeof payload?.userId !== "number" || typeof payload.timeZone !== "string")
+      if (typeof payload.userId !== "number" || typeof payload.timeZone !== "string")
         throw new Error("Invalid recap job");
       const { processWrappedBuild } = await import("./wrapped/reports.ts");
       await processWrappedBuild(payload.userId, payload.timeZone);
@@ -78,7 +75,7 @@ export async function processSystemTask(
     }
     case "aurral-monitoring-apply": {
       const { libraryManager } = await import("./libraryManager.ts");
-      await libraryManager.acquireAurralReleases(parseMonitoringApply(payload!));
+      await libraryManager.acquireAurralReleases(parseMonitoringApply(payload));
       return;
     }
     case "aurral-monitoring-reconcile": {
@@ -107,12 +104,12 @@ export async function processSystemTask(
     case "quality-upgrade-check": {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
       await runQualityUpgradeCheck({
-        force: payload!.force === true,
+        force: payload.force === true,
         playlistIds:
-          typeof payload!.playlistId === "string" && payload!.playlistId
-            ? [payload!.playlistId]
+          typeof payload.playlistId === "string" && payload.playlistId
+            ? [payload.playlistId]
             : null,
-        limit: typeof payload!.limit === "number" ? payload!.limit : undefined,
+        limit: typeof payload.limit === "number" ? payload.limit : undefined,
       });
       return;
     }
@@ -146,8 +143,8 @@ export async function processSystemTask(
       const { playlistManager } = await import("./playlists/playlistManager.ts");
       playlistManager.updateConfig();
       const results = await playlistManager.scanLibrary(
-        stringList(payload!.folders) ?? playlistManager.libraryRoots(),
-        stringList(payload!.destinations),
+        stringList(payload.folders) ?? playlistManager.libraryRoots(),
+        stringList(payload.destinations),
       );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
@@ -161,10 +158,10 @@ export async function processSystemTask(
       const { playlistManager } = await import("./playlists/playlistManager.ts");
       playlistManager.updateConfig();
       await playlistManager.syncPlaylists({
-        entityIds: stringList(payload!.entityIds),
-        destinations: stringList(payload!.destinations),
-        chain: stringOrNull(payload!.chain),
-        attempt: typeof payload!.attempt === "number" ? payload!.attempt : undefined,
+        entityIds: stringList(payload.entityIds),
+        destinations: stringList(payload.destinations),
+        chain: stringOrNull(payload.chain),
+        attempt: typeof payload.attempt === "number" ? payload.attempt : undefined,
       });
       return;
     }
@@ -211,18 +208,18 @@ export async function processSystemTask(
     case "inbox-refresh": {
       const { enqueueInboxRefreshForAllUsers, refreshInboxForUser } =
         await import("./inboxService.ts");
-      const userId = Number(payload!.userId);
+      const userId = Number(payload.userId);
       if (Number.isInteger(userId) && userId > 0) {
         await refreshInboxForUser(userId, {
           force: true,
           throwOnFailure: true,
-          jobId: job?.id || (typeof payload!.jobId === "number" ? payload!.jobId : null) || null,
-          zipCode: stringOrNull(payload!.zipCode) || "",
-          ipAddress: stringOrNull(payload!.ipAddress) || "",
+          jobId: job?.id || (typeof payload.jobId === "number" ? payload.jobId : null) || null,
+          zipCode: stringOrNull(payload.zipCode) || "",
+          ipAddress: stringOrNull(payload.ipAddress) || "",
         });
       } else {
         await enqueueInboxRefreshForAllUsers({
-          reason: stringOrNull(payload!.reason) || "scheduled",
+          reason: stringOrNull(payload.reason) || "scheduled",
         });
       }
       return;
@@ -341,7 +338,7 @@ export async function processSystemTask(
       if (!("releaseReadOnlyFolderFiles" in downloadWorker)) {
         throw new TypeError("downloadWorker.releaseReadOnlyFolderFiles is not a function");
       }
-      await downloadWorker.releaseReadOnlyFolderFiles(stringList(payload!.folders) ?? []);
+      await downloadWorker.releaseReadOnlyFolderFiles(stringList(payload.folders) ?? []);
       return;
     }
     case "lidarr-retry": {
@@ -363,7 +360,8 @@ const {
   isRunning: isSystemTaskWorkerRunning,
 } = createHonkerWorker({
   name: "system-task",
-  interruptible: (payload) => payload?.kind === "release-metadata-refresh",
+  schema: systemTaskSchema,
+  interruptible: (payload) => payload.kind === "release-metadata-refresh",
   prepareJob: prepareSystemTask,
   getQueue: getSystemTaskQueue,
   processJob: processSystemTask,
@@ -375,12 +373,13 @@ export { startSystemTaskWorker, stopSystemTaskWorker, isSystemTaskWorkerRunning 
 
 const { start: startMaintenanceTaskWorker } = createHonkerWorker({
   name: "system-task-maintenance",
+  schema: systemTaskSchema,
   getQueue: getMaintenanceTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,
   retryDelayS: 120,
   onJobSuccess(payload) {
-    if (payload?.kind === "news-refresh" && process.connected && process.send) {
+    if (payload.kind === "news-refresh" && process.connected && process.send) {
       process.send({ type: "cache-invalidate", cache: "news" });
     }
   },
@@ -388,6 +387,7 @@ const { start: startMaintenanceTaskWorker } = createHonkerWorker({
 
 const { start: startInboxTaskWorker } = createHonkerWorker({
   name: "system-task-inbox",
+  schema: systemTaskSchema,
   getQueue: getInboxTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,
@@ -396,6 +396,7 @@ const { start: startInboxTaskWorker } = createHonkerWorker({
 
 const { start: startPlaybackTaskWorker } = createHonkerWorker({
   name: "playback",
+  schema: systemTaskSchema,
   getQueue: getPlaybackTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,
@@ -405,11 +406,11 @@ const { start: startPlaybackTaskWorker } = createHonkerWorker({
 export { startMaintenanceTaskWorker, startInboxTaskWorker, startPlaybackTaskWorker };
 
 export async function prepareSystemTask(
-  payload: HonkerPayload | null,
+  payload: SystemTask,
   job: SystemTaskJob,
   { signal }: { signal: AbortSignal },
 ) {
-  if (payload?.kind !== "release-metadata-refresh") return null;
+  if (payload.kind !== "release-metadata-refresh") return null;
   const lease = await acquireReleaseMetadataLease({ signal });
   return { lease, release: () => lease.release() };
 }

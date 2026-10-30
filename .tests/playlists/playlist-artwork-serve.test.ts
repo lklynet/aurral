@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -26,7 +27,7 @@ const [
   { app },
   { createSession },
   { playlistOperationQueue },
-  { processPlaylistOperation },
+  { processPlaylistOperation, playlistOperationSchema },
 ] = await Promise.all([
   import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   import("../../backend/services/playlists/playlistManager.ts"),
@@ -128,7 +129,7 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     assert.equal(playlistResponse.status, 200);
     const { playlistId } = await playlistResponse.body.json();
     assert.equal(queuedOperations.length, 1);
-    await processPlaylistOperation(queuedOperations[0]);
+    await processPlaylistOperation(v.parse(playlistOperationSchema, queuedOperations[0]));
     const playlistCover = await request(`/artwork/${playlistId}`);
     assert.equal(playlistCover.status, 200);
     assert.equal(playlistCover.type, "image/webp");
