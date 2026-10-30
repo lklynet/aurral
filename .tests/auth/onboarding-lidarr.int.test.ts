@@ -127,8 +127,10 @@ test("POST /api/onboarding/lidarr/test uses supplied credentials before onboardi
     success: true,
     message: "Connection successful",
   });
-  assert.equal(fakeLidarr.requests.length > 0, true);
-  assert.equal(fakeLidarr.requests[0].apiKey, "fake-key");
+  const status = fakeLidarr.requests.find(
+    (request) => request.pathname === "/api/v1/system/status",
+  );
+  assert.equal(status?.apiKey, "fake-key");
 });
 
 test("POST /api/onboarding/lidarr/profiles uses supplied credentials before onboarding is complete", async () => {
