@@ -143,7 +143,9 @@ const respond = (url: URL) => {
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/7/top") {
     return json({
-      data: [{ title: "Hit Song", album: { title: "First Album" }, duration: 200, rank: 5000 }],
+      data: [
+        { id: 70, title: "Hit Song", album: { title: "First Album" }, duration: 200, rank: 5000 },
+      ],
     });
   }
   return json({ error: "unexpected" }, 404);

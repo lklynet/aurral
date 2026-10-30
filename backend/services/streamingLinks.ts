@@ -1,9 +1,12 @@
 import { decode } from "html-entities";
+import * as v from "valibot";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import { deezerErrorSchema } from "./apiClients/deezer.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
 import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
 import { matchTrackByTitle } from "./downloadJobs/trackSearchContext.ts";
+import { readOne } from "./integrationData.ts";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const LOOKUP_CACHE_TTL_SECONDS = 24 * 60 * 60;
@@ -76,14 +79,13 @@ interface JsonLdItem {
   inAlbum?: { name?: string };
 }
 
-interface DeezerBody {
-  error?: { code?: number };
-  name?: string;
-  title?: string;
-  id?: number;
-  artist?: { name?: string };
-  album?: { title?: string; id?: number };
-}
+const deezerLinkSchema = v.looseObject({
+  id: v.number(),
+  name: v.optional(v.string()),
+  title: v.optional(v.string()),
+  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  album: v.optional(v.looseObject({ title: v.optional(v.string()), id: v.optional(v.number()) })),
+});
 
 interface AppleLookupBody {
   results?: {
@@ -276,10 +278,12 @@ function readNextData(html: string): NextData | null {
 }
 
 async function lookupDeezer({ kind, id }: StreamingLink) {
-  const body = await fetchJson<DeezerBody>("deezer", `https://api.deezer.com/${kind}/${id}`);
-  if (body?.error) {
-    if (body.error.code === DEEZER_NO_DATA_CODE) throw notFound("deezer");
-    if (body.error.code === DEEZER_QUOTA_CODE) {
+  const response = await fetchJson("deezer", `https://api.deezer.com/${kind}/${id}`);
+  const failure = v.safeParse(deezerErrorSchema, response);
+  if (failure.success) {
+    const { code } = failure.output.error;
+    if (code === DEEZER_NO_DATA_CODE) throw notFound("deezer");
+    if (code === DEEZER_QUOTA_CODE) {
       throw linkError(
         "Deezer is rate limiting requests; try again later",
         429,
@@ -288,21 +292,22 @@ async function lookupDeezer({ kind, id }: StreamingLink) {
     }
     throw unavailable("deezer", "returned an error");
   }
-  if (kind === "artist") return { kind, artistName: clean(body?.name) };
+  const body = readOne(deezerLinkSchema, response, { service: "Deezer", endpoint: `/${kind}` });
+  if (kind === "artist") return { kind, artistName: clean(body.name) };
   if (kind === "album") {
     return {
       kind,
-      artistName: clean(body?.artist?.name),
-      albumTitle: clean(body?.title),
-      deezerAlbumId: body?.id,
+      artistName: clean(body.artist?.name),
+      albumTitle: clean(body.title),
+      deezerAlbumId: body.id,
     };
   }
   return {
     kind,
-    artistName: clean(body?.artist?.name),
-    trackTitle: clean(body?.title),
-    albumTitle: clean(body?.album?.title),
-    deezerAlbumId: body?.album?.id,
+    artistName: clean(body.artist?.name),
+    trackTitle: clean(body.title),
+    albumTitle: clean(body.album?.title),
+    deezerAlbumId: body.album?.id,
   };
 }
 

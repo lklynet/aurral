@@ -63,7 +63,9 @@ const summary = (id: number, title: string, curator: string = "Rod - Deezer Rock
   user: { name: curator },
 });
 
+let deezerTrackId = 0;
 const deezerTrack = (title: string, artist: string, album = "Album") => ({
+  id: ++deezerTrackId,
   title,
   artist: { name: artist },
   album: { title: album },
@@ -94,13 +96,14 @@ function stubDeezer(
 const rockEssentials = (
   tracks: (
     | {
+        id: number;
         title: string;
         artist: { name: string };
         album: { title: string };
         duration: number;
         preview: string;
       }
-    | { title: string; artist: { name: string } }
+    | { id: number; title: string; artist: { name: string } }
   )[],
 ) => ({
   "/playlist/1306931615": {
@@ -152,7 +155,7 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
       deezerTrack("Back In Black", "AC/DC"),
       deezerTrack("Back In Black", "AC/DC"),
       deezerTrack("Paranoid", "Black Sabbath"),
-      { title: "", artist: { name: "Nobody" } },
+      { id: 99, title: "", artist: { name: "Nobody" } },
     ]),
   );
   const payloads = captureEnqueues();
@@ -184,6 +187,38 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
     added.playlistId,
   );
   assert.equal((await getEditorialPlaylist(testUser(8), "1306931615")).libraryPlaylistId, null);
+});
+
+test("a Deezer playlist skips a track Aurral can't read and still pages by what Deezer sent", async (t) => {
+  const routes = rockEssentials([]);
+  const requests = stubDeezer(t, {
+    ...routes,
+    "/playlist/1306931615/tracks": (url) =>
+      url.searchParams.get("index") === "0"
+        ? {
+            body: {
+              data: [
+                { id: 1, title: { text: "Broken" }, artist: { name: "Nobody" } },
+                deezerTrack("Back In Black", "AC/DC"),
+              ],
+              next: "https://api.deezer.com/playlist/1306931615/tracks?index=2",
+            },
+          }
+        : { body: { data: [deezerTrack("Paranoid", "Black Sabbath")] } },
+  });
+
+  const playlist = await getEditorialPlaylist(OWNER, "1306931615");
+
+  assert.deepEqual(
+    playlist.tracks.map((track) => `${track.artistName} - ${track.trackName}`),
+    ["AC/DC - Back In Black", "Black Sabbath - Paranoid"],
+  );
+  assert.deepEqual(
+    requests
+      .filter((request) => request.startsWith("/playlist/1306931615/tracks"))
+      .map((request) => new URLSearchParams(request.split("?")[1]).get("index")),
+    ["0", "2"],
+  );
 });
 
 test("adding the same Deezer playlist twice at once queues it only once", async (t: import("vite-plus/test").TestContext) => {

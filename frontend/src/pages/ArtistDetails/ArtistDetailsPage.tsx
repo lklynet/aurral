@@ -377,11 +377,11 @@ function ArtistDetailsPage() {
   const buildPreviewTrackPayload = (track: ArtistPreviewTrack) =>
     buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
-      trackName: track?.title || track?.trackName || "",
-      albumName: track?.album || "",
+      trackName: track.title,
+      albumName: track.album || "",
       artistMbid: mbid || "",
       albumMbid: "",
-      trackMbid: track?.mbid || track?.id || "",
+      trackMbid: track.id,
       releaseYear: null,
       durationMs: track?.duration_ms,
       reason: "Artist preview",
@@ -455,19 +455,14 @@ function ArtistDetailsPage() {
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
-  const handleTrackAddToLibrary = async (
-    track: ArtistPreviewTrack,
-    releaseGroup: ReleaseGroup | null = null,
-    trackKey: string | null = null,
+  const addTrackToLibrary = async (
+    payload: ReturnType<typeof buildStaticPlaylistTrackPayload>,
+    savingKey: string,
   ) => {
-    const payload = releaseGroup
-      ? buildReleaseTrackPayload(track, releaseGroup)
-      : buildPreviewTrackPayload(track);
-    if (!payload?.artistName || !payload?.trackName) {
+    if (!payload.artistName || !payload.trackName) {
       showError("Track details are incomplete");
       return false;
     }
-    const savingKey = String(trackKey ?? track?.id ?? track?.mbid ?? track?.title ?? "");
     if (!savingKey) return false;
     setLibraryTrackSavingKeys((current) => new Set(current).add(savingKey));
     try {
@@ -571,7 +566,9 @@ function ArtistDetailsPage() {
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlay={handlePreviewPlay}
         onAddTrackToPlaylist={handlePreviewTrackAdd}
-        onAddTrackToLibrary={handleTrackAddToLibrary}
+        onAddTrackToLibrary={(track, trackKey) =>
+          addTrackToLibrary(buildPreviewTrackPayload(track), trackKey)
+        }
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildPreviewTrackPayload}
         playlists={staticPlaylists}
@@ -596,7 +593,9 @@ function ArtistDetailsPage() {
         playbackSource={playbackSource}
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
-        onAddTrackToLibrary={handleTrackAddToLibrary}
+        onAddTrackToLibrary={(track, releaseGroup, trackKey) =>
+          addTrackToLibrary(buildReleaseTrackPayload(track, releaseGroup), trackKey)
+        }
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildReleaseTrackPayload}
         playlists={staticPlaylists}

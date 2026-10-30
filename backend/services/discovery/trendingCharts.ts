@@ -1,7 +1,13 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
-import { deezerPreviewPath } from "../apiClients/deezer.ts";
+import { deezerArtistSchema, deezerPreviewPath, deezerTrackSchema } from "../apiClients/deezer.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
-import { EDITORIAL_GENRES, deezerRequest } from "../importLists/deezerPlaylists.ts";
+import {
+  EDITORIAL_GENRES,
+  deezerList,
+  deezerPlaylistSchema,
+  deezerRequest,
+} from "../importLists/deezerPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { findLibraryPlaylist } from "./editorialPlaylists.ts";
 import { mapWithConcurrency } from "./helpers.ts";
@@ -34,32 +40,7 @@ const APPLE_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 const FRESHNESS_CHARTS = ["songs", "albums", "artists"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-interface DeezerTrackPayload {
-  id?: number | string;
-  title?: string;
-  duration?: number;
-  preview?: string | null;
-  artist?: { name?: string };
-  album?: {
-    id?: number | string;
-    title?: string;
-    cover_medium?: string | null;
-    cover_xl?: string | null;
-  };
-}
-
-interface DeezerArtistPayload {
-  id?: number | string;
-  name?: string;
-  picture_big?: string | null;
-  picture_xl?: string | null;
-  nb_fan?: number;
-}
-
-interface DeezerPage<T> {
-  data?: T[];
-  next?: string;
-}
+const infosSchema = v.looseObject({ country_iso: v.optional(v.string()) });
 
 interface AppleAlbumPayload {
   id?: string;
@@ -88,7 +69,7 @@ const dayOf = (time: number) => new Date(time).toISOString().slice(0, 10);
 const shiftDay = (day: string, offset: number) =>
   dayOf(Date.parse(`${day}T00:00:00Z`) + offset * DAY_MS);
 
-const toSong = (track: DeezerTrackPayload) => {
+const toSong = (track: v.InferOutput<typeof deezerTrackSchema>) => {
   const key = text(track.id);
   const trackName = text(track.title);
   const artistName = text(track.artist?.name);
@@ -139,7 +120,7 @@ export const chartPlaylistTitle = (region: string) => {
 };
 
 async function fetchRegion() {
-  const info = await deezerRequest<{ country_iso?: string }>("/infos");
+  const info = await deezerRequest(infosSchema, "/infos");
   const region = text(info.country_iso).toUpperCase();
   if (!/^[A-Z]{2}$/.test(region)) throw new Error("Deezer did not report a country");
   return region;
@@ -147,15 +128,15 @@ async function fetchRegion() {
 
 async function findChartPlaylist(region: string) {
   const wanted = chartPlaylistTitle(region);
-  const playlists: { id?: number | string; title?: string }[] = [];
+  const playlists: v.InferOutput<typeof deezerPlaylistSchema>[] = [];
   for (let index = 0; index < 500; index += 100) {
-    const page = await deezerRequest<DeezerPage<{ id?: number | string; title?: string }>>(
+    const page = await deezerList(
+      deezerPlaylistSchema,
       `/user/${DEEZER_CHARTS_USER_ID}/playlists`,
       { index, limit: 100 },
     );
-    const items = page.data || [];
-    playlists.push(...items);
-    if (!page.next || items.length === 0) break;
+    playlists.push(...page.items);
+    if (!page.next || page.received === 0) break;
   }
   const match =
     playlists.find((playlist) => text(playlist.title) === wanted) ||
@@ -166,11 +147,10 @@ async function findChartPlaylist(region: string) {
 
 async function fetchSongs(region: string) {
   const playlist = await findChartPlaylist(region);
-  const page = await deezerRequest<DeezerPage<DeezerTrackPayload>>(
-    `/playlist/${playlist.id}/tracks`,
-    { limit: SONG_LIMIT },
-  );
-  const items = uniqueByKey((page.data || []).map(toSong).filter(isPresent));
+  const page = await deezerList(deezerTrackSchema, `/playlist/${playlist.id}/tracks`, {
+    limit: SONG_LIMIT,
+  });
+  const items = uniqueByKey(page.items.map(toSong).filter(isPresent));
   if (items.length === 0) throw new Error("Deezer returned an empty chart");
   return { playlistId: playlist.id, playlistName: playlist.name, items };
 }
@@ -214,17 +194,17 @@ async function fetchAlbums(region: string) {
 }
 
 async function fetchArtists() {
-  const page = await deezerRequest<DeezerPage<DeezerArtistPayload>>("/chart/0/artists", {
+  const page = await deezerList(deezerArtistSchema, "/chart/0/artists", {
     limit: ARTIST_LIMIT,
   });
   const items = await mapWithConcurrency(
-    (page.data || []).filter((artist) => text(artist.id) && text(artist.name)),
+    page.items.filter((artist) => text(artist.name)),
     3,
     async (artist) => {
       const key = text(artist.id);
       const name = text(artist.name);
       const [details, mbid] = await Promise.all([
-        deezerRequest<DeezerArtistPayload>(`/artist/${key}`).catch(() => null),
+        deezerRequest(deezerArtistSchema, `/artist/${key}`).catch(() => null),
         guessArtistMbid(name),
       ]);
       return {
@@ -244,11 +224,10 @@ async function fetchGenreCharts() {
   const genres = EDITORIAL_GENRES.filter((genre) => genre.id !== 0);
   const charts = await mapWithConcurrency(genres, 2, async (genre) => {
     try {
-      const page = await deezerRequest<DeezerPage<DeezerTrackPayload>>(
-        `/chart/${genre.id}/tracks`,
-        { limit: GENRE_TRACK_LIMIT },
-      );
-      const items = uniqueByKey((page.data || []).map(toSong).filter(isPresent));
+      const page = await deezerList(deezerTrackSchema, `/chart/${genre.id}/tracks`, {
+        limit: GENRE_TRACK_LIMIT,
+      });
+      const items = uniqueByKey(page.items.map(toSong).filter(isPresent));
       return items.length > 0 ? { id: genre.id, name: genre.name, items } : null;
     } catch {
       return null;

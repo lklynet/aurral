@@ -1,41 +1,60 @@
+import * as v from "valibot";
 import axios from "../../../lib/axiosFetch.ts";
+import { readMany, readOne } from "../integrationData.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 
-interface DeezerArtist {
-  id?: number | string;
-  name?: string;
-  picture_xl?: string;
-  picture_big?: string;
-  picture_medium?: string;
-  picture?: string;
-}
+const DEEZER_API_URL = "https://api.deezer.com";
+const DEEZER_NO_DATA_CODE = 800;
 
-interface DeezerTrack {
-  id: number | string;
-  title?: string;
-  title_short?: string;
-  preview?: string;
-  duration?: number;
-  rank?: number;
-  track_position?: number;
-  disk_number?: number;
-  album?: { title?: string; cover_medium?: string };
-  artist?: { name?: string };
-}
+export const deezerErrorSchema = v.looseObject({
+  error: v.looseObject({ code: v.optional(v.number()) }),
+});
 
-interface DeezerAlbum {
-  id: number | string;
-  title?: string;
-  record_type?: string;
-  type?: string;
-  release_date?: string;
-  cover_xl?: string;
-  cover_big?: string;
-  cover_medium?: string;
-  cover?: string;
-  fans?: number;
-}
+export const deezerPageSchema = v.looseObject({
+  data: v.array(v.unknown()),
+  next: v.optional(v.string()),
+});
+
+export const deezerArtistSchema = v.looseObject({
+  id: v.number(),
+  name: v.optional(v.string()),
+  picture_xl: v.optional(v.string()),
+  picture_big: v.optional(v.string()),
+  picture_medium: v.optional(v.string()),
+  nb_fan: v.optional(v.number()),
+});
+
+export const deezerTrackSchema = v.looseObject({
+  id: v.number(),
+  title: v.string(),
+  title_short: v.optional(v.string()),
+  preview: v.optional(v.string()),
+  duration: v.optional(v.number()),
+  rank: v.optional(v.number()),
+  track_position: v.optional(v.number()),
+  disk_number: v.optional(v.number()),
+  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  album: v.optional(
+    v.looseObject({
+      id: v.optional(v.number()),
+      title: v.optional(v.string()),
+      cover_medium: v.optional(v.string()),
+      cover_xl: v.optional(v.string()),
+    }),
+  ),
+});
+
+const deezerAlbumSchema = v.looseObject({
+  id: v.number(),
+  title: v.optional(v.string()),
+  record_type: v.optional(v.string()),
+  release_date: v.optional(v.string()),
+  cover_xl: v.optional(v.string()),
+  cover_big: v.optional(v.string()),
+  cover_medium: v.optional(v.string()),
+  fans: v.optional(v.number()),
+});
 
 type NumericField = string | number | null | undefined;
 
@@ -70,10 +89,28 @@ const deezerPreviewLinkCache = createCache(5 * 60);
 const deezerInflightRequests = new Map();
 const deezerLimiter = createRateLimiter(110);
 
-const isDeezerOutage = (data: { error?: { code?: number } } | null | undefined) =>
-  Boolean(data?.error) && data?.error?.code !== 800;
+async function deezerGet<Schema extends v.GenericSchema>(
+  schema: Schema,
+  path: string,
+  config: { params?: Record<string, string | number>; timeout: number },
+) {
+  const { data } = await axios.get(`${DEEZER_API_URL}${path}`, config);
+  const failure = v.safeParse(deezerErrorSchema, data);
+  if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
+  if (failure.output.error.code === DEEZER_NO_DATA_CODE) return null;
+  throw new Error(`Deezer returned an error for ${path}`);
+}
 
-const deezerArtistPhoto = (artist: DeezerArtist) => {
+async function deezerList<Schema extends v.GenericSchema>(
+  schema: Schema,
+  path: string,
+  config: { params?: Record<string, string | number>; timeout: number },
+) {
+  const page = await deezerGet(deezerPageSchema, path, config);
+  return page ? readMany(schema, page.data, { service: "Deezer", endpoint: path }) : [];
+}
+
+const deezerArtistPhoto = (artist: v.InferOutput<typeof deezerArtistSchema>) => {
   const url = artist.picture_xl || artist.picture_big || artist.picture_medium;
   return url && !url.includes("/images/artist//") ? url : null;
 };
@@ -103,9 +140,7 @@ export const deezerPreviewPath = (trackId: string | number) => `/api/deezer/prev
 export async function getDeezerPreviewLink(trackId: string): Promise<string | null> {
   const cacheKey = `dz-preview:${trackId}`;
   return cachedOrInflight(deezerPreviewLinkCache, cacheKey, deezerInflightRequests, async () => {
-    const res = await axios.get(`https://api.deezer.com/track/${trackId}`, { timeout: 3000 });
-    if (isDeezerOutage(res.data)) throw new Error("Deezer track unavailable");
-    const track: DeezerTrack | null | undefined = res.data;
+    const track = await deezerGet(deezerTrackSchema, `/track/${trackId}`, { timeout: 3000 });
     const link = track?.preview || null;
     deezerPreviewLinkCache.set(cacheKey, link);
     return link;
@@ -136,17 +171,14 @@ export async function getDeezerArtist(
 
   try {
     return await cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
-      const response = await deezerLimiter.schedule(() =>
-        axios.get("https://api.deezer.com/search/artist", {
+      const artists = await deezerLimiter.schedule(() =>
+        deezerList(deezerArtistSchema, "/search/artist", {
           params: { q: artistName, limit: 10 },
           timeout: 5000,
         }),
       );
-      if (isDeezerOutage(response.data)) throw new Error("Deezer artist search unavailable");
-      const match: DeezerArtist | undefined = (response.data?.data || []).find(
-        (artist: DeezerArtist) => artist?.id && artistNameKey(artist.name) === wanted,
-      );
-      const result = match?.id
+      const match = artists.find((artist) => artistNameKey(artist.name) === wanted);
+      const result = match
         ? {
             id: match.id,
             name: match.name,
@@ -172,12 +204,10 @@ export async function getDeezerArtistById(
 
   try {
     return await cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
-      const res = await axios.get(`https://api.deezer.com/artist/${normalizedId}`, {
+      const data = await deezerGet(deezerArtistSchema, `/artist/${normalizedId}`, {
         timeout: 3000,
       });
-      if (isDeezerOutage(res.data)) throw new Error("Deezer artist unavailable");
-      const data: DeezerArtist | null | undefined = res.data;
-      if (!data?.id) {
+      if (!data) {
         deezerArtistCache.set(cacheKey, null);
         return null;
       }
@@ -201,15 +231,14 @@ async function getDeezerArtistTopTracksById(artistId: DeezerArtistId) {
   const cacheKey = `dz-top:${normalizedId}`;
 
   return cachedOrInflight(deezerTopTrackCache, cacheKey, deezerInflightRequests, async () => {
-    const topRes = await axios.get(`https://api.deezer.com/artist/${normalizedId}/top`, {
+    const top = await deezerList(deezerTrackSchema, `/artist/${normalizedId}/top`, {
       params: { limit: 6 },
       timeout: 3000,
     });
-    if (topRes.data?.error) throw new Error("Deezer popular tracks unavailable");
-    const tracks = (topRes.data?.data || [])
-      .filter((track: DeezerTrack) => track.preview)
+    const tracks = top
+      .filter((track) => track.preview)
       .slice(0, 6)
-      .map((track: DeezerTrack) => ({
+      .map((track) => ({
         id: String(track.id),
         title: track.title,
         album: track.album?.title ?? null,
@@ -231,16 +260,14 @@ export async function deezerGetRelatedArtists(
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
   const cacheKey = `related:${normalizedId}:${safeLimit}`;
   return cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
-    const response = await deezerLimiter.schedule(() =>
-      axios.get(`https://api.deezer.com/artist/${normalizedId}/related`, {
+    const rows = await deezerLimiter.schedule(() =>
+      deezerList(deezerArtistSchema, `/artist/${normalizedId}/related`, {
         params: { limit: safeLimit },
         timeout: 5000,
       }),
     );
-    if (isDeezerOutage(response.data)) throw new Error("Deezer related artists unavailable");
-    const rows: DeezerArtist[] = response.data?.data || [];
     const artists = rows.flatMap((artist) =>
-      artist?.id && artist.name?.trim()
+      artist.name?.trim()
         ? [
             {
               name: artist.name.trim(),
@@ -267,17 +294,16 @@ export async function deezerGetArtistTopTrackList(
     `dz-list:${artistId}:${safeLimit}`,
     deezerInflightRequests,
     async () => {
-      const response = await deezerLimiter.schedule(() =>
-        axios.get(`https://api.deezer.com/artist/${artistId}/top`, {
+      const top = await deezerLimiter.schedule(() =>
+        deezerList(deezerTrackSchema, `/artist/${artistId}/top`, {
           params: { limit: safeLimit },
           timeout: 5000,
         }),
       );
-      if (isDeezerOutage(response.data)) throw new Error("Deezer popular tracks unavailable");
-      const tracks = (response.data?.data || [])
-        .filter((track: DeezerTrack) => String(track?.title || "").trim())
-        .map((track: DeezerTrack) => ({
-          name: String(track.title).trim(),
+      const tracks = top
+        .filter((track) => track.title.trim())
+        .map((track) => ({
+          name: track.title.trim(),
           albumName: String(track.album?.title || "").trim() || null,
           mbid: null,
           durationMs: track.duration ? track.duration * 1000 : null,
@@ -308,7 +334,7 @@ export async function deezerGetArtistTopTracksById(artistId: DeezerArtistId) {
 }
 
 export function selectDeezerTrackPreview(
-  candidates: DeezerTrack[] | null | undefined,
+  candidates: v.InferOutput<typeof deezerTrackSchema>[],
   { artistName, trackName }: { artistName: string; trackName: string },
 ) {
   const targetArtist = normalizeTitle(artistName);
@@ -316,11 +342,11 @@ export function selectDeezerTrackPreview(
   if (!targetArtist || !targetTrack) return null;
 
   return (
-    (Array.isArray(candidates) ? candidates : []).find((candidate) => {
-      const candidateArtist = normalizeTitle(candidate?.artist?.name);
-      const candidateTrack = normalizeTitle(candidate?.title_short || candidate?.title);
+    candidates.find((candidate) => {
+      const candidateArtist = normalizeTitle(candidate.artist?.name);
+      const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
       return (
-        candidate?.preview &&
+        candidate.preview &&
         candidateTrack &&
         candidateArtist === targetArtist &&
         (candidateTrack === targetTrack ||
@@ -340,11 +366,11 @@ export async function deezerGetTrackPreview({
 }) {
   if (!String(artistName || "").trim() || !String(trackName || "").trim()) return null;
   try {
-    const response = await axios.get("https://api.deezer.com/search", {
+    const candidates = await deezerList(deezerTrackSchema, "/search", {
       params: { q: `${artistName} ${trackName}`, limit: 10 },
       timeout: 3000,
     });
-    const track = selectDeezerTrackPreview(response.data?.data, { artistName, trackName });
+    const track = selectDeezerTrackPreview(candidates, { artistName, trackName });
     if (!track) return null;
     return {
       preview_url: deezerPreviewPath(track.id),
@@ -433,17 +459,15 @@ export async function getDeezerAlbumsForArtist(
   if (!artist?.id) return [];
   const cacheKey = `dz-albums:${artist.id}`;
   return cachedOrInflight(deezerAlbumCache, cacheKey, deezerInflightRequests, async () => {
-    const res = await axios.get(`https://api.deezer.com/artist/${artist.id}/albums`, {
+    const raw = await deezerList(deezerAlbumSchema, `/artist/${artist.id}/albums`, {
       params: { limit: 100 },
       timeout: 3000,
     });
-    if (res.data?.error) throw new Error("Deezer artist catalog unavailable");
-    const raw: DeezerAlbum[] = res.data?.data || [];
     const allowed = ["album", "ep", "single"];
     const albums = raw
-      .filter((a) => allowed.includes((a.record_type || a.type || "").toLowerCase()))
+      .filter((a) => allowed.includes((a.record_type || "").toLowerCase()))
       .map((a) => {
-        const primaryType = normalizeDeezerPrimaryType(a.record_type || a.type);
+        const primaryType = normalizeDeezerPrimaryType(a.record_type);
         const title = a.title || "";
         const releaseDate = a.release_date || "";
         return {
@@ -452,8 +476,8 @@ export async function getDeezerAlbumsForArtist(
           "first-release-date": releaseDate ? releaseDate.slice(0, 4) : null,
           "primary-type": primaryType,
           "secondary-types": [],
-          _coverUrl: a.cover_xl || a.cover_big || a.cover_medium || a.cover || null,
-          fans: typeof a.fans === "number" ? a.fans : 0,
+          _coverUrl: a.cover_xl || a.cover_big || a.cover_medium || null,
+          fans: a.fans ?? 0,
           _normalizedTitle: normalizeTitle(title),
           _releaseDate: releaseDate,
         };
@@ -606,15 +630,12 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
 
   return cachedOrInflight(deezerAlbumTrackCache, cacheKey, deezerInflightRequests, async () => {
     try {
-      const res = await axios.get(`https://api.deezer.com/album/${id}/tracks`, {
-        timeout: 3000,
-      });
-      const raw: DeezerTrack[] = res.data?.data || [];
+      const raw = await deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeout: 3000 });
       const tracks = raw.map((t, i) => ({
         id: String(t.id),
         mbid: String(t.id),
-        title: t.title || "",
-        trackName: t.title || "",
+        title: t.title,
+        trackName: t.title,
         trackNumber: t.track_position || i + 1,
         position: t.track_position || i + 1,
         mediumNumber: t.disk_number || null,

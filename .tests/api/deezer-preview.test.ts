@@ -72,7 +72,11 @@ test("a preview link from popular tracks still plays after Deezer's signed link 
     "https://api.deezer.com/artist/101/top": () => ({
       data: [{ id: 7, title: "Song", preview: signedLink("7", Date.now()), duration: 30 }],
     }),
-    "https://api.deezer.com/track/7": () => ({ id: 7, preview: signedLink("7", Date.now()) }),
+    "https://api.deezer.com/track/7": () => ({
+      id: 7,
+      title: "Song",
+      preview: signedLink("7", Date.now()),
+    }),
   });
 
   const [track] = await deezerGetArtistTopTracksById("101");
@@ -125,7 +129,7 @@ test("a preview Deezer no longer has is a 404 and a Deezer outage is a 502", asy
 test("a downloaded preview comes from Aurral instead of redirecting to Deezer", async () => {
   const link = signedLink("12", Date.now());
   stubDeezer({
-    "https://api.deezer.com/track/12": () => ({ id: 12, preview: link }),
+    "https://api.deezer.com/track/12": () => ({ id: 12, title: "Clip", preview: link }),
     [link]: () => Buffer.from("clip"),
   });
 

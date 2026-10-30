@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ArtistDetailsVideos } from "./ArtistDetailsVideos";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
-import type { PlaylistSelection } from "./TrackPlaylistMenu";
+import type { PlaylistSelection, PlaylistTrackIdentity } from "./TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
@@ -36,9 +36,9 @@ export function ArtistDetailsPreviewTracks({
   isArtistPlaybackActive: boolean;
   handlePreviewPlay: (track: ArtistPreviewTrack) => void;
   onAddTrackToPlaylist?: (track: ArtistPreviewTrack, target: PlaylistSelection) => void;
-  onAddTrackToLibrary?: (track: ArtistPreviewTrack, releaseGroup: null, trackKey: string) => void;
+  onAddTrackToLibrary?: (track: ArtistPreviewTrack, trackKey: string) => unknown;
   libraryTrackSavingKeys: ReadonlySet<string> | undefined;
-  resolveMembershipTrack?: (track: ArtistPreviewTrack) => unknown;
+  resolveMembershipTrack?: (track: ArtistPreviewTrack) => PlaylistTrackIdentity;
   playlists: ReturnType<typeof useStaticPlaylists>["staticPlaylists"];
   playlistsLoading: boolean;
   playlistSavingKey: string;
@@ -123,9 +123,7 @@ export function ArtistDetailsPreviewTracks({
                         defaultNewPlaylistName={getDefaultPlaylistName?.(track)}
                         onLoadPlaylists={onLoadPlaylists}
                         onAddToLibrary={
-                          onAddTrackToLibrary
-                            ? () => onAddTrackToLibrary(track, null, trackId)
-                            : null
+                          onAddTrackToLibrary ? () => onAddTrackToLibrary(track, trackId) : null
                         }
                         onSelect={
                           onAddTrackToPlaylist
