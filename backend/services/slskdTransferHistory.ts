@@ -19,12 +19,7 @@ type TransferCandidate = {
   score?: unknown;
   resolvedAlbumName?: unknown;
 } | null;
-type TransferLike = {
-  id?: unknown;
-  Id?: unknown;
-  transferId?: unknown;
-  TransferId?: unknown;
-} | null;
+type TransferLike = { id?: unknown } | null;
 type PeerStats = {
   successes: number;
   failures: number;
@@ -187,12 +182,6 @@ function readCandidateRaw(candidate: TransferCandidate) {
   return candidate?.raw && typeof candidate.raw === "object" ? candidate.raw : {};
 }
 
-function readTransferId(transfer: TransferLike) {
-  return normalizeText(
-    transfer?.id || transfer?.Id || transfer?.transferId || transfer?.TransferId || "",
-  );
-}
-
 export function recordSlskdTransferOutcome({
   job = null,
   candidate = null,
@@ -222,7 +211,7 @@ export function recordSlskdTransferOutcome({
   const username = normalizeText(raw.user || candidate?.username || job?.remoteUsername);
   if (!username) return null;
   const normalizedStatus = normalizeText(status) || "unknown";
-  const actualTransferId = normalizeText(transferId) || readTransferId(transfer);
+  const actualTransferId = normalizeText(transferId) || normalizeText(transfer?.id);
   const rowId = randomUUID();
   insertOutcomeStmt.run(
     rowId,

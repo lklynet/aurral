@@ -7,6 +7,7 @@ import type { AppSettings } from "../db/helpers/settings.ts";
 import type { UserRecord } from "../db/helpers/users.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
+import { readMany, readOne } from "./integrationData.ts";
 import BoundedMap from "./boundedMap.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.ts";
@@ -236,43 +237,18 @@ export type LidarrRootFolder = { path: string };
 
 type LidarrParse<T> = (data: unknown, endpoint: string) => T;
 
-const unreadable = (endpoint: string, reason: string) =>
-  new Error(`Lidarr sent ${endpoint.split("?")[0]} data Aurral can't read: ${reason}`);
-
 const one =
   <Schema extends v.GenericSchema>(schema: Schema): LidarrParse<v.InferOutput<Schema>> =>
-  (data, endpoint) => {
-    const result = v.safeParse(schema, data);
-    if (!result.success) throw unreadable(endpoint, v.summarize(result.issues));
-    return result.output;
-  };
+  (data, endpoint) =>
+    readOne(schema, data, { service: "Lidarr", endpoint });
 
 const many =
   <Schema extends v.GenericSchema>(schema: Schema): LidarrParse<v.InferOutput<Schema>[]> =>
-  (data, endpoint) => {
-    const records = Array.isArray(data) ? data : readResponseField(data, "records");
-    if (!Array.isArray(records)) throw unreadable(endpoint, "expected a list");
-    const items: v.InferOutput<Schema>[] = [];
-    let skipped = 0;
-    let issue = "";
-    for (const record of records) {
-      const result = v.safeParse(schema, record);
-      if (result.success) {
-        items.push(result.output);
-      } else {
-        skipped += 1;
-        issue ||= v.summarize(result.issues);
-      }
-    }
-    if (skipped > 0) {
-      logger.warn("library", "Skipped Lidarr records Aurral can't read", {
-        endpoint: endpoint.split("?")[0],
-        skipped,
-        issue,
-      });
-    }
-    return items;
-  };
+  (data, endpoint) =>
+    readMany(schema, Array.isArray(data) ? data : readResponseField(data, "records"), {
+      service: "Lidarr",
+      endpoint,
+    });
 
 type LidarrError = Error & {
   statusCode?: number;

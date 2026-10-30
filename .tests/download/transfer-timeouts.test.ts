@@ -61,7 +61,11 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
     bytesTransferred: 0,
     placeInQueue: 12,
   };
-  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({
+    events: [],
+    count: 0,
+    totalCount: 0,
+  }));
   vi.spyOn(client, "getTransfer").mockImplementation(async () => queued);
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   const jobId = addJob();
@@ -102,6 +106,47 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   assert.equal((await processPipelinePayload(polling))!.phase, "download");
 });
 
+test("an slskd download-complete event for the candidate finishes polling with its transfer", async () => {
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
+  const client = getDownloadClient("slskd");
+  const done = {
+    id: "transfer-2",
+    username: "Peer",
+    filename: "Music\\Album\\02 Second.flac",
+    state: "Completed, Succeeded",
+  };
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({
+    events: [
+      {
+        type: "DownloadFileComplete",
+        data: { transfer: { ...done, id: "transfer-1", filename: "Music\\Album\\01 First.flac" } },
+      },
+      { type: "DownloadFileComplete", data: { transfer: done } },
+    ],
+    count: 5,
+    totalCount: 12,
+  }));
+  const jobId = addJob();
+
+  const next = await processPipelinePayload({
+    phase: "poll",
+    source: "slskd",
+    jobId,
+    eventOffset: 7,
+    candidateIndex: 0,
+    candidates: [{ raw: { user: "peer", file: "Music/Album/02 Second.flac" } }],
+  });
+
+  assert.equal(next?.phase, "finalize");
+  assert.deepEqual(next?.batch, { transfers: [done] });
+  assert.equal(next?.eventOffset, 12);
+});
+
 test("a rejected slskd transfer moves to the next user instead of retrying the same one", async () => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -110,7 +155,11 @@ test("a rejected slskd transfer moves to the next user instead of retrying the s
     },
   });
   const client = getDownloadClient("slskd");
-  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({
+    events: [],
+    count: 0,
+    totalCount: 0,
+  }));
   vi.spyOn(client, "getTransfer").mockImplementation(async () => ({
     id: "transfer-1",
     username: "strict",
@@ -146,7 +195,11 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
     },
   });
   const client = getDownloadClient("slskd");
-  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({
+    events: [],
+    count: 0,
+    totalCount: 0,
+  }));
   vi.spyOn(client, "getTransfer").mockImplementation(async () => ({
     id: "transfer-1",
     username: "busy",

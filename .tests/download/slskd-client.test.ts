@@ -294,32 +294,6 @@ test("flattenSearchResults reads files and lockedFiles payloads", () => {
   assert.equal(results[1].locked, true);
 });
 
-test("flattenSearchResults reads slskd collection wrapper payloads", () => {
-  const results = slskdClient.flattenSearchResults({
-    responses: {
-      $values: [
-        {
-          username: "peerTwo",
-          files: {
-            $values: [
-              {
-                filename: "Artist/Album/03 - Wrapped.flac",
-                size: 789,
-                bitRate: 1411,
-              },
-            ],
-          },
-        },
-      ],
-    },
-  });
-
-  assert.equal(results.length, 1);
-  assert.equal(results[0].user, "peerTwo");
-  assert.equal(results[0].file, "Artist/Album/03 - Wrapped.flac");
-  assert.equal(results[0].bitrate, 1411);
-});
-
 test("waitForSearch treats a polling failure during cancellation as a cancelled search", async () => {
   const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
   const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
@@ -799,5 +773,46 @@ test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 30
     assert.deepEqual(deleted, ["/api/v0/searches/cancel-http"]);
   } finally {
     await server.close();
+  }
+});
+
+test("getEvents reads the download completions slskd stores as JSON text", async () => {
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const transfer = {
+    id: "transfer-1",
+    username: "peer",
+    filename: "Artist\\Album\\01 - Track.flac",
+    state: "Completed, Succeeded",
+  };
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.setHeader("content-type", "application/json");
+    response.setHeader("x-total-count", "40");
+    response.end(
+      JSON.stringify([
+        { type: "PrivateMessageReceived", data: JSON.stringify({ message: "hello" }) },
+        { type: "DownloadFileComplete", data: JSON.stringify({ transfer }) },
+        {
+          type: "DownloadDirectoryComplete",
+          data: JSON.stringify({ username: "peer", remoteDirectoryName: "Artist\\Album" }),
+        },
+        { type: "DownloadFileComplete", data: "{not json" },
+      ]),
+    );
+  });
+  try {
+    const client = new SlskdClient({ url: mock.url });
+    const { events, count, totalCount } = await client.getEvents(10, 50);
+    assert.deepEqual(
+      events.map((event) =>
+        event.type === "DownloadFileComplete"
+          ? event.data.transfer.id
+          : event.data.remoteDirectoryName,
+      ),
+      ["transfer-1", "Artist\\Album"],
+    );
+    assert.deepEqual([count, totalCount], [4, 40]);
+  } finally {
+    await mock.close();
   }
 });

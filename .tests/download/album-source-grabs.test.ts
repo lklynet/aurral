@@ -2161,8 +2161,8 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     username: "peer",
     response: {},
   }));
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    transfers.find((item) => item.id === id),
+  vi.spyOn(client, "getTransfer").mockImplementation(
+    async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
@@ -2220,8 +2220,8 @@ test("a Soulseek album left untouched in the uploader's queue moves on after 10 
     bytesTransferred: 0,
     placeInQueue: undefined as number | undefined,
   }));
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    transfers.find((item) => item.id === id),
+  vi.spyOn(client, "getTransfer").mockImplementation(
+    async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   const remoteFiles = album.files.map((file, index) => ({
@@ -2534,8 +2534,8 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
       placeInQueue: 9,
     },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    transfers.find((item) => item.id === id),
+  vi.spyOn(client, "getTransfer").mockImplementation(
+    async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
@@ -2609,8 +2609,8 @@ test("a track that takes the lead of a Soulseek album after the leading track la
       placeInQueue: 9,
     },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    transfers.find((item) => item.id === id),
+  vi.spyOn(client, "getTransfer").mockImplementation(
+    async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
@@ -2668,8 +2668,8 @@ test("a Soulseek album's next folder gets its own queue window", async (t) => {
       placeInQueue: 4,
     },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    transfers.find((item) => item.id === id),
+  vi.spyOn(client, "getTransfer").mockImplementation(
+    async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);

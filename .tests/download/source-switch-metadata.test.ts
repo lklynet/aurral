@@ -93,7 +93,11 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
     response: {},
     transfers: [{ id: "transfer-1" }],
   }));
-  vi.spyOn(slskd, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(slskd, "getEvents").mockImplementation(async () => ({
+    events: [],
+    count: 0,
+    totalCount: 0,
+  }));
   const jobId = createTrackedJob(
     downloadTracker,
     { artistName: "The Cure", trackName: "Boys Don't Cry" },
