@@ -1,50 +1,52 @@
+import * as v from "valibot";
 import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { readMany, readOne } from "./integrationData.ts";
 import { normalizeBaseUrl, normalizeInteger } from "./usenetClientCommon.ts";
 
 const DEFAULT_MUSIC_CATEGORIES = [3000];
 const DEFAULT_MAX_RESULTS = 60;
 
-type ProwlarrCategory = {
-  id?: number;
-  name?: string | null;
-  subCategories?: ProwlarrCategory[] | null;
-};
+const categoriesSchema = v.nullish(v.array(v.looseObject({ id: v.number() })));
 
-type ProwlarrDownloadProtocol = "unknown" | "usenet" | "torrent";
+const statusSchema = v.looseObject({
+  appName: v.nullish(v.string()),
+  version: v.nullish(v.string()),
+});
 
-type ProwlarrIndexer = {
-  id?: number;
-  name?: string | null;
-  definitionName?: string | null;
-  protocol?: ProwlarrDownloadProtocol;
-  enable?: boolean;
-  supportsSearch?: boolean;
-  priority?: number;
-  capabilities?: {
-    categories?: ProwlarrCategory[] | null;
-    musicSearchParams?: string[] | null;
-  };
-};
+const indexerSchema = v.looseObject({
+  id: v.number(),
+  name: v.nullish(v.string()),
+  protocol: v.optional(v.string()),
+  enable: v.optional(v.boolean()),
+  supportsSearch: v.optional(v.boolean()),
+  priority: v.optional(v.number()),
+  capabilities: v.nullish(
+    v.looseObject({
+      categories: categoriesSchema,
+      musicSearchParams: v.nullish(v.array(v.string())),
+    }),
+  ),
+});
 
-type ProwlarrRelease = {
-  id?: number;
-  guid?: string | null;
-  size?: number;
-  files?: number | null;
-  grabs?: number | null;
-  indexerId?: number;
-  indexer?: string | null;
-  title?: string | null;
-  sortTitle?: string | null;
-  releaseHash?: string | null;
-  publishDate?: string;
-  downloadUrl?: string | null;
-  infoUrl?: string | null;
-  protocol?: ProwlarrDownloadProtocol;
-  categories?: ProwlarrCategory[] | null;
-};
+const releaseSchema = v.looseObject({
+  guid: v.nullish(v.string()),
+  title: v.nullish(v.string()),
+  size: v.optional(v.number()),
+  files: v.nullish(v.number()),
+  grabs: v.nullish(v.number()),
+  indexerId: v.optional(v.number()),
+  indexer: v.nullish(v.string()),
+  publishDate: v.optional(v.string()),
+  downloadUrl: v.nullish(v.string()),
+  protocol: v.optional(v.string()),
+  categories: categoriesSchema,
+});
+
+type ProwlarrIndexer = v.InferOutput<typeof indexerSchema>;
+
+type ProwlarrRelease = v.InferOutput<typeof releaseSchema>;
 
 type ProwlarrIndexerOverride = { enabled: boolean; priority: number | null };
 
@@ -191,28 +193,7 @@ function buildClient() {
   return buildClientFromCredentials(url, apiKey);
 }
 
-function normalizeProtocol(value: unknown) {
-  const protocol = String(value || "")
-    .trim()
-    .toLowerCase();
-  return protocol;
-}
-
-function readCategoryIds(categories: unknown) {
-  if (!Array.isArray(categories)) return [];
-  const ids: number[] = [];
-  for (const category of categories) {
-    const id = normalizeInteger(category?.id ?? category, null);
-    if (id != null) ids.push(id);
-  }
-  return [...new Set(ids)];
-}
-
-function hasMusicCategory(
-  indexer: ProwlarrIndexer,
-  configuredCategories = DEFAULT_MUSIC_CATEGORIES,
-) {
-  const supported = readCategoryIds(indexer?.capabilities?.categories);
+function hasMusicCategory(supported: number[], configuredCategories = DEFAULT_MUSIC_CATEGORIES) {
   if (supported.length === 0) return true;
   return supported.some((id) =>
     configuredCategories.some((category) => {
@@ -225,23 +206,18 @@ function hasMusicCategory(
 }
 
 function normalizeIndexer(indexer: ProwlarrIndexer, settings: ProwlarrSettings = getSettings()) {
-  const id = normalizeInteger(indexer?.id, null);
-  const override = id != null ? settings.indexers[String(id)] : null;
-  const priority = override?.priority ?? normalizePositiveInteger(indexer?.priority, 25);
-  const musicParams = (indexer?.capabilities?.musicSearchParams || []).map((param) =>
-    String(param || "").toLowerCase(),
-  );
+  const override = settings.indexers[String(indexer.id)];
+  const musicParams = indexer.capabilities?.musicSearchParams ?? [];
   return {
     musicSearch: musicParams.includes("artist") || musicParams.includes("album"),
-    id,
-    name: String(indexer?.name || indexer?.definitionName || `Indexer ${id}`).trim(),
-    protocol: normalizeProtocol(indexer?.protocol),
-    enabledInProwlarr: indexer?.enable === true,
-    enabled: indexer?.enable === true && override?.enabled !== false,
-    supportsSearch: indexer?.supportsSearch !== false,
-    priority,
-    categories: readCategoryIds(indexer?.capabilities?.categories),
-    raw: indexer,
+    id: indexer.id,
+    name: indexer.name?.trim() || `Indexer ${indexer.id}`,
+    protocol: indexer.protocol ?? "",
+    enabledInProwlarr: indexer.enable === true,
+    enabled: indexer.enable === true && override?.enabled !== false,
+    supportsSearch: indexer.supportsSearch !== false,
+    priority: override?.priority ?? normalizePositiveInteger(indexer.priority, 25),
+    categories: indexer.capabilities?.categories?.map((category) => category.id) ?? [],
   };
 }
 
@@ -255,24 +231,18 @@ function resolveProwlarrUrl(value: unknown) {
 }
 
 function normalizeRelease(release: ProwlarrRelease) {
-  const indexerId = normalizeInteger(release?.indexerId, null);
-  const title = String(release?.title || release?.sortTitle || "").trim();
-  const downloadUrl = resolveProwlarrUrl(release?.downloadUrl);
   return {
-    id: release?.id ?? null,
-    guid: String(release?.guid || release?.releaseHash || "").trim() || null,
-    title,
-    size: Number(release?.size || 0),
-    files: normalizeInteger(release?.files, null),
-    grabs: normalizeInteger(release?.grabs, null),
-    indexerId,
-    indexer: String(release?.indexer || "").trim() || null,
-    publishDate: release?.publishDate || null,
-    downloadUrl,
-    infoUrl: resolveProwlarrUrl(release?.infoUrl),
-    protocol: normalizeProtocol(release?.protocol),
-    categories: readCategoryIds(release?.categories),
-    raw: release,
+    guid: release.guid?.trim() || null,
+    title: release.title?.trim() ?? "",
+    size: release.size ?? 0,
+    files: release.files ?? null,
+    grabs: release.grabs ?? null,
+    indexerId: release.indexerId ?? null,
+    indexer: release.indexer?.trim() || null,
+    publishDate: release.publishDate || null,
+    downloadUrl: resolveProwlarrUrl(release.downloadUrl),
+    protocol: release.protocol ?? "",
+    categories: release.categories?.map((category) => category.id) ?? [],
   };
 }
 
@@ -313,7 +283,7 @@ function buildSearchParams({
   offset = 0,
 }: {
   query: string;
-  indexerIds?: (number | null)[];
+  indexerIds?: number[];
   categories?: unknown;
   type?: string;
   limit?: number | null;
@@ -392,20 +362,28 @@ export class ProwlarrClient {
         connectionCache = { checkedAt: Date.now(), result };
         return result;
       }
-      const indexers: ProwlarrIndexer[] = Array.isArray(indexerRes.data) ? indexerRes.data : [];
-      const normalized = indexers.map((entry) => normalizeIndexer(entry, settings));
-      const usenet = normalized.filter(
-        (entry) =>
-          entry.protocol === "usenet" &&
-          entry.supportsSearch &&
-          hasMusicCategory(entry.raw, settings.categories),
-      );
+      const status = readOne(statusSchema, statusRes.data, {
+        service: "Prowlarr",
+        endpoint: "/api/v1/system/status",
+      });
+      const indexers = readMany(indexerSchema, indexerRes.data, {
+        service: "Prowlarr",
+        endpoint: "/api/v1/indexer",
+      });
+      const usenet = indexers
+        .map((entry) => normalizeIndexer(entry, settings))
+        .filter(
+          (entry) =>
+            entry.protocol === "usenet" &&
+            entry.supportsSearch &&
+            hasMusicCategory(entry.categories, settings.categories),
+        );
       const result = {
         ok: true,
         configured: true,
         connected: true,
-        version: statusRes.data?.version || null,
-        appName: statusRes.data?.appName || "Prowlarr",
+        version: status.version || null,
+        appName: status.appName || "Prowlarr",
         indexerCount: indexers.length,
         usenetIndexerCount: usenet.length,
         enabledUsenetIndexerCount: usenet.filter((entry) => entry.enabled).length,
@@ -440,21 +418,23 @@ export class ProwlarrClient {
       indexerCache = {
         key,
         at: Date.now(),
-        indexers: Array.isArray(response.data) ? response.data : [],
+        indexers: readMany(indexerSchema, response.data, {
+          service: "Prowlarr",
+          endpoint: "/api/v1/indexer",
+        }),
       };
     }
     return indexerCache.indexers
       .map((entry) => normalizeIndexer(entry, settings))
       .filter(
-        (entry): entry is typeof entry & { id: number } =>
-          entry.id != null &&
+        (entry) =>
           entry.protocol === "usenet" &&
           entry.supportsSearch &&
-          hasMusicCategory(entry.raw, settings.categories),
+          hasMusicCategory(entry.categories, settings.categories),
       )
       .sort((left, right) => {
         if (left.priority !== right.priority) return left.priority - right.priority;
-        return String(left.name).localeCompare(String(right.name));
+        return left.name.localeCompare(right.name);
       });
   }
 
@@ -473,23 +453,23 @@ export class ProwlarrClient {
         ? options.indexers
         : await this.getEnabledUsenetIndexers();
     if (indexers.length === 0) return [];
-    const indexerIds = indexers.map((entry) => entry.id).filter((id) => id != null);
     const queryString = buildSearchParams({
       query,
-      indexerIds,
+      indexerIds: indexers.map((entry) => entry.id),
       categories: options.categories || settings.categories,
       type: options.type || "search",
       limit: normalizePositiveInteger(options.limit, settings.maxResults),
       offset: normalizeInteger(options.offset, 0),
     });
-    const response = await buildClient().get(`/api/v1/search?${queryString}`);
+    const endpoint = `/api/v1/search?${queryString}`;
+    const response = await buildClient().get(endpoint);
     if (response.status !== 200) {
       const detail = formatHttpErrorBody(response.data);
       throw new Error(
         `Prowlarr search failed: HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
       );
     }
-    return (Array.isArray(response.data) ? response.data : [])
+    return readMany(releaseSchema, response.data, { service: "Prowlarr", endpoint })
       .map(normalizeRelease)
       .filter((release) => release.protocol === "usenet" && release.downloadUrl && release.title);
   }

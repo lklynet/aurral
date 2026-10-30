@@ -160,6 +160,63 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
   }
 });
 
+function useProwlarr(url: string) {
+  dbOps.updateSettings({
+    integrations: { prowlarr: { enabled: true, url, apiKey: "prowlarr-key" } },
+  });
+}
+
+test("Prowlarr search skips a release Aurral can't read and keeps the rest", async () => {
+  const server = await createMockHttpServer((req, res) => {
+    const url = new URL(req.url || "/", "http://mock");
+    if (url.pathname === "/api/v1/indexer") {
+      sendJson(res, 200, [{ id: 1, name: "Music", enable: true, protocol: "usenet" }]);
+      return;
+    }
+    sendJson(res, 200, [
+      {
+        guid: "bad",
+        title: "Artist - Album MP3",
+        size: "big",
+        protocol: "usenet",
+        downloadUrl: "/1",
+      },
+      {
+        guid: "good",
+        title: "Artist - Album FLAC",
+        size: 1,
+        protocol: "usenet",
+        downloadUrl: "/2",
+      },
+    ]);
+  });
+  try {
+    useProwlarr(server.url);
+    const releases = await prowlarrClient.search("Artist Album");
+    assert.deepEqual(
+      releases.map((release) => release.guid),
+      ["good"],
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("Prowlarr connection test fails when something else answers at its address", async () => {
+  const server = await createMockHttpServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<html>Sign in</html>");
+  });
+  try {
+    useProwlarr(server.url);
+    const status = await prowlarrClient.testConnection({ force: true });
+    assert.equal(status.connected, false);
+    assert.match(status.message, /Prowlarr sent \/api\/v1\/system\/status data Aurral can't read/);
+  } finally {
+    await server.close();
+  }
+});
+
 type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 type UsenetResult = UsenetPayload & {
   error?: string;
@@ -170,7 +227,6 @@ type ProwlarrRelease = Awaited<ReturnType<typeof prowlarrClient.search>>[number]
 
 function releaseFixture(release: Partial<ProwlarrRelease>): ProwlarrRelease {
   return {
-    id: null,
     guid: null,
     title: "",
     size: 0,
@@ -180,10 +236,8 @@ function releaseFixture(release: Partial<ProwlarrRelease>): ProwlarrRelease {
     indexer: null,
     publishDate: null,
     downloadUrl: "",
-    infoUrl: "",
     protocol: "usenet",
     categories: [3010],
-    raw: {},
     ...release,
   };
 }
@@ -198,7 +252,6 @@ const musicIndexer = {
   supportsSearch: true,
   priority: 1,
   categories: [3010],
-  raw: {},
 } satisfies Awaited<ReturnType<typeof prowlarrClient.getEnabledUsenetIndexers>>[number];
 
 async function runPipeline(payload: UsenetPayload): Promise<UsenetResult> {

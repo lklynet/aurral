@@ -123,7 +123,6 @@ export function usenetIndexer(id: number, name: string) {
     supportsSearch: true,
     priority: 25,
     categories: [3000],
-    raw: {},
   };
 }
 
@@ -136,14 +135,11 @@ export function usenetRelease(release: {
   categories: number[];
 }) {
   return {
-    id: null,
     files: null,
     grabs: null,
     indexer: null,
     publishDate: null,
-    infoUrl: "",
     protocol: "usenet" as const,
-    raw: {},
     ...release,
   };
 }

@@ -1601,7 +1601,6 @@ test("an album attempt whose first source is down searches the next source once,
       supportsSearch: true,
       priority: 1,
       categories: [3000],
-      raw: {},
     },
   ]);
   vi.spyOn(prowlarrClient, "search").mockImplementation(async (query) => {
