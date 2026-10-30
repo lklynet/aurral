@@ -9,6 +9,7 @@ import {
   deezerRequest,
 } from "../importLists/deezerPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
+import { listOf, orNull } from "../../db/helpers/storedSchemas.ts";
 import { findLibraryPlaylist } from "./editorialPlaylists.ts";
 import { mapWithConcurrency } from "./helpers.ts";
 import type { TrendingChartDaysRow, TrendingChartsRow } from "../../db/rows.ts";
@@ -103,11 +104,45 @@ const toAlbum = (album: AppleAlbumPayload) => {
   };
 };
 
-type TrendingSong = NonNullable<ReturnType<typeof toSong>>;
-type TrendingAlbum = NonNullable<ReturnType<typeof toAlbum>>;
-type TrendingArtist = Awaited<ReturnType<typeof fetchArtists>>["items"][number];
-type SongsChart = Awaited<ReturnType<typeof fetchSongs>>;
-type GenreChart = { name: string; items: TrendingSong[] };
+const trendingSongSchema = v.looseObject({
+  key: v.string(),
+  trackName: v.string(),
+  artistName: v.string(),
+  albumName: orNull(v.string()),
+  deezerAlbumId: orNull(v.string()),
+  durationMs: orNull(v.number()),
+  artworkUrl: orNull(v.string()),
+  largeArtworkUrl: orNull(v.string()),
+  preview_url: orNull(v.string()),
+});
+
+const trendingAlbumSchema = v.looseObject({
+  key: v.string(),
+  name: v.string(),
+  artistName: v.string(),
+  artworkUrl: orNull(v.string()),
+  releaseDate: orNull(v.string()),
+  genre: orNull(v.string()),
+});
+
+const trendingArtistSchema = v.looseObject({
+  key: v.string(),
+  name: v.string(),
+  imageUrl: orNull(v.string()),
+  fans: orNull(v.number()),
+  mbid: orNull(v.string()),
+});
+
+const songsChartSchema = v.looseObject({
+  playlistId: v.string(),
+  playlistName: v.string(),
+  items: listOf(trendingSongSchema),
+});
+const albumsChartSchema = v.looseObject({ items: listOf(trendingAlbumSchema) });
+const artistsChartSchema = v.looseObject({ items: listOf(trendingArtistSchema) });
+const genreChartSchema = v.looseObject({ name: v.string(), items: listOf(trendingSongSchema) });
+
+type TrendingAlbum = v.InferOutput<typeof trendingAlbumSchema>;
 type ChartDay = { day: string; keys: string[] };
 
 export const chartPlaylistTitle = (region: string) => {
@@ -264,14 +299,17 @@ const saveChart = (chart: string, region: string, data: unknown, now: number) =>
 
 const songHistoryKey = (region: string) => `songs:${region}`;
 
-function readChart<T>(row: TrendingChartsRow | undefined): T | null {
-  return row ? dbHelpers.parseJSON(row.data) : null;
+function readChart<Schema extends v.GenericSchema>(
+  row: TrendingChartsRow | undefined,
+  schema: Schema,
+) {
+  return row ? dbHelpers.readJSON(schema, row.data, `trending chart ${row.chart}`) : null;
 }
 
 function readDays(chart: string, limit: number): ChartDay[] {
   return selectDaysStmt.all(chart, limit).map((row) => ({
     day: row.day,
-    keys: (dbHelpers.parseJSON(row.item_keys) || []).map(String),
+    keys: dbHelpers.readJSON(v.array(v.string()), row.item_keys, `trending chart ${chart}`) ?? [],
   }));
 }
 
@@ -383,14 +421,14 @@ export function getTrendingCharts(userId: number) {
   const rows = selectChartsStmt.all();
   const byChart = new Map(rows.map((row) => [row.chart, row]));
   const songsRow = byChart.get("songs");
-  const songs = readChart<SongsChart>(songsRow);
-  const albums = readChart<{ items: TrendingAlbum[] }>(byChart.get("albums"));
-  const artists = readChart<{ items: TrendingArtist[] }>(byChart.get("artists"));
+  const songs = readChart(songsRow, songsChartSchema);
+  const albums = readChart(byChart.get("albums"), albumsChartSchema);
+  const artists = readChart(byChart.get("artists"), artistsChartSchema);
   const history = songsRow
     ? summarizeChartHistory(readDays(songHistoryKey(songsRow.region), HISTORY_DAYS))
     : null;
   const genres = EDITORIAL_GENRES.flatMap(({ id }) => {
-    const chart = readChart<GenreChart>(byChart.get(`genre:${id}`));
+    const chart = readChart(byChart.get(`genre:${id}`), genreChartSchema);
     if (!chart) return [];
     return [
       {
@@ -436,7 +474,7 @@ export function getTrendingCharts(userId: number) {
 
 export function getTrendingGenreChart(genreId: number) {
   const row = selectChartStmt.get(`genre:${genreId}`);
-  const chart = readChart<GenreChart>(row);
+  const chart = readChart(row, genreChartSchema);
   if (!row || !chart) return null;
   return {
     id: genreId,

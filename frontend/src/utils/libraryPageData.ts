@@ -222,7 +222,10 @@ const RELEASE_TYPES: Partial<Record<string, string>> = {
 
 export const releaseTypeOf = (album: LibraryAlbum | null | undefined) => {
   const metadata = album?.metadata || {};
-  const type = metadata.albumType || metadata.releaseType || [metadata.tags?.releasetype].flat()[0];
+  const { tags } = metadata;
+  const tagType =
+    tags && typeof tags === "object" && "releasetype" in tags ? tags.releasetype : null;
+  const type = metadata.albumType || metadata.releaseType || [tagType].flat()[0];
   const key = String(type || "")
     .trim()
     .toLowerCase();

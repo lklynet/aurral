@@ -683,3 +683,29 @@ test("a history entry kind named like an Object method falls back to the Aurral 
   assert.equal(toHistoryRequestItem(entry).source, "aurral");
   assert.equal(toHistoryRequestItem({ ...entry, kind: "album_requested" }).source, "lidarr");
 });
+
+test("a history entry with an unreadable field keeps the rest of its details", async () => {
+  upsertAurralHistory({
+    referenceId: "job-1",
+    kind: "track_download",
+    title: "Downloaded Song",
+    status: "completed",
+    metadata: { jobId: "job-1", trackName: "Song", artistName: "Artist" },
+  });
+  db.prepare("UPDATE aurral_history SET metadata = ?").run(
+    JSON.stringify({
+      jobId: "job-1",
+      trackName: "Song",
+      artistName: "Artist",
+      userId: "1",
+      playlistName: {},
+    }),
+  );
+
+  const [entry] = await getAurralHistoryRequests();
+
+  assert.equal(entry.trackName, "Song");
+  assert.equal(entry.artistName, "Artist");
+  assert.equal(entry.playlistName, null);
+  assert.equal(entry.requestedBy, null);
+});

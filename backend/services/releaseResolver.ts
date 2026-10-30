@@ -7,6 +7,7 @@ import {
   selectAlbumRelease,
 } from "./providers/brainzmashProvider.ts";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
+import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
@@ -14,12 +15,6 @@ import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseM
 interface ResolverJob extends DownloadTrackFields {
   playlistId?: string | null;
   playlistType?: string | null;
-}
-
-interface LibraryAlbumMetadata {
-  edition?: string;
-  requestedRelease?: string | null;
-  trackList?: { release?: string | null } | null;
 }
 
 type ReleaseManifest = ReturnType<typeof toReleaseManifest>;
@@ -159,14 +154,9 @@ export function attemptRelease(
   );
 }
 
-function libraryAlbum(groupMbid: string): LibraryAlbumMetadata | null {
-  try {
-    const row = libraryAlbumStmt.get(groupMbid, groupMbid, groupMbid);
-    const metadata = row ? JSON.parse(row.metadata_json || "{}") : null;
-    return metadata && typeof metadata === "object" ? metadata : null;
-  } catch {
-    return null;
-  }
+function libraryAlbum(groupMbid: string) {
+  const row = libraryAlbumStmt.get(groupMbid, groupMbid, groupMbid);
+  return row ? readLibraryMetadata(row.metadata_json || "{}") : null;
 }
 
 const isLibraryJob = (job: ResolverJob | null | undefined) =>
@@ -200,7 +190,7 @@ export function chooseLibraryRelease(group: NormalizedAlbum) {
   return album ? albumEdition(group, album) : selectAlbumRelease(group);
 }
 
-function albumEdition(group: NormalizedAlbum, album: LibraryAlbumMetadata) {
+function albumEdition(group: NormalizedAlbum, album: LibraryMetadata) {
   return chooseRequestedRelease(group, {
     requestedRelease: album.requestedRelease,
     listedRelease: album.trackList?.release,

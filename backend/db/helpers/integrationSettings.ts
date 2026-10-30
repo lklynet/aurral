@@ -1,53 +1,27 @@
 import * as v from "valibot";
 import { logger } from "../../services/logger.ts";
-
-export const setting = <Schema extends v.GenericSchema>(schema: Schema) =>
-  v.fallback(v.optional(schema), undefined);
-
-export const listOf = <Schema extends v.GenericSchema>(schema: Schema) =>
-  v.pipe(
-    v.array(v.unknown()),
-    v.transform((items) =>
-      items.flatMap((item) => {
-        const result = v.safeParse(schema, item);
-        return result.success ? [result.output] : [];
-      }),
-    ),
-  );
-
-const recordOf = <Schema extends v.GenericSchema>(schema: Schema) =>
-  v.pipe(
-    v.record(v.string(), v.unknown()),
-    v.transform((entries) =>
-      Object.fromEntries(
-        Object.entries(entries).flatMap(([key, value]) => {
-          const result = v.safeParse(schema, value);
-          return result.success ? [[key, result.output] as const] : [];
-        }),
-      ),
-    ),
-  );
+import { lenient, listOf, recordOf } from "./storedSchemas.ts";
 
 const number = v.pipe(
   v.union([v.number(), v.pipe(v.string(), v.trim(), v.nonEmpty(), v.transform(Number))]),
   v.finite(),
 );
 
-const text = setting(v.string());
-const nullableText = setting(v.nullable(v.string()));
-export const flag = setting(v.boolean());
-const count = setting(number);
-const id = setting(v.nullable(number));
+const text = lenient(v.string());
+const nullableText = lenient(v.nullable(v.string()));
+const flag = lenient(v.boolean());
+const count = lenient(number);
+const id = lenient(v.nullable(number));
 
 const service = <Entries extends v.ObjectEntries>(entries: Entries) =>
-  setting(v.looseObject(entries));
+  lenient(v.looseObject(entries));
 
 const webhookSettings = {
-  webhooks: setting(
+  webhooks: lenient(
     listOf(
       v.looseObject({
         url: v.string(),
-        headers: setting(listOf(v.looseObject({ key: v.string(), value: v.string() }))),
+        headers: lenient(listOf(v.looseObject({ key: v.string(), value: v.string() }))),
         body: nullableText,
       }),
     ),
@@ -98,8 +72,8 @@ export const integrationSettingsSchema = v.looseObject({
     enabled: flag,
     url: text,
     apiKey: text,
-    indexers: setting(recordOf(v.looseObject({ enabled: flag, priority: count }))),
-    categories: setting(listOf(number)),
+    indexers: lenient(recordOf(v.looseObject({ enabled: flag, priority: count }))),
+    categories: lenient(listOf(number)),
     maxResults: count,
   }),
   nzbget: service({
@@ -133,17 +107,17 @@ export const integrationSettingsSchema = v.looseObject({
   }),
   news: service({
     enabled: flag,
-    feeds: setting(
+    feeds: lenient(
       listOf(v.looseObject({ id: text, name: text, url: v.string(), group: text, enabled: flag })),
     ),
-    groups: setting(recordOf(v.boolean())),
+    groups: lenient(recordOf(v.boolean())),
   }),
   lidarr: service({
     url: text,
     externalUrl: text,
     apiKey: text,
     rootFolderPath: nullableText,
-    rootFolderPaths: setting(listOf(v.string())),
+    rootFolderPaths: lenient(listOf(v.string())),
     qualityProfileId: id,
     metadataProfileId: id,
     tagId: id,

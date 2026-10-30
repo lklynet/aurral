@@ -1,7 +1,9 @@
 import type Database from "better-sqlite3";
 import { gunzip, gzip } from "node:zlib";
 import { promisify } from "node:util";
-import { db } from "../../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import { listOf } from "./storedSchemas.ts";
 import type {
   DeezerMbidCacheRow,
   ImagesCacheRow,
@@ -9,11 +11,13 @@ import type {
   MusicbrainzArtistMbidCacheRow,
 } from "../rows.ts";
 
-export interface CachedArtistImage {
-  image: string | null;
-  front: boolean;
-  types: string[];
-}
+const cachedArtistImageSchema = v.looseObject({
+  image: v.nullable(v.string()),
+  front: v.boolean(),
+  types: listOf(v.string()),
+});
+
+export type CachedArtistImage = v.InferOutput<typeof cachedArtistImageSchema>;
 
 export interface CachedImage {
   mbid: string;
@@ -78,15 +82,8 @@ const cleanOldImagesStmt = db.prepare<[number]>("DELETE FROM images_cache WHERE 
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const getImagesStmtsByCount = new Map<number, Database.Statement<string[], ImageSummaryRow>>();
 
-const parseImages = (value: string | null): CachedArtistImage[] | null => {
-  if (!value) return null;
-  try {
-    const images = JSON.parse(value);
-    return Array.isArray(images) ? images : null;
-  } catch {
-    return null;
-  }
-};
+const parseImages = (value: string | null) =>
+  dbHelpers.readJSON(listOf(cachedArtistImageSchema), value, "artist image cache");
 
 const serializeImages = (images: CachedArtistImage[] | null) =>
   Array.isArray(images) ? JSON.stringify(images) : null;

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
+import * as v from "valibot";
 import {
   invalidateLibraryManagementCache,
   notifyLibraryManagementChanged,
@@ -10,6 +11,7 @@ import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libr
 import { isVariousArtistsCredit, withoutRemasterLabel } from "./trackMatching/titleText.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
+import { readRawLibraryMetadata } from "./libraryMetadata.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 import {
@@ -234,8 +236,8 @@ function moveQueuedLibrarySong(fromKey: string, toKey: string) {
       "SELECT user_id, song_ids, current_song FROM subsonic_play_queues",
     )
     .all()) {
-    const ids: string[] = JSON.parse(queue.song_ids);
-    if (!ids.includes(from) && queue.current_song !== from) continue;
+    const ids = dbHelpers.readJSON(v.array(v.string()), queue.song_ids, "play queue");
+    if (!ids || (!ids.includes(from) && queue.current_song !== from)) continue;
     db.prepare<[string, string | null, number]>(
       "UPDATE subsonic_play_queues SET song_ids = ?, current_song = ? WHERE user_id = ?",
     ).run(
@@ -371,7 +373,7 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
       .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
       .get(artistId);
     if (!artist) return { error: "not_found" };
-    const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
+    const metadata = readRawLibraryMetadata(artist.metadata_json);
     if (metadata.id != null) return { error: "lidarr_managed" };
     const fallbackKey = buildFallbackIdentityKey("artist", artist.name);
     const fallbackTaken =
@@ -394,7 +396,7 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
           .get(artist.id, key, mbid, key)
       : null;
     if (target) {
-      const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
+      const targetMetadata = readRawLibraryMetadata(target.metadata_json);
       mergeLibraryArtistInto(artist, target);
       db.prepare<[string | null, number, number]>(
         "UPDATE library_artists SET metadata_json = ?, updated_at = ? WHERE id = ?",
@@ -517,7 +519,7 @@ export function upsertLibraryArtist({
       .get(key);
     const mergedMetadataText =
       existing && metadata
-        ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
+        ? stringify({ ...readRawLibraryMetadata(existing.metadata_json), ...metadata })
         : metadataText;
     if (
       existing &&
@@ -561,11 +563,7 @@ function clearLidarrMetadata(
     )
     .get(...parameters);
   if (!row) return false;
-  let metadata: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(row.metadata_json || "{}");
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed;
-  } catch {}
+  const metadata = readRawLibraryMetadata(row.metadata_json);
   for (const key of LIDARR_METADATA_KEYS) delete metadata[key];
   db.prepare<[string | null, number, number]>(
     `UPDATE ${table} SET metadata_json = ?, updated_at = ? WHERE id = ?`,
@@ -661,7 +659,7 @@ export function upsertLibraryAlbum({
       .get(key);
     const mergedMetadataText =
       existing && metadata
-        ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
+        ? stringify({ ...readRawLibraryMetadata(existing.metadata_json), ...metadata })
         : metadataText;
     if (
       existing &&
@@ -2298,7 +2296,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
         )
         .get(album.id, album.id);
       moveLegacyAlbumPlays(album, targets, { final });
-      const monitored = dbHelpers.parseJSON(album.metadata_json)?.monitored === true;
+      const monitored = readRawLibraryMetadata(album.metadata_json).monitored === true;
       for (const target of targets) {
         db.prepare<[number, number]>(
           `INSERT INTO library_management
@@ -2335,9 +2333,9 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       if (!artist || !targets.length) continue;
       for (const target of targets)
         copyLibraryStars("artist", artist.identity_key, target.identity_key);
-      const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
+      const metadata = readRawLibraryMetadata(artist.metadata_json);
       for (const target of targets) {
-        const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
+        const targetMetadata = readRawLibraryMetadata(target.metadata_json);
         const carried = CARRIED_ARTIST_METADATA_KEYS.filter(
           (key) => metadata[key] !== undefined && targetMetadata[key] === undefined,
         );

@@ -1,50 +1,61 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import { lenient, listOf } from "./storedSchemas.ts";
 import type { AurralHistoryRow } from "../rows.ts";
 
-export type TrackUpgrade = { fromQuality: string | null };
+const text = lenient(v.string());
+const nullableText = lenient(v.nullable(v.string()));
+const count = lenient(v.number());
+const nullableCount = lenient(v.nullable(v.number()));
 
-export type AurralHistoryMetadata = {
-  userId?: number;
-  username?: string;
-  jobId?: string;
-  trackName?: string | null;
-  artistName?: string | null;
-  albumName?: string | null;
-  albumId?: string | number | null;
-  albumMbid?: string | null;
-  artistMbid?: string | null;
-  canonicalAlbumId?: string | null;
-  managedBy?: string | null;
-  requestGroupId?: string | null;
-  playlistId?: string | null;
-  playlistType?: string | null;
-  playlistName?: string | null;
-  ownerUserId?: number | null;
-  operationId?: number;
-  trackCount?: number;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-  sourceFilename?: string | null;
-  releaseTitle?: string | null;
-  sourceType?: string;
-  albumGrabId?: string;
-  requestedAt?: string | null;
-  completedAt?: string | null;
-  actualDownloadSource?: string | null;
-  downloadMethod?: string | null;
-  previousErrors?: string[];
-  trackNumber?: number | null;
-  discNumber?: number | null;
-  queuedTrackCount?: number;
-  searchedAt?: number;
-  recommendationCount?: number;
-  genreCount?: number;
-  flowId?: string;
-  tracksQueued?: number;
-  tracksReused?: number;
-  reserveTracks?: number;
-  upgrade?: TrackUpgrade;
-};
+const trackUpgradeSchema = v.looseObject({ fromQuality: v.nullable(v.string()) });
+
+export type TrackUpgrade = v.InferOutput<typeof trackUpgradeSchema>;
+
+const historyMetadataSchema = v.looseObject({
+  userId: count,
+  username: text,
+  jobId: text,
+  trackName: nullableText,
+  artistName: nullableText,
+  albumName: nullableText,
+  albumId: lenient(v.nullable(v.union([v.string(), v.number()]))),
+  albumMbid: nullableText,
+  artistMbid: nullableText,
+  canonicalAlbumId: nullableText,
+  managedBy: nullableText,
+  requestGroupId: nullableText,
+  playlistId: nullableText,
+  playlistType: nullableText,
+  playlistName: nullableText,
+  ownerUserId: nullableCount,
+  operationId: count,
+  trackCount: count,
+  downloadSource: nullableText,
+  downloadClient: nullableText,
+  sourceFilename: nullableText,
+  releaseTitle: nullableText,
+  sourceType: text,
+  albumGrabId: text,
+  requestedAt: nullableText,
+  completedAt: nullableText,
+  actualDownloadSource: nullableText,
+  downloadMethod: nullableText,
+  previousErrors: lenient(listOf(v.string())),
+  trackNumber: nullableCount,
+  discNumber: nullableCount,
+  queuedTrackCount: count,
+  searchedAt: count,
+  recommendationCount: count,
+  genreCount: count,
+  flowId: text,
+  tracksQueued: count,
+  tracksReused: count,
+  reserveTracks: count,
+  upgrade: lenient(trackUpgradeSchema),
+});
+
+export type AurralHistoryMetadata = v.InferOutput<typeof historyMetadataSchema>;
 
 export interface AurralHistoryEntry {
   id: string;
@@ -163,7 +174,7 @@ export default function register(dbOps: AurralHistoryOps) {
       status: row.status || "completed",
       statusLabel: row.status_label || null,
       href: row.href || null,
-      metadata: dbHelpers.parseJSON(row.metadata),
+      metadata: dbHelpers.readJSON(historyMetadataSchema, row.metadata, "history"),
       createdAt: row.created_at,
     };
   };
@@ -179,7 +190,7 @@ export default function register(dbOps: AurralHistoryOps) {
       status: row.status || "completed",
       statusLabel: row.status_label || null,
       href: row.href || null,
-      metadata: dbHelpers.parseJSON(row.metadata),
+      metadata: dbHelpers.readJSON(historyMetadataSchema, row.metadata, "history"),
       createdAt: row.created_at,
     }));
   };

@@ -270,6 +270,34 @@ test("a failing source keeps its last chart while the others update", async () =
   );
 });
 
+test("a stored chart with a broken entry still shows the rest", async () => {
+  await refreshAt(DAY_ONE);
+  const stored = (chart: string) =>
+    db
+      .prepare<[string], { data: string }>("SELECT data FROM trending_charts WHERE chart = ?")
+      .get(chart)!;
+  const songs = JSON.parse(stored("songs").data);
+  db.prepare("UPDATE trending_charts SET data = ? WHERE chart = ?").run(
+    JSON.stringify({
+      ...songs,
+      items: [null, { ...songs.items[1], trackName: 7 }, songs.items[2]],
+    }),
+    "songs",
+  );
+  db.prepare("UPDATE trending_charts SET data = ? WHERE chart = ?").run("[]", "albums");
+
+  const charts = getTrendingCharts(USER_ID);
+  assert.deepEqual(
+    charts.songs?.items.map((item) => [item.position, item.trackName]),
+    [[1, "Song 3"]],
+  );
+  assert.equal(charts.albums, null);
+  assert.deepEqual(
+    charts.artists?.map((artist) => artist.name),
+    ["Chart Star"],
+  );
+});
+
 test("a scheduled refresh skips charts that are still fresh", async () => {
   assert.equal(await refreshTrendingCharts({ now: DAY_ONE }), true);
   requests = [];

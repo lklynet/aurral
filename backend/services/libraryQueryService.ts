@@ -1,4 +1,7 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { lenient } from "../db/helpers/storedSchemas.ts";
+import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type {
   LibraryAlbumCreditsRow,
   LibraryAlbumsRow,
@@ -23,41 +26,17 @@ import {
 } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 
-type LibraryTrackFileQuality = {
-  format?: string | null;
-  bitrate?: number | null;
-  sampleRate?: number | null;
-  bitsPerSample?: number | null;
-  audioFormat?: string | null;
-  quality?: { name?: string | null } | null;
-};
+const nullableText = lenient(v.nullable(v.string()));
+const nullableCount = lenient(v.nullable(v.number()));
 
-export interface LibraryArtistImage {
-  remoteUrl?: string | null;
-  imageUrl?: string | null;
-  url?: string | null;
-  Url?: string | null;
-  coverType?: string | null;
-  kind?: string | null;
-  CoverType?: string | null;
-}
-
-type StoredLibraryMetadata = {
-  id?: string | number | null;
-  monitored?: boolean | null;
-  monitor?: string | null;
-  addOptions?: { monitor?: string | null } | null;
-  foreignArtistId?: string | null;
-  foreignAlbumId?: string | null;
-  librarySource?: string | null;
-  images?: LibraryArtistImage[] | null;
-  path?: string | null;
-  added?: string | null;
-  monitorNewItems?: string | null;
-  qualityProfile?: { name?: string | null } | null;
-  albumType?: string | null;
-  releaseType?: string | null;
-};
+const trackFileQualitySchema = v.looseObject({
+  format: nullableText,
+  bitrate: nullableCount,
+  sampleRate: nullableCount,
+  bitsPerSample: nullableCount,
+  audioFormat: nullableText,
+  quality: lenient(v.nullable(v.looseObject({ name: nullableText }))),
+});
 
 type LibraryCanonicalMedia =
   | {
@@ -122,7 +101,7 @@ export type LibraryTrackFile = {
   size: LibraryMediaFilesRow["size"];
   mtimeMs: LibraryMediaFilesRow["mtime_ms"];
   durationMs: LibraryMediaFilesRow["duration_ms"];
-  quality: LibraryTrackFileQuality | null;
+  quality: v.InferOutput<typeof trackFileQualitySchema> | null;
   available: boolean;
   createdAt: LibraryMediaFilesRow["created_at"];
 };
@@ -172,15 +151,6 @@ const trackMetadataStmt = db.prepare<[number], Pick<LibraryTracksRow, "metadata_
 const albumCreditsStmt = db.prepare<[number], Pick<LibraryAlbumCreditsRow, "artist_mbid">>(
   "SELECT artist_mbid FROM library_album_credits WHERE album_id = ?",
 );
-
-const parseJson = <T = unknown>(value: string | null | undefined): T | null => {
-  if (!value) return null;
-  try {
-    return dbHelpers.parseJSON(value);
-  } catch {
-    return null;
-  }
-};
 
 const parseSources = (value: string | null): string[] =>
   String(value || "")
@@ -245,14 +215,6 @@ const CANONICAL_FROM = `FROM library_artists AS artist
     ON media.track_id = track.id
     AND ${albumMediaCondition("media", "album_track")}`;
 
-export interface LibraryAlbumMetadata {
-  images?: LibraryArtistImage[] | null;
-  albumType?: string | null;
-  releaseType?: string | null;
-  tags?: { releasetype?: string | string[]; genre?: string[] } | null;
-  monitored?: boolean | null;
-}
-
 export interface LibraryTrackAlbumRef {
   albumId: number;
   discNumber: number;
@@ -270,7 +232,7 @@ export interface LibraryAlbum {
   albumArtist: string | null;
   releaseDate: string | null;
   createdAt: number;
-  metadata: LibraryAlbumMetadata | null;
+  metadata: LibraryMetadata | null;
   providerId?: string | number | null;
   monitored?: boolean;
   monitorOption?: string;
@@ -355,7 +317,7 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
   for (const row of rows) {
     let artist = artists.get(row.artist_id);
     if (!artist) {
-      const artistMetadata = parseJson<StoredLibraryMetadata>(
+      const artistMetadata = readLibraryMetadata(
         artistMetadataStmt.get(row.artist_id)?.metadata_json,
       );
       artist = {
@@ -379,9 +341,7 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
     let album = albums.get(row.album_id);
     if (!album) {
-      const albumMetadata = parseJson<StoredLibraryMetadata>(
-        albumMetadataStmt.get(row.album_id)?.metadata_json,
-      );
+      const albumMetadata = readLibraryMetadata(albumMetadataStmt.get(row.album_id)?.metadata_json);
       album = {
         id: row.album_id,
         canonicalId: String(row.album_id),
@@ -409,9 +369,7 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
     let track = tracks.get(row.track_id);
     if (!track) {
-      const trackMetadata = parseJson<StoredLibraryMetadata>(
-        trackMetadataStmt.get(row.track_id)?.metadata_json,
-      );
+      const trackMetadata = readLibraryMetadata(trackMetadataStmt.get(row.track_id)?.metadata_json);
       track = {
         id: row.track_id,
         canonicalId: String(row.track_id),
@@ -464,7 +422,11 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
         size: row.media_size,
         mtimeMs: row.media_mtime_ms,
         durationMs: row.media_duration_ms,
-        quality: parseJson<LibraryTrackFileQuality>(row.media_quality_json),
+        quality: dbHelpers.readJSON(
+          trackFileQualitySchema,
+          row.media_quality_json,
+          "library file quality",
+        ),
         available: Boolean(row.media_available),
         createdAt: row.media_created_at,
       };
@@ -564,7 +526,7 @@ export function getLibraryArtistMbids({
 }
 
 const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
-  const metadata: StoredLibraryMetadata = parseJson<StoredLibraryMetadata>(row.metadata_json) || {};
+  const metadata = readLibraryMetadata(row.metadata_json) || {};
   const providerId = metadata.id == null ? null : String(metadata.id);
   const monitorOption = metadata.monitor || metadata.addOptions?.monitor || "none";
   const sources = new Set(
@@ -608,7 +570,7 @@ const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
 };
 
 const libraryArtistKeyProjection = (row: LibraryArtistKeyRow) => {
-  const metadata: StoredLibraryMetadata = parseJson<StoredLibraryMetadata>(row.metadata_json) || {};
+  const metadata = readLibraryMetadata(row.metadata_json) || {};
   return {
     id: String(row.id),
     mbid: row.mbid || null,
@@ -929,9 +891,8 @@ type LibraryDateAlbumRow = Pick<
 };
 
 const libraryDateAlbumProjection = (row: LibraryDateAlbumRow) => {
-  const metadata: StoredLibraryMetadata = parseJson<StoredLibraryMetadata>(row.metadata_json) || {};
-  const artistMetadata: StoredLibraryMetadata =
-    parseJson<StoredLibraryMetadata>(row.artist_metadata_json) || {};
+  const metadata = readLibraryMetadata(row.metadata_json) || {};
+  const artistMetadata = readLibraryMetadata(row.artist_metadata_json) || {};
   const sources = parseSources(row.sources);
   const management = getManagedByMap("album").get(Number(row.id)) || null;
   const trackCount = Number(row.track_count || 0);
@@ -1770,7 +1731,19 @@ type LibraryArtistAggregateRow = LibraryArtistPageRow & {
   available: number | null;
 };
 
-const genreStatsCache = new Map<string, unknown[]>();
+const genreStatSchema = v.looseObject({
+  name: v.string(),
+  artists: v.number(),
+  albums: v.number(),
+  tracks: v.number(),
+});
+const subsonicGenreSchema = v.looseObject({
+  value: v.string(),
+  albumCount: v.number(),
+  songCount: v.nullable(v.number()),
+});
+const genreStatsCache = new Map<string, v.InferOutput<typeof genreStatSchema>[]>();
+const subsonicGenresCache = new Map<string, v.InferOutput<typeof subsonicGenreSchema>[]>();
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
 
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
@@ -2064,7 +2037,7 @@ export function getLibraryArtistPage({
       .all(...ids, ...(shownAlbums ? shownAlbums.parameters : sourceFilter ? [sourceFilter] : []));
     const byId = new Map(
       rows.map((row) => {
-        const metadata = parseJson<StoredLibraryMetadata>(row.artist_metadata_json);
+        const metadata = readLibraryMetadata(row.artist_metadata_json);
         return [
           row.artist_id,
           {
@@ -2136,7 +2109,7 @@ export function getLibraryArtistPage({
     .all(...aggregateParameters);
   const byId = new Map(
     rows.map((row) => {
-      const metadata = parseJson<StoredLibraryMetadata>(row.artist_metadata_json);
+      const metadata = readLibraryMetadata(row.artist_metadata_json);
       const sources = parseSources(row.sources);
       return [
         row.artist_id,
@@ -2574,8 +2547,11 @@ export function getLibraryTopTracks({
 
 export function getLibraryGenres({ source = null, availableOnly = false }: LibraryScope = {}) {
   const sourceFilter = normalizeSource(source);
-  return readGenreStats(`subsonic:${genreStatsScope(sourceFilter, availableOnly)}`, () =>
-    computeLibraryGenres(sourceFilter, availableOnly),
+  return readGenreStats(
+    subsonicGenresCache,
+    `subsonic:${genreStatsScope(sourceFilter, availableOnly)}`,
+    subsonicGenreSchema,
+    () => computeLibraryGenres(sourceFilter, availableOnly),
   );
 }
 
@@ -2820,22 +2796,20 @@ function buildPageQuery({
 const genreStatsScope = (sourceFilter: string | null, availableOnly: LibraryAvailability) =>
   `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
 
-function readGenreStats<T>(cacheKey: string, compute: () => T[]): T[] {
-  const cached = genreStatsCache.get(cacheKey);
-  if (cached) return cached as T[];
+function readGenreStats<Schema extends v.GenericSchema>(
+  cache: Map<string, v.InferOutput<Schema>[]>,
+  cacheKey: string,
+  schema: Schema,
+  compute: () => v.InferOutput<Schema>[],
+) {
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
   const settingKey = `${GENRE_STATS_SETTING_PREFIX}${cacheKey}`;
   const stored = db
     .prepare<[string], Pick<SettingsRow, "value">>("SELECT value FROM settings WHERE key = ?")
     .get(settingKey)?.value;
-  if (stored) {
-    const parsed = parseJson<T[]>(stored);
-    if (Array.isArray(parsed)) {
-      genreStatsCache.set(cacheKey, parsed);
-      return parsed;
-    }
-  }
-  const stats = compute();
-  genreStatsCache.set(cacheKey, stats);
+  const stats = dbHelpers.readJSON(v.array(schema), stored, settingKey) ?? compute();
+  cache.set(cacheKey, stats);
   return stats;
 }
 
@@ -2847,8 +2821,11 @@ function getLibraryGenreStats({
   availableOnly: LibraryAvailability;
 }) {
   const availableOnly = requested === LIBRARY_VIEW || requested === true;
-  return readGenreStats(genreStatsScope(sourceFilter, availableOnly), () =>
-    computeLibraryGenreStats(db, { sourceFilter, availableOnly }),
+  return readGenreStats(
+    genreStatsCache,
+    genreStatsScope(sourceFilter, availableOnly),
+    genreStatSchema,
+    () => computeLibraryGenreStats(db, { sourceFilter, availableOnly }),
   );
 }
 
@@ -3032,7 +3009,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       mbid: row.artist_mbid,
       name: row.artist_name,
       sortName: row.artist_sort_name,
-      metadata: parseJson<StoredLibraryMetadata>(row.artist_metadata_json),
+      metadata: readLibraryMetadata(row.artist_metadata_json),
       albumIds: [row.album_id],
       managedBy: artistManagement?.managedBy ?? null,
       monitorMode: artistManagement?.monitorMode ?? null,
@@ -3049,7 +3026,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
       createdAt: row.album_created_at,
-      metadata: parseJson<StoredLibraryMetadata>(row.album_metadata_json),
+      metadata: readLibraryMetadata(row.album_metadata_json),
       trackIds: [],
       managedBy: albumManagement?.managedBy ?? null,
       monitorMode: albumManagement?.monitorMode ?? null,
@@ -3461,6 +3438,7 @@ export function getLibraryPage({
 export function rebuildLibraryGenreStats() {
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);
   genreStatsCache.clear();
+  subsonicGenresCache.clear();
   rebuildStoredLibraryGenreStats(db);
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
     `${GENRE_STATS_SETTING_PREFIX}subsonic:${genreStatsScope(null, true)}`,
@@ -3474,6 +3452,7 @@ export function invalidateLibraryQueryCache({
   libraryCache.clear();
   pageCountCache.clear();
   genreStatsCache.clear();
+  subsonicGenresCache.clear();
   invalidateLibraryManagementCache();
   if (persistedGenres) {
     db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);

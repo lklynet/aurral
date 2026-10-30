@@ -780,3 +780,28 @@ function requireValue<T>(value: T | null | undefined): T {
   assert.ok(value != null);
   return value;
 }
+
+test("an artist with unreadable metadata fields keeps the rest of its details", () => {
+  const artist = upsertLibraryArtist({
+    identityKey: `unreadable-metadata:${Date.now()}`,
+    name: "Unreadable Metadata Artist",
+  });
+  try {
+    db.prepare("UPDATE library_artists SET metadata_json = ? WHERE id = ?").run(
+      JSON.stringify({
+        foreignArtistId: 42,
+        monitorNewItems: "all",
+        qualityProfile: { name: 5 },
+        addOptions: "all",
+      }),
+      artist.id,
+    );
+    const [projection] = getLibraryArtistProjection({ reference: artist.id });
+    assert.equal(projection?.foreignArtistId, artist.identity_key);
+    assert.equal(projection?.monitorNewItems, "all");
+    assert.equal(projection?.quality, "standard");
+    assert.deepEqual(projection?.addOptions, { monitor: "none" });
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});

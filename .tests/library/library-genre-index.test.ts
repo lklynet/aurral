@@ -314,3 +314,27 @@ test("Subsonic genre counts deduplicate files and preserve inherited genres acro
     ],
   );
 });
+
+test("unreadable stored genre counts are counted again", () => {
+  const track = store.upsertLibraryTrack({
+    identityKey: "genre:stored-track",
+    title: "Stored Track",
+    metadata: { genres: ["Disco"] },
+  });
+  store.upsertLibraryMediaFile({ trackId: track.id, source: "aurral", path: "/genre/stored.flac" });
+  query.rebuildLibraryGenreStats();
+  query.invalidateLibraryQueryCache({ persistedGenres: false });
+  const counts = () => ({
+    page: query.getLibraryPage({ kind: "genres", pageSize: 100 }).items,
+    subsonic: query.getLibraryGenres({ availableOnly: true }),
+  });
+  const expected = counts();
+  query.invalidateLibraryQueryCache({ persistedGenres: false });
+  const stale = db
+    .prepare("UPDATE settings SET value = ? WHERE key LIKE 'libraryGenreStats:%'")
+    .run(JSON.stringify([{ name: "Stale", value: "Stale", artists: "1" }]));
+
+  assert.ok(stale.changes > 0);
+  assert.deepEqual(counts(), expected);
+  assert.ok(expected.page.some((genre) => genre.name === "Disco"));
+});

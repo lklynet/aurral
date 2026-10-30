@@ -569,24 +569,12 @@ const normalizeAlbumMatchText = (value: unknown) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const parseHonkerPayload = (
-  value: string | Record<string, unknown> | null | undefined,
-): Record<string, unknown> | null => {
-  if (value && typeof value === "object") return value;
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
 const isHonkerQueueActive = async (
   queueName: string,
   predicate: (payload: Record<string, unknown>) => boolean,
 ) => {
   try {
-    const { getHonkerDb } = await import("./honkerDb.ts");
+    const { getHonkerDb, parseHonkerPayload } = await import("./honkerDb.ts");
     const rows = getHonkerDb().query(
       `
         SELECT payload
@@ -625,7 +613,7 @@ const canViewPlaylistActivity = (
 
 const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | undefined) => {
   try {
-    const { getHonkerDb } = await import("./honkerDb.ts");
+    const { getHonkerDb, parseHonkerPayload } = await import("./honkerDb.ts");
     const rows = getHonkerDb().query(
       `
         SELECT id, payload, state, created_at

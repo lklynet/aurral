@@ -19,9 +19,9 @@ import {
   getLibraryTrackOwnership,
   invalidateLibraryQueryCache,
   type LibraryAlbum,
-  type LibraryAlbumMetadata,
   type LibraryTrack,
 } from "./libraryQueryService.ts";
+import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { LidarrAlbum, LidarrAlbumTypeOption, LidarrClient } from "./lidarrClient.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
@@ -130,7 +130,7 @@ const TRACKS_CACHE_MAX = 300;
 
 type LibraryArtistRecord = ReturnType<typeof getLibraryForAlbumReferences>["artists"][number];
 
-type AlbumMetadata = LibraryAlbumMetadata & {
+type AlbumMetadata = LibraryMetadata & {
   id?: string | number | null;
   foreignAlbumId?: string | null;
   path?: string | null;
@@ -2701,7 +2701,8 @@ export class LibraryManager {
             "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
           )
           .get(artistId)!;
-        const metadata = JSON.parse(storedArtist.metadata_json || "{}") || {};
+        const metadata = readRawLibraryMetadata(storedArtist.metadata_json);
+        const { addOptions } = metadata;
         setAurralArtistMonitoringState(artistId, stored, defaults);
         upsertLibraryArtist({
           identityKey: storedArtist.identity_key,
@@ -2713,7 +2714,10 @@ export class LibraryManager {
             monitor: legacyMode,
             monitorOption: legacyMode,
             monitorStartedAt: effective?.newSince ?? null,
-            addOptions: { ...metadata.addOptions, monitor: legacyMode },
+            addOptions: {
+              ...(typeof addOptions === "object" ? addOptions : {}),
+              monitor: legacyMode,
+            },
           },
         });
       }).immediate();

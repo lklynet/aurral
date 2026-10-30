@@ -9,24 +9,9 @@ import {
 } from "./libraryQueryService.ts";
 import { getManagedByMap, type LibraryOwner } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
+import type { LibraryMetadata } from "./libraryMetadata.ts";
 
 type ManagementByEntityId = ReturnType<typeof getManagedByMap>;
-
-type LibraryMetadata = {
-  id?: number | string | null;
-  artistId?: number | string | null;
-  librarySource?: string;
-  monitored?: boolean | null;
-  monitor?: string;
-  monitorOption?: string;
-  addOptions?: { monitor?: string };
-  foreignArtistId?: string | null;
-  foreignAlbumId?: string | null;
-  foreignRecordingId?: string | null;
-  foreignTrackId?: string | null;
-  trackListComplete?: boolean;
-  trackList?: { release?: unknown };
-};
 
 type LibraryArtistRecord = {
   id: number;

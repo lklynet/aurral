@@ -1,4 +1,6 @@
+import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
+import { lenient, listOf } from "../../db/helpers/storedSchemas.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 
 export interface ArtistIdentity {
@@ -48,12 +50,12 @@ export interface RecommendationCandidate {
   discoveryDepth?: number;
 }
 
-export interface SupportingSeed {
+export type SupportingSeed = {
   artistName: string;
   source: string;
   weight: number;
   profileBucket: string | null;
-}
+};
 
 export interface RecommendationAccumulatorEntry {
   id: string | null;
@@ -75,49 +77,65 @@ export interface RecommendationAccumulatorEntry {
 
 export type RecommendationAccumulator = Map<string, RecommendationAccumulatorEntry>;
 
-export interface DiscoveryRecommendation extends ArtistIdentity {
-  navigateTo?: string | null;
-  type?: string;
-  image?: string | null;
-  imageUrl?: string | null;
-  metaText?: string | null;
-  tags?: string[];
-  matchedTags?: string[];
-  supportingSeeds?: Partial<SupportingSeed>[];
-  seedCount?: number;
-  score?: number;
-  scoreTotal?: number;
-  scoreSimilarity?: number;
-  scoreTagAffinity?: number;
-  scoreSeedCoverage?: number;
-  scoreNovelty?: number;
-  scoreDiversityPenalty?: number;
-  scorePopularityPenalty?: number;
-  scoreFreshnessBoost?: number;
-  scoreAgingPenalty?: number;
-  sourceArtist?: string | null;
-  sourceArtists?: string[];
-  sourceType?: string;
-  sourceTypes?: string[];
-  sourceMix?: string[];
-  discoveryDepth?: number;
-  bestMatch?: number;
-  reasonCodes?: string[];
-  discoveryTier?: string;
-  confidence?: number;
-  candidateTagsHydrated?: boolean;
-  tagSource?: string;
-  popularityLabel?: string | null;
-  popularityRank?: number | null;
-  listeners?: number;
-  playcount?: number;
-  firstDiscoveredAt?: string | null;
-  discoveredAt?: string | null;
-  lastRecommendedAt?: string | null;
-  recommendationPoolState?: string;
-  recommendationPoolRank?: number;
-  matchPercent?: number;
-}
+const text = lenient(v.string());
+const nullableText = lenient(v.nullable(v.string()));
+const count = lenient(v.number());
+const strings = lenient(listOf(v.string()));
+
+export const discoveryRecommendationSchema = v.looseObject({
+  id: nullableText,
+  mbid: nullableText,
+  foreignArtistId: nullableText,
+  name: nullableText,
+  artistName: nullableText,
+  navigateTo: nullableText,
+  type: text,
+  image: nullableText,
+  imageUrl: nullableText,
+  metaText: nullableText,
+  tags: strings,
+  matchedTags: strings,
+  supportingSeeds: lenient(
+    listOf(
+      v.looseObject({ artistName: text, source: text, weight: count, profileBucket: nullableText }),
+    ),
+  ),
+  seedCount: count,
+  score: count,
+  scoreTotal: count,
+  scoreSimilarity: count,
+  scoreTagAffinity: count,
+  scoreSeedCoverage: count,
+  scoreNovelty: count,
+  scoreDiversityPenalty: count,
+  scorePopularityPenalty: count,
+  scoreFreshnessBoost: count,
+  scoreAgingPenalty: count,
+  sourceArtist: nullableText,
+  sourceArtists: strings,
+  sourceType: text,
+  sourceTypes: strings,
+  sourceMix: strings,
+  discoveryDepth: count,
+  bestMatch: count,
+  reasonCodes: strings,
+  discoveryTier: text,
+  confidence: count,
+  candidateTagsHydrated: lenient(v.boolean()),
+  tagSource: text,
+  popularityLabel: nullableText,
+  popularityRank: lenient(v.nullable(v.number())),
+  listeners: count,
+  playcount: count,
+  firstDiscoveredAt: nullableText,
+  discoveredAt: nullableText,
+  lastRecommendedAt: nullableText,
+  recommendationPoolState: text,
+  recommendationPoolRank: count,
+  matchPercent: count,
+});
+
+export type DiscoveryRecommendation = v.InferOutput<typeof discoveryRecommendationSchema>;
 
 export interface RecommendationFeedback {
   action?: string | null;

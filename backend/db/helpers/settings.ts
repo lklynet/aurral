@@ -22,13 +22,11 @@ import type { LidarrArtistIdMapOps } from "./lidarr.ts";
 import type { AurralHistoryOps } from "./history.ts";
 import type { InboxOps } from "./inbox.ts";
 import {
-  flag,
-  listOf,
   readIntegrationSettings,
-  setting,
   warnUnreadableIntegrationSettings,
   type StoredIntegrations,
 } from "./integrationSettings.ts";
+import { lenient, listOf } from "./storedSchemas.ts";
 
 export type { StoredIntegrations } from "./integrationSettings.ts";
 
@@ -38,8 +36,10 @@ type SettingsMissingTrackSearch = ReturnType<typeof normalizeMissingTrackSearchS
 
 type SettingsInbox = typeof defaultData.settings.inbox;
 
+const flag = lenient(v.boolean());
+
 const securitySchema = v.looseObject({
-  localNetworkBypass: setting(v.looseObject({ enabled: flag })),
+  localNetworkBypass: lenient(v.looseObject({ enabled: flag })),
   ssoOnly: flag,
 });
 

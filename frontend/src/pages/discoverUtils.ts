@@ -1,5 +1,5 @@
 import type { InferResponseType } from "hono/client";
-import type { LibraryArtistImage } from "../../../backend/services/libraryQueryService.ts";
+import type { LibraryArtistImage } from "../../../backend/services/libraryMetadata.ts";
 import type { discoveryClient } from "../utils/api/clients/discovery.ts";
 import {
   DISCOVER_SECTION_IDS,

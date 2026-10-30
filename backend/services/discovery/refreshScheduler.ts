@@ -1,4 +1,7 @@
+import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
+import { dbHelpers } from "../../config/db-sqlite.ts";
+import { lenient } from "../../db/helpers/storedSchemas.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { getMusicDataSourceName } from "../musicDataSource/index.ts";
 import {
@@ -20,7 +23,10 @@ type EnqueueDiscoveryRefreshOptions = {
   scheduleOnly?: boolean;
 };
 
-type QueuedDiscoveryPayload = { reason?: string; scheduleOnly?: boolean };
+const queuedDiscoveryPayloadSchema = v.looseObject({
+  reason: lenient(v.string()),
+  scheduleOnly: lenient(v.boolean()),
+});
 
 const DISCOVERY_GLOBAL_REFRESH_LOCK = "discovery-global-refresh";
 
@@ -82,13 +88,8 @@ export function recoverDeadDiscoveryRefresh() {
   return true;
 }
 
-function parseQueuedPayload(payload: string): QueuedDiscoveryPayload {
-  try {
-    return JSON.parse(String(payload || "{}"));
-  } catch {
-    return {};
-  }
-}
+const parseQueuedPayload = (payload: string) =>
+  dbHelpers.readJSON(queuedDiscoveryPayloadSchema, payload, "discovery refresh job") ?? {};
 
 function getPendingScheduledDiscoveryRefresh() {
   try {

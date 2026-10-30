@@ -1,33 +1,47 @@
 import type Database from "better-sqlite3";
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { DiscoveryCacheRow } from "../rows.ts";
-import type { DiscoveryRecommendation } from "../../services/discovery/recommendationPipeline.ts";
+import {
+  discoveryRecommendationSchema,
+  type DiscoveryRecommendation,
+} from "../../services/discovery/recommendationPipeline.ts";
+import { lenient, listOf } from "./storedSchemas.ts";
 
-export interface DiscoveryMetadata {
-  recommendationQuality?: string | null;
-  isEnriching?: boolean;
-  discoveryRunId?: string | null;
-  enrichmentStartedAt?: string | null;
-  enrichmentCompletedAt?: string | null;
-  enrichmentProgressMessage?: string | null;
-  lastRunStartedAt?: number;
-  refreshRequestedAt?: number;
-  refreshStartedAt?: number;
-  refreshFinishedAt?: number;
-  refreshPhase?: string | null;
-  refreshProgress?: number | null;
-  refreshMessage?: string | null;
-  refreshError?: string | null;
-  [field: string]: unknown;
-}
+const text = lenient(v.string());
+const nullableText = lenient(v.nullable(v.string()));
+const count = lenient(v.number());
 
-export interface DiscoveryBasedOn {
-  id?: string | null;
-  name?: string;
-  artistName?: string;
-  source?: string;
-  profileBucket?: string | null;
-}
+const metadataSchema = v.looseObject({
+  recommendationQuality: nullableText,
+  isEnriching: lenient(v.boolean()),
+  discoveryRunId: nullableText,
+  enrichmentStartedAt: nullableText,
+  enrichmentCompletedAt: nullableText,
+  enrichmentProgressMessage: nullableText,
+  lastRunStartedAt: count,
+  refreshRequestedAt: count,
+  refreshStartedAt: count,
+  refreshFinishedAt: count,
+  refreshPhase: nullableText,
+  refreshProgress: lenient(v.nullable(v.number())),
+  refreshMessage: nullableText,
+  refreshError: nullableText,
+});
+
+export type DiscoveryMetadata = v.InferOutput<typeof metadataSchema>;
+
+const basedOnSchema = v.looseObject({
+  id: nullableText,
+  name: text,
+  artistName: text,
+  source: text,
+  profileBucket: nullableText,
+});
+
+export type DiscoveryBasedOn = v.InferOutput<typeof basedOnSchema>;
+
+const recommendationsSchema = listOf(discoveryRecommendationSchema);
 
 export interface DiscoveryCache {
   recommendations: DiscoveryRecommendation[];
@@ -113,9 +127,11 @@ function readLastUpdated(cacheNamespace: string | null | undefined, prefix: stri
     : readUpdatedAt(`${prefix}recommendations`) || readUpdatedAt(`${prefix}globalTop`);
 }
 
-function readMetadata(prefix: string): DiscoveryMetadata {
-  return dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) || {};
-}
+const readCached = <Schema extends v.GenericSchema>(key: string, schema: Schema) =>
+  dbHelpers.readJSON(schema, getDiscoveryCacheStmt.get(key)?.value, `discovery cache ${key}`);
+
+const readMetadata = (prefix: string): DiscoveryMetadata =>
+  readCached(`${prefix}metadata`, metadataSchema) ?? {};
 
 export default function register(dbOps: DiscoveryCacheOps) {
   dbOps.getDiscoveryRefreshSource = function (cacheNamespace = null) {
@@ -136,13 +152,11 @@ export default function register(dbOps: DiscoveryCacheOps) {
     }
 
     const metadata = readMetadata(prefix);
-    const recommendationsRow = getDiscoveryCacheStmt.get(`${prefix}recommendations`);
-    const recommendations = dbHelpers.parseJSON(recommendationsRow?.value);
-    const globalTopRow = getDiscoveryCacheStmt.get(`${prefix}globalTop`);
-    const globalTop = dbHelpers.parseJSON(globalTopRow?.value);
-    const basedOn = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}basedOn`)?.value);
-    const topTags = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}topTags`)?.value);
-    const topGenres = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}topGenres`)?.value);
+    const recommendations = readCached(`${prefix}recommendations`, recommendationsSchema);
+    const globalTop = readCached(`${prefix}globalTop`, recommendationsSchema);
+    const basedOn = readCached(`${prefix}basedOn`, listOf(basedOnSchema));
+    const topTags = readCached(`${prefix}topTags`, v.array(v.unknown()));
+    const topGenres = readCached(`${prefix}topGenres`, v.array(v.unknown()));
     const provider = getDiscoveryCacheStmt.get(`${prefix}provider`)?.value || null;
     const lastUpdated = readLastUpdated(cacheNamespace, prefix);
 
@@ -219,8 +233,7 @@ export default function register(dbOps: DiscoveryCacheOps) {
           Object.prototype.hasOwnProperty.call(discovery, field),
         );
       if (hasMetadataUpdate) {
-        const existingMetadata =
-          dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) || {};
+        const existingMetadata = readMetadata(prefix);
         const nextMetadata = {
           ...existingMetadata,
           ...(discovery.metadata && typeof discovery.metadata === "object"

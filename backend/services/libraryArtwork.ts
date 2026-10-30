@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseFile, selectCover } from "music-metadata";
-import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { db } from "../config/db-sqlite.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import type {
@@ -19,7 +19,7 @@ import {
   optimizeImageBuffer,
 } from "./imageProxyService.ts";
 import { getArtistImage } from "./imageService.ts";
-import type { LibraryAlbumMetadata } from "./libraryQueryService.ts";
+import { readLibraryMetadata } from "./libraryMetadata.ts";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.ts";
 
 export type LibraryArtworkKind = "album" | "artist";
@@ -244,7 +244,7 @@ async function downloadArtwork(url: string): Promise<ArtworkLookup> {
 }
 
 function metadataImageUrl(metadataJson: string | null) {
-  const metadata: LibraryAlbumMetadata | null = dbHelpers.parseJSON(metadataJson);
+  const metadata = readLibraryMetadata(metadataJson);
   return (
     (metadata?.images ?? [])
       .map((image) => image?.remoteUrl || image?.imageUrl || image?.url)
