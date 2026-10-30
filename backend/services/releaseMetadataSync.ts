@@ -178,12 +178,9 @@ export async function refreshReleaseMetadata({
       seenReleaseGroupMbids.add(releaseGroupMbid);
       if (isReleaseGroupOwned(releaseGroupMbid)) continue;
       const stored = calendar.get(releaseGroupMbid);
-      const rawCatalogueReleaseDate = text(release.firstReleaseDate);
-      const catalogueReleaseDate =
-        getReleaseTime(rawCatalogueReleaseDate) == null ? "" : rawCatalogueReleaseDate;
-      let releaseDate = catalogueReleaseDate || stored?.releaseDate || "";
-      let refreshedAt = catalogueReleaseDate ? nowMs : stored?.refreshedAt;
-      if (!catalogueReleaseDate && shouldFetchReleaseDate(stored, nowMs)) {
+      let releaseDate = stored?.releaseDate || "";
+      let refreshedAt = stored?.refreshedAt;
+      if (shouldFetchReleaseDate(stored, nowMs)) {
         try {
           const album = await getAlbumByMbid(releaseGroupMbid, {
             signal: lease.signal,

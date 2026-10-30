@@ -57,18 +57,12 @@ function addCalendarRelease(artistId: number, title: string, releaseDate: string
   return releaseGroupMbid;
 }
 
-const catalogueRelease = (
-  id: string,
-  title: string,
-  type: string = "Album",
-  firstReleaseDate: string | null = null,
-) => ({
+const catalogueRelease = (id: string, title: string, type: string = "Album") => ({
   Id: id,
   Title: title,
   Type: type,
   SecondaryTypes: [],
   ReleaseStatuses: ["Official"],
-  ...(firstReleaseDate ? { FirstReleaseDate: firstReleaseDate } : {}),
 });
 
 function stubBrainzMash(
@@ -85,7 +79,6 @@ function stubBrainzMash(
         Type: string;
         SecondaryTypes: never[];
         ReleaseStatuses: string[];
-        FirstReleaseDate?: string;
       }[];
     };
     albumDates?: { [x: string]: string };
@@ -263,33 +256,6 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
     const result = await refresh("2026-09-30T12:00:00Z");
     assert.equal(result.releasesStale, 1);
     assert.equal((await visible("2026-09-30T12:00:00Z"))["Recent Release"], undefined);
-  } finally {
-    removeCalendarArtist(artist.id);
-  }
-});
-
-test("BrainzMash refresh uses catalogue dates without downloading full albums", async (t: import("vite-plus/test").TestContext) => {
-  const artist = createCalendarArtist("Catalogue Date Artist");
-  const releaseMbid = randomUUID();
-  const catalogues = {
-    [artist.mbid]: [catalogueRelease(releaseMbid, "Dated Release", "Album", "2026-09-20")],
-  };
-  const { albumRequests } = stubBrainzMash(t, {
-    catalogues,
-    albumDates: { [releaseMbid]: "2026-09-20" },
-  });
-
-  try {
-    await refreshReleaseMetadata({
-      artists: [artist],
-      now: Date.parse("2026-09-27T12:00:00Z"),
-    });
-    assert.deepEqual(albumRequests, []);
-    const releases = await getRecentMissingReleases(100, {
-      artists: [{ canonicalId: String(artist.id) }],
-      now: "2026-09-27T12:00:00Z",
-    });
-    assert.equal(releases[0]?.releaseDate, "2026-09-20");
   } finally {
     removeCalendarArtist(artist.id);
   }

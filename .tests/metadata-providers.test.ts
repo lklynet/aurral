@@ -173,6 +173,49 @@ test("stale album metadata is served while one refresh runs in the background", 
   }
 });
 
+test("BrainzMash data Aurral can't read is never served, from the provider or the cache", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "album-x", title: requests === 1 ? 5 : "Album" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    const year = Date.now() + 365 * 24 * 60 * 60 * 1000;
+    await dbOps.setMetadataResponseAsync(`${server.url}/album/album-x:{}`, {
+      value: { id: 7 },
+      freshUntil: year,
+      staleUntil: year,
+    });
+
+    await assert.rejects(
+      () => getAlbumByMbid("album-x"),
+      /BrainzMash sent \/album\/album-x data Aurral can't read/,
+    );
+    assert.equal((await getAlbumByMbid("album-x")).title, "Album");
+    assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("entity metadata is shared with other processes until the cache is cleared", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
@@ -301,14 +344,13 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
     response.setHeader("content-type", "application/json");
     response.end(
       JSON.stringify({
-        Id: artistMbid,
-        Name: "Calendar Artist",
+        id: artistMbid,
+        artistname: "Calendar Artist",
         Albums: [
           {
             Id: releaseMbid,
             Title: requests === 1 ? "Cached Release" : "Current Release",
             Type: "Album",
-            FirstReleaseDate: "2026-09-20",
             ReleaseStatuses: ["Official"],
           },
         ],
@@ -433,7 +475,7 @@ test("local request admission timeouts do not put entity metadata into cooldown"
   const server = await createMockHttpServer((_request, response) => {
     requests += 1;
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "admission-artist", name: "Admission Artist" }));
+    response.end(JSON.stringify({ id: "admission-artist", artistname: "Admission Artist" }));
   });
 
   try {

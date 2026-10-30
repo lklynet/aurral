@@ -15,7 +15,7 @@ Each integration client parses what it reads with a Valibot schema at its bounda
 - **Describe what the service sends.** Check a running instance before accepting another shape. slskd's client once read every field in two casings and unwrapped `$values` lists, and slskd sends neither.
 - **Follow the service's own nullability, except for what Aurral can't do without.** For Lidarr that is its OpenAPI spec: strings can be `null`, numbers and booleans can be missing but not `null`. A field is required only when a record is useless without it, like an id, an album's MusicBrainz id, or a profile's name.
 - **Lists skip, single records fail.** One odd album shouldn't hide the rest of a library, so a list drops the records that fail and logs one warning per response. A single record that fails throws, so Aurral never writes back data it couldn't read.
-- **Parse before caching.** The client parses inside its request path, so caches and in-flight dedupe hold parsed data and a list is parsed once per fetch. A cached endpoint must always use the same schema, so code outside the client reads through client methods, not `request()`.
+- **Parse before caching.** The client parses inside its request path, so caches and in-flight dedupe hold parsed data and a list is parsed once per fetch. A cached endpoint must always use the same schema, so code outside the client reads through client methods, not `request()`. A cache stored in SQLite outlives versions, so it is parsed again when read back, and an entry that fails is dropped.
 
 ## Traps
 

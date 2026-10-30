@@ -30,11 +30,11 @@ test(
     const responseReleased = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const server = await createMockHttpServer(async (_request, response) => {
+    const server = await createMockHttpServer(async (request, response) => {
       requested();
       await responseReleased;
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify([]));
+      response.end(JSON.stringify({ id: String(request.url).split("/").pop(), Albums: [] }));
     });
     const previous = dbOps.getSettings();
     dbOps.updateSettings({

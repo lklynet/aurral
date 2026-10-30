@@ -1075,7 +1075,13 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
   };
   let offlineAvailable = false;
   const server = await createMockHttpServer((request, response) => {
-    const query = new URL(requireValue(request.url), "http://mock").searchParams.get("query") ?? "";
+    const url = new URL(requireValue(request.url), "http://mock");
+    if (url.pathname.startsWith("/artist/")) {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ id: url.pathname.slice("/artist/".length), Albums: [] }));
+      return;
+    }
+    const query = url.searchParams.get("query") ?? "";
     const results =
       {
         [names.renamed]: [{ id: mbids.renamed, artistname: `The Bravery${suffix}` }],

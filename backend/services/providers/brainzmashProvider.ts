@@ -13,10 +13,13 @@ import {
   withPressingDurations,
 } from "./brainzmashRanking.ts";
 import {
+  albumSchema,
+  artistDetailSchema,
+  artistSchema,
   toNormalizedAlbum,
   toNormalizedArtist,
   toNormalizedArtistAlbum,
-  type toNormalizedArtistImage,
+  type BrainzmashImage,
   type NormalizedAlbum,
   type NormalizedArtist,
   type NormalizedRelease,
@@ -25,7 +28,7 @@ import { selectBestAlbumImage } from "../imageService.ts";
 import { coreAlbumTitle, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
-import { readMany } from "../integrationData.ts";
+import { readMany, readOne } from "../integrationData.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -42,32 +45,13 @@ import {
   setMetadataProviderCooldown,
 } from "../metadataProviderBudget.ts";
 
-type ArtistResponse = NonNullable<Parameters<typeof toNormalizedArtist>[0]>;
-type ArtistAlbumResponse = NonNullable<Parameters<typeof toNormalizedArtistAlbum>[0]>;
-type AlbumResponse = NonNullable<Parameters<typeof toNormalizedAlbum>[0]>;
-type ImageResponse = NonNullable<Parameters<typeof toNormalizedArtistImage>[0]>;
-type ArtistDetailResponse = ArtistResponse & { Albums?: ArtistAlbumResponse[] };
 type ArtistDetailAlbum = Omit<ReturnType<typeof toNormalizedArtistAlbum>, "rating"> & {
   rating: NormalizedAlbum["rating"];
 };
 
-type SearchImage = ImageResponse & {
-  Url?: string | null;
-  url?: string | null;
-  CoverType?: string | null;
-  kind?: string | null;
-};
+type CachedMetadata<T> = { value: T; freshUntil: number; staleUntil: number };
 
-interface AlbumSearchEntry {
-  id?: string;
-  title?: string;
-  artistid?: string;
-  artists?: ArtistResponse[];
-  type?: string;
-  secondarytypes?: string[];
-  releasedate?: string;
-  images?: SearchImage[];
-}
+const searchResultsSchema = v.array(v.unknown());
 
 const releaseGroupSearchSchema = v.looseObject({ "release-groups": v.array(v.unknown()) });
 
@@ -85,7 +69,7 @@ interface AlbumSearchItem {
   secondaryTypes: string[];
   releaseDate: string | null;
   coverUrl: string | null;
-  images: ImageResponse[];
+  images: BrainzmashImage[];
   inLibrary: boolean;
   score: number;
   releaseStatuses: string[];
@@ -309,11 +293,42 @@ function getMetadataCachePolicy(path: string) {
   };
 }
 
-async function readCachedMetadata(cacheKey: string, { persistent = false } = {}) {
-  let entry = persistent ? null : metadataHotCache.get(cacheKey);
+// The SQLite cache outlives versions and is shared by every process, so what it
+// holds is checked again when read back. The hot cache only ever holds checked
+// values.
+function readStoredMetadata<Schema extends v.GenericSchema>(
+  cacheKey: string,
+  schema: Schema,
+  stored: { value: unknown; freshUntil: number; staleUntil: number } | null,
+): CachedMetadata<v.InferOutput<Schema>> | null {
+  if (!stored) return null;
+  const result = v.safeParse(schema, stored.value);
+  if (result.success) return { ...stored, value: result.output };
+  forgetMetadata(cacheKey);
+  logger.warn("metadata", "Dropped a cached metadata response Aurral can't read", {
+    cacheKey,
+    issue: v.summarize(result.issues),
+  });
+  return null;
+}
+
+async function readCachedMetadata<Schema extends v.GenericSchema>(
+  cacheKey: string,
+  schema: Schema,
+  { persistent = false } = {},
+) {
+  let entry: CachedMetadata<v.InferOutput<Schema>> | null = persistent
+    ? null
+    : metadataHotCache.get(cacheKey);
   if (!entry) {
-    const persisted = await dbOps.getMetadataResponseAsync(cacheKey);
-    const current = persistent ? null : metadataHotCache.get(cacheKey);
+    const persisted = readStoredMetadata(
+      cacheKey,
+      schema,
+      await dbOps.getMetadataResponseAsync(cacheKey),
+    );
+    const current: CachedMetadata<v.InferOutput<Schema>> | null = persistent
+      ? null
+      : metadataHotCache.get(cacheKey);
     if (!persisted) {
       if (!current) return null;
       entry = current;
@@ -349,7 +364,11 @@ async function storeMetadata(
   }
 }
 
-async function waitForMetadataRequestOwner(cacheKey: string, signal: AbortSignal) {
+async function waitForMetadataRequestOwner<Schema extends v.GenericSchema>(
+  cacheKey: string,
+  schema: Schema,
+  signal: AbortSignal,
+) {
   while (true) {
     signal.throwIfAborted();
     const state = getMetadataRequestState(cacheKey);
@@ -358,7 +377,7 @@ async function waitForMetadataRequestOwner(cacheKey: string, signal: AbortSignal
       throw createMetadataCooldownError(state.retryAfter - now);
     }
     if (!state?.leased || state.leaseUntil <= now) {
-      const cached = await readCachedMetadata(cacheKey, { persistent: true });
+      const cached = await readCachedMetadata(cacheKey, schema, { persistent: true });
       return cached ? ({ found: true, value: cached.value } as const) : ({ found: false } as const);
     }
     await delay(Math.min(METADATA_REQUEST_LEASE_POLL_MS, state.leaseUntil - now), undefined, {
@@ -372,12 +391,16 @@ function forgetMetadata(cacheKey: string) {
   dbOps.deleteMetadataResponse(cacheKey);
 }
 
-function refreshMetadata<T>(
+function refreshMetadata<Schema extends v.GenericSchema>(
+  schema: Schema,
   cacheKey: string,
   path: string,
   params: MetadataParams,
-  { signal, fallbackValue }: MetadataRequestOptions & { fallbackValue?: T } = {},
-): Promise<T> {
+  {
+    signal,
+    fallbackValue,
+  }: MetadataRequestOptions & { fallbackValue?: v.InferOutput<Schema> } = {},
+): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
   const circuitError = getMetadataCircuitError(baseUrl);
@@ -406,7 +429,7 @@ function refreshMetadata<T>(
             if (fallbackValue !== undefined) return fallbackValue;
             throw createMetadataCooldownError(claim.retryAfter - Date.now());
           }
-          const shared = await waitForMetadataRequestOwner(cacheKey, sharedSignal).catch(
+          const shared = await waitForMetadataRequestOwner(cacheKey, schema, sharedSignal).catch(
             (error) => {
               if (
                 fallbackValue !== undefined &&
@@ -475,12 +498,13 @@ function refreshMetadata<T>(
             },
             { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
           );
-          await storeMetadata(cacheKey, response.data, cachePolicy);
+          const value = readOne(schema, response.data, { service: "BrainzMash", endpoint: path });
+          await storeMetadata(cacheKey, value, cachePolicy);
           if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           metadataNotFoundCache.delete(cacheKey);
           healthState.lastSuccessAt = healthState.lastCheckedAt;
           healthState.lastFailureReason = "";
-          return response.data;
+          return value;
         } catch (error) {
           if (sharedSignal.aborted) {
             if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
@@ -543,28 +567,29 @@ function refreshMetadata<T>(
   );
 }
 
-async function request<T>(
+async function request<Schema extends v.GenericSchema>(
+  schema: Schema,
   path: string,
   params: MetadataParams = {},
   { signal, forceRefresh = false }: MetadataRequestOptions = {},
-): Promise<T> {
+): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
   if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
     throw createMetadataNotFoundError();
   }
-  const cached = await readCachedMetadata(cacheKey);
+  const cached = await readCachedMetadata(cacheKey, schema);
   if (cached && !forceRefresh) {
     if (cached.stale) {
-      void refreshMetadata<T>(cacheKey, path, params, { fallbackValue: cached.value as T }).catch(
+      void refreshMetadata(schema, cacheKey, path, params, { fallbackValue: cached.value }).catch(
         () => {},
       );
     }
-    return cached.value as T;
+    return cached.value;
   }
-  return refreshMetadata<T>(cacheKey, path, params, {
+  return refreshMetadata(schema, cacheKey, path, params, {
     signal,
-    ...(cached ? { fallbackValue: cached.value as T } : {}),
+    ...(cached ? { fallbackValue: cached.value } : {}),
   });
 }
 
@@ -656,7 +681,7 @@ function chooseTracklist(pool: NormalizedRelease[], trackCount: number) {
 }
 
 export async function getArtistByMbid(mbid: string, { signal }: MetadataRequestOptions = {}) {
-  const data = await request<ArtistResponse>(`/artist/${mbid}`, {}, { signal });
+  const data = await request(artistDetailSchema, `/artist/${mbid}`, {}, { signal });
   return toNormalizedArtist(data);
 }
 
@@ -664,7 +689,7 @@ export async function getAlbumByMbid(
   albumMbid: string,
   { signal, forceRefresh = false }: MetadataRequestOptions = {},
 ) {
-  const data = await request<AlbumResponse>(`/album/${albumMbid}`, {}, { signal, forceRefresh });
+  const data = await request(albumSchema, `/album/${albumMbid}`, {}, { signal, forceRefresh });
   return toNormalizedAlbum(data);
 }
 
@@ -692,18 +717,11 @@ export async function searchArtists(
 ) {
   let items: NormalizedArtist[] = [];
   try {
-    const data = await request<ArtistResponse[]>(
-      "/search/artist",
-      {
-        query,
-        limit,
-      },
-      { signal },
-    );
-    const source = Array.isArray(data) ? data : [];
-    items = source.map((entry) => ({
-      ...toNormalizedArtist(entry),
-    }));
+    const data = await request(searchResultsSchema, "/search/artist", { query, limit }, { signal });
+    items = readMany(artistSchema, data, {
+      service: "BrainzMash",
+      endpoint: "/search/artist",
+    }).map(toNormalizedArtist);
   } catch (error) {
     signal?.throwIfAborted();
     if (throwOnFailure) throw error;
@@ -744,7 +762,8 @@ export async function searchAlbums(
   let failure: unknown = null;
 
   try {
-    const data = await request<AlbumSearchEntry[]>(
+    const data = await request(
+      searchResultsSchema,
       "/search/album",
       {
         query,
@@ -753,23 +772,26 @@ export async function searchAlbums(
       },
       { signal },
     );
-    const source = Array.isArray(data) ? data : [];
-    items = source.map((entry, index) => {
-      const artists = Array.isArray(entry?.artists) ? entry.artists : [];
-      const credited =
-        artists.find((artist) => artist?.id && artist.id === entry?.artistid) || artists[0];
+    const albums = readMany(albumSchema, data, {
+      service: "BrainzMash",
+      endpoint: "/search/album",
+    });
+    items = albums.map((entry, index) => {
+      const artists = entry.artists ?? [];
+      const credited = artists.find((artist) => artist.id === entry.artistid) || artists[0];
       const primaryArtist = credited ? toNormalizedArtist(credited) : null;
-      const coverImage = selectBestAlbumImage(entry?.images);
+      const images = entry.images ?? [];
+      const coverImage = selectBestAlbumImage(images);
       return {
-        id: entry?.id,
-        title: entry?.title || "Untitled Release",
+        id: entry.id,
+        title: entry.title || "Untitled Release",
         artistName: primaryArtist?.name || artistName || "Unknown Artist",
-        artistId: entry?.artistid || primaryArtist?.id || null,
-        type: entry?.type || "Album",
-        secondaryTypes: Array.isArray(entry?.secondarytypes) ? entry.secondarytypes : [],
-        releaseDate: entry?.releasedate || null,
+        artistId: entry.artistid || primaryArtist?.id || null,
+        type: entry.type || "Album",
+        secondaryTypes: entry.secondarytypes ?? [],
+        releaseDate: entry.releasedate || null,
         coverUrl: coverImage?.Url ? String(coverImage.Url).trim() : null,
-        images: Array.isArray(entry?.images) ? entry.images : [],
+        images,
         inLibrary: false,
         score: Math.max(0, 100 - index),
         releaseStatuses: [],
@@ -954,15 +976,14 @@ export async function listArtistAlbums(
     forceRefresh?: boolean;
   } = {},
 ) {
-  const rawArtist = await request<ArtistDetailResponse>(
+  const rawArtist = await request(
+    artistDetailSchema,
     `/artist/${artistMbid}`,
     {},
     { signal, forceRefresh },
   );
   const artist = toNormalizedArtist(rawArtist);
-  let albums: ArtistDetailAlbum[] = (Array.isArray(rawArtist?.Albums) ? rawArtist.Albums : []).map(
-    (entry) => toNormalizedArtistAlbum(entry),
-  );
+  let albums: ArtistDetailAlbum[] = (rawArtist.Albums ?? []).map(toNormalizedArtistAlbum);
   albums = applyReleaseTypeFilter(albums, releaseTypes);
   albums.sort((left, right) => {
     const leftBootleg = (left.releaseStatuses || []).includes("Bootleg") ? 1 : 0;

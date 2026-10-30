@@ -146,7 +146,6 @@ function artistPayload(mbid: string = artistMbid) {
       Type: release.type,
       SecondaryTypes: release.secondary || [],
       ReleaseStatuses: release.statuses || ["Official"],
-      FirstReleaseDate: release.date,
     })),
   };
 }
@@ -736,6 +735,7 @@ test("an artist disabled during metadata lookup does not acquire albums", async 
   assert.equal(monitoring.statusCode, 200);
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  clearMetadataProviderCaches();
   metadataState.albumGate = { started: started.resolve, release: release.promise };
 
   const task = queuedMonitoringTasks()[0];

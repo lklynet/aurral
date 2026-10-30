@@ -1,145 +1,129 @@
+import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
-interface RawImage {
-  Url?: unknown;
-  url?: unknown;
-  CoverType?: unknown;
-  kind?: unknown;
-}
 
-interface RawLink {
-  target?: unknown;
-  type?: unknown;
-  url?: { resource?: unknown };
-}
+const text = v.nullish(v.string());
+const texts = v.nullish(v.array(v.string()));
 
-interface RawRating {
-  Count?: unknown;
-  Value?: unknown;
-}
+const imageSchema = v.looseObject({ CoverType: text, Url: text });
 
-interface RawArtist {
-  id?: unknown;
-  artistname?: unknown;
-  name?: unknown;
-  sortname?: unknown;
-  sortName?: unknown;
-  type?: unknown;
-  status?: unknown;
-  disambiguation?: unknown;
-  overview?: unknown;
-  genres?: unknown;
-  artistaliases?: unknown;
-  images?: unknown;
-  links?: unknown;
-  rating?: RawRating | null;
-}
+const linkSchema = v.looseObject({ type: text, target: text });
 
-interface RawTrack {
-  id?: unknown;
-  recordingid?: unknown;
-  recordingId?: unknown;
-  oldrecordingids?: unknown;
-  trackname?: unknown;
-  title?: unknown;
-  trackposition?: unknown;
-  trackNumber?: unknown;
-  mediumnumber?: unknown;
-  durationms?: unknown;
-  artistid?: unknown;
-}
+const ratingSchema = v.nullish(
+  v.looseObject({ Count: v.nullish(v.number()), Value: v.nullish(v.number()) }),
+);
 
-interface RawRelease {
-  id?: unknown;
-  title?: unknown;
-  status?: unknown;
-  country?: unknown;
-  label?: unknown;
-  media?: unknown;
-  tracks?: unknown;
-  track_count?: unknown;
-  releasedate?: unknown;
-  releaseDate?: unknown;
-  disambiguation?: unknown;
-}
+export const artistSchema = v.looseObject({
+  id: v.string(),
+  artistname: text,
+  sortname: text,
+  type: text,
+  status: text,
+  disambiguation: text,
+  overview: text,
+  genres: texts,
+  artistaliases: texts,
+  images: v.nullish(v.array(imageSchema)),
+  links: v.nullish(v.array(linkSchema)),
+  rating: ratingSchema,
+});
 
-interface RawAlbum {
-  id?: unknown;
-  title?: unknown;
-  artistid?: unknown;
-  artists?: unknown;
-  type?: unknown;
-  secondarytypes?: unknown;
-  releasedate?: unknown;
-  genres?: unknown;
-  aliases?: unknown;
-  overview?: unknown;
-  images?: unknown;
-  links?: unknown;
-  releases?: unknown;
-  rating?: RawRating | null;
-}
+const artistAlbumSchema = v.looseObject({
+  Id: v.string(),
+  Title: text,
+  Type: text,
+  SecondaryTypes: texts,
+  ReleaseStatuses: texts,
+});
 
-interface RawArtistAlbum {
-  Id?: unknown;
-  id?: unknown;
-  Title?: unknown;
-  title?: unknown;
-  Type?: unknown;
-  type?: unknown;
-  SecondaryTypes?: unknown;
-  secondaryTypes?: unknown;
-  ReleaseStatuses?: unknown;
-  releaseStatuses?: unknown;
-  FirstReleaseDate?: unknown;
-  firstReleaseDate?: unknown;
-  ReleaseDate?: unknown;
-  releaseDate?: unknown;
-  releasedate?: unknown;
-  images?: unknown;
-}
+export const artistDetailSchema = v.looseObject({
+  ...artistSchema.entries,
+  Albums: v.nullish(v.array(artistAlbumSchema)),
+});
+
+const trackSchema = v.looseObject({
+  id: text,
+  recordingid: text,
+  oldrecordingids: texts,
+  trackname: text,
+  trackposition: v.nullish(v.number()),
+  mediumnumber: v.nullish(v.number()),
+  durationms: v.nullish(v.number()),
+  artistid: text,
+});
+
+const releaseSchema = v.looseObject({
+  id: v.string(),
+  title: text,
+  status: text,
+  country: texts,
+  label: texts,
+  media: v.nullish(
+    v.array(v.looseObject({ Format: text, Name: text, Position: v.nullish(v.number()) })),
+  ),
+  track_count: v.nullish(v.number()),
+  tracks: v.nullish(v.array(trackSchema)),
+  releasedate: text,
+  disambiguation: text,
+});
+
+export const albumSchema = v.looseObject({
+  id: v.string(),
+  title: text,
+  artistid: text,
+  artists: v.nullish(v.array(artistSchema)),
+  type: text,
+  secondarytypes: texts,
+  releasedate: text,
+  genres: texts,
+  aliases: texts,
+  overview: text,
+  images: v.nullish(v.array(imageSchema)),
+  links: v.nullish(v.array(linkSchema)),
+  releases: v.nullish(v.array(releaseSchema)),
+  rating: ratingSchema,
+});
+
+export type BrainzmashImage = v.InferOutput<typeof imageSchema>;
 
 export type NormalizedArtist = ReturnType<typeof toNormalizedArtist>;
 export type NormalizedTrack = ReturnType<typeof toNormalizedTrack>;
 export type NormalizedRelease = ReturnType<typeof toNormalizedRelease>;
 export type NormalizedAlbum = ReturnType<typeof toNormalizedAlbum>;
 
-function normalizeArray(value: unknown) {
-  return Array.isArray(value) ? value : [];
+function clean(value: string | null | undefined) {
+  return value?.trim() ?? "";
 }
 
-function normalizeString(value: unknown) {
-  return String(value || "").trim();
+function cleanList(values: string[] | null | undefined) {
+  return (values ?? []).map(clean).filter(Boolean);
 }
 
-function normalizeType(value: unknown) {
-  const normalized = normalizeString(value);
-  if (normalized === "Album" || normalized === "EP" || normalized === "Single") {
-    return normalized;
-  }
-  return normalized || "Album";
+function normalizeType(value: string | null | undefined) {
+  return clean(value) || "Album";
 }
 
-function normalizeImageKind(value: unknown) {
-  const normalized = normalizeString(value);
-  return normalized || "Cover";
+function toRating(rating: v.InferOutput<typeof ratingSchema>) {
+  return rating?.Value != null ? { count: rating.Count ?? 0, value: rating.Value } : null;
 }
 
-export function toNormalizedArtistImage(image: RawImage | null | undefined) {
-  const url = normalizeString(image?.Url || image?.url);
+function toNormalizedArtistImage(image: BrainzmashImage) {
+  const url = clean(image.Url);
   if (!url) return null;
-  return {
-    kind: normalizeImageKind(image?.CoverType || image?.kind),
-    url,
-  };
+  return { kind: clean(image.CoverType) || "Cover", url };
 }
 
-export function toNormalizedArtistLink(link: RawLink | null | undefined) {
-  const target = normalizeString(link?.target || link?.url);
+function toNormalizedArtistLink(link: v.InferOutput<typeof linkSchema>) {
+  const target = clean(link.target);
   if (!target) return null;
-  return {
-    type: normalizeString(link?.type) || "external",
-    target,
-  };
+  return { type: clean(link.type) || "external", target };
+}
+
+function toNormalizedImages(images: BrainzmashImage[] | null | undefined) {
+  return (images ?? []).map(toNormalizedArtistImage).filter((entry) => entry !== null);
+}
+
+function toNormalizedLinks(links: v.InferOutput<typeof linkSchema>[] | null | undefined) {
+  return (links ?? []).map(toNormalizedArtistLink).filter((entry) => entry !== null);
 }
 
 const LINKED_ARTIST_PROVIDERS = {
@@ -147,11 +131,11 @@ const LINKED_ARTIST_PROVIDERS = {
   "discogs.com": "discogs",
 };
 
-export function getLinkedArtistProviderIds(links: (RawLink | null | undefined)[] = []) {
+export function getLinkedArtistProviderIds(links: { target: string }[] = []) {
   const providerIds = [];
-  for (const link of normalizeArray(links)) {
+  for (const link of links) {
     try {
-      const url = new URL(normalizeString(link?.target || link?.url?.resource));
+      const url = new URL(link.target);
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
       const provider = isOwnKey(LINKED_ARTIST_PROVIDERS, host)
         ? LINKED_ARTIST_PROVIDERS[host]
@@ -165,175 +149,89 @@ export function getLinkedArtistProviderIds(links: (RawLink | null | undefined)[]
   return [...new Set(providerIds)];
 }
 
-export function getLinkedDeezerArtistId(links: (RawLink | null | undefined)[] = []) {
+export function getLinkedDeezerArtistId(links: { target: string }[] = []) {
   const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
   return providerId ? providerId.split("@")[0] : null;
 }
 
-export function toNormalizedArtist(raw: RawArtist | null | undefined) {
-  const images = normalizeArray(raw?.images)
-    .map(toNormalizedArtistImage)
-    .filter((entry) => entry !== null);
-  const links = normalizeArray(raw?.links)
-    .map(toNormalizedArtistLink)
-    .filter((entry) => entry !== null);
+export function toNormalizedArtist(raw: v.InferOutput<typeof artistSchema>) {
   return {
-    id: normalizeString(raw?.id),
-    name: normalizeString(raw?.artistname || raw?.name),
-    sortName: normalizeString(raw?.sortname || raw?.sortName || raw?.artistname || raw?.name),
-    type: normalizeString(raw?.type) || null,
-    status: normalizeString(raw?.status) || null,
-    disambiguation: normalizeString(raw?.disambiguation) || "",
-    overview: normalizeString(raw?.overview) || "",
-    genres: normalizeArray(raw?.genres)
-      .map((genre) => normalizeString(genre))
-      .filter(Boolean),
-    aliases: normalizeArray(raw?.artistaliases)
-      .map((alias) => normalizeString(alias))
-      .filter(Boolean),
-    images,
-    links,
-    rating:
-      raw?.rating && raw.rating.Value != null
-        ? {
-            count: Number.parseInt(String(raw.rating.Count), 10) || 0,
-            value:
-              raw.rating.Value != null && Number.isFinite(Number(raw.rating.Value))
-                ? Number(raw.rating.Value)
-                : null,
-          }
-        : null,
+    id: raw.id,
+    name: clean(raw.artistname),
+    sortName: clean(raw.sortname || raw.artistname),
+    type: clean(raw.type) || null,
+    status: clean(raw.status) || null,
+    disambiguation: clean(raw.disambiguation),
+    overview: clean(raw.overview),
+    genres: cleanList(raw.genres),
+    aliases: cleanList(raw.artistaliases),
+    images: toNormalizedImages(raw.images),
+    links: toNormalizedLinks(raw.links),
+    rating: toRating(raw.rating),
   };
 }
 
-export function toNormalizedTrack(raw: RawTrack | null | undefined) {
+export function toNormalizedTrack(raw: v.InferOutput<typeof trackSchema>) {
   return {
-    id: normalizeString(raw?.id),
-    recordingId: normalizeString(raw?.recordingid || raw?.recordingId),
-    oldRecordingIds: normalizeArray(raw?.oldrecordingids)
-      .map((id) => normalizeString(id))
-      .filter(Boolean),
-    title: normalizeString(raw?.trackname || raw?.title),
-    trackNumber:
-      raw?.trackposition != null && Number.isFinite(Number(raw.trackposition))
-        ? Number(raw.trackposition)
-        : raw?.trackNumber != null && Number.isFinite(Number(raw.trackNumber))
-          ? Number(raw.trackNumber)
-          : null,
-    trackPosition:
-      raw?.trackposition != null && Number.isFinite(Number(raw.trackposition))
-        ? Number(raw.trackposition)
-        : null,
-    mediumNumber:
-      raw?.mediumnumber != null && Number.isFinite(Number(raw.mediumnumber))
-        ? Number(raw.mediumnumber)
-        : null,
-    durationMs:
-      raw?.durationms != null && Number.isFinite(Number(raw.durationms))
-        ? Number(raw.durationms)
-        : null,
-    artistId: normalizeString(raw?.artistid) || null,
+    id: clean(raw.id),
+    recordingId: clean(raw.recordingid),
+    oldRecordingIds: cleanList(raw.oldrecordingids),
+    title: clean(raw.trackname),
+    trackNumber: raw.trackposition ?? null,
+    trackPosition: raw.trackposition ?? null,
+    mediumNumber: raw.mediumnumber ?? null,
+    durationMs: raw.durationms ?? null,
+    artistId: clean(raw.artistid) || null,
   };
 }
 
-export function toNormalizedRelease(raw: RawRelease | null | undefined) {
-  const tracks = normalizeArray(raw?.tracks).map(toNormalizedTrack).filter(Boolean);
+export function toNormalizedRelease(raw: v.InferOutput<typeof releaseSchema>) {
   return {
-    id: normalizeString(raw?.id),
-    title: normalizeString(raw?.title),
-    status: normalizeString(raw?.status) || null,
-    country: normalizeArray(raw?.country)
-      .map((entry) => normalizeString(entry))
-      .filter(Boolean),
-    label: normalizeArray(raw?.label)
-      .map((entry) => normalizeString(entry))
-      .filter(Boolean),
-    media: normalizeArray(raw?.media).map((entry) => ({
-      format: normalizeString(entry?.Format || entry?.format),
-      name: normalizeString(entry?.Name || entry?.name),
-      position:
-        entry?.Position != null && Number.isFinite(Number(entry.Position))
-          ? Number(entry.Position)
-          : null,
+    id: raw.id,
+    title: clean(raw.title),
+    status: clean(raw.status) || null,
+    country: cleanList(raw.country),
+    label: cleanList(raw.label),
+    media: (raw.media ?? []).map((entry) => ({
+      format: clean(entry.Format),
+      name: clean(entry.Name),
+      position: entry.Position ?? null,
     })),
-    trackCount:
-      raw?.track_count != null && Number.isFinite(Number(raw.track_count))
-        ? Number(raw.track_count)
-        : null,
-    tracks,
-    releaseDate: normalizeString(raw?.releasedate || raw?.releaseDate) || null,
-    disambiguation: normalizeString(raw?.disambiguation) || "",
+    trackCount: raw.track_count ?? null,
+    tracks: (raw.tracks ?? []).map(toNormalizedTrack),
+    releaseDate: clean(raw.releasedate) || null,
+    disambiguation: clean(raw.disambiguation),
   };
 }
 
-export function toNormalizedAlbum(raw: RawAlbum | null | undefined) {
-  const artists = normalizeArray(raw?.artists)
-    .map(toNormalizedArtist)
-    .filter((artist) => artist?.id);
-  const images = normalizeArray(raw?.images)
-    .map(toNormalizedArtistImage)
-    .filter((entry) => entry !== null);
-  const links = normalizeArray(raw?.links)
-    .map(toNormalizedArtistLink)
-    .filter((entry) => entry !== null);
-  const releases = normalizeArray(raw?.releases)
-    .map(toNormalizedRelease)
-    .filter((release) => release?.id);
+export function toNormalizedAlbum(raw: v.InferOutput<typeof albumSchema>) {
+  const artists = (raw.artists ?? []).map(toNormalizedArtist);
   return {
-    id: normalizeString(raw?.id),
-    title: normalizeString(raw?.title),
-    artistId: normalizeString(raw?.artistid) || artists[0]?.id || null,
+    id: raw.id,
+    title: clean(raw.title),
+    artistId: clean(raw.artistid) || artists[0]?.id || null,
     artists,
-    type: normalizeType(raw?.type),
-    secondaryTypes: normalizeArray(raw?.secondarytypes)
-      .map((value) => normalizeString(value))
-      .filter(Boolean),
-    releaseDate: normalizeString(raw?.releasedate) || null,
-    genres: normalizeArray(raw?.genres)
-      .map((value) => normalizeString(value))
-      .filter(Boolean),
-    aliases: normalizeArray(raw?.aliases)
-      .map((value) => normalizeString(value))
-      .filter(Boolean),
-    overview: normalizeString(raw?.overview) || "",
-    images,
-    links,
-    releases,
-    rating:
-      raw?.rating && raw.rating.Value != null
-        ? {
-            count: Number.parseInt(String(raw.rating.Count), 10) || 0,
-            value:
-              raw.rating.Value != null && Number.isFinite(Number(raw.rating.Value))
-                ? Number(raw.rating.Value)
-                : null,
-          }
-        : null,
+    type: normalizeType(raw.type),
+    secondaryTypes: cleanList(raw.secondarytypes),
+    releaseDate: clean(raw.releasedate) || null,
+    genres: cleanList(raw.genres),
+    aliases: cleanList(raw.aliases),
+    overview: clean(raw.overview),
+    images: toNormalizedImages(raw.images),
+    links: toNormalizedLinks(raw.links),
+    releases: (raw.releases ?? []).map(toNormalizedRelease),
+    rating: toRating(raw.rating),
   };
 }
 
-export function toNormalizedArtistAlbum(raw: RawArtistAlbum | null | undefined) {
+export function toNormalizedArtistAlbum(raw: v.InferOutput<typeof artistAlbumSchema>) {
   return {
-    id: normalizeString(raw?.Id || raw?.id),
-    title: normalizeString(raw?.Title || raw?.title),
-    type: normalizeType(raw?.Type || raw?.type),
-    secondaryTypes: normalizeArray(raw?.SecondaryTypes || raw?.secondaryTypes)
-      .map((value) => normalizeString(value))
-      .filter(Boolean),
-    releaseStatuses: normalizeArray(raw?.ReleaseStatuses || raw?.releaseStatuses)
-      .map((value) => normalizeString(value))
-      .filter(Boolean),
-    firstReleaseDate:
-      normalizeString(
-        raw?.FirstReleaseDate ||
-          raw?.firstReleaseDate ||
-          raw?.ReleaseDate ||
-          raw?.releaseDate ||
-          raw?.releasedate,
-      ) || null,
-    coverImages: normalizeArray(raw?.images)
-      .map(toNormalizedArtistImage)
-      .filter((entry) => entry !== null),
+    id: raw.Id,
+    title: clean(raw.Title),
+    type: normalizeType(raw.Type),
+    secondaryTypes: cleanList(raw.SecondaryTypes),
+    releaseStatuses: cleanList(raw.ReleaseStatuses),
+    firstReleaseDate: null as string | null,
     rating: null,
   };
 }
@@ -365,7 +263,7 @@ export function toLegacyReleaseGroupSummary(
           },
         ]
       : [],
-    releases: normalizeArray(album.releases).map((release) => ({
+    releases: (album.releases ?? []).map((release) => ({
       id: release.id,
       status: release.status || null,
       date: release.releaseDate || null,

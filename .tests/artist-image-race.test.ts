@@ -98,7 +98,7 @@ function artist(
     before = async () => {},
   }: {
     images?: { CoverType: string; Url: string }[];
-    albums?: { id: string; title: string; type: string; firstreleasedate?: string }[];
+    albums?: { Id: string; Title: string; Type: string }[];
     before?: () => Promise<void>;
   } = {},
 ) {
@@ -174,10 +174,7 @@ for (const [index, source, lookup] of [
     const albumId = artistId(index + 200);
     artist(mbid, {
       images: source === "direct image" ? [image(oldImage)] : [],
-      albums:
-        source === "album image"
-          ? [{ id: albumId, title: "Old Album", type: "Album", firstreleasedate: "2020-01-01" }]
-          : [],
+      albums: source === "album image" ? [{ Id: albumId, Title: "Old Album", Type: "Album" }] : [],
       before: () => oldGate.wait(),
     });
     artist(replacement, { images: [image(newImage)] });
@@ -231,7 +228,7 @@ test("cached album recovery cannot overwrite an image selected after an override
   const albumId = artistId(207);
   const oldGate = gate();
   artist(mbid, {
-    albums: [{ id: albumId, title: "Old Album", type: "Album", firstreleasedate: "2020-01-01" }],
+    albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
     before: () => oldGate.wait(),
   });
   artist(replacement, { images: [image(newImage)] });
@@ -413,7 +410,7 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;
-    artist(mbid, { albums: [{ id: albumId, title: "Old Album", type: "Album" }] });
+    artist(mbid, { albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }] });
     fixtures.set(`metadata.invalid/album/${albumId}`, async () => {
       await recoveryGate.wait();
       return { id: albumId, title: "Old Album", images: [], artists: [], releases: [] };
@@ -512,9 +509,7 @@ test("a forced refresh searches albums that a pending lookup skips", async () =>
   const albumId = artistId(219);
   const lookupGate = gate();
   artist(mbid, {
-    albums: [
-      { id: albumId, title: "Current Album", type: "Album", firstreleasedate: "2020-01-01" },
-    ],
+    albums: [{ Id: albumId, Title: "Current Album", Type: "Album" }],
     before: () => lookupGate.wait(),
   });
   fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({

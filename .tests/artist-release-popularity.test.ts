@@ -41,7 +41,6 @@ const plaid = (n: number) => {
         OldIds: [],
         ReleaseStatuses: ["Official"],
         SecondaryTypes: release.secondaryTypes || [],
-        ReleaseDate: release.date,
         Title: release.title,
         Type: release.type,
       })),
@@ -104,6 +103,10 @@ const stubPlaid = (
 ) =>
   stubFetch(t, (url, init) => {
     if (url.pathname === `/artist/${artist.mbid}`) return json(artist.provider(artist.mbid));
+    const dated = Object.values(artist.releases).find(
+      (release) => release.date && url.pathname === `/album/${release.id}`,
+    );
+    if (dated) return json({ id: dated.id, title: dated.title, releasedate: dated.date });
     if (isListenBrainzPopularity(url))
       return listenBrainz(JSON.parse(String(requireFixture(init).body)));
     if (isListenBrainzMetadata(url))
@@ -230,7 +233,7 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
     },
   );
 
-  const stream = openArtistStream(artist.mbid);
+  const stream = openArtistStream(artist.mbid, { appearsOnLimit: "6" });
   t.onTestFinished(() => stream.close());
   const { data } = await stream.waitFor(
     ({ event, data }) => event === "artist" && "release-groups" in data,

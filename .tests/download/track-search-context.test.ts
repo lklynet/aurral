@@ -790,8 +790,14 @@ test("a download takes the album of its title that lists the song, over the albu
 test("a download takes the album of its title from the year it names, when the artist has two of that title", async (t) => {
   const band = artistEntry("hits-band", "Hits Band");
   const albums = {
-    "old-hits": albumEntry("old-hits", "Greatest Hits", band, ["Africa"]),
-    "new-hits": albumEntry("new-hits", "Greatest Hits", band, ["Africa"]),
+    "old-hits": {
+      ...albumEntry("old-hits", "Greatest Hits", band, ["Africa"]),
+      releasedate: "1999-05-01",
+    },
+    "new-hits": {
+      ...albumEntry("new-hits", "Greatest Hits", band, ["Africa"]),
+      releasedate: "2005-05-01",
+    },
   };
   stubMetadata(t, (path: string) => {
     if (path === "/search/album") return [];
@@ -799,8 +805,8 @@ test("a download takes the album of its title from the year it names, when the a
       return {
         ...band,
         Albums: [
-          { Id: "old-hits", Title: "Greatest Hits", Type: "Album", FirstReleaseDate: "1999-05-01" },
-          { Id: "new-hits", Title: "Greatest Hits", Type: "Album", FirstReleaseDate: "2005-05-01" },
+          { Id: "old-hits", Title: "Greatest Hits", Type: "Album" },
+          { Id: "new-hits", Title: "Greatest Hits", Type: "Album" },
         ],
       };
     }
