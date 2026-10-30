@@ -88,8 +88,9 @@ export function getLatestPlaylistOperationToken(scope: string) {
   if (!safeScope) return null;
   const current = dbOps.getJSONSetting(operationTokenKey(safeScope), v.string());
   if (current != null) return current;
-  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY, v.record(v.string(), v.string())) || {};
-  return legacy[safeScope] ?? null;
+  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY, v.record(v.string(), v.unknown()));
+  const token = legacy?.[safeScope];
+  return typeof token === "string" ? token : null;
 }
 
 export function restorePlaylistOperationToken({

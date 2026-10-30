@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { JellyfinClient } from "../../backend/services/jellyfin.ts";
 import type { PlaybackDestination } from "../../backend/services/playback/playbackDestination.ts";
 import { audioMetadata } from "../download/fixtures.ts";
@@ -37,8 +38,11 @@ const {
   removeUnusedPlaybackFiles,
   isPlaybackRetainedFile,
   retryPlaybackRetainedFiles,
-  retainedFilesSchema,
 } = retention;
+const retainedFilesSchema = v.record(
+  v.string(),
+  v.looseObject({ excludeEntityIds: v.array(v.string()), playlistRoot: v.string() }),
+);
 const root = process.env.WEEKLY_FLOW_FOLDER;
 assert.ok(root != null);
 

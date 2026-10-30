@@ -10,10 +10,14 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const pointerStoreSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const pointerStoreSchema = v.record(v.string(), v.unknown());
+const targetsSchema = v.record(v.string(), v.unknown());
 const storedPointerSchema = v.looseObject({});
 
 type PointerStore = v.InferOutput<typeof pointerStoreSchema>;
+
+const targetsOf = (value: unknown): v.InferOutput<typeof targetsSchema> =>
+  v.is(targetsSchema, value) ? value : {};
 
 const readStore = () =>
   dbHelpers.readJSON(pointerStoreSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ??
@@ -42,7 +46,7 @@ type PlexPointer = NonNullable<ReturnType<typeof normalizePointer>>;
 export const plexPlaylistPointerStore = {
   getPointer(entityId: string, targetKey: string) {
     const store = readStore();
-    return normalizePointer(store[entityId]?.[targetKey] || null);
+    return normalizePointer(targetsOf(store[entityId])[targetKey]);
   },
 
   setPointer(
@@ -56,8 +60,9 @@ export const plexPlaylistPointerStore = {
     }: { location: string; ratingKey: string | number; title: string; description?: string | null },
   ) {
     const store = readStore();
-    if (!store[entityId]) store[entityId] = {};
-    store[entityId][targetKey] = {
+    const targets = targetsOf(store[entityId]);
+    store[entityId] = targets;
+    targets[targetKey] = {
       location: String(location || ""),
       ratingKey: String(ratingKey),
       title: String(title || ""),
@@ -69,9 +74,10 @@ export const plexPlaylistPointerStore = {
 
   deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
-    if (!store[entityId]?.[targetKey]) return false;
-    delete store[entityId][targetKey];
-    if (!Object.keys(store[entityId]).length) delete store[entityId];
+    const targets = targetsOf(store[entityId]);
+    if (!targets[targetKey]) return false;
+    delete targets[targetKey];
+    if (!Object.keys(targets).length) delete store[entityId];
     writeStore(store);
     return true;
   },
@@ -80,7 +86,7 @@ export const plexPlaylistPointerStore = {
     const store = readStore();
     const results = [];
     for (const [entityId, targets] of Object.entries(store)) {
-      const pointer = normalizePointer(targets?.[targetKey]);
+      const pointer = normalizePointer(targetsOf(targets)[targetKey]);
       if (pointer) results.push({ entityId, ...pointer });
     }
     return results;
@@ -92,7 +98,7 @@ export const plexPlaylistPointerStore = {
 
   getPointersForEntity(entityId: string): (PlexPointer & { targetKey: string })[] {
     const store = readStore();
-    return Object.entries(store[entityId] || {})
+    return Object.entries(targetsOf(store[entityId]))
       .map(([targetKey, raw]) => {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;

@@ -10,10 +10,14 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const pointerStoreSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const pointerStoreSchema = v.record(v.string(), v.unknown());
+const targetsSchema = v.record(v.string(), v.unknown());
 const storedPointerSchema = v.looseObject({});
 
 type PointerStore = v.InferOutput<typeof pointerStoreSchema>;
+
+const targetsOf = (value: unknown): v.InferOutput<typeof targetsSchema> =>
+  v.is(targetsSchema, value) ? value : {};
 
 const readStore = () =>
   dbHelpers.readJSON(pointerStoreSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ??
@@ -43,7 +47,7 @@ export const navidromePlaylistPointerStore = {
   },
 
   getPointersForEntity(entityId: string): (NavidromePointer & { targetKey: string })[] {
-    return Object.entries(readStore()[entityId] || {})
+    return Object.entries(targetsOf(readStore()[entityId]))
       .map(([targetKey, raw]) => {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;
@@ -52,7 +56,7 @@ export const navidromePlaylistPointerStore = {
   },
 
   getPointer(entityId: string, targetKey: string) {
-    return normalizePointer(readStore()[entityId]?.[targetKey] || null);
+    return normalizePointer(targetsOf(readStore()[entityId])[targetKey]);
   },
 
   setPointer(
@@ -61,8 +65,9 @@ export const navidromePlaylistPointerStore = {
     { playlistId, title }: { playlistId: string | null; title: string },
   ) {
     const store = readStore();
-    if (!store[entityId]) store[entityId] = {};
-    store[entityId][targetKey] = {
+    const targets = targetsOf(store[entityId]);
+    store[entityId] = targets;
+    targets[targetKey] = {
       playlistId: playlistId != null ? String(playlistId) : null,
       title: String(title || ""),
       updatedAt: Date.now(),
@@ -72,9 +77,10 @@ export const navidromePlaylistPointerStore = {
 
   deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
-    if (!store[entityId]?.[targetKey]) return false;
-    delete store[entityId][targetKey];
-    if (!Object.keys(store[entityId]).length) delete store[entityId];
+    const targets = targetsOf(store[entityId]);
+    if (!targets[targetKey]) return false;
+    delete targets[targetKey];
+    if (!Object.keys(targets).length) delete store[entityId];
     writeStore(store);
     return true;
   },
@@ -82,7 +88,9 @@ export const navidromePlaylistPointerStore = {
   hasPlaylistId(playlistId: unknown) {
     const expected = String(playlistId);
     return Object.values(readStore()).some((targets) =>
-      Object.values(targets || {}).some((raw) => normalizePointer(raw)?.playlistId === expected),
+      Object.values(targetsOf(targets)).some(
+        (raw) => normalizePointer(raw)?.playlistId === expected,
+      ),
     );
   },
 };

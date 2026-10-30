@@ -71,7 +71,7 @@ const uniqueResolvedPaths = (paths: unknown) => [
 ];
 
 export function readOnlyFolderPaths() {
-  return uniqueResolvedPaths(dbOps.getJSONSetting(READ_ONLY_FOLDERS_SETTING, v.array(v.string())));
+  return uniqueResolvedPaths(dbOps.getJSONSetting(READ_ONLY_FOLDERS_SETTING, v.array(v.unknown())));
 }
 
 export function saveReadOnlyFolderPaths(paths: unknown) {

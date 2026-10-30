@@ -199,6 +199,17 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
   assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders", v.unknown()), [folder]);
 });
 
+test("an unreadable saved read-only folder entry keeps the other folders", async () => {
+  const folder = await makeFolder("kept-entry");
+  dbOps.setJSONSetting("readOnlyFolders", [folder, null]);
+
+  const listed = await callLibrary("GET", "/files/read-only-folders");
+  assert.deepEqual(
+    requireFixture(listed.body).folders.map((entry) => entry.path),
+    [folder],
+  );
+});
+
 test("removing a read-only folder takes its music out of the Library and keeps the files", async () => {
   const folder = await makeFolder("removed");
   const filePath = await makeTrack(folder, "Gone Artist", "Gone Album", "Gone Song");

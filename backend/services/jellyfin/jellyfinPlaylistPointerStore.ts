@@ -2,10 +2,14 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 
-const pointerStoreSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const pointerStoreSchema = v.record(v.string(), v.unknown());
+const targetsSchema = v.record(v.string(), v.unknown());
 const storedPointerSchema = v.looseObject({});
 
 type PointerStore = v.InferOutput<typeof pointerStoreSchema>;
+
+const targetsOf = (value: unknown): v.InferOutput<typeof targetsSchema> =>
+  v.is(targetsSchema, value) ? value : {};
 
 const SETTINGS_KEY = "jellyfinPlaylistPointers";
 const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
@@ -56,7 +60,7 @@ export const jellyfinPlaylistPointerStore = {
   },
 
   getPointersForEntity(entityId: string) {
-    return Object.entries(readStore()[entityId] || {})
+    return Object.entries(targetsOf(readStore()[entityId]))
       .map(([targetKey, raw]) => {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;
@@ -65,7 +69,7 @@ export const jellyfinPlaylistPointerStore = {
   },
 
   getPointer(entityId: string, targetKey: string) {
-    return normalizePointer(readStore()[entityId]?.[targetKey] || null);
+    return normalizePointer(targetsOf(readStore()[entityId])[targetKey]);
   },
 
   setPointer(
@@ -86,8 +90,9 @@ export const jellyfinPlaylistPointerStore = {
     },
   ) {
     const store = readStore();
-    if (!store[entityId]) store[entityId] = {};
-    store[entityId][targetKey] = {
+    const targets = targetsOf(store[entityId]);
+    store[entityId] = targets;
+    targets[targetKey] = {
       playlistId: String(playlistId),
       title: String(title || ""),
       serverUrl: String(serverUrl || ""),
@@ -100,9 +105,10 @@ export const jellyfinPlaylistPointerStore = {
 
   deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
-    if (!store[entityId]?.[targetKey]) return false;
-    delete store[entityId][targetKey];
-    if (!Object.keys(store[entityId]).length) delete store[entityId];
+    const targets = targetsOf(store[entityId]);
+    if (!targets[targetKey]) return false;
+    delete targets[targetKey];
+    if (!Object.keys(targets).length) delete store[entityId];
     writeStore(store);
     return true;
   },

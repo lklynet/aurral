@@ -8,7 +8,8 @@ import { logger } from "./logger.ts";
 
 export const DEPRECATED_USAGE_SETTING = "deprecatedUsage";
 
-const deprecatedUsageSchema = v.record(v.string(), v.looseObject({ lastSeenAt: v.number() }));
+const deprecatedUsageSchema = v.record(v.string(), v.unknown());
+const usageSchema = v.looseObject({ lastSeenAt: v.number() });
 
 const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 
@@ -71,7 +72,13 @@ export function getDeprecatedUsage() {
     })),
     ...Object.entries(recorded).flatMap(([kind, entry]) =>
       isOwnKey(DEPRECATIONS, kind)
-        ? [{ kind, message: DEPRECATIONS[kind], lastSeenAt: entry.lastSeenAt || null }]
+        ? [
+            {
+              kind,
+              message: DEPRECATIONS[kind],
+              lastSeenAt: (v.is(usageSchema, entry) && entry.lastSeenAt) || null,
+            },
+          ]
         : [],
     ),
   ];

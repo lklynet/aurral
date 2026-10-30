@@ -9,13 +9,8 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 
 const SETTINGS_KEY = "playbackRetainedFiles";
 
-export const retainedFilesSchema = v.record(
-  v.string(),
-  v.looseObject({
-    playlistRoot: v.optional(v.unknown()),
-    excludeEntityIds: v.optional(v.unknown()),
-  }),
-);
+const retainedFilesSchema = v.record(v.string(), v.unknown());
+const retainedFileSchema = v.looseObject({});
 
 function readRetainedFiles() {
   return dbOps.getJSONSetting(SETTINGS_KEY, retainedFilesSchema) ?? {};
@@ -113,7 +108,8 @@ export async function retryPlaybackRetainedFiles() {
   const stillOwned = (file: string) =>
     downloadTracker.getAll().some((job) => job.finalPath && localFileKey(job.finalPath) === file);
   const guards = new Map();
-  for (const [file, metadata] of files) {
+  for (const [file, stored] of files) {
+    const metadata = v.is(retainedFileSchema, stored) ? stored : null;
     // Older records have no root; only retry those within the current root.
     const playlistRoot = metadata?.playlistRoot ?? resolveDownloadRoot();
     if (

@@ -6,8 +6,12 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 
 const SETTINGS_KEY = "scrobbleConnections";
 type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
-const storeSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const storeSchema = v.record(v.string(), v.unknown());
+const providersSchema = v.record(v.string(), v.unknown());
 const storedConnectionSchema = v.looseObject({ token: v.string() });
+
+const providersOf = (value: unknown): v.InferOutput<typeof providersSchema> =>
+  v.is(providersSchema, value) ? value : {};
 
 type PublicConnectionStatus = {
   connected: boolean;
@@ -68,12 +72,12 @@ const normalize = (provider: ScrobbleProvider, raw: unknown) => {
 
 export const scrobbleConnectionStore = {
   getConnection(userId: number | undefined, provider: ScrobbleProvider) {
-    const connection = normalize(provider, readStore()[userKey(userId)]?.[provider]);
+    const connection = normalize(provider, providersOf(readStore()[userKey(userId)])[provider]);
     return connection;
   },
 
   getConnections(userId: number) {
-    const raw = readStore()[userKey(userId)] || {};
+    const raw = providersOf(readStore()[userKey(userId)]);
     return Object.fromEntries(
       [...PROVIDERS]
         .map((provider): [ScrobbleProvider, NonNullable<ReturnType<typeof normalize>>] | null => {
@@ -117,8 +121,9 @@ export const scrobbleConnectionStore = {
     if (!safeToken) throw new Error("Scrobble token is required");
     const store = readStore();
     const key = userKey(userId);
-    store[key] = store[key] || {};
-    store[key][provider] = {
+    const providers = providersOf(store[key]);
+    store[key] = providers;
+    providers[provider] = {
       token: encryptToken(safeToken)!,
       connectionRevision: crypto.randomUUID(),
       displayName: String(displayName || "").trim() || null,
@@ -132,9 +137,10 @@ export const scrobbleConnectionStore = {
   deleteConnection(userId: number, provider: ScrobbleProvider) {
     const store = readStore();
     const key = userKey(userId);
-    if (!store[key]?.[provider]) return false;
-    delete store[key][provider];
-    if (Object.keys(store[key]).length === 0) delete store[key];
+    const providers = providersOf(store[key]);
+    if (!providers[provider]) return false;
+    delete providers[provider];
+    if (Object.keys(providers).length === 0) delete store[key];
     writeStore(store);
     return true;
   },
