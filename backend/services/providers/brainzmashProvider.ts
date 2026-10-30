@@ -40,6 +40,7 @@ import {
   failMetadataRequest,
   getMetadataProviderBudget,
   getMetadataRequestState,
+  METADATA_RATE_LIMIT_MAX_COOLDOWN_MS,
   releaseMetadataRequest,
   reserveMetadataProviderRequest,
   setMetadataProviderCooldown,
@@ -94,7 +95,6 @@ const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
-const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 15 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
 const METADATA_HOT_CACHE_MAX_ENTRIES = 50;

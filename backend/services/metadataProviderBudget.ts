@@ -20,6 +20,14 @@ db.exec(`
   );
 `);
 
+export const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 15 * 60_000;
+
+// Older versions let a 429 for one album pause the whole provider for up to a week.
+const rateLimitCap = Date.now() + METADATA_RATE_LIMIT_MAX_COOLDOWN_MS;
+db.prepare<[number, number]>(
+  "UPDATE metadata_provider_budget SET rate_limited_until = ? WHERE rate_limited_until > ?",
+).run(rateLimitCap, rateLimitCap);
+
 interface MetadataRequestStateRow {
   cache_key: string;
   failure_count: number;
