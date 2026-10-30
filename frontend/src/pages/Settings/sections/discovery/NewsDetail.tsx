@@ -217,7 +217,7 @@ export function NewsDetail() {
               key={feed.id || `${feed.url}-${index}`}
               feed={feed}
               onToggle={(enabled) => toggleFeed(index, enabled)}
-              onEdit={() => setEditor({ index, name: feed.name, url: feed.url })}
+              onEdit={() => setEditor({ index, name: feed.name ?? "", url: feed.url })}
               onDelete={() => updateFeeds(news.feeds.filter((_feed, i) => i !== index))}
             />
           ))

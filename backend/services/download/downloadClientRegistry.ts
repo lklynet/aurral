@@ -1,4 +1,7 @@
+import * as v from "valibot";
 import { assertDownloadClient, type DownloadClient } from "./downloadClient.ts";
+
+const configSchema = v.record(v.string(), v.unknown());
 
 export class DownloadClientRegistry<Client extends DownloadClient> {
   clients: Client[];
@@ -27,7 +30,8 @@ export class DownloadClientRegistry<Client extends DownloadClient> {
 
   updateConfig(integrations: Record<string, unknown> = {}) {
     for (const client of this.clients) {
-      client.updateConfig(integrations[client.key] || {});
+      const config = integrations[client.key];
+      client.updateConfig(v.is(configSchema, config) ? config : {});
     }
   }
 

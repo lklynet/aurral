@@ -10,7 +10,6 @@ import {
 import { normalizeExistingFileMode } from "../../services/downloadJobs/fileReuseMode.ts";
 import { normalizeDateTimeFormat } from "../../config/constants.ts";
 import type { defaultData } from "../../config/constants.ts";
-import type { normalizeNewsFeeds } from "../../services/apiClients/config.ts";
 import {
   normalizeIntervalDays,
   normalizeQualityProfile,
@@ -22,116 +21,16 @@ import type { ArtistOverrideOps } from "./overrides.ts";
 import type { LidarrArtistIdMapOps } from "./lidarr.ts";
 import type { AurralHistoryOps } from "./history.ts";
 import type { InboxOps } from "./inbox.ts";
+import {
+  flag,
+  listOf,
+  readIntegrationSettings,
+  setting,
+  warnUnreadableIntegrationSettings,
+  type StoredIntegrations,
+} from "./integrationSettings.ts";
 
-type IntegrationDefaults = typeof defaultData.settings.integrations;
-
-type LidarrIntegration = Omit<
-  IntegrationDefaults["lidarr"],
-  "rootFolderPath" | "rootFolderPaths" | "qualityProfileId" | "metadataProfileId" | "tagId"
-> & {
-  rootFolderPath: string | null;
-  rootFolderPaths: string[];
-  qualityProfileId: number | null;
-  metadataProfileId: number | null;
-  tagId: number | null;
-  enabled?: boolean;
-  insecure?: boolean;
-};
-
-type NavidromeIntegration = IntegrationDefaults["navidrome"] & {
-  m3uPathMode?: unknown;
-  pathMappings?: unknown;
-};
-
-type PlexIntegration = Omit<IntegrationDefaults["plex"], "plexUsername"> & {
-  plexUsername: string | null;
-  loginEnabled?: boolean;
-  configuredByUserId?: number;
-};
-
-type LastfmIntegration = IntegrationDefaults["lastfm"];
-
-type SlskdIntegration = IntegrationDefaults["slskd"] & { cleanupAfterRuns?: boolean };
-
-interface ProwlarrIndexerOverride {
-  enabled: boolean;
-  priority: number;
-}
-
-type ProwlarrIntegration = Omit<IntegrationDefaults["prowlarr"], "indexers"> & {
-  indexers: Record<string, ProwlarrIndexerOverride>;
-};
-
-type NzbgetIntegration = IntegrationDefaults["nzbget"] & { deleteLeftovers?: boolean };
-
-type SabnzbdIntegration = IntegrationDefaults["sabnzbd"];
-
-type YtdlpIntegration = IntegrationDefaults["ytdlp"];
-
-type DeemixIntegration = IntegrationDefaults["deemix"];
-
-type TicketmasterIntegration = IntegrationDefaults["ticketmaster"];
-
-type NewsFeed = ReturnType<typeof normalizeNewsFeeds>[number];
-
-type NewsIntegration = Omit<IntegrationDefaults["news"], "feeds"> & {
-  feeds: NewsFeed[];
-  groups?: Record<string, boolean>;
-};
-
-type MetadataIntegration = IntegrationDefaults["metadata"];
-
-type GeneralIntegration = IntegrationDefaults["general"] & { apiKey?: string };
-
-type GotifyIntegration = IntegrationDefaults["gotify"];
-
-type JellyfinIntegration = IntegrationDefaults["jellyfin"];
-
-interface GoogleIntegration {
-  enabled?: boolean;
-  clientId?: string;
-  clientSecret?: string;
-  redirectUri?: string;
-}
-
-interface WebhookHeader {
-  key: string;
-  value: string;
-}
-
-interface WebhookTarget {
-  url: string;
-  headers?: WebhookHeader[];
-  body?: string | null;
-}
-
-type WebhookEvents = IntegrationDefaults["webhookEvents"];
-
-export interface StoredIntegrations {
-  [service: string]: unknown;
-  navidrome?: Partial<NavidromeIntegration>;
-  plex?: Partial<PlexIntegration>;
-  jellyfin?: Partial<JellyfinIntegration>;
-  lastfm?: Partial<LastfmIntegration>;
-  slskd?: Partial<SlskdIntegration>;
-  prowlarr?: Partial<ProwlarrIntegration>;
-  nzbget?: Partial<NzbgetIntegration>;
-  sabnzbd?: Partial<SabnzbdIntegration>;
-  ytdlp?: Partial<YtdlpIntegration>;
-  deemix?: Partial<DeemixIntegration>;
-  ticketmaster?: Partial<TicketmasterIntegration>;
-  news?: Partial<NewsIntegration>;
-  lidarr?: Partial<LidarrIntegration>;
-  metadata?: Partial<MetadataIntegration>;
-  general?: Partial<GeneralIntegration>;
-  gotify?: Partial<GotifyIntegration>;
-  google?: Partial<GoogleIntegration>;
-  webhooks?: WebhookTarget[];
-  webhookEvents?: Partial<WebhookEvents>;
-  soulseek?: unknown;
-  musicbrainz?: { email?: string; customUrl?: string };
-  coverArtArchive?: unknown;
-}
+export type { StoredIntegrations } from "./integrationSettings.ts";
 
 export type SettingsPlaylistWorker = ReturnType<typeof normalizePlaylistWorkerSettings>;
 
@@ -139,10 +38,12 @@ type SettingsMissingTrackSearch = ReturnType<typeof normalizeMissingTrackSearchS
 
 type SettingsInbox = typeof defaultData.settings.inbox;
 
-interface StoredSecurity {
-  localNetworkBypass?: { enabled?: boolean };
-  ssoOnly?: boolean;
-}
+const securitySchema = v.looseObject({
+  localNetworkBypass: setting(v.looseObject({ enabled: flag })),
+  ssoOnly: flag,
+});
+
+type StoredSecurity = v.InferOutput<typeof securitySchema>;
 
 export interface StoredPlaylistWorker {
   concurrency?: unknown;
@@ -155,14 +56,16 @@ interface StoredMissingTrackSearch {
   intervalDays?: unknown;
 }
 
-interface StoredInbox {
-  enabled?: boolean;
-  releases?: boolean;
-  shows?: boolean;
-  news?: boolean;
-  recommendedNews?: boolean;
-  discoveries?: boolean;
-}
+const inboxSchema = v.looseObject({
+  enabled: flag,
+  releases: flag,
+  shows: flag,
+  news: flag,
+  recommendedNews: flag,
+  discoveries: flag,
+});
+
+type StoredInbox = v.InferOutput<typeof inboxSchema>;
 
 export type QualityProfile = ReturnType<typeof normalizeQualityProfile>;
 
@@ -246,15 +149,14 @@ const deleteSettingsByPrefixStmt = db.prepare<[string]>(
 
 const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
 
-function readStoredSettingJson<T = unknown>(
+function readStoredSettingJson<Schema extends v.GenericSchema>(
+  schema: Schema,
   primaryKey: string,
   legacyKeys: string[] = [],
-): T | null {
-  const primary = dbHelpers.parseJSON(getSettingStmt.get(primaryKey)?.value);
-  if (primary != null) return primary;
-  for (const legacyKey of legacyKeys) {
-    const legacy = dbHelpers.parseJSON(getSettingStmt.get(legacyKey)?.value);
-    if (legacy != null) return legacy;
+) {
+  for (const key of [primaryKey, ...legacyKeys]) {
+    const value = dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
+    if (value != null) return value;
   }
   return null;
 }
@@ -379,13 +281,22 @@ export const dbOps = {
       return settingsCache;
     }
 
-    const integrations = dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value);
     const encKey = getOrCreateEncryptionKey();
+    const { integrations: decryptedIntegrations, unreadable } = readIntegrationSettings(
+      decryptIntegrations(dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value), encKey),
+    );
+    warnUnreadableIntegrationSettings(unreadable);
     const quality = getSettingStmt.get("quality")?.value;
     const dateTimeFormat = getSettingStmt.get("dateTimeFormat")?.value;
-    const queueCleaner = dbHelpers.parseJSON(getSettingStmt.get("queueCleaner")?.value);
-    const security: StoredSecurity | null = dbHelpers.parseJSON(
+    const queueCleaner = dbHelpers.readJSON(
+      v.record(v.string(), v.unknown()),
+      getSettingStmt.get("queueCleaner")?.value,
+      "queueCleaner",
+    );
+    const security = dbHelpers.readJSON(
+      securitySchema,
       getSettingStmt.get("security")?.value,
+      "security",
     );
     const rootFolderPath = getSettingStmt.get("rootFolderPath")?.value;
     const downloadFolderPath = getSettingStmt.get("downloadFolderPath")?.value || null;
@@ -394,26 +305,30 @@ export const dbOps = {
       dbHelpers.parseJSON(getSettingStmt.get("pathMappings")?.value) || [],
     );
     syncPathMappings(pathMappings);
-    const releaseTypes: string[] | null = dbHelpers.parseJSON(
+    const releaseTypes = dbHelpers.readJSON(
+      listOf(v.string()),
       getSettingStmt.get("releaseTypes")?.value,
+      "releaseTypes",
     );
-    const flows = readStoredSettingJson("flows", ["weeklyFlows"]);
-    const staticPlaylists = readStoredSettingJson("sharedPlaylists", ["sharedFlowPlaylists"]);
-    const subsonic = readStoredSettingJson<{ favoriteAutoKeep?: boolean }>("subsonic") || {};
+    const flows = readStoredSettingJson(v.unknown(), "flows", ["weeklyFlows"]);
+    const staticPlaylists = readStoredSettingJson(v.unknown(), "sharedPlaylists", [
+      "sharedFlowPlaylists",
+    ]);
+    const subsonic =
+      readStoredSettingJson(v.looseObject({ favoriteAutoKeep: flag }), "subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
-      readStoredSettingJson<StoredPlaylistWorker>("playlistWorker", ["weeklyFlowWorker"]),
+      readStoredSettingJson(v.looseObject({}), "playlistWorker", ["weeklyFlowWorker"]),
     );
     const missingTrackSearch = normalizeMissingTrackSearchSettings(
-      readStoredSettingJson<StoredMissingTrackSearch>("missingTrackSearch"),
+      readStoredSettingJson(v.looseObject({}), "missingTrackSearch"),
     );
     const reviewTimeoutHours = normalizeReviewTimeoutHours(
       getSettingStmt.get("reviewTimeoutHours")?.value,
     );
-    const inbox: StoredInbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
+    const inbox =
+      dbHelpers.readJSON(inboxSchema, getSettingStmt.get("inbox")?.value, "inbox") || {};
     const onboardingComplete = getSettingStmt.get("onboardingComplete")?.value === "true";
 
-    const decryptedIntegrations: StoredIntegrations =
-      decryptIntegrations(integrations, encKey) || {};
     const storedQualityProfile = dbHelpers.parseJSON(getSettingStmt.get("qualityProfile")?.value);
     const qualityProfile = normalizeQualityProfile(
       storedQualityProfile,
@@ -428,10 +343,7 @@ export const dbOps = {
       dateTimeFormat: normalizeDateTimeFormat(dateTimeFormat),
       qualityProfile,
       queueCleaner: queueCleaner || {},
-      security:
-        security && typeof security === "object"
-          ? security
-          : { localNetworkBypass: { enabled: false } },
+      security: security ?? { localNetworkBypass: { enabled: false } },
       rootFolderPath: rootFolderPath || null,
       downloadFolderPath: downloadFolderPath || null,
       pathMappings,
@@ -468,14 +380,14 @@ export const dbOps = {
     const updateFn = db.transaction(() => {
       if (settings.integrations) {
         const encKey = getOrCreateEncryptionKey();
-        const existingIntegrations: StoredIntegrations =
-          decryptIntegrations(
-            dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value),
-            encKey,
-          ) || {};
+        const existingSoulseek = dbHelpers.readJSON(
+          v.looseObject({ soulseek: v.optional(v.unknown()) }),
+          getSettingStmt.get("integrations")?.value,
+          "integrations",
+        )?.soulseek;
         const nextIntegrations = { ...settings.integrations };
-        if (existingIntegrations.soulseek && nextIntegrations.soulseek === undefined) {
-          nextIntegrations.soulseek = existingIntegrations.soulseek;
+        if (existingSoulseek && nextIntegrations.soulseek === undefined) {
+          nextIntegrations.soulseek = existingSoulseek;
         }
         if (nextIntegrations.navidrome) {
           nextIntegrations.navidrome = {
@@ -484,9 +396,12 @@ export const dbOps = {
           delete nextIntegrations.navidrome.m3uPathMode;
           delete nextIntegrations.navidrome.pathMappings;
         }
+        const { integrations: savedIntegrations, unreadable } =
+          readIntegrationSettings(nextIntegrations);
+        warnUnreadableIntegrationSettings(unreadable);
         upsertSettingStmt.run(
           "integrations",
-          dbHelpers.stringifyJSON(encryptIntegrations(nextIntegrations, encKey)),
+          dbHelpers.stringifyJSON(encryptIntegrations(savedIntegrations, encKey)),
         );
       }
       if (settings.quality) {

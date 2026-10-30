@@ -497,11 +497,21 @@ export function getNotificationOutbox() {
     notificationOutbox = getHonkerDb().outbox(
       "notifications",
       async (payload, job) => {
-        const { deliverQueuedNotification } = await import("./notificationService.ts");
+        const { deliverQueuedNotification, queuedNotificationSchema } =
+          await import("./notificationService.ts");
+        const notification = v.safeParse(queuedNotificationSchema, payload);
+        if (!notification.success) {
+          logger.error("jobs", "Job payload unreadable", {
+            queue: "_outbox:notifications",
+            jobId: job.id,
+            reason: v.summarize(notification.issues),
+          });
+          return;
+        }
         const { withJobHeartbeat } = await import("./honkerWorkerRuntime.ts");
         const outbox = getNotificationOutbox();
         await withJobHeartbeat(job, outbox.queue, () =>
-          deliverQueuedNotification(payload as Parameters<typeof deliverQueuedNotification>[0]),
+          deliverQueuedNotification(notification.output),
         );
       },
       {

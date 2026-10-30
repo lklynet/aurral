@@ -72,7 +72,9 @@ function googleCallbackUrl() {
 function GooglePage() {
   const { settings, updateSettings } = useServerSettings();
   const google: GoogleSettings = settings.integrations.google ?? {};
-  const update = (patch: Partial<GoogleSettings>) =>
+  const update = (
+    patch: Partial<Pick<GoogleSettings, "enabled" | "clientId" | "clientSecret" | "redirectUri">>,
+  ) =>
     updateSettings({
       ...settings,
       integrations: { ...settings.integrations, google: { ...google, ...patch } },

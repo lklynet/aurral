@@ -1,0 +1,204 @@
+import * as v from "valibot";
+import { logger } from "../../services/logger.ts";
+
+export const setting = <Schema extends v.GenericSchema>(schema: Schema) =>
+  v.fallback(v.optional(schema), undefined);
+
+export const listOf = <Schema extends v.GenericSchema>(schema: Schema) =>
+  v.pipe(
+    v.array(v.unknown()),
+    v.transform((items) =>
+      items.flatMap((item) => {
+        const result = v.safeParse(schema, item);
+        return result.success ? [result.output] : [];
+      }),
+    ),
+  );
+
+const recordOf = <Schema extends v.GenericSchema>(schema: Schema) =>
+  v.pipe(
+    v.record(v.string(), v.unknown()),
+    v.transform((entries) =>
+      Object.fromEntries(
+        Object.entries(entries).flatMap(([key, value]) => {
+          const result = v.safeParse(schema, value);
+          return result.success ? [[key, result.output] as const] : [];
+        }),
+      ),
+    ),
+  );
+
+const number = v.union([
+  v.number(),
+  v.pipe(v.string(), v.trim(), v.nonEmpty(), v.transform(Number), v.number()),
+]);
+
+const text = setting(v.string());
+const nullableText = setting(v.nullable(v.string()));
+export const flag = setting(v.boolean());
+const count = setting(number);
+const id = setting(v.nullable(number));
+
+const service = <Entries extends v.ObjectEntries>(entries: Entries) =>
+  setting(v.looseObject(entries));
+
+const webhookSettings = {
+  webhooks: setting(
+    listOf(
+      v.looseObject({
+        url: v.string(),
+        headers: setting(listOf(v.looseObject({ key: v.string(), value: v.string() }))),
+        body: nullableText,
+      }),
+    ),
+  ),
+  webhookEvents: service({
+    notifyDiscoveryUpdated: flag,
+    notifyWeeklyFlowDone: flag,
+    notifyRequestMade: flag,
+    notifyRequestAvailable: flag,
+  }),
+};
+
+export const webhookSettingsSchema = v.looseObject(webhookSettings);
+
+export const integrationSettingsSchema = v.looseObject({
+  ...webhookSettings,
+  navidrome: service({ url: text, username: text, password: text, prefixOwnerUsername: flag }),
+  plex: service({
+    url: text,
+    token: text,
+    clientId: text,
+    machineIdentifier: text,
+    downloadsPath: text,
+    plexUsername: nullableText,
+    mainLibrarySectionId: text,
+    loginEnabled: flag,
+    configuredByUserId: count,
+  }),
+  jellyfin: service({ url: text, apiKey: text, userId: text }),
+  lastfm: service({
+    apiKey: text,
+    apiSecret: text,
+    discoveryPeriod: text,
+    discoveryAutoRefreshHours: count,
+    discoveryRecommendationsPerRefresh: count,
+    discoveryMode: text,
+  }),
+  slskd: service({
+    enabled: flag,
+    url: text,
+    apiKey: text,
+    priority: count,
+    preferredFormat: text,
+    preferredFormatStrict: flag,
+    cleanupAfterRuns: flag,
+  }),
+  prowlarr: service({
+    enabled: flag,
+    url: text,
+    apiKey: text,
+    indexers: setting(recordOf(v.looseObject({ enabled: flag, priority: count }))),
+    categories: setting(listOf(number)),
+    maxResults: count,
+  }),
+  nzbget: service({
+    enabled: flag,
+    url: text,
+    username: text,
+    password: text,
+    category: text,
+    priority: count,
+    nzbPriority: count,
+    addPaused: flag,
+    completedPath: text,
+    deleteLeftovers: flag,
+  }),
+  sabnzbd: service({
+    enabled: flag,
+    url: text,
+    apiKey: text,
+    category: text,
+    deleteLeftovers: flag,
+    priority: count,
+    addPaused: flag,
+  }),
+  ytdlp: service({ enabled: flag, priority: count, stagingPath: text }),
+  deemix: service({ enabled: flag, url: text, bitrate: count, priority: count }),
+  ticketmaster: service({
+    apiKey: text,
+    searchRadiusMiles: count,
+    localDiscoveryIncludeRecommendations: flag,
+    localDiscoveryIncludeTrending: flag,
+  }),
+  news: service({
+    enabled: flag,
+    feeds: setting(
+      listOf(v.looseObject({ id: text, name: text, url: v.string(), group: text, enabled: flag })),
+    ),
+    groups: setting(recordOf(v.boolean())),
+  }),
+  lidarr: service({
+    url: text,
+    externalUrl: text,
+    apiKey: text,
+    rootFolderPath: nullableText,
+    rootFolderPaths: setting(listOf(v.string())),
+    qualityProfileId: id,
+    metadataProfileId: id,
+    tagId: id,
+    defaultMonitorOption: text,
+    searchOnAdd: flag,
+    enabled: flag,
+    insecure: flag,
+  }),
+  metadata: service({
+    provider: text,
+    baseUrl: text,
+    userAgentSuffix: text,
+    enableNarrowFallbacks: flag,
+  }),
+  general: service({ authUser: text, authPassword: text, apiKey: text }),
+  gotify: service({
+    url: text,
+    token: text,
+    notifyDiscoveryUpdated: flag,
+    notifyWeeklyFlowDone: flag,
+    notifyRequestMade: flag,
+    notifyRequestAvailable: flag,
+  }),
+  google: service({ enabled: flag, clientId: text, clientSecret: text, redirectUri: text }),
+  musicbrainz: service({ email: text, customUrl: text }),
+});
+
+export type StoredIntegrations = v.InferOutput<typeof integrationSettingsSchema>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+function droppedPaths(stored: unknown, read: unknown, path: string): string[] {
+  if (stored == null || stored === "") return [];
+  if (read === undefined) return [path];
+  if (Array.isArray(stored)) {
+    return Array.isArray(read) && read.length === stored.length ? [] : [path];
+  }
+  if (!isRecord(stored) || !isRecord(read)) return [];
+  return Object.entries(stored).flatMap(([key, value]) =>
+    droppedPaths(value, read[key], path ? `${path}.${key}` : key),
+  );
+}
+
+let lastWarned = "";
+
+export function readIntegrationSettings(stored: unknown) {
+  const integrations = v.parse(integrationSettingsSchema, isRecord(stored) ? stored : {});
+  return { integrations, unreadable: droppedPaths(stored, integrations, "") };
+}
+
+export function warnUnreadableIntegrationSettings(unreadable: string[]) {
+  const key = unreadable.join(", ");
+  if (key && key !== lastWarned) {
+    logger.warn("settings", "Ignored integration settings Aurral can't read", { settings: key });
+  }
+  lastWarned = key;
+}

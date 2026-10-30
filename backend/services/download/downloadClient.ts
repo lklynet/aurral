@@ -6,7 +6,7 @@ export interface DownloadClient {
   isConfigured(): boolean;
   testConnection(options: { force: boolean }): unknown;
   getStatus(): unknown;
-  updateConfig(config: object): void;
+  updateConfig(config: Record<string, unknown> | null): void;
 }
 
 export function assertDownloadClient<Client>(client: Client) {

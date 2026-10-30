@@ -455,6 +455,38 @@ test("preserves saved Lidarr roots for equivalent normalized connection values",
   );
 });
 
+test("an integration setting Aurral can't read is ignored without losing the rest", () => {
+  dbOps.setJSONSetting("integrations", {
+    slskd: { url: "http://slskd.test", priority: { high: true } },
+    webhooks: [{ url: "http://hook.test" }, { body: "no url" }],
+    lidarr: { url: "http://lidarr.test" },
+  });
+  dbOps.invalidateSettingsCache();
+
+  const { integrations } = dbOps.getSettings();
+  assert.equal(integrations.slskd?.url, "http://slskd.test");
+  assert.equal(integrations.slskd?.priority, undefined);
+  assert.deepEqual(
+    integrations.webhooks?.map(({ url }) => url),
+    ["http://hook.test"],
+  );
+  assert.equal(integrations.lidarr?.url, "http://lidarr.test");
+});
+
+test("saving an integration setting Aurral can't read is rejected", async () => {
+  const { postSettings } = captureSettingsRoutes();
+
+  const rejected = await postSettings({
+    integrations: { ticketmaster: { apiKey: "key", searchRadiusMiles: { miles: 50 } } },
+  });
+  assert.equal(rejected.statusCode, 400);
+  assert.match(JSON.stringify(rejected.body), /ticketmaster\.searchRadiusMiles/);
+  assert.equal(dbOps.getSettings().integrations.ticketmaster, undefined);
+
+  const cleared = await postSettings({ integrations: { ticketmaster: { searchRadiusMiles: "" } } });
+  assert.equal(cleared.statusCode, 200);
+});
+
 test("queues a news refresh only when news settings change", async () => {
   const { findActiveHonkerJob, getMaintenanceTaskQueue } =
     await import("../../backend/services/honkerDb.ts");

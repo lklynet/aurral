@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { downloadClientSettingsClient } from "../../../../utils/api/clients/downloadClientSettings.ts";
 import { queryClient, queryKeys } from "../../../../queryClient.ts";
-import type { AppSettings } from "../../../../../../backend/db/helpers/settings.ts";
 import { DotLoader } from "../../../../components/DotLoader";
 import PillToggle from "../../../../components/PillToggle";
 import { SettingsInput } from "../../components/SettingsField";
@@ -13,7 +12,7 @@ import { useServerSettings } from "../../SettingsProviders";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
-type ProwlarrDraft = NonNullable<AppSettings["integrations"]["prowlarr"]>;
+type ProwlarrDraft = Partial<ServerSettings["settings"]["integrations"]["prowlarr"]>;
 type ProwlarrIndexerOverride = NonNullable<ProwlarrDraft["indexers"]>[string];
 type ProwlarrIndexer = InferResponseType<
   typeof downloadClientSettingsClient.prowlarr.indexers.$get,

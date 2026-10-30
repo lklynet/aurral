@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { MAX_REVIEW_TIMEOUT_HOURS } from "../db/helpers/settings.ts";
+import { readIntegrationSettings } from "../db/helpers/integrationSettings.ts";
 import type { AppSettings, StoredIntegrations } from "../db/helpers/settings.ts";
 import { DATE_TIME_FORMATS, DEFAULT_METADATA_BASE_URL, defaultData } from "../config/constants.ts";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
@@ -120,7 +121,6 @@ export function readAppSettings() {
   if (settings?.integrations?.musicbrainz) {
     delete settings.integrations.musicbrainz;
   }
-  settings.integrations.news = getNewsSettings();
   if (!settings?.integrations?.metadata) {
     settings.integrations.metadata = {
       provider: "brainzmash",
@@ -158,6 +158,7 @@ export function readAppSettings() {
     downloadFolderPath: settings.downloadFolderPath || resolveDownloadRoot(),
     integrations: {
       ...(settings.integrations || {}),
+      news: getNewsSettings(),
       ytdlp: {
         ...(settings.integrations?.ytdlp || {}),
         stagingPath: resolveYtdlpStagingRoot(settings.integrations?.ytdlp?.stagingPath),
@@ -446,6 +447,7 @@ export async function saveAppSettings(
   }
 
   const currentSettings = dbOps.getSettings();
+  const newsBefore = getNewsSettings();
   const localBypassWasEnabled = currentSettings?.security?.localNetworkBypass?.enabled === true;
   if (integrations) {
     const error = normalizeIntegrationPatch(integrations, currentSettings);
@@ -474,6 +476,10 @@ export async function saveAppSettings(
 
   if (mergedIntegrations?.coverArtArchive) {
     delete mergedIntegrations.coverArtArchive;
+  }
+  const { unreadable } = readIntegrationSettings(mergedIntegrations);
+  if (unreadable.length) {
+    return { error: `Aurral can't save these integration settings: ${unreadable.join(", ")}` };
   }
   const normalizedSubsonic = Array.isArray(subsonic) ? undefined : asObject(subsonic);
   const currentSubsonic = currentSettings.subsonic || defaultData.settings.subsonic;
@@ -621,7 +627,7 @@ export async function saveAppSettings(
     const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
     enqueueSystemTaskJob({ kind: "quality-profile-refresh" }, { priority: -10 });
   }
-  if (!isDeepStrictEqual(currentSettings.integrations?.news, updatedSettings.integrations?.news)) {
+  if (!isDeepStrictEqual(newsBefore, getNewsSettings())) {
     const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
     enqueueSystemTaskJob({ kind: "news-refresh" });
   }

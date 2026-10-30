@@ -4,6 +4,7 @@ type CapturedRequest = {
   headers: import("node:http").IncomingHttpHeaders;
   body: Record<string, string | number>;
 };
+import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -15,11 +16,12 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, notifications] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, notifications, honker] = await setupIsolatedBackend(
   "notifications",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/notificationService.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const {
@@ -192,6 +194,30 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
       user: "alice",
       event: "notifyRequestMade",
     });
+  });
+});
+
+test("queued webhooks carry only webhook settings, and a notification Aurral can't read is dropped", async () => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    dbOps.updateSettings({
+      integrations: {
+        lidarr: { url: "http://lidarr.test", apiKey: "lidarr-secret" },
+        webhookEvents: { notifyRequestMade: true },
+        webhooks: [{ url: `${baseUrl}/hook`, headers: [] }],
+      },
+    });
+
+    honker.enqueueNotification({ kind: "email" });
+    await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
+    await waitFor(1);
+
+    const queued = honker.listHonkerJobs("_outbox:notifications");
+    assert.equal(queued.length, 1);
+    const { integrations } = requireFixture(queued[0].payload);
+    assert.deepEqual(Object.keys(requireFixture(integrations)).sort(), [
+      "webhookEvents",
+      "webhooks",
+    ]);
   });
 });
 

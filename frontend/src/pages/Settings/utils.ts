@@ -31,7 +31,7 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     savedSettings.integrations?.musicbrainz || {};
   const metadata: NonNullable<StoredIntegrations["metadata"]> =
     savedSettings.integrations?.metadata || {};
-  const news: NonNullable<StoredIntegrations["news"]> = savedSettings.integrations?.news || {};
+  const news = savedSettings.integrations?.news;
   const parsedAutoRefreshHours = parseInt(String(lastfm.discoveryAutoRefreshHours), 10);
   const normalizedAutoRefreshHours = [24, 168, 720].includes(parsedAutoRefreshHours)
     ? parsedAutoRefreshHours
@@ -122,21 +122,21 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         ...lastfm,
       },
       news: {
-        enabled: news.enabled !== false,
-        feeds: Array.isArray(news.feeds) ? news.feeds : [],
+        enabled: news?.enabled !== false,
+        feeds: news?.feeds ?? [],
         groups: {
-          major: news.groups?.major !== false,
-          indie: news.groups?.indie !== false,
-          discovery: news.groups?.discovery !== false,
-          hiphop: news.groups?.hiphop !== false,
-          pop: news.groups?.pop !== false,
-          electronic: news.groups?.electronic !== false,
-          metal: news.groups?.metal !== false,
-          country: news.groups?.country !== false,
-          jazz: news.groups?.jazz !== false,
-          classical: news.groups?.classical !== false,
-          regional: news.groups?.regional !== false,
-          concerts: news.groups?.concerts !== false,
+          major: news?.groups?.major !== false,
+          indie: news?.groups?.indie !== false,
+          discovery: news?.groups?.discovery !== false,
+          hiphop: news?.groups?.hiphop !== false,
+          pop: news?.groups?.pop !== false,
+          electronic: news?.groups?.electronic !== false,
+          metal: news?.groups?.metal !== false,
+          country: news?.groups?.country !== false,
+          jazz: news?.groups?.jazz !== false,
+          classical: news?.groups?.classical !== false,
+          regional: news?.groups?.regional !== false,
+          concerts: news?.groups?.concerts !== false,
         },
       },
       slskd: {

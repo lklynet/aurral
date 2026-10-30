@@ -189,7 +189,10 @@ function WebhookDetail({ index }: { index: number | null }) {
   const save = (next: Webhook[]) =>
     updateSettings({ ...settings, integrations: { ...settings.integrations, webhooks: next } });
 
-  const editHeader = (headerIndex: number, patch: Partial<WebhookHeader>) => {
+  const editHeader = (
+    headerIndex: number,
+    patch: Partial<Pick<WebhookHeader, "key" | "value">>,
+  ) => {
     test.reset();
     setHeaders(headers.map((header, i) => (i === headerIndex ? { ...header, ...patch } : header)));
   };

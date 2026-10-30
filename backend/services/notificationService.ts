@@ -1,18 +1,15 @@
+import * as v from "valibot";
 import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
 import { enqueueNotification, parseHonkerPayload } from "./honkerDb.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { webhookSettingsSchema } from "../db/helpers/integrationSettings.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
-type WebhookTarget = NonNullable<StoredIntegrations["webhooks"]>[number];
+type WebhookSettings = v.InferOutput<typeof webhookSettingsSchema>;
+type WebhookTarget = NonNullable<WebhookSettings["webhooks"]>[number];
 type WebhookHeader = NonNullable<WebhookTarget["headers"]>[number];
-type WebhookEvent = keyof NonNullable<StoredIntegrations["webhookEvents"]> | "webhookTest";
-
-interface WebhookDelivery {
-  webhooks?: WebhookTarget[];
-  webhookEvents?: Partial<Record<WebhookEvent, boolean>>;
-}
 
 interface WebhookVars {
   flowPath: string;
@@ -36,21 +33,38 @@ interface RequestNotice {
   user?: RequestActor | null;
 }
 
-interface QueuedNotification {
-  kind?: string;
-  title?: string;
-  message?: string;
-  priority?: number;
-  integrations?: StoredIntegrations;
-  event?: WebhookEvent;
-  vars?: Partial<WebhookVars>;
-  flowPath?: string;
-  flowName?: string;
-}
+const text = v.optional(v.string());
+
+export const queuedNotificationSchema = v.variant("kind", [
+  v.looseObject({
+    kind: v.literal("gotify"),
+    title: text,
+    message: text,
+    priority: v.optional(v.number()),
+  }),
+  v.looseObject({
+    kind: v.literal("webhooks"),
+    integrations: v.optional(webhookSettingsSchema),
+    event: text,
+    vars: v.optional(
+      v.looseObject({
+        flowPath: text,
+        flowName: text,
+        albumName: text,
+        artistName: text,
+        username: text,
+        userId: text,
+        event: text,
+      }),
+    ),
+    flowPath: text,
+    flowName: text,
+  }),
+]);
 
 function logDeliveryFailure(
   kind: string,
-  event: WebhookEvent | null | undefined,
+  event: string | null | undefined,
   url: string,
   error: unknown,
 ) {
@@ -159,8 +173,8 @@ function formatRequestSubject(albumName?: string, artistName?: string) {
 }
 
 async function sendWebhooksDirect(
-  { webhooks, webhookEvents = {} }: WebhookDelivery,
-  event: WebhookEvent | undefined,
+  { webhooks, webhookEvents = {} }: WebhookSettings,
+  event: string | undefined,
   vars: Partial<WebhookVars> = {},
 ) {
   if (!event || !webhookEvents[event]) return;
@@ -203,22 +217,18 @@ async function sendWebhooksDirect(
   }
 }
 
-export async function deliverQueuedNotification(payload: QueuedNotification = {}) {
-  const kind = String(payload?.kind || "").trim();
-  switch (kind) {
-    case "gotify":
-      await sendGotifyDirect(payload.title, payload.message, Number(payload.priority ?? 5));
-      return;
-    case "webhooks":
-      await sendWebhooksDirect(
-        payload.integrations || {},
-        payload.event,
-        normalizeWebhookVars(payload.vars, payload.flowPath, payload.flowName),
-      );
-      return;
-    default:
-      throw new Error(`Unknown notification kind: ${kind || "unknown"}`);
+export async function deliverQueuedNotification(
+  payload: v.InferOutput<typeof queuedNotificationSchema>,
+) {
+  if (payload.kind === "gotify") {
+    await sendGotifyDirect(payload.title, payload.message, payload.priority ?? 5);
+    return;
   }
+  await sendWebhooksDirect(
+    payload.integrations || {},
+    payload.event,
+    normalizeWebhookVars(payload.vars, payload.flowPath, payload.flowName),
+  );
 }
 
 function queueGotify(title: string, message: string, priority = 5) {
@@ -232,14 +242,14 @@ function queueGotify(title: string, message: string, priority = 5) {
 }
 
 function queueWebhooks(
-  integrations: StoredIntegrations,
-  event: WebhookEvent,
+  { webhooks, webhookEvents }: StoredIntegrations,
+  event: string,
   vars: Partial<WebhookVars> = {},
 ) {
   const resolved = normalizeWebhookVars({ ...vars, event });
   return enqueueNotification({
     kind: "webhooks",
-    integrations: parseHonkerPayload(JSON.stringify(integrations)) ?? {},
+    integrations: parseHonkerPayload(JSON.stringify({ webhooks, webhookEvents })) ?? {},
     event,
     vars: resolved,
     flowPath: resolved.flowPath,
