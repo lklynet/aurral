@@ -1,5 +1,6 @@
 import { withPlaylistMutation, withPlaylistMutationLock } from "../downloadJobs/mutationGuards.ts";
-import { db } from "../../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { listHonkerJobs } from "../honkerDb.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -28,14 +29,7 @@ import {
 import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { playlistManager } from "./playlistManager.ts";
-
-export interface StaticPlaylistSelection {
-  jobId: string;
-  membershipId: string | null;
-  jobPlaylistId: string;
-  jobGeneration: number;
-  jobCreatedAt: number;
-}
+import type { StaticPlaylistSelection } from "./bulkOperationStore.ts";
 
 export interface StaticPlaylistRemovalOutcome {
   jobId: string;
@@ -54,10 +48,10 @@ type RemovalPlan = {
 const payloadIds = (value: unknown) =>
   Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 
-interface RemovedMediaIntent {
-  playlistId: string;
-  finalPath: string | null;
-}
+const removedMediaSchema = v.looseObject({
+  playlistId: v.string(),
+  finalPath: v.nullish(v.string()),
+});
 
 export function getSharedDownloadReferences(jobId: string | null, excludedPlaylistId: string) {
   return flowPlaylistConfig
@@ -428,12 +422,14 @@ export async function cleanupRemovedPlaylistFiles(playlistId: string) {
     )
     .all();
   for (const row of rows) {
-    const intent: RemovedMediaIntent = JSON.parse(row.value);
-    if (intent.playlistId !== playlistId) continue;
-    await removePlaylistFileIfUnshared(intent.finalPath, playlistId, {
-      downloadRoot: downloadWorker.downloadRoot,
-      deleteIfUnshared: true,
-    });
+    const intent = dbHelpers.readJSON(removedMediaSchema, row.value, row.key);
+    if (intent && intent.playlistId !== playlistId) continue;
+    if (intent) {
+      await removePlaylistFileIfUnshared(intent.finalPath, playlistId, {
+        downloadRoot: downloadWorker.downloadRoot,
+        deleteIfUnshared: true,
+      });
+    }
     db.prepare("DELETE FROM settings WHERE key = ?").run(row.key);
   }
 }

@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import path from "node:path";
-import { db } from "../../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import { listOf } from "../../db/helpers/storedSchemas.ts";
 import type { PlaylistDownloadJobsRevisionRow, PlaylistDownloadJobsRow } from "../../db/rows.ts";
 import { enqueuePipelineJob, listHonkerJobs, type HonkerPayload } from "../honkerDb.ts";
 import {
@@ -98,15 +100,9 @@ type TextMetadataKey =
   | "trackMbid"
   | "releaseYear";
 
-const parseDeniedSources = (raw: string | null): DeniedRemoteSource[] => {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
+const parseDeniedSources = (raw: string | null): DeniedRemoteSource[] =>
+  dbHelpers.readJSON(listOf(v.tuple([v.string(), v.string()])), raw, "denied download sources") ??
+  [];
 
 const JOBS_TABLE = "playlist_download_jobs";
 const dataVersionStmt = db.prepare<[], { data_version: number }>("PRAGMA data_version");
@@ -158,14 +154,19 @@ const liveAlbumJobsStmt = db.prepare<[], PlaylistDownloadJobsRow & { album_mbid:
   `SELECT * FROM ${JOBS_TABLE} WHERE album_mbid IS NOT NULL AND album_mbid != ''`,
 );
 
-function parseHeldForReview(value: string | null): HeldForReview | null {
-  try {
-    const held = JSON.parse(value || "null");
-    return held?.sourcePath ? held : null;
-  } catch {
-    return null;
-  }
-}
+const storedHeldFileSchema = v.looseObject({
+  source: v.string(),
+  sourcePath: v.pipe(v.string(), v.nonEmpty()),
+  reason: v.string(),
+  transferId: v.optional(v.nullable(v.union([v.string(), v.number()]))),
+  username: v.optional(v.nullable(v.string())),
+  metadata: v.optional(v.record(v.string(), v.nullable(v.union([v.string(), v.number()])))),
+});
+
+const heldForReviewSchema = v.custom<HeldForReview>((input) => v.is(storedHeldFileSchema, input));
+
+const parseHeldForReview = (value: string | null) =>
+  dbHelpers.readJSON(heldForReviewSchema, value, "held download");
 
 function rowToJob(row: PlaylistDownloadJobsRow) {
   return {

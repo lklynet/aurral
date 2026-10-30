@@ -714,3 +714,51 @@ test("a bulk job whose record vanished mid-run does not write a record without a
     [],
   );
 });
+
+test("a saved removed-file record Aurral can't read no longer stops tracks being removed", async (t) => {
+  const f = fixture(t);
+  dbOps.setJSONSetting("playlistRemovedMedia:broken", null);
+  const result = await execute({
+    ownerUserId: f.user.id,
+    sourcePlaylistId: f.source.id,
+    action: "remove",
+    target: null,
+    selections: f.selections,
+  });
+  assert.ok(result?.outcomes.every((outcome) => outcome.status === "removed"));
+  assert.equal(
+    requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
+    0,
+  );
+  assert.equal(
+    db.prepare("SELECT 1 FROM settings WHERE key = 'playlistRemovedMedia:broken'").get(),
+    undefined,
+  );
+});
+
+test("a bulk operation Aurral can't read changes nothing and reads as gone", async (t) => {
+  const f = fixture(t);
+  const { operationId } = store.enqueueBulkOperation({
+    ownerUserId: f.user.id,
+    sourcePlaylistId: f.source.id,
+    action: "remove",
+    target: null,
+    selections: f.selections,
+  });
+  db.prepare(
+    "UPDATE settings SET value = json_set(value, '$.selections', 'all') WHERE key = ?",
+  ).run(`playlistBulkOperation:${operationId}`);
+
+  await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
+
+  assert.equal(
+    requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
+    3,
+  );
+  assert.equal(store.getBulkOperation(operationId), null);
+  store.cleanupBulkOperations();
+  assert.equal(
+    db.prepare("SELECT 1 FROM settings WHERE key = ?").get(`playlistBulkOperation:${operationId}`),
+    undefined,
+  );
+});

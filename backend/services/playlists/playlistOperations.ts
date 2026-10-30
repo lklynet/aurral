@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
+import { listOf } from "../../db/helpers/storedSchemas.ts";
 import {
   recordFlowGenerationStarted,
   recordFlowTracksGenerated,
@@ -50,7 +51,6 @@ import { withHonkerLock } from "../honkerDb.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { PlaylistTrack, StaticPlaylist } from "./flowPlaylistConfig.ts";
-import type { SettingsRow } from "../../db/rows.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.ts";
 import {
@@ -793,10 +793,9 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId }: OperationPayload
   const job = downloadTracker.getJob(safeJobId);
   const selection = job && captureStaticPlaylistSelection(playlist, safeJobId);
   if (!selection) {
-    const pending = db
-      .prepare<[string], Pick<SettingsRow, "value">>("SELECT value FROM settings WHERE key = ?")
-      .get(synchronizationKey);
-    playlistManager.requestPlaylistSync(pending ? JSON.parse(pending.value) : [safePlaylistId]);
+    playlistManager.requestPlaylistSync(
+      dbOps.getJSONSetting(synchronizationKey, listOf(v.string())) ?? [safePlaylistId],
+    );
     await playlistManager.scheduleScanLibrary(true);
     await finalizeRetainedPlaylistRelocations(safePlaylistId, {
       downloadRoot: downloadWorker.downloadRoot,

@@ -3,7 +3,11 @@ import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
-import type { BulkOperationOutcome, BulkOperationRecord } from "./bulkOperationStore.ts";
+import type {
+  BulkOperationOutcome,
+  BulkOperationRecord,
+  StaticPlaylistSelection,
+} from "./bulkOperationStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import {
   flowPlaylistConfig,
@@ -17,7 +21,6 @@ import {
   removeStaticPlaylistSelectionsLocked,
 } from "./trackRemoval.ts";
 import { playlistManager } from "./playlistManager.ts";
-import type { StaticPlaylistSelection } from "./trackRemoval.ts";
 import { isArtistBlockedForUser } from "../discovery/feedback.ts";
 
 function persist(record: BulkOperationRecord) {
@@ -37,7 +40,7 @@ function persistMembership<T>(operation: () => T) {
 
 export async function processStaticPlaylistBulkOperation(operationId: unknown) {
   const record = getBulkOperation(operationId);
-  if (!record || ["completed", "failed"].includes(record.state)) return record;
+  if (!record || ["completed", "failed"].includes(record.state)) return;
   let user = userOps.getUserById(record.ownerUserId);
   const source = user && flowPlaylistConfig.getStaticPlaylistForUser(user, record.sourcePlaylistId);
   if (!source || user!.status !== "active")
@@ -187,5 +190,4 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
   record.state = "completed";
   delete record.message;
   persist(record);
-  return record;
 }

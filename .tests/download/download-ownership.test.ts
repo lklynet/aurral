@@ -82,6 +82,33 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
   );
 });
 
+test("a saved handoff Aurral can't read never redirects a queued download", () => {
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "Handoff Source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "Handoff Target" });
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Track" },
+    source.id,
+  );
+  assert.ok(jobId != null);
+  const payload = {
+    jobId,
+    playlistId: source.id,
+    playlistGeneration: 0,
+    downloadAttemptId: cancellation.beginDownloadAttempt(jobId),
+  };
+  db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
+  downloadTracker.reconcileCommittedJobs();
+  db.prepare(
+    "UPDATE settings SET value = json_set(value, '$[0].destination', 5) WHERE key = ?",
+  ).run(`downloadJobTransfers:${jobId}`);
+
+  const resolved = ownership.resolveTransferredDownloadPayload(payload);
+
+  assert.equal(resolved.playlistId, source.id);
+  assert.equal(cancellation.isPipelinePayloadActive(resolved), false);
+});
+
 test("rolled-back transfer leaves the continuing process and queued payload unchanged", () => {
   const source = flowPlaylistConfig.createStaticPlaylist({ name: "Rollback source" });
   const target = flowPlaylistConfig.createStaticPlaylist({ name: "Rollback target" });

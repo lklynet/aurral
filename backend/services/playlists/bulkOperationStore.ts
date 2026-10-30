@@ -1,7 +1,7 @@
-import { db } from "../../config/db-sqlite.ts";
+import * as v from "valibot";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 import { getHonkerDb, getPlaylistOperationQueue } from "../honkerDb.ts";
-import type { StaticPlaylistRemovalOutcome, StaticPlaylistSelection } from "./trackRemoval.ts";
 
 const PREFIX = "playlistBulkOperation:";
 const RETENTION_MS = 7 * 86400000;
@@ -14,36 +14,54 @@ const listStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
   "SELECT key, value FROM settings WHERE key LIKE 'playlistBulkOperation:%'",
 );
 
-export interface BulkOperationTarget {
-  playlistId: string;
-  name?: string;
-  create?: boolean;
-}
+const selectionSchema = v.looseObject({
+  jobId: v.string(),
+  membershipId: v.nullable(v.string()),
+  jobPlaylistId: v.string(),
+  jobGeneration: v.number(),
+  jobCreatedAt: v.number(),
+});
 
-export interface BulkOperationOutcome extends Omit<StaticPlaylistRemovalOutcome, "status"> {
-  status: StaticPlaylistRemovalOutcome["status"] | "moved";
-  targetPlaylistId?: string;
-}
+const outcomeSchema = v.looseObject({
+  jobId: v.string(),
+  status: v.picklist(["removed", "failed", "alreadyAbsent", "moved"]),
+  message: v.optional(v.string()),
+  targetPlaylistId: v.optional(v.string()),
+});
 
-interface BulkOperationBase {
-  operationId: number;
-  ownerUserId: number;
-  sourcePlaylistId: string;
-  selections: StaticPlaylistSelection[];
-  state: "queued" | "running" | "completed" | "failed";
-  outcomes: BulkOperationOutcome[];
-  synchronization: Record<string, boolean>;
-  createdAt: number;
-  updatedAt: number;
-  message?: string;
-  scanScheduled?: boolean;
-}
+const recordEntries = {
+  operationId: v.number(),
+  ownerUserId: v.number(),
+  sourcePlaylistId: v.string(),
+  selections: v.array(selectionSchema),
+  state: v.picklist(["queued", "running", "completed", "failed"]),
+  outcomes: v.array(outcomeSchema),
+  synchronization: v.record(v.string(), v.boolean()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  message: v.optional(v.string()),
+  scanScheduled: v.optional(v.boolean()),
+};
 
-export type BulkOperationRecord = BulkOperationBase &
-  ({ action: "move"; target: BulkOperationTarget } | { action: "remove"; target: null });
+const bulkOperationSchema = v.variant("action", [
+  v.looseObject({
+    ...recordEntries,
+    action: v.literal("move"),
+    target: v.looseObject({
+      playlistId: v.string(),
+      name: v.optional(v.string()),
+      create: v.optional(v.boolean()),
+    }),
+  }),
+  v.looseObject({ ...recordEntries, action: v.literal("remove"), target: v.null() }),
+]);
+
+export type StaticPlaylistSelection = v.InferOutput<typeof selectionSchema>;
+export type BulkOperationOutcome = v.InferOutput<typeof outcomeSchema>;
+export type BulkOperationRecord = v.InferOutput<typeof bulkOperationSchema>;
 
 export type BulkOperationInput = Pick<
-  BulkOperationBase,
+  BulkOperationRecord,
   "ownerUserId" | "sourcePlaylistId" | "selections"
 > & {
   action: BulkOperationRecord["action"];
@@ -53,7 +71,8 @@ export type BulkOperationInput = Pick<
 export function getBulkOperation(operationId: unknown) {
   const row = getStmt.get(`${PREFIX}${operationId}`);
   if (!row) return null;
-  const record: BulkOperationRecord = JSON.parse(row.value);
+  const record = dbHelpers.readJSON(bulkOperationSchema, row.value, `${PREFIX}${operationId}`);
+  if (!record) return null;
   if (
     !["completed", "failed"].includes(record.state) &&
     !getHonkerDb().query(
@@ -110,7 +129,11 @@ export function cleanupBulkOperations() {
   const now = Date.now();
   for (const row of listStmt.all()) {
     const record = getBulkOperation(row.key.slice(PREFIX.length));
-    if (!record || !["completed", "failed"].includes(record.state)) continue;
+    if (!record) {
+      deleteStmt.run(row.key);
+      continue;
+    }
+    if (!["completed", "failed"].includes(record.state)) continue;
     if (now - Number(record.updatedAt || record.createdAt) > RETENTION_MS) {
       deleteStmt.run(row.key);
       continue;
