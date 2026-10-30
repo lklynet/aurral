@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import type Database from "better-sqlite3";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { InboxItemsRow } from "../rows.ts";
@@ -69,7 +70,9 @@ const mapInboxRow = <Id extends string | null>(
     subtitle: row.subtitle || null,
     href: row.href || null,
     imageUrl: row.image_url || null,
-    metadata: dbHelpers.parseJSON(row.metadata) || {},
+    metadata:
+      dbHelpers.readJSON(v.record(v.string(), v.unknown()), row.metadata, "inbox_items.metadata") ??
+      {},
     isRead: row.is_read === 1,
     isSaved: row.is_saved === 1,
     isDismissed: row.is_dismissed === 1,

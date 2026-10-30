@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { testWebSocketClient } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
@@ -87,14 +88,14 @@ test("records old WebSocket channels once per process", async () => {
     client,
     Buffer.from(JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] })),
   );
-  const recorded = dbOps.getJSONSetting("deprecatedUsage");
+  const recorded = dbOps.getJSONSetting("deprecatedUsage", v.unknown());
   assert.deepEqual(Object.keys(recorded ?? {}).sort(), ["weekly-flow-channel"]);
 
   websocketService.handleMessage(
     client,
     Buffer.from(JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] })),
   );
-  assert.deepEqual(dbOps.getJSONSetting("deprecatedUsage"), recorded);
+  assert.deepEqual(dbOps.getJSONSetting("deprecatedUsage", v.unknown()), recorded);
   assert.equal(client.subscriptions.has("weekly-flow"), true);
 });
 

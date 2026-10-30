@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
@@ -195,7 +196,7 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
     assert.equal(response.status, 400, rejected);
     assert.ok(requireFixture(response.body).message, rejected);
   }
-  assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders"), [folder]);
+  assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders", v.unknown()), [folder]);
 });
 
 test("removing a read-only folder takes its music out of the Library and keeps the files", async () => {

@@ -8,6 +8,8 @@ import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.ts";
 import { ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
+import * as v from "valibot";
+import { logger } from "../services/logger.ts";
 
 const DATA_DIR = ensureDataDir();
 
@@ -1174,6 +1176,22 @@ export const dbHelpers = {
     } catch {
       return null;
     }
+  },
+
+  readJSON<Schema extends v.GenericSchema>(
+    schema: Schema,
+    text: string | null | undefined,
+    source: string,
+  ): v.InferOutput<Schema> | null {
+    const value: unknown = dbHelpers.parseJSON(text);
+    if (value == null) return null;
+    const result = v.safeParse(schema, value);
+    if (result.success) return result.output;
+    logger.warn("database", "Ignored stored data Aurral can't read", {
+      source,
+      issue: v.summarize(result.issues),
+    });
+    return null;
   },
 
   stringifyJSON: (obj: unknown) => {

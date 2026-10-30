@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
@@ -39,20 +40,41 @@ const MEDIA_HEALTH_SAMPLE_LIMIT = Math.max(
   50,
   Math.floor(Number(process.env.AURRAL_MEDIA_HEALTH_SAMPLE_LIMIT) || 500),
 );
-type StorageHealthResult = Awaited<ReturnType<typeof buildStorageHealthCheck>>;
+const storageHealthStepSchema = v.looseObject({
+  id: v.string(),
+  status: v.picklist(["pass", "fail", "warn"]),
+  label: v.string(),
+  detail: v.optional(v.string()),
+  fix: v.optional(v.string()),
+});
+
+const storageHealthSectionSchema = v.looseObject({
+  id: v.string(),
+  title: v.string(),
+  status: v.picklist(["skip", "fail", "warn", "pass"]),
+  steps: v.array(storageHealthStepSchema),
+  skipReason: v.nullable(v.string()),
+});
+
+const storageHealthResultSchema = v.looseObject({
+  checkedAt: v.string(),
+  ok: v.boolean(),
+  partial: v.boolean(),
+  sectionCount: v.number(),
+  failedCount: v.number(),
+  warningCount: v.number(),
+  sections: v.array(storageHealthSectionSchema),
+});
+
+export type StorageHealthStep = v.InferOutput<typeof storageHealthStepSchema>;
+type StorageHealthSection = v.InferOutput<typeof storageHealthSectionSchema>;
+type StorageHealthResult = v.InferOutput<typeof storageHealthResultSchema>;
+
 let storageHealthCache: StorageHealthResult | null = null;
 let storageHealthCacheExpiresAt = 0;
 let storageHealthCacheKey = "";
 let storageHealthInflight: Promise<StorageHealthResult> | null = null;
 let storageHealthInflightKey = "";
-
-export type StorageHealthStep = {
-  id: string;
-  status: "pass" | "fail" | "warn";
-  label: string;
-  detail?: string;
-  fix?: string;
-};
 
 function healthStep(
   id: string,
@@ -304,7 +326,7 @@ function buildSection(
   title: string,
   steps: StorageHealthStep[],
   { skipped = false, skipReason = null }: { skipped?: boolean; skipReason?: string | null } = {},
-) {
+): StorageHealthSection {
   const status = skipped
     ? "skip"
     : steps.some((entry) => entry.status === "fail")
@@ -320,8 +342,6 @@ function buildSection(
     skipReason,
   };
 }
-
-type StorageHealthSection = ReturnType<typeof buildSection>;
 
 function summarizeResult(sections: StorageHealthSection[]) {
   const active = sections.filter((entry) => entry.status !== "skip");
@@ -1045,7 +1065,7 @@ async function checkPlexSection() {
   return buildSection("plex", "Plex playback", steps);
 }
 
-async function buildStorageHealthCheck() {
+async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
   const volumeSection = await checkSharedVolumeSection();
   const downloadsSection = await checkDownloadsSection();
   const { section: lidarrSection } = await checkLidarrSection();
@@ -1109,7 +1129,5 @@ export async function runStorageHealthCheck({ force = false } = {}) {
 }
 
 export function getStorageHealthSnapshot() {
-  return dbOps.getJSONSetting<Awaited<ReturnType<typeof buildStorageHealthCheck>>>(
-    STORAGE_HEALTH_SNAPSHOT_KEY,
-  );
+  return dbOps.getJSONSetting(STORAGE_HEALTH_SNAPSHOT_KEY, storageHealthResultSchema);
 }

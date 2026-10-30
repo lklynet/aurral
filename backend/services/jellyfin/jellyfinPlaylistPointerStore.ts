@@ -1,16 +1,11 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 
-interface StoredPointer {
-  playlistId?: unknown;
-  title?: unknown;
-  serverUrl?: unknown;
-  jellyfinUserId?: unknown;
-  managedItemIds?: unknown;
-  updatedAt?: unknown;
-}
+const pointerStoreSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const storedPointerSchema = v.looseObject({});
 
-type PointerStore = Record<string, Record<string, StoredPointer>>;
+type PointerStore = v.InferOutput<typeof pointerStoreSchema>;
 
 const SETTINGS_KEY = "jellyfinPlaylistPointers";
 const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
@@ -20,10 +15,9 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const readStore = (): PointerStore => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
+const readStore = () =>
+  dbHelpers.readJSON(pointerStoreSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ??
+  {};
 
 const writeStore = (store: PointerStore) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
@@ -42,8 +36,8 @@ const normalizeManagedIds = (ids: unknown): string[] =>
     ? [...ids]
     : [];
 
-const normalizePointer = (raw: StoredPointer | null) => {
-  if (!raw || typeof raw !== "object") return null;
+const normalizePointer = (raw: unknown) => {
+  if (!v.is(storedPointerSchema, raw)) return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
   if (!playlistId) return null;
   return {

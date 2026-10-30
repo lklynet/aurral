@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { createReadStream, constants as fsConstants } from "fs";
 import type { Stats } from "fs";
 import { createHash } from "crypto";
@@ -86,22 +87,21 @@ function log(
   fn.call(logger, message, ...(details ? [details] : []));
 }
 
-interface MigrationItem {
-  status?: string;
-  destination?: string;
-  reason?: string;
-  updatedAt?: number;
-  identity?: Awaited<ReturnType<typeof resolveIdentity>>;
-}
+const migrationStateSchema = v.looseObject({
+  version: v.number(),
+  rootPath: v.string(),
+  status: v.string(),
+  items: v.record(
+    v.string(),
+    v.looseObject({
+      status: v.optional(v.string()),
+      destination: v.optional(v.string()),
+      reason: v.optional(v.string()),
+    }),
+  ),
+});
 
-export interface MigrationState {
-  version: number;
-  rootPath: string;
-  status: string;
-  items: Record<string, MigrationItem>;
-  updatedAt: number;
-  lastResult?: unknown;
-}
+type MigrationState = v.InferOutput<typeof migrationStateSchema>;
 
 function newMigrationState(rootPath: string): MigrationState {
   return {
@@ -114,19 +114,18 @@ function newMigrationState(rootPath: string): MigrationState {
 }
 
 function loadMigrationState(rootPath: string) {
-  const stored = dbOps.getJSONSetting<MigrationState>(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
+  const stored = dbOps.getJSONSetting(
+    AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING,
+    migrationStateSchema,
+  );
   if (
     !stored ||
     stored.version !== AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION ||
-    path.resolve(String(stored.rootPath || "")) !== rootPath
+    path.resolve(stored.rootPath) !== rootPath
   ) {
     return newMigrationState(rootPath);
   }
-  return {
-    ...newMigrationState(rootPath),
-    ...stored,
-    items: stored.items && typeof stored.items === "object" ? stored.items : {},
-  };
+  return stored;
 }
 
 function saveMigrationState(state: MigrationState) {
@@ -386,7 +385,7 @@ async function repairCompletedMigrationState(
   };
   for (const [sourcePath, item] of Object.entries(state.items)) {
     if (item?.status !== "complete" || !item.destination) continue;
-    const destination = path.resolve(String(item.destination));
+    const destination = path.resolve(item.destination);
     const destinationStat = await fs.stat(destination).catch(() => null);
     if (!isPathInsideRoot(destination, rootPath) || !destinationStat?.isFile()) {
       const reason = "completed migration destination is missing";

@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
@@ -11,16 +12,8 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-interface StoredSpotifyConnection {
-  accessToken?: unknown;
-  refreshToken?: unknown;
-  expiresAt?: unknown;
-  displayName?: unknown;
-  connectedAt?: unknown;
-  reconnectRequired?: unknown;
-}
-
-type StoredSpotifyConnections = Record<string, StoredSpotifyConnection>;
+const storeSchema = v.record(v.string(), v.unknown());
+const storedConnectionSchema = v.looseObject({});
 
 interface SpotifyConnectionInput {
   accessToken?: string;
@@ -30,12 +23,10 @@ interface SpotifyConnectionInput {
   reconnectRequired?: boolean;
 }
 
-const readStore = (): StoredSpotifyConnections => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
+const readStore = () =>
+  dbHelpers.readJSON(storeSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ?? {};
 
-const writeStore = (store: StoredSpotifyConnections) => {
+const writeStore = (store: v.InferOutput<typeof storeSchema>) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
@@ -51,8 +42,8 @@ const decryptToken = (value: unknown) => {
   return decryptWithKey(typeof value === "string" ? value : null, key);
 };
 
-const normalizeConnection = (raw: StoredSpotifyConnection | null) => {
-  if (!raw || typeof raw !== "object") return null;
+const normalizeConnection = (raw: unknown) => {
+  if (!v.is(storedConnectionSchema, raw)) return null;
   const accessToken = decryptToken(raw.accessToken);
   const refreshToken = decryptToken(raw.refreshToken);
   if (!accessToken || !refreshToken) return null;
@@ -85,7 +76,7 @@ const matchesTokens = (
 export const spotifyConnectionStore = {
   getConnection(userId: number | undefined) {
     const store = readStore();
-    return normalizeConnection(store[userKey(userId)] || null);
+    return normalizeConnection(store[userKey(userId)]);
   },
 
   getPublicStatus(userId: number) {
@@ -160,7 +151,7 @@ export const spotifyConnectionStore = {
   clearConnectionIfMatches(userId: number | undefined, expected: SpotifyTokens) {
     const store = readStore();
     const key = userKey(userId);
-    if (!matchesTokens(normalizeConnection(store[key] || null), expected)) return false;
+    if (!matchesTokens(normalizeConnection(store[key]), expected)) return false;
     delete store[key];
     writeStore(store);
     return true;
@@ -173,11 +164,16 @@ export const spotifyConnectionStore = {
   ) {
     const store = readStore();
     const key = userKey(userId);
-    const current = normalizeConnection(store[key] || null);
-    if (!matchesTokens(current, expected) || current.reconnectRequired === reconnectRequired) {
+    const stored = store[key];
+    const current = normalizeConnection(stored);
+    if (
+      !v.is(storedConnectionSchema, stored) ||
+      !matchesTokens(current, expected) ||
+      current.reconnectRequired === reconnectRequired
+    ) {
       return false;
     }
-    store[key] = { ...store[key], reconnectRequired };
+    store[key] = { ...stored, reconnectRequired };
     writeStore(store);
     return true;
   },

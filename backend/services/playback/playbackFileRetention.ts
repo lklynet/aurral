@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { asAppError } from "../../../lib/errors.ts";
@@ -8,16 +9,16 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 
 const SETTINGS_KEY = "playbackRetainedFiles";
 
-interface RetainedFileRecord {
-  reason?: string;
-  excludeEntityIds?: unknown;
-  playlistRoot?: unknown;
-  checkedAt?: number;
-}
+export const retainedFilesSchema = v.record(
+  v.string(),
+  v.looseObject({
+    playlistRoot: v.optional(v.unknown()),
+    excludeEntityIds: v.optional(v.unknown()),
+  }),
+);
 
-function readRetainedFiles(): Record<string, RetainedFileRecord> {
-  const value = dbOps.getJSONSetting<Record<string, RetainedFileRecord>>(SETTINGS_KEY);
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+function readRetainedFiles() {
+  return dbOps.getJSONSetting(SETTINGS_KEY, retainedFilesSchema) ?? {};
 }
 
 export function isPlaybackRetainedFile(file: string) {
@@ -61,7 +62,7 @@ export function createPlaybackDeletionGuard({
     return JSON.stringify([
       settings.integrations,
       settings.pathMappings,
-      dbOps.getJSONSetting("plexConnections"),
+      dbOps.getJSONSetting("plexConnections", v.unknown()),
     ]);
   };
   let checkedConfig: string | undefined;

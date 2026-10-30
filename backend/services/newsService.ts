@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { buildImageProxyUrl } from "./imageProxyService.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -212,8 +213,13 @@ export async function getNewsForUser({
   const candidates = mode === "top" ? ids : ids.filter((id) => matches.has(id));
   const pageIds = candidates.slice(safeOffset, safeOffset + safeLimit);
   const state =
-    dbOps.getJSONSetting<Partial<{ checkedAt: number; failedFeeds: string[]; allFailed: boolean }>>(
+    dbOps.getJSONSetting(
       REFRESH_STATE_KEY,
+      v.looseObject({
+        checkedAt: v.optional(v.number()),
+        failedFeeds: v.optional(v.array(v.string())),
+        allFailed: v.optional(v.boolean()),
+      }),
     ) || {};
   return {
     articles: selectArticlesByIds

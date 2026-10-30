@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptIntegrations, encryptIntegrations } from "../../config/encryption.ts";
 import { normalizePathMappings, syncPathMappings } from "../../services/pathMappings.ts";
@@ -209,7 +210,10 @@ export interface SettingsUpdate {
 
 export interface SettingsOps {
   invalidateSettingsCache: () => void;
-  getJSONSetting: <T = unknown>(key: string) => T | null;
+  getJSONSetting: <Schema extends v.GenericSchema>(
+    key: string,
+    schema: Schema,
+  ) => v.InferOutput<Schema> | null;
   setJSONSetting: (key: string, value: unknown) => void;
   getUserDiscoverLayout: (userId: number) => unknown;
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
@@ -320,8 +324,8 @@ export const dbOps = {
     settingsCacheTime = 0;
   },
 
-  getJSONSetting(key) {
-    return dbHelpers.parseJSON(getSettingStmt.get(key)?.value) || null;
+  getJSONSetting(key, schema) {
+    return dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
   },
 
   setJSONSetting(key, value) {
@@ -329,7 +333,7 @@ export const dbOps = {
   },
 
   getUserDiscoverLayout(userId) {
-    return dbOps.getJSONSetting(`user:${parseInt(String(userId), 10)}:discoverLayout`);
+    return dbOps.getJSONSetting(`user:${parseInt(String(userId), 10)}:discoverLayout`, v.unknown());
   },
 
   setUserDiscoverLayout(userId, layout) {
@@ -337,7 +341,7 @@ export const dbOps = {
   },
 
   getUserTheme(userId) {
-    return dbOps.getJSONSetting(`user:${parseInt(String(userId), 10)}:theme`);
+    return dbOps.getJSONSetting(`user:${parseInt(String(userId), 10)}:theme`, v.unknown());
   },
 
   setUserTheme(userId, theme) {

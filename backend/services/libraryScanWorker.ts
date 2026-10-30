@@ -19,15 +19,17 @@ const scanRegistryValueStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
   "SELECT value FROM settings WHERE key = ?",
 );
 
-type ScanRegistry = {
-  jobId?: number | null;
-  includeLidarr?: boolean;
-  force?: boolean;
-  changedPaths?: string[] | null;
-  inFlightActive?: boolean;
-  inFlightPaths?: string[] | null;
-  fullRescanPending?: boolean;
-};
+export const scanRegistrySchema = v.looseObject({
+  jobId: v.nullish(v.number()),
+  includeLidarr: v.optional(v.boolean()),
+  force: v.optional(v.boolean()),
+  changedPaths: v.nullish(v.array(v.string())),
+  inFlightActive: v.optional(v.boolean()),
+  inFlightPaths: v.nullish(v.array(v.string())),
+  fullRescanPending: v.optional(v.boolean()),
+});
+
+type ScanRegistry = v.InferOutput<typeof scanRegistrySchema>;
 const insertScanRegistryStmt = db.prepare(
   "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
 );
@@ -37,10 +39,9 @@ const updateScanRegistryStmt = db.prepare(
 
 function getScanRegistrySnapshot(): { value: string | null; registry: ScanRegistry } {
   const value = scanRegistryValueStmt.get(LIBRARY_SCAN_REGISTRY_KEY)?.value ?? null;
-  const raw: ScanRegistry | null = dbHelpers.parseJSON(value);
   return {
     value,
-    registry: raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {},
+    registry: dbHelpers.readJSON(scanRegistrySchema, value, LIBRARY_SCAN_REGISTRY_KEY) ?? {},
   };
 }
 

@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 
@@ -9,21 +10,21 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-type StoredPointer = { playlistId?: unknown; title?: unknown; updatedAt?: unknown };
+const pointerStoreSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const storedPointerSchema = v.looseObject({});
 
-type PointerStore = Record<string, Record<string, StoredPointer>>;
+type PointerStore = v.InferOutput<typeof pointerStoreSchema>;
 
-const readStore = (): PointerStore => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
+const readStore = () =>
+  dbHelpers.readJSON(pointerStoreSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ??
+  {};
 
 const writeStore = (store: PointerStore) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const normalizePointer = (raw: StoredPointer | null | undefined) => {
-  if (!raw || typeof raw !== "object") return null;
+const normalizePointer = (raw: unknown) => {
+  if (!v.is(storedPointerSchema, raw)) return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
   const title = String(raw.title || "");
   if (!playlistId && !title) return null;

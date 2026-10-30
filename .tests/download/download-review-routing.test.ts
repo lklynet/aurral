@@ -35,7 +35,7 @@ const [
   cancellationModule,
   { processPipelinePayload },
   { getDownloadClient },
-  { getScheduledLibraryScanJobId },
+  { getScheduledLibraryScanJobId, scanRegistrySchema },
   { getLibraryScanQueue },
 ] = await setupIsolatedBackend(
   "download-review-routing",
@@ -219,11 +219,7 @@ test("pipeline completion queues only committed files and settling does not expa
   const scanId = getScheduledLibraryScanJobId();
   assert.ok(scanId != null);
   assert.ok(getLibraryScanQueue().getJob(scanId));
-  const registry = dbOps.getJSONSetting<{
-    changedPaths: string[];
-    force?: boolean;
-    includeLidarr: boolean;
-  }>("pendingLibraryScanJob");
+  const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.ok(registry != null);
   assert.deepEqual(registry.changedPaths, committedPaths);
   assert.notEqual(registry.force, true);

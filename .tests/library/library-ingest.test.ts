@@ -48,7 +48,7 @@ const [
   { getLibraryFileOperation },
   { settleIngestedMusic, checkIngestSource },
   { resolveDownloadRoot },
-  { clearScheduledLibraryScan },
+  { clearScheduledLibraryScan, scanRegistrySchema },
 ] = await setupIsolatedBackend(
   "library-ingest",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -633,10 +633,8 @@ test("a copy taken back out is recorded and rescanned even when its lyrics canno
   assert.deepEqual(requireValue(describe(id)).counts, { duplicate: 1 });
   assert.equal(
     requireValue(
-      dbOps.getJSONSetting<{ jobId?: number; includeLidarr?: boolean; changedPaths: string[] }>(
-        "pendingLibraryScanJob",
-      ),
-    ).changedPaths.includes(filed),
+      dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema),
+    ).changedPaths?.includes(filed),
     true,
   );
 });
@@ -682,13 +680,9 @@ test("a moved file the Library scan files with a track the Library already had g
   assert.equal(await exists(otherFile), true);
   assert.equal(await readFile(otherArt, "utf8"), "back");
   assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
-  const queued = dbOps.getJSONSetting<{
-    jobId?: number;
-    includeLidarr?: boolean;
-    changedPaths: string[];
-  }>("pendingLibraryScanJob");
+  const queued = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.equal(requireValue(queued).includeLidarr, true);
-  assert.equal(requireValue(queued).changedPaths.includes(file), true);
+  assert.equal(requireValue(queued).changedPaths?.includes(file), true);
   assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
   assert.equal(requireValue(await runUntilSettled(id)).status, "complete");

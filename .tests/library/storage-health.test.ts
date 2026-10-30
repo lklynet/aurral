@@ -14,14 +14,19 @@ import {
 const previousFileBrowseRoots = process.env.FILE_BROWSE_ROOTS;
 const previousPathMappings = process.env.PATH_MAPPINGS;
 
-const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }, { resolveDownloadRoot }] =
-  await setupIsolatedBackend(
-    "storage-health",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/storageHealthService.ts"),
-    () => import("../../backend/services/downloadPaths.ts"),
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  { runStorageHealthCheck, getStorageHealthSnapshot },
+  { resolveDownloadRoot },
+] = await setupIsolatedBackend(
+  "storage-health",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/storageHealthService.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+);
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -60,6 +65,14 @@ test("runStorageHealthCheck passes when downloads folder is writable", async () 
   assert.ok(downloads);
   assert.equal(downloads.status, "pass");
   assert.equal(result.ok, true);
+});
+
+test("a saved health check Aurral can't read counts as no check", async () => {
+  dbOps.setJSONSetting("storageHealthSnapshot", { checkedAt: "yesterday", sections: "none" });
+  assert.equal(getStorageHealthSnapshot(), null);
+
+  const result = await runStorageHealthCheck();
+  assert.deepEqual(getStorageHealthSnapshot(), result);
 });
 
 test("runStorageHealthCheck fails when a path mapping local folder is missing", async () => {

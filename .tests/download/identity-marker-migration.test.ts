@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { createTrackedJob } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -178,12 +179,16 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
     assert.equal((await stat(filePath)).mtimeMs, untouchedTimes[index].mtimeMs);
   }
   assert.deepEqual(
-    (({ checked, moved, failed }) => ({ checked, moved, failed }))(
-      dbOps.getJSONSetting("identityMarkerMigration"),
+    dbOps.getJSONSetting(
+      "identityMarkerMigration",
+      v.object({ checked: v.number(), moved: v.number(), failed: v.number() }),
     ),
     { checked: 6, moved: 5, failed: 0 },
   );
 
   await processSystemTask({ kind: "identity-marker-migration" });
-  assert.equal(dbOps.getJSONSetting<{ moved: number }>("identityMarkerMigration")!.moved, 0);
+  assert.equal(
+    dbOps.getJSONSetting("identityMarkerMigration", v.looseObject({ moved: v.number() }))?.moved,
+    0,
+  );
 });

@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
@@ -60,18 +61,20 @@ const normalizeUserId = (userId: number) => {
 const getInboxRefreshStatusKey = (userId: number) =>
   `${INBOX_REFRESH_STATUS_PREFIX}${normalizeUserId(userId)}`;
 
-interface InboxRefreshStatus {
-  status: string;
-  stale: boolean;
-  error: string | null;
-  updatedAt: number | null;
-  lastSuccessAt?: number | null;
-  jobId?: number | null;
-  reason?: string;
-}
+const inboxRefreshStatusSchema = v.looseObject({
+  status: v.string(),
+  stale: v.boolean(),
+  error: v.nullable(v.string()),
+  updatedAt: v.nullable(v.number()),
+  lastSuccessAt: v.nullish(v.number()),
+  jobId: v.nullish(v.number()),
+  reason: v.optional(v.string()),
+});
 
-const getStoredRefreshStatus = (userId: number) =>
-  dbOps.getJSONSetting<InboxRefreshStatus>(getInboxRefreshStatusKey(userId)) || {
+type InboxRefreshStatus = v.InferOutput<typeof inboxRefreshStatusSchema>;
+
+const getStoredRefreshStatus = (userId: number): InboxRefreshStatus =>
+  dbOps.getJSONSetting(getInboxRefreshStatusKey(userId), inboxRefreshStatusSchema) || {
     status: "idle",
     stale: false,
     error: null,

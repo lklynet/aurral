@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -6,6 +7,8 @@ import { isOwnKey } from "../../lib/ownKey.ts";
 import { logger } from "./logger.ts";
 
 export const DEPRECATED_USAGE_SETTING = "deprecatedUsage";
+
+const deprecatedUsageSchema = v.record(v.string(), v.looseObject({ lastSeenAt: v.number() }));
 
 const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 
@@ -47,8 +50,7 @@ export function noteDeprecatedUsage(kind: DeprecationKind) {
   notedThisProcess.add(kind);
   logger.warn("system", DEPRECATIONS[kind]);
   try {
-    const recorded =
-      dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>(DEPRECATED_USAGE_SETTING) || {};
+    const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING, deprecatedUsageSchema) || {};
     dbOps.setJSONSetting(DEPRECATED_USAGE_SETTING, {
       ...recorded,
       [kind]: { lastSeenAt: Date.now() },
@@ -60,8 +62,7 @@ export function noteDeprecatedUsage(kind: DeprecationKind) {
 }
 
 export function getDeprecatedUsage() {
-  const recorded =
-    dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>(DEPRECATED_USAGE_SETTING) || {};
+  const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING, deprecatedUsageSchema) || {};
   return [
     ...listConfigDeprecations().map((kind) => ({
       kind,
@@ -70,7 +71,7 @@ export function getDeprecatedUsage() {
     })),
     ...Object.entries(recorded).flatMap(([kind, entry]) =>
       isOwnKey(DEPRECATIONS, kind)
-        ? [{ kind, message: DEPRECATIONS[kind], lastSeenAt: Number(entry?.lastSeenAt) || null }]
+        ? [{ kind, message: DEPRECATIONS[kind], lastSeenAt: entry.lastSeenAt || null }]
         : [],
     ),
   ];

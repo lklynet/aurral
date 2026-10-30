@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -101,7 +102,7 @@ test("a failed flow-delete enqueue restores active download work", async () => {
     isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
     true,
   );
-  assert.equal(dbOps.getJSONSetting(tokenKey), "previous-delete-token");
+  assert.equal(dbOps.getJSONSetting(tokenKey, v.string()), "previous-delete-token");
 });
 
 test("a failed flow-disable enqueue restores enabled state and active downloads", async () => {
@@ -130,7 +131,7 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
     isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
     true,
   );
-  assert.equal(dbOps.getJSONSetting(tokenKey), "previous-disable-token");
+  assert.equal(dbOps.getJSONSetting(tokenKey, v.string()), "previous-disable-token");
   assert.equal(playlistSync.mock.calls.length, 0);
 });
 

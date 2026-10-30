@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
@@ -13,17 +14,11 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
 
 type PlexLinkType = "managed" | "self";
 
-type StoredPlexConnection = {
-  linkType?: unknown;
-  token?: unknown;
-  clientId?: unknown;
-  plexAccountId?: string | number | null;
-  plexUuid?: unknown;
-  plexUsername?: unknown;
-  linkedByAdminId?: unknown;
-  connectedAt?: unknown;
-  lastError?: { message?: unknown; at?: unknown } | null;
-};
+const storeSchema = v.record(v.string(), v.unknown());
+const storedConnectionSchema = v.looseObject({
+  plexAccountId: v.nullish(v.union([v.string(), v.number()])),
+});
+const lastErrorSchema = v.looseObject({ message: v.unknown(), at: v.optional(v.unknown()) });
 
 type PlexLinkInput = {
   linkType?: PlexLinkType;
@@ -35,12 +30,10 @@ type PlexLinkInput = {
   linkedByAdminId?: number | null;
 };
 
-const readStore = (): Record<string, StoredPlexConnection> => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
+const readStore = () =>
+  dbHelpers.readJSON(storeSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ?? {};
 
-const writeStore = (store: Record<string, StoredPlexConnection>) => {
+const writeStore = (store: v.InferOutput<typeof storeSchema>) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
@@ -56,8 +49,8 @@ const decryptToken = (value: unknown) => {
   return decryptWithKey(typeof value === "string" ? value : null, key);
 };
 
-const normalizeConnection = (raw: StoredPlexConnection | null) => {
-  if (!raw || typeof raw !== "object") return null;
+const normalizeConnection = (raw: unknown) => {
+  if (!v.is(storedConnectionSchema, raw)) return null;
   const token = decryptToken(raw.token);
   const clientId = String(raw.clientId || "").trim();
   if (!token || !clientId) return null;
@@ -78,7 +71,7 @@ const normalizeConnection = (raw: StoredPlexConnection | null) => {
         ? Number(raw.connectedAt)
         : Date.now(),
     lastError:
-      raw.lastError && typeof raw.lastError === "object" && raw.lastError.message
+      v.is(lastErrorSchema, raw.lastError) && raw.lastError.message
         ? {
             message: String(raw.lastError.message),
             at: Number(raw.lastError.at) || Date.now(),
@@ -90,7 +83,7 @@ const normalizeConnection = (raw: StoredPlexConnection | null) => {
 export const plexConnectionStore = {
   getConnection(userId: number) {
     const store = readStore();
-    return normalizeConnection(store[userKey(userId)] || null);
+    return normalizeConnection(store[userKey(userId)]);
   },
 
   getPublicStatus(userId: number) {
@@ -156,7 +149,7 @@ export const plexConnectionStore = {
     const current = readStore();
     const key = userKey(userId);
     const existing = current[key];
-    if (!existing) return null;
+    if (!v.is(storedConnectionSchema, existing)) return null;
     existing.token = encryptToken(token || decryptToken(existing.token));
     if (clientId) existing.clientId = clientId;
     existing.lastError = null;
@@ -168,7 +161,7 @@ export const plexConnectionStore = {
     const store = readStore();
     const key = userKey(userId);
     const existing = store[key];
-    if (!existing) return null;
+    if (!v.is(storedConnectionSchema, existing)) return null;
     existing.lastError = { message: String(message || "Unknown error"), at: Date.now() };
     writeStore(store);
     return this.getConnection(userId);
@@ -187,7 +180,8 @@ export const plexConnectionStore = {
     const store = readStore();
     const ids = new Set<string>();
     for (const entry of Object.values(store)) {
-      if (entry?.plexAccountId != null) ids.add(String(entry.plexAccountId));
+      if (v.is(storedConnectionSchema, entry) && entry.plexAccountId != null)
+        ids.add(String(entry.plexAccountId));
     }
     return ids;
   },

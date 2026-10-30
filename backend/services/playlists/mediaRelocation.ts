@@ -1,8 +1,9 @@
+import * as v from "valibot";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { db } from "../../config/db-sqlite.ts";
+import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { downloadDestinationForJob } from "../downloadJobs/downloadOwnership.ts";
@@ -13,13 +14,13 @@ import type { SettingsRow } from "../../db/rows.ts";
 
 export type PreparedRetainedPlaylistFile = Awaited<ReturnType<typeof prepareRetainedPlaylistFile>>;
 
-interface PlaylistMediaIntent {
-  sourcePlaylistId: string;
-  from: string;
-  to: string;
-  hash: string;
-  state: string;
-}
+const playlistMediaIntentSchema = v.looseObject({
+  sourcePlaylistId: v.string(),
+  from: v.string(),
+  to: v.string(),
+  hash: v.string(),
+  state: v.string(),
+});
 
 async function digest(file: string) {
   const hash = createHash("sha256");
@@ -43,7 +44,7 @@ export async function prepareRetainedPlaylistFile({
     return { finalPath: job?.finalPath || null };
   const root = path.resolve(downloadRoot);
   const key = `playlistMediaRelocation:${jobId}`;
-  let intent = dbOps.getJSONSetting<PlaylistMediaIntent>(key);
+  let intent = dbOps.getJSONSetting(key, playlistMediaIntentSchema);
   if (!intent || intent.sourcePlaylistId !== sourcePlaylistId) {
     const from = path.resolve(job.finalPath);
     if (
@@ -128,8 +129,8 @@ export async function finalizeRetainedPlaylistRelocations(
     playlistRoot: root,
   });
   for (const row of rows) {
-    const intent: PlaylistMediaIntent = JSON.parse(row.value);
-    if (intent.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed")
+    const intent = dbHelpers.readJSON(playlistMediaIntentSchema, row.value, row.key);
+    if (intent?.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed")
       continue;
     if (!isPathInsideRoot(intent.from, root) || !isPathInsideRoot(intent.to, root)) continue;
     if (

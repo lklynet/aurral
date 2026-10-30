@@ -16,6 +16,7 @@ const {
   getScheduledLibraryScanJobId,
   onLibraryScanFinalFailure,
   onLibraryScanSuccess,
+  scanRegistrySchema,
   scheduleLibraryScan,
   stopLibraryScanWorker,
 } = await import("../../backend/services/libraryScanWorker.ts");
@@ -79,12 +80,7 @@ test("library bootstrap runs until the first completed scan, and again while a t
 
 test("library refresh queues a quick or full scan and exposes its queue status", async () => {
   const existingJobId = Number(
-    dbOps.getJSONSetting<{
-      jobId?: number;
-      includeLidarr?: boolean;
-      changedPaths: string[];
-      fullRescanPending?: boolean;
-    }>("pendingLibraryScanJob")?.jobId,
+    dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)?.jobId,
   );
   if (Number.isSafeInteger(existingJobId)) getLibraryScanQueue().cancel(existingJobId);
   clearScheduledLibraryScan();
@@ -114,12 +110,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   try {
     assert.equal((await refresh({ mode: "bogus" })).statusCode, 400);
     assert.equal(
-      dbOps.getJSONSetting<{
-        jobId?: number;
-        includeLidarr?: boolean;
-        changedPaths: string[];
-        fullRescanPending?: boolean;
-      }>("pendingLibraryScanJob")?.jobId,
+      dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)?.jobId,
       undefined,
     );
 
@@ -227,14 +218,7 @@ test("a full refresh upgrades a pending local-only scan", () => {
     });
     assert.equal(scheduleLibraryScan({ includeLidarr: true }), jobId);
     assert.equal(
-      requireValue(
-        dbOps.getJSONSetting<{
-          jobId?: number;
-          includeLidarr?: boolean;
-          changedPaths: string[];
-          fullRescanPending?: boolean;
-        }>("pendingLibraryScanJob"),
-      ).includeLidarr,
+      requireValue(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)).includeLidarr,
       true,
     );
   } finally {
@@ -259,14 +243,7 @@ test("pending watcher scans merge changed paths into one job", () => {
       jobId,
     );
     assert.deepEqual(
-      requireValue(
-        dbOps.getJSONSetting<{
-          jobId?: number;
-          includeLidarr?: boolean;
-          changedPaths: string[];
-          fullRescanPending?: boolean;
-        }>("pendingLibraryScanJob"),
-      ).changedPaths,
+      requireValue(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)).changedPaths,
       [
         path.resolve("/data/music/Artist/Album/01 Track.flac"),
         path.resolve("/data/music/Artist/Album/02 Track.flac"),
@@ -293,14 +270,7 @@ test("watcher paths do not downgrade a queued full scan", () => {
     );
     assert.equal(
       "changedPaths" in
-        requireValue(
-          dbOps.getJSONSetting<{
-            jobId?: number;
-            includeLidarr?: boolean;
-            changedPaths: string[];
-            fullRescanPending?: boolean;
-          }>("pendingLibraryScanJob"),
-        ),
+        requireValue(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)),
       false,
     );
   } finally {
@@ -334,14 +304,9 @@ test("an oversized active watcher merge requests a full rescan", () => {
       changedPaths: ["/data/music/overflow.flac"],
     });
 
-    const registry = dbOps.getJSONSetting<{
-      jobId?: number;
-      includeLidarr?: boolean;
-      changedPaths: string[];
-      fullRescanPending?: boolean;
-    }>("pendingLibraryScanJob");
+    const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
     assert.equal(requireValue(registry).fullRescanPending, true);
-    assert.deepEqual([...requireValue(registry).changedPaths], []);
+    assert.deepEqual(requireValue(registry).changedPaths, []);
   } finally {
     if (jobId) queue.cancel(jobId);
     clearScheduledLibraryScan();
@@ -379,14 +344,7 @@ test("stale targeted scans retain in-flight and pending paths", () => {
     });
 
     assert.deepEqual(
-      requireValue(
-        dbOps.getJSONSetting<{
-          jobId?: number;
-          includeLidarr?: boolean;
-          changedPaths: string[];
-          fullRescanPending?: boolean;
-        }>("pendingLibraryScanJob"),
-      ).changedPaths,
+      requireValue(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)).changedPaths,
       [
         path.resolve("/data/music/in-flight.flac"),
         path.resolve("/data/music/pending.flac"),
@@ -408,18 +366,10 @@ test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
     jobId = scheduleLibraryScan({ includeLidarr: false });
     dbOps.setJSONSetting("pendingLibraryScanJob", { includeLidarr: true });
     assert.equal(claimScheduledLibraryScanJob(jobId), true);
-    assert.deepEqual(
-      dbOps.getJSONSetting<{
-        jobId?: number;
-        includeLidarr?: boolean;
-        changedPaths: string[];
-        fullRescanPending?: boolean;
-      }>("pendingLibraryScanJob"),
-      {
-        jobId,
-        includeLidarr: false,
-      },
-    );
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema), {
+      jobId,
+      includeLidarr: false,
+    });
   } finally {
     if (jobId) queue.cancel(jobId);
     clearScheduledLibraryScan();

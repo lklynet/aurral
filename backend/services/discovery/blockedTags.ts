@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import { genreKey } from "../musicGenres.ts";
 
@@ -7,10 +8,9 @@ const storageKey = (userId: UserId) => `user:${userId}:blockedTags`;
 
 export const getBlockedTags = (userId: UserId | null | undefined) => {
   if (userId == null) return [];
-  const stored = dbOps.getJSONSetting(storageKey(userId));
-  return Array.isArray(stored)
-    ? stored.filter((tag): tag is string => typeof tag === "string")
-    : [];
+  return (dbOps.getJSONSetting(storageKey(userId), v.array(v.unknown())) ?? []).filter(
+    (tag) => typeof tag === "string",
+  );
 };
 
 const saveBlockedTags = (userId: UserId, tags: string[]) => {

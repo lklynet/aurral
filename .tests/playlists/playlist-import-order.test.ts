@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { playlistTrack, requireFixture } from "./fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
@@ -815,8 +816,8 @@ test("download pipeline work is deferred while its playlist owner is suspended",
 test("flow operation tokens are stored separately for each playlist", () => {
   markLatestPlaylistOperationToken("flow:one", "first");
   markLatestPlaylistOperationToken("flow:two", "second");
-  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Aone"), "first");
-  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Atwo"), "second");
+  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Aone", v.string()), "first");
+  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Atwo", v.string()), "second");
 });
 
 test("deleting a track keeps remaining import order in config", async () => {

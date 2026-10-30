@@ -4,6 +4,8 @@ import type { StoredPlaylistWorker } from "../db/helpers/settings.ts";
 import type { dbHelpers as sqliteDbHelpers } from "./db-sqlite.ts";
 import { asAppError } from "../../lib/errors.ts";
 
+type JsonHelpers = Pick<typeof sqliteDbHelpers, "parseJSON" | "stringifyJSON">;
+
 export interface TableColumnRow {
   name: string;
   pk: number;
@@ -25,10 +27,7 @@ export function getSchemaVersion(db: Database.Database) {
   return Number(row?.value || 1);
 }
 
-export function initializeSchemaOnStartup(
-  db: Database.Database,
-  dbHelpers: typeof sqliteDbHelpers,
-) {
+export function initializeSchemaOnStartup(db: Database.Database, dbHelpers: JsonHelpers) {
   const currentVersion = getSchemaVersion(db);
   if (currentVersion >= TARGET_SCHEMA_VERSION) {
     return { migrated: false, schemaVersion: currentVersion };
@@ -114,7 +113,7 @@ function buildPlaylistWorkerSettings(
   };
 }
 
-function backfillSlskdSettings(db: Database.Database, dbHelpers: typeof sqliteDbHelpers) {
+function backfillSlskdSettings(db: Database.Database, dbHelpers: JsonHelpers) {
   const getSettingStmt = db.prepare<[string], { value: string }>(
     "SELECT value FROM settings WHERE key = ?",
   );
@@ -145,7 +144,7 @@ function backfillSlskdSettings(db: Database.Database, dbHelpers: typeof sqliteDb
   );
 }
 
-export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: typeof sqliteDbHelpers) {
+export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: JsonHelpers) {
   const getSettingStmt = db.prepare<[string], { value: string }>(
     "SELECT value FROM settings WHERE key = ?",
   );

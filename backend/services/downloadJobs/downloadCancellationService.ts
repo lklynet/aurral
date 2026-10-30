@@ -1,11 +1,16 @@
+import * as v from "valibot";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import { getHonkerQueueByName, listHonkerJobs, type HonkerPayload } from "../honkerDb.ts";
-import type { JsonValue } from "@russellthehippo/honker-node";
+import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.ts";
 import type { WeeklyFlowDownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
-import { downloadTracker, type DownloadJob, type DownloadTracker } from "./downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type DownloadTracker,
+  type JobFields,
+} from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -24,14 +29,32 @@ import {
 
 const PIPELINE_QUEUE = "slskd-pipeline";
 
-type CancellationWork = { jobs: DownloadJob[]; payloads: (HonkerPayload | null)[] };
+const cancellationWorkSchema = v.looseObject({
+  jobs: v.array(
+    v.looseObject({
+      id: v.string(),
+      remoteUsername: v.nullish(v.string()),
+      slskdSearchId: v.nullish(v.string()),
+      downloadSource: v.nullish(v.string()),
+      downloadClient: v.nullish(v.string()),
+      downloadClientId: v.nullish(v.string()),
+    }),
+  ),
+  payloads: v.array(v.nullable(v.record(v.string(), v.unknown()))),
+});
+
+type CancellationJob = Pick<DownloadJob, "id"> &
+  JobFields<
+    "remoteUsername" | "slskdSearchId" | "downloadSource" | "downloadClient" | "downloadClientId"
+  >;
+type CancellationPayload = Record<string, unknown> | null;
 
 function captureCancellationWork(
   key: string,
-  jobs: DownloadJob[],
-  payloads: (HonkerPayload | null)[],
+  jobs: CancellationJob[],
+  payloads: CancellationPayload[],
 ) {
-  const previous = dbOps.getJSONSetting<CancellationWork>(key) || {
+  const previous = dbOps.getJSONSetting(key, cancellationWorkSchema) || {
     jobs: [],
     payloads: [],
   };
@@ -44,15 +67,15 @@ function captureCancellationWork(
   });
 }
 
-function readCancellationWork(jobs: DownloadJob[], playlistId: string | null = null) {
+function readCancellationWork(jobs: CancellationJob[], playlistId: string | null = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
   return keys
-    .map((key) => dbOps.getJSONSetting<CancellationWork>(key))
-    .filter((work): work is CancellationWork => Boolean(work));
+    .map((key) => dbOps.getJSONSetting(key, cancellationWorkSchema))
+    .filter((work) => work !== null);
 }
 
-function clearCancellationWork(jobs: DownloadJob[], playlistId: string | null = null) {
+function clearCancellationWork(jobs: CancellationJob[], playlistId: string | null = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
   for (const key of keys) db.prepare("DELETE FROM settings WHERE key = ?").run(key);
@@ -63,7 +86,7 @@ function normalizeId(value: unknown) {
 }
 
 function payloadBelongsToPlaylist(
-  payload: HonkerPayload | null,
+  payload: CancellationPayload,
   playlistId: string,
   jobIds: Set<string>,
 ) {
@@ -71,12 +94,12 @@ function payloadBelongsToPlaylist(
   return normalizeId(payload?.playlistId) === playlistId || (safeJobId && jobIds.has(safeJobId));
 }
 
-function jsonObject(value: JsonValue | undefined): HonkerPayload | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+function jsonObject(value: unknown) {
+  return v.is(v.record(v.string(), v.unknown()), value) ? value : undefined;
 }
 
-function readTransferEntries(payload: HonkerPayload | null) {
-  const entries: JsonValue[] = [];
+function readTransferEntries(payload: CancellationPayload) {
+  const entries: unknown[] = [];
   if (payload?.legacyTransfer) entries.push(payload.legacyTransfer);
   if (Array.isArray(payload?.albumTransfers)) entries.push(...payload.albumTransfers);
   const batch = jsonObject(payload?.batch);
@@ -86,15 +109,15 @@ function readTransferEntries(payload: HonkerPayload | null) {
   return entries;
 }
 
-function readTransferId(transfer: JsonValue) {
+function readTransferId(transfer: unknown) {
   const entry = jsonObject(transfer);
   return normalizeId(entry?.id || entry?.Id || entry?.transferId || entry?.TransferId);
 }
 
 function readTransferUsername(
-  transfer: JsonValue,
-  payload: HonkerPayload | null,
-  job: DownloadJob | null,
+  transfer: unknown,
+  payload: CancellationPayload,
+  job: CancellationJob | null,
 ) {
   const entry = jsonObject(transfer);
   const candidates = payload?.candidates;
@@ -110,7 +133,7 @@ function readTransferUsername(
   );
 }
 
-function readSearchIds(payload: HonkerPayload | null, job: DownloadJob | null) {
+function readSearchIds(payload: CancellationPayload, job: CancellationJob | null) {
   return [
     ...(Array.isArray(payload?.searchIds) ? payload.searchIds : []),
     payload?.searchId,
@@ -120,7 +143,7 @@ function readSearchIds(payload: HonkerPayload | null, job: DownloadJob | null) {
     .filter(Boolean);
 }
 
-function getJobById(jobs: DownloadJob[], jobId: unknown) {
+function getJobById(jobs: CancellationJob[], jobId: unknown) {
   const safeJobId = normalizeId(jobId);
   return jobs.find((job) => normalizeId(job?.id) === safeJobId) || null;
 }
@@ -151,8 +174,8 @@ function throwProviderCleanupFailures(provider: string, failures: unknown[]) {
 }
 
 async function cancelSlskdWork(
-  payloads: (HonkerPayload | null)[],
-  jobs: DownloadJob[],
+  payloads: CancellationPayload[],
+  jobs: CancellationJob[],
   providerWork: WeeklyFlowDownloadProviderWorkRow[] = [],
 ) {
   const client = getDownloadClient("slskd");
@@ -221,7 +244,7 @@ async function cancelSlskdWork(
   return { searches: searchIds.size, transfers: transfers.size };
 }
 
-async function cancelDeemixWork(payloads: (HonkerPayload | null)[], jobs: DownloadJob[]) {
+async function cancelDeemixWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
   const client = getDownloadClient("deemix");
   const queueIds = new Set<string>();
   const failures: unknown[] = [];
@@ -262,8 +285,8 @@ async function cancelDeemixWork(payloads: (HonkerPayload | null)[], jobs: Downlo
 async function cancelUsenetWork(
   clientKey: "nzbget" | "sabnzbd",
   label: string,
-  payloads: (HonkerPayload | null)[],
-  jobs: DownloadJob[],
+  payloads: CancellationPayload[],
+  jobs: CancellationJob[],
 ) {
   const client = getDownloadClient(clientKey);
   const ids = new Set(
@@ -310,7 +333,7 @@ async function cancelUsenetWork(
   return { historyItems: ids.size };
 }
 
-async function cancelYtdlpWork(payloads: (HonkerPayload | null)[], jobs: DownloadJob[]) {
+async function cancelYtdlpWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
   const client = getDownloadClient("ytdlp");
   const ids = new Set(
     jobs
@@ -344,8 +367,8 @@ function fulfilledValue<T>(result: PromiseSettledResult<T>) {
 }
 
 async function cancelProviderWork(
-  payloads: (HonkerPayload | null)[],
-  jobs: DownloadJob[],
+  payloads: CancellationPayload[],
+  jobs: CancellationJob[],
   providerWork: WeeklyFlowDownloadProviderWorkRow[] = [],
 ) {
   const results = await Promise.allSettled([

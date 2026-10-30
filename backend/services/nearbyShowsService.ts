@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { BlockList, isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
 import axios from "../../lib/axiosFetch.ts";
@@ -45,17 +46,24 @@ type ArtistInput = { artistName?: unknown; name?: unknown };
 
 type ArtistSource = "library" | "recommended" | "trending";
 
-type NearbyLocationChoice = { zipCode: string; countryCode: string; ip: string };
+const nearbyLocationSchema = v.looseObject({
+  zipCode: v.string(),
+  countryCode: v.string(),
+  ip: v.string(),
+});
+
+type NearbyLocationChoice = v.InferOutput<typeof nearbyLocationSchema>;
 
 const nearbyLocationKey = (userId: number) => `user:${userId}:nearbyLocation`;
 
 export const rememberNearbyLocation = (userId: number, choice: NearbyLocationChoice) => {
   const key = nearbyLocationKey(userId);
-  if (!isDeepStrictEqual(dbOps.getJSONSetting(key), choice)) dbOps.setJSONSetting(key, choice);
+  if (!isDeepStrictEqual(dbOps.getJSONSetting(key, v.unknown()), choice))
+    dbOps.setJSONSetting(key, choice);
 };
 
 export const getRememberedNearbyLocation = (userId: number) =>
-  dbOps.getJSONSetting<NearbyLocationChoice>(nearbyLocationKey(userId));
+  dbOps.getJSONSetting(nearbyLocationKey(userId), nearbyLocationSchema);
 
 const ticketmasterEventCache = createCache(15 * 60);
 const ipLocationCache = createCache(30 * 60);

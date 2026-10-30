@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import path from "node:path";
 import type { LidarrClient } from "./lidarrClient.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -70,7 +71,7 @@ const uniqueResolvedPaths = (paths: unknown) => [
 ];
 
 export function readOnlyFolderPaths() {
-  return uniqueResolvedPaths(dbOps.getJSONSetting(READ_ONLY_FOLDERS_SETTING));
+  return uniqueResolvedPaths(dbOps.getJSONSetting(READ_ONLY_FOLDERS_SETTING, v.array(v.string())));
 }
 
 export function saveReadOnlyFolderPaths(paths: unknown) {

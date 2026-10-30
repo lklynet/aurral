@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { enqueuePlaylistMbidEnrichmentJob } from "./honkerDb.ts";
 import {
   downloadTracker,
@@ -265,7 +266,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
 } = {}) {
   const shouldReconcileArtistMbids =
     reconcileArtistMbids === true &&
-    Number(dbOps.getJSONSetting<number>(ARTIST_MBID_RECONCILIATION_KEY) || 0) <
+    (dbOps.getJSONSetting(ARTIST_MBID_RECONCILIATION_KEY, v.number()) ?? 0) <
       ARTIST_MBID_RECONCILIATION_VERSION;
   const jobIds = [];
   for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {

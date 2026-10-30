@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import crypto from "node:crypto";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
@@ -5,15 +6,8 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 
 const SETTINGS_KEY = "scrobbleConnections";
 type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
-type StoredConnection = {
-  token: string;
-  connectionRevision: string;
-  displayName: string | null;
-  baseUrl: string | null;
-  connectedAt: number;
-};
-type StoredConnections = Partial<Record<ScrobbleProvider, StoredConnection>>;
-type StoredStore = Record<string, StoredConnections>;
+const storeSchema = v.record(v.string(), v.record(v.string(), v.unknown()));
+const storedConnectionSchema = v.looseObject({ token: v.string() });
 
 type PublicConnectionStatus = {
   connected: boolean;
@@ -47,12 +41,10 @@ const getEncryptionKey = () => {
   return key;
 };
 
-const readStore = (): StoredStore => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
+const readStore = () =>
+  dbHelpers.readJSON(storeSchema, getSettingStmt.get(SETTINGS_KEY)?.value, SETTINGS_KEY) ?? {};
 
-const writeStore = (store: StoredStore) =>
+const writeStore = (store: v.InferOutput<typeof storeSchema>) =>
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 const userKey = (userId: number | undefined) => String(Math.trunc(Number(userId)));
 const encryptToken = (token: string) => encryptWithKey(String(token || ""), getEncryptionKey());
@@ -60,8 +52,8 @@ const decryptToken = (token: string) => decryptWithKey(token, getEncryptionKey()
 
 export const getScrobbleEncryptionKey = getEncryptionKey;
 
-const normalize = (provider: ScrobbleProvider, raw: StoredConnection | undefined) => {
-  if (!PROVIDERS.has(provider) || !raw || typeof raw !== "object") return null;
+const normalize = (provider: ScrobbleProvider, raw: unknown) => {
+  if (!PROVIDERS.has(provider) || !v.is(storedConnectionSchema, raw)) return null;
   const token = decryptToken(raw.token);
   if (!token) return null;
   return {
@@ -81,7 +73,7 @@ export const scrobbleConnectionStore = {
   },
 
   getConnections(userId: number) {
-    const raw: StoredConnections = readStore()[userKey(userId)] || {};
+    const raw = readStore()[userKey(userId)] || {};
     return Object.fromEntries(
       [...PROVIDERS]
         .map((provider): [ScrobbleProvider, NonNullable<ReturnType<typeof normalize>>] | null => {

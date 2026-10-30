@@ -1,18 +1,12 @@
+import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import { normalizeTextList } from "./helpers.ts";
 import { buildArtistMatchKeySet, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
 
-interface RawDiscoveryFeedbackEntry {
-  id?: unknown;
-  action?: unknown;
-  artistId?: unknown;
-  artistName?: unknown;
-  sourceContext?: unknown;
-  tagContext?: unknown;
-  seedContext?: unknown;
-  createdAt?: string | number | null;
-  expiresAt?: string | number | null;
-}
+const feedbackEntrySchema = v.looseObject({
+  createdAt: v.nullish(v.union([v.string(), v.number()])),
+  expiresAt: v.nullish(v.union([v.string(), v.number()])),
+});
 
 type DiscoveryFeedbackUserId = string | number | null;
 
@@ -38,11 +32,9 @@ export interface DiscoveryFeedbackEntry {
   expiresAt: string | number | null;
 }
 
-const normalizeFeedbackList = (
-  value: RawDiscoveryFeedbackEntry[] | null | undefined,
-): DiscoveryFeedbackEntry[] =>
-  (Array.isArray(value) ? value : [])
-    .filter((entry) => entry && typeof entry === "object")
+const normalizeFeedbackList = (value: unknown[]): DiscoveryFeedbackEntry[] =>
+  value
+    .filter((entry) => v.is(feedbackEntrySchema, entry))
     .map((entry) => ({
       id: String(entry.id || "").trim() || null,
       artistId: String(entry.artistId || "").trim() || null,
@@ -63,7 +55,7 @@ const normalizeFeedbackList = (
 
 export const getDiscoveryFeedback = (userId: DiscoveryFeedbackUserId = "global") =>
   normalizeFeedbackList(
-    dbOps.getJSONSetting<RawDiscoveryFeedbackEntry[]>(getDiscoveryFeedbackKey(userId)),
+    dbOps.getJSONSetting(getDiscoveryFeedbackKey(userId), v.array(v.unknown())) ?? [],
   );
 
 export const getBlockedArtistKeys = (
@@ -154,10 +146,7 @@ const feedbackTime = (entry: DiscoveryFeedbackEntry | undefined) => {
 
 export const restoreDiscoveryFeedback = (
   userId: DiscoveryFeedbackUserId = "global",
-  {
-    removeIds = [],
-    entries = [],
-  }: { removeIds?: unknown[]; entries?: RawDiscoveryFeedbackEntry[] } = {},
+  { removeIds = [], entries = [] }: { removeIds?: unknown[]; entries?: unknown[] } = {},
 ) => {
   const removing = new Set<string | null>(
     (Array.isArray(removeIds) ? removeIds : [])

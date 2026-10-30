@@ -10,6 +10,7 @@ import { getHonkerDb, getLibraryScanQueue } from "../../backend/services/honkerD
 import {
   beginLibraryScanJob,
   onLibraryScanSuccess,
+  scanRegistrySchema,
   scheduleLibraryScan,
 } from "../../backend/services/libraryScanWorker.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
@@ -39,14 +40,7 @@ test("an exited scan process releases its claimed job for retry", async (t: impo
   const recovered = queue.getJob(jobId);
   assert.equal(recovered?.state, "pending");
   assert.equal(recovered?.worker_id, null);
-  const registry = dbOps.getJSONSetting<{
-    jobId: number;
-    includeLidarr: boolean;
-    force?: boolean;
-    changedPaths?: string[];
-    inFlightActive?: boolean;
-    inFlightPaths?: string[];
-  }>("pendingLibraryScanJob");
+  const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.deepEqual(registry?.changedPaths, [pendingPath, changedPath]);
   assert.equal(registry?.inFlightActive, undefined);
 });
@@ -70,14 +64,7 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   });
 
   await recoverExitedWorkerJobs("library", pid, { warn() {}, error() {}, info() {} });
-  const registry = dbOps.getJSONSetting<{
-    jobId: number;
-    includeLidarr: boolean;
-    force?: boolean;
-    changedPaths?: string[];
-    inFlightActive?: boolean;
-    inFlightPaths?: string[];
-  }>("pendingLibraryScanJob");
+  const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.ok(registry != null);
   assert.equal(registry.jobId, jobId);
   assert.ok(registry != null);
@@ -158,29 +145,14 @@ test("scan start and completion preserve requests received while a scan is activ
     const scan = beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
     assert.deepEqual(scan.changedPaths, [inFlightPath]);
     assert.deepEqual(
-      requireFixture(
-        dbOps.getJSONSetting<{
-          jobId: number;
-          includeLidarr: boolean;
-          force?: boolean;
-          changedPaths?: string[];
-          inFlightActive?: boolean;
-          inFlightPaths?: string[];
-        }>("pendingLibraryScanJob"),
-      ).inFlightPaths,
+      requireFixture(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema))
+        .inFlightPaths,
       [inFlightPath],
     );
     assert.equal(scheduleLibraryScan({ includeLidarr: true, changedPaths: [pendingPath] }), jobId);
 
     onLibraryScanSuccess({}, { id: jobId });
-    const registry = dbOps.getJSONSetting<{
-      jobId: number;
-      includeLidarr: boolean;
-      force?: boolean;
-      changedPaths?: string[];
-      inFlightActive?: boolean;
-      inFlightPaths?: string[];
-    }>("pendingLibraryScanJob");
+    const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
     assert.ok(registry != null);
     nextJobId = registry.jobId;
     assert.notEqual(nextJobId, jobId);
@@ -207,14 +179,7 @@ test("scan completion schedules a full rescan requested while the scan was activ
     beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
     assert.equal(scheduleLibraryScan({ force: true, includeLidarr: true }), jobId);
     onLibraryScanSuccess({}, { id: jobId });
-    const registry = dbOps.getJSONSetting<{
-      jobId: number;
-      includeLidarr: boolean;
-      force?: boolean;
-      changedPaths?: string[];
-      inFlightActive?: boolean;
-      inFlightPaths?: string[];
-    }>("pendingLibraryScanJob");
+    const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
     assert.ok(registry != null);
     nextJobId = registry.jobId;
     assert.notEqual(nextJobId, jobId);

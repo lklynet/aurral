@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 
@@ -38,9 +39,9 @@ test("the old /api/weekly-flow prefix still redirects and records its use", asyn
   assert.equal(response.status, 308);
   assert.equal(response.headers.get("location"), "/api/playlists/status?limit=1");
   dbOps.invalidateSettingsCache();
-  const lastSeenAt =
-    dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>("deprecatedUsage")?.[
-      "weekly-flow-api"
-    ]?.lastSeenAt;
+  const lastSeenAt = dbOps.getJSONSetting(
+    "deprecatedUsage",
+    v.record(v.string(), v.looseObject({ lastSeenAt: v.number() })),
+  )?.["weekly-flow-api"]?.lastSeenAt;
   assert.ok(lastSeenAt != null && lastSeenAt > 0);
 });

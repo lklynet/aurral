@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "./settings.ts";
@@ -107,10 +108,8 @@ function decryptSubsonicPassword(value: string | null | undefined) {
 }
 
 function parseStoredPermissions(raw: string | null | undefined): UserPermissions {
-  const stored = dbHelpers.parseJSON(raw);
-  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
-    return { ...DEFAULT_PERMISSIONS };
-  }
+  const stored = dbHelpers.readJSON(v.record(v.string(), v.unknown()), raw, "users.permissions");
+  if (!stored) return { ...DEFAULT_PERMISSIONS };
   return Object.fromEntries(Object.entries(stored).map(([key, value]) => [key, value === true]));
 }
 
