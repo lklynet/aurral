@@ -1192,6 +1192,7 @@ test("an ingest whose saved options Aurral can't read stops without filing anyth
     "UPDATE library_file_operations SET options_json = json_set(options_json, '$.mode', 'shuffle') WHERE id = ?",
   ).run(id);
 
+  await assert.rejects(operations.startCleanup(), { code: "LIBRARY_FILE_OPERATION_ACTIVE" });
   assert.deepEqual(await operations.runLibraryFileOperation(id), { done: true });
 
   const shown = operations.describeLibraryFileOperation(getLatestLibraryFileOperation());

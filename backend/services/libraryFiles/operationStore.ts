@@ -127,7 +127,7 @@ export function getLibraryFileOperationStatus(id: string | number) {
 }
 
 export function getActiveLibraryFileOperation() {
-  return toOperation(activeOperationRow());
+  return toStatus(activeOperationRow());
 }
 
 export function getLatestLibraryFileOperation() {
@@ -143,9 +143,9 @@ export function getLatestLibraryFileOperation() {
 
 export class OperationConflictError extends Error {
   declare code: string;
-  declare operation: LibraryFileOperation;
+  declare operation: LibraryFileStatus;
 
-  constructor(operation: LibraryFileOperation) {
+  constructor(operation: LibraryFileStatus) {
     super("Another library file operation is in progress. Finish or cancel it first.");
     this.code = "LIBRARY_FILE_OPERATION_ACTIVE";
     this.operation = operation;
