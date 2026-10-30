@@ -45,7 +45,7 @@ const [
   { dbOps },
   { scanMusicRoot },
   operations,
-  { getLibraryFileOperation },
+  { getLibraryFileOperation, getLatestLibraryFileOperation },
   { settleIngestedMusic, checkIngestSource },
   { resolveDownloadRoot },
   { clearScheduledLibraryScan, scanRegistrySchema },
@@ -1194,13 +1194,11 @@ test("an ingest whose saved options Aurral can't read stops without filing anyth
 
   assert.deepEqual(await operations.runLibraryFileOperation(id), { done: true });
 
-  const row = db
-    .prepare<[number], Pick<Rows.LibraryFileOperationsRow, "status" | "error">>(
-      "SELECT status, error FROM library_file_operations WHERE id = ?",
-    )
-    .get(id);
-  assert.equal(row?.status, "failed");
-  assert.match(requireValue(row?.error), /can't read/);
+  const shown = operations.describeLibraryFileOperation(getLatestLibraryFileOperation());
+  assert.equal(shown?.id, id);
+  assert.equal(shown?.kind, "ingest");
+  assert.equal(shown?.status, "failed");
+  assert.match(requireValue(shown?.error), /can't read/);
   assert.equal(await exists(track), true);
   assert.equal(
     await exists(path.join(root, "Unread Artist", "Unread Album", "01 - Only.flac")),

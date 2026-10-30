@@ -9,6 +9,8 @@ const UNREADABLE_OPERATION =
 export const UNREADABLE_ITEM =
   "Aurral can't read what it planned for this file, so it left the file as it is. Run it again.";
 
+const operationKindSchema = v.picklist(["ingest", "cleanup"]);
+
 const ingestOptionsSchema = v.looseObject({
   sourcePath: v.string(),
   mode: v.picklist(["move", "copy", "hardlink"]),
@@ -50,25 +52,39 @@ export type LibraryFileOperation = NonNullable<ReturnType<typeof toOperation>>;
 export type IngestOperation = Extract<LibraryFileOperation, { kind: "ingest" }>;
 export type CleanupOperation = Extract<LibraryFileOperation, { kind: "cleanup" }>;
 
+const operationFields = (row: LibraryFileOperationsRow) => ({
+  id: row.id,
+  status: row.status,
+  error: row.error || null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  finishedAt: row.finished_at || null,
+});
+
 const toOperation = (row: LibraryFileOperationsRow | undefined) => {
   if (!row) return undefined;
   const source = `library file operation ${row.id}`;
   const summary = dbHelpers.readJSON(summarySchema, row.summary_json || "{}", source);
   if (!summary) return undefined;
-  const operation = {
-    id: row.id,
-    status: row.status,
-    summary,
-    error: row.error || null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    finishedAt: row.finished_at || null,
-  };
+  const operation = { ...operationFields(row), summary };
   if (row.kind === "cleanup") return { ...operation, kind: "cleanup" as const, options: {} };
   if (row.kind !== "ingest") return undefined;
   const options = dbHelpers.readJSON(ingestOptionsSchema, row.options_json, source);
   return options ? { ...operation, kind: "ingest" as const, options } : undefined;
 };
+
+const toStatus = (row: LibraryFileOperationsRow | undefined) => {
+  const operation = toOperation(row);
+  if (operation || !row || !v.is(operationKindSchema, row.kind)) return operation;
+  return {
+    ...operationFields(row),
+    summary: v.parse(summarySchema, {}),
+    kind: row.kind,
+    options: null,
+  };
+};
+
+export type LibraryFileStatus = NonNullable<ReturnType<typeof toStatus>>;
 
 export const readItemDetails = (text: string | null) =>
   dbHelpers.readJSON(itemDetailsSchema, text ?? "{}", "library file operation item");
@@ -86,38 +102,42 @@ const toItem = (row: LibraryFileOperationItemsRow) => {
   };
 };
 
+const operationRow = (id: string | number) =>
+  db
+    .prepare<[number], LibraryFileOperationsRow>(
+      "SELECT * FROM library_file_operations WHERE id = ?",
+    )
+    .get(Number(id));
+
+const activeOperationRow = () =>
+  db
+    .prepare<string[], LibraryFileOperationsRow>(
+      `SELECT * FROM library_file_operations
+     WHERE status IN (${ACTIVE_OPERATION_STATUSES.map(() => "?").join(",")})
+     ORDER BY id DESC LIMIT 1`,
+    )
+    .get(...ACTIVE_OPERATION_STATUSES);
+
 export function getLibraryFileOperation(id: string | number) {
-  return toOperation(
-    db
-      .prepare<[number], LibraryFileOperationsRow>(
-        "SELECT * FROM library_file_operations WHERE id = ?",
-      )
-      .get(Number(id)),
-  );
+  return toOperation(operationRow(id));
+}
+
+export function getLibraryFileOperationStatus(id: string | number) {
+  return toStatus(operationRow(id));
 }
 
 export function getActiveLibraryFileOperation() {
-  return toOperation(
-    db
-      .prepare<string[], LibraryFileOperationsRow>(
-        `SELECT * FROM library_file_operations
-     WHERE status IN (${ACTIVE_OPERATION_STATUSES.map(() => "?").join(",")})
-     ORDER BY id DESC LIMIT 1`,
-      )
-      .get(...ACTIVE_OPERATION_STATUSES),
-  );
+  return toOperation(activeOperationRow());
 }
 
 export function getLatestLibraryFileOperation() {
-  return (
-    getActiveLibraryFileOperation() ||
-    toOperation(
+  return toStatus(
+    activeOperationRow() ||
       db
         .prepare<[], LibraryFileOperationsRow>(
           "SELECT * FROM library_file_operations ORDER BY id DESC LIMIT 1",
         )
         .get(),
-    )
   );
 }
 

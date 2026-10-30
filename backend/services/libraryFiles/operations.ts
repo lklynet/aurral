@@ -21,6 +21,7 @@ import {
   failUnreadableLibraryFileOperation,
   getLibraryFileOperation,
   type LibraryFileOperation,
+  type LibraryFileStatus,
   listLibraryFileOperationItems,
   listUnfinishedLibraryFileOperationIds,
   reopenToRemoveDuplicates,
@@ -83,10 +84,11 @@ const UNFINISHED_REASONS = {
 // A Move ingest keeps sources the Library has in another file, and Clean up
 // keeps the extra copies of a track, until the user asks to remove them.
 const removesDuplicates = (
-  operation: LibraryFileOperation | undefined,
+  operation: LibraryFileStatus | undefined,
 ): operation is LibraryFileOperation =>
-  operation?.kind === "cleanup" ||
-  (operation?.kind === "ingest" && operation.options.mode === "move");
+  operation?.options != null &&
+  (operation.kind === "cleanup" ||
+    (operation.kind === "ingest" && operation.options.mode === "move"));
 
 export async function removeDuplicateFiles(id: number) {
   const operation = getLibraryFileOperation(id);
@@ -234,7 +236,7 @@ const relative = (root: string, filePath: string | null | undefined) => {
   return value && !value.startsWith("..") && !path.isAbsolute(value) ? value : filePath;
 };
 
-export function describeLibraryFileOperation(operation: LibraryFileOperation | undefined) {
+export function describeLibraryFileOperation(operation: LibraryFileStatus | undefined) {
   if (!operation) return null;
   const counts = countLibraryFileOperationItems(operation.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
@@ -259,11 +261,11 @@ export function describeLibraryFileOperation(operation: LibraryFileOperation | u
 }
 
 export function describeLibraryFileOperationItems(
-  operation: LibraryFileOperation,
+  operation: LibraryFileStatus,
   options: Parameters<typeof listLibraryFileOperationItems>[1],
 ) {
   const downloadRoot = path.resolve(resolveDownloadRoot());
-  const sourceRoot = operation.kind === "ingest" ? operation.options.sourcePath : downloadRoot;
+  const sourceRoot = (operation.kind === "ingest" && operation.options?.sourcePath) || downloadRoot;
   return listLibraryFileOperationItems(operation.id, options).map((item) => ({
     position: item.position,
     status: item.status,

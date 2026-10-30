@@ -22,6 +22,7 @@ import {
 import {
   getLatestLibraryFileOperation,
   getLibraryFileOperation,
+  getLibraryFileOperationStatus,
   OperationConflictError,
 } from "../../../services/libraryFiles/operationStore.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -154,7 +155,7 @@ export default new Hono<AppEnv>()
     }
   })
   .get("/files/operations/:id", requireAuth, requireAdmin, noCache, (c) => {
-    const operation = getLibraryFileOperation(c.req.param("id"));
+    const operation = getLibraryFileOperationStatus(c.req.param("id"));
     if (!operation) return operationNotFound(c);
     return c.json({ operation: describeLibraryFileOperation(operation) }, 200);
   })
@@ -165,7 +166,7 @@ export default new Hono<AppEnv>()
     noCache,
     validate("query", itemsQuery),
     (c) => {
-      const operation = getLibraryFileOperation(c.req.param("id"));
+      const operation = getLibraryFileOperationStatus(c.req.param("id"));
       if (!operation) return operationNotFound(c);
       const query = c.req.valid("query");
       const statuses = String(query.status || "")
@@ -185,11 +186,11 @@ export default new Hono<AppEnv>()
     },
   )
   .post("/files/operations/:id/cancel", requireAuth, requireAdmin, (c) => {
-    const operation = getLibraryFileOperation(c.req.param("id"));
+    const operation = getLibraryFileOperationStatus(c.req.param("id"));
     if (!operation) return operationNotFound(c);
     cancelLibraryFileOperation(operation.id);
     return c.json(
-      { operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) },
+      { operation: describeLibraryFileOperation(getLibraryFileOperationStatus(operation.id)) },
       200,
     );
   })

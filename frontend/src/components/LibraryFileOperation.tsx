@@ -46,11 +46,11 @@ type FileOperationBase = {
 type FileOperation =
   | (FileOperationBase & {
       kind: "ingest";
-      options: { mode: "move" | "copy" | "hardlink" };
+      options: { mode: "move" | "copy" | "hardlink" } | null;
     })
   | (FileOperationBase & {
       kind: "cleanup";
-      options: { mode?: undefined };
+      options: { mode?: undefined } | null;
     });
 
 type LibraryFileOperationItem = {
@@ -114,7 +114,7 @@ function describeRunning(operation: FileOperation) {
   if (operation.summary?.removingSources)
     return operation.kind === "ingest" ? "Removing source files" : "Removing duplicates";
   if (operation.kind !== "ingest") return "Cleaning up";
-  return RUNNING[operation.options?.mode] || "Filing files";
+  return (operation.options && RUNNING[operation.options.mode]) || "Filing files";
 }
 
 function describeStatus(operation: FileOperation) {
