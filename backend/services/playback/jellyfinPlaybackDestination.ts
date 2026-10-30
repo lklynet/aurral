@@ -619,7 +619,7 @@ export class JellyfinPlaybackDestination {
     ) {
       logger.warn(
         "jellyfin",
-        "Changed folder is outside every Jellyfin music library; reporting all music libraries. Add a path mapping if Jellyfin sees it at another path.",
+        "Changed folder is outside every Jellyfin music library; reporting all music libraries. Add the folder to a Jellyfin music library, or add a path mapping if Jellyfin sees it at another path.",
         unmatched,
       );
     }

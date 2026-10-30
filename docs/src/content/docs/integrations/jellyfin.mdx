@@ -5,16 +5,18 @@ description: Publish Aurral flows and static playlists to Jellyfin.
 
 Jellyfin is optional. Aurral publishes its playlists into an existing Jellyfin music library through the Jellyfin API. It does not create a Jellyfin library or start playback.
 
+A Jellyfin playlist can only hold tracks from a Jellyfin library. Aurral downloads playlist and flow tracks into its Downloads Folder, so that folder must be inside a Jellyfin music library. It can be its own library, or an extra folder in your existing music library. You do not need to move your music.
+
 ## Setup
 
-1. In Jellyfin, create an API key that can read the music library.
-2. In Aurral, open **Settings > Playback > Jellyfin**.
-3. Enter the **Server URL** and the **API key**.
-4. Enter a **User ID**. Aurral uses this Jellyfin user for older playlists that have no Aurral owner.
-5. If Aurral and Jellyfin see the files at different paths, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **Jellyfin**.
-6. Select **Test connection**.
-
-Keep the same music library available to Aurral and Jellyfin, or add the path mapping.
+1. In Jellyfin, add the Aurral Downloads Folder to a music library and scan it.
+2. In Jellyfin, create an API key that can read the music library.
+3. In Aurral, open **Settings > Playback > Jellyfin**.
+4. Enter the **Server URL** and the **API key**.
+5. Enter a **User ID**. Aurral uses this Jellyfin user for older playlists that have no Aurral owner.
+6. If Aurral and Jellyfin see the files at different paths, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **Jellyfin**. A mapping only translates paths. It does not add a folder to a Jellyfin library.
+7. Select **Test connection**.
+8. Open **Settings > Status > Storage** and select **Run checks**. The **Jellyfin playback** section shows whether Jellyfin scans the Downloads Folder.
 
 ## How Aurral publishes playlists
 

@@ -10,6 +10,7 @@ import { lidarrClient } from "./lidarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { NavidromeClient, type NavidromeLibrary } from "./navidrome.ts";
 import { PlexClient } from "./plex.ts";
+import { JellyfinClient } from "./jellyfin.ts";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { normalizeSeparators } from "./textUtils.ts";
@@ -1065,6 +1066,49 @@ async function checkPlexSection() {
   return buildSection("plex", "Plex playback", steps);
 }
 
+async function checkJellyfinSection() {
+  const jellyfin = dbOps.getSettings()?.integrations?.jellyfin || {};
+  if (!jellyfin.url || !jellyfin.apiKey || !jellyfin.userId) {
+    return buildSection("jellyfin", "Jellyfin playback", [], {
+      skipped: true,
+      skipReason: "Jellyfin is not configured.",
+    });
+  }
+
+  const client = new JellyfinClient(jellyfin.url, jellyfin.apiKey, jellyfin.userId);
+  let locations: string[];
+  try {
+    locations = await client.getMusicLibraryLocations();
+  } catch (error) {
+    return buildSection("jellyfin", "Jellyfin playback", [
+      healthStep("libraries", "fail", "Jellyfin music libraries are readable", {
+        detail: formatServiceError(error, "Could not list Jellyfin libraries"),
+        fix: "Check the Jellyfin URL and API key in Settings → Playback.",
+      }),
+    ]);
+  }
+
+  const expectedPath = normalizeSeparators(
+    resolveRemotePath(resolveDownloadRoot(), getPathMappings("jellyfin")),
+  );
+  const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));
+  if (coveringLocation) {
+    return buildSection("jellyfin", "Jellyfin playback", [
+      healthStep("aurral-library", "pass", "Jellyfin scans the Aurral download folder", {
+        detail: `${expectedPath} (library: ${coveringLocation})`,
+      }),
+    ]);
+  }
+  return buildSection("jellyfin", "Jellyfin playback", [
+    healthStep("aurral-library", "warn", "Jellyfin scans the Aurral download folder", {
+      detail: `${expectedPath} is outside every Jellyfin music library${
+        locations.length ? `: ${formatLimitedList(locations)}` : ""
+      }`,
+      fix: "Add the Downloads Folder to a Jellyfin music library and scan it. Jellyfin playlists can only hold tracks in its libraries. If Jellyfin sees the folder at another path, also add a Jellyfin path mapping under Settings → Downloads → Remote path mappings.",
+    }),
+  ]);
+}
+
 async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
   const volumeSection = await checkSharedVolumeSection();
   const downloadsSection = await checkDownloadsSection();
@@ -1081,6 +1125,7 @@ async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
     await checkSabnzbdSection(),
     await checkNavidromeSection(),
     await checkPlexSection(),
+    await checkJellyfinSection(),
   ];
 
   const summary = summarizeResult(sections);

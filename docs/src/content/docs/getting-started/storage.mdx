@@ -276,6 +276,7 @@ A remote path mapping, a Navidrome library, and **Plex Aurral Library path** eac
 - **Only the Downloads Folder is mounted in Navidrome or Plex.** The server cannot play reused Lidarr tracks. Mount the Lidarr library too, or add it as a separate library.
 - **Aurral settings use a host path.** Aurral needs the container path, such as `/data/downloads/aurral`.
 - **A path mapping points to a folder that is not mounted.** A mapping cannot make a missing folder readable.
+- **The Downloads Folder is mounted in Jellyfin but is not in a Jellyfin music library.** Jellyfin playlists stay empty, because Jellyfin only adds tracks from its libraries. Add the folder to a music library. A path mapping cannot fix this.
 - **A Navidrome or Plex library uses a host path.** Each service must use the path inside its own container, such as `/data/downloads/aurral` or `/music/aurral`.
 
 For permissions and hardlinks, see the [Servarr Docker Guide](https://wiki.servarr.com/docker-guide).

@@ -511,3 +511,45 @@ test("POSIX library paths remain case-sensitive", async (t: import("vite-plus/te
 
   assert.equal(navidrome?.steps.find((step) => step.id === "aurral-library")?.status, "warn");
 });
+
+async function checkJellyfinWithLibraries(
+  t: import("vite-plus/test").TestContext,
+  locations: string[],
+) {
+  const server = await createMockHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify(
+        request.url === "/Library/VirtualFolders"
+          ? [{ Name: "Music", CollectionType: "music", Locations: locations }]
+          : {},
+      ),
+    );
+  });
+  t.onTestFinished(server.close);
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      jellyfin: { url: server.url, apiKey: "test-key", userId: "user-1" },
+    },
+    pathMappings: [
+      { source: "jellyfin", remote: "/downloads/aurral", local: resolveDownloadRoot() },
+    ],
+  });
+  const result = await runStorageHealthCheck({ force: true });
+  return result.sections.find((section) => section.id === "jellyfin");
+}
+
+test("Jellyfin health warns when the mapped Downloads Folder is in no Jellyfin library", async (t: import("vite-plus/test").TestContext) => {
+  const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music"]);
+
+  assert.equal(jellyfin?.status, "warn");
+  assert.match(String(jellyfin?.steps[0]?.detail), /\/downloads\/aurral is outside/);
+});
+
+test("Jellyfin health passes when a library holds the mapped Downloads Folder", async (t: import("vite-plus/test").TestContext) => {
+  const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music", "/downloads"]);
+
+  assert.equal(jellyfin?.status, "pass");
+});
