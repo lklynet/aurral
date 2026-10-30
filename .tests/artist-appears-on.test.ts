@@ -154,6 +154,39 @@ test("artist stream sends appearances without waiting for the discography", asyn
   await stream.waitFor(({ event }) => event === "complete");
 });
 
+test("appears-on skips a release Aurral can't read and still pages by what MusicBrainz sent", async (t) => {
+  const mbid = "55555555-5555-4555-8555-555555555555";
+  const offsets: (string | null)[] = [];
+  stubFetch(t, (url) => {
+    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
+    offsets.push(url.searchParams.get("offset"));
+    return json({
+      "release-count": 2,
+      "release-offset": 0,
+      releases: [
+        { id: "r-broken", title: "Broken", "release-group": { id: 7 } },
+        mbRelease({
+          id: "r-feature",
+          groupId: "rg-readable",
+          title: "Host Album",
+          date: "2010-09-09",
+          by: credit(GUEST_HOST, "Host Artist"),
+        }),
+      ],
+    });
+  });
+
+  const response = await postAppearsOn(mbid, { limit: 24 });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    response.body.items.map((item: { id: string }) => item.id),
+    ["rg-readable"],
+  );
+  assert.equal(response.body.hasMore, false);
+  assert.deepEqual(offsets, ["0"]);
+});
+
 test("a failed MusicBrainz lookup reports an error and the next request retries", async (t) => {
   const mbid = "66666666-6666-4666-8666-666666666666";
   let musicbrainzUp = false;

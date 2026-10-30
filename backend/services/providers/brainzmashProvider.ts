@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import axios from "../../../lib/axiosFetch.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -23,7 +24,8 @@ import {
 import { selectBestAlbumImage } from "../imageService.ts";
 import { coreAlbumTitle, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
-import { musicbrainzGet } from "../apiClients/musicbrainzHttp.ts";
+import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
+import { readMany } from "../integrationData.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -67,15 +69,12 @@ interface AlbumSearchEntry {
   images?: SearchImage[];
 }
 
-interface MusicBrainzReleaseGroupHit {
-  id?: string;
-  title?: string;
-  score?: number;
-  "primary-type"?: string | null;
-  "secondary-types"?: string[];
-  "first-release-date"?: string;
-  "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
-}
+const releaseGroupSearchSchema = v.looseObject({ "release-groups": v.array(v.unknown()) });
+
+const releaseGroupHitSchema = v.looseObject({
+  ...releaseGroupSchema.entries,
+  score: v.optional(v.number()),
+});
 
 interface AlbumSearchItem {
   id?: string;
@@ -790,7 +789,8 @@ export async function searchAlbums(
     const mbQuery = artistName
       ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
       : String(query || "").trim();
-    const data = await musicbrainzGet<{ "release-groups"?: MusicBrainzReleaseGroupHit[] }>(
+    const data = await musicbrainzGet(
+      releaseGroupSearchSchema,
       "/release-group",
       { query: mbQuery, limit: requestedLimit },
       { signal },
@@ -799,22 +799,27 @@ export async function searchAlbums(
       failure = error;
       return null;
     });
-    const source = Array.isArray(data?.["release-groups"]) ? data["release-groups"] : [];
-    items = source.map((entry, index) => {
-      const artistCredit = Array.isArray(entry?.["artist-credit"]) ? entry["artist-credit"] : [];
-      const primaryArtist = artistCredit[0]?.artist;
+    const hits = data
+      ? readMany(releaseGroupHitSchema, data["release-groups"], {
+          service: "MusicBrainz",
+          endpoint: "/release-group",
+        })
+      : [];
+    items = hits.map((entry, index) => {
+      const primaryCredit = entry["artist-credit"]?.[0];
       return {
-        id: entry?.id,
-        title: entry?.title || "Untitled Release",
-        artistName: artistCredit[0]?.name || primaryArtist?.name || artistName || "Unknown Artist",
-        artistId: primaryArtist?.id || null,
-        type: entry?.["primary-type"] || "Album",
-        secondaryTypes: Array.isArray(entry?.["secondary-types"]) ? entry["secondary-types"] : [],
-        releaseDate: entry?.["first-release-date"] || null,
+        id: entry.id,
+        title: entry.title || "Untitled Release",
+        artistName:
+          primaryCredit?.name || primaryCredit?.artist?.name || artistName || "Unknown Artist",
+        artistId: primaryCredit?.artist?.id || null,
+        type: entry["primary-type"] || "Album",
+        secondaryTypes: entry["secondary-types"] ?? [],
+        releaseDate: entry["first-release-date"] || null,
         coverUrl: null,
         images: [],
         inLibrary: false,
-        score: Number(entry?.score || Math.max(0, 100 - index)) || 0,
+        score: entry.score || Math.max(0, 100 - index),
         releaseStatuses: [],
       };
     });

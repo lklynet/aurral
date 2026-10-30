@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import createCache from "./simpleCache.ts";
 import {
   getArtistByMbid as getMetadataArtistByMbid,
@@ -5,7 +6,8 @@ import {
   listArtistAlbums as listMetadataArtistAlbums,
 } from "../providers/brainzmashProvider.ts";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
-import { musicbrainzGet } from "./musicbrainzHttp.ts";
+import { musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
+import { readMany } from "../integrationData.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -32,38 +34,30 @@ const SECONDARY_RELEASE_TYPES = [
   "Other",
 ];
 
-interface MusicBrainzArtistCredit {
-  name?: string;
-  artist?: { id?: string; name?: string };
-}
+const tagSearchSchema = v.looseObject({
+  count: v.optional(v.number()),
+  artists: v.array(v.unknown()),
+});
 
-interface MusicBrainzArtist {
-  id?: string;
-  name?: string;
-}
+const tagArtistSchema = v.looseObject({ id: v.string(), name: v.string() });
 
-interface MusicBrainzReleaseGroup {
-  id?: string;
-  title?: string;
-  "first-release-date"?: string;
-  "primary-type"?: string | null;
-  "secondary-types"?: string[];
-  "artist-credit"?: MusicBrainzArtistCredit[];
-}
+const releasePageSchema = v.looseObject({
+  "release-count": v.optional(v.number()),
+  releases: v.array(v.unknown()),
+});
 
-interface MusicBrainzTrackArtistRelease {
-  id?: string;
-  title?: string;
-  status?: string | null;
-  date?: string;
-  "artist-credit"?: MusicBrainzArtistCredit[];
-  "release-group"?: MusicBrainzReleaseGroup;
-}
+const releaseSchema = v.looseObject({
+  id: v.optional(v.string()),
+  title: v.optional(v.string()),
+  status: v.nullish(v.string()),
+  date: v.optional(v.string()),
+  "artist-credit": releaseGroupSchema.entries["artist-credit"],
+  "release-group": releaseGroupSchema,
+});
 
-interface MusicBrainzTrackArtistReleasesPage {
-  releases?: MusicBrainzTrackArtistRelease[];
-  "release-count"?: number;
-}
+type MusicBrainzArtistCredit = v.InferOutput<typeof releaseGroupSchema>["artist-credit"];
+
+type MusicBrainzRelease = v.InferOutput<typeof releaseSchema>;
 
 interface AppearsOnScanState {
   byReleaseGroupId: Map<string, ReturnType<typeof mapAppearsOnReleaseGroup>>;
@@ -122,13 +116,13 @@ export async function musicbrainzGetArtistReleaseGroups(
 }
 
 const artistCreditIncludesMbid = (
-  artistCredit: MusicBrainzArtistCredit[] | undefined,
+  artistCredit: MusicBrainzArtistCredit,
   mbid: string | null | undefined,
 ) => {
   const normalizedMbid = String(mbid || "")
     .trim()
     .toLowerCase();
-  if (!normalizedMbid || !Array.isArray(artistCredit)) return false;
+  if (!normalizedMbid || !artistCredit) return false;
   return artistCredit.some(
     (credit) =>
       String(credit?.artist?.id || "")
@@ -141,7 +135,8 @@ const browseMusicbrainzTrackArtistReleases = (
   mbid: string,
   { offset = 0, signal }: { offset?: number; signal?: AbortSignal } = {},
 ) =>
-  musicbrainzGet<MusicBrainzTrackArtistReleasesPage>(
+  musicbrainzGet(
+    releasePageSchema,
     "/release",
     {
       track_artist: mbid,
@@ -152,8 +147,8 @@ const browseMusicbrainzTrackArtistReleases = (
     { signal },
   );
 
-const isSpecialPurposeArtist = (artist: MusicBrainzArtist) =>
-  artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name!);
+const isSpecialPurposeArtist = (artist: v.InferOutput<typeof tagArtistSchema>) =>
+  artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name);
 
 export async function musicbrainzSearchArtistsByTag(
   tag: string,
@@ -168,39 +163,37 @@ export async function musicbrainzSearchArtistsByTag(
   const cacheKey = `${normalizedTag}:${safeLimit}:${safeOffset}`;
   const cached = musicbrainzTagArtistsCache.get(cacheKey);
   if (cached) return cached;
-  const data = await musicbrainzGet<{ artists?: MusicBrainzArtist[]; count?: number }>("/artist", {
+  const data = await musicbrainzGet(tagSearchSchema, "/artist", {
     query: `tag:"${normalizedTag.replace(/["\\]/g, "\\$&")}"`,
     limit: safeLimit,
     offset: safeOffset,
   });
-  const artists = Array.isArray(data?.artists) ? data.artists : [];
+  const artists = readMany(tagArtistSchema, data.artists, {
+    service: "MusicBrainz",
+    endpoint: "/artist",
+  });
   const result = {
-    total: Number(data?.count) || 0,
-    nextOffset: safeOffset + artists.length,
+    total: data.count ?? 0,
+    nextOffset: safeOffset + data.artists.length,
     artists: artists
-      .filter((artist) => artist?.id && artist?.name && !isSpecialPurposeArtist(artist))
+      .filter((artist) => !isSpecialPurposeArtist(artist))
       .map((artist) => ({ mbid: artist.id, name: artist.name })),
   };
   musicbrainzTagArtistsCache.set(cacheKey, result);
   return result;
 }
 
-const mapAppearsOnReleaseGroup = (release: MusicBrainzTrackArtistRelease) => {
-  const releaseGroup = release["release-group"]!;
-  const artistCredit =
-    Array.isArray(releaseGroup["artist-credit"]) && releaseGroup["artist-credit"].length
-      ? releaseGroup["artist-credit"]
-      : Array.isArray(release["artist-credit"])
-        ? release["artist-credit"]
-        : [];
+const mapAppearsOnReleaseGroup = (release: MusicBrainzRelease) => {
+  const releaseGroup = release["release-group"];
+  const artistCredit = releaseGroup["artist-credit"]?.length
+    ? releaseGroup["artist-credit"]
+    : (release["artist-credit"] ?? []);
   return {
     id: releaseGroup.id,
     title: releaseGroup.title || release.title || "Untitled release",
     "first-release-date": releaseGroup["first-release-date"] || release.date || null,
     "primary-type": releaseGroup["primary-type"] || "Album",
-    "secondary-types": Array.isArray(releaseGroup["secondary-types"])
-      ? releaseGroup["secondary-types"]
-      : [],
+    "secondary-types": releaseGroup["secondary-types"] ?? [],
     rating: null,
     "artist-credit": artistCredit,
     releases: release.id
@@ -225,22 +218,25 @@ const scanAppearsOnPage = async (
     offset: state.nextOffset,
     signal,
   });
-  const releases = Array.isArray(data?.releases) ? data.releases : [];
+  const releases = readMany(releaseSchema, data.releases, {
+    service: "MusicBrainz",
+    endpoint: "/release",
+  });
   for (const release of releases) {
-    const releaseGroupId = String(release?.["release-group"]?.id || "").trim();
+    const releaseGroupId = release["release-group"].id;
     if (!releaseGroupId || state.byReleaseGroupId.has(releaseGroupId)) continue;
     if (
       artistCreditIncludesMbid(release["artist-credit"], mbid) ||
-      artistCreditIncludesMbid(release["release-group"]!["artist-credit"], mbid)
+      artistCreditIncludesMbid(release["release-group"]["artist-credit"], mbid)
     ) {
       continue;
     }
     state.byReleaseGroupId.set(releaseGroupId, mapAppearsOnReleaseGroup(release));
   }
-  state.nextOffset += releases.length;
-  const releaseCount = Number(data?.["release-count"]);
+  state.nextOffset += data.releases.length;
+  const releaseCount = Number(data["release-count"]);
   state.complete =
-    releases.length === 0 ||
+    data.releases.length === 0 ||
     state.nextOffset >= APPEARS_ON_MAX_RELEASES ||
     (Number.isFinite(releaseCount) && state.nextOffset >= releaseCount);
   musicbrainzAppearsOnCache.set(mbid, state);
