@@ -66,7 +66,7 @@ test("a stored discovery list with a broken entry still serves the rest", () => 
   });
   const write = db.prepare("UPDATE discovery_cache SET value = ? WHERE key = ?");
   write.run(
-    JSON.stringify([null, "artist-0", { id: "artist-1", name: "Artist" }]),
+    JSON.stringify([null, "artist-0", { id: "artist-2" }, { id: "artist-1", name: "Artist" }]),
     "recommendations",
   );
   write.run(JSON.stringify({ recommendationQuality: 3, discoveryRunId: "run-1" }), "metadata");

@@ -224,3 +224,30 @@ test("a compilation keeps Various Artists on the album and matches each track by
   await scanMusicRoot({ rootPath: root, source: "aurral", force: true });
   assert.equal(hookedArtist(), "Blue Swede");
 });
+
+test("a compilation track whose stored aliases can't be read is still fetched by its own artist", async () => {
+  const track = requireFixture(db)
+    .prepare<[string], { id: number }>("SELECT id FROM library_tracks WHERE title = ?")
+    .get("Go All the Way")!;
+  const monitor = (monitored: boolean) =>
+    app.request(`/library/tracks/aurral/${track.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ monitored }),
+    });
+  assert.equal((await monitor(false)).status, 200);
+  requireFixture(db)
+    .prepare(
+      "UPDATE library_tracks SET metadata_json = json_set(metadata_json, '$.artistAliases', json('{}')) WHERE id = ?",
+    )
+    .run(track.id);
+  downloadTracker.clearAll();
+
+  const monitored = await monitor(true);
+
+  assert.equal(monitored.status, 200, await monitored.text());
+  assert.deepEqual(
+    downloadTracker.getAll().map((job) => job.artistAliases),
+    [["Raspberries"]],
+  );
+});

@@ -125,7 +125,7 @@ test("discoveryNeedsRefresh does not retry missing genres when the library has n
   assert.equal(
     discoveryNeedsRefresh({
       recommendations: [],
-      globalTop: [{ id: "trend-1" }],
+      globalTop: [{ id: "trend-1", name: "trend-1" }],
       topGenres: [],
       lastUpdated: new Date().toISOString(),
     }),
@@ -138,7 +138,7 @@ test("discoveryNeedsRefresh leaves genres to personal refreshes when the library
   assert.equal(
     discoveryNeedsRefresh({
       recommendations: [],
-      globalTop: [{ id: "trend-1" }],
+      globalTop: [{ id: "trend-1", name: "trend-1" }],
       topGenres: [],
       lastUpdated: new Date().toISOString(),
     }),
@@ -150,7 +150,7 @@ test("interval check does not queue a refresh after a seedless run left genres e
   process.env.LASTFM_API_KEY = "test-key";
   setDiscoveryCache({
     recommendations: [],
-    globalTop: [{ id: "trend-1" }],
+    globalTop: [{ id: "trend-1", name: "trend-1" }],
     topGenres: [],
     lastUpdated: new Date().toISOString(),
   });
@@ -163,7 +163,10 @@ test("interval check does not queue a refresh after a seedless run left genres e
 });
 
 test("discoveryNeedsRefresh rebuilds a fresh cache that came from the other music data source", () => {
-  const fresh = { globalTop: [{ id: "trend-1" }], lastUpdated: new Date().toISOString() };
+  const fresh = {
+    globalTop: [{ id: "trend-1", name: "trend-1" }],
+    lastUpdated: new Date().toISOString(),
+  };
   delete process.env.LASTFM_API_KEY;
   assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "lastfm" }), true);
   assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "listenbrainz" }), false);
@@ -174,7 +177,7 @@ test("discoveryNeedsRefresh rebuilds a fresh cache that came from the other musi
 test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
   assert.equal(
     discoveryNeedsRefresh({
-      recommendations: [{ id: "rec-1" }],
+      recommendations: [{ id: "rec-1", name: "rec-1" }],
       topGenres: ["rock"],
       lastUpdated: new Date().toISOString(),
     }),
@@ -196,7 +199,7 @@ test("first discovery startup queues one refresh", async () => {
 test("stale and incomplete discovery caches retry", async () => {
   process.env.LASTFM_API_KEY = "test-key";
   setDiscoveryCache({
-    recommendations: [{ id: "old" }],
+    recommendations: [{ id: "old", name: "old" }],
     topGenres: ["rock"],
     lastUpdated: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
   });
@@ -309,7 +312,7 @@ test("enqueueDiscoveryRefresh queues immediate refresh and reports it as queued"
 });
 
 test("scheduleNextDiscoveryRefresh enqueues future job without marking updating", () => {
-  setDiscoveryCache({ globalTop: [{ id: "trend-1" }] });
+  setDiscoveryCache({ globalTop: [{ id: "trend-1", name: "trend-1" }] });
   const result = scheduleNextDiscoveryRefresh();
   assert.equal(result.enqueued, true);
   assert.equal(getDiscoveryStatus(null).isUpdating, false);
@@ -317,7 +320,7 @@ test("scheduleNextDiscoveryRefresh enqueues future job without marking updating"
 
 test("scheduleNextDiscoveryRefresh deduplicates existing future refresh", () => {
   clearDiscoveryRefreshJobs();
-  setDiscoveryCache({ globalTop: [{ id: "trend-1" }] });
+  setDiscoveryCache({ globalTop: [{ id: "trend-1", name: "trend-1" }] });
 
   const first = scheduleNextDiscoveryRefresh();
   const second = scheduleNextDiscoveryRefresh();

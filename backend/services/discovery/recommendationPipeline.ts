@@ -86,7 +86,7 @@ export const discoveryRecommendationSchema = v.looseObject({
   id: nullableText,
   mbid: nullableText,
   foreignArtistId: nullableText,
-  name: nullableText,
+  name: v.string(),
   artistName: nullableText,
   navigateTo: nullableText,
   type: text,

@@ -39,6 +39,8 @@ const libraryMetadataSchema = v.looseObject({
   requestedRelease: nullableText,
   trackList: lenient(v.nullable(v.looseObject({ release: nullableText }))),
   trackListComplete: lenient(v.boolean()),
+  artistAliases: lenient(listOf(v.string())),
+  durationMs: lenient(v.nullable(v.number())),
 });
 
 export type LibraryMetadata = v.InferOutput<typeof libraryMetadataSchema>;

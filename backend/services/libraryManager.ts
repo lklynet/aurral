@@ -148,16 +148,7 @@ type AlbumMetadata = LibraryMetadata & {
   images?: unknown[] | null;
 };
 
-type TrackMetadata = Record<string, unknown> & {
-  id?: string | number | null;
-  foreignRecordingId?: string | null;
-  foreignTrackId?: string | null;
-  durationMs?: number | null;
-  mediumNumber?: number | null;
-  trackNumber?: number | null;
-  trackPosition?: number | null;
-  artistAliases?: string[];
-  added?: string | null;
+type TrackMetadata = LibraryMetadata & {
   trackFileId?: unknown;
   trackFile?: { id?: unknown } | null;
   file?: { id?: unknown } | null;
