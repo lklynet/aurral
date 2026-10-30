@@ -68,13 +68,13 @@ If NZBGet runs on Windows and reports host paths, mount the parent folder in Aur
 
 ## Tidarr
 
-[Tidarr](https://github.com/cstaelen/tidarr) downloads albums from Tidal. It works like a Usenet indexer and a SABnzbd client, so Aurral reaches it through Prowlarr.
+[Tidarr](https://github.com/cstaelen/tidarr) downloads albums from Tidal. It needs Tidarr 1.2.9 or later. It works like a Usenet indexer and a SABnzbd client, so Aurral reaches it through Prowlarr.
 
 1. In Prowlarr, add a **Generic Newznab** indexer. Set **URL** to the Tidarr URL, for example `http://tidarr:8484`, **API Path** to `/api/lidarr`, and **API Key** to Tidarr's API key from **Settings > Security** in Tidarr.
-2. In Aurral, open **Settings > Download clients** and add **Tidarr** with the same URL and API key.
-3. If you also use SABnzbd or NZBGet, open the Tidarr indexer in **Settings > Indexers** and set its **Download client** to **Tidarr**.
+2. In Aurral, open **Settings > Downloads** and add **Tidarr** with the same URL and API key.
+3. If you also use SABnzbd or NZBGet, set the Tidarr indexer's **Download client** in **Settings > Downloads > Prowlarr** to **Tidarr**.
 
-Tidarr saves each album under `/shared/nzb_downloads` and reports it to Aurral under `/downloads`. Mount Tidarr's `/shared/nzb_downloads` folder in Aurral at `/downloads`. To mount it elsewhere, add a mapping in **Settings > Download clients > Remote path mappings** from `/downloads`, with **Applies to** set to **Tidarr**.
+Tidarr saves each album under `/shared/nzb_downloads` and reports it to Aurral under `/downloads`. Mount Tidarr's `/shared/nzb_downloads` folder in Aurral at `/downloads`. To mount it elsewhere, add a mapping in **Settings > Downloads > Remote path mappings** from `/downloads`, with **Applies to** set to **Tidarr**.
 
 Tidarr lists each album in four qualities, from FLAC 24-bit to 96 kbps M4A, and Aurral picks one with your quality profile. Tidarr removes an album's files when Aurral removes the download.
 
