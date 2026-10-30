@@ -49,7 +49,6 @@ export default new Hono<AppEnv>()
       if (!clientId) {
         clientId = PlexClient.generateClientId();
         dbOps.updateSettings({
-          ...settings,
           integrations: {
             ...settings.integrations,
             plex: { ...plex, clientId },

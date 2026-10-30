@@ -253,7 +253,6 @@ export class DownloadWorker {
       pausedIds.delete(id);
     }
     dbOps.updateSettings({
-      ...current,
       playlistWorker: {
         ...worker,
         retryPausedPlaylistIds: [...pausedIds],
@@ -344,7 +343,6 @@ export class DownloadWorker {
   }
 
   updateWorkerSettings(nextSettings: Partial<WorkerSettings> = {}) {
-    const current = dbOps.getSettings();
     const base = this.getWorkerSettings();
     const normalized = {
       concurrency:
@@ -358,7 +356,6 @@ export class DownloadWorker {
           : this._normalizeExistingFileMode(nextSettings.existingFileMode),
     };
     dbOps.updateSettings({
-      ...current,
       playlistWorker: {
         concurrency: normalized.concurrency,
         retryPausedPlaylistIds: normalized.retryPausedPlaylistIds,

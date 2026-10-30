@@ -87,8 +87,7 @@ export const getApiKey = () => {
   const existing = settings.integrations?.general?.[API_KEY_SETTINGS_KEY];
   if (existing && typeof existing === "string" && existing.length >= 32) return existing;
   const key = crypto.randomBytes(32).toString("hex");
-  const next = {
-    ...settings,
+  dbOps.updateSettings({
     integrations: {
       ...(settings.integrations || {}),
       general: {
@@ -96,16 +95,14 @@ export const getApiKey = () => {
         [API_KEY_SETTINGS_KEY]: key,
       },
     },
-  };
-  dbOps.updateSettings(next);
+  });
   return key;
 };
 
 export const rotateApiKey = () => {
   const settings = dbOps.getSettings();
   const key = crypto.randomBytes(32).toString("hex");
-  const next = {
-    ...settings,
+  dbOps.updateSettings({
     integrations: {
       ...(settings.integrations || {}),
       general: {
@@ -113,8 +110,7 @@ export const rotateApiKey = () => {
         [API_KEY_SETTINGS_KEY]: key,
       },
     },
-  };
-  dbOps.updateSettings(next);
+  });
   return key;
 };
 
@@ -403,7 +399,7 @@ export function reconcileLocalNetworkBypassSetting() {
   }
   const nextSettings = withLocalNetworkBypassDefaults(currentSettings);
   nextSettings.security.localNetworkBypass.enabled = false;
-  dbOps.updateSettings(nextSettings);
+  dbOps.updateSettings({ security: nextSettings.security });
   return {
     changed: true,
     settings: nextSettings,

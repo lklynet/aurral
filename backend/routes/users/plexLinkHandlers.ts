@@ -142,7 +142,6 @@ export async function resolveGlobalPlexAccount() {
     if (plexUsername) {
       const settings = dbOps.getSettings();
       dbOps.updateSettings({
-        ...settings,
         integrations: {
           ...settings.integrations,
           plex: { ...settings.integrations.plex, plexUsername },

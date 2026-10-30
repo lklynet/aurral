@@ -218,6 +218,22 @@ test("rejects flow creation without a real user owner", async () => {
   );
 });
 
+test("flow saves and settings saves leave each other's newer values alone", () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Stale Copy", size: 20 });
+  const staleSettings = dbOps.getSettings();
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('quality', 'lossless') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run();
+
+  flowPlaylistConfig.markLastRunAt(flow.id, 1234);
+  dbOps.invalidateSettingsCache();
+  assert.equal(dbOps.getSettings().quality, "lossless");
+
+  dbOps.updateSettings({ ...staleSettings, quality: "standard" });
+  invalidateFlowPlaylistConfigCache();
+  assert.equal(flowPlaylistConfig.getFlow(flow.id)?.lastRunAt, 1234);
+});
+
 test("defaults listening history on and persists a flow opt-out", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "No History",

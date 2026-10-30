@@ -33,7 +33,6 @@ export default new Hono<AppEnv>()
       const updates = c.req.valid("json");
       const currentSettings = dbOps.getSettings();
       const nextSettings = {
-        ...currentSettings,
         integrations: {
           ...(currentSettings.integrations || {}),
           lastfm: {
@@ -77,7 +76,6 @@ export default new Hono<AppEnv>()
   .post("/preferences/reset", requireAuth, (c) => {
     const currentSettings = dbOps.getSettings();
     dbOps.updateSettings({
-      ...currentSettings,
       integrations: {
         ...(currentSettings.integrations || {}),
         lastfm: {

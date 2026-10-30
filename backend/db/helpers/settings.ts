@@ -80,8 +80,6 @@ export interface AppSettings {
   downloadFolderPath: string | null;
   pathMappings: ReturnType<typeof normalizePathMappings>;
   releaseTypes: string[];
-  flows: unknown;
-  sharedPlaylists: unknown;
   subsonic: typeof defaultData.settings.subsonic;
   playlistWorker: SettingsPlaylistWorker;
   missingTrackSearch: SettingsMissingTrackSearch;
@@ -118,6 +116,7 @@ export interface SettingsOps {
     schema: Schema,
   ) => v.InferOutput<Schema> | null;
   setJSONSetting: (key: string, value: unknown) => void;
+  getPlaylistSetting: (key: keyof typeof PLAYLIST_SETTING_LEGACY_KEYS) => unknown;
   getUserDiscoverLayout: (userId: number) => unknown;
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
   getUserTheme: (userId: number) => unknown;
@@ -148,6 +147,11 @@ const deleteSettingsByPrefixStmt = db.prepare<[string]>(
 );
 
 const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
+
+const PLAYLIST_SETTING_LEGACY_KEYS = {
+  flows: ["weeklyFlows"],
+  sharedPlaylists: ["sharedFlowPlaylists"],
+};
 
 function readStoredSettingJson<Schema extends v.GenericSchema>(
   schema: Schema,
@@ -234,6 +238,10 @@ export const dbOps = {
     upsertSettingStmt.run(key, dbHelpers.stringifyJSON(value));
   },
 
+  getPlaylistSetting(key) {
+    return readStoredSettingJson(v.unknown(), key, PLAYLIST_SETTING_LEGACY_KEYS[key]);
+  },
+
   getUserDiscoverLayout(userId) {
     return dbOps.getJSONSetting(`user:${parseInt(String(userId), 10)}:discoverLayout`, v.unknown());
   },
@@ -310,10 +318,6 @@ export const dbOps = {
       getSettingStmt.get("releaseTypes")?.value,
       "releaseTypes",
     );
-    const flows = readStoredSettingJson(v.unknown(), "flows", ["weeklyFlows"]);
-    const staticPlaylists = readStoredSettingJson(v.unknown(), "sharedPlaylists", [
-      "sharedFlowPlaylists",
-    ]);
     const subsonic =
       readStoredSettingJson(v.looseObject({ favoriteAutoKeep: flag }), "subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
@@ -348,8 +352,6 @@ export const dbOps = {
       downloadFolderPath: downloadFolderPath || null,
       pathMappings,
       releaseTypes: releaseTypes || [],
-      flows: flows || null,
-      sharedPlaylists: staticPlaylists || null,
       subsonic: {
         favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
       },

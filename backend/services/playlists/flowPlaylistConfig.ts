@@ -740,8 +740,7 @@ const getStoredFlows = () => {
     return cachedFlows;
   }
   flowsCachedAt = Date.now();
-  const settings = dbOps.getSettings();
-  const stored = settings.flows;
+  const stored = dbOps.getPlaylistSetting("flows");
   if (Array.isArray(stored) && stored.length > 0) {
     const idMap = new Map();
     let needsSave = false;
@@ -760,10 +759,7 @@ const getStoredFlows = () => {
       return normalizeFlow(flow);
     });
     if (idMap.size > 0 || needsSave) {
-      dbOps.updateSettings({
-        ...settings,
-        flows: nextFlows,
-      });
+      dbOps.updateSettings({ flows: nextFlows });
       downloadTracker.migratePlaylistTypes(idMap);
     }
     cachedFlows = nextFlows;
@@ -773,10 +769,7 @@ const getStoredFlows = () => {
     cachedFlows = [];
     return cachedFlows;
   }
-  dbOps.updateSettings({
-    ...settings,
-    flows: [],
-  });
+  dbOps.updateSettings({ flows: [] });
   cachedFlows = [];
   return cachedFlows;
 };
@@ -784,11 +777,7 @@ const getStoredFlows = () => {
 const setFlows = (flows: FlowConfig[]) => {
   cachedFlows = flows;
   flowsCachedAt = Date.now();
-  const current = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...current,
-    flows,
-  });
+  dbOps.updateSettings({ flows });
 };
 
 const getStoredStaticPlaylists = () => {
@@ -796,26 +785,19 @@ const getStoredStaticPlaylists = () => {
     return cachedStaticPlaylists;
   }
   staticPlaylistsCachedAt = Date.now();
-  const settings = dbOps.getSettings();
-  const stored = settings.sharedPlaylists;
+  const stored = dbOps.getPlaylistSetting("sharedPlaylists");
   if (Array.isArray(stored)) {
     const next = stored.map(normalizeStaticPlaylist);
     const needsSave =
       next.length !== stored.length ||
       next.some((playlist, index) => JSON.stringify(playlist) !== JSON.stringify(stored[index]));
     if (needsSave) {
-      dbOps.updateSettings({
-        ...settings,
-        sharedPlaylists: next,
-      });
+      dbOps.updateSettings({ sharedPlaylists: next });
     }
     cachedStaticPlaylists = next;
     return cachedStaticPlaylists;
   }
-  dbOps.updateSettings({
-    ...settings,
-    sharedPlaylists: [],
-  });
+  dbOps.updateSettings({ sharedPlaylists: [] });
   cachedStaticPlaylists = [];
   return cachedStaticPlaylists;
 };
@@ -823,9 +805,8 @@ const getStoredStaticPlaylists = () => {
 const setStaticPlaylists = (playlists: StaticPlaylist[]) => {
   cachedStaticPlaylists = playlists;
   staticPlaylistsCachedAt = Date.now();
-  const current = dbOps.getSettings();
   try {
-    dbOps.updateSettings({ ...current, sharedPlaylists: playlists });
+    dbOps.updateSettings({ sharedPlaylists: playlists });
   } catch (error) {
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
