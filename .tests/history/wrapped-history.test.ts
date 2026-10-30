@@ -346,7 +346,7 @@ test("a cover's color favors its vivid area over a larger plain background", () 
   assert.equal(history.vividColor(Uint8Array.from([12, 12, 12, 12, 12, 12])), "#0c0c0c");
 });
 
-test("artist photos come from the Library when plays have no ID, and broken images are dropped", async () => {
+test("artist photos come from the Library when plays have no ID, and a broken photo falls back to Deezer", async () => {
   const images = await import("../../backend/services/imageService.ts");
   const proxy = await import("../../backend/services/imageProxyService.ts");
   const deezer = await import("../../backend/services/apiClients/deezer.ts");
@@ -354,14 +354,17 @@ test("artist photos come from the Library when plays have no ID, and broken imag
   db.prepare(
     "INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at) VALUES ('artist', 'artist-mbid', 'ARTIST', 1, 1)",
   ).run();
-  const photos = vi
-    .spyOn(images, "getArtistImage")
-    .mockResolvedValue({ url: "https://img.test/artist.jpg", images: [] });
+  const photos = vi.spyOn(images, "getArtistImage").mockImplementation(async (mbid) => ({
+    url: mbid === "artist-mbid" ? "https://img.test/artist.jpg" : "https://img.test/broken.jpg",
+    images: [],
+  }));
+  const matches = await import("../../backend/services/artistMatch.ts");
+  vi.spyOn(matches, "guessArtistMbid").mockResolvedValue("other-mbid");
   vi.spyOn(proxy, "warmPublicImageUrl").mockImplementation(async (url) =>
     url === "https://img.test/broken.jpg" ? null : "/api/image-proxy/cached.webp",
   );
   vi.spyOn(deezer, "deezerGetTrackPreview").mockResolvedValue(null);
-  vi.spyOn(covers, "fetchDeezerArtistImageUrl").mockResolvedValue("https://img.test/broken.jpg");
+  vi.spyOn(covers, "fetchDeezerArtistImageUrl").mockResolvedValue("https://img.test/deezer.jpg");
   listen(one.id, period.start + 1000);
   db.prepare(
     "INSERT INTO play_events (user_id, track_id, title, artist, duration_ms, played_at, source, created_at) VALUES (?, 'other', 'Tune', 'Other', 180000, ?, 'native-player', ?)",
@@ -370,7 +373,7 @@ test("artist photos come from the Library when plays have no ID, and broken imag
   const summary = await history.buildWrappedSummary(one.id, period);
   const artwork = Object.fromEntries(summary.topArtists.map((row) => [row.name, row.artwork]));
 
-  assert.deepEqual(photos.mock.calls[0]?.[0], "artist-mbid");
+  assert.deepEqual(photos.mock.calls.map(([mbid]) => mbid).sort(), ["artist-mbid", "other-mbid"]);
   assert.equal(artwork.Artist, "https://img.test/artist.jpg");
-  assert.equal(artwork.Other, null);
+  assert.equal(artwork.Other, "https://img.test/deezer.jpg");
 });

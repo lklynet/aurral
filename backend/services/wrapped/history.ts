@@ -588,7 +588,9 @@ async function artistPhoto({
   const photo = known
     ? (await getArtistImage(known, { artistName: name }).catch(() => null))?.url
     : null;
-  return photo || fetchDeezerArtistImageUrl({ artistName: name });
+  return (
+    (await cachedImage(photo)) ?? cachedImage(await fetchDeezerArtistImageUrl({ artistName: name }))
+  );
 }
 
 export async function buildWrappedSummary(userId: number, period: Period) {
@@ -598,11 +600,14 @@ export async function buildWrappedSummary(userId: number, period: Period) {
   await Promise.all(covers.map(async (row) => (row.artwork = await cachedImage(row.artwork))));
   await Promise.all(
     summary.topArtists.map(async (artist) => {
-      artist.artwork = await cachedImage(
-        await artistPhoto(artist),
-        artist.artwork,
-        ...covers.filter((row) => wrappedKey(row.artist) === artist.key).map((row) => row.artwork),
-      );
+      artist.artwork =
+        (await artistPhoto(artist)) ??
+        (await cachedImage(
+          artist.artwork,
+          ...covers
+            .filter((row) => wrappedKey(row.artist) === artist.key)
+            .map((row) => row.artwork),
+        ));
     }),
   );
   const featured = summary.topSongs.slice(0, 5);

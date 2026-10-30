@@ -501,7 +501,7 @@ async function prepareStory(summary: WrappedRecap, username: string): Promise<Pr
     ).flatMap((cue) => (cue?.song.preview != null ? [wrappedSongSource(cue.song)] : [])),
   );
   const prepared: Prepared = { summary, songs: new Map() };
-  const broken = new Set<string>();
+  const ready = new Set<string>();
   await Promise.race([
     Promise.all([
       loadWrappedFonts(`${text}0123456789,.%`).catch(() => {}),
@@ -511,7 +511,10 @@ async function prepareStory(summary: WrappedRecap, username: string): Promise<Pr
               const image = new Image();
               image.src = wrappedImageUrl(url);
               return image.decode();
-            }).catch(() => broken.add(url))
+            }).then(
+              () => ready.add(url),
+              () => {},
+            )
           : null,
       ),
       ...[...clips].map((url) =>
@@ -530,8 +533,8 @@ async function prepareStory(summary: WrappedRecap, username: string): Promise<Pr
     wait(15_000),
   ]);
   const usable = <Row extends { artwork: string | null }>(list: Row[]) =>
-    list.map((row) => (row.artwork && broken.has(row.artwork) ? { ...row, artwork: null } : row));
-  if (broken.size)
+    list.map((row) => (row.artwork && !ready.has(row.artwork) ? { ...row, artwork: null } : row));
+  if (ready.size < artwork.size)
     prepared.summary = {
       ...summary,
       topArtists: usable(summary.topArtists),
