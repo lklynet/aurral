@@ -27,7 +27,7 @@ import {
 } from "../navigation/activityNavConfig";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { lastRecommendedPath, RECOMMENDED_PATH } from "../navigation/recommendedPath";
-import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
+import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { useStorageHealth } from "../hooks/useStorageHealth";
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import TooltipButton from "./TooltipButton";
@@ -90,7 +90,7 @@ function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
   }, [user?.id]);
 
   const isIcons = mode === "icons" && isDesktop;
-  const isOnLibrary = location.pathname === "/library" || location.pathname.startsWith("/library/");
+  const isOnLibrary = isLibrarySectionPath(location.pathname, isDiscoverSectionActive);
   const isOnShows = location.pathname.startsWith("/shows");
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnWanted = location.pathname.startsWith("/activity/missing");

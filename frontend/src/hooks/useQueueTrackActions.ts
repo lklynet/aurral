@@ -14,20 +14,23 @@ export function useQueueTrackActions() {
 
   return useCallback(
     (
-      track: QueueTrackInput | null | undefined,
+      track: QueueTrackInput | QueueTrackInput[] | null | undefined,
       {
         source = null,
         disabled = false,
       }: { source?: PlaybackSource | null; disabled?: boolean } = {},
     ) => {
-      if (!track?.src) return [];
+      if (Array.isArray(track) ? !track.some((entry) => entry?.src) : !track?.src) return [];
       const run =
         (
-          insert: (track: QueueTrackInput, options: { source: PlaybackSource | null }) => unknown,
+          insert: (
+            track: QueueTrackInput | QueueTrackInput[],
+            options: { source: PlaybackSource | null },
+          ) => unknown,
           message: string,
         ) =>
         () => {
-          if (insert(track, { source }) === "queued") showSuccess(message);
+          if (insert(track!, { source }) === "queued") showSuccess(message);
         };
       return [
         {

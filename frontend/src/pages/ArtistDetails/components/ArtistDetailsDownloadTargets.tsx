@@ -19,15 +19,15 @@ import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.ts";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
   buildAurralPick,
-  buildReleaseHeaderMeta,
+  buildAlbumHeaderMeta,
+  sumTrackDurationMs,
   getReleaseGroupCoverUrl,
   mergeReleaseDetails,
 } from "../utils";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 import { TrackPlayButton } from "./TrackPlayButton";
-import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
+import { useReleasePreviewQueue } from "../../album/releaseTracks.tsx";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
-import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { queryKeys } from "../../../queryClient.ts";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
@@ -172,55 +172,26 @@ export function ArtistDetailsDownloadTargets({
   });
   const tint = useCollectionTint(coverUrl);
 
-  const normalizeTrack = useCallback(
-    (track: ReleaseGroupTrack, index: number) =>
-      normalizePreviewTrack(
-        {
-          id: track?.id ?? track?.mbid ?? `pick-${index}`,
-          title: track?.title || track?.trackName,
-          preview_url: track?.preview_url,
-        },
-        artistName || artist?.name || "",
-        {
-          album: missingReleasePick?.title || "",
-          artwork: pickCover || null,
-          artistMbid: artist?.id || "",
-          albumMbid: missingReleasePick?.releaseGroupId || "",
-        },
-      ),
-    [
-      artist?.id,
-      artist?.name,
-      artistName,
-      missingReleasePick?.releaseGroupId,
-      missingReleasePick?.title,
-      pickCover,
-    ],
-  );
+  const {
+    normalizeTrack,
+    previewTrack,
+    disabled: toolbarDisabled,
+    isListPlaying,
+    isShuffleEnabled,
+    handlePlayAll,
+    handleShufflePlay,
+  } = useReleasePreviewQueue({
+    release: { id: missingReleasePick?.releaseGroupId, title: missingReleasePick?.title || "" },
+    trackKey: "pick",
+    tracks,
+    artistName: artistName || artist?.name || "",
+    artistMbid: artist?.id,
+    artwork: pickCover,
+    playbackSource,
+  });
 
-  const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =
-    useAudioQueue();
+  const { currentTrack, isPlaying, isLoading } = useAudioQueue();
   const getQueueItems = useQueueTrackActions();
-
-  const handlePlay = useCallback(
-    (
-      track: ReleaseGroupTrack,
-      options: Parameters<typeof playTrack>[1] = {},
-      ...normalizeArgs: [index: number]
-    ) => {
-      const normalized = normalizeTrack(track, ...normalizeArgs);
-      if (!normalized?.src) return;
-      if (currentTrack?.id === normalized.id) {
-        togglePlayPause();
-        return;
-      }
-      playTrack(normalized, {
-        source: options.source ?? source,
-        queue: options.queue,
-      });
-    },
-    [currentTrack?.id, normalizeTrack, playTrack, source, togglePlayPause],
-  );
 
   const isTrackPlaying = useCallback(
     (trackId: string) =>
@@ -233,25 +204,6 @@ export function ArtistDetailsDownloadTargets({
     [currentTrack?.id, isLoading],
   );
 
-  const getQueueTracks = useCallback(
-    () =>
-      tracks
-        .filter((entry) => entry?.preview_url)
-        .map((entry, entryIndex) => normalizeTrack(entry, entryIndex)),
-    [tracks, normalizeTrack],
-  );
-
-  const {
-    disabled: toolbarDisabled,
-    isListPlaying,
-    isShuffleEnabled,
-    handlePlayAll,
-    handleShufflePlay,
-  } = useAlbumTrackListToolbar({
-    getQueueTracks,
-    playbackSource,
-  });
-
   const handleTrackPreviewPlay = (
     track: ReleaseGroupTrack,
     index: number,
@@ -259,10 +211,7 @@ export function ArtistDetailsDownloadTargets({
   ) => {
     event.stopPropagation();
     if (!track?.preview_url) return;
-    const queue = tracks
-      .filter((entry) => entry?.preview_url)
-      .map((entry, entryIndex) => normalizeTrack(entry, entryIndex));
-    handlePlay(track, { source: playbackSource, queue }, index);
+    previewTrack(track, index);
   };
 
   if (!missingReleasePick) return null;
@@ -270,7 +219,13 @@ export function ArtistDetailsDownloadTargets({
   const releaseGroupId = missingReleasePick.releaseGroupId;
   const title = release!.title || missingReleasePick.title;
   const displayArtistName = artistName || artist?.name || "";
-  const meta = buildReleaseHeaderMeta(release!, tracks);
+  const meta = buildAlbumHeaderMeta({
+    release,
+    trackCount: tracks.length,
+    durationMs: sumTrackDurationMs(tracks),
+  })
+    .map((segment) => segment.text)
+    .join(" · ");
   const titleLink = getReleaseGroupLink(releaseGroup, {
     artistMbid: artist?.id,
     artistName: displayArtistName,

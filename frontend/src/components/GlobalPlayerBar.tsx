@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
+import { albumPath } from "../../../lib/albumPath.ts";
 import {
   ChevronDown,
   ListMusic,
@@ -176,7 +177,8 @@ function GlobalPlayerBar() {
   const artistLabel = currentTrack.artist || "";
   const albumLabel = currentTrack.album || "";
   const artistPath = artistMbid ? `/artist/${artistMbid}` : "";
-  const albumPath = artistMbid && albumMbid ? `/artist/${artistMbid}/release/${albumMbid}` : "";
+  const albumRef = albumMbid || String(currentTrack.libraryAlbumId ?? "").trim();
+  const albumLink = albumRef ? albumPath(albumRef) : "";
   const canShareTrack = Boolean(currentTrack.title && artistLabel);
   const shareTrack = () =>
     (currentTrack.libraryTrackId ? shareLibrary : sharePlain)(
@@ -371,7 +373,7 @@ function GlobalPlayerBar() {
                       <p className="now-playing__subtitle">
                         {metaLink(artistLabel, artistPath)}
                         {artistLabel && albumLabel ? " · " : null}
-                        {metaLink(albumLabel, albumPath)}
+                        {metaLink(albumLabel, albumLink)}
                       </p>
                     ) : null}
                     {playbackError ? (
@@ -456,7 +458,7 @@ function GlobalPlayerBar() {
               <span className="global-player__subtitle">
                 {metaLink(artistLabel, artistPath)}
                 {artistLabel && albumLabel ? " · " : null}
-                {metaLink(albumLabel, albumPath)}
+                {metaLink(albumLabel, albumLink)}
               </span>
             ) : null}
             {playbackError ? (

@@ -3498,13 +3498,6 @@ textarea:disabled {
   white-space: nowrap;
 }
 
-.release-page__library-status .library-check {
-  width: 1.125rem;
-  height: 1.125rem;
-  flex-shrink: 0;
-  color: var(--aurral-success);
-}
-
 .artist-loading {
   display: flex;
   justify-content: center;
@@ -9797,12 +9790,6 @@ button.native-library-genre-row:focus-visible {
   justify-content: flex-start;
 }
 
-.native-library-detail__actions .native-library-item-menu__trigger.collection-header__add {
-  width: auto;
-  gap: 0.1rem;
-  padding: 0 0.45rem 0 0.6rem;
-}
-
 .native-library-detail__cover > .discover-playlist-detail__cover-fallback {
   width: 100%;
   height: 100%;
@@ -9907,6 +9894,10 @@ button.native-library-genre-row:focus-visible {
   margin: 0.35rem 0 0;
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-sm);
+}
+
+.native-library-detail__meta-item {
+  white-space: nowrap;
 }
 
 .native-library-detail__manager {
@@ -14517,13 +14508,6 @@ a.blocklist-page__name:focus-visible {
   gap: 0.375rem;
   margin-inline-start: 0.75rem;
   vertical-align: top;
-}
-
-.artist-details-page .release-page__library-status {
-  border: 1px solid var(--aurral-border);
-  border-radius: var(--aurral-radius-sm);
-  background: transparent;
-  font-weight: 500;
 }
 
 @media (min-width: 900px) {

@@ -11,6 +11,7 @@ import {
 } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { getLibraryAlbumLink } from "../../../utils/searchNavigation";
+import { libraryAlbumPath } from "../../../../../lib/albumPath.ts";
 import { getReleaseMetric, isVisibleLibraryAlbum, type ReleaseGroup } from "../utils";
 import { canSearchLibraryAlbum } from "../../../utils/libraryDestination";
 import TooltipButton from "../../../components/TooltipButton";
@@ -199,7 +200,7 @@ export function ArtistDetailsLibraryAlbums({
       (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
       (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
     if (libraryAlbum.canonicalId && hasFiles) {
-      return { to: `/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}` };
+      return { to: libraryAlbumPath(libraryAlbum) };
     }
     return getLibraryAlbumLink(libraryAlbum, {
       artistMbid: artist?.id,

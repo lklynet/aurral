@@ -253,7 +253,7 @@ test("opening a share is available without import permissions or an account and 
       body: { url: `${lookup.url}/s/s123456789abcdef` },
     });
     assert.equal(result.status, 200, JSON.stringify(result.body));
-    assert.equal(result.body.to, `/library/album/${firstAlbum.album.id}`);
+    assert.equal(result.body.to, `/album/${FIRST_ALBUM_MBID}`);
   }
   assert.equal(db.prepare("SELECT 1 FROM share_links LIMIT 1").get(), undefined);
   assert.equal(db.prepare("SELECT 1 FROM playlist_download_jobs LIMIT 1").get(), undefined);

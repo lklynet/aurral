@@ -2,7 +2,6 @@ import ArtworkImage from "../../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
-import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { DotLoader } from "../../components/DotLoader";
 import { SkeletonReleaseCard, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import {
@@ -27,7 +26,6 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
-import { useArtistSearchFocus } from "./hooks/useArtistSearchFocus";
 import { getReleaseGroupLink } from "../../utils/searchNavigation";
 import { OptionalLink } from "../../components/RouteLink";
 import {
@@ -100,7 +98,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const isAppearsOn = mode === "appearsOn";
   const { mbid } = useParams();
   const { state } = useLocation();
-  const navigate = useDiscoverNavigation();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
@@ -264,12 +261,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   }, [appearsOnQuery.data, isAppearsOn, loadingAppearsOn, releaseGroups, setArtist]);
   const hasMoreAppearances = isAppearsOn && (!appearsOnQuery.data || appearsOnQuery.hasNextPage);
   const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
-
-  useArtistSearchFocus({
-    navigate,
-    mbid,
-    locationState: state,
-  });
 
   useEffect(() => {
     setVisibleCoverIds(renderedReleaseGroups.map((item) => item.id).filter(Boolean));

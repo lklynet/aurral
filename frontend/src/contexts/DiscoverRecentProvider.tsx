@@ -10,14 +10,13 @@ import {
 
 const DISCOVER_RECENT_PAGES_KEY = "aurral.discover.recentPages";
 const DISCOVER_FLOW_ACTIVE_KEY = "aurral.discover.flowActive";
+const ALBUM_FROM_DISCOVER_KEY = "aurral.discover.albumFromDiscover";
 const DISCOVER_RECENT_PAGES_LIMIT = 5;
 
 type DiscoverRouteState = {
   artistName?: string;
   inLibrary?: boolean;
   libraryArtist?: unknown;
-  focusTrackTitle?: string;
-  focusReleaseGroup?: { title?: string };
 };
 type DiscoverRecentPage = {
   id: string;
@@ -47,6 +46,19 @@ function isDiscoverBrowsePath(pathname: string) {
   if (pathname.startsWith("/discover/")) return true;
   if (pathname === "/search") return true;
   return false;
+}
+
+// An album page belongs to whichever section the user opened it from.
+function isSharedSectionPath(pathname: string) {
+  return pathname.startsWith("/album/");
+}
+
+export function isLibrarySectionPath(pathname: string, isDiscoverSectionActive: boolean) {
+  return (
+    pathname === "/library" ||
+    pathname.startsWith("/library/") ||
+    (isSharedSectionPath(pathname) && !isDiscoverSectionActive)
+  );
 }
 
 function isDiscoverRecentArtistPath(path: string | undefined) {
@@ -93,25 +105,29 @@ function shouldKeepDiscoverSectionActive(
   return flowActive && isDiscoverBrowsePath(pathname);
 }
 
-function readDiscoverFlowActive() {
+function readSessionFlag(key: string) {
   if (typeof window === "undefined") return false;
   try {
-    return sessionStorage.getItem(DISCOVER_FLOW_ACTIVE_KEY) === "1";
+    return sessionStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
 
-function writeDiscoverFlowActive(active: boolean) {
+function writeSessionFlag(key: string, active: boolean) {
   if (typeof window === "undefined") return;
   try {
     if (active) {
-      sessionStorage.setItem(DISCOVER_FLOW_ACTIVE_KEY, "1");
+      sessionStorage.setItem(key, "1");
     } else {
-      sessionStorage.removeItem(DISCOVER_FLOW_ACTIVE_KEY);
+      sessionStorage.removeItem(key);
     }
   } catch {}
 }
+
+const readDiscoverFlowActive = () => readSessionFlag(DISCOVER_FLOW_ACTIVE_KEY);
+const writeDiscoverFlowActive = (active: boolean) =>
+  writeSessionFlag(DISCOVER_FLOW_ACTIVE_KEY, active);
 
 function normalizeDiscoverPath(path: string | undefined) {
   if (!path || typeof path !== "string") return "";
@@ -134,13 +150,6 @@ function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) 
   const params = new URLSearchParams(path.includes("?") ? path.split("?")[1] : "");
 
   if (pathname.startsWith("/artist/")) {
-    const isReleaseRoute = /\/release\/[^/]+$/.test(pathname);
-    if (isReleaseRoute) {
-      const releaseTitle = state?.focusReleaseGroup?.title || state?.focusTrackTitle || "";
-      if (releaseTitle) {
-        return state?.artistName ? `${releaseTitle} · ${state.artistName}` : releaseTitle;
-      }
-    }
     if (/\/albums$/.test(pathname)) {
       return state?.artistName ? `${state.artistName} albums` : "Albums";
     }
@@ -348,12 +357,22 @@ export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
     [discoverFlowActive, location, visibleRecentPages],
   );
 
-  const isDiscoverSectionActive = useMemo(
+  const onDiscoverSection = useMemo(
     () =>
       isDiscoverBrowsePath(location.pathname) ||
       shouldKeepDiscoverSectionActive(location, visibleRecentPages, discoverFlowActive),
     [discoverFlowActive, location, visibleRecentPages],
   );
+  const onSharedSection = isSharedSectionPath(location.pathname);
+  const [albumFromDiscover, setAlbumFromDiscover] = useState(() =>
+    readSessionFlag(ALBUM_FROM_DISCOVER_KEY),
+  );
+  useEffect(() => {
+    if (onSharedSection) return;
+    writeSessionFlag(ALBUM_FROM_DISCOVER_KEY, onDiscoverSection);
+    setAlbumFromDiscover(onDiscoverSection);
+  }, [onDiscoverSection, onSharedSection]);
+  const isDiscoverSectionActive = onSharedSection ? albumFromDiscover : onDiscoverSection;
 
   const value = useMemo(
     () => ({

@@ -39,7 +39,7 @@ import {
 } from "../pages/Settings/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
-import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
+import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
@@ -160,7 +160,7 @@ function Layout({ children, headerActions }: LayoutProps) {
         return location.pathname.startsWith("/activity");
       }
       if (path === "/library") {
-        return location.pathname === "/library" || location.pathname.startsWith("/library/");
+        return isLibrarySectionPath(location.pathname, isDiscoverSectionActive);
       }
       return location.pathname === path;
     },

@@ -14,6 +14,7 @@ import {
 import { canPrefetchInBackground } from "../utils/requestScheduling.ts";
 import { resolveLinkQueryOptions } from "./resolveLinks.ts";
 import { routeModules } from "./routeModules.ts";
+import { parseAlbumRef } from "../../../lib/albumPath.ts";
 
 const FAILURE_COOLDOWN_MS = 30_000;
 
@@ -102,10 +103,16 @@ const ROUTES = [
     queries: () => [prefetchable(playlistStatusQueryOptions())],
   },
   {
-    path: "/library/album/:albumId",
-    module: routeModules.library,
-    queries: ({ albumId }: Params<string>, { search }: RouteContext) =>
-      libraryView({ albumId }, search),
+    path: "/album/:ref",
+    module: routeModules.album,
+    queries: async ({ ref }: Params<string>, { search }: RouteContext) => {
+      const album = parseAlbumRef(ref);
+      if (!album) return [];
+      // The page renders from the library first; MusicBrainz details only enrich it
+      const library = await libraryView({ albumId: ref }, search);
+      if (album.kind === "library") return library;
+      return [...library, prefetchable(releaseGroupDetailsQueryOptions(album.releaseGroupMbid))];
+    },
   },
   {
     path: "/library/artist/:artistId",
@@ -131,13 +138,6 @@ const ROUTES = [
     path: "/flows",
     module: routeModules.flows,
     queries: () => [prefetchable(playlistStatusQueryOptions())],
-  },
-  {
-    path: "/artist/:mbid/release/:releaseMbid",
-    module: routeModules.release,
-    queries: ({ releaseMbid }: Params<string>) => [
-      prefetchable(releaseGroupDetailsQueryOptions(releaseMbid)),
-    ],
   },
   { path: "/artist/:mbid/albums", module: routeModules.artistReleases },
   { path: "/artist/:mbid/appears-on", module: routeModules.artistReleases },

@@ -2,6 +2,7 @@ import { db } from "../../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryArtistsRow } from "../../db/rows.ts";
 import { findSharedTrack, type ShareManifest } from "../../../lib/shareManifest.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
+import { albumPath } from "../../../lib/albumPath.ts";
 
 export function shareDestination(manifest: ShareManifest) {
   const artist = db
@@ -19,9 +20,9 @@ export function shareDestination(manifest: ShareManifest) {
     const album = db
       .prepare<
         [string | null, string, number | null, string | null, string | null],
-        Pick<LibraryAlbumsRow, "id">
+        Pick<LibraryAlbumsRow, "id" | "release_group_mbid">
       >(
-        `SELECT id FROM library_albums WHERE release_group_mbid = ?
+        `SELECT id, release_group_mbid FROM library_albums WHERE release_group_mbid = ?
          OR (title = ? COLLATE NOCASE AND artist_id = ? AND (? IS NULL OR release_group_mbid IS NULL))
          ORDER BY CASE WHEN release_group_mbid = ? THEN 0 ELSE 1 END, id LIMIT 1`,
       )
@@ -32,9 +33,8 @@ export function shareDestination(manifest: ShareManifest) {
         manifest.albumMbid,
         manifest.albumMbid,
       );
-    if (album) return `/library/album/${album.id}`;
-    if (manifest.artistMbid && manifest.albumMbid)
-      return `/artist/${manifest.artistMbid}/release/${manifest.albumMbid}`;
+    if (album) return albumPath(album.release_group_mbid || album.id);
+    if (manifest.albumMbid) return albumPath(manifest.albumMbid);
   }
   if (manifest.kind === "track") {
     const requested = manifest.tracks[0] || {
@@ -72,7 +72,7 @@ export function shareDestination(manifest: ShareManifest) {
       }),
     );
     const track = findSharedTrack(candidates, requested);
-    if (track) return `/library/album/${track.albumId}?track=${track.id}`;
+    if (track) return albumPath(track.albumMbid || track.albumId, { track: track.id });
   }
   return `/search?q=${encodeURIComponent(
     [manifest.title, manifest.artistName]

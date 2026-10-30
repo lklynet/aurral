@@ -45,8 +45,9 @@ test("an album link opens the release it resolves to, keeping names intact", asy
 
   const target = await open(path);
 
-  assert.equal(target.to, "/artist/artist-1/release/release-1");
+  assert.equal(target.to, "/album/release-1");
   assert.ok(target.state && "focusReleaseGroup" in target.state);
+  assert.equal(target.state.artistMbid, "artist-1");
   assert.equal(target.state.focusReleaseGroup.title, "Back in Black?");
   const sent = requests.find((url) => url.pathname.endsWith("/discover/editorial/links"));
   assert.ok(sent != null);
