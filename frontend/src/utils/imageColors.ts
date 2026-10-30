@@ -125,16 +125,17 @@ export async function extractArtworkWash(src: string | null | undefined) {
 export function useArtworkWash(src: string | null | undefined) {
   const { matchArtwork: immersiveMode } = useThemeDocument();
   const artwork = immersiveMode ? src : null;
-  const [wash, setWash] = useState<{ src: string; value: ArtworkWash | null } | null>(null);
+  const [wash, setWash] = useState<ArtworkWash | null>(null);
+  if (!artwork && wash) setWash(null);
   useEffect(() => {
     if (!artwork) return undefined;
     let dead = false;
-    extractArtworkWash(artwork).then((value) => !dead && setWash({ src: artwork, value }));
+    extractArtworkWash(artwork).then((value) => !dead && setWash(value));
     return () => {
       dead = true;
     };
   }, [artwork]);
-  return artwork && wash?.src === artwork ? wash.value : null;
+  return wash;
 }
 
 function tintCard(card: HTMLElement) {
