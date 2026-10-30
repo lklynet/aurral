@@ -6352,7 +6352,7 @@ textarea:disabled {
   display: flex;
   gap: 1rem;
   overflow-x: auto;
-  margin-inline: -0.5rem;
+  margin-inline-start: -0.5rem;
   padding: 0.25rem;
   scrollbar-width: none;
 }
