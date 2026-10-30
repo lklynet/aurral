@@ -5495,7 +5495,7 @@ textarea:disabled {
 }
 
 .artist-discover-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .discover-rail--placeholder .artist-discover-rail__actions {
@@ -5602,7 +5602,7 @@ textarea:disabled {
 .artist-discover-hero {
   --discover-title-size: var(--aurral-font-title);
   position: relative;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .artist-discover-hero__content {
@@ -6215,17 +6215,17 @@ textarea:disabled {
 }
 
 .artist-discover-rail {
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .artist-discover-rail__header {
   display: flex;
-  min-height: 2.5rem;
+  min-height: 2rem;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem 0.75rem;
-  margin-bottom: 0.875rem;
+  margin-bottom: 0.75rem;
 }
 
 .artist-discover-rail__title-group {
@@ -6350,9 +6350,10 @@ textarea:disabled {
 
 .artist-discover-rail__content {
   display: flex;
-  gap: 1.25rem;
+  gap: 1rem;
   overflow-x: auto;
-  padding: 0.125rem 0.25rem 0.75rem;
+  margin-inline: -0.5rem;
+  padding: 0.25rem;
   scrollbar-width: none;
 }
 
@@ -6637,13 +6638,8 @@ textarea:disabled {
     scrollbar-width: none;
   }
 
-  .artist-discover-rail {
-    margin-bottom: 2.25rem;
-  }
-
   .artist-discover-rail__content {
     gap: 0.875rem;
-    padding-inline: 0.125rem;
   }
 
   .artist-discover-shelf-card {
