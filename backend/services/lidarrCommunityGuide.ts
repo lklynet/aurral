@@ -5,6 +5,7 @@ import type {
   LidarrMetadataProfile,
   LidarrNamingConfig,
   LidarrQualityDefinition,
+  LidarrQualityItem,
   LidarrQualityProfile,
   LidarrReleaseProfile,
 } from "./lidarrClient.ts";
@@ -13,13 +14,6 @@ type LidarrCustomFormatInput = {
   name: string;
   includeCustomFormatWhenRenaming: boolean;
   specifications: unknown[];
-};
-type LidarrQualityItem = {
-  id?: number;
-  name?: string | null;
-  quality?: { id?: number; name?: string | null };
-  allowed?: boolean;
-  items?: LidarrQualityItem[];
 };
 type LidarrCommunityGuideClient = {
   getQualityDefinitions(): Promise<LidarrQualityDefinition[]>;
@@ -354,7 +348,7 @@ export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGui
   }
 
   const selectedQualityNames = ["MP3-320", "FLAC"];
-  const baseItems = JSON.parse(JSON.stringify(baseProfile.items || []));
+  const baseItems = structuredClone(baseProfile.items ?? []);
   const qualityItemMap = new Map<string, LidarrQualityItem>();
 
   const collectQualityItems = (items: LidarrQualityItem[]) => {

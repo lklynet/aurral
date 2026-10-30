@@ -161,10 +161,22 @@ const rootFolderSchema = v.looseObject({
 
 const tagSchema = v.looseObject({ id: v.number(), label: text });
 
+export type LidarrQualityItem = {
+  [key: string]: unknown;
+  quality?: { [key: string]: unknown; id?: number; name?: string | null } | null;
+  items?: LidarrQualityItem[] | null;
+};
+
+const qualityItemSchema: v.GenericSchema<LidarrQualityItem> = v.looseObject({
+  quality: v.nullish(v.looseObject({ id: v.optional(v.number()), name: text })),
+  items: v.nullish(v.array(v.lazy(() => qualityItemSchema))),
+});
+
 const qualityProfileSchema = v.looseObject({
   id: v.number(),
   name: v.string(),
   cutoff: v.optional(v.number()),
+  items: v.nullish(v.array(qualityItemSchema)),
 });
 
 const albumTypeOptionSchema = v.union([
