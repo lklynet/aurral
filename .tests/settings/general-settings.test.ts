@@ -483,6 +483,13 @@ test("saving an integration setting Aurral can't read is rejected", async () => 
   assert.match(JSON.stringify(rejected.body), /ticketmaster\.searchRadiusMiles/);
   assert.equal(dbOps.getSettings().integrations.ticketmaster, undefined);
 
+  const hook = await postSettings({
+    integrations: { webhooks: [{ url: "http://hook.test", body: 42 }] },
+  });
+  assert.equal(hook.statusCode, 400);
+  assert.match(JSON.stringify(hook.body), /webhooks\.0\.body/);
+  assert.equal(dbOps.getSettings().integrations.webhooks, undefined);
+
   const cleared = await postSettings({ integrations: { ticketmaster: { searchRadiusMiles: "" } } });
   assert.equal(cleared.statusCode, 200);
 });

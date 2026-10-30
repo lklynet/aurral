@@ -180,7 +180,8 @@ function droppedPaths(stored: unknown, read: unknown, path: string): string[] {
   if (stored == null || stored === "") return [];
   if (read === undefined) return [path];
   if (Array.isArray(stored)) {
-    return Array.isArray(read) && read.length === stored.length ? [] : [path];
+    if (!Array.isArray(read) || read.length !== stored.length) return [path];
+    return stored.flatMap((item, index) => droppedPaths(item, read[index], `${path}.${index}`));
   }
   if (!isRecord(stored) || !isRecord(read)) return [];
   return Object.entries(stored).flatMap(([key, value]) =>
