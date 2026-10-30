@@ -669,14 +669,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
 
-const shareLinkColumns = db.prepare<[], { name: string }>("PRAGMA table_info(share_links)").all();
-if (!shareLinkColumns.some((column) => column.name === "manifest")) {
-  db.exec("ALTER TABLE share_links ADD COLUMN manifest TEXT");
-}
-if (!shareLinkColumns.some((column) => column.name === "share_files")) {
-  db.exec("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
-}
-
+tryAddColumn("ALTER TABLE share_links ADD COLUMN manifest TEXT");
+tryAddColumn("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 
 db.transaction(() => {
