@@ -593,8 +593,9 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
   const logger = options.logger || console;
   const lidarrRoots = configuredLidarrRoots(options);
   if (lidarrRoots.some((candidate) => pathsOverlap(rootPath, candidate))) {
-    const reason = "Aurral DL_FOLDER overlaps a configured Lidarr root";
-    log(logger, "error", `[AurralMigration] ${reason}`);
+    const reason =
+      "Skipped legacy playlist file migration because the Downloads Folder overlaps a Lidarr root folder";
+    log(logger, "warn", `[AurralMigration] ${reason}`);
     return {
       status: "blocked",
       rootPath,

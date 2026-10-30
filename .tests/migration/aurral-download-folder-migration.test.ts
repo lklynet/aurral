@@ -26,6 +26,8 @@ const [
   { flowPlaylistConfig },
   { downloadTracker },
   { migrateAurralDownloadFolder },
+  { processSystemTask },
+  { resolveDownloadRoot },
 ] = await setupIsolatedBackend(
   "aurral-download-folder-migration",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -33,6 +35,8 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/aurralDownloadFolderMigration.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
 );
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
@@ -417,4 +421,12 @@ test("blocks migration when DL_FOLDER overlaps the Lidarr root", async () => {
   assert.equal(result.status, "blocked");
   await assert.doesNotReject(() => fs.access(source));
   await assert.rejects(() => fs.access(path.join(root, "Artist", "Album", "Protected.flac")));
+});
+
+test("startup migration skips without failing when DL_FOLDER overlaps the Lidarr root", async () => {
+  dbOps.updateSettings({ integrations: { lidarr: { rootFolderPath: resolveDownloadRoot() } } });
+
+  await processSystemTask({ kind: "playlist-startup-migration" });
+
+  assert.equal(dbOps.getJSONSetting("playlistStartupMigration", v.unknown()), null);
 });

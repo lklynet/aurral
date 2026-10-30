@@ -277,9 +277,7 @@ export async function processSystemTask(
           `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
         );
       }
-      if (result.status === "blocked" || result.failed > 0) {
-        throw new Error("Playlist filesystem migration requires review before playlist rebuild");
-      }
+      if (result.status === "blocked" || result.failed > 0) return;
       const metadataRepair = await repairYtdlpMetadata(trackerModule.downloadTracker.getAll());
       if (metadataRepair.repaired > 0) {
         console.log(`[Playlists] Added metadata to ${metadataRepair.repaired} yt-dlp track(s)`);
