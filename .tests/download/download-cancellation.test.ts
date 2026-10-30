@@ -108,6 +108,30 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
   assert.equal(remove.mock.calls[1][0], "provider-id-only-in-payload");
 });
 
+test("provider cancellation keeps saved queue IDs when a saved job can't be read", async () => {
+  const { getDownloadClient } =
+    await import("../../backend/services/download/downloadClientSettings.ts");
+  const client = getDownloadClient("deemix");
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Track" },
+    "cancellation-unreadable-job",
+  );
+  dbOps.setJSONSetting(`downloadCancellationWork:${jobId}`, {
+    jobs: [{ id: jobId, downloadClientId: 42 }, null],
+    payloads: [{ jobId, source: "deemix", queueUuid: "queue-id-only-in-snapshot" }],
+  });
+
+  await cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]);
+
+  assert.deepEqual(
+    remove.mock.calls.map(([queueId]) => queueId),
+    ["queue-id-only-in-snapshot"],
+  );
+});
+
 test("playlist deletion invalidates queued payloads across recreation", () => {
   const playlistId = "shared-playlist";
   const firstGeneration = activatePlaylistDownloadGeneration(playlistId);

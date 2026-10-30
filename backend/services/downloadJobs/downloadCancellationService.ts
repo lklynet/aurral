@@ -5,12 +5,7 @@ import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.ts";
 import type { WeeklyFlowDownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
-import {
-  downloadTracker,
-  type DownloadJob,
-  type DownloadTracker,
-  type JobFields,
-} from "./downloadTracker.ts";
+import { downloadTracker, type DownloadJob, type DownloadTracker } from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -30,24 +25,14 @@ import {
 const PIPELINE_QUEUE = "slskd-pipeline";
 
 const cancellationWorkSchema = v.looseObject({
-  jobs: v.array(
-    v.looseObject({
-      id: v.string(),
-      remoteUsername: v.nullish(v.string()),
-      slskdSearchId: v.nullish(v.string()),
-      downloadSource: v.nullish(v.string()),
-      downloadClient: v.nullish(v.string()),
-      downloadClientId: v.nullish(v.string()),
-    }),
-  ),
-  payloads: v.array(v.nullable(v.record(v.string(), v.unknown()))),
+  jobs: v.array(v.unknown()),
+  payloads: v.array(v.unknown()),
 });
+const cancellationJobSchema = v.looseObject({ id: v.string() });
+const cancellationPayloadSchema = v.nullable(v.record(v.string(), v.unknown()));
 
-type CancellationJob = Pick<DownloadJob, "id"> &
-  JobFields<
-    "remoteUsername" | "slskdSearchId" | "downloadSource" | "downloadClient" | "downloadClientId"
-  >;
-type CancellationPayload = Record<string, unknown> | null;
+type CancellationJob = v.InferOutput<typeof cancellationJobSchema>;
+type CancellationPayload = v.InferOutput<typeof cancellationPayloadSchema>;
 
 function captureCancellationWork(
   key: string,
@@ -72,7 +57,11 @@ function readCancellationWork(jobs: CancellationJob[], playlistId: string | null
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
   return keys
     .map((key) => dbOps.getJSONSetting(key, cancellationWorkSchema))
-    .filter((work) => work !== null);
+    .filter((work) => work !== null)
+    .map((work) => ({
+      jobs: work.jobs.filter((job) => v.is(cancellationJobSchema, job)),
+      payloads: work.payloads.filter((payload) => v.is(cancellationPayloadSchema, payload)),
+    }));
 }
 
 function clearCancellationWork(jobs: CancellationJob[], playlistId: string | null = null) {

@@ -168,7 +168,7 @@ test("retains a permanent source when tracker updates are not persisted", async 
   assert.equal(downloadTracker.getJob(jobId)!.finalPath, source);
 });
 
-test("repairs stale tracker paths from a completed migration", async () => {
+test("repairs stale tracker paths from a completed migration with an unreadable entry", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Repair Complete" });
   const source = path.join(
     root,
@@ -197,6 +197,7 @@ test("repairs stale tracker paths from a completed migration", async () => {
         destination,
         identity: { artistName: "Artist", albumName: "Album", trackName: "Track" },
       },
+      [path.join(root, "unreadable.flac")]: null,
     },
   });
 

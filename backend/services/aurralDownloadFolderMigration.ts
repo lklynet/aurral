@@ -90,18 +90,18 @@ function log(
 const migrationStateSchema = v.looseObject({
   version: v.number(),
   rootPath: v.string(),
-  status: v.string(),
-  items: v.record(
-    v.string(),
-    v.looseObject({
-      status: v.optional(v.string()),
-      destination: v.optional(v.string()),
-      reason: v.optional(v.string()),
-    }),
-  ),
+  status: v.optional(v.string()),
+  items: v.optional(v.record(v.string(), v.unknown())),
+});
+const migrationItemSchema = v.looseObject({
+  status: v.optional(v.string()),
+  destination: v.optional(v.string()),
+  reason: v.optional(v.string()),
 });
 
-type MigrationState = v.InferOutput<typeof migrationStateSchema>;
+type MigrationState = Required<v.InferOutput<typeof migrationStateSchema>>;
+
+const readItem = (value: unknown) => (v.is(migrationItemSchema, value) ? value : null);
 
 function newMigrationState(rootPath: string): MigrationState {
   return {
@@ -125,7 +125,7 @@ function loadMigrationState(rootPath: string) {
   ) {
     return newMigrationState(rootPath);
   }
-  return stored;
+  return { ...newMigrationState(rootPath), ...stored };
 }
 
 function saveMigrationState(state: MigrationState) {
@@ -383,7 +383,8 @@ async function repairCompletedMigrationState(
     failed: 0,
     failures: [],
   };
-  for (const [sourcePath, item] of Object.entries(state.items)) {
+  for (const [sourcePath, stored] of Object.entries(state.items)) {
+    const item = readItem(stored);
     if (item?.status !== "complete" || !item.destination) continue;
     const destination = path.resolve(item.destination);
     const destinationStat = await fs.stat(destination).catch(() => null);
@@ -497,7 +498,7 @@ async function defaultIndexDestinations({
 }
 
 function itemState(state: MigrationState, sourcePath: string) {
-  return state.items[sourcePath] || {};
+  return readItem(state.items[sourcePath]) ?? {};
 }
 
 function retainItem(
@@ -898,8 +899,9 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
     }
   }
 
-  for (const [sourcePath, item] of Object.entries(state.items)) {
+  for (const [sourcePath, stored] of Object.entries(state.items)) {
     if (fileSet.has(sourcePath)) continue;
+    const item = readItem(stored);
     const retainedIndexedSource =
       item?.status === "retained" && item.reason === PLAYBACK_RETENTION_REASON && item.destination;
     if (item?.status === "retained" && !retainedIndexedSource) {
@@ -924,7 +926,9 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
     }
     state.items[sourcePath] = { ...item, status: "complete", updatedAt: Date.now() };
   }
-  const stateNeedsReview = Object.values(state.items).some((item) => item?.status === "retained");
+  const stateNeedsReview = Object.values(state.items).some(
+    (item) => readItem(item)?.status === "retained",
+  );
   state.status = result.failed || result.retained || stateNeedsReview ? "needs-review" : "complete";
   result.status = state.status;
   state.lastResult = {
