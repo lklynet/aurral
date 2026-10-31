@@ -2,7 +2,7 @@ import ArtworkImage from "../components/ArtworkImage";
 import { memo, useState, useEffect, type ReactNode } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
 
-import { Music } from "../components/icons";
+import { Clock, Music } from "../components/icons";
 import ArtistImage from "../components/ArtistImage";
 import AddActionButton from "../components/AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
@@ -10,7 +10,8 @@ import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { getAlbumAddAction } from "../utils/albumAddAction";
-import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
+import { isUnreleased } from "../../../lib/releaseDate.ts";
+import { formatDate, formatRelativeTime, parseCalendarDate } from "../utils/dateTime.ts";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
@@ -31,17 +32,7 @@ type DiscoverFeedbackHandler = ReturnType<typeof useDiscoverData>["handleDiscove
 type DiscoverAlbumAction = ReturnType<typeof useDiscoverData>["handleRecentReleaseAlbumAction"];
 type CardLink = { to: string; state?: unknown };
 
-const parseCalendarDate = (value: string | null | undefined) => {
-  if (!value) return null;
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (match) {
-    const [, year, month, day] = match;
-    return new Date(Number(year), Number(month) - 1, Number(day));
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-};
+const isRequested = (album: RecentRelease) => "requested" in album && album.requested;
 
 const formatReleaseStatus = (releaseDate: string | null | undefined) => {
   const date = parseCalendarDate(releaseDate);
@@ -251,6 +242,7 @@ export const AlbumCard = memo(
     const albumRelease = formatReleaseStatus(album.releaseDate);
     const albumReleaseText = albumRelease?.text;
     const isComplete = (album.statistics?.percentOfTracks || 0) > 0;
+    const awaitingRelease = isRequested(album) && isUnreleased(album.releaseDate);
     const target = getReleaseNavigationTarget({
       type: "album",
       id: releaseGroupMbid,
@@ -294,6 +286,15 @@ export const AlbumCard = memo(
                 <span className="artist-release-card__status">
                   <SearchLibraryCheck size="overlay" />
                   <span className="sr-only">In library</span>
+                </span>
+              </Tooltip>
+            </div>
+          ) : awaitingRelease ? (
+            <div className="artist-discover-card__action">
+              <Tooltip content={`Downloads ${albumRelease?.detail}`}>
+                <span className="artist-release-card__status artist-release-card__status--waiting">
+                  <Clock aria-hidden="true" />
+                  <span className="sr-only">Downloads {albumRelease?.detail}</span>
                 </span>
               </Tooltip>
             </div>
@@ -341,6 +342,7 @@ export const AlbumCard = memo(
       prevProps.album.artistName === nextProps.album.artistName &&
       prevProps.album.coverUrl === nextProps.album.coverUrl &&
       prevProps.album.releaseDate === nextProps.album.releaseDate &&
+      isRequested(prevProps.album) === isRequested(nextProps.album) &&
       prevProps.album.statistics?.percentOfTracks === nextProps.album.statistics?.percentOfTracks &&
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&

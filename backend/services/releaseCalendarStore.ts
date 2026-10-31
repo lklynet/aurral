@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { listOf } from "../db/helpers/storedSchemas.ts";
+import { MONITORED_AURRAL_ALBUM_CONDITION } from "./aurralMonitoring.ts";
 import type {
   LibraryArtistsRow,
   LibraryReleaseCalendarArtistsRow,
@@ -14,6 +15,7 @@ type CalendarEntryRow = LibraryReleaseCalendarRow & {
   track_count: number;
   available_track_count: number;
   size_on_disk: number;
+  requested: number;
 };
 
 const parseStringList = (value: string | null) =>
@@ -275,7 +277,13 @@ export function getReleaseCalendarEntries({
       matched.album_id,
       COUNT(DISTINCT relation.track_id) AS track_count,
       COUNT(DISTINCT CASE WHEN media.available = 1 THEN relation.track_id END) AS available_track_count,
-      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk
+      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk,
+      EXISTS (
+        SELECT 1
+        FROM library_management AS management
+        JOIN library_albums AS album ON album.id = management.entity_id
+        WHERE album.id = matched.album_id AND ${MONITORED_AURRAL_ALBUM_CONDITION}
+      ) AS requested
     FROM calendar_page AS calendar
     JOIN library_artists AS artist ON artist.id = calendar.artist_id
     LEFT JOIN matched_albums AS matched
@@ -310,6 +318,7 @@ export function getReleaseCalendarEntries({
       secondaryTypes: parseStringList(row.secondary_types_json),
       releaseStatuses: parseStringList(row.release_statuses_json),
       available: false,
+      requested: row.requested === 1,
       trackCount,
       availableTrackCount,
       statistics: {

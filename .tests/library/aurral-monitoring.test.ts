@@ -285,6 +285,14 @@ async function runQueuedMonitoringTasks() {
   return tasks;
 }
 
+const savedAlbumMbids = () =>
+  db
+    .prepare<[], { release_group_mbid: string }>(
+      "SELECT release_group_mbid FROM library_albums WHERE release_group_mbid IS NOT NULL",
+    )
+    .all()
+    .map((row) => row.release_group_mbid);
+
 function queuedAlbumMbids() {
   return [
     ...new Set(
@@ -861,7 +869,7 @@ function futureDate(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-test("daily reconciliation queues new releases once and keeps going past a failing artist", async () => {
+test("daily reconciliation queues new releases once, saves upcoming ones for release day, and keeps going past a failing artist", async () => {
   await addAurralArtist("all");
   await runQueuedMonitoringTasks();
   const initialJobs = downloadTracker.getAll().length;
@@ -904,9 +912,10 @@ test("daily reconciliation queues new releases once and keeps going past a faili
   clearMetadataProviderCaches();
 
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
-  assert.deepEqual(queuedAlbumMbids(), [...defaultIds, newRelease.id, upcoming.id].sort());
+  assert.deepEqual(queuedAlbumMbids(), [...defaultIds, newRelease.id].sort());
+  assert.ok(savedAlbumMbids().includes(upcoming.id));
   const afterFirstRun = downloadTracker.getAll().length;
-  assert.equal(afterFirstRun, initialJobs + 4);
+  assert.equal(afterFirstRun, initialJobs + 2);
 
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.equal(downloadTracker.getAll().length, afterFirstRun);
@@ -923,7 +932,7 @@ test("daily reconciliation queues new releases once and keeps going past a faili
   ];
   clearMetadataProviderCaches();
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
-  assert.ok(queuedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
+  assert.ok(savedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
   assert.equal(lidarrCalls.length, 0);
 });
 

@@ -1,5 +1,7 @@
+import { isUnreleased } from "../../../lib/releaseDate.ts";
 import { Download } from "../components/icons";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { formatCalendarDate } from "./dateTime.ts";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -63,17 +65,24 @@ type AlbumRequestResult = {
   queued?: boolean;
   triggeredSearch?: boolean;
   albumStatus?: { status?: string } | null;
+  album?: { releaseDate?: string | null } | null;
 };
 
 type AlbumDestination = Partial<ReturnType<typeof useLibraryDestination>>;
 
-export const buildAlbumAddAction = (_search: boolean, destination: AlbumDestination = {}) => ({
-  label: "Download album",
+export const buildAlbumAddAction = (
+  _search: boolean,
+  destination: AlbumDestination = {},
+  releaseDate?: string | null,
+) => ({
+  label: isUnreleased(releaseDate) ? "Download when it's out" : "Download album",
   icon: Download,
   destination,
 });
 
-type AlbumSearchInput = Parameters<typeof shouldTriggerAlbumSearch>[0];
+type AlbumSearchInput = Parameters<typeof shouldTriggerAlbumSearch>[0] & {
+  releaseDate?: string | null;
+};
 
 export function getAlbumAddAction<T extends object>(
   input: T & AlbumSearchInput,
@@ -87,7 +96,7 @@ export function getAlbumAddAction(
   input: AlbumSearchInput = {},
   destination: AlbumDestination = {},
 ) {
-  return buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
+  return buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination, input.releaseDate);
 }
 
 export const isAlbumCompleteInLibrary = ({
@@ -134,6 +143,15 @@ export const describeAlbumRequestResult = (
     return {
       kind: "info",
       message: `${title} is in your library, but nothing is downloading. Open the album to see why.`,
+    };
+  }
+  if (result?.albumStatus?.status === "unreleased") {
+    const releaseDate = formatCalendarDate(result.album?.releaseDate);
+    return {
+      kind: "success",
+      message: releaseDate
+        ? `${title} comes out ${releaseDate}. Aurral will download it then.`
+        : `${title} isn't out yet. Aurral will download it when it comes out.`,
     };
   }
   if (result?.queued || result?.status === "queued") {

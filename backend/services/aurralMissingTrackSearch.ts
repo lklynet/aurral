@@ -11,6 +11,7 @@ import { ALBUM_IS_OWNED } from "./libraryMediaStore.ts";
 import { albumMediaCondition } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { releasedSince, utcDay } from "../../lib/releaseDate.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -20,6 +21,8 @@ type CandidateAlbum = Pick<LibraryAlbumsRow, "id" | "title"> & {
   releaseGroupMbid: string | null;
   artistName: string;
   artistMbid: string | null;
+  releaseDate: string | null;
+  addedAt: number;
   lastSearchedAt: number | null;
 };
 
@@ -33,7 +36,10 @@ const MISSING_TRACK_CONDITION = `
   )
 `;
 
-const candidateAlbumsStmt = db.prepare<[number], CandidateAlbum>(`
+const candidateAlbumsStmt = db.prepare<
+  [{ dueBefore: number | null; today: string }],
+  CandidateAlbum
+>(`
   SELECT
     album.id,
     album.title,
@@ -41,6 +47,8 @@ const candidateAlbumsStmt = db.prepare<[number], CandidateAlbum>(`
     album.release_group_mbid AS releaseGroupMbid,
     artist.name AS artistName,
     artist.mbid AS artistMbid,
+    album.release_date AS releaseDate,
+    management.created_at AS addedAt,
     management.last_missing_search_at AS lastSearchedAt
   FROM library_management AS management
   JOIN library_albums AS album ON album.id = management.entity_id
@@ -48,7 +56,14 @@ const candidateAlbumsStmt = db.prepare<[number], CandidateAlbum>(`
   WHERE ${AURRAL_ALBUM_CONDITION}
     AND ${ALBUM_IS_OWNED}
     AND COALESCE(album.mbid, album.release_group_mbid) IS NOT NULL
-    AND (management.last_missing_search_at IS NULL OR management.last_missing_search_at <= ?)
+    AND (album.release_date IS NULL OR substr(album.release_date, 1, 10) <= :today)
+    AND (
+      (:dueBefore IS NOT NULL AND COALESCE(management.last_missing_search_at, 0) <= :dueBefore)
+      OR substr(album.release_date, 1, 10) > date(
+        MAX(COALESCE(management.last_missing_search_at, 0), management.created_at) / 1000,
+        'unixepoch'
+      )
+    )
     AND EXISTS (
       SELECT 1 FROM library_album_tracks AS link
       JOIN library_tracks AS track ON track.id = link.track_id
@@ -82,9 +97,12 @@ function hasSearchableMissingTrack(album: CandidateAlbum, jobs: DownloadJob[]) {
   });
 }
 
-function selectDueAlbums(intervalDays: number) {
-  const dueBefore = Date.now() - intervalDays * DAY_MS + HOUR_MS;
-  const albums = candidateAlbumsStmt.all(dueBefore);
+// An album added before its release date is searched once it comes out,
+// even when the scheduled missing-track search is off.
+function selectDueAlbums(intervalDays: number | null) {
+  const now = Date.now();
+  const dueBefore = intervalDays === null ? null : now - intervalDays * DAY_MS + HOUR_MS;
+  const albums = candidateAlbumsStmt.all({ dueBefore, today: utcDay(now) });
   const jobsForAlbum = indexAurralAlbumJobs(
     albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]),
   );
@@ -98,7 +116,10 @@ function selectDueAlbums(intervalDays: number) {
       return { album, jobs, lastActivityAt };
     })
     .filter(
-      ({ jobs, lastActivityAt }) => lastActivityAt <= dueBefore && !jobs.some(isActiveOrCancelled),
+      ({ album, jobs, lastActivityAt }) =>
+        ((dueBefore !== null && lastActivityAt <= dueBefore) ||
+          releasedSince(album.releaseDate, Math.max(lastActivityAt, album.addedAt), now)) &&
+        !jobs.some(isActiveOrCancelled),
     )
     .sort(
       (left, right) => left.lastActivityAt - right.lastActivityAt || left.album.id - right.album.id,
@@ -136,8 +157,8 @@ async function searchAlbumMissingTracks(album: CandidateAlbum) {
 
 export async function runMissingTrackSearch() {
   const settings = dbOps.getSettings().missingTrackSearch;
-  if (!settings.enabled || !isAnyDownloadSourceConfigured()) return 0;
-  const dueAlbums = selectDueAlbums(settings.intervalDays);
+  if (!isAnyDownloadSourceConfigured()) return 0;
+  const dueAlbums = selectDueAlbums(settings.enabled ? settings.intervalDays : null);
   for (const album of dueAlbums) await searchAlbumMissingTracks(album);
   return dueAlbums.length;
 }
