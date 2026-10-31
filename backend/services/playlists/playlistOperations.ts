@@ -435,6 +435,7 @@ async function runFlowSeed({
     });
   } else {
     await restartWorkerIfPending();
+    recordFlowTracksGenerated({ flowId: safeFlowId, tracksFound: result?.jobIds?.length });
   }
   return result;
 }

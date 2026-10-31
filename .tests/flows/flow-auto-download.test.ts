@@ -122,6 +122,11 @@ test("a flow with auto-download off lists new tracks without queueing them and r
   assert.deepEqual(flowStatuses(flow.id), ["New Track:saved", "Owned Track:done"]);
   assert.equal(downloadTracker.getNextPending(), null);
   assert.equal(vi.mocked(downloadWorker.start).mock.calls.length, 0);
+  const [run] = dbOps
+    .getAurralHistory({ limit: 10 })
+    .filter((entry) => entry.kind === "flow_generating");
+  assert.equal(run?.status, "completed");
+  assert.equal(run?.subtitle, "2 tracks found");
 });
 
 test("a scheduled flow still runs without a download source and keeps its tracks listed", async () => {
