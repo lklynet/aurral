@@ -37,6 +37,14 @@ raw.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('flows', ?)").
       tag: "metal",
       discoverPresetId: "top-metal",
     },
+    {
+      id: "lost-mount",
+      name: "Lost Mount",
+      enabled: true,
+      nextRunAt: due,
+      scheduleDays: [1],
+      type: "editorial",
+    },
     { id: "weekly", name: "Weekly", enabled: true, nextRunAt: due, scheduleDays: [1] },
   ]),
 );
@@ -76,11 +84,27 @@ test("retired editorial flows stop running and become playlists that keep their 
     assert.ok(jobId != null);
     downloadTracker.setDone(jobId, path.join(album, `${trackName}.flac`), "Album");
   }
+  const unmounted = downloadTracker.addJob(
+    { artistName: "Far Artist", trackName: "Far Song" },
+    "lost-mount",
+  );
+  assert.ok(unmounted != null);
+  downloadTracker.setDone(unmounted, "/unmounted/Far Song.flac", "Album");
+  const interrupted = flowPlaylistConfig.createStaticPlaylist({
+    name: "Metal Mayhem",
+    sourceFlowId: "metal-mayhem",
+    ownerUserId: 7,
+    replacesFlowId: "metal-mayhem",
+    tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
+  });
 
   await convertRetiredFlows();
 
   assert.equal(flowPlaylistConfig.getFlow("metal-mayhem"), null);
-  const [playlist] = flowPlaylistConfig.getStaticPlaylists();
+  const playlists = flowPlaylistConfig.getStaticPlaylists();
+  assert.equal(playlists.length, 1);
+  const [playlist] = playlists;
+  assert.notEqual(playlist.id, interrupted.id);
   assert.deepEqual(
     [playlist.name, playlist.ownerUserId, playlist.tracks.map((track) => track.trackName)],
     ["Metal Mayhem", 7, ["Old Song"]],
@@ -91,4 +115,10 @@ test("retired editorial flows stop running and become playlists that keep their 
     path.join(playlistManager.downloadRoot, "Old Artist", "Album", "Old Song.flac"),
   );
   assert.equal(await fs.readFile(String(job.finalPath), "utf8"), "disposable audio");
+
+  assert.equal(flowPlaylistConfig.getFlow("lost-mount")?.enabled, false);
+  assert.deepEqual(
+    downloadTracker.getByPlaylistId("lost-mount").map((entry) => entry.trackName),
+    ["Far Song"],
+  );
 });

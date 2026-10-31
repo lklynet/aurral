@@ -34,8 +34,16 @@ const trackFromJob = (job: DownloadJob) => ({
 const isFile = (filePath: string) =>
   fsp.stat(filePath).then(
     (stat) => stat.isFile(),
-    () => false,
+    (error: unknown) => {
+      if (asAppError(error)?.code === "ENOENT") return false;
+      throw error;
+    },
   );
+
+const discardStaticPlaylist = async (playlistId: string) => {
+  await playlistManager.weeklyReset([playlistId]).catch(() => {});
+  flowPlaylistConfig.deleteStaticPlaylist(playlistId);
+};
 
 export async function saveFlowAsStaticPlaylist(
   flow: FlowConfig,
@@ -74,8 +82,7 @@ export async function saveFlowAsStaticPlaylist(
     await playlistManager.scheduleScanLibrary(true);
     schedulePlaylistMbidEnrichment(playlist.id, { reason: "flow-static-playlist", priority: 5 });
   } catch (error) {
-    await playlistManager.weeklyReset([playlist.id]).catch(() => {});
-    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+    await discardStaticPlaylist(playlist.id);
     throw error;
   }
   return { playlist, trackCount: saved.size };
@@ -86,11 +93,18 @@ export async function convertRetiredFlows() {
     const flow = flowPlaylistConfig.getFlow(flowId);
     if (!flow) continue;
     try {
-      await saveFlowAsStaticPlaylist(flow, {
+      const unfinished = flowPlaylistConfig
+        .getStaticPlaylists()
+        .find((playlist) => playlist.sourceFlowId === flowId && playlist.name === flow.name);
+      if (unfinished) await discardStaticPlaylist(unfinished.id);
+      const saved = await saveFlowAsStaticPlaylist(flow, {
         name: flow.name,
         ownerUserId: flow.ownerUserId,
         replacesFlow: true,
       });
+      if (!saved && downloadTracker.getByPlaylistId(flowId).some((job) => job.status === "done")) {
+        throw new Error("none of its track files were found");
+      }
       await processPlaylistOperation({ kind: "delete-flow", flowId });
     } catch (error) {
       console.warn(
