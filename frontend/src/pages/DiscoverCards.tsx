@@ -32,6 +32,8 @@ type DiscoverFeedbackHandler = ReturnType<typeof useDiscoverData>["handleDiscove
 type DiscoverAlbumAction = ReturnType<typeof useDiscoverData>["handleRecentReleaseAlbumAction"];
 type CardLink = { to: string; state?: unknown };
 
+const isRequested = (album: RecentRelease) => "requested" in album && album.requested;
+
 const formatReleaseStatus = (releaseDate: string | null | undefined) => {
   const date = parseCalendarDate(releaseDate);
   if (!date) return null;
@@ -240,8 +242,7 @@ export const AlbumCard = memo(
     const albumRelease = formatReleaseStatus(album.releaseDate);
     const albumReleaseText = albumRelease?.text;
     const isComplete = (album.statistics?.percentOfTracks || 0) > 0;
-    const awaitingRelease =
-      "requested" in album && album.requested && isUnreleased(album.releaseDate);
+    const awaitingRelease = isRequested(album) && isUnreleased(album.releaseDate);
     const target = getReleaseNavigationTarget({
       type: "album",
       id: releaseGroupMbid,
@@ -341,6 +342,7 @@ export const AlbumCard = memo(
       prevProps.album.artistName === nextProps.album.artistName &&
       prevProps.album.coverUrl === nextProps.album.coverUrl &&
       prevProps.album.releaseDate === nextProps.album.releaseDate &&
+      isRequested(prevProps.album) === isRequested(nextProps.album) &&
       prevProps.album.statistics?.percentOfTracks === nextProps.album.statistics?.percentOfTracks &&
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&
