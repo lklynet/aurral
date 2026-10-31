@@ -26,3 +26,34 @@ test("Deezer preview matching requires the requested artist and track", () => {
 
   assert.equal(preview?.preview, "right.mp3");
 });
+
+test("Deezer preview matching accepts the main artist of a shared credit only", () => {
+  const candidates = [{ id: 1, title: "Gravity", artist: { name: "John" }, preview: "john.mp3" }];
+
+  assert.equal(
+    selectDeezerTrackPreview(candidates, { artistName: "John feat. Mayer", trackName: "Gravity" })
+      ?.preview,
+    "john.mp3",
+  );
+  assert.equal(
+    selectDeezerTrackPreview(candidates, { artistName: "John Mayer", trackName: "Gravity" }),
+    null,
+  );
+});
+
+test("Deezer preview matching prefers the full artist over the main artist of a credit", () => {
+  const preview = selectDeezerTrackPreview(
+    [
+      { id: 1, title: "See You Again", artist: { name: "Tyler" }, preview: "tyler.mp3" },
+      {
+        id: 2,
+        title: "See You Again",
+        artist: { name: "Tyler, The Creator" },
+        preview: "creator.mp3",
+      },
+    ],
+    { artistName: "Tyler, The Creator", trackName: "See You Again" },
+  );
+
+  assert.equal(preview?.preview, "creator.mp3");
+});

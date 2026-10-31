@@ -24,6 +24,10 @@ import {
 import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.ts";
 import { saveFlowAsStaticPlaylist } from "../../../services/flows/staticPlaylistFromFlow.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import {
+  getDownloadSourceNotConfiguredMessage,
+  isAnyDownloadSourceConfigured,
+} from "../../../services/downloadSourceService.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
@@ -43,6 +47,7 @@ const flowFields = {
   deepDive: v.nullish(v.boolean()),
   recentListening: v.optional(v.boolean()),
   recordHistory: v.optional(v.boolean()),
+  autoDownload: v.optional(v.boolean()),
   yearFrom: v.nullish(count),
   yearTo: v.nullish(count),
   tags: v.nullish(v.array(v.string())),
@@ -143,7 +148,11 @@ export default new Hono<AppEnv>()
       if (validationError) {
         return c.json({ error: validationError, message: validationError }, 400);
       }
-      const flow = flowPlaylistConfig.createFlow({ ...payload, ownerUserId });
+      const flow = flowPlaylistConfig.createFlow({
+        ...payload,
+        autoDownload: fields.autoDownload ?? isAnyDownloadSourceConfigured(),
+        ownerUserId,
+      });
       await playlistManager.ensurePlaylistArtwork(flow.id);
       playlistManager.requestPlaylistSync([flow.id]);
       return c.json({ success: true, flow }, 200);
@@ -316,6 +325,29 @@ export default new Hono<AppEnv>()
       }
     },
   )
+  .post("/flows/:flowId/download", requireFlowAccess, async (c) => {
+    try {
+      const flowId = c.req.param("flowId");
+      if (!getAccessibleFlow(c.var.user, flowId)) {
+        return c.json({ error: "Flow not found" }, 404);
+      }
+      if (!isAnyDownloadSourceConfigured()) {
+        const message = getDownloadSourceNotConfiguredMessage();
+        return c.json({ error: message, message }, 409);
+      }
+      const result = await playlistOperationQueue.enqueuePayload({
+        kind: "flow-download-saved",
+        label: `flow:${flowId}:download`,
+        flowId,
+      });
+      return c.json({ success: true, flowId, queued: true, operationId: result.operationId }, 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to download flow tracks", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
   .post("/flows/:flowId/tracks/:jobId/research", requireFlowAccess, async (c) => {
     try {
       return await enqueueResearchTrack(

@@ -1,7 +1,6 @@
 import { asAppError } from "../../../lib/errors.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
-import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import {
@@ -17,8 +16,6 @@ function isFlowOwnerActive(flow: FlowConfig) {
 }
 
 export async function runScheduledFlowRefresh() {
-  if (!isAnyDownloadSourceConfigured()) return;
-
   const due = flowPlaylistConfig.getDueForRefresh();
   if (due.length === 0) return;
 

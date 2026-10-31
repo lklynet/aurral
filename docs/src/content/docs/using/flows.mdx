@@ -77,10 +77,11 @@ Pick the days when the flow can run and the hour of those runs.
 
 **Deeper cuts** changes which tracks Aurral takes from each artist. When it is off, Aurral uses the artist's top 10 tracks. When it is on, Aurral uses tracks 10 to 25. If an artist has too few tracks in that range, Aurral falls back to the top 10.
 
-## Scrobbling and library
+## Flow options
 
 Open the flow menu to set these options:
 
+- **Download automatically** downloads new tracks each time the flow runs. Turn it off to see the picks first: tracks you already have stay playable, and the rest wait as **Not downloaded** and play a 30-second Deezer preview. Previews never count as plays. Download one from its track menu, or all of them with **Download all** in the flow menu. A new flow starts with this off when no download source is set up, and a flow without a download source always waits.
 - **Scrobble tracks** controls whether Aurral records plays from this flow in your listening history. Turn it off to keep these plays out of your recommendations and your scrobbling services. Plays recorded before the change stay.
 - **Show in library** adds the flow's current tracks to the Library pages. It is off by default. A track leaves the Library when it rotates out of the flow, when you turn the option off, or when you delete the flow. Aurral does not move or copy the files. Lidarr and your playback servers do not change.
 
@@ -91,11 +92,13 @@ When a flow runs, Aurral:
 1. Collects candidates for each source that is turned on, keeping only tracks that match your tags and years.
 2. Picks the playlist with one song per artist.
 3. Moves any shortfall in one source to the other sources.
-4. Sends the playlist to the download worker.
+4. Sends the playlist to the download worker, unless **Download automatically** is off.
 
 A track that fails to download stays failed until you re-search it or the flow runs again. See [Playlist imports](/using/playlist-imports/#download-retries-and-failures).
 
 ## Keep flow tracks
+
+Each run replaces the flow's tracks, including ones you downloaded from it.
 
 - To keep one track in the Library, select **Add to library** in the track menu.
 - To save all finished tracks as a static playlist, select **Save as playlist** in the flow menu. Aurral names the new playlist after the flow, with `Static` at the end.

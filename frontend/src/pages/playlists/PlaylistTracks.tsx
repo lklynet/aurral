@@ -328,7 +328,9 @@ export function PlaylistTracks({
                 },
               }),
         );
-        showSuccess(`Re-searching ${track.trackName}`);
+        showSuccess(
+          `${track.status === "saved" ? "Downloading" : "Re-searching"} ${track.trackName}`,
+        );
       }
       await refreshAll();
     } catch (err) {

@@ -10,6 +10,10 @@ import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
 import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
+import {
+  deezerGetTrackPreview,
+  getDeezerPreviewLink,
+} from "../../../services/apiClients/deezer.ts";
 
 const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
   canAccessPlaylistType(user, job.playlistType) ||
@@ -27,6 +31,12 @@ export default new Hono<AppEnv>()
     const job = downloadTracker.getJob(c.req.param("jobId"));
     if (!job || !canAccessJob(c.get("user"), job)) {
       return c.json({ error: "Track not found" }, 404);
+    }
+    if (job.status === "saved") {
+      const link = await deezerGetTrackPreview(job)
+        .then((preview) => preview && getDeezerPreviewLink(preview.previewTrackId))
+        .catch(() => null);
+      return link ? c.redirect(link, 302) : c.json({ error: "No preview for this track" }, 404);
     }
     if (job.status !== "done" || !job.finalPath) {
       return c.json({ error: "Track is not ready to stream" }, 400);

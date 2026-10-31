@@ -272,6 +272,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
     "downloadCancel",
     "shareImports",
     "trending",
+    "flowAutoDownload",
   ]) {
     assert.ok(
       bootstrap.api.features.includes(feature),
