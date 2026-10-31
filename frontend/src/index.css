@@ -12184,6 +12184,16 @@ button.native-library-genre-row:focus-visible {
   font-weight: 700;
 }
 
+.flow-page__token-chip--excluded {
+  padding-inline: 0;
+  color: var(--aurral-danger);
+}
+
+.flow-page__hint {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+}
+
 .flow-page__token-placeholder {
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-base);

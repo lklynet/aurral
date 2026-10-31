@@ -46,6 +46,7 @@ const flowFields = {
   yearFrom: v.nullish(count),
   yearTo: v.nullish(count),
   tags: v.nullish(v.array(v.string())),
+  excludeTags: v.nullish(v.array(v.string())),
   relatedArtists: v.nullish(v.array(v.string())),
   scheduleDays: v.nullish(v.array(count)),
   scheduleTime: v.nullish(v.string()),

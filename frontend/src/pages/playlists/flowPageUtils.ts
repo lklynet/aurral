@@ -166,6 +166,17 @@ const parseListInput = (value: string | null | undefined) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
+export const parseTagInput = (value: string | null | undefined) => {
+  const entries = parseListInput(value);
+  return {
+    tags: entries.filter((entry) => !entry.startsWith("-")),
+    excludeTags: entries
+      .filter((entry) => entry.startsWith("-"))
+      .map((entry) => entry.slice(1).trim())
+      .filter(Boolean),
+  };
+};
+
 const parseOptionalYearInput = (value: unknown, label: string) => {
   const text = String(value ?? "").trim();
   if (!text) return null;
@@ -177,7 +188,10 @@ const parseOptionalYearInput = (value: unknown, label: string) => {
 };
 
 export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
-  const tagsList = normalizeTextList(flow?.tags);
+  const tagsList = [
+    ...normalizeTextList(flow?.tags),
+    ...normalizeTextList(flow?.excludeTags).map((tag) => `-${tag}`),
+  ];
   const relatedList = normalizeTextList(flow?.relatedArtists);
   const scheduleDays = normalizeScheduleDays(flow?.scheduleDays);
   const rawSize = Number(flow?.size || 0);
@@ -206,7 +220,7 @@ export const FOCUS_NEEDS_SEEDS = "Focus needs a tag, a similar artist, or recent
 export const focusNeedsSeeds = (draft: FlowDraft) =>
   draft.counts.focus > 0 &&
   draft.recentListening !== true &&
-  parseListInput(draft.includeTags).length === 0 &&
+  parseTagInput(draft.includeTags).tags.length === 0 &&
   parseListInput(draft.includeRelatedArtists).length === 0;
 
 export const buildFlowFromForm = (draft: FlowDraft) => {
@@ -233,7 +247,7 @@ export const buildFlowFromForm = (draft: FlowDraft) => {
     name,
     size,
     mix: draft.counts,
-    tags: parseListInput(draft.includeTags),
+    ...parseTagInput(draft.includeTags),
     relatedArtists: parseListInput(draft.includeRelatedArtists),
     recentListening: draft.recentListening === true,
     deepDive: draft.deepDive === true,
