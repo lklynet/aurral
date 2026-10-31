@@ -9,9 +9,9 @@ A flow is a playlist that Aurral builds again on a schedule. Aurral downloads fl
 
 A flow has three groups of settings:
 
-1. **Only include** limits every source to tags and release years, and can leave tags out.
-2. **Sources** set where the tracks come from and how many each one adds.
-3. **Schedule** sets when the flow runs.
+1. **Updates** sets when the flow runs.
+2. **Tracks** sets where the tracks come from and how many each source adds.
+3. **Filters** limits every source to tags and release years, and can leave tags out.
 
 ## Start from a template
 
@@ -27,9 +27,9 @@ You can change any template's recipe afterwards.
 
 A new flow runs only after you turn it on. A flow that is turned off keeps its settings but does not run.
 
-## Sources
+## Tracks
 
-Turn on a source and set how many tracks it adds. The flow's size is the total.
+Set how many tracks each source adds. A source set to 0 is off. The flow's size is the total.
 
 | Source       | Tracks come from                                                                                                                 |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -41,13 +41,13 @@ Turn on a source and set how many tracks it adds. The flow's size is the total.
 
 Under each track title, the flow shows why Aurral picked it, such as "Similar to Pusha T" or "Trending this week".
 
-## Only include
+## Filters
 
-**Tags** and **Release years** apply to every source that is turned on.
+**Tags** and **Released** apply to every source that is turned on.
 
 - **Tags** keep artists that carry at least one of your tags. Spelling variants match, so `hip-hop` and `hip hop` are the same tag.
 - Start a tag with `-` to leave out artists that carry it, such as `-christmas`. This works with or without other tags.
-- **Release years** keep tracks from releases that first came out in that range. Leave a year blank for no limit.
+- **Released** keeps tracks from releases that first came out in that range. Leave a year blank for no limit.
 
 Year range examples:
 
@@ -69,14 +69,13 @@ Focus finds artists outside your Library from three kinds of seeds:
 
 Focus needs at least one of these. It takes turns between them, starting with the closest matches for each.
 
-## Schedule
+## Updates
 
-- **Update days** sets the days when the flow can run.
-- **Update hour** sets the hour of those runs.
+Pick the days when the flow can run and the hour of those runs.
 
-## Deep Dive
+## Deeper cuts
 
-**Deep Dive** changes which tracks Aurral takes from each artist. When it is off, Aurral uses the artist's top 10 tracks. When it is on, Aurral uses tracks 10 to 25. If an artist has too few tracks in that range, Aurral falls back to the top 10.
+**Deeper cuts** changes which tracks Aurral takes from each artist. When it is off, Aurral uses the artist's top 10 tracks. When it is on, Aurral uses tracks 10 to 25. If an artist has too few tracks in that range, Aurral falls back to the top 10.
 
 ## Scrobbling and library
 

@@ -11899,7 +11899,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .flow-page__source.is-off .flow-page__source-name,
-.flow-page__source.is-off .flow-page__source-detail {
+.flow-page__source.is-off .flow-page__source-detail,
+.flow-page__source.is-off .flow-page__source-count {
   color: var(--aurral-text-subtle);
 }
 
@@ -11907,21 +11908,32 @@ button.native-library-genre-row:focus-visible {
   text-align: center;
 }
 
-.flow-page__source--total {
-  grid-template-columns: minmax(0, 1fr) 4.5rem;
+.flow-page__source-option {
+  justify-self: start;
   min-height: 2rem;
+  margin-left: calc(9rem + 0.75rem);
 }
 
-.flow-page__source--total .flow-page__source-name {
-  color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-sm);
-  cursor: default;
+.flow-page__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.flow-page__source--total .flow-page__source-count {
+.flow-page__section-total {
+  width: 4.5rem;
   color: var(--aurral-text);
   font-size: var(--aurral-font-base);
   font-weight: 600;
+  text-align: center;
+}
+
+.flow-page__toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
 .flow-page__switch {
@@ -11935,15 +11947,6 @@ button.native-library-genre-row:focus-visible {
   cursor: pointer;
 }
 
-.flow-page__switch--end {
-  min-height: 2.5rem;
-  margin-left: auto;
-}
-
-.flow-page__source-name .artist-checkbox {
-  margin: 0;
-}
-
 @media (max-width: 639px) {
   .flow-page__source {
     grid-template-columns: minmax(0, 1fr) 4.5rem;
@@ -11954,7 +11957,10 @@ button.native-library-genre-row:focus-visible {
   .flow-page__source-detail {
     grid-column: 1 / -1;
     grid-row: 2;
-    padding-left: 1.875rem;
+  }
+
+  .flow-page__source-option {
+    margin-left: 0;
   }
 
   .flow-page__source-count {
@@ -11963,16 +11969,16 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
-.flow-page__schedule-row {
+.flow-page__schedule-line {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
-.flow-page__schedule-row .flow-page__field--schedule-days {
-  flex: 1 1 16rem;
-  min-width: 0;
+.flow-page__schedule-word {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
 }
 
 .flow-page__field {
@@ -12026,20 +12032,6 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
-.flow-page__field-round {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 2.5rem;
-  align-items: center;
-  padding: 0.25rem;
-  overflow: hidden;
-  border: 1px solid var(--aurral-border);
-  background: var(--aurral-surface-field);
-  border-radius: var(--aurral-radius);
-  box-sizing: border-box;
-}
-
 .flow-page__year-range {
   display: flex;
   flex-wrap: wrap;
@@ -12052,22 +12044,8 @@ button.native-library-genre-row:focus-visible {
   line-height: 1;
 }
 
-.flow-page__field-round .flow-page__field-control {
-  height: 2.25rem;
-  min-height: 2.25rem;
-  padding: 0 0.75rem;
-  background-color: transparent;
-  border: 0;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.flow-page__field-round--select {
-  position: relative;
-  width: 6.75rem;
-}
-
-.flow-page__field-round--select .flow-page__field-select {
-  width: 100%;
+.flow-page__field-select {
+  width: 8.5rem;
 }
 
 .flow-page__field-input--size {
@@ -12077,17 +12055,19 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__weekday-grid {
   display: inline-flex;
+  height: 2.5rem;
+  box-sizing: border-box;
   gap: 0.125rem;
-  padding: 0.25rem;
+  padding: 0.1875rem;
   border: 1px solid var(--aurral-border);
-  background: var(--aurral-surface-raised);
+  background: var(--aurral-surface);
   border-radius: var(--aurral-radius-sm);
 }
 
 .flow-page__weekday {
   display: inline-flex;
   width: 2.25rem;
-  height: 2.25rem;
+  height: 100%;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -12114,7 +12094,6 @@ button.native-library-genre-row:focus-visible {
 .flow-page__weekday.is-active {
   background: var(--aurral-surface-selected);
   color: var(--aurral-text);
-  box-shadow: inset 0 -2px var(--aurral-text);
 }
 
 .flow-page__weekday:focus-visible {
@@ -12123,7 +12102,6 @@ button.native-library-genre-row:focus-visible {
 }
 
 .flow-page__weekday[aria-disabled="true"] {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -12186,7 +12164,7 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-raised);
   color: var(--aurral-text);
   font-size: var(--aurral-font-base);
-  border-radius: var(--aurral-radius-sm);
+  border-radius: var(--aurral-radius);
   overflow: visible;
   transition: outline var(--aurral-duration-base) var(--aurral-ease-standard);
 }
@@ -12830,16 +12808,7 @@ button.native-library-genre-row:focus-visible {
     text-align: left;
   }
 
-  .flow-page__weekday-grid {
-    gap: 0.125rem;
-  }
-
-  .flow-page__weekday {
-    width: 2.25rem;
-    height: 2.25rem;
-  }
-
-  .flow-page__field-round--select {
+  .flow-page__field-select {
     width: 10rem;
   }
 }
