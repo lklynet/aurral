@@ -86,8 +86,6 @@ type TrackPick = Omit<TrackEntryInput, "artistName" | "reason">;
 
 type FlowTrackEntry = NonNullable<ReturnType<FlowTrackSource["_buildTrackEntry"]>>;
 
-type FlowCandidate = ReturnType<FlowTrackSource["_buildBaseCandidate"]>;
-
 type FlowFilters = { tags: Map<string, string>; yearFrom: number | null; yearTo: number | null };
 
 type HarvestArtist = ArtistMatchFields & { tags?: string[] | null; reason?: string };
@@ -694,23 +692,7 @@ export class FlowTrackSource {
     return tracks;
   }
 
-  _buildBaseCandidate(track: FlowTrackEntry, source: FlowSource, sourceRank = 0) {
-    const metadataConfidence =
-      (track.albumName ? 0.45 : 0) +
-      (track.releaseYear ? 0.2 : 0) +
-      (track.durationMs ? 0.25 : 0) +
-      (track.trackMbid ? 0.1 : 0);
-    const downloadabilityHint =
-      metadataConfidence * 10 + (track.artistMbid ? 4 : 0) + (track.trackMbid ? 4 : 0);
-    return {
-      ...track,
-      source,
-      sourceRank,
-      finalScore: Math.max(0, 200 - sourceRank) + metadataConfidence * 25 + downloadabilityHint,
-    };
-  }
-
-  _selectFromCandidates(candidates: FlowCandidate[], count: number, usedArtistKeys: Set<string>) {
+  _selectFromCandidates(candidates: FlowTrackEntry[], count: number, usedArtistKeys: Set<string>) {
     const picked = [];
     for (const candidate of candidates) {
       if (picked.length >= count) break;
@@ -728,7 +710,7 @@ export class FlowTrackSource {
     targetSize,
     sourceTargets,
   }: {
-    candidateMap: Record<FlowSource, FlowCandidate[]>;
+    candidateMap: Record<FlowSource, FlowTrackEntry[]>;
     excludeArtistKeys: ReadonlySet<string>;
     targetSize: number;
     sourceTargets: Record<FlowSource, number>;
@@ -747,18 +729,7 @@ export class FlowTrackSource {
         ),
       );
     }
-    return {
-      primaryTracks: primaryTracks
-        .slice(0, targetSize)
-        .map(
-          ({
-            source: _source,
-            sourceRank: _sourceRank,
-            finalScore: _finalScore,
-            ...track
-          }): FlowTrackEntry => track,
-        ),
-    };
+    return { primaryTracks: primaryTracks.slice(0, targetSize) };
   }
 
   _buildFilters(flow: FlowRunSpec, blockedTags: ReadonlySet<string>): FlowFilters {
@@ -804,8 +775,9 @@ export class FlowTrackSource {
       FLOW_SOURCES.map(async (source) => {
         if (sourceTargets[source] <= 0) return [];
         try {
-          const tracks = await sources[source](this._harvestLimitFor(sourceTargets[source]));
-          return tracks.map((track, index) => this._buildBaseCandidate(track, source, index));
+          return await sources[source](
+            Math.max(targetSize, this._harvestLimitFor(sourceTargets[source])),
+          );
         } catch (error) {
           logger.warn(
             "flows",
@@ -815,7 +787,7 @@ export class FlowTrackSource {
         }
       }),
     );
-    const candidateMap: Record<FlowSource, FlowCandidate[]> = {
+    const candidateMap: Record<FlowSource, FlowTrackEntry[]> = {
       discover: [],
       mix: [],
       trending: [],

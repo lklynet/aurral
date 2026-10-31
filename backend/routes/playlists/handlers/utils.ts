@@ -126,7 +126,7 @@ export const validateFlowPayload = ({
   if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
     return "size must be a positive number";
   }
-  const shares = splitFlowTotal(mix, 100);
+  const shares = splitFlowTotal(mix, Math.round(parsedSize));
   if (!shares) {
     return "at least one source must be enabled";
   }

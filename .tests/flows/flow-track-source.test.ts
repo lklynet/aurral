@@ -47,14 +47,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const candidate = (
-  source: FlowTrackSource,
-  artistName: string,
-  origin: Parameters<FlowTrackSource["_buildBaseCandidate"]>[1],
-) => {
+const candidate = (source: FlowTrackSource, artistName: string) => {
   const track = source._buildTrackEntry({ artistName, trackName: `${artistName} Song` });
   assert.ok(track);
-  return source._buildBaseCandidate(track, origin);
+  return track;
 };
 
 const topTrack = (
@@ -91,11 +87,8 @@ test("a plan fills each source's share, then backfills without repeating an arti
   const source = new FlowTrackSource();
   const plan = source._assembleFlowPlan({
     candidateMap: {
-      discover: [
-        candidate(source, "Shared", "discover"),
-        candidate(source, "Discover", "discover"),
-      ],
-      mix: [candidate(source, "Shared", "mix")],
+      discover: [candidate(source, "Shared"), candidate(source, "Discover")],
+      mix: [candidate(source, "Shared")],
       trending: [],
       focus: [],
       newReleases: [],
@@ -108,7 +101,18 @@ test("a plan fills each source's share, then backfills without repeating an arti
     plan.primaryTracks.map((track) => track.artistName),
     ["Shared", "Discover"],
   );
-  assert.equal("source" in plan.primaryTracks[0], false);
+});
+
+test("a source can fill the whole flow when another source comes up empty", async () => {
+  const source = new FlowTrackSource();
+  source._getLibraryArtistKeySet = async () => new Set<string>();
+  source.getMixTracks = async () => [];
+  source.getDiscoverTracks = async (limit) =>
+    Array.from({ length: Math.min(limit, 40) }, (_, index) => candidate(source, `Artist ${index}`));
+
+  const plan = await source.buildFlowRunPlan({ size: 30, mix: { discover: 1, mix: 29 } });
+
+  assert.equal(plan.primaryTracks.length, 30);
 });
 
 test("a year range picks a popular track from a release first out in that range", async () => {

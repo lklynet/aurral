@@ -40,5 +40,12 @@ export const splitFlowTotal = (
   return counts;
 };
 
-export const normalizeFlowMix = (mix: Partial<Record<FlowSource, unknown>> | null | undefined) =>
-  splitFlowTotal(mix, 100) ?? { ...DEFAULT_FLOW_MIX };
+export const normalizeFlowMix = (mix: Partial<Record<FlowSource, unknown>> | null | undefined) => {
+  const sum = FLOW_SOURCES.reduce((acc, source) => acc + shareOf(mix?.[source]), 0);
+  if (sum <= 0) return { ...DEFAULT_FLOW_MIX };
+  const percents = { ...DEFAULT_FLOW_MIX };
+  for (const source of FLOW_SOURCES) {
+    percents[source] = Math.round((shareOf(mix?.[source]) / sum) * 10000) / 100;
+  }
+  return percents;
+};
