@@ -11899,7 +11899,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .flow-page__source.is-off .flow-page__source-name,
-.flow-page__source.is-off .flow-page__source-detail {
+.flow-page__source.is-off .flow-page__source-detail,
+.flow-page__source.is-off .flow-page__source-count {
   color: var(--aurral-text-subtle);
 }
 
@@ -11907,21 +11908,32 @@ button.native-library-genre-row:focus-visible {
   text-align: center;
 }
 
-.flow-page__source--total {
-  grid-template-columns: minmax(0, 1fr) 4.5rem;
+.flow-page__source-option {
+  justify-self: start;
   min-height: 2rem;
+  margin-left: calc(9rem + 0.75rem);
 }
 
-.flow-page__source--total .flow-page__source-name {
-  color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-sm);
-  cursor: default;
+.flow-page__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.flow-page__source--total .flow-page__source-count {
+.flow-page__section-total {
+  width: 4.5rem;
   color: var(--aurral-text);
   font-size: var(--aurral-font-base);
   font-weight: 600;
+  text-align: center;
+}
+
+.flow-page__toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
 .flow-page__switch {
@@ -11935,15 +11947,6 @@ button.native-library-genre-row:focus-visible {
   cursor: pointer;
 }
 
-.flow-page__switch--end {
-  min-height: 2.5rem;
-  margin-left: auto;
-}
-
-.flow-page__source-name .artist-checkbox {
-  margin: 0;
-}
-
 @media (max-width: 639px) {
   .flow-page__source {
     grid-template-columns: minmax(0, 1fr) 4.5rem;
@@ -11954,7 +11957,10 @@ button.native-library-genre-row:focus-visible {
   .flow-page__source-detail {
     grid-column: 1 / -1;
     grid-row: 2;
-    padding-left: 1.875rem;
+  }
+
+  .flow-page__source-option {
+    margin-left: 0;
   }
 
   .flow-page__source-count {
@@ -11963,16 +11969,16 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
-.flow-page__schedule-row {
+.flow-page__schedule-line {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
-.flow-page__schedule-row .flow-page__field--schedule-days {
-  flex: 1 1 16rem;
-  min-width: 0;
+.flow-page__schedule-word {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
 }
 
 .flow-page__field {
@@ -12063,7 +12069,7 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__field-round--select {
   position: relative;
-  width: 6.75rem;
+  width: 8.5rem;
 }
 
 .flow-page__field-round--select .flow-page__field-select {
