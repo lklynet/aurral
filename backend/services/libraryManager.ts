@@ -851,23 +851,10 @@ async function deleteAurralLibraryFiles(paths: string[]) {
     downloadRoot: resolveDownloadRoot(),
     lidarrRoots: activeLidarrRoots(await getLidarrClient()),
   };
-  const deletedPaths = new Set(
+  const deletablePaths = new Set(
     paths
       .filter((filePath) => libraryFolderOwner(filePath, folders) === "aurral")
       .map((filePath) => path.resolve(filePath)),
-  );
-  await dropDownloadJobs(
-    new Set(
-      downloadTracker
-        .getAll()
-        .filter(
-          (job) =>
-            job.status === "done" &&
-            typeof job.finalPath === "string" &&
-            deletedPaths.has(path.resolve(job.finalPath)),
-        )
-        .map((job) => job.id),
-    ),
   );
   const deletionResults = await Promise.allSettled(
     paths.map(async (filePath) => {
@@ -876,7 +863,7 @@ async function deleteAurralLibraryFiles(paths: string[]) {
         protectPlayback: false,
       });
       if (removal.action === "skipped") {
-        if (deletedPaths.has(path.resolve(filePath))) {
+        if (deletablePaths.has(path.resolve(filePath))) {
           try {
             await fsp.unlink(filePath);
           } catch (error) {
@@ -894,6 +881,24 @@ async function deleteAurralLibraryFiles(paths: string[]) {
   if (reconciledPaths.length > 0) {
     markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
   }
+  const removedPaths = new Set(
+    reconciledPaths
+      .map((filePath) => path.resolve(filePath))
+      .filter((filePath) => deletablePaths.has(filePath)),
+  );
+  await dropDownloadJobs(
+    new Set(
+      downloadTracker
+        .getAll()
+        .filter(
+          (job) =>
+            job.status === "done" &&
+            typeof job.finalPath === "string" &&
+            removedPaths.has(path.resolve(job.finalPath)),
+        )
+        .map((job) => job.id),
+    ),
+  );
   const emptiedFolders = new Set<string>();
   for (const filePath of reconciledPaths) {
     if (libraryFolderOwner(filePath, folders) !== "aurral") continue;
