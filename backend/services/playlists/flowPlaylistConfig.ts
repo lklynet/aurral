@@ -33,8 +33,6 @@ export interface StoredFlow {
   tags?: unknown;
   relatedArtists?: unknown;
   discoverPresetId?: unknown;
-  type?: string | null;
-  tag?: unknown;
   description?: unknown;
   lidarrFeedToken?: unknown;
   createdAt?: unknown;
@@ -113,7 +111,6 @@ export interface StoredStaticPlaylist {
   sourceName?: unknown;
   sourceFlowId?: unknown;
   discoverPresetId?: unknown;
-  type?: string | null;
   description?: unknown;
   importSource?: StoredImportSource | null;
   recordHistory?: unknown;
@@ -135,8 +132,6 @@ export interface StaticPlaylistUpdates {
   tracks?: PlaylistTrackInput[];
 }
 
-export const isRetiredFlow = (flow: { type?: string | null } | null | undefined) =>
-  flow?.type === "editorial";
 export const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
   "listenbrainz-playlist",
@@ -327,8 +322,6 @@ const normalizeFlow = (flow: StoredFlow) => {
     tags: normalizeStringArray(flow?.tags),
     relatedArtists: normalizeStringArray(flow?.relatedArtists),
     discoverPresetId: String(flow?.discoverPresetId || "").trim() || null,
-    type: flow?.type || null,
-    tag: flow?.tag || null,
     description:
       String(flow?.description || "").trim() || resolvePresetDescription(flow?.discoverPresetId),
     lidarrFeedToken: String(flow?.lidarrFeedToken || "").trim() || null,
@@ -613,7 +606,6 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
     discoverPresetId: String(playlist?.discoverPresetId || "").trim() || null,
-    type: playlist?.type || null,
     description:
       String(playlist?.description || "").trim() ||
       resolvePresetDescription(playlist?.discoverPresetId),
@@ -831,8 +823,6 @@ export const flowPlaylistConfig = {
     scheduleTime,
     ownerUserId = null,
     discoverPresetId = null,
-    type = null,
-    tag = null,
     description = null,
   }: CreateFlowInput) {
     const flows = getStoredFlows();
@@ -856,8 +846,6 @@ export const flowPlaylistConfig = {
       tags,
       relatedArtists,
       discoverPresetId,
-      type,
-      tag,
       description,
       recordHistory,
       scheduleDays,
@@ -987,11 +975,7 @@ export const flowPlaylistConfig = {
   getDueForRefresh() {
     const now = Date.now();
     return getStoredFlows().filter(
-      (flow) =>
-        flow.enabled === true &&
-        !isRetiredFlow(flow) &&
-        flow.nextRunAt != null &&
-        flow.nextRunAt <= now,
+      (flow) => flow.enabled === true && flow.nextRunAt != null && flow.nextRunAt <= now,
     );
   },
 
@@ -1024,24 +1008,24 @@ export const flowPlaylistConfig = {
     sourceName,
     sourceFlowId,
     discoverPresetId = null,
-    type = null,
     tracks = [],
     ownerUserId = null,
     importSource = null,
     description = null,
     recordHistory = true,
+    replacesFlowId = null,
   }: {
     id?: string | null;
     name: unknown;
     sourceName?: unknown;
     sourceFlowId?: unknown;
     discoverPresetId?: unknown;
-    type?: string | null;
     tracks?: PlaylistTrackInput[];
     ownerUserId?: unknown;
     importSource?: StoredImportSource | null;
     description?: unknown;
     recordHistory?: boolean;
+    replacesFlowId?: string | null;
   }) {
     const playlists = getStoredStaticPlaylists();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
@@ -1049,7 +1033,7 @@ export const flowPlaylistConfig = {
       entitiesRelevantForNameCheck(playlists, { ownerUserId: normalizedOwnerUserId }),
       entitiesRelevantForNameCheck(getStoredFlows(), {
         ownerUserId: normalizedOwnerUserId,
-      }),
+      }).filter((flow) => flow.id !== replacesFlowId),
       name,
     );
     const playlist = normalizeStaticPlaylist({
@@ -1059,7 +1043,6 @@ export const flowPlaylistConfig = {
       sourceName,
       sourceFlowId,
       discoverPresetId,
-      type,
       importSource,
       description,
       recordHistory,

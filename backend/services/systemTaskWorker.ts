@@ -312,7 +312,7 @@ export async function processSystemTask(
     }
     case "stored-data-migration": {
       const { migrateStoredData } = await import("./storedDataMigration.ts");
-      migrateStoredData();
+      await migrateStoredData();
       return;
     }
     case "upgrade-readiness-check": {
