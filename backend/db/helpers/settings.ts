@@ -145,8 +145,6 @@ const deleteSettingsByPrefixStmt = db.prepare<[string]>(
   "DELETE FROM settings WHERE key LIKE ? || '%'",
 );
 
-const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
-
 const readStoredSettingJson = <Schema extends v.GenericSchema>(schema: Schema, key: string) =>
   dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
 
@@ -173,7 +171,6 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
     Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
       ? Math.min(3, Math.floor(parsedConcurrency))
       : 2;
-  const retryCycleMinutes = PLAYLIST_WORKER_RETRY_CYCLE_MINUTES;
   const retryPausedPlaylistIds = Array.isArray(worker.retryPausedPlaylistIds)
     ? [
         ...new Set(
@@ -183,7 +180,6 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
     : [];
   return {
     concurrency,
-    retryCycleMinutes,
     retryPausedPlaylistIds,
     existingFileMode: normalizeExistingFileMode(worker.existingFileMode),
   };
