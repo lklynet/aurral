@@ -103,7 +103,6 @@ function buildPlaylistWorkerSettings(
     Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
       ? Math.min(3, Math.floor(parsedConcurrency))
       : 2;
-  const retryCycleMinutes = 360;
   const retryPausedPlaylistIds = Array.isArray(current.retryPausedPlaylistIds)
     ? current.retryPausedPlaylistIds
     : Array.isArray(legacy.retryPausedPlaylistIds)
@@ -118,7 +117,6 @@ function buildPlaylistWorkerSettings(
       : "reuse";
   return {
     concurrency,
-    retryCycleMinutes,
     retryPausedPlaylistIds,
     existingFileMode,
   };
