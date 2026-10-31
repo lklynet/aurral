@@ -818,9 +818,13 @@ async function removeLibraryDownloadJobs(
       removedJobIds.add(job.id);
     }
   }
-  const jobsToRemove = jobs.filter(
-    (job) => removedJobIds.has(job.id) || removedJobIds.has(job.upgradeForJobId),
-  );
+  return dropDownloadJobs(removedJobIds);
+}
+
+async function dropDownloadJobs(jobIds: Set<string | null | undefined>) {
+  const jobsToRemove = downloadTracker
+    .getAll()
+    .filter((job) => jobIds.has(job.id) || jobIds.has(job.upgradeForJobId));
   if (jobsToRemove.length === 0) return [];
   await cancelDownloadWorkForJobs(jobsToRemove);
   const committedPaths = new Set<string>();
@@ -847,6 +851,11 @@ async function deleteAurralLibraryFiles(paths: string[]) {
     downloadRoot: resolveDownloadRoot(),
     lidarrRoots: activeLidarrRoots(await getLidarrClient()),
   };
+  const deletablePaths = new Set(
+    paths
+      .filter((filePath) => libraryFolderOwner(filePath, folders) === "aurral")
+      .map((filePath) => path.resolve(filePath)),
+  );
   const deletionResults = await Promise.allSettled(
     paths.map(async (filePath) => {
       const removal = await removePlaylistFileIfUnshared(filePath, "library", {
@@ -854,16 +863,7 @@ async function deleteAurralLibraryFiles(paths: string[]) {
         protectPlayback: false,
       });
       if (removal.action === "skipped") {
-        const resolvedPath = path.resolve(filePath);
-        const referencedByAnotherJob = downloadTracker
-          .getAll()
-          .some(
-            (job) =>
-              job.status === "done" &&
-              typeof job.finalPath === "string" &&
-              path.resolve(job.finalPath) === resolvedPath,
-          );
-        if (!referencedByAnotherJob && libraryFolderOwner(filePath, folders) === "aurral") {
+        if (deletablePaths.has(path.resolve(filePath))) {
           try {
             await fsp.unlink(filePath);
           } catch (error) {
@@ -881,6 +881,24 @@ async function deleteAurralLibraryFiles(paths: string[]) {
   if (reconciledPaths.length > 0) {
     markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
   }
+  const removedPaths = new Set(
+    reconciledPaths
+      .map((filePath) => path.resolve(filePath))
+      .filter((filePath) => deletablePaths.has(filePath)),
+  );
+  await dropDownloadJobs(
+    new Set(
+      downloadTracker
+        .getAll()
+        .filter(
+          (job) =>
+            job.status === "done" &&
+            typeof job.finalPath === "string" &&
+            removedPaths.has(path.resolve(job.finalPath)),
+        )
+        .map((job) => job.id),
+    ),
+  );
   const emptiedFolders = new Set<string>();
   for (const filePath of reconciledPaths) {
     if (libraryFolderOwner(filePath, folders) !== "aurral") continue;

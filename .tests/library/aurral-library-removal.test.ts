@@ -231,7 +231,7 @@ test("removing an Aurral album without files keeps them on disk and clears its s
   assert.equal(managementStore.getLibraryManagementEntry("album", album.id), null);
 });
 
-test("removing an Aurral album with files deletes only its own unshared files", async () => {
+test("removing an Aurral album with files deletes its files, including ones a playlist reused", async () => {
   const { artist, album, tracks, jobFor } = await createAurralAlbum();
   const other = await createAurralAlbum({ trackCount: 1, filesFor: [0] });
   const libraryJob = jobFor(0);
@@ -248,8 +248,8 @@ test("removing an Aurral album with files deletes only its own unshared files", 
 
   assert.equal(response.statusCode, 200);
   assert.equal(await exists(tracks[0].filePath!), false);
-  assert.equal(await exists(tracks[1].filePath!), true);
-  assert.equal(getJob(playlistJob)?.finalPath, tracks[1].filePath!);
+  assert.equal(await exists(tracks[1].filePath!), false);
+  assert.equal(downloadTracker.getJob(playlistJob), null);
   assert.equal(await exists(other.tracks[0].filePath!), true);
   assert.notEqual(albumRow(other.album.id), undefined);
   assert.equal(albumRow(album.id), undefined);
