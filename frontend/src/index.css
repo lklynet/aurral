@@ -10514,6 +10514,64 @@ button.native-library-genre-row:focus-visible {
   white-space: nowrap;
 }
 
+.activity-status-tabs {
+  display: flex;
+  gap: 0.125rem;
+  min-width: 0;
+  margin-inline: -0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.activity-status-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.4375rem 0.625rem;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  color: var(--aurral-text-muted);
+  font: inherit;
+  font-size: var(--aurral-font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    color var(--aurral-duration-fast) var(--aurral-ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-status-tab:hover {
+    background: var(--aurral-surface-hover);
+    color: var(--aurral-text);
+  }
+}
+
+.activity-status-tab.is-active {
+  background: var(--aurral-surface-selected);
+  color: var(--aurral-text);
+}
+
+.activity-status-tab:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: -2px;
+}
+
+.activity-status-tab__count {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-2xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-status-tab.is-active .activity-status-tab__count {
+  color: var(--aurral-text-muted);
+}
+
 .activity-page__loading {
   display: flex;
   min-height: 12rem;
@@ -11137,6 +11195,7 @@ button.native-library-genre-row:focus-visible {
   .activity-page,
   .activity-row,
   .activity-toolbar__filter,
+  .activity-status-tab,
   .activity-row__actions {
     animation: none;
     transition: none;

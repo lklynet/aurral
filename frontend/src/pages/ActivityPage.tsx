@@ -16,7 +16,10 @@ import {
   ACTIVITY_VIEWS,
   DEFAULT_ACTIVITY_VIEW,
   buildActivityPath,
+  getActivityStatus,
+  getActivityStatusFilters,
   matchesActivityView,
+  normalizeActivityStatus,
   normalizeActivityView,
 } from "../navigation/activityNavConfig";
 import {
@@ -25,17 +28,16 @@ import {
   mergeActivityRequests,
   groupAlbumGrabRequests,
   isAlbumActivityRequest,
-  matchesActivitySearch,
   type ActivityListEntry,
 } from "./activity/activityListUtils";
 import ActivityRequestRow from "./activity/ActivityRequestRow";
 import ActivityAlbumRow from "./activity/ActivityAlbumRow";
-import ActivityToolbar from "./activity/ActivityToolbar";
+import ActivityStatusTabs from "./activity/ActivityStatusTabs";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
 import { getApiErrorText } from "./onboardingUtils.tsx";
 
-import { Navigate, useLocation, useParams } from "react-router";
+import { Navigate, useParams, useSearchParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
@@ -58,7 +60,6 @@ const HISTORY_EMPTY_STATE = {
 };
 
 function ActivityPage() {
-  const location = useLocation();
   const { view: viewParam } = useParams();
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
@@ -69,17 +70,17 @@ function ActivityPage() {
   const [reviewingJobs, setReviewingJobs] = useState<Record<string, "approve" | "deny">>({});
   const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
   const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
-  const [filterValue, setFilterValue] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
   const [infoRequest, setInfoRequest] = useState<ActivityRequest | null>(null);
 
   const { playTrack, currentTrack, isPlaying, togglePlayPause } = useAudioQueue();
 
   const activeView = normalizeActivityView(viewParam);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeStatus = normalizeActivityStatus(activeView, searchParams.get("status"));
   const isQueueView = activeView === "queue";
   const isHistoryView = activeView === "history";
   const isMissingView = activeView === "missing";
-  const isCutoffView = new URLSearchParams(location.search).get("tab") === "cutoff";
+  const isCutoffView = searchParams.get("tab") === "cutoff";
   const isListLikeView = isQueueView;
   const shouldRedirectView = viewParam && normalizeActivityView(viewParam) !== viewParam;
   const activeViewLabel = isMissingView
@@ -137,19 +138,26 @@ function ActivityPage() {
   const error =
     localError || getApiErrorText(activityQuery.error, "message") || activityQuery.error?.message;
 
-  const filteredRequests = useMemo(() => {
-    const query = filterValue.trim().toLocaleLowerCase();
-    return requests.filter((request) => {
-      if (!matchesActivityView(request, activeView)) return false;
-      return matchesActivitySearch(request, query);
-    });
-  }, [activeView, filterValue, requests]);
+  const viewRequests = useMemo(
+    () => requests.filter((request) => matchesActivityView(request, activeView)),
+    [activeView, requests],
+  );
+  const statusFilters = useMemo(
+    () => getActivityStatusFilters(activeView, viewRequests, activeStatus),
+    [activeView, activeStatus, viewRequests],
+  );
+  const filteredRequests = useMemo(
+    () =>
+      activeStatus
+        ? viewRequests.filter((request) => getActivityStatus(request) === activeStatus)
+        : viewRequests,
+    [activeStatus, viewRequests],
+  );
 
   const sortedRequests = useMemo(
     () => [...filteredRequests].sort(compareActivityRequests),
     [filteredRequests],
   );
-  const hasActivityFilter = filterValue.trim().length > 0;
 
   const visibleRequests = useMemo(
     () => sortedRequests.slice(0, visibleCount),
@@ -171,36 +179,10 @@ function ActivityPage() {
 
   useEffect(() => {
     setVisibleCount(ACTIVITY_PAGE_SIZE);
-  }, [activeView]);
+  }, [activeView, activeStatus]);
 
-  const fetchRequests = useCallback(
-    async ({ silent = false, refresh = false } = {}) => {
-      try {
-        const result = await queryClient.fetchQuery({
-          queryKey: activityQueryKey,
-          queryFn: ({ signal }) => loadRequests(refresh || isListLikeView, signal),
-          staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
-        });
-        setLocalError(null);
-        return result;
-      } catch (requestError) {
-        if (!silent) {
-          setLocalError(getApiErrorText(requestError, "message") || "Failed to load activity.");
-        }
-        return null;
-      }
-    },
-    [activityQueryKey, isListLikeView],
-  );
-
-  const handleManualRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchRequests({ silent: true, refresh: true });
-    } finally {
-      setRefreshing(false);
-    }
-  }, [fetchRequests]);
+  const setActiveStatus = (status: string | null) =>
+    setSearchParams(status ? { status } : {}, { replace: true });
 
   useEffect(() => {
     if (isMissingView) return undefined;
@@ -432,11 +414,11 @@ function ActivityPage() {
     return (
       <div className="activity-page">
         {pageHeader}
-        <ActivityToolbar
-          filterValue={filterValue}
-          onFilterChange={setFilterValue}
-          onRefresh={handleManualRefresh}
-          refreshing={refreshing}
+        <ActivityStatusTabs
+          total={null}
+          filters={[]}
+          active={activeStatus}
+          onChange={setActiveStatus}
         />
         <SkeletonStatus label="Loading activity">
           <SkeletonActivityList count={8} dateGroup={isHistoryView} />
@@ -448,11 +430,11 @@ function ActivityPage() {
   return (
     <div className="activity-page">
       {pageHeader}
-      <ActivityToolbar
-        filterValue={filterValue}
-        onFilterChange={setFilterValue}
-        onRefresh={handleManualRefresh}
-        refreshing={refreshing}
+      <ActivityStatusTabs
+        total={viewRequests.length}
+        filters={statusFilters}
+        active={activeStatus}
+        onChange={setActiveStatus}
       />
 
       {error && (
@@ -464,7 +446,14 @@ function ActivityPage() {
           {error !== "Failed to load activity." ? (
             <p className="search-empty-panel__message">{error}</p>
           ) : null}
-          <button type="button" onClick={() => fetchRequests()} className="btn btn-secondary">
+          <button
+            type="button"
+            onClick={() => {
+              setLocalError(null);
+              void activityQuery.refetch();
+            }}
+            className="btn btn-secondary"
+          >
             Try again
           </button>
         </div>
@@ -477,12 +466,9 @@ function ActivityPage() {
               <Music className="artist-icon-lg" />
             </div>
             <h2 className="search-empty-panel__title">
-              {hasActivityFilter ? "No matches" : emptyState.title}
+              {activeStatus ? "No matches" : emptyState.title}
             </h2>
-            {hasActivityFilter ? (
-              <p className="search-empty-panel__message">No activity matches the current filter.</p>
-            ) : null}
-            {isQueueView && !hasActivityFilter && (
+            {isQueueView && !activeStatus && (
               <RouteLink to="/" className="btn btn-primary">
                 Start discovering
               </RouteLink>
@@ -516,12 +502,7 @@ function ActivityPage() {
                 onInfo: setInfoRequest,
               };
               return isAlbumActivityRequest(entry.request) ? (
-                <ActivityAlbumRow
-                  key={entry.key}
-                  request={entry.request}
-                  filterValue={filterValue}
-                  {...rowProps}
-                />
+                <ActivityAlbumRow key={entry.key} request={entry.request} {...rowProps} />
               ) : (
                 <ActivityRequestRow key={entry.key} request={entry.request} {...rowProps} />
               );

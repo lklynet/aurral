@@ -169,32 +169,6 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
   return rows;
 }
 
-export function matchesActivitySearch(
-  request: ActivityRequest,
-  query: string | null | undefined,
-): boolean {
-  const value = String(query || "")
-    .trim()
-    .toLocaleLowerCase();
-  if (!value) return true;
-  return (
-    [
-      request.title,
-      request.name,
-      request.trackName,
-      request.albumName,
-      request.artistName,
-      request.subtitle,
-      request.statusLabel,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLocaleLowerCase()
-      .includes(value) ||
-    (request.children || []).some((child) => matchesActivitySearch(child, value))
-  );
-}
-
 const getRequestIdentity = (request: ActivityRequest | null | undefined) =>
   String(
     request?.id ||
