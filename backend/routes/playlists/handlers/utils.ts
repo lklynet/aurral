@@ -1,9 +1,7 @@
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
+import { DEFAULT_FLOW_SIZE } from "../../../../lib/flows.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
-import {
-  DEFAULT_SIZE,
-  flowPlaylistConfig,
-} from "../../../services/playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import {
   createPlaylistOperationToken,
@@ -37,7 +35,7 @@ export const requireFlowAccessIfSignedIn = createMiddleware<AppEnv>(async (c, ne
 });
 
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
-export const DEFAULT_LIMIT = DEFAULT_SIZE;
+export const DEFAULT_LIMIT = DEFAULT_FLOW_SIZE;
 
 const fourDigitYear = (label: string) =>
   v.optional(

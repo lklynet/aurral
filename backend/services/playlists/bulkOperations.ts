@@ -9,11 +9,8 @@ import type {
   StaticPlaylistSelection,
 } from "./bulkOperationStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
-import {
-  flowPlaylistConfig,
-  invalidateFlowPlaylistConfigCache,
-  tracksShareMembership,
-} from "./flowPlaylistConfig.ts";
+import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
+import { tracksShareMembership } from "./playlistTracks.ts";
 import type { StaticPlaylist } from "./flowPlaylistConfig.ts";
 import {
   withStaticPlaylistRemovalMutation,

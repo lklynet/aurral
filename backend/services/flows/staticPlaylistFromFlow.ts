@@ -7,11 +7,8 @@ import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTrack
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { remapLegacyPath } from "../downloadPaths.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
-import {
-  buildPlaylistTrackIdentity,
-  flowPlaylistConfig,
-  type FlowConfig,
-} from "../playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity } from "../playlists/playlistTracks.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { processPlaylistOperation } from "../playlists/playlistOperations.ts";
 

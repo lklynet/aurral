@@ -12,10 +12,10 @@ import { randomUUID } from "crypto";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import {
-  dedupePlaylistTracks,
   flowPlaylistConfig,
   normalizeImportSource,
 } from "../../../services/playlists/flowPlaylistConfig.ts";
+import { dedupePlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
 import { wakeDownloadWorker } from "../../../services/downloadJobs/mutationGuards.ts";

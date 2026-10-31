@@ -1,4 +1,5 @@
 import { db } from "../../config/db-sqlite.ts";
+import { DEFAULT_FLOW_SIZE } from "../../../lib/flows.ts";
 import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.ts";
 import { randomUUID } from "crypto";
 import * as v from "valibot";
@@ -12,18 +13,17 @@ import {
   recordTrackJobQueued,
   recordTrackJobSearching,
 } from "../aurralHistoryService.ts";
+import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
 import {
   buildCoreTrackIdentity,
   buildImportTrackIdentity,
   buildPlaylistTrackIdentity,
   dedupePlaylistTracks,
   filterMissingPlaylistTracks,
-  flowPlaylistConfig,
   normalizePlaylistTrack,
   rebuildStaticPlaylistTracksFromJobs,
   tracksShareMembership,
-  DEFAULT_SIZE,
-} from "./flowPlaylistConfig.ts";
+} from "./playlistTracks.ts";
 import {
   jobDownloadedItsFile,
   normalizeExistingFileMode,
@@ -50,7 +50,8 @@ import { withHonkerLock } from "../honkerDb.ts";
 import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
-import type { FlowConfig, PlaylistTrack, StaticPlaylist } from "./flowPlaylistConfig.ts";
+import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
+import type { PlaylistTrack } from "./playlistTracks.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.ts";
 import {
@@ -331,7 +332,9 @@ async function runFlowSeed({
   if (requireEnabled && flow.enabled !== true) return { skipped: true };
   if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
   const effectiveSize =
-    Number.isFinite(Number(size)) && Number(size) > 0 ? Number(size) : flow.size || DEFAULT_SIZE;
+    Number.isFinite(Number(size)) && Number(size) > 0
+      ? Number(size)
+      : flow.size || DEFAULT_FLOW_SIZE;
   const spec = flowRunSpec(flow);
   const recipe = JSON.stringify(spec);
   const assertRecipeUnchanged = (current: FlowConfig) => {

@@ -1,8 +1,5 @@
 import * as v from "valibot";
-import {
-  buildPlaylistTrackIdentity,
-  dedupePlaylistTracks,
-} from "../playlists/flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
   deezerErrorSchema,
   deezerPageSchema,

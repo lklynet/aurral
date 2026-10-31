@@ -5,11 +5,8 @@ import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.ts";
 import { lastfmStationClient } from "./lastfmStations.ts";
 import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.ts";
 import { getDeezerPlaylist } from "./deezerPlaylists.ts";
-import {
-  normalizeImportSource,
-  normalizePlaylistTrack,
-  type PlaylistTrack,
-} from "../playlists/flowPlaylistConfig.ts";
+import { normalizeImportSource } from "../playlists/flowPlaylistConfig.ts";
+import { normalizePlaylistTrack, type PlaylistTrack } from "../playlists/playlistTracks.ts";
 import { loadRemoteShare } from "../shareLinks/remote.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";

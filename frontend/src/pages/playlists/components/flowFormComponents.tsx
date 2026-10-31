@@ -6,12 +6,11 @@ import {
 import PillToggle from "../../../components/PillToggle";
 import Tooltip from "../../../components/Tooltip";
 import { Select } from "../../../components/Select";
-import { FLOW_SOURCES, type FlowSource } from "../../../../../lib/flows.ts";
+import { FLOW_SOURCES, normalizeScheduleDays, type FlowSource } from "../../../../../lib/flows.ts";
 import {
   FOCUS_NEEDS_SEEDS,
   flowDraftTotal,
   focusNeedsSeeds,
-  normalizeScheduleDays,
   type FlowDraft,
 } from "../flowPageUtils.ts";
 
