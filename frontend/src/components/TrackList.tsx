@@ -53,6 +53,7 @@ export type TrackListRow = {
   timeMissing?: boolean;
   badge?: ReactNode;
   subtitle?: ReactNode;
+  detail?: ReactNode;
   trailing?: ReactNode;
   active?: boolean;
   missing?: boolean;
@@ -364,6 +365,9 @@ export function TrackList({
                       {row.title}
                     </span>
                     {row.subtitle ? <small>{row.subtitle}</small> : null}
+                    {row.detail ? (
+                      <small className="native-library-track__detail">{row.detail}</small>
+                    ) : null}
                   </button>
                 ) : (
                   <span className="native-library-track__title">
@@ -372,6 +376,9 @@ export function TrackList({
                       {row.title}
                     </span>
                     {row.subtitle ? <small>{row.subtitle}</small> : null}
+                    {row.detail ? (
+                      <small className="native-library-track__detail">{row.detail}</small>
+                    ) : null}
                   </span>
                 )}
               </Tooltip>

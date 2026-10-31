@@ -1,17 +1,14 @@
 import {
   DISCOVER_PLAYLIST_PRESETS,
-  RELEASE_RADAR_PRESET,
+  LISTENING_HISTORY_PRESET_ID,
 } from "../../config/discoverPlaylistPresets.ts";
 import { getUserDiscovery } from "../discovery/userDiscovery.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 
-const LISTENING_HISTORY_TEMPLATE_ID = "focus-listening-history";
-const TEMPLATES = [...DISCOVER_PLAYLIST_PRESETS, RELEASE_RADAR_PRESET];
-
-const getHistoryArtists = async (userId: number) => {
-  const { body } = await getUserDiscovery(userId, 0, 0);
-  const seen = new Set();
-  const artists = [];
+export const getRecentListeningArtists = (userId: number) => {
+  const { body } = getUserDiscovery(userId, 0, 0);
+  const seen = new Set<string>();
+  const artists: string[] = [];
   for (const entry of body.basedOn || []) {
     const source = String(entry?.source || "")
       .trim()
@@ -25,24 +22,25 @@ const getHistoryArtists = async (userId: number) => {
   return artists;
 };
 
-export async function listFlowTemplates(user: RequestUser) {
-  const historyArtists = await getHistoryArtists(user.id);
-  return TEMPLATES.map((template) => ({
+export function listFlowTemplates(user: RequestUser) {
+  const hasHistory = getRecentListeningArtists(user.id).length > 0;
+  return DISCOVER_PLAYLIST_PRESETS.map((template) => ({
     id: template.id,
     name: template.name,
     description: template.description,
-    available: template.id !== LISTENING_HISTORY_TEMPLATE_ID || historyArtists.length > 0,
+    available: template.id !== LISTENING_HISTORY_PRESET_ID || hasHistory,
   }));
 }
 
-export async function buildFlowFromTemplate(user: RequestUser, templateId: unknown) {
-  const template = TEMPLATES.find((entry) => entry.id === String(templateId || "").trim());
+export function buildFlowFromTemplate(user: RequestUser, templateId: unknown) {
+  const template = DISCOVER_PLAYLIST_PRESETS.find(
+    (entry) => entry.id === String(templateId || "").trim(),
+  );
   if (!template) {
     throw Object.assign(new Error("Unknown flow template"), { statusCode: 400 });
   }
-  const relatedArtists =
-    template.id === LISTENING_HISTORY_TEMPLATE_ID ? await getHistoryArtists(user.id) : [];
-  if (template.id === LISTENING_HISTORY_TEMPLATE_ID && relatedArtists.length === 0) {
+  const recentListening = template.id === LISTENING_HISTORY_PRESET_ID;
+  if (recentListening && getRecentListeningArtists(user.id).length === 0) {
     throw Object.assign(
       new Error(
         "Listening History needs listening history. Connect a history provider or play some music first.",
@@ -52,16 +50,14 @@ export async function buildFlowFromTemplate(user: RequestUser, templateId: unkno
   }
   return {
     name: template.name,
-    description:
-      relatedArtists.length > 0
-        ? `Tracks related to ${relatedArtists.join(", ")}`
-        : template.description,
+    description: template.description,
     discoverPresetId: template.id,
     mix: template.mix,
     size: template.size,
-    deepDive: template.deepDive === true,
+    deepDive: false,
+    recentListening,
     tags: [],
-    relatedArtists,
+    relatedArtists: [],
     scheduleDays: [5],
     scheduleTime: "00:00",
   };

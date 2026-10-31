@@ -1,13 +1,19 @@
 import { parseFlowTimestamp } from "./playlistStats";
-import type { Flow, FlowMix } from "./playlistStats";
+import type { Flow } from "./playlistStats";
 import { formatDate } from "../../utils/dateTime.ts";
+import {
+  DEFAULT_FLOW_MIX,
+  FLOW_SOURCES,
+  splitFlowTotal,
+  type FlowMix,
+} from "../../../../lib/flows.ts";
 
 export interface FlowDraft {
   name?: string;
-  size?: number | string;
-  mix?: Partial<FlowMix>;
+  counts: FlowMix;
   includeTags?: string;
   includeRelatedArtists?: string;
+  recentListening?: boolean;
   deepDive?: boolean;
   recordHistory?: boolean;
   yearFrom?: string;
@@ -56,21 +62,11 @@ interface FlowEntryObject {
   value?: unknown;
 }
 
-export const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
 
-export const NEW_FLOW_TEMPLATE = {
-  name: "Discover",
-  size: DEFAULT_SIZE,
-  mix: DEFAULT_MIX,
-  deepDive: false,
-  recordHistory: true,
-  yearFrom: null,
-  yearTo: null,
-  tags: [],
-  relatedArtists: [],
-  scheduleTime: "00:00",
-};
+const NO_TRACKS: FlowMix = { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 0 };
+
+export const NEW_FLOW_TEMPLATE = { name: "Discover", size: DEFAULT_SIZE, mix: DEFAULT_FLOW_MIX };
 
 function getNextRunDiff(nextRunAt: number | null | undefined, now = Date.now()) {
   if (!nextRunAt) return null;
@@ -270,57 +266,17 @@ const parseOptionalYearInput = (value: unknown, label: string) => {
   return Math.trunc(parsed);
 };
 
-export const normalizeMixPercent = (mix: Partial<FlowMix> | null | undefined): FlowMix => {
-  const raw = {
-    discover: Number(mix?.discover ?? 0),
-    mix: Number(mix?.mix ?? 0),
-    trending: Number(mix?.trending ?? 0),
-    focus: Number(mix?.focus ?? 0),
-  };
-  const sum = raw.discover + raw.mix + raw.trending + raw.focus;
-  if (!Number.isFinite(sum) || sum <= 0) {
-    return { ...DEFAULT_MIX };
-  }
-  const weights: { key: keyof FlowMix; value: number }[] = [
-    { key: "discover", value: raw.discover },
-    { key: "mix", value: raw.mix },
-    { key: "trending", value: raw.trending },
-    { key: "focus", value: raw.focus },
-  ];
-  const scaled = weights.map((w) => ({
-    ...w,
-    raw: (w.value / sum) * 100,
-  }));
-  const floored = scaled.map((w) => ({
-    ...w,
-    count: Math.floor(w.raw),
-    remainder: w.raw - Math.floor(w.raw),
-  }));
-  let remaining = 100 - floored.reduce((acc, w) => acc + w.count, 0);
-  const ordered = [...floored].sort((a, b) => b.remainder - a.remainder);
-  for (let i = 0; i < ordered.length && remaining > 0; i++) {
-    ordered[i].count += 1;
-    remaining -= 1;
-  }
-  const out: Partial<FlowMix> = {};
-  for (const item of ordered) {
-    out[item.key] = item.count;
-  }
-  return out as FlowMix;
-};
-
 export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
   const tagsList = normalizeFlowEntryList(flow?.tags);
   const relatedList = normalizeFlowEntryList(flow?.relatedArtists);
   const scheduleDays = normalizeScheduleDays(flow?.scheduleDays);
   const rawSize = Number(flow?.size || 0);
-  const size = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : DEFAULT_SIZE;
-  const mix = normalizeMixPercent(flow?.mix || DEFAULT_MIX);
+  const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.round(rawSize) : DEFAULT_SIZE;
   const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     name: flow?.name || "",
-    size: Number.isFinite(size) && size > 0 ? Math.round(size) : DEFAULT_SIZE,
-    mix,
+    counts: splitFlowTotal(flow?.mix, size) ?? { ...NO_TRACKS },
+    recentListening: flow?.recentListening === true,
     deepDive: flow?.deepDive === true,
     recordHistory: flow?.recordHistory !== false,
     yearFrom: yearFrom == null ? "" : String(yearFrom),
@@ -332,129 +288,80 @@ export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
   };
 };
 
-export const buildFlowFromForm = (draft: FlowDraft | null | undefined) => {
-  const name = String(draft?.name ?? "").trim();
+export const flowDraftTotal = (draft: FlowDraft) =>
+  FLOW_SOURCES.reduce((total, source) => total + draft.counts[source], 0);
+
+export const FOCUS_NEEDS_SEEDS = "Focus needs a tag, a similar artist, or recent listening.";
+
+export const focusNeedsSeeds = (draft: FlowDraft) =>
+  draft.counts.focus > 0 &&
+  draft.recentListening !== true &&
+  parseListInput(draft.includeTags).length === 0 &&
+  parseListInput(draft.includeRelatedArtists).length === 0;
+
+export const buildFlowFromForm = (draft: FlowDraft) => {
+  const name = String(draft.name ?? "").trim();
   if (!name) {
     throw new Error("Flow name is required");
   }
-  const sizeValue = Number(draft?.size);
-  if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
-    throw new Error("Total tracks must be a positive number");
+  const size = flowDraftTotal(draft);
+  if (size <= 0) {
+    throw new Error("Turn on at least one source");
   }
-  const size = Math.round(sizeValue);
-  const includeTags = parseListInput(draft?.includeTags);
-  const includeRelatedArtists = parseListInput(draft?.includeRelatedArtists);
-  const scheduleDays = normalizeScheduleDays(draft?.scheduleDays);
+  const scheduleDays = normalizeScheduleDays(draft.scheduleDays);
   if (scheduleDays.length === 0) {
     throw new Error("Select at least one day for this flow schedule");
   }
-  const scheduleTime = normalizeScheduleTime(draft?.scheduleTime);
-  const mix = normalizeMixPercent(draft?.mix);
-  const focusEnabled = Number(mix.focus || 0) > 0;
-  if (focusEnabled && includeTags.length === 0 && includeRelatedArtists.length === 0) {
-    throw new Error("Focus needs at least one genre tag or related artist");
+  if (focusNeedsSeeds(draft)) {
+    throw new Error(FOCUS_NEEDS_SEEDS);
   }
   const { yearFrom, yearTo } = normalizeYearRange(
-    parseOptionalYearInput(draft?.yearFrom, "From year"),
-    parseOptionalYearInput(draft?.yearTo, "To year"),
+    parseOptionalYearInput(draft.yearFrom, "From year"),
+    parseOptionalYearInput(draft.yearTo, "To year"),
   );
   return {
     name,
     size,
-    mix,
-    tags: includeTags,
-    relatedArtists: includeRelatedArtists,
-    deepDive: draft?.deepDive === true,
-    recordHistory: draft?.recordHistory !== false,
+    mix: draft.counts,
+    tags: parseListInput(draft.includeTags),
+    relatedArtists: parseListInput(draft.includeRelatedArtists),
+    recentListening: draft.recentListening === true,
+    deepDive: draft.deepDive === true,
+    recordHistory: draft.recordHistory !== false,
     yearFrom,
     yearTo,
     scheduleDays,
-    scheduleTime,
+    scheduleTime: normalizeScheduleTime(draft.scheduleTime),
   };
 };
 
-const normalizeDraftForCompare = (draft: FlowDraft | null | undefined) => {
+const normalizeDraftForCompare = (draft: FlowDraft) => {
   const normalizeList = (value: string | null | undefined) =>
     parseListInput(value)
       .map((entry) => entry.toLowerCase())
       .sort((a, b) => a.localeCompare(b))
       .join(", ");
-  const { yearFrom, yearTo } = normalizeYearRange(draft?.yearFrom, draft?.yearTo);
+  const { yearFrom, yearTo } = normalizeYearRange(draft.yearFrom, draft.yearTo);
   return {
-    name: String(draft?.name ?? "").trim(),
-    size: Number(draft?.size ?? 0),
-    mix: normalizeMixPercent(draft?.mix),
-    includeTags: normalizeList(draft?.includeTags),
-    includeRelatedArtists: normalizeList(draft?.includeRelatedArtists),
-    deepDive: draft?.deepDive === true,
-    recordHistory: draft?.recordHistory !== false,
+    name: String(draft.name ?? "").trim(),
+    counts: FLOW_SOURCES.map((source) => draft.counts[source]),
+    includeTags: normalizeList(draft.includeTags),
+    includeRelatedArtists: normalizeList(draft.includeRelatedArtists),
+    recentListening: draft.recentListening === true,
+    deepDive: draft.deepDive === true,
+    recordHistory: draft.recordHistory !== false,
     yearFrom,
     yearTo,
-    scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
-    scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
+    scheduleDays: normalizeScheduleDays(draft.scheduleDays),
+    scheduleTime: normalizeScheduleTime(draft.scheduleTime),
   };
 };
 
-export const isFlowDirty = (
-  flow: Partial<Flow> | null | undefined,
-  draft: FlowDraft | null | undefined,
-) => {
+export const isFlowDirty = (flow: Partial<Flow> | null | undefined, draft: FlowDraft) => {
   const base = normalizeDraftForCompare(flowToForm(flow));
   const next = normalizeDraftForCompare(draft);
   return JSON.stringify(base) !== JSON.stringify(next);
 };
-
-const normalizeScheduleDraftForCompare = (draft: FlowDraft | null | undefined) => ({
-  size: Number(draft?.size ?? 0),
-  recordHistory: draft?.recordHistory !== false,
-  scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
-  scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
-});
-
-export const isScheduleOnlyFlowDirty = (
-  flow: Partial<Flow> | null | undefined,
-  draft: FlowDraft | null | undefined,
-) => {
-  const base = normalizeScheduleDraftForCompare(flowToForm(flow));
-  const next = normalizeScheduleDraftForCompare(draft);
-  return JSON.stringify(base) !== JSON.stringify(next);
-};
-
-export const buildScheduleOnlyFlowFromForm = (
-  flow: Partial<Flow> | null | undefined,
-  draft: FlowDraft | null | undefined,
-  { sizeError }: { sizeError?: string } = {},
-) => {
-  const sizeValue = Number(draft?.size);
-  if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
-    throw new Error(sizeError || "Tracks must be a positive number");
-  }
-  const scheduleDays = normalizeScheduleDays(draft?.scheduleDays);
-  if (scheduleDays.length === 0) {
-    throw new Error("Select at least one day for this flow schedule");
-  }
-  return {
-    name: String(flow?.name ?? "").trim(),
-    size: Math.round(sizeValue),
-    mix: flow?.mix || DEFAULT_MIX,
-    tags: normalizeFlowEntryList(flow?.tags),
-    relatedArtists: normalizeFlowEntryList(flow?.relatedArtists),
-    deepDive: flow?.deepDive === true,
-    recordHistory: draft?.recordHistory !== false,
-    yearFrom: flow?.yearFrom ?? null,
-    yearTo: flow?.yearTo ?? null,
-    scheduleDays,
-    scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
-  };
-};
-
-export const buildReleaseRadarFlowFromForm = (
-  flow: Partial<Flow> | null | undefined,
-  draft: FlowDraft | null | undefined,
-) =>
-  buildScheduleOnlyFlowFromForm(flow, draft, {
-    sizeError: "Max tracks must be a positive number",
-  });
 
 const positiveInteger = (value: unknown) =>
   Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;

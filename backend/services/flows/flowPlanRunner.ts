@@ -1,11 +1,6 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import {
-  flowTrackSource,
-  type FlowRunOptions,
-  type FlowRunPlan,
-  type FlowRunSpec,
-} from "./flowTrackSource.ts";
+import { flowTrackSource, type FlowRunPlan, type FlowRunSpec } from "./flowTrackSource.ts";
 
 type FlowPlanChildMessage = { type?: string; plan?: FlowRunPlan; error?: string } | null;
 
@@ -13,9 +8,9 @@ const ENTRY = fileURLToPath(new URL("./flowPlanProcess.ts", import.meta.url));
 const PLAN_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIMEOUT_MS } = {}) {
-  return function buildFlowRunPlan(flow: FlowRunSpec, options: FlowRunOptions = {}) {
+  return function buildFlowRunPlan(flow: FlowRunSpec) {
     if (process.env.NODE_ENV === "test") {
-      return flowTrackSource.buildFlowRunPlan(flow, options);
+      return flowTrackSource.buildFlowRunPlan(flow);
     }
     return new Promise<FlowRunPlan | null | undefined>((resolve, reject) => {
       let child;
@@ -98,7 +93,7 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
       child.on("error", onError);
       child.once("exit", onExit);
       try {
-        child.send({ type: "build-flow-plan", flow, options });
+        child.send({ type: "build-flow-plan", flow });
       } catch (error) {
         finish(error);
       }

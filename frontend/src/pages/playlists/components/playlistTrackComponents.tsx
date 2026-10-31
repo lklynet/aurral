@@ -441,6 +441,7 @@ export interface PlaylistTracksPanelProps<T extends PlaylistPanelTrack> {
   playbackSource?: PlaylistPlaybackSource | null;
   showPlaybackControls?: boolean;
   showTrackStatus?: boolean;
+  showReasons?: boolean;
   showTrackAvailability?: boolean;
   artworkByAlbumMbid?: Record<string, string>;
   allowBulkEdit?: boolean;
@@ -489,6 +490,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   playbackSource = null,
   showPlaybackControls = true,
   showTrackStatus = false,
+  showReasons = false,
   showTrackAvailability = false,
   artworkByAlbumMbid = {},
   allowBulkEdit = false,
@@ -646,6 +648,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       }),
       title: track.trackName,
       subtitle: track.artistName,
+      detail: showReasons ? track.reason : null,
       artist: {
         label: track.artistName,
         ...artistLink,

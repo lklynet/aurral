@@ -46,10 +46,12 @@ const flowFields = {
       mix: v.nullish(count),
       trending: v.nullish(count),
       focus: v.nullish(count),
+      newReleases: v.nullish(count),
     }),
   ),
   size: v.nullish(count),
   deepDive: v.nullish(v.boolean()),
+  recentListening: v.optional(v.boolean()),
   recordHistory: v.optional(v.boolean()),
   yearFrom: v.nullish(count),
   yearTo: v.nullish(count),
@@ -116,7 +118,7 @@ export default new Hono<AppEnv>()
   )
   .get("/flow-templates", requireFlowAccess, async (c) => {
     try {
-      return c.json({ templates: await listFlowTemplates(c.var.user) }, 200);
+      return c.json({ templates: listFlowTemplates(c.var.user) }, 200);
     } catch (error) {
       return c.json(
         { error: "Failed to load flow templates", message: asAppError(error)?.message },
@@ -141,7 +143,7 @@ export default new Hono<AppEnv>()
       let template = null;
       if (templateId) {
         try {
-          template = await buildFlowFromTemplate(user, templateId);
+          template = buildFlowFromTemplate(user, templateId);
         } catch (error) {
           const failure = asAppError(error);
           if (!failure?.statusCode) throw error;

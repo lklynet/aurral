@@ -2,7 +2,6 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import type { hc, InferResponseType } from "hono/client";
 import type discoveryApp from "../../backend/routes/discovery/index.ts";
-import { playlistTrack } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import {
@@ -83,31 +82,36 @@ test("a blocked genre hides its picks and genre rows for that user until unblock
 test("flows drop trending and focus artists carrying a blocked genre", async () => {
   await blockGenre(7, "k-pop");
   const source = new FlowTrackSource();
-  const track = (artistName: string) => ({
-    ...playlistTrack({ artistName, trackName: `${artistName} Song` }),
-    reason: "Test",
+  const chartTrack = (artistName: string) => ({
+    artistName,
+    artistMbid: null,
+    name: `${artistName} Song`,
+    albumName: null,
   });
-  let focusTags: unknown;
+  const searchedTags: string[] = [];
   source._getLibraryArtistKeySet = async () => new Set<string>();
-  source.getTrendingTracks = async () => [track("Idol Group"), track("Trend Band")];
-  source._getArtistTopTagLists = async (artists) =>
-    artists.map((artist) => (artist.name === "Idol Group" ? ["K-Pop", "dance"] : ["indie"]));
-  source._getFocusCandidates = async (_limit, options) => {
-    focusTags = options?.tags;
+  source._getTrendingChart = async () => [chartTrack("Idol Group"), chartTrack("Trend Band")];
+  source._getTagArtists = async (tag) => {
+    searchedTags.push(tag);
     return [
-      source._buildBaseCandidate(track("Idol Two"), "focus", 0, { artistTags: ["k pop"] }),
-      source._buildBaseCandidate(track("Focus Band"), "focus", 1, { artistTags: ["indie"] }),
+      { name: "Idol Two", mbid: null },
+      { name: "Focus Band", mbid: null },
     ];
   };
+  source._getArtistTopTagLists = async (artists) =>
+    artists.map((artist) => (artist.name?.startsWith("Idol") ? ["K-Pop", "indie"] : ["indie"]));
+  source._getArtistTopTrackList = async (name) => [
+    { name: `${name} Song`, albumName: null, mbid: null, durationMs: null, popularity: 0 },
+  ];
 
   const plan = await source.buildFlowRunPlan({
     ownerUserId: 7,
-    mix: { discover: 0, mix: 0, trending: 50, focus: 50 },
+    mix: { trending: 50, focus: 50 },
     tags: ["K-Pop", "indie"],
     size: 4,
   });
 
-  assert.deepEqual(focusTags, ["indie"]);
+  assert.deepEqual(searchedTags, ["indie"]);
   assert.deepEqual(plan.primaryTracks.map((entry) => entry.artistName).sort(), [
     "Focus Band",
     "Trend Band",

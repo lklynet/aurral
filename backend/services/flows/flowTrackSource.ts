@@ -1,29 +1,32 @@
-import { lastfmRequest } from "../apiClients/index.ts";
+import {
+  deezerGetAlbumTracks,
+  getDeezerAlbumsForArtist,
+  getDeezerArtist,
+  lastfmRequest,
+  normalizeTitle,
+} from "../apiClients/index.ts";
 import * as musicData from "../musicDataSource/index.ts";
 import { getUserDiscovery } from "../discovery/userDiscovery.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { UUID_REGEX } from "../../../lib/uuid.ts";
+import { FLOW_SOURCES, splitFlowTotal, type FlowMix, type FlowSource } from "../../../lib/flows.ts";
 import { logger } from "../logger.ts";
-import { normalizeWeightMap, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
+import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
-import { mapWithConcurrency } from "../discovery/helpers.ts";
+import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
-import { resolveTrackSearchContext } from "../downloadJobs/trackSearchContext.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
 import {
   getLibraryForArtistReferences,
   iterateLibraryArtistProjection,
 } from "../libraryQueryService.ts";
+import { getRecentListeningArtists } from "./flowTemplates.ts";
 import BoundedMap from "../boundedMap.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
-
-type WeightMap = Record<string, number>;
-
-type FlowMix = { discover?: number; mix?: number; trending?: number; focus?: number };
-
-type FlowSource = "discover" | "mix" | "trending" | "focus";
+import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 
 type ArtistTopTrack = {
   name: string;
@@ -33,10 +36,6 @@ type ArtistTopTrack = {
   popularity: number;
 };
 
-type TagArtist = { name: string; mbid: string | null };
-
-type ChartTrack = Awaited<ReturnType<typeof musicData.getTrendingTracks>>[number];
-
 type DeepDiveRange = { start: number; end: number };
 
 type ArtistTagsCacheEntry = { value: string[]; expiresAt: number };
@@ -45,10 +44,9 @@ type ArtistTopTracksCacheEntry =
   | { trackList: ArtistTopTrack[]; expiresAt: number; promise?: undefined }
   | { promise: Promise<ArtistTopTrack[]>; trackList?: undefined; expiresAt?: undefined };
 
-type OwnershipCacheEntry = {
-  data: { ownedTitles: Set<string>; ownedAlbums: Set<string> };
-  expiresAt: number;
-};
+type Ownership = { ownedTitles: Set<string>; ownedAlbums: Set<string> };
+
+type OwnershipCacheEntry = { data: Ownership; expiresAt: number };
 
 type ArtistKeySetCacheEntry =
   | { set: Set<string>; expiresAt: number; promise?: undefined }
@@ -60,31 +58,14 @@ export type FlowRunSpec = Partial<
     | "id"
     | "ownerUserId"
     | "deepDive"
+    | "recentListening"
     | "size"
-    | "mix"
     | "tags"
     | "relatedArtists"
     | "yearFrom"
     | "yearTo"
-    | "discoverPresetId"
   >
->;
-
-export type FlowRunOptions = {
-  ownerUserId?: number | null;
-  deepDive?: boolean;
-  reason?: string;
-  tags?: WeightMap | string[];
-  relatedArtists?: WeightMap | string[];
-  excludeArtistKeys?: string[];
-  excludeTrackKeys?: Set<string> | string[];
-  libraryArtistKeys?: Set<string> | string[];
-  libraryArtists?: ArtistMatchFields[];
-};
-
-type FlowStageOptions = Omit<FlowRunOptions, "excludeArtistKeys"> & {
-  excludeArtistKeys?: Set<string>;
-};
+> & { mix?: Partial<FlowMix> };
 
 type TrackEntryInput = {
   artistName: string;
@@ -102,40 +83,39 @@ type TrackEntryInput = {
   discNumber?: number | null;
 };
 
+type TrackPick = Omit<TrackEntryInput, "artistName" | "reason">;
+
 type FlowTrackEntry = NonNullable<ReturnType<FlowTrackSource["_buildTrackEntry"]>>;
 
-type FocusExtras = {
-  artistTags?: string[];
-  tagCoverage?: number;
-  tagCoverageRatio?: number;
-  relatedCoverage?: number;
-  relatedCoverageRatio?: number;
-  focusTier?: string;
-  focusPriority?: number;
-  finalScore?: number;
+type FlowFilters = { tags: Map<string, string>; yearFrom: number | null; yearTo: number | null };
+
+type RecentRelease = Pick<
+  Awaited<ReturnType<typeof getRecentMissingReleases>>[number],
+  | "artistName"
+  | "artistMbid"
+  | "foreignArtistId"
+  | "releaseDate"
+  | "albumName"
+  | "mbid"
+  | "foreignAlbumId"
+>;
+
+type HarvestArtist = ArtistMatchFields & { tags?: string[] | null; reason?: string };
+
+type HarvestOptions = {
+  filters: FlowFilters;
+  excludeArtistKeys: ReadonlySet<string>;
+  blockedTags?: ReadonlySet<string>;
+  maxArtists?: number;
+  pick: (artist: HarvestArtist, name: string) => Promise<TrackPick | null>;
 };
 
-type FlowCandidate = ReturnType<FlowTrackSource["_buildBaseCandidate"]>;
-
-type FlowCandidateMap = Record<FlowSource, FlowCandidate[]>;
-
-type FocusArtist = Awaited<ReturnType<FlowTrackSource["_buildFocusArtistPool"]>>[number];
-
-type FocusArtistCandidate = {
-  key: string;
-  name: string;
-  artistMbid: string | null;
-  tagMatches: Set<string>;
-  relatedSeeds: Set<string>;
-  tagRankSum: number;
-  relatedRankSum: number;
-  popularityHint: number;
-};
-
-type ArtistRef = string | ArtistMatchFields;
-
-type HarvestArtist = ArtistMatchFields & {
-  sampleTrack?: { trackName?: string | null; albumName?: string | null } | null;
+type SourceContext = {
+  ownerUserId: number | null;
+  deepDive: boolean;
+  filters: FlowFilters;
+  excludeArtistKeys: ReadonlySet<string>;
+  blockedTags: ReadonlySet<string>;
 };
 
 type AlbumTrackRow = Partial<
@@ -151,11 +131,64 @@ type AlbumTrackRow = Partial<
     }
 >;
 
-const HARVEST_CONCURRENCY = 12;
+const HARVEST_BATCH = 24;
+const LIBRARY_ARTIST_LIMIT = 45;
+const FILTERED_ARTIST_LIMIT = 300;
+const FILTERED_CHART_LIMIT = 500;
 const ARTIST_TOP_TRACKS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const LIBRARY_OWNERSHIP_CACHE_TTL_MS = 10 * 60 * 1000;
 const LIBRARY_ARTIST_KEYS_CACHE_TTL_MS = 10 * 60 * 1000;
 const PROVIDER_CACHE_MAX = 1000;
+
+const NO_FILTERS: FlowFilters = { tags: new Map(), yearFrom: null, yearTo: null };
+
+const DEFAULT_CONTEXT: SourceContext = {
+  ownerUserId: null,
+  deepDive: false,
+  filters: NO_FILTERS,
+  excludeArtistKeys: new Set(),
+  blockedTags: new Set(),
+};
+
+const tagKey = (tag: unknown) =>
+  String(tag ?? "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+
+const dedupeNames = (values: readonly unknown[] | null | undefined) => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values ?? []) {
+    const name = String(value ?? "").trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push(name);
+  }
+  return out;
+};
+
+const shuffled = <T>(items: readonly T[]) => {
+  const out = [...items];
+  for (let index = out.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [out[index], out[swap]] = [out[swap], out[index]];
+  }
+  return out;
+};
+
+const rankedWindows = <T>(items: readonly T[], size: number) => {
+  const out: T[] = [];
+  for (let start = 0; start < items.length; start += size) {
+    out.push(...shuffled(items.slice(start, start + size)));
+  }
+  return out;
+};
+
+const artistMbidOf = (artist: ArtistMatchFields) =>
+  [artist.artistMbid, artist.mbid, artist.foreignArtistId, artist.id]
+    .map((value) => String(value ?? "").trim())
+    .find((value) => UUID_REGEX.test(value)) || null;
 
 export class FlowTrackSource {
   declare artistTopTagsCache: BoundedMap<string, ArtistTagsCacheEntry>;
@@ -183,58 +216,25 @@ export class FlowTrackSource {
         ];
   }
 
-  _hasYearRange(yearFrom: number | null | undefined, yearTo: number | null | undefined) {
-    return yearFrom != null || yearTo != null;
+  _hasYears(filters: FlowFilters) {
+    return filters.yearFrom != null || filters.yearTo != null;
+  }
+
+  _isFiltered(filters: FlowFilters) {
+    return filters.tags.size > 0 || this._hasYears(filters);
   }
 
   _matchesYearRange(
-    releaseYear: string | null | undefined,
+    releaseYear: string | number | null | undefined,
     yearFrom: number | null | undefined,
     yearTo: number | null | undefined,
   ) {
-    if (!this._hasYearRange(yearFrom, yearTo)) return true;
-    const extractedYear = getYear(releaseYear);
-    if (extractedYear == null) return false;
-    const year = Number(extractedYear);
-    if (!Number.isFinite(year)) return false;
+    if (yearFrom == null && yearTo == null) return true;
+    const year = Number(getYear(releaseYear == null ? null : String(releaseYear)));
+    if (!Number.isFinite(year) || year <= 0) return false;
     if (yearFrom != null && year < yearFrom) return false;
     if (yearTo != null && year > yearTo) return false;
     return true;
-  }
-
-  async _resolveTrackReleaseYear(track: FlowCandidate) {
-    const existing = getYear(track?.releaseYear);
-    if (existing) return existing;
-    try {
-      const resolved = await resolveTrackSearchContext(track);
-      return getYear(resolved?.releaseYear) || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async _selectFromCandidates(
-    candidates: FlowCandidate[],
-    count: number,
-    usedArtistKeys: Set<string>,
-    yearFrom: number | null = null,
-    yearTo: number | null = null,
-  ) {
-    const picked = [];
-    const rangeActive = this._hasYearRange(yearFrom, yearTo);
-    for (const candidate of Array.isArray(candidates) ? candidates : []) {
-      if (picked.length >= count) break;
-      const artistKeys = this._artistKeysFromArtist(candidate);
-      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
-      if (rangeActive && candidate?.source === "focus") {
-        const year = await this._resolveTrackReleaseYear(candidate);
-        candidate.releaseYear = year;
-        if (!this._matchesYearRange(year, yearFrom, yearTo)) continue;
-      }
-      artistKeys.forEach((key) => usedArtistKeys.add(key));
-      picked.push(candidate);
-    }
-    return picked;
   }
 
   _harvestLimitFor(count: number) {
@@ -243,7 +243,6 @@ export class FlowTrackSource {
 
   async _getArtistTopTrackList(artistName: string): Promise<ArtistTopTrack[]> {
     const name = String(artistName || "").trim();
-    if (!name) return [];
     const cacheKey = this._artistKey(name);
     if (!cacheKey) return [];
     const cached = this.artistTopTracksCache.get(cacheKey);
@@ -271,125 +270,6 @@ export class FlowTrackSource {
     }
   }
 
-  async _harvestTopTracksFromArtists(
-    artists: HarvestArtist[],
-    limit: number,
-    options: FlowStageOptions = {},
-  ) {
-    if (!Array.isArray(artists) || artists.length === 0 || limit <= 0) return [];
-    const deepDive = options?.deepDive === true;
-    const ranges = this._deepDiveRanges(deepDive);
-    const excludeSet = options?.excludeArtistKeys;
-    const shuffled = [...artists].sort(() => 0.5 - Math.random());
-    const entries = [];
-    for (const artist of shuffled) {
-      const artistName = (artist?.name || artist?.artistName || "").trim();
-      if (!artistName) continue;
-      const artistKeys = this._artistKeysFromArtist(artist);
-      if (artistKeys.some((key) => excludeSet?.has(key))) continue;
-      entries.push({ artist, artistName });
-    }
-    const tracks = [];
-    const seenArtists = new Set();
-    let cursor = 0;
-    const batchSize = HARVEST_CONCURRENCY * 2;
-    while (tracks.length < limit && cursor < entries.length) {
-      const batch = entries.slice(cursor, cursor + batchSize);
-      cursor += batch.length;
-      const batchResults = await Promise.all(
-        batch.map(async ({ artist, artistName }) => {
-          const artistKey = this._artistKey(artistName);
-          if (!artistKey || seenArtists.has(artistKey)) return null;
-          if (!deepDive && artist?.sampleTrack?.trackName) {
-            return this._buildTrackEntry({
-              artistName,
-              trackName: artist.sampleTrack.trackName,
-              albumName: artist.sampleTrack.albumName || null,
-              artistMbid: artist?.id || artist?.mbid || artist?.foreignArtistId,
-              reason: options?.reason,
-            });
-          }
-          try {
-            const trackList = await this._getArtistTopTrackList(artistName);
-            if (!trackList.length) return null;
-            const pick = this._pickTrackFromRanges(trackList, ranges);
-            const trackName = pick?.name?.trim();
-            if (!trackName) return null;
-            return this._buildTrackEntry({
-              artistName,
-              trackName,
-              albumName: pick!.albumName,
-              trackMbid: pick!.mbid,
-              durationMs: pick!.durationMs,
-              artistMbid: artist?.id || artist?.mbid || artist?.foreignArtistId,
-              reason: options?.reason,
-            });
-          } catch {
-            return null;
-          }
-        }),
-      );
-      for (const trackEntry of batchResults) {
-        if (!trackEntry) continue;
-        const artistKey = this._trackArtistKey(trackEntry);
-        if (!artistKey || seenArtists.has(artistKey)) continue;
-        seenArtists.add(artistKey);
-        tracks.push(trackEntry);
-        if (tracks.length >= limit) break;
-      }
-    }
-    return this._filterTracksByArtists(tracks, null, excludeSet);
-  }
-
-  _buildCounts(size: number, mix: FlowMix) {
-    const weights = [
-      { key: "discover", value: Number(mix?.discover ?? 0) },
-      { key: "mix", value: Number(mix?.mix ?? 0) },
-      { key: "trending", value: Number(mix?.trending ?? 0) },
-      { key: "focus", value: Number(mix?.focus ?? 0) },
-    ];
-    const sum = weights.reduce((acc, w) => acc + (Number.isFinite(w.value) ? w.value : 0), 0);
-    if (sum <= 0 || !Number.isFinite(sum)) {
-      return { discover: 0, mix: 0, trending: 0, focus: 0 };
-    }
-    const scaled = weights.map((w) => ({
-      ...w,
-      raw: (w.value / sum) * size,
-    }));
-    const floored = scaled.map((w) => ({
-      ...w,
-      count: Math.floor(w.raw),
-      remainder: w.raw - Math.floor(w.raw),
-    }));
-    let remaining = size - floored.reduce((acc, w) => acc + w.count, 0);
-    const ordered = [...floored].sort((a, b) => b.remainder - a.remainder);
-    for (let i = 0; i < ordered.length && remaining > 0; i++) {
-      ordered[i].count += 1;
-      remaining -= 1;
-    }
-    const out: Record<string, number> = {};
-    for (const item of ordered) {
-      out[item.key] = item.count;
-    }
-    return out;
-  }
-
-  _normalizeFocusEntries(value: unknown) {
-    if (Array.isArray(value)) {
-      const seen = new Set();
-      const out = [];
-      for (const entry of value) {
-        const text = String(entry || "").trim();
-        const key = this._artistKey(text);
-        if (!text || seen.has(key)) continue;
-        seen.add(key);
-        out.push(text);
-      }
-      return out;
-    }
-    return Object.keys(normalizeWeightMap(value));
-  }
-
   _artistKey(value: unknown) {
     return String(value || "")
       .trim()
@@ -407,19 +287,8 @@ export class FlowTrackSource {
       .trim();
   }
 
-  _artistKeysFromArtist(artist: ArtistMatchFields) {
-    const aliases = Array.isArray(artist?.artistAliases) ? artist.artistAliases : [];
-    return [
-      artist?.id,
-      artist?.mbid,
-      artist?.foreignArtistId,
-      artist?.artistMbid,
-      artist?.name,
-      artist?.artistName,
-      ...aliases,
-    ]
-      .map((value) => this._artistKey(value))
-      .filter(Boolean);
+  _releaseKey(title: unknown) {
+    return normalizeTitle(title) || this._releaseTitleKey(title);
   }
 
   _buildFeedbackExcludeKeys(ownerUserId: number | null | undefined) {
@@ -427,33 +296,8 @@ export class FlowTrackSource {
     return [...getBlockedArtistKeys(String(ownerUserId))];
   }
 
-  _trackArtistKey(track: Pick<FlowTrackEntry, "artistName">) {
-    const key = this._artistKey(track?.artistName);
-    return key || null;
-  }
-
-  _normalizeArtistKeySet(value: unknown) {
-    if (value instanceof Set) {
-      return new Set([...value].map((entry) => this._artistKey(entry)).filter(Boolean));
-    }
-    if (Array.isArray(value)) {
-      return new Set(value.map((entry) => this._artistKey(entry)).filter(Boolean));
-    }
-    return null;
-  }
-
-  _buildArtistKeySet(artists: ArtistMatchFields[] = []) {
-    const set = new Set<string>();
-    for (const artist of Array.isArray(artists) ? artists : []) {
-      for (const key of this._artistKeysFromArtist(artist)) {
-        set.add(key);
-      }
-    }
-    return set;
-  }
-
-  _resolveDiscoveryCache(options: Pick<FlowRunOptions, "ownerUserId"> = {}) {
-    return getUserDiscovery(options?.ownerUserId ?? this._firstActiveAdminId(), 0).body;
+  _getRecommendations(ownerUserId: number | null) {
+    return getUserDiscovery(ownerUserId ?? this._firstActiveAdminId(), 0).body.recommendations;
   }
 
   _firstActiveAdminId() {
@@ -462,11 +306,6 @@ export class FlowTrackSource {
       .filter((user) => user.role === "admin" && user.status === "active")
       .map((user) => user.id);
     return adminIds.length > 0 ? Math.min(...adminIds) : null;
-  }
-
-  _normalizeTrackReason(value: unknown, fallback = "Flow selection") {
-    const text = String(value || "").trim();
-    return text || fallback;
   }
 
   _buildTrackEntry({
@@ -487,56 +326,28 @@ export class FlowTrackSource {
     const safeArtist = String(artistName || "").trim();
     const safeTrack = String(trackName || "").trim();
     if (!safeArtist || !safeTrack) return null;
-    const safeAlbum = String(albumName || "").trim();
-    const safeMbid = String(artistMbid || "").trim();
-    const safeAlbumMbid = String(albumMbid || "").trim();
-    const safeTrackMbid = String(trackMbid || "").trim();
-    const safeReleaseYear = String(releaseYear || "").trim();
     const safeDuration =
       durationMs != null && Number.isFinite(Number(durationMs))
         ? Math.max(0, Math.round(Number(durationMs)))
         : null;
-    const normalizedAliases = Array.isArray(artistAliases)
-      ? artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
-      : [];
     return {
       artistName: safeArtist,
       trackName: safeTrack,
-      albumName: safeAlbum || null,
-      artistMbid: safeMbid || null,
-      albumMbid: safeAlbumMbid || null,
-      trackMbid: safeTrackMbid || null,
-      releaseYear: safeReleaseYear || null,
+      albumName: String(albumName || "").trim() || null,
+      artistMbid: String(artistMbid || "").trim() || null,
+      albumMbid: String(albumMbid || "").trim() || null,
+      trackMbid: String(trackMbid || "").trim() || null,
+      releaseYear: String(releaseYear || "").trim() || null,
       durationMs: safeDuration,
-      artistAliases: normalizedAliases,
-      reason: this._normalizeTrackReason(reason),
+      artistAliases: Array.isArray(artistAliases)
+        ? artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
+        : [],
+      reason: String(reason || "").trim() || "Flow selection",
       ...(releaseMbid ? { releaseMbid, trackNumber, discNumber } : {}),
     };
   }
 
-  _filterTracksByArtists<T extends ArtistMatchFields>(
-    tracks: T[],
-    includeSet: Set<string> | null,
-    excludeSet: Set<string> | undefined,
-  ) {
-    return (tracks || []).filter((track) => {
-      const artistKeys = this._artistKeysFromArtist(track);
-      if (artistKeys.length === 0) return false;
-      if (excludeSet && artistKeys.some((key) => excludeSet.has(key))) return false;
-      if (includeSet && includeSet.size > 0 && !artistKeys.some((key) => includeSet.has(key))) {
-        return false;
-      }
-      return true;
-    });
-  }
-
-  async _getLibraryArtistKeySet(options: FlowRunOptions = {}): Promise<Set<string>> {
-    const providedSet = this._normalizeArtistKeySet(options?.libraryArtistKeys);
-    if (providedSet) return providedSet;
-    if (Array.isArray(options?.libraryArtists)) {
-      return this._buildArtistKeySet(options.libraryArtists);
-    }
-
+  async _getLibraryArtistKeySet(): Promise<Set<string>> {
     const now = Date.now();
     if (this.libraryArtistKeysCache?.set && this.libraryArtistKeysCache.expiresAt > now) {
       return this.libraryArtistKeysCache.set;
@@ -544,11 +355,8 @@ export class FlowTrackSource {
     if (this.libraryArtistKeysCache?.promise) {
       return this.libraryArtistKeysCache.promise;
     }
-
-    const promise = (async () => {
-      const artists = [...iterateLibraryArtistProjection({ pageSize: 100 })];
-      return this._buildArtistKeySet(artists);
-    })();
+    const promise = (async () =>
+      buildArtistMatchKeySet([...iterateLibraryArtistProjection({ pageSize: 100 })]))();
     this.libraryArtistKeysCache = { promise };
     try {
       const set = await promise;
@@ -563,73 +371,9 @@ export class FlowTrackSource {
     }
   }
 
-  async _getTopTrackForArtist(artistName: string, options: FlowStageOptions = {}) {
-    const name = String(artistName || "").trim();
-    if (!name) return null;
-    const ranges = this._deepDiveRanges(options?.deepDive === true);
-    const trackList = await this._getArtistTopTrackList(name);
-    if (!trackList.length) return null;
-    const pick = this._pickTrackFromRanges(trackList, ranges);
-    const trackName = pick?.name?.trim();
-    if (!trackName) return null;
-    return this._buildTrackEntry({
-      artistName: name,
-      trackName,
-      albumName: pick!.albumName,
-      trackMbid: pick!.mbid,
-      durationMs: pick!.durationMs,
-      reason: options?.reason || "Flow selection",
-    });
-  }
-
-  async _getTracksForRankedArtists(
-    artists: ArtistRef[],
-    limit: number,
-    options: FlowStageOptions = {},
-  ) {
-    if (!Array.isArray(artists) || artists.length === 0 || limit <= 0) return [];
-    const tracks = [];
-    const seen = new Set();
-    let cursor = 0;
-    const batchSize = HARVEST_CONCURRENCY * 2;
-    while (tracks.length < limit && cursor < artists.length) {
-      const batch = [];
-      while (batch.length < batchSize && cursor < artists.length) {
-        const entry = artists[cursor];
-        cursor += 1;
-        const artistName =
-          typeof entry === "string"
-            ? String(entry).trim()
-            : String(entry?.name || entry?.artistName || "").trim();
-        if (!artistName) continue;
-        const key = this._artistKey(artistName);
-        if (!key || seen.has(key)) continue;
-        if (options?.excludeArtistKeys?.has(key)) continue;
-        batch.push({ artistName, key, entry });
-      }
-      if (batch.length === 0) continue;
-      const results = await Promise.all(
-        batch.map(({ artistName }) =>
-          this._getTopTrackForArtist(artistName, options).catch(() => null),
-        ),
-      );
-      for (let index = 0; index < results.length; index += 1) {
-        if (tracks.length >= limit) break;
-        const track = results[index];
-        const key = batch[index]?.key;
-        if (!track || !key || seen.has(key)) continue;
-        seen.add(key);
-        tracks.push(track);
-      }
-    }
-    return this._filterTracksByArtists(tracks, null, options?.excludeArtistKeys);
-  }
-
   async _getTagArtists(tag: string, limit: number) {
     if (!tag || limit <= 0) return [];
-    const { artists }: { artists: TagArtist[] } = await musicData.getTagArtists(tag, {
-      limit,
-    });
+    const { artists } = await musicData.getTagArtists(tag, { limit });
     return artists;
   }
 
@@ -673,10 +417,14 @@ export class FlowTrackSource {
     );
   }
 
-  _pickTrackFromRanges(trackList: ArtistTopTrack[], ranges: DeepDiveRange[]) {
+  _pickTrackFromRanges(
+    trackList: ArtistTopTrack[],
+    ranges: DeepDiveRange[],
+    keep: (track: ArtistTopTrack) => boolean = () => true,
+  ) {
     for (const range of ranges) {
       const candidates = this._sliceRange(trackList, range.start, range.end).filter(
-        (track) => String(track?.name || "").trim().length > 0,
+        (track) => String(track?.name || "").trim().length > 0 && keep(track),
       );
       const pick = this._pickRandomTrack(candidates);
       if (pick) return pick;
@@ -697,8 +445,7 @@ export class FlowTrackSource {
           .toLowerCase();
         return name && !ownedTitles.has(name);
       });
-      const shuffled = [...candidates].sort(() => 0.5 - Math.random());
-      for (const candidate of shuffled) {
+      for (const candidate of shuffled(candidates)) {
         const albumName = String(candidate?.albumName || "").trim();
         if (!albumName) continue;
         if (!ownedAlbums.has(albumName.toLowerCase())) {
@@ -725,8 +472,7 @@ export class FlowTrackSource {
           .toLowerCase();
         return name && !ownedTitles.has(name);
       });
-      const shuffled = [...candidates].sort(() => 0.5 - Math.random());
-      for (const candidate of shuffled) {
+      for (const candidate of shuffled(candidates)) {
         if (checked >= maxChecks) return null;
         checked += 1;
         const trackName = String(candidate?.name || "").trim();
@@ -737,15 +483,9 @@ export class FlowTrackSource {
             track: trackName,
             autocorrect: 1,
           });
-          const albumTitle = String(info?.track?.album?.title || "")
-            .trim()
-            .toLowerCase();
-          if (!albumTitle) continue;
-          if (!ownedAlbums.has(albumTitle)) {
-            return {
-              pick: candidate,
-              albumName: String(info?.track?.album?.title || "").trim() || null,
-            };
+          const albumTitle = String(info?.track?.album?.title || "").trim();
+          if (albumTitle && !ownedAlbums.has(albumTitle.toLowerCase())) {
+            return { pick: candidate, albumName: albumTitle };
           }
         } catch {
           continue;
@@ -762,19 +502,20 @@ export class FlowTrackSource {
     artistName: string,
     ranges: DeepDiveRange[],
   ) {
-    const fromList = this._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
-      trackList,
-      ownedTitles,
-      ownedAlbums,
-      ranges,
-    );
-    if (fromList) return fromList;
-    return this._pickTrackFromRangesWithOwnedAlbumsViaInfo(
-      trackList,
-      ownedTitles,
-      ownedAlbums,
-      artistName,
-      ranges,
+    return (
+      this._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
+        trackList,
+        ownedTitles,
+        ownedAlbums,
+        ranges,
+      ) ??
+      this._pickTrackFromRangesWithOwnedAlbumsViaInfo(
+        trackList,
+        ownedTitles,
+        ownedAlbums,
+        artistName,
+        ranges,
+      )
     );
   }
 
@@ -808,652 +549,358 @@ export class FlowTrackSource {
     return keys.map((key) => this.artistTopTagsCache.get(key)?.value || []);
   }
 
-  async _withoutBlockedTagArtists(tracks: FlowTrackEntry[], blockedTags: ReadonlySet<string>) {
-    if (blockedTags.size === 0 || tracks.length === 0) return tracks;
-    const tagLists = await this._getArtistTopTagLists(
-      tracks.map((track) => ({ name: track.artistName, artistMbid: track.artistMbid })),
-    );
-    return tracks.filter((_, index) => !hasBlockedTag(tagLists[index], blockedTags));
+  _matchedTag(tags: readonly string[] | null | undefined, filters: FlowFilters) {
+    for (const tag of tags ?? []) {
+      const match = filters.tags.get(tagKey(tag));
+      if (match) return match;
+    }
+    return null;
   }
 
-  _buildBaseCandidate(
-    track: FlowTrackEntry,
-    source: FlowSource,
-    sourceRank = 0,
-    extra: FocusExtras = {},
+  async _keepByTags<T extends { artist: HarvestArtist; name: string }>(
+    entries: T[],
+    filters: FlowFilters,
+    blockedTags: ReadonlySet<string> | undefined,
   ) {
-    const artistKey = this._trackArtistKey(track);
-    const trackKey = `${artistKey || ""}::${String(track?.trackName || "")
-      .trim()
-      .toLowerCase()}`;
-    const metadataConfidence =
-      (track?.albumName ? 0.45 : 0) +
-      (track?.releaseYear ? 0.2 : 0) +
-      (track?.durationMs ? 0.25 : 0) +
-      (track?.trackMbid ? 0.1 : 0);
-    const sourceBaseScore = Math.max(0, 200 - sourceRank);
-    const downloadabilityHint =
-      metadataConfidence * 10 + (track?.artistMbid ? 4 : 0) + (track?.trackMbid ? 4 : 0);
-    return {
-      ...track,
-      source,
-      sourceRank,
-      trackKey,
-      artistTags: Array.isArray(extra.artistTags) ? extra.artistTags : [],
-      tagCoverage: Number(extra.tagCoverage || 0),
-      tagCoverageRatio: Number(extra.tagCoverageRatio || 0),
-      relatedCoverage: Number(extra.relatedCoverage || 0),
-      relatedCoverageRatio: Number(extra.relatedCoverageRatio || 0),
-      focusTier: extra.focusTier || "none",
-      focusPriority: Number(extra.focusPriority || 0),
-      metadataConfidence,
-      downloadabilityHint,
-      finalScore:
-        Number(extra.finalScore) || sourceBaseScore + metadataConfidence * 25 + downloadabilityHint,
-    };
-  }
-
-  _getFocusTierDetails(
-    tagCoverage: number,
-    totalTags: number,
-    relatedCoverage: number,
-    totalRelated: number,
-  ) {
-    const safeTagCoverage = Number(tagCoverage || 0);
-    const safeRelatedCoverage = Number(relatedCoverage || 0);
-    const hasTags = totalTags > 0;
-    const hasRelated = totalRelated > 0;
-    if (!hasTags && !hasRelated) {
-      return {
-        focusTier: "none",
-        focusPriority: 0,
-        tagCoverageRatio: 0,
-        relatedCoverageRatio: 0,
-      };
-    }
-    const tagCoverageRatio = hasTags ? Math.min(1, safeTagCoverage / totalTags) : 0;
-    const relatedCoverageRatio = hasRelated ? Math.min(1, safeRelatedCoverage / totalRelated) : 0;
-
-    if (hasTags && hasRelated) {
-      if (safeRelatedCoverage >= totalRelated && safeTagCoverage >= totalTags) {
-        return {
-          focusTier: "both_all",
-          focusPriority: 8,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeRelatedCoverage >= totalRelated && safeTagCoverage > 0) {
-        return {
-          focusTier: "both_partial",
-          focusPriority: 7,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeRelatedCoverage > 0 && safeTagCoverage >= totalTags) {
-        return {
-          focusTier: "both_partial",
-          focusPriority: 6,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeRelatedCoverage > 0 && safeTagCoverage > 0) {
-        return {
-          focusTier: "both_partial",
-          focusPriority: 5,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeRelatedCoverage >= totalRelated) {
-        return {
-          focusTier: "related_all_only",
-          focusPriority: 4,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeRelatedCoverage > 0) {
-        return {
-          focusTier: "related_partial_only",
-          focusPriority: 3,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeTagCoverage >= totalTags) {
-        return {
-          focusTier: "tag_all_only",
-          focusPriority: 2,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      if (safeTagCoverage > 0) {
-        return {
-          focusTier: "tag_partial_only",
-          focusPriority: 1,
-          tagCoverageRatio,
-          relatedCoverageRatio,
-        };
-      }
-      return {
-        focusTier: "none",
-        focusPriority: 0,
-        tagCoverageRatio,
-        relatedCoverageRatio,
-      };
-    }
-
-    if (hasRelated) {
-      return {
-        focusTier:
-          safeRelatedCoverage >= totalRelated
-            ? "related_all_only"
-            : safeRelatedCoverage > 0
-              ? "related_partial_only"
-              : "none",
-        focusPriority: safeRelatedCoverage >= totalRelated ? 4 : safeRelatedCoverage > 0 ? 3 : 0,
-        tagCoverageRatio,
-        relatedCoverageRatio,
-      };
-    }
-
-    return {
-      focusTier:
-        safeTagCoverage >= totalTags
-          ? "tag_all_only"
-          : safeTagCoverage > 0
-            ? "tag_partial_only"
-            : "none",
-      focusPriority: safeTagCoverage >= totalTags ? 2 : safeTagCoverage > 0 ? 1 : 0,
-      tagCoverageRatio,
-      relatedCoverageRatio,
-    };
-  }
-
-  async _buildFocusArtistPool(
-    tags: string[],
-    relatedArtists: string[],
-    limit: number,
-    options: FlowStageOptions = {},
-  ) {
-    const normalizedTags = this._normalizeFocusEntries(tags);
-    const normalizedRelated = this._normalizeFocusEntries(relatedArtists);
-    const totalTags = normalizedTags.length;
-    const totalRelated = normalizedRelated.length;
-    if (limit <= 0 || (totalTags === 0 && totalRelated === 0)) {
-      return [];
-    }
-
-    const excludeArtistKeys = options?.excludeArtistKeys || new Set();
-    const requestedArtists = Math.min(150, Math.max(limit * 6, 60));
-    const candidateMap = new Map<string, FocusArtistCandidate>();
-    const ensureEntry = (artistName: string, mbid: string | null = null) => {
-      const name = String(artistName || "").trim();
-      const key = this._artistKey(name);
-      if (!name || !key || excludeArtistKeys.has(key)) return null;
-      let entry = candidateMap.get(key);
-      if (!entry) {
-        entry = {
-          key,
-          name,
-          artistMbid: String(mbid || "").trim() || null,
-          tagMatches: new Set(),
-          relatedSeeds: new Set(),
-          tagRankSum: 0,
-          relatedRankSum: 0,
-          popularityHint: 0,
-        };
-        candidateMap.set(key, entry);
-      } else if (!entry.artistMbid && mbid) {
-        entry.artistMbid = String(mbid || "").trim() || null;
-      }
-      return entry;
-    };
-
-    const [tagGroups, relatedGroups] = await Promise.all([
-      Promise.all(
-        normalizedTags.map(async (tag) => ({
-          tag,
-          artists: await this._getTagArtists(tag, requestedArtists).catch(() => []),
-        })),
-      ),
-      Promise.all(
-        normalizedRelated.map(async (seed) => ({
-          seed,
-          artists: await this._getSimilarArtists(seed, requestedArtists).catch(() => []),
-        })),
-      ),
-    ]);
-
-    for (const group of tagGroups) {
-      const tagKey = this._artistKey(group.tag);
-      for (let index = 0; index < group.artists.length; index += 1) {
-        const artist = group.artists[index];
-        const entry = ensureEntry(artist.name, artist.mbid);
-        if (!entry) continue;
-        entry.tagMatches.add(tagKey);
-        entry.tagRankSum += index + 1;
-      }
-    }
-
-    for (const group of relatedGroups) {
-      const seedKey = this._artistKey(group.seed);
-      for (let index = 0; index < group.artists.length; index += 1) {
-        const artist = group.artists[index];
-        const artistName = String(artist?.name || "").trim();
-        const entry = ensureEntry(artistName, artist?.mbid || null);
-        if (!entry) continue;
-        entry.relatedSeeds.add(seedKey);
-        entry.relatedRankSum += index + 1;
-        entry.popularityHint = Math.max(
-          entry.popularityHint,
-          Math.max(0, Number(artist?.match || 0)),
-        );
-      }
-    }
-
-    const preliminary = [...candidateMap.values()]
-      .sort((left, right) => {
-        const leftSignal = left.tagMatches.size + left.relatedSeeds.size;
-        const rightSignal = right.tagMatches.size + right.relatedSeeds.size;
-        if (rightSignal !== leftSignal) return rightSignal - leftSignal;
-        if (right.relatedSeeds.size !== left.relatedSeeds.size) {
-          return right.relatedSeeds.size - left.relatedSeeds.size;
-        }
-        if (right.tagMatches.size !== left.tagMatches.size) {
-          return right.tagMatches.size - left.tagMatches.size;
-        }
-        if (left.relatedRankSum !== right.relatedRankSum) {
-          return left.relatedRankSum - right.relatedRankSum;
-        }
-        if (left.tagRankSum !== right.tagRankSum) {
-          return left.tagRankSum - right.tagRankSum;
-        }
-        return left.name.localeCompare(right.name);
-      })
-      .slice(0, Math.max(limit * 2, 60));
-
-    const normalizedTagSet = new Set(normalizedTags.map((entry) => this._artistKey(entry)));
-    const topTagLists = await this._getArtistTopTagLists(preliminary);
-    const enriched = preliminary.map((artist, index) => {
-      const topTags = topTagLists[index];
-      const tagMatches = new Set(artist.tagMatches);
-      for (const tag of topTags) {
-        const tagKey = this._artistKey(tag);
-        if (normalizedTagSet.has(tagKey)) {
-          tagMatches.add(tagKey);
-        }
-      }
-      const focusDetails = this._getFocusTierDetails(
-        tagMatches.size,
-        totalTags,
-        artist.relatedSeeds.size,
-        totalRelated,
-      );
-      return {
-        ...artist,
-        sourceRank: index,
-        artistTags: topTags,
-        tagCoverage: tagMatches.size,
-        relatedCoverage: artist.relatedSeeds.size,
-        ...focusDetails,
-      };
-    });
-
-    return enriched
-      .filter((artist) => Number(artist.focusPriority || 0) > 0)
-      .sort((left, right) => {
-        if (right.focusPriority !== left.focusPriority) {
-          return right.focusPriority - left.focusPriority;
-        }
-        if (right.tagCoverage !== left.tagCoverage) {
-          return right.tagCoverage - left.tagCoverage;
-        }
-        if (right.relatedCoverage !== left.relatedCoverage) {
-          return right.relatedCoverage - left.relatedCoverage;
-        }
-        if (right.popularityHint !== left.popularityHint) {
-          return right.popularityHint - left.popularityHint;
-        }
-        if (left.relatedRankSum !== right.relatedRankSum) {
-          return left.relatedRankSum - right.relatedRankSum;
-        }
-        if (left.tagRankSum !== right.tagRankSum) {
-          return left.tagRankSum - right.tagRankSum;
-        }
-        return left.name.localeCompare(right.name);
-      })
-      .slice(0, Math.max(limit, 1));
-  }
-
-  async _getFocusCandidates(limit: number, options: FlowStageOptions = {}) {
-    const tags = this._normalizeFocusEntries(options?.tags);
-    const relatedArtists = this._normalizeFocusEntries(options?.relatedArtists);
-    if (limit <= 0 || (tags.length === 0 && relatedArtists.length === 0)) {
-      return [];
-    }
-    const focusArtistPool = await this._buildFocusArtistPool(
-      tags,
-      relatedArtists,
-      Math.min(150, Math.max(limit * 4, 48)),
-      options,
-    );
-    if (focusArtistPool.length === 0) return [];
-    const tracks = await this._getTracksForRankedArtists(focusArtistPool, limit, {
-      deepDive: options?.deepDive === true,
-      reason: "From focus filters",
-      excludeArtistKeys: options?.excludeArtistKeys,
-    }).catch(() => []);
-    const focusArtistMap = new Map<string | null, FocusArtist>(
-      focusArtistPool.map((artist) => [this._artistKey(artist.name), artist]),
-    );
-    return tracks
-      .map((track, index) => {
-        const artist = focusArtistMap.get(this._trackArtistKey(track));
-        if (!artist) return null;
-        return this._buildBaseCandidate(track, "focus", index, {
-          artistTags: artist.artistTags,
-          tagCoverage: artist.tagCoverage,
-          tagCoverageRatio: artist.tagCoverageRatio,
-          relatedCoverage: artist.relatedCoverage,
-          relatedCoverageRatio: artist.relatedCoverageRatio,
-          focusTier: artist.focusTier,
-          focusPriority: artist.focusPriority,
-          finalScore:
-            artist.focusPriority * 1000 +
-            artist.tagCoverageRatio * 120 +
-            artist.relatedCoverageRatio * 140 +
-            (artist.popularityHint || 0),
-        });
-      })
-      .filter((candidate): candidate is FlowCandidate => {
-        if (!candidate) return false;
-        if (!(options?.excludeTrackKeys instanceof Set)) return true;
-        return !options.excludeTrackKeys.has(candidate.trackKey);
-      })
-      .sort((left, right) => {
-        if (right.focusPriority !== left.focusPriority) {
-          return right.focusPriority - left.focusPriority;
-        }
-        if (right.finalScore !== left.finalScore) {
-          return right.finalScore - left.finalScore;
-        }
-        return left.sourceRank - right.sourceRank;
-      });
-  }
-
-  _sortSourceCandidates<T extends { finalScore: number; sourceRank: number }>(
-    candidates: T[],
-  ): T[] {
-    return [...(Array.isArray(candidates) ? candidates : [])].sort((left, right) => {
-      if (right.finalScore !== left.finalScore) {
-        return right.finalScore - left.finalScore;
-      }
-      return left.sourceRank - right.sourceRank;
+    const blocked = blockedTags ?? new Set<string>();
+    if (entries.length === 0 || (filters.tags.size === 0 && blocked.size === 0)) return entries;
+    const missing = entries.filter((entry) => !entry.artist.tags?.length);
+    const fetched = missing.length
+      ? await this._getArtistTopTagLists(
+          missing.map((entry) => ({ name: entry.name, artistMbid: artistMbidOf(entry.artist) })),
+        )
+      : [];
+    const fetchedTags = new Map(missing.map((entry, index) => [entry, fetched[index]]));
+    return entries.filter((entry) => {
+      const tags = entry.artist.tags?.length ? entry.artist.tags : fetchedTags.get(entry) || [];
+      if (hasBlockedTag(tags, blocked)) return false;
+      return filters.tags.size === 0 || this._matchedTag(tags, filters) !== null;
     });
   }
 
-  _buildSourceTargets(size: number, mix: FlowMix) {
-    return this._buildCounts(size, mix);
-  }
-
-  async _harvestFlowSources(
-    flow: FlowRunSpec,
-    harvestTargets: Record<string, number>,
-    options: FlowRunOptions = {},
-  ) {
-    const blockedTags = getBlockedTagKeys(flow?.ownerUserId);
-    const tags = withoutBlockedTags(this._normalizeFocusEntries(flow?.tags), blockedTags);
-    const relatedArtists = this._normalizeFocusEntries(flow?.relatedArtists);
-    const excludeArtistKeys = new Set(
-      Array.isArray(options?.excludeArtistKeys)
-        ? options.excludeArtistKeys
-        : options?.excludeArtistKeys || [],
-    );
-    const excludeTrackKeys = new Set(
-      Array.isArray(options?.excludeTrackKeys)
-        ? options.excludeTrackKeys
-        : options?.excludeTrackKeys || [],
-    );
-    const libraryArtistKeys = await this._getLibraryArtistKeySet(options).catch(
-      () => new Set<string>(),
-    );
-    const nonLibraryExcludeArtistKeys = new Set(excludeArtistKeys);
-    for (const entry of libraryArtistKeys) {
-      nonLibraryExcludeArtistKeys.add(entry);
+  async _releasesInYears(artistName: string, filters: FlowFilters, owned: Ownership | null) {
+    const artist = await getDeezerArtist(artistName);
+    if (!artist) return [];
+    const earliest = new Map<string, { id: number; title: string; year: number }>();
+    for (const album of await getDeezerAlbumsForArtist(artist)) {
+      const year = Number(album["first-release-date"]);
+      if (!Number.isFinite(year) || year <= 0) continue;
+      const key = this._releaseKey(album.title);
+      const known = earliest.get(key);
+      if (!known || year < known.year) {
+        earliest.set(key, { id: album.id, title: album.title, year });
+      }
     }
-    const skipSource = (sourceName: string) => (error: unknown) => {
-      logger.warn(
-        "flows",
-        `Skipped the ${sourceName} source for flow ${flow?.id || "preview"}: ${asAppError(error)?.message}`,
-      );
-      return [];
-    };
-    const [discoverTracks, mixTracks, trendingTracks, focusCandidates] = await Promise.all([
-      harvestTargets.discover > 0
-        ? this.getDiscoverTracks(this._harvestLimitFor(harvestTargets.discover), {
-            ...options,
-            deepDive: flow?.deepDive === true,
-            reason: "From discovery recommendations",
-            excludeArtistKeys: nonLibraryExcludeArtistKeys,
-          }).catch(skipSource("discover"))
-        : [],
-      harvestTargets.mix > 0
-        ? this.getMixTracks(this._harvestLimitFor(harvestTargets.mix), {
-            ...options,
-            deepDive: flow?.deepDive === true,
-            reason: "From your library mix",
-          }).catch(skipSource("mix"))
-        : [],
-      harvestTargets.trending > 0
-        ? this.getTrendingTracks(this._harvestLimitFor(harvestTargets.trending), {
-            ...options,
-            deepDive: flow?.deepDive === true,
-            reason: "From trending artists",
-            excludeArtistKeys: nonLibraryExcludeArtistKeys,
-          })
-            .then((tracks) => this._withoutBlockedTagArtists(tracks, blockedTags))
-            .catch(skipSource("trending"))
-        : [],
-      harvestTargets.focus > 0
-        ? this._getFocusCandidates(this._harvestLimitFor(harvestTargets.focus), {
-            tags,
-            relatedArtists,
-            deepDive: flow?.deepDive === true,
-            excludeArtistKeys: nonLibraryExcludeArtistKeys,
-            excludeTrackKeys,
-          }).catch(skipSource("focus"))
-        : [],
-    ]);
+    return [...earliest.values()].filter(
+      (release) =>
+        this._matchesYearRange(release.year, filters.yearFrom, filters.yearTo) &&
+        !owned?.ownedAlbums.has(release.title.toLowerCase()),
+    );
+  }
+
+  async _pickTrackInYears(
+    artistName: string,
+    filters: FlowFilters,
+    deepDive: boolean,
+    owned: Ownership | null = null,
+  ): Promise<TrackPick | null> {
+    const releases = await this._releasesInYears(artistName, filters, owned);
+    if (releases.length === 0) return null;
+    const byTitle = new Map(releases.map((release) => [this._releaseKey(release.title), release]));
+    const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
+    const hit = this._pickTrackFromRanges(
+      await this._getArtistTopTrackList(artistName),
+      this._deepDiveRanges(deepDive),
+      (track) =>
+        Boolean(track.albumName && byTitle.has(this._releaseKey(track.albumName))) &&
+        !isOwned(track.name),
+    );
+    const hitRelease = hit?.albumName ? byTitle.get(this._releaseKey(hit.albumName)) : null;
+    if (hit && hitRelease) {
+      return {
+        trackName: hit.name,
+        albumName: hitRelease.title,
+        trackMbid: hit.mbid,
+        durationMs: hit.durationMs,
+        releaseYear: String(hitRelease.year),
+      };
+    }
+    const release = shuffled(releases)[0];
+    const albumTracks = (await deezerGetAlbumTracks(release.id)).filter(
+      (track) => !isOwned(track.trackName),
+    );
+    const track = [...albumTracks].sort((left, right) => right.rank - left.rank)[0];
+    if (!track) return null;
     return {
-      candidateMap: {
-        discover: this._sortSourceCandidates(
-          discoverTracks
-            .map((track, index) => this._buildBaseCandidate(track, "discover", index))
-            .filter((candidate) => {
-              return (
-                this._filterTracksByArtists([candidate], null, nonLibraryExcludeArtistKeys).length >
-                  0 && !excludeTrackKeys.has(candidate.trackKey)
-              );
-            }),
-        ),
-        mix: this._sortSourceCandidates(
-          mixTracks
-            .map((track, index) => this._buildBaseCandidate(track, "mix", index))
-            .filter((candidate) => {
-              return (
-                this._filterTracksByArtists([candidate], null, excludeArtistKeys).length > 0 &&
-                !excludeTrackKeys.has(candidate.trackKey)
-              );
-            }),
-        ),
-        trending: this._sortSourceCandidates(
-          trendingTracks
-            .map((track, index) => this._buildBaseCandidate(track, "trending", index))
-            .filter((candidate) => {
-              return (
-                this._filterTracksByArtists([candidate], null, nonLibraryExcludeArtistKeys).length >
-                  0 && !excludeTrackKeys.has(candidate.trackKey)
-              );
-            }),
-        ),
-        focus: this._sortSourceCandidates(
-          focusCandidates.filter((candidate) => !hasBlockedTag(candidate.artistTags, blockedTags)),
-        ),
-      },
-      excludeArtistKeys,
+      trackName: track.trackName,
+      albumName: release.title,
+      durationMs: track.duration_ms,
+      releaseYear: String(release.year),
     };
   }
 
-  async _assembleFlowPlan({
+  async _pickTrack(
+    name: string,
+    filters: FlowFilters,
+    deepDive: boolean,
+    owned: Ownership | null = null,
+  ): Promise<TrackPick | null> {
+    if (this._hasYears(filters)) return this._pickTrackInYears(name, filters, deepDive, owned);
+    const trackList = await this._getArtistTopTrackList(name);
+    const ranges = this._deepDiveRanges(deepDive);
+    if (owned) {
+      const picked = await this._pickTrackFromRangesWithOwnedAlbums(
+        trackList,
+        owned.ownedTitles,
+        owned.ownedAlbums,
+        name,
+        ranges,
+      );
+      return picked
+        ? {
+            trackName: picked.pick.name,
+            albumName: picked.albumName || picked.pick.albumName,
+            trackMbid: picked.pick.mbid,
+            durationMs: picked.pick.durationMs,
+          }
+        : null;
+    }
+    const pick = this._pickTrackFromRanges(trackList, ranges);
+    return pick
+      ? {
+          trackName: pick.name,
+          albumName: pick.albumName,
+          trackMbid: pick.mbid,
+          durationMs: pick.durationMs,
+        }
+      : null;
+  }
+
+  async _harvestArtists(artists: HarvestArtist[], limit: number, options: HarvestOptions) {
+    const { filters, excludeArtistKeys, blockedTags, pick } = options;
+    const end = Math.min(artists.length, options.maxArtists ?? artists.length);
+    const tracks: FlowTrackEntry[] = [];
+    const seen = new Set<string>();
+    let cursor = 0;
+    while (tracks.length < limit && cursor < end) {
+      const batch: { artist: HarvestArtist; name: string }[] = [];
+      while (batch.length < HARVEST_BATCH && cursor < end) {
+        const artist = artists[cursor];
+        cursor += 1;
+        const name = String(artist?.name || artist?.artistName || "").trim();
+        const key = this._artistKey(name);
+        if (!key || seen.has(key)) continue;
+        if (getArtistMatchKeys(artist).some((entry) => excludeArtistKeys.has(entry))) continue;
+        seen.add(key);
+        batch.push({ artist, name });
+      }
+      const eligible = await this._keepByTags(batch, filters, blockedTags);
+      const entries = await Promise.all(
+        eligible.map(async ({ artist, name }) => {
+          const picked = await pick(artist, name).catch(() => null);
+          return picked
+            ? this._buildTrackEntry({
+                artistMbid: artistMbidOf(artist),
+                ...picked,
+                artistName: name,
+                reason: artist.reason,
+              })
+            : null;
+        }),
+      );
+      for (const entry of entries) {
+        if (entry && tracks.length < limit) tracks.push(entry);
+      }
+    }
+    return tracks;
+  }
+
+  _selectFromCandidates(candidates: FlowTrackEntry[], count: number, usedArtistKeys: Set<string>) {
+    const picked = [];
+    for (const candidate of candidates) {
+      if (picked.length >= count) break;
+      const artistKeys = getArtistMatchKeys(candidate);
+      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
+      artistKeys.forEach((key) => usedArtistKeys.add(key));
+      picked.push(candidate);
+    }
+    return picked;
+  }
+
+  _assembleFlowPlan({
     candidateMap,
     excludeArtistKeys,
     targetSize,
     sourceTargets,
-    yearFrom = null,
-    yearTo = null,
   }: {
-    candidateMap: FlowCandidateMap;
-    excludeArtistKeys: Set<string>;
+    candidateMap: Record<FlowSource, FlowTrackEntry[]>;
+    excludeArtistKeys: ReadonlySet<string>;
     targetSize: number;
-    sourceTargets: Record<string, number>;
-    yearFrom?: number | null;
-    yearTo?: number | null;
+    sourceTargets: Record<FlowSource, number>;
   }) {
-    const orderedSources: FlowSource[] = ["focus", "mix", "discover", "trending"];
+    const orderedSources: FlowSource[] = ["newReleases", "focus", "mix", "discover", "trending"];
     const usedArtistKeys = new Set(excludeArtistKeys);
-    const primaryTracks = [];
-    for (const source of orderedSources) {
+    const primaryTracks = orderedSources.flatMap((source) =>
+      this._selectFromCandidates(candidateMap[source], sourceTargets[source], usedArtistKeys),
+    );
+    if (primaryTracks.length < targetSize) {
       primaryTracks.push(
-        ...(await this._selectFromCandidates(
-          candidateMap[source],
-          Number(sourceTargets[source] || 0),
+        ...this._selectFromCandidates(
+          orderedSources.flatMap((source) => candidateMap[source]),
+          targetSize - primaryTracks.length,
           usedArtistKeys,
-          yearFrom,
-          yearTo,
-        )),
+        ),
       );
     }
-    const remainingPrimaryNeeded = Math.max(0, targetSize - primaryTracks.length);
-    if (remainingPrimaryNeeded > 0) {
-      const pooled = orderedSources.flatMap((source) => candidateMap[source]);
-      primaryTracks.push(
-        ...(await this._selectFromCandidates(
-          pooled,
-          remainingPrimaryNeeded,
-          usedArtistKeys,
-          yearFrom,
-          yearTo,
-        )),
-      );
-    }
-    return {
-      primaryTracks: primaryTracks
-        .slice(0, targetSize)
-        .map(({ trackKey: _trackKey, ...track }) => track),
-    };
+    return { primaryTracks: primaryTracks.slice(0, targetSize) };
   }
 
-  async buildFlowRunPlan(flow: FlowRunSpec, planOptions: FlowRunOptions = {}) {
-    const options = {
-      ...planOptions,
-      ownerUserId: planOptions?.ownerUserId ?? flow?.ownerUserId ?? null,
-    };
+  _buildFilters(flow: FlowRunSpec, blockedTags: ReadonlySet<string>): FlowFilters {
+    const requested = dedupeNames(flow.tags);
+    const allowed = withoutBlockedTags(requested, blockedTags);
+    const tags = new Map<string, string>();
+    for (const tag of allowed.length > 0 ? allowed : requested) {
+      const key = tagKey(tag);
+      if (key && !tags.has(key)) tags.set(key, tag);
+    }
+    return { tags, yearFrom: flow.yearFrom ?? null, yearTo: flow.yearTo ?? null };
+  }
+
+  async buildFlowRunPlan(flow: FlowRunSpec) {
     const requestedSize = Number(flow?.size || 0);
     const targetSize =
       Number.isFinite(requestedSize) && requestedSize > 0 ? Math.round(requestedSize) : 30;
-    if (flow?.discoverPresetId === "release-radar") {
-      const generatedTracks = await this.getReleaseRadarTracks(targetSize);
-      return {
-        primaryTracks: this._filterTracksByArtists(
-          generatedTracks,
-          null,
-          new Set(this._buildFeedbackExcludeKeys(flow?.ownerUserId)),
-        ),
-      };
-    }
-    const mix = flow?.mix || { discover: 34, mix: 33, trending: 33, focus: 0 };
-    const _sourceTargets = this._buildSourceTargets(targetSize, mix);
-    const feedbackExcludeKeys = this._buildFeedbackExcludeKeys(flow?.ownerUserId);
-    const mergedOptions = {
-      ...options,
-      excludeArtistKeys: [
-        ...(Array.isArray(options?.excludeArtistKeys)
-          ? options.excludeArtistKeys
-          : options?.excludeArtistKeys
-            ? [options.excludeArtistKeys]
-            : []),
-        ...feedbackExcludeKeys,
-      ],
-    };
-    const { candidateMap, excludeArtistKeys } = await this._harvestFlowSources(
-      flow,
-      _sourceTargets,
-      mergedOptions,
-    );
-    return this._assembleFlowPlan({
-      candidateMap,
-      excludeArtistKeys,
+    const sourceTargets = splitFlowTotal(
+      flow?.mix || { discover: 34, mix: 33, trending: 33 },
       targetSize,
-      sourceTargets: _sourceTargets,
-      yearFrom: flow?.yearFrom ?? null,
-      yearTo: flow?.yearTo ?? null,
+    );
+    if (!sourceTargets) return { primaryTracks: [] };
+    const ownerUserId = flow?.ownerUserId ?? null;
+    const blockedTags = getBlockedTagKeys(ownerUserId);
+    const excludeArtistKeys = new Set(this._buildFeedbackExcludeKeys(ownerUserId));
+    const libraryArtistKeys = await this._getLibraryArtistKeySet().catch(() => new Set<string>());
+    const outsideLibrary = new Set([...excludeArtistKeys, ...libraryArtistKeys]);
+    const base = {
+      ownerUserId,
+      deepDive: flow?.deepDive === true,
+      filters: this._buildFilters(flow, blockedTags),
+      blockedTags,
+    };
+    const sources: Record<FlowSource, (limit: number) => Promise<FlowTrackEntry[]>> = {
+      discover: (limit) =>
+        this.getDiscoverTracks(limit, { ...base, excludeArtistKeys: outsideLibrary }),
+      mix: (limit) => this.getMixTracks(limit, { ...base, excludeArtistKeys }),
+      trending: (limit) =>
+        this.getTrendingTracks(limit, { ...base, excludeArtistKeys: outsideLibrary }),
+      focus: (limit) =>
+        this.getFocusTracks(limit, flow, { ...base, excludeArtistKeys: outsideLibrary }),
+      newReleases: (limit) => this.getNewReleaseTracks(limit, { ...base, excludeArtistKeys }),
+    };
+    const harvested = await Promise.all(
+      FLOW_SOURCES.map(async (source) => {
+        if (sourceTargets[source] <= 0) return [];
+        try {
+          return await sources[source](
+            Math.max(targetSize, this._harvestLimitFor(sourceTargets[source])),
+          );
+        } catch (error) {
+          logger.warn(
+            "flows",
+            `Skipped the ${source} source for flow ${flow?.id || "preview"}: ${asAppError(error)?.message}`,
+          );
+          return [];
+        }
+      }),
+    );
+    const candidateMap: Record<FlowSource, FlowTrackEntry[]> = {
+      discover: [],
+      mix: [],
+      trending: [],
+      focus: [],
+      newReleases: [],
+    };
+    FLOW_SOURCES.forEach((source, index) => {
+      candidateMap[source] = harvested[index];
     });
+    return this._assembleFlowPlan({ candidateMap, excludeArtistKeys, targetSize, sourceTargets });
   }
 
-  async getDiscoverTracks(limit: number, options: FlowStageOptions = {}) {
-    const discoveryCache = this._resolveDiscoveryCache(options);
-    const recommendations = discoveryCache.recommendations || [];
-    if (!Array.isArray(recommendations) || recommendations.length === 0) {
+  async getDiscoverTracks(limit: number, context: Partial<SourceContext> = {}) {
+    const { ownerUserId, deepDive, filters, excludeArtistKeys, blockedTags } = {
+      ...DEFAULT_CONTEXT,
+      ...context,
+    };
+    const recommendations = this._getRecommendations(ownerUserId);
+    if (recommendations.length === 0) {
       throw new Error("No discovery recommendations available. Update discovery cache first.");
     }
-    return this._harvestTopTracksFromArtists(recommendations, limit, {
-      ...options,
-      reason: options?.reason || "From discovery recommendations",
+    const artists = recommendations.map((recommendation) => {
+      const seed =
+        recommendation.supportingSeeds?.find((entry) => entry?.artistName)?.artistName ||
+        recommendation.sourceArtists?.[0];
+      const ownTags =
+        recommendation.candidateTagsHydrated === true && recommendation.tagSource !== "inherited";
+      return {
+        ...recommendation,
+        tags: ownTags ? recommendation.tags : null,
+        reason: seed ? `Similar to ${seed}` : "Recommended for you",
+      };
+    });
+    return this._harvestArtists(rankedWindows(artists, limit), limit, {
+      filters,
+      excludeArtistKeys,
+      blockedTags,
+      pick: (_artist, name) => this._pickTrack(name, filters, deepDive),
     });
   }
 
-  _buildChartTracks(
-    tracks: ChartTrack[],
-    limit: number,
-    options: FlowStageOptions,
-    reason: string,
-  ) {
-    const result: FlowTrackEntry[] = [];
-    const seen = new Set<string>();
-    for (const track of tracks) {
-      if (result.length >= limit) break;
-      const key = this._artistKey(track.artistName);
-      if (!key || seen.has(key)) continue;
-      if (options?.excludeArtistKeys?.has(key)) continue;
-      seen.add(key);
-      const trackEntry = this._buildTrackEntry({
-        artistName: track.artistName,
-        trackName: track.name,
-        albumName: track.albumName,
-        artistMbid: track.artistMbid,
-        reason: options?.reason || reason,
-      });
-      if (trackEntry) result.push(trackEntry);
+  async _getTrendingChart(limit: number) {
+    return musicData.getTrendingTracks({ limit });
+  }
+
+  async getTrendingTracks(limit: number, context: Partial<SourceContext> = {}) {
+    const { filters, excludeArtistKeys, blockedTags } = { ...DEFAULT_CONTEXT, ...context };
+    const chart = await this._getTrendingChart(
+      this._isFiltered(filters) ? FILTERED_CHART_LIMIT : Math.max(limit * 3, 50),
+    );
+    const chartTracks = new Map<string, (typeof chart)[number]>();
+    for (const track of chart) {
+      if (!chartTracks.has(track.artistName)) chartTracks.set(track.artistName, track);
     }
-    return this._filterTracksByArtists(result, null, options?.excludeArtistKeys);
+    return this._harvestArtists(
+      [...chartTracks.values()].map((track) => ({
+        name: track.artistName,
+        artistMbid: track.artistMbid,
+        reason: "Trending this week",
+      })),
+      limit,
+      {
+        filters,
+        excludeArtistKeys,
+        blockedTags,
+        pick: async (_artist, name) => {
+          const track = chartTracks.get(name);
+          if (!track) return null;
+          if (!this._hasYears(filters)) {
+            return { trackName: track.name, albumName: track.albumName };
+          }
+          const release = track.albumName
+            ? (await this._releasesInYears(name, filters, null)).find(
+                (entry) => normalizeTitle(entry.title) === normalizeTitle(track.albumName),
+              )
+            : null;
+          return release
+            ? { trackName: track.name, albumName: release.title, releaseYear: String(release.year) }
+            : null;
+        },
+      },
+    );
   }
 
-  async getTrendingTracks(limit: number, options: FlowStageOptions = {}) {
-    const tracks = await musicData.getTrendingTracks({
-      limit: Math.max(limit * 3, 50),
-    });
-    return this._buildChartTracks(tracks, limit, options, "From trending tracks");
-  }
-
-  async _getLibraryOwnership(_libraryManager: unknown, artistId: ArtistMatchFields["id"]) {
+  async _getLibraryOwnership(artistId: ArtistMatchFields["id"]): Promise<Ownership> {
     const key = String(artistId ?? "");
     if (!key) {
-      return { ownedTitles: new Set<string>(), ownedAlbums: new Set<string>() };
+      return { ownedTitles: new Set(), ownedAlbums: new Set() };
     }
     const cached = this.libraryOwnershipCache.get(key);
     if (cached?.data && cached.expiresAt > Date.now()) {
@@ -1466,27 +913,20 @@ export class FlowTrackSource {
         references: [artistId],
       }),
     );
-    const ownedTitles = new Set(
-      tracks
-        .filter((track) => track.available)
-        .map((track) =>
-          String(track.trackName || track.title || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean),
-    );
-    const ownedAlbums = new Set(
-      albums
-        .filter((album) => album.available)
-        .map((album) =>
-          String(album.albumName || album.title || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean),
-    );
-    const data = { ownedTitles, ownedAlbums };
+    const titles = (values: string[]) =>
+      new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean));
+    const data = {
+      ownedTitles: titles(
+        tracks
+          .filter((track) => track.available)
+          .map((track) => String(track.trackName || track.title || "")),
+      ),
+      ownedAlbums: titles(
+        albums
+          .filter((album) => album.available)
+          .map((album) => String(album.albumName || album.title || "")),
+      ),
+    };
     this.libraryOwnershipCache.set(key, {
       data,
       expiresAt: Date.now() + LIBRARY_OWNERSHIP_CACHE_TTL_MS,
@@ -1494,74 +934,79 @@ export class FlowTrackSource {
     return data;
   }
 
-  async getMixTracks(limit: number, options: FlowRunOptions = {}) {
-    const artists: ArtistMatchFields[] = Array.isArray(options?.libraryArtists)
-      ? options.libraryArtists
-      : [...iterateLibraryArtistProjection({ pageSize: 100 })];
+  _getLibraryArtists(): ArtistMatchFields[] {
+    return [...iterateLibraryArtistProjection({ pageSize: 100 })];
+  }
+
+  async getMixTracks(limit: number, context: Partial<SourceContext> = {}) {
+    const { deepDive, filters, excludeArtistKeys } = { ...DEFAULT_CONTEXT, ...context };
+    const artists = this._getLibraryArtists();
     if (artists.length === 0) {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
+    return this._harvestArtists(
+      shuffled(artists).map((artist) => ({ ...artist, reason: "In your Library" })),
+      limit,
+      {
+        filters,
+        excludeArtistKeys,
+        maxArtists: Math.max(
+          limit * 2,
+          this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : LIBRARY_ARTIST_LIMIT,
+        ),
+        pick: async (artist, name) =>
+          this._pickTrack(name, filters, deepDive, await this._getLibraryOwnership(artist.id)),
+      },
+    );
+  }
 
-    const shuffled = [...artists].sort(() => 0.5 - Math.random());
-    const ranges = this._deepDiveRanges(options?.deepDive === true);
-    const maxArtistsToTry = Math.min(45, Math.max(limit * 2, 30));
-    const candidates = shuffled.slice(0, maxArtistsToTry);
-    const tracks = [];
-    const seenArtists = new Set();
-    let cursor = 0;
-    const batchSize = HARVEST_CONCURRENCY * 2;
-
-    while (tracks.length < limit && cursor < candidates.length) {
-      const batch = candidates.slice(cursor, cursor + batchSize);
-      cursor += batch.length;
-      const batchResults = await Promise.all(
-        batch.map(async (artist) => {
-          const artistName = (artist.artistName || artist.name || "").trim();
-          if (!artistName) return null;
-          const artistKey = this._artistKey(artistName);
-          if (!artistKey || seenArtists.has(artistKey)) return null;
-          try {
-            const { ownedTitles, ownedAlbums } = await this._getLibraryOwnership(null, artist.id);
-            const trackList = await this._getArtistTopTrackList(artistName);
-            if (!trackList.length) return null;
-            const picked = await this._pickTrackFromRangesWithOwnedAlbums(
-              trackList,
-              ownedTitles,
-              ownedAlbums,
-              artistName,
-              ranges,
-            );
-            const trackName = picked?.pick?.name?.trim();
-            if (!trackName) return null;
-            return this._buildTrackEntry({
-              artistName,
-              trackName,
-              albumName: picked!.albumName || picked!.pick.albumName,
-              trackMbid: picked!.pick.mbid,
-              durationMs: picked!.pick.durationMs,
-              artistMbid: artist?.mbid || artist?.foreignArtistId || null,
-              reason: options?.reason || "From your library mix",
-            });
-          } catch (error) {
-            console.warn(
-              `[FlowTrackSource] Failed to get Mix tracks for ${artistName}:`,
-              asAppError(error)?.message,
-            );
-            return null;
-          }
-        }),
-      );
-      for (const trackEntry of batchResults) {
-        if (!trackEntry) continue;
-        const artistKey = this._trackArtistKey(trackEntry);
-        if (!artistKey || seenArtists.has(artistKey)) continue;
-        seenArtists.add(artistKey);
-        tracks.push(trackEntry);
-        if (tracks.length >= limit) break;
+  async _buildFocusArtistPool(seeds: string[], limit: number, filters: FlowFilters) {
+    const perGroup = Math.min(150, Math.max(limit * 6, 60));
+    const groups = await Promise.all([
+      ...seeds.map(async (seed) => ({
+        reason: `Similar to ${seed}`,
+        artists: await this._getSimilarArtists(seed, perGroup).catch(() => []),
+      })),
+      ...[...filters.tags.values()].map(async (tag) => ({
+        reason: `Tagged ${tag}`,
+        artists: await this._getTagArtists(tag, perGroup).catch(() => []),
+      })),
+    ]);
+    const pool = new Map<string, HarvestArtist>();
+    const deepest = Math.max(0, ...groups.map((group) => group.artists.length));
+    for (let rank = 0; rank < deepest; rank += 1) {
+      for (const { reason, artists } of groups) {
+        const name = String(artists[rank]?.name || "").trim();
+        const key = this._artistKey(name);
+        if (!key || pool.has(key)) continue;
+        pool.set(key, {
+          name,
+          artistMbid: String(artists[rank]?.mbid || "").trim() || null,
+          reason,
+        });
       }
     }
+    return [...pool.values()];
+  }
 
-    return tracks;
+  async getFocusTracks(limit: number, flow: FlowRunSpec, context: Partial<SourceContext> = {}) {
+    const { ownerUserId, deepDive, filters, excludeArtistKeys, blockedTags } = {
+      ...DEFAULT_CONTEXT,
+      ...context,
+    };
+    const seeds = dedupeNames([
+      ...(flow.relatedArtists ?? []),
+      ...(flow.recentListening && ownerUserId != null
+        ? getRecentListeningArtists(ownerUserId)
+        : []),
+    ]);
+    if (limit <= 0 || (filters.tags.size === 0 && seeds.length === 0)) return [];
+    return this._harvestArtists(await this._buildFocusArtistPool(seeds, limit, filters), limit, {
+      filters,
+      excludeArtistKeys,
+      blockedTags,
+      pick: (_artist, name) => this._pickTrack(name, filters, deepDive),
+    });
   }
 
   _pickTopAlbumTrackInfo(trackList: AlbumTrackRow | AlbumTrackRow[] | null | undefined) {
@@ -1598,8 +1043,8 @@ export class FlowTrackSource {
               : Number.MAX_SAFE_INTEGER,
         };
       })
-      .filter(Boolean)
-      .sort((left, right) => left!.rank - right!.rank);
+      .filter((entry) => entry !== null)
+      .sort((left, right) => left.rank - right.rank);
   }
 
   async _getMetadataAlbumTrackList(albumMbid: string) {
@@ -1620,15 +1065,13 @@ export class FlowTrackSource {
     artistName,
     albumTitle,
     albumMbid = null,
-    artistMbid = null,
     releaseYear = null,
   }: {
     artistName: string;
     albumTitle: string;
     albumMbid?: string | null;
-    artistMbid?: string | null;
     releaseYear?: string | null;
-  }) {
+  }): Promise<TrackPick | null> {
     const normalizedArtist = String(artistName || "").trim();
     const normalizedAlbum = String(albumTitle || "").trim();
     if (!normalizedArtist || !normalizedAlbum) return null;
@@ -1641,16 +1084,14 @@ export class FlowTrackSource {
       } catch {}
     }
 
-    let trackName = pick?.trackName || null;
-    try {
-      if (!trackName) {
+    if (!pick) {
+      try {
         const data = await this._getLastfmAlbumInfo(normalizedArtist, normalizedAlbum);
         pick = this._pickTopAlbumTrackInfo(data?.album?.tracks?.track)[0] || null;
-        trackName = pick?.trackName || null;
-      }
-    } catch {}
+      } catch {}
+    }
 
-    if (!trackName) {
+    if (!pick) {
       try {
         const trackList = await this._getArtistTopTrackList(normalizedArtist);
         const albumKey = this._releaseTitleKey(normalizedAlbum);
@@ -1658,63 +1099,61 @@ export class FlowTrackSource {
           (entry) => entry.albumName && this._releaseTitleKey(entry.albumName) === albumKey,
         );
         pick = albumMatch ? this._pickTopAlbumTrackInfo([albumMatch])[0] || null : null;
-        trackName = pick?.trackName || null;
       } catch {}
     }
 
-    if (!trackName) return null;
-    return this._buildTrackEntry({
-      artistName: normalizedArtist,
-      trackName,
+    if (!pick) return null;
+    return {
+      trackName: pick.trackName,
       albumName: normalizedAlbum,
-      artistMbid: artistMbid || null,
       albumMbid,
-      trackMbid: pick?.trackMbid || null,
-      durationMs: pick?.durationMs || null,
-      releaseMbid: pick?.releaseMbid,
-      trackNumber: pick?.trackNumber,
-      discNumber: pick?.discNumber,
+      trackMbid: pick.trackMbid,
+      durationMs: pick.durationMs,
+      releaseMbid: pick.releaseMbid,
+      trackNumber: pick.trackNumber,
+      discNumber: pick.discNumber,
       releaseYear,
-      reason: "New release from an artist in your library",
-    });
+    };
   }
 
-  async getReleaseRadarTracks(limit: number, options: FlowStageOptions = {}) {
-    if (limit <= 0) return [];
+  async _getRecentReleases(limit: number): Promise<RecentRelease[]> {
     const { getRecentMissingReleases } = await import("../discovery/recentReleases.ts");
-    const albums = await getRecentMissingReleases(limit, {
-      artists: options?.libraryArtists,
-      includeFuture: false,
-    });
-    if (albums.length === 0) return [];
+    return getRecentMissingReleases(limit, { includeFuture: false });
+  }
 
-    const seenAlbums = new Set();
-    const uniqueAlbums = albums.filter((album) => {
-      const albumKey = String(album.mbid || album.foreignAlbumId || "")
-        .trim()
-        .toLowerCase();
-      if (!albumKey) return true;
-      if (seenAlbums.has(albumKey)) return false;
-      seenAlbums.add(albumKey);
-      return true;
-    });
-
-    const resolved = await mapWithConcurrency(
-      uniqueAlbums,
-      4,
-      (album: (typeof uniqueAlbums)[number]) => {
-        const releaseDate = String(album.releaseDate || "").trim();
-        return this._pickTrackFromRelease({
-          artistName: album.artistName,
-          albumTitle: album.albumName,
-          albumMbid: album.mbid || album.foreignAlbumId || null,
-          artistMbid: album.artistMbid || album.foreignArtistId || null,
-          releaseYear: releaseDate ? releaseDate.slice(0, 4) : null,
-        });
+  async getNewReleaseTracks(limit: number, context: Partial<SourceContext> = {}) {
+    const { filters, excludeArtistKeys } = { ...DEFAULT_CONTEXT, ...context };
+    if (limit <= 0) return [];
+    const albums = await this._getRecentReleases(
+      this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : limit,
+    );
+    const albumsByArtist = Map.groupBy(albums, (album) => album.artistName);
+    return this._harvestArtists(
+      [...albumsByArtist.values()].map(([album]) => ({
+        name: album.artistName,
+        artistMbid: album.artistMbid || album.foreignArtistId || null,
+        reason: "New release",
+      })),
+      limit,
+      {
+        filters,
+        excludeArtistKeys,
+        pick: async (_artist, name) => {
+          for (const album of albumsByArtist.get(name) ?? []) {
+            const releaseYear = String(album.releaseDate || "").slice(0, 4) || null;
+            if (!this._matchesYearRange(releaseYear, filters.yearFrom, filters.yearTo)) continue;
+            const pick = await this._pickTrackFromRelease({
+              artistName: album.artistName,
+              albumTitle: album.albumName,
+              albumMbid: album.mbid || album.foreignAlbumId || null,
+              releaseYear,
+            });
+            if (pick) return pick;
+          }
+          return null;
+        },
       },
     );
-
-    return resolved.filter((track) => track !== null).slice(0, limit);
   }
 }
 
