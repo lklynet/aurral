@@ -93,17 +93,17 @@ export async function convertRetiredFlows() {
     const flow = flowPlaylistConfig.getFlow(flowId);
     if (!flow) continue;
     try {
-      const unfinished = flowPlaylistConfig
-        .getStaticPlaylists()
-        .find((playlist) => playlist.sourceFlowId === flowId && playlist.name === flow.name);
-      if (unfinished) await discardStaticPlaylist(unfinished.id);
-      const saved = await saveFlowAsStaticPlaylist(flow, {
-        name: flow.name,
-        ownerUserId: flow.ownerUserId,
-        replacesFlow: true,
-      });
-      if (!saved && downloadTracker.getByPlaylistId(flowId).some((job) => job.status === "done")) {
-        throw new Error("none of its track files were found");
+      if (downloadTracker.getByPlaylistId(flowId).some((job) => job.status === "done")) {
+        const leftover = flowPlaylistConfig
+          .getStaticPlaylists()
+          .find((playlist) => playlist.sourceFlowId === flowId && playlist.name === flow.name);
+        if (leftover) await discardStaticPlaylist(leftover.id);
+        const saved = await saveFlowAsStaticPlaylist(flow, {
+          name: flow.name,
+          ownerUserId: flow.ownerUserId,
+          replacesFlow: true,
+        });
+        if (!saved) throw new Error("none of its track files were found");
       }
       await processPlaylistOperation({ kind: "delete-flow", flowId });
     } catch (error) {

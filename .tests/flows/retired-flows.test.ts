@@ -45,6 +45,7 @@ raw.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('flows', ?)").
       scheduleDays: [1],
       type: "editorial",
     },
+    { id: "half-deleted", name: "Half Deleted", scheduleDays: [1], type: "editorial" },
     { id: "weekly", name: "Weekly", enabled: true, nextRunAt: due, scheduleDays: [1] },
   ]),
 );
@@ -97,13 +98,36 @@ test("retired editorial flows stop running and become playlists that keep their 
     replacesFlowId: "metal-mayhem",
     tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
   });
+  const finished = flowPlaylistConfig.createStaticPlaylist({
+    name: "Half Deleted",
+    sourceFlowId: "half-deleted",
+    replacesFlowId: "half-deleted",
+    tracks: [{ artistName: "Kept Artist", trackName: "Kept Song" }],
+  });
+  const keptJob = downloadTracker.addJob(
+    { artistName: "Kept Artist", trackName: "Kept Song" },
+    finished.id,
+  );
+  assert.ok(keptJob != null);
+  const keptFile = path.join(
+    playlistManager.downloadRoot,
+    "Kept Artist",
+    "Album",
+    "Kept Song.flac",
+  );
+  await fs.mkdir(path.dirname(keptFile), { recursive: true });
+  await fs.writeFile(keptFile, "disposable audio");
+  downloadTracker.setDone(keptJob, keptFile, "Album");
 
   await convertRetiredFlows();
 
   assert.equal(flowPlaylistConfig.getFlow("metal-mayhem"), null);
   const playlists = flowPlaylistConfig.getStaticPlaylists();
-  assert.equal(playlists.length, 1);
-  const [playlist] = playlists;
+  assert.deepEqual(
+    playlists.map((entry) => entry.name),
+    ["Half Deleted", "Metal Mayhem"],
+  );
+  const playlist = playlists[1];
   assert.notEqual(playlist.id, interrupted.id);
   assert.deepEqual(
     [playlist.name, playlist.ownerUserId, playlist.tracks.map((track) => track.trackName)],
@@ -120,5 +144,11 @@ test("retired editorial flows stop running and become playlists that keep their 
   assert.deepEqual(
     downloadTracker.getByPlaylistId("lost-mount").map((entry) => entry.trackName),
     ["Far Song"],
+  );
+
+  assert.equal(flowPlaylistConfig.getFlow("half-deleted"), null);
+  assert.deepEqual(
+    downloadTracker.getByPlaylistId(finished.id).map((entry) => entry.trackName),
+    ["Kept Song"],
   );
 });
