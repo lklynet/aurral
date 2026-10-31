@@ -795,7 +795,7 @@ const syncFlowGenerationHistory = async (historyEntries: AurralHistoryEntry[] | 
     if (!flowId) continue;
     if (Date.now() - Number(entry.createdAt || 0) < STALE_AURRAL_JOB_MS) continue;
     const flowActive = await isHonkerQueueActive(
-      "weekly-flow-operation",
+      "flow-run",
       (payload) => String(payload?.flowId || payload?.playlistId || "").trim() === flowId,
     );
     if (flowActive) continue;

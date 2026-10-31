@@ -52,20 +52,33 @@ type ArtistKeySetCacheEntry =
   | { set: Set<string>; expiresAt: number; promise?: undefined }
   | { promise: Promise<Set<string>>; set?: undefined; expiresAt?: undefined };
 
-export type FlowRunSpec = Partial<
-  Pick<
-    FlowConfig,
-    | "id"
-    | "ownerUserId"
-    | "deepDive"
-    | "recentListening"
-    | "size"
-    | "tags"
-    | "relatedArtists"
-    | "yearFrom"
-    | "yearTo"
-  >
-> & { mix?: Partial<FlowMix> };
+export const flowRunSpec = ({
+  id,
+  ownerUserId,
+  deepDive,
+  recentListening,
+  size,
+  tags,
+  relatedArtists,
+  yearFrom,
+  yearTo,
+  mix,
+}: FlowConfig) => ({
+  id,
+  ownerUserId,
+  deepDive,
+  recentListening,
+  size,
+  tags,
+  relatedArtists,
+  yearFrom,
+  yearTo,
+  mix,
+});
+
+export type FlowRunSpec = Partial<Omit<ReturnType<typeof flowRunSpec>, "mix">> & {
+  mix?: Partial<FlowMix>;
+};
 
 type TrackEntryInput = {
   artistName: string;
