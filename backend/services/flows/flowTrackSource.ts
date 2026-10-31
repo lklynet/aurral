@@ -908,9 +908,13 @@ export class FlowTrackSource {
     return data;
   }
 
+  _getLibraryArtists(): ArtistMatchFields[] {
+    return [...iterateLibraryArtistProjection({ pageSize: 100 })];
+  }
+
   async getMixTracks(limit: number, context: Partial<SourceContext> = {}) {
     const { deepDive, filters, excludeArtistKeys } = { ...DEFAULT_CONTEXT, ...context };
-    const artists = [...iterateLibraryArtistProjection({ pageSize: 100 })];
+    const artists = this._getLibraryArtists();
     if (artists.length === 0) {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
@@ -920,7 +924,10 @@ export class FlowTrackSource {
       {
         filters,
         excludeArtistKeys,
-        maxArtists: this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : LIBRARY_ARTIST_LIMIT,
+        maxArtists: Math.max(
+          limit * 2,
+          this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : LIBRARY_ARTIST_LIMIT,
+        ),
         pick: async (artist, name) =>
           this._pickTrack(name, filters, deepDive, await this._getLibraryOwnership(artist.id)),
       },

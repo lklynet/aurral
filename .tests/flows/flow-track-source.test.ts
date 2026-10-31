@@ -115,6 +115,18 @@ test("a source can fill the whole flow when another source comes up empty", asyn
   assert.equal(plan.primaryTracks.length, 30);
 });
 
+test("Library can fill a large flow on its own", async () => {
+  const source = new FlowTrackSource();
+  source._getLibraryArtists = () =>
+    Array.from({ length: 120 }, (_, index) => ({ id: index + 1, name: `Owned ${index}` }));
+  source._getLibraryOwnership = async () => ({ ownedTitles: new Set(), ownedAlbums: new Set() });
+  source._pickTrack = async (name) => ({ trackName: `${name} Song` });
+
+  const tracks = await source.getMixTracks(100);
+
+  assert.equal(tracks.length, 100);
+});
+
 test("a year range picks a popular track from a release first out in that range", async () => {
   deezerArtists.set("Year Band", {
     id: 101,
