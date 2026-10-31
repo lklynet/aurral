@@ -15,6 +15,7 @@ import { logger } from "../logger.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
+import { genreKey } from "../musicGenres.ts";
 import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
@@ -59,6 +60,7 @@ export const flowRunSpec = ({
   recentListening,
   size,
   tags,
+  excludeTags,
   relatedArtists,
   yearFrom,
   yearTo,
@@ -70,6 +72,7 @@ export const flowRunSpec = ({
   recentListening,
   size,
   tags,
+  excludeTags,
   relatedArtists,
   yearFrom,
   yearTo,
@@ -100,7 +103,12 @@ type TrackPick = Omit<TrackEntryInput, "artistName" | "reason">;
 
 type FlowTrackEntry = NonNullable<ReturnType<FlowTrackSource["_buildTrackEntry"]>>;
 
-type FlowFilters = { tags: Map<string, string>; yearFrom: number | null; yearTo: number | null };
+type FlowFilters = {
+  tags: Map<string, string>;
+  excludeTags: ReadonlySet<string>;
+  yearFrom: number | null;
+  yearTo: number | null;
+};
 
 type RecentRelease = Pick<
   Awaited<ReturnType<typeof getRecentMissingReleases>>[number],
@@ -153,7 +161,12 @@ const LIBRARY_OWNERSHIP_CACHE_TTL_MS = 10 * 60 * 1000;
 const LIBRARY_ARTIST_KEYS_CACHE_TTL_MS = 10 * 60 * 1000;
 const PROVIDER_CACHE_MAX = 1000;
 
-const NO_FILTERS: FlowFilters = { tags: new Map(), yearFrom: null, yearTo: null };
+const NO_FILTERS: FlowFilters = {
+  tags: new Map(),
+  excludeTags: new Set(),
+  yearFrom: null,
+  yearTo: null,
+};
 
 const DEFAULT_CONTEXT: SourceContext = {
   ownerUserId: null,
@@ -234,7 +247,7 @@ export class FlowTrackSource {
   }
 
   _isFiltered(filters: FlowFilters) {
-    return filters.tags.size > 0 || this._hasYears(filters);
+    return filters.tags.size > 0 || filters.excludeTags.size > 0 || this._hasYears(filters);
   }
 
   _matchesYearRange(
@@ -576,7 +589,12 @@ export class FlowTrackSource {
     blockedTags: ReadonlySet<string> | undefined,
   ) {
     const blocked = blockedTags ?? new Set<string>();
-    if (entries.length === 0 || (filters.tags.size === 0 && blocked.size === 0)) return entries;
+    if (
+      entries.length === 0 ||
+      (filters.tags.size === 0 && filters.excludeTags.size === 0 && blocked.size === 0)
+    ) {
+      return entries;
+    }
     const missing = entries.filter((entry) => !entry.artist.tags?.length);
     const fetched = missing.length
       ? await this._getArtistTopTagLists(
@@ -586,7 +604,7 @@ export class FlowTrackSource {
     const fetchedTags = new Map(missing.map((entry, index) => [entry, fetched[index]]));
     return entries.filter((entry) => {
       const tags = entry.artist.tags?.length ? entry.artist.tags : fetchedTags.get(entry) || [];
-      if (hasBlockedTag(tags, blocked)) return false;
+      if (hasBlockedTag(tags, blocked) || hasBlockedTag(tags, filters.excludeTags)) return false;
       return filters.tags.size === 0 || this._matchedTag(tags, filters) !== null;
     });
   }
@@ -776,7 +794,12 @@ export class FlowTrackSource {
       const key = tagKey(tag);
       if (key && !tags.has(key)) tags.set(key, tag);
     }
-    return { tags, yearFrom: flow.yearFrom ?? null, yearTo: flow.yearTo ?? null };
+    return {
+      tags,
+      excludeTags: new Set((flow.excludeTags ?? []).map(genreKey)),
+      yearFrom: flow.yearFrom ?? null,
+      yearTo: flow.yearTo ?? null,
+    };
   }
 
   async buildFlowRunPlan(flow: FlowRunSpec) {

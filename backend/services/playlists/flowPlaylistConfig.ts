@@ -45,6 +45,7 @@ interface StoredFlow {
   size?: unknown;
   mix?: FlowMixInput | null;
   tags?: unknown;
+  excludeTags?: unknown;
   relatedArtists?: unknown;
   discoverPresetId?: unknown;
   description?: unknown;
@@ -59,6 +60,7 @@ interface FlowUpdates {
   size?: unknown;
   mix?: unknown;
   tags?: unknown;
+  excludeTags?: unknown;
   relatedArtists?: unknown;
   scheduleDays?: unknown;
   scheduleTime?: unknown;
@@ -240,6 +242,7 @@ const normalizeFlow = (flow: StoredFlow) => {
     size,
     mix,
     tags: normalizeTextList(flow?.tags),
+    excludeTags: normalizeTextList(flow?.excludeTags),
     relatedArtists: normalizeTextList(flow?.relatedArtists),
     discoverPresetId: String(flow?.discoverPresetId || "").trim() || null,
     description:
@@ -503,6 +506,7 @@ export const flowPlaylistConfig = {
     yearFrom,
     yearTo,
     tags,
+    excludeTags,
     relatedArtists,
     scheduleDays,
     scheduleTime,
@@ -529,6 +533,7 @@ export const flowPlaylistConfig = {
       yearFrom,
       yearTo,
       tags,
+      excludeTags,
       relatedArtists,
       discoverPresetId,
       description,
@@ -568,6 +573,7 @@ export const flowPlaylistConfig = {
       size: updates?.size ?? current.size,
       mix: updates?.mix ?? current.mix,
       tags: updates?.tags ?? current.tags,
+      excludeTags: updates?.excludeTags ?? current.excludeTags,
       relatedArtists: updates?.relatedArtists ?? current.relatedArtists,
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,

@@ -197,6 +197,27 @@ test("tags filter trending artists and match spelling variants", async () => {
   );
 });
 
+test("excluded tags drop matching artists from Library and match spelling variants", async () => {
+  const source = new FlowTrackSource();
+  source._getLibraryArtists = () => [
+    { id: 1, name: "Carol Singer" },
+    { id: 2, name: "Rapper" },
+  ];
+  source._getLibraryOwnership = async () => ({ ownedTitles: new Set(), ownedAlbums: new Set() });
+  source._pickTrack = async (name) => ({ trackName: `${name} Song` });
+  source._getArtistTopTagLists = async (artists) =>
+    artists.map((artist) => (artist.name === "Carol Singer" ? ["pop", "Christ-mas"] : ["rap"]));
+
+  const tracks = await source.getMixTracks(2, {
+    filters: source._buildFilters({ excludeTags: ["christ mas"] }, new Set()),
+  });
+
+  assert.deepEqual(
+    tracks.map((track) => track.artistName),
+    ["Rapper"],
+  );
+});
+
 test("discover takes its picks from the top of the ranking and says why", async () => {
   const source = new FlowTrackSource();
   source._getRecommendations = () => [

@@ -97,8 +97,10 @@ export function FlowFormFields({
               placeholder="hip hop, 80s, happy"
               fetchSuggestions={fetchFlowTagSuggestions}
               suggestionLabel="Tag suggestions"
+              excludable
               onChange={(includeTags) => updateDraft((prev) => ({ ...prev, includeTags }))}
             />
+            <div className="flow-page__hint">Start a tag with - to leave it out.</div>
           </div>
           <div className="flow-page__field">
             <label className="flow-page__field-label">Release years</label>

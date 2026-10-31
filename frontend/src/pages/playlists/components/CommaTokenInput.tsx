@@ -109,14 +109,18 @@ function dedupeFocusSuggestions(
 }
 
 export async function fetchFlowTagSuggestions(query: string, existingEntries: string[] = []) {
+  const prefix = query.startsWith("-") ? "-" : "";
   const data = await parseResponse(
     discoveryClient.tags.$get({
-      query: { q: query.trim() || undefined, limit: String(FLOW_FOCUS_SUGGESTION_LIMIT) },
+      query: {
+        q: query.slice(prefix.length).trim() || undefined,
+        limit: String(FLOW_FOCUS_SUGGESTION_LIMIT),
+      },
     }),
   );
   return dedupeFocusSuggestions(
     data.tags.map((tag) => ({
-      label: tag,
+      label: `${prefix}${tag}`,
       meta: "Tag",
     })),
     existingEntries,
@@ -147,9 +151,11 @@ export function CommaTokenInput({
   onChange,
   fetchSuggestions,
   suggestionLabel = "suggestions",
+  excludable = false,
 }: {
   value?: string | null;
   placeholder?: string;
+  excludable?: boolean;
   onChange: (value: string) => void;
   fetchSuggestions?: (query: string, existingEntries: string[]) => Promise<FocusSuggestion[]>;
   suggestionLabel?: string;
@@ -294,15 +300,24 @@ export function CommaTokenInput({
         />
       ) : (
         <div className="flow-page__token-input-chips">
-          {committed.map((entry) => (
-            <span
-              key={`${placeholder}-${entry}`}
-              className="flow-page__token-chip"
-              style={{ backgroundColor: getTagColor(entry) }}
-            >
-              {entry}
-            </span>
-          ))}
+          {committed.map((entry) =>
+            excludable && entry.startsWith("-") ? (
+              <span
+                key={`${placeholder}-${entry}`}
+                className="flow-page__token-chip flow-page__token-chip--excluded"
+              >
+                {entry}
+              </span>
+            ) : (
+              <span
+                key={`${placeholder}-${entry}`}
+                className="flow-page__token-chip"
+                style={{ backgroundColor: getTagColor(entry) }}
+              >
+                {entry}
+              </span>
+            ),
+          )}
           {committed.length === 0 ? (
             <span className="flow-page__token-placeholder">{placeholder}</span>
           ) : null}
