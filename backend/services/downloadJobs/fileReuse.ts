@@ -3,7 +3,8 @@ import path from "path";
 import { db } from "../../config/db-sqlite.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
-import { flowPlaylistConfig, tracksShareMembership } from "../playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
+import { tracksShareMembership } from "../playlists/playlistTracks.ts";
 import {
   buildLibraryReadModel,
   findLibraryArtist,

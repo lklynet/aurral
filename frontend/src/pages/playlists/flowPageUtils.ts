@@ -3,7 +3,12 @@ import type { Flow } from "./playlistStats";
 import { formatDate } from "../../utils/dateTime.ts";
 import {
   DEFAULT_FLOW_MIX,
+  DEFAULT_FLOW_SIZE,
   FLOW_SOURCES,
+  normalizeScheduleDays,
+  normalizeScheduleTime,
+  normalizeTextList,
+  normalizeYearRange,
   splitFlowTotal,
   type FlowMix,
 } from "../../../../lib/flows.ts";
@@ -53,20 +58,13 @@ interface ImportedTrack {
 
 type ImportedValue = ImportedTrack | string | number | boolean | unknown[] | null | undefined;
 
-interface FlowEntryObject {
-  name?: unknown;
-  artistName?: unknown;
-  artist?: unknown;
-  tag?: unknown;
-  label?: unknown;
-  value?: unknown;
-}
-
-export const DEFAULT_SIZE = 30;
-
 const NO_TRACKS: FlowMix = { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 0 };
 
-export const NEW_FLOW_TEMPLATE = { name: "Discover", size: DEFAULT_SIZE, mix: DEFAULT_FLOW_MIX };
+export const NEW_FLOW_TEMPLATE = {
+  name: "Discover",
+  size: DEFAULT_FLOW_SIZE,
+  mix: DEFAULT_FLOW_MIX,
+};
 
 function getNextRunDiff(nextRunAt: number | null | undefined, now = Date.now()) {
   if (!nextRunAt) return null;
@@ -168,94 +166,6 @@ const parseListInput = (value: string | null | undefined) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const getFlowEntryName = (value: string | number | FlowEntryObject | null | undefined) => {
-  if (typeof value === "string" || typeof value === "number") {
-    const text = String(value).trim();
-    return text || null;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const candidates = [
-    value.name,
-    value.artistName,
-    value.artist,
-    value.tag,
-    value.label,
-    value.value,
-  ];
-  for (const candidate of candidates) {
-    const text = String(candidate || "").trim();
-    if (text) return text;
-  }
-  return null;
-};
-
-export const normalizeFlowEntryList = (value: unknown) => {
-  const raw = Array.isArray(value)
-    ? value
-    : value && typeof value === "object"
-      ? Object.keys(value)
-      : value == null
-        ? []
-        : [value];
-  const seen = new Set();
-  const out = [];
-  for (const entry of raw) {
-    const text = getFlowEntryName(entry);
-    if (!text) continue;
-    const key = text.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(text);
-  }
-  return out;
-};
-
-export const normalizeScheduleDays = (value: unknown): number[] => {
-  if (!Array.isArray(value)) return [];
-  const unique = new Set<number>();
-  for (const entry of value) {
-    const day = Number(entry);
-    if (!Number.isFinite(day)) continue;
-    const normalized = Math.round(day);
-    if (normalized < 0 || normalized > 6) continue;
-    unique.add(normalized);
-  }
-  return [...unique].sort((a, b) => a - b);
-};
-
-export const normalizeScheduleTime = (value: unknown) => {
-  const text = String(value ?? "").trim();
-  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
-  if (!match) return "00:00";
-  const hours = Number(match[1]);
-  if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
-    return "00:00";
-  }
-  return `${String(hours).padStart(2, "0")}:00`;
-};
-
-export const normalizeYearBound = (value: unknown) => {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const year = Math.trunc(parsed);
-  if (year < 1000 || year > 9999) return null;
-  return year;
-};
-
-export const normalizeYearRange = (yearFrom: unknown, yearTo: unknown) => {
-  let from = normalizeYearBound(yearFrom);
-  let to = normalizeYearBound(yearTo);
-  if (from != null && to != null && from > to) {
-    const swap = from;
-    from = to;
-    to = swap;
-  }
-  return { yearFrom: from, yearTo: to };
-};
-
 const parseOptionalYearInput = (value: unknown, label: string) => {
   const text = String(value ?? "").trim();
   if (!text) return null;
@@ -267,11 +177,11 @@ const parseOptionalYearInput = (value: unknown, label: string) => {
 };
 
 export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
-  const tagsList = normalizeFlowEntryList(flow?.tags);
-  const relatedList = normalizeFlowEntryList(flow?.relatedArtists);
+  const tagsList = normalizeTextList(flow?.tags);
+  const relatedList = normalizeTextList(flow?.relatedArtists);
   const scheduleDays = normalizeScheduleDays(flow?.scheduleDays);
   const rawSize = Number(flow?.size || 0);
-  const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.round(rawSize) : DEFAULT_SIZE;
+  const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.round(rawSize) : DEFAULT_FLOW_SIZE;
   const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     name: flow?.name || "",

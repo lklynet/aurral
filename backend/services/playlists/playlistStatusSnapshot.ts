@@ -9,11 +9,8 @@ import {
 } from "../downloadJobs/downloadOwnerClient.ts";
 import type { DownloadOwnerStatus } from "../downloadJobs/downloadOwnerClient.ts";
 import { slskdClient } from "../slskdClient.ts";
-import {
-  buildPlaylistTrackIdentity,
-  flowPlaylistConfig,
-  invalidateFlowPlaylistConfigCache,
-} from "./flowPlaylistConfig.ts";
+import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity } from "./playlistTracks.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "./playlistOperationQueue.ts";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.ts";

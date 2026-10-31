@@ -23,6 +23,7 @@ const [
   libraryScanWorker,
   { downloadTracker },
   { playlistManager },
+  { tracksShareMembership },
 ] = await setupIsolatedBackend(
   "playlist-config",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -32,13 +33,10 @@ const [
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/playlists/playlistTracks.ts"),
 );
-const {
-  flowPlaylistConfig,
-  normalizeImportSource,
-  tracksShareMembership,
-  invalidateFlowPlaylistConfigCache,
-} = playlistConfigModule;
+const { flowPlaylistConfig, normalizeImportSource, invalidateFlowPlaylistConfigCache } =
+  playlistConfigModule;
 const sendAs = (user: ReturnType<typeof testUser>, method: string, path: string, body: object) =>
   signedInAs(user)
     .route("/", api)

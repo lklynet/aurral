@@ -24,18 +24,14 @@ import { getLibraryArtwork } from "./libraryArtwork.ts";
 import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
-import type {
-  PlaylistTrack,
-  PlaylistTrackInput,
-  StaticPlaylist,
-  StaticPlaylistUpdates,
-} from "./playlists/flowPlaylistConfig.ts";
+import type { StaticPlaylist, StaticPlaylistUpdates } from "./playlists/flowPlaylistConfig.ts";
+import type { PlaylistTrack, PlaylistTrackInput } from "./playlists/playlistTracks.ts";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import {
-  flowPlaylistConfig,
   normalizePlaylistTrack,
   playlistJobEntries,
   tracksShareMembership,
-} from "./playlists/flowPlaylistConfig.ts";
+} from "./playlists/playlistTracks.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { getPlaylistArtworkRevisions, getPlaylistArtworkState } from "./playlistArtworkState.ts";
 import { downloadWorker } from "./downloadJobs/downloadWorker.ts";

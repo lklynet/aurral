@@ -49,3 +49,64 @@ export const normalizeFlowMix = (mix: Partial<Record<FlowSource, unknown>> | nul
   }
   return percents;
 };
+
+export const DEFAULT_FLOW_SIZE = 30;
+export const DEFAULT_SCHEDULE_TIME = "00:00";
+
+export const normalizeTextList = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const text = typeof entry === "string" ? entry.trim() : "";
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+};
+
+export const normalizeScheduleDays = (value: unknown): number[] => {
+  if (!Array.isArray(value)) return [];
+  const out = new Set<number>();
+  for (const entry of value) {
+    const day = Number(entry);
+    if (!Number.isFinite(day)) continue;
+    const rounded = Math.round(day);
+    if (rounded < 0 || rounded > 6) continue;
+    out.add(rounded);
+  }
+  return [...out].sort((a, b) => a - b);
+};
+
+export const normalizeScheduleTime = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (!match) return DEFAULT_SCHEDULE_TIME;
+  const hours = Number(match[1]);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
+    return DEFAULT_SCHEDULE_TIME;
+  }
+  return `${String(hours).padStart(2, "0")}:00`;
+};
+
+export const normalizeYearBound = (value: unknown) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const year = Math.trunc(parsed);
+  if (year < 1000 || year > 9999) return null;
+  return year;
+};
+
+export const normalizeYearRange = (yearFrom: unknown, yearTo: unknown) => {
+  let from = normalizeYearBound(yearFrom);
+  let to = normalizeYearBound(yearTo);
+  if (from != null && to != null && from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  return { yearFrom: from, yearTo: to };
+};

@@ -6,7 +6,7 @@ import {
 } from "../playlists/flowPlaylistConfig.ts";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
-import { buildPlaylistTrackIdentity } from "../playlists/flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity } from "../playlists/playlistTracks.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";

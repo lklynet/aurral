@@ -2,10 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { asAppError } from "../../../lib/errors.ts";
 import type { Innertube, Types, YTNodes } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
-import {
-  buildPlaylistTrackIdentity,
-  dedupePlaylistTracks,
-} from "../playlists/flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{10,150}$/;
 const RATE_LIMIT_FALLBACK_MS = 60_000;

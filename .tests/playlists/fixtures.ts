@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { PlaylistTrack } from "../../backend/services/playlists/flowPlaylistConfig.ts";
+import type { PlaylistTrack } from "../../backend/services/playlists/playlistTracks.ts";
 
 export function requireFixture<T>(value: T) {
   assert.ok(value != null, "Expected fixture to exist");

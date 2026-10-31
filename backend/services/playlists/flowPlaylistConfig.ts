@@ -1,19 +1,33 @@
 import { randomBytes, randomUUID } from "crypto";
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
-import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.ts";
 import { deletePlaylistArtworkState } from "../playlistArtworkState.ts";
-import { UUID_REGEX } from "../../../lib/uuid.ts";
-import { normalizeFlowMix, type FlowSource } from "../../../lib/flows.ts";
+import {
+  DEFAULT_FLOW_SIZE,
+  DEFAULT_SCHEDULE_TIME,
+  normalizeFlowMix,
+  normalizeScheduleDays,
+  normalizeScheduleTime,
+  normalizeTextList,
+  normalizeYearBound,
+  normalizeYearRange,
+  type FlowSource,
+} from "../../../lib/flows.ts";
+import {
+  dedupePlaylistTracks,
+  filterMissingPlaylistTracks,
+  tracksShareMembership,
+  type PlaylistTrackInput,
+} from "./playlistTracks.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 
 type AccessUser = (Pick<RequestUser, "id"> & Partial<Pick<RequestUser, "role">>) | null | undefined;
 type OwnedEntity = { ownerUserId?: number | null };
 
-export type FlowMixInput = Partial<Record<FlowSource, unknown>>;
+type FlowMixInput = Partial<Record<FlowSource, unknown>>;
 
-export interface StoredFlow {
+interface StoredFlow {
   id?: string;
   name?: unknown;
   ownerUserId?: unknown;
@@ -38,7 +52,7 @@ export interface StoredFlow {
   createdAt?: unknown;
 }
 
-export type CreateFlowInput = StoredFlow & { name: string };
+type CreateFlowInput = StoredFlow & { name: string };
 
 interface FlowUpdates {
   name?: string;
@@ -56,7 +70,7 @@ interface FlowUpdates {
   yearTo?: unknown;
 }
 
-export interface StoredImportSource {
+interface StoredImportSource {
   artworkUrl?: unknown;
   provider?: unknown;
   externalId?: unknown;
@@ -70,41 +84,7 @@ export interface StoredImportSource {
   lastSyncTrackCount?: unknown;
 }
 
-export interface PlaylistTrackInput {
-  artistName?: unknown;
-  artist?: unknown;
-  artist_name?: unknown;
-  trackName?: unknown;
-  title?: unknown;
-  name?: unknown;
-  track?: unknown;
-  albumName?: unknown;
-  album?: unknown;
-  artistMbid?: unknown;
-  artistId?: unknown;
-  albumMbid?: unknown;
-  releaseGroupMbid?: unknown;
-  albumId?: unknown;
-  trackMbid?: unknown;
-  recordingMbid?: unknown;
-  recordingId?: unknown;
-  mbid?: unknown;
-  releaseMbid?: unknown;
-  releaseYear?: unknown;
-  year?: unknown;
-  durationMs?: unknown;
-  trackNumber?: unknown;
-  discNumber?: unknown;
-  artistAliases?: unknown;
-  reason?: unknown;
-  canonicalJobId?: unknown;
-  libraryJobId?: unknown;
-  membershipId?: unknown;
-}
-
-type PlaylistJob = PlaylistTrackInput & { id: string; createdAt?: unknown };
-
-export interface StoredStaticPlaylist {
+interface StoredStaticPlaylist {
   id?: string;
   name?: unknown;
   ownerUserId?: unknown;
@@ -132,7 +112,7 @@ export interface StaticPlaylistUpdates {
   tracks?: PlaylistTrackInput[];
 }
 
-export const IMPORT_SOURCE_PROVIDERS = new Set([
+const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
   "listenbrainz-playlist",
   "listenbrainz-createdfor",
@@ -141,8 +121,6 @@ export const IMPORT_SOURCE_PROVIDERS = new Set([
   "deezer-playlist",
   "aurral-share",
 ]);
-export const DEFAULT_SIZE = 30;
-const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
 let cachedFlows: FlowConfig[] | null = null;
 let cachedStaticPlaylists: StaticPlaylist[] | null = null;
@@ -160,7 +138,7 @@ export function invalidateFlowPlaylistConfigCache() {
 
 const clampSize = (value: unknown) => {
   const n = Number(value);
-  if (!Number.isFinite(n)) return DEFAULT_SIZE;
+  if (!Number.isFinite(n)) return DEFAULT_FLOW_SIZE;
   return Math.max(Math.round(n), 1);
 };
 
@@ -170,27 +148,7 @@ const normalizeOwnerUserId = (value: unknown) => {
   return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
 };
 
-export const normalizeYearBound = (value: unknown) => {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const year = Math.trunc(parsed);
-  if (year < 1000 || year > 9999) return null;
-  return year;
-};
-
-export const normalizeYearRange = (yearFrom: unknown, yearTo: unknown) => {
-  let from = normalizeYearBound(yearFrom);
-  let to = normalizeYearBound(yearTo);
-  if (from != null && to != null && from > to) {
-    const swap = from;
-    from = to;
-    to = swap;
-  }
-  return { yearFrom: from, yearTo: to };
-};
-
-export const resolveYearRangeUpdate = (
+const resolveYearRangeUpdate = (
   current: { yearFrom?: unknown; yearTo?: unknown } | null | undefined,
   updates: { yearFrom?: unknown; yearTo?: unknown } = {},
 ) => {
@@ -218,45 +176,7 @@ export const resolveYearRangeUpdate = (
   return { yearFrom, yearTo };
 };
 
-const normalizeStringArray = (value: unknown) => {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const entry of value) {
-    const text = typeof entry === "string" ? entry.trim() : "";
-    const key = text.toLowerCase();
-    if (!text || seen.has(key)) continue;
-    seen.add(key);
-    out.push(text);
-  }
-  return out;
-};
-
-const normalizeScheduleDays = (value: unknown): number[] => {
-  if (!Array.isArray(value)) return [];
-  const out = new Set<number>();
-  for (const entry of value) {
-    const day = Number(entry);
-    if (!Number.isFinite(day)) continue;
-    const rounded = Math.round(day);
-    if (rounded < 0 || rounded > 6) continue;
-    out.add(rounded);
-  }
-  return [...out].sort((a, b) => a - b);
-};
-
 const getDefaultScheduleDay = (timeMs = Date.now()) => new Date(timeMs).getDay();
-
-const normalizeScheduleTime = (value: unknown) => {
-  const text = String(value ?? "").trim();
-  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
-  if (!match) return DEFAULT_SCHEDULE_TIME;
-  const hours = Number(match[1]);
-  if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
-    return DEFAULT_SCHEDULE_TIME;
-  }
-  return `${String(hours).padStart(2, "0")}:00`;
-};
 
 const buildScheduledTime = (baseTimeMs: number, scheduleTime: unknown) => {
   const [hoursText, minutesText] = normalizeScheduleTime(scheduleTime).split(":");
@@ -319,8 +239,8 @@ const normalizeFlow = (flow: StoredFlow) => {
         : null,
     size,
     mix,
-    tags: normalizeStringArray(flow?.tags),
-    relatedArtists: normalizeStringArray(flow?.relatedArtists),
+    tags: normalizeTextList(flow?.tags),
+    relatedArtists: normalizeTextList(flow?.relatedArtists),
     discoverPresetId: String(flow?.discoverPresetId || "").trim() || null,
     description:
       String(flow?.description || "").trim() || resolvePresetDescription(flow?.discoverPresetId),
@@ -330,230 +250,6 @@ const normalizeFlow = (flow: StoredFlow) => {
         ? Number(flow.createdAt)
         : Date.now(),
   };
-};
-
-const positiveInteger = (value: unknown) =>
-  Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
-
-export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefined) => {
-  if (!track || typeof track !== "object" || Array.isArray(track)) return null;
-  const artistName = String(track.artistName ?? track.artist ?? track.artist_name ?? "").trim();
-  const trackName = String(
-    track.trackName ?? track.title ?? track.name ?? track.track ?? "",
-  ).trim();
-  if (!artistName || !trackName) return null;
-  const albumName = String(track.albumName ?? track.album ?? "").trim();
-  const artistMbid = String(track.artistMbid ?? track.artistId ?? "").trim();
-  const albumMbid = String(track.albumMbid ?? track.releaseGroupMbid ?? track.albumId ?? "").trim();
-  const trackMbid = String(
-    track.trackMbid ?? track.recordingMbid ?? track.recordingId ?? track.mbid ?? "",
-  ).trim();
-  const releaseMbid = String(track.releaseMbid ?? "").trim();
-  const releaseYear = String(track.releaseYear ?? track.year ?? "").trim();
-  const durationMs =
-    track.durationMs != null && Number.isFinite(Number(track.durationMs))
-      ? Math.max(0, Math.round(Number(track.durationMs)))
-      : null;
-  const trackNumber = positiveInteger(track.trackNumber);
-  const discNumber = positiveInteger(track.discNumber);
-  const artistAliases = Array.isArray(track.artistAliases)
-    ? track.artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
-    : [];
-  const reason = String(track.reason ?? "").trim();
-  const canonicalJobId = String(track.canonicalJobId ?? track.libraryJobId ?? "").trim();
-  const membershipId = String(track.membershipId || "").trim();
-  return {
-    artistName,
-    trackName,
-    albumName: albumName || null,
-    artistMbid: artistMbid || null,
-    albumMbid: albumMbid || null,
-    trackMbid: trackMbid || null,
-    releaseYear: releaseYear || null,
-    durationMs,
-    artistAliases,
-    reason: reason || null,
-    ...(UUID_REGEX.test(releaseMbid) ? { releaseMbid } : {}),
-    ...(trackNumber ? { trackNumber } : {}),
-    ...(discNumber ? { discNumber } : {}),
-    ...(canonicalJobId ? { canonicalJobId } : {}),
-    ...(membershipId ? { membershipId } : {}),
-  };
-};
-
-export const buildPlaylistTrackIdentity = (track: PlaylistTrackInput | null | undefined) =>
-  [
-    String(track?.artistName || "")
-      .trim()
-      .toLowerCase(),
-    String(track?.trackName || "")
-      .trim()
-      .toLowerCase(),
-    String(track?.albumName || "")
-      .trim()
-      .toLowerCase(),
-    String(track?.artistMbid || "").trim(),
-    String(track?.albumMbid || "").trim(),
-    String(track?.trackMbid || "").trim(),
-    String(track?.releaseYear || "").trim(),
-  ].join("\u0001");
-
-export const buildImportTrackIdentity = (track: PlaylistTrackInput | null | undefined) =>
-  [track?.artistName, track?.trackName, track?.albumName]
-    .map((value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase(),
-    )
-    .join("\u0001");
-
-export const buildCoreTrackIdentity = (track: PlaylistTrackInput | null | undefined) => {
-  const artistName = String(track?.artistName || "")
-    .trim()
-    .toLowerCase();
-  const trackName = String(track?.trackName || "")
-    .trim()
-    .toLowerCase();
-  if (!artistName || !trackName) return "";
-  return `${artistName}\u0001${trackName}`;
-};
-
-export const tracksShareMembership = (
-  left: PlaylistTrackInput | null | undefined,
-  right: PlaylistTrackInput | null | undefined,
-) => {
-  if (buildPlaylistTrackIdentity(left) === buildPlaylistTrackIdentity(right)) {
-    return true;
-  }
-  const leftCore = buildCoreTrackIdentity(left);
-  const rightCore = buildCoreTrackIdentity(right);
-  return Boolean(leftCore) && leftCore === rightCore;
-};
-
-export const sortJobsByCreatedAt = <T extends PlaylistJob>(jobs: T[] | null | undefined): T[] =>
-  [...(Array.isArray(jobs) ? jobs : [])].sort((left, right) => {
-    const leftCreated = Number(left?.createdAt || 0);
-    const rightCreated = Number(right?.createdAt || 0);
-    if (leftCreated !== rightCreated) return leftCreated - rightCreated;
-    return String(left?.id || "").localeCompare(String(right?.id || ""));
-  });
-
-export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
-  jobs: T[] | null | undefined,
-  tracks: PlaylistTrackInput[] | null | undefined,
-) => {
-  const unmatchedJobs = sortJobsByCreatedAt(jobs);
-  const trackList = Array.isArray(tracks) ? tracks : [];
-  const takeJob = (predicate: (job: T) => boolean) => {
-    const index = unmatchedJobs.findIndex(predicate);
-    return index < 0 ? null : unmatchedJobs.splice(index, 1)[0];
-  };
-  const pairedJobs = trackList.map((track) =>
-    track?.canonicalJobId ? takeJob((job) => job.id === track.canonicalJobId) : null,
-  );
-  trackList.forEach((track, trackIndex) => {
-    if (pairedJobs[trackIndex]) return;
-    const identity = buildPlaylistTrackIdentity(track);
-    pairedJobs[trackIndex] =
-      takeJob((job) => buildPlaylistTrackIdentity(job) === identity) ||
-      takeJob((job) => tracksShareMembership(job, track));
-  });
-  return [
-    ...pairedJobs.flatMap((job, trackIndex) => (job ? [{ job, trackIndex }] : [])),
-    ...unmatchedJobs.map((job) => ({ job, trackIndex: -1 })),
-  ];
-};
-
-export function playlistJobEntries(
-  playlist: { id: string; tracks?: PlaylistTrackInput[] } | null | undefined,
-) {
-  if (!playlist) return [];
-  const referencedJobs = (playlist.tracks || [])
-    .map((track) =>
-      track?.canonicalJobId ? downloadTracker.getJob(String(track.canonicalJobId)) : null,
-    )
-    .filter((job) => job !== null);
-  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist.id)];
-  const uniqueJobs = jobs.filter(
-    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
-  );
-  return pairJobsWithPlaylistTracks(uniqueJobs, playlist.tracks);
-}
-
-export const orderJobsByPlaylistTracks = <T extends PlaylistJob>(
-  jobs: T[] | null | undefined,
-  tracks: PlaylistTrackInput[] | null | undefined,
-) => pairJobsWithPlaylistTracks(jobs, tracks).map(({ job }) => job);
-
-export const dedupePlaylistTracks = (tracks: PlaylistTrackInput[] | null | undefined) => {
-  const seen = new Set();
-  const uniqueTracks = [];
-  for (const track of Array.isArray(tracks) ? tracks : []) {
-    const normalizedTrack = normalizePlaylistTrack(track);
-    if (!normalizedTrack) continue;
-    const identity = `${buildPlaylistTrackIdentity(normalizedTrack)}\u0001${normalizedTrack.membershipId || ""}`;
-    if (seen.has(identity)) continue;
-    seen.add(identity);
-    uniqueTracks.push(normalizedTrack);
-  }
-  return uniqueTracks;
-};
-
-export const rebuildStaticPlaylistTracksFromJobs = (
-  configTracks: PlaylistTrackInput[] | null | undefined,
-  jobs: PlaylistJob[] | null | undefined,
-) => {
-  const jobList = Array.isArray(jobs) ? jobs : [];
-  const unmatchedJobIds = new Set(jobList.map((job) => job.id));
-  const remainingTracks = [];
-  for (const track of dedupePlaylistTracks(configTracks)) {
-    const match = jobList.find(
-      (job) => unmatchedJobIds.has(job.id) && tracksShareMembership(job, track),
-    );
-    if (!match) continue;
-    unmatchedJobIds.delete(match.id);
-    remainingTracks.push(track);
-  }
-  for (const job of sortJobsByCreatedAt(jobList)) {
-    if (!unmatchedJobIds.has(job.id)) continue;
-    unmatchedJobIds.delete(job.id);
-    const track = normalizePlaylistTrack({
-      artistName: job?.artistName,
-      trackName: job?.trackName,
-      albumName: job?.albumName || null,
-      artistMbid: job?.artistMbid || null,
-      albumMbid: job?.albumMbid || null,
-      trackMbid: job?.trackMbid || null,
-      releaseYear: job?.releaseYear || null,
-      durationMs: job?.durationMs || null,
-      artistAliases: job?.artistAliases || [],
-      reason: job?.reason || null,
-      releaseMbid: job?.releaseMbid,
-      trackNumber: job?.trackNumber,
-      discNumber: job?.discNumber,
-    });
-    if (track) remainingTracks.push(track);
-  }
-  return remainingTracks;
-};
-
-export const filterMissingPlaylistTracks = (
-  existingTracks: PlaylistTrackInput[] | null | undefined,
-  incomingTracks: PlaylistTrackInput[] | null | undefined,
-) => {
-  const seen = new Set(
-    dedupePlaylistTracks(existingTracks).map((track) => buildPlaylistTrackIdentity(track)),
-  );
-  const missingTracks = [];
-  for (const track of Array.isArray(incomingTracks) ? incomingTracks : []) {
-    const normalizedTrack = normalizePlaylistTrack(track);
-    if (!normalizedTrack) continue;
-    const identity = buildPlaylistTrackIdentity(normalizedTrack);
-    if (seen.has(identity)) continue;
-    seen.add(identity);
-    missingTracks.push(normalizedTrack);
-  }
-  return missingTracks;
 };
 
 export function normalizeImportSource(value: StoredImportSource | null | undefined) {
@@ -626,7 +322,6 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
 };
 
 export type FlowConfig = ReturnType<typeof normalizeFlow>;
-export type PlaylistTrack = NonNullable<ReturnType<typeof normalizePlaylistTrack>>;
 export type StaticPlaylist = ReturnType<typeof normalizeStaticPlaylist>;
 
 const getStoredFlows = () => {

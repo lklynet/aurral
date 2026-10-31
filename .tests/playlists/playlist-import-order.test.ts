@@ -32,6 +32,7 @@ const [
   lastfmStationsModule,
   youtubeMusicPlaylistsModule,
   { api },
+  { orderJobsByPlaylistTracks, rebuildStaticPlaylistTracksFromJobs },
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -51,15 +52,11 @@ const [
   () => import("../../backend/services/importLists/lastfmStations.ts"),
   () => import("../../backend/services/importLists/youtubeMusicPlaylists.ts"),
   () => import("../../backend/routes/api.ts"),
+  () => import("../../backend/services/playlists/playlistTracks.ts"),
 );
 
 const { downloadTracker } = trackerModule;
-const {
-  flowPlaylistConfig,
-  invalidateFlowPlaylistConfigCache,
-  orderJobsByPlaylistTracks,
-  rebuildStaticPlaylistTracksFromJobs,
-} = playlistConfigModule;
+const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const {
   appendStaticPlaylistTracks,
   markLatestPlaylistOperationToken,

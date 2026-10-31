@@ -1,7 +1,4 @@
-import {
-  buildPlaylistTrackIdentity,
-  dedupePlaylistTracks,
-} from "../playlists/flowPlaylistConfig.ts";
+import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 
 interface SpotifyPlaylistTrack {
   type?: string;
