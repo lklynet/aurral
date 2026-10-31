@@ -1,3 +1,5 @@
+import { formatCalendarDate } from "./dateTime.ts";
+
 const STATUS_DISPLAY = {
   queued: { label: "Queued", tone: "neutral" },
   downloading: { label: "Downloading", tone: "neutral" },
@@ -7,6 +9,7 @@ const STATUS_DISPLAY = {
   blocked: { label: "Needs attention", tone: "warning" },
   cancelled: { label: "Cancelled", tone: "neutral" },
   missing: { label: "Missing", tone: "neutral" },
+  unreleased: { label: "Not out yet", tone: "neutral" },
 };
 
 export type AlbumStatus = keyof typeof STATUS_DISPLAY;
@@ -34,6 +37,7 @@ interface AlbumRecovery {
 interface AlbumStatusEntry {
   status?: string | null;
   recovery?: AlbumRecovery | null;
+  releaseDate?: string | null;
 }
 
 const CANCEL_ACTION = { id: "cancel", label: "Cancel downloads" };
@@ -58,11 +62,23 @@ export const shouldPollAlbumStatuses = (
   statuses: Record<string, AlbumStatusEntry | undefined> | null | undefined,
 ) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
-export const describeAurralAlbumStatus = ({ status, recovery }: AlbumStatusEntry = {}) => {
+const releaseNote = (releaseDate: string | null | undefined) => {
+  const date = formatCalendarDate(releaseDate);
+  return date
+    ? `Aurral downloads it when it comes out on ${date}.`
+    : "Aurral downloads it when it comes out.";
+};
+
+export const describeAurralAlbumStatus = ({
+  status,
+  recovery,
+  releaseDate,
+}: AlbumStatusEntry = {}) => {
   if (!status || !isAlbumStatus(status)) return null;
   const display = STATUS_DISPLAY[status];
   const code = recovery?.code || null;
   return {
+    note: status === "unreleased" ? releaseNote(releaseDate) : null,
     status,
     label: display.label,
     tone: display.tone,

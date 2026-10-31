@@ -81,6 +81,7 @@ type AurralAlbumStatus =
   | "cancelled"
   | "failed"
   | "partial"
+  | "unreleased"
   | "missing";
 
 type AurralAlbumRecovery = {
@@ -97,7 +98,13 @@ function selectStatus(
     sourceConfigured,
     sourceMessage,
     failedError,
-  }: { sourceConfigured: boolean; sourceMessage: string | null; failedError: string | null },
+    unreleased,
+  }: {
+    sourceConfigured: boolean;
+    sourceMessage: string | null;
+    failedError: string | null;
+    unreleased: boolean;
+  },
 ): { status: AurralAlbumStatus; recovery?: AurralAlbumRecovery | null } {
   const unavailable = counts.total - counts.available;
   if (counts.total > 0 && unavailable === 0) return { status: "complete" };
@@ -105,6 +112,7 @@ function selectStatus(
     return { status: "downloading" };
   }
   if (counts.pending > 0) return { status: "queued" };
+  if (unreleased) return { status: "unreleased" };
   if (counts.blocked > 0) {
     return {
       status: "blocked",
@@ -146,11 +154,13 @@ export function summarizeAurralAlbum({
   jobs = [],
   sourceConfigured,
   sourceMessage,
+  unreleased = false,
 }: {
   tracks?: Pick<LibraryTrack, "mbid" | "title" | "available" | "monitored">[];
   jobs?: DownloadJob[];
   sourceConfigured: boolean;
   sourceMessage: string | null;
+  unreleased?: boolean;
 }) {
   const counts = {
     total: tracks.length,
@@ -189,6 +199,7 @@ export function summarizeAurralAlbum({
     sourceConfigured,
     sourceMessage,
     failedError,
+    unreleased,
   });
   return {
     status,

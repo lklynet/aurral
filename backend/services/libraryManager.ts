@@ -6,6 +6,7 @@ import { db } from "../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryArtistsRow, LibraryTracksRow } from "../db/rows.ts";
 import { UUID_REGEX } from "../../lib/uuid.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isUnreleased } from "../../lib/releaseDate.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { hasPermission } from "../middleware/auth.ts";
 import {
@@ -2156,7 +2157,7 @@ export class LibraryManager {
       return result;
     };
 
-    for (const track of missingTracks) {
+    for (const track of isUnreleased(album.releaseDate) ? [] : missingTracks) {
       if (
         options.monitoringToken &&
         !this._canAcquireMonitoredAlbum(
@@ -3025,9 +3026,11 @@ export class LibraryManager {
     const sourceConfigured = isAnyDownloadSourceConfigured();
     return {
       managedBy: "aurral",
+      releaseDate: album.releaseDate || null,
       ...summarizeAurralAlbum({
         tracks: tracks.filter((track) => album.trackIds.includes(track.id)),
         jobs: jobsForAlbum(albumJobKeys(album)),
+        unreleased: isUnreleased(album.releaseDate),
         sourceConfigured,
         sourceMessage: sourceConfigured ? null : getDownloadSourceNotConfiguredMessage(),
       }),

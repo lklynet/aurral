@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { utcDay } from "../../lib/releaseDate.ts";
 
 const [
   isolatedState,
@@ -97,6 +98,7 @@ function createAlbum({
   tracks = ["missing"],
   withMbid = true,
   requested = true,
+  releaseDate = null,
 }: {
   managedBy?: string;
   monitored?: boolean;
@@ -106,6 +108,7 @@ function createAlbum({
   tracks?: string[];
   withMbid?: boolean;
   requested?: boolean;
+  releaseDate?: string | null;
 } = {}) {
   sequence += 1;
   const suffix = String(sequence).padStart(12, "0");
@@ -130,6 +133,7 @@ function createAlbum({
     releaseGroupMbid: albumMbid,
     artistId: artist.id,
     title: `Search Album ${sequence}`,
+    releaseDate,
     metadata: {
       monitored,
       ...(managedBy === "aurral" && requested ? { librarySource: "aurral" } : {}),
@@ -636,6 +640,35 @@ test("without a download source nothing is queued or marked as searched", async 
 
   assert.equal(albumJobs(albumMbid).length, 0);
   assert.equal(searchTime(album.id), null);
+});
+
+test("an album asked for before it comes out waits, then is searched once when it comes out", async () => {
+  const releasedAt = Date.now() + 30 * DAY_MS;
+  const { artist, album, albumMbid } = createAlbum({
+    releaseDate: utcDay(releasedAt),
+    tracks: ["missing", "missing"],
+  });
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, missingTrackSearch: { enabled: false, intervalDays: 1 } });
+  try {
+    await libraryManager.addAlbum(artist.id, requireFixture(albumMbid), album.title, {
+      managedBy: "aurral",
+    });
+    assert.equal(albumJobs(albumMbid).length, 0);
+    assert.equal(libraryManager.getAurralAlbumStatus(album.id).status, "unreleased");
+    assert.equal(await runMissingTrackSearch(), 0);
+
+    vi.useFakeTimers({ toFake: ["Date"], now: releasedAt });
+    assert.equal(await runMissingTrackSearch(), 1);
+    assert.equal(albumJobs(albumMbid).length, 2);
+    for (const job of albumJobs(albumMbid)) downloadTracker.setFailed(job.id, "Not found");
+
+    vi.setSystemTime(releasedAt + HOUR_MS);
+    assert.equal(await runMissingTrackSearch(), 0);
+  } finally {
+    vi.useRealTimers();
+    dbOps.updateSettings(settings);
+  }
 });
 
 test("the scheduled system task searches due albums", async () => {

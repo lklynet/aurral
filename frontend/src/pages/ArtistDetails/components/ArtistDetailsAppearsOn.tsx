@@ -122,7 +122,13 @@ export function ArtistDetailsAppearsOn({
                   ) : canAddAlbum ? (
                     <div>
                       <AddActionButton
-                        {...getAlbumAddAction({ status: status?.status }, libraryDestination)}
+                        {...getAlbumAddAction(
+                          {
+                            status: status?.status,
+                            releaseDate: releaseGroup["first-release-date"],
+                          },
+                          libraryDestination,
+                        )}
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
                           handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)

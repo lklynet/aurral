@@ -17,6 +17,18 @@ const getLocale = () => {
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
+export const parseCalendarDate = (value: string | null | undefined) => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+};
+
 export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
   if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
     return date.toLocaleDateString(getLocale(), options);
@@ -26,6 +38,11 @@ export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions) => 
   const month = pad((utc ? date.getUTCMonth() : date.getMonth()) + 1);
   const day = pad(utc ? date.getUTCDate() : date.getDate());
   return currentFormat === "day-first" ? `${day}/${month}/${year}` : `${year}/${month}/${day}`;
+};
+
+export const formatCalendarDate = (value: string | null | undefined) => {
+  const date = parseCalendarDate(value);
+  return date ? formatDate(date) : null;
 };
 
 export const formatTime = (date: Date, options?: Intl.DateTimeFormatOptions) => {

@@ -4770,6 +4770,15 @@ textarea:disabled {
   height: 2rem;
 }
 
+.artist-release-card__status--waiting {
+  color: var(--aurral-text);
+}
+
+.artist-release-card__status--waiting svg {
+  width: 2rem;
+  height: 2rem;
+}
+
 .artist-library-check--discover {
   width: 1.125rem;
   height: 1.125rem;

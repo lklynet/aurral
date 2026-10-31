@@ -249,7 +249,11 @@ function ReleasePage() {
   );
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;
-  const albumAddAction = buildAlbumAddAction(triggerSearch, libraryDestination);
+  const albumAddAction = buildAlbumAddAction(
+    triggerSearch,
+    libraryDestination,
+    release["first-release-date"],
+  );
   const albumDownloading =
     !isComplete &&
     (isAlbumDownloading(releaseMbid) ||
