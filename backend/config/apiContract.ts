@@ -11,5 +11,6 @@ export const API_CONTRACT = {
     "downloadCancel",
     "shareImports",
     "trending",
+    "flowAutoDownload",
   ],
 };

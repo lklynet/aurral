@@ -1,7 +1,15 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Check, ClipboardCopy, FilePlus2, Pencil, RefreshCw, Trash2 } from "../../components/icons";
+import {
+  Check,
+  ClipboardCopy,
+  Download,
+  FilePlus2,
+  Pencil,
+  RefreshCw,
+  Trash2,
+} from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import {
   SkeletonCollectionHeader,
@@ -39,6 +47,7 @@ import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.t
 import {
   describeFlowSchedule,
   formatFlowTrackLabel,
+  formatTrackTotal,
   getFlowActivityMessage,
   optionMenuItem,
   usePlaylistTracks,
@@ -135,6 +144,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
+  const savedCount = tracks.filter((track) => track.status === "saved").length;
   const recipeDirty = isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
@@ -230,6 +240,21 @@ function FlowDetail({ flow }: { flow: Flow }) {
     }
   };
 
+  const handleDownloadSaved = async () => {
+    try {
+      await parseResponse(
+        flowsClient.flows[":flowId"].download.$post({
+          param: { flowId: encodeURIComponent(flow.id) },
+        }),
+      );
+      showSuccess(`Downloading ${formatTrackTotal(savedCount)}`);
+      await fetchStatus();
+      await refresh();
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to download flow tracks"));
+    }
+  };
+
   const handleCopyLidarrUrl = async () => {
     try {
       const response = await parseResponse(
@@ -252,7 +277,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
   };
 
   const updateSetting = async (
-    changes: { recordHistory?: boolean; showInLibrary?: boolean },
+    changes: { recordHistory?: boolean; showInLibrary?: boolean; autoDownload?: boolean },
     successMessage: string,
   ) => {
     try {
@@ -337,6 +362,16 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   icon: Pencil,
                   onSelect: () => setEditOpen(true),
                 },
+                ...(savedCount > 0
+                  ? [
+                      {
+                        id: "download",
+                        label: "Download all",
+                        icon: Download,
+                        onSelect: handleDownloadSaved,
+                      },
+                    ]
+                  : []),
                 {
                   id: "convert",
                   label: "Save as playlist",
@@ -345,10 +380,22 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   onSelect: handleConvertToStatic,
                 },
                 optionMenuItem({
+                  id: "auto-download",
+                  label: "Download automatically",
+                  checked: flow.autoDownload !== false,
+                  separatorBefore: true,
+                  onSelect: () =>
+                    updateSetting(
+                      { autoDownload: flow.autoDownload === false },
+                      flow.autoDownload === false
+                        ? "New tracks will download automatically"
+                        : "New tracks will wait for you to download them",
+                    ),
+                }),
+                optionMenuItem({
                   id: "scrobble",
                   label: "Scrobble tracks",
                   checked: flow.recordHistory !== false,
-                  separatorBefore: true,
                   onSelect: () =>
                     updateSetting(
                       { recordHistory: flow.recordHistory === false },

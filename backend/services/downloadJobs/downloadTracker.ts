@@ -66,6 +66,7 @@ type AddJobOptions = {
   playlistId?: string;
   playlistGeneration?: number;
   requestKind?: RequestKind;
+  saved?: boolean;
 };
 type ManualCandidate = { raw: HonkerPayload[string] };
 type AlbumGrabAttempt = Omit<ReturnType<typeof listHonkerJobs>[number], "payload"> & {
@@ -1320,7 +1321,7 @@ export class DownloadTracker {
       requestGroupId: track?.requestGroupId ? String(track.requestGroupId).trim() || null : null,
       requestKind: options?.requestKind === "album" ? "album" : "track",
       quickSearchedSources: [],
-      status: "pending",
+      status: options.saved ? "saved" : "pending",
       startedAt: null,
       completedAt: null,
       stagingPath: null,
@@ -1334,6 +1335,7 @@ export class DownloadTracker {
     this.jobs.set(id, job);
     this._insert(job);
     this._applyStatusDelta(playlistType, null, job.status);
+    if (job.status !== "pending") return id;
     this.pendingFreshQueue.push(id);
     this.pendingSet.add(id);
     this.pendingRetrySet.delete(id);
@@ -1363,10 +1365,10 @@ export class DownloadTracker {
     return this.jobs.get(id) || null;
   }
 
-  addJobs(tracks: DownloadTrackInput[], playlistType: string) {
+  addJobs(tracks: DownloadTrackInput[], playlistType: string, options: AddJobOptions = {}) {
     const ids = [];
     for (const track of tracks) {
-      const id = this.addJob(track, playlistType);
+      const id = this.addJob(track, playlistType, options);
       if (!id) continue;
       ids.push(id);
     }

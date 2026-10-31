@@ -14,13 +14,13 @@ const tokenEquals = (left: unknown, right: unknown) => {
 type LidarrImportListItem = { MusicBrainzId: string; AlbumId?: string };
 
 export const buildLidarrImportListItems = (
-  jobs: Pick<DownloadJob, "artistMbid" | "albumMbid">[],
+  jobs: Pick<DownloadJob, "artistMbid" | "albumMbid" | "status">[],
 ) => {
   const seen = new Set<string>();
   const items: LidarrImportListItem[] = [];
   for (const job of Array.isArray(jobs) ? jobs : []) {
     const artistMbid = String(job?.artistMbid || "").trim();
-    if (!artistMbid) continue;
+    if (!artistMbid || job.status === "saved") continue;
     const albumMbid = String(job?.albumMbid || "").trim();
     const key = albumMbid ? `${artistMbid}\u0001${albumMbid}` : artistMbid;
     if (seen.has(key)) continue;

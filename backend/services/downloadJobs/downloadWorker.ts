@@ -375,7 +375,11 @@ export class DownloadWorker {
   async seedFlowRun(
     playlistType: string,
     flow: FlowRunSpec,
-    options: { size?: number; plan?: { primaryTracks: DownloadTrackInput[] } | null } = {},
+    options: {
+      size?: number;
+      plan?: { primaryTracks: DownloadTrackInput[] } | null;
+      saved?: boolean;
+    } = {},
   ) {
     const key = String(playlistType || "").trim();
     if (!key || !flow) {
@@ -383,7 +387,7 @@ export class DownloadWorker {
     }
     const plan = options?.plan || (await this.prepareFlowRunPlan(flow, options));
     const primaryTracks = Array.isArray(plan?.primaryTracks) ? plan.primaryTracks : [];
-    const jobIds = downloadTracker.addJobs(primaryTracks, key);
+    const jobIds = downloadTracker.addJobs(primaryTracks, key, { saved: options.saved });
     flowPlaylistConfig.markLastRunAt(key);
     return { tracksQueued: primaryTracks.length, jobIds };
   }

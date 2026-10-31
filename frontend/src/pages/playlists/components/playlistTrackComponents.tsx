@@ -85,7 +85,7 @@ function getTrackStatusMeta(status: string | null | undefined) {
     case "failed":
       return { label: "Failed", className: "flow-page__track-status-dot--failed" };
     case "saved":
-      return { label: "Details only", className: "flow-page__track-status-dot--pending" };
+      return { label: "Not downloaded", className: "flow-page__track-status-dot--pending" };
     case "blocked":
       return { label: "Review", className: "flow-page__track-status-dot--blocked" };
     case "pending":
@@ -255,8 +255,13 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
     canReSearch
       ? {
           id: "re-search",
-          label: searchAction === "upgrade" ? "Search for upgrade" : "Re-search",
-          icon: Search,
+          label:
+            searchAction === "upgrade"
+              ? "Search for upgrade"
+              : track.status === "saved"
+                ? "Download"
+                : "Re-search",
+          icon: track.status === "saved" ? Download : Search,
           separatorBefore: true,
           disabled: isReSearching,
           onSelect: () => onReSearch?.(track),
@@ -363,7 +368,7 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
 function TrackStatusDot({ status }: { status: PlaylistTrackStatus }) {
   const meta = getTrackStatusMeta(status);
   const normalized = String(status || "").toLowerCase();
-  const isLinkable = normalized !== "done";
+  const isLinkable = normalized !== "done" && normalized !== "saved";
   if (isLinkable) {
     const targetPath = "/activity/queue";
     return (
@@ -671,7 +676,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       loading: isCurrent && isLoading,
       missing: showPlaybackControls && !canPlay,
       status:
-        showPlaybackControls && !canPlay
+        showPlaybackControls && !canPlay && (isReSearching || track.status !== "saved")
           ? ({
               label: isReSearching ? "Searching" : getTrackAvailability(track).label,
               kind:

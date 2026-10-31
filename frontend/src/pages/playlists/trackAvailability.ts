@@ -27,7 +27,7 @@ export function getTrackAvailability(track: PlaylistTrack) {
   if (track.status === "pending") return { status: "pending", label: "Queued" };
   if (track.status === "downloading") return { status: "downloading", label: "Downloading" };
   if (track.status === "blocked") return { status: "blocked", label: "Needs review" };
-  if (track.status === "saved") return { status: "pending", label: "Details only" };
+  if (track.status === "saved") return { status: "pending", label: "Not downloaded" };
   return { status: "failed", label: "Missing" };
 }
 
