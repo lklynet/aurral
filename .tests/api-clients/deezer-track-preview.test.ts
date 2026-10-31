@@ -40,3 +40,20 @@ test("Deezer preview matching accepts the main artist of a shared credit only", 
     null,
   );
 });
+
+test("Deezer preview matching prefers the full artist over the main artist of a credit", () => {
+  const preview = selectDeezerTrackPreview(
+    [
+      { id: 1, title: "See You Again", artist: { name: "Tyler" }, preview: "tyler.mp3" },
+      {
+        id: 2,
+        title: "See You Again",
+        artist: { name: "Tyler, The Creator" },
+        preview: "creator.mp3",
+      },
+    ],
+    { artistName: "Tyler, The Creator", trackName: "See You Again" },
+  );
+
+  assert.equal(preview?.preview, "creator.mp3");
+});
