@@ -287,6 +287,10 @@ export class FlowTrackSource {
       .trim();
   }
 
+  _releaseKey(title: unknown) {
+    return normalizeTitle(title) || this._releaseTitleKey(title);
+  }
+
   _buildFeedbackExcludeKeys(ownerUserId: number | null | undefined) {
     if (ownerUserId == null) return [];
     return [...getBlockedArtistKeys(String(ownerUserId))];
@@ -581,9 +585,10 @@ export class FlowTrackSource {
     for (const album of await getDeezerAlbumsForArtist(artist)) {
       const year = Number(album["first-release-date"]);
       if (!Number.isFinite(year) || year <= 0) continue;
-      const known = earliest.get(album._normalizedTitle);
+      const key = this._releaseKey(album.title);
+      const known = earliest.get(key);
       if (!known || year < known.year) {
-        earliest.set(album._normalizedTitle, { id: album.id, title: album.title, year });
+        earliest.set(key, { id: album.id, title: album.title, year });
       }
     }
     return [...earliest.values()].filter(
@@ -601,16 +606,16 @@ export class FlowTrackSource {
   ): Promise<TrackPick | null> {
     const releases = await this._releasesInYears(artistName, filters, owned);
     if (releases.length === 0) return null;
-    const byTitle = new Map(releases.map((release) => [normalizeTitle(release.title), release]));
+    const byTitle = new Map(releases.map((release) => [this._releaseKey(release.title), release]));
     const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
     const hit = this._pickTrackFromRanges(
       await this._getArtistTopTrackList(artistName),
       this._deepDiveRanges(deepDive),
       (track) =>
-        Boolean(track.albumName && byTitle.has(normalizeTitle(track.albumName))) &&
+        Boolean(track.albumName && byTitle.has(this._releaseKey(track.albumName))) &&
         !isOwned(track.name),
     );
-    const hitRelease = hit?.albumName ? byTitle.get(normalizeTitle(hit.albumName)) : null;
+    const hitRelease = hit?.albumName ? byTitle.get(this._releaseKey(hit.albumName)) : null;
     if (hit && hitRelease) {
       return {
         trackName: hit.name,
@@ -751,8 +756,10 @@ export class FlowTrackSource {
   }
 
   _buildFilters(flow: FlowRunSpec, blockedTags: ReadonlySet<string>): FlowFilters {
+    const requested = dedupeNames(flow.tags);
+    const allowed = withoutBlockedTags(requested, blockedTags);
     const tags = new Map<string, string>();
-    for (const tag of withoutBlockedTags(dedupeNames(flow.tags), blockedTags)) {
+    for (const tag of allowed.length > 0 ? allowed : requested) {
       const key = tagKey(tag);
       if (key && !tags.has(key)) tags.set(key, tag);
     }

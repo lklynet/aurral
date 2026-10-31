@@ -275,6 +275,44 @@ test("discover skips an artist whose own tags include a blocked genre", async ()
   );
 });
 
+test("a flow whose every tag is blocked does not fall back to unfiltered picks", async () => {
+  const source = new FlowTrackSource();
+  const blockedTags = new Set(["rap"]);
+  source._getRecommendations = () => [
+    { name: "Pop Act", matchPercent: 90, tags: ["pop"], candidateTagsHydrated: true },
+    { name: "Rapper", matchPercent: 80, tags: ["rap"], candidateTagsHydrated: true },
+  ];
+  source._getArtistTopTrackList = async (name) => [topTrack(`${name} Song`, `${name} Album`)];
+
+  const tracks = await source.getDiscoverTracks(2, {
+    filters: source._buildFilters({ tags: ["rap"] }, blockedTags),
+    blockedTags,
+  });
+
+  assert.deepEqual(tracks, []);
+});
+
+test("a year range tells apart releases with non-Latin titles", async () => {
+  deezerArtists.set("Kanji Band", {
+    id: 104,
+    name: "Kanji Band",
+    albums: [
+      { id: 1041, title: "初恋", release_date: "2018-04-01" },
+      { id: 1042, title: "新世界", release_date: "2025-08-01" },
+    ],
+  });
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [
+    topTrack("Old Hit", "初恋"),
+    topTrack("New Hit", "新世界"),
+  ];
+
+  const pick = await source._pickTrackInYears("Kanji Band", years(source, 2025, 2026), false);
+
+  assert.equal(pick?.trackName, "New Hit");
+  assert.equal(pick?.releaseYear, "2025");
+});
+
 test("Deep Dive with a year range keeps preferring tracks ranked 10 to 25", async () => {
   deezerArtists.set("Dive Band", {
     id: 103,
