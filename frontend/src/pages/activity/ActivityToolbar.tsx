@@ -1,14 +1,11 @@
-import { RefreshCw, Search, X } from "../../components/icons";
+import { Search, X } from "../../components/icons";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import TooltipButton from "../../components/TooltipButton";
-import { DotLoader } from "../../components/DotLoader";
 
 interface ActivityToolbarProps {
   filterValue: string;
   onFilterChange: (value: string) => void;
-  onRefresh?: () => void;
-  refreshing?: boolean;
   action?: ReactNode;
   placeholder?: string;
 }
@@ -16,8 +13,6 @@ interface ActivityToolbarProps {
 export default function ActivityToolbar({
   filterValue,
   onFilterChange,
-  onRefresh,
-  refreshing = false,
   action = null,
   placeholder = "Filter activity",
 }: ActivityToolbarProps) {
@@ -34,19 +29,6 @@ export default function ActivityToolbar({
 
   return (
     <div className="activity-toolbar">
-      {onRefresh ? (
-        <div className="activity-toolbar__group">
-          <TooltipButton
-            className="native-library-icon-button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            label={refreshing ? "Refreshing" : "Refresh"}
-            aria-label="Refresh activity"
-          >
-            {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-          </TooltipButton>
-        </div>
-      ) : null}
       <div className="activity-toolbar__group activity-toolbar__group--end">
         {filterOpen ? (
           <label className="activity-toolbar__filter">

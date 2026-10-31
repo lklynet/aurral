@@ -1,30 +1,17 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import ActivityRequestRow, { type ActivityRequestRowProps } from "./ActivityRequestRow";
-import { matchesActivitySearch, type AlbumActivityRequest } from "./activityListUtils";
+import type { AlbumActivityRequest } from "./activityListUtils";
 
 type ActivityAlbumRowProps = Omit<
   ActivityRequestRowProps,
   "request" | "onToggle" | "expanded" | "tracksId"
 > & {
   request: AlbumActivityRequest;
-  filterValue: string;
 };
 
-export default function ActivityAlbumRow({
-  request,
-  filterValue,
-  ...actions
-}: ActivityAlbumRowProps) {
+export default function ActivityAlbumRow({ request, ...actions }: ActivityAlbumRowProps) {
   const [expanded, setExpanded] = useState(false);
   const tracksId = useId();
-  const hasTrackMatch =
-    Boolean(filterValue.trim()) &&
-    request.children.some((child) => matchesActivitySearch(child, filterValue));
-
-  useEffect(() => {
-    if (hasTrackMatch) setExpanded(true);
-  }, [hasTrackMatch, filterValue]);
-
   return (
     <section className="activity-album" aria-label={`${request.albumName}, ${request.artistName}`}>
       <ActivityRequestRow
