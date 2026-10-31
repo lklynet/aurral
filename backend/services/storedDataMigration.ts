@@ -6,6 +6,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { migrateLegacyAdmin } from "../middleware/auth.ts";
 import { normalizeExistingFileMode } from "./downloadJobs/fileReuseMode.ts";
 import { STORED_DATA_MIGRATION_SETTING, STORED_DATA_MIGRATION_VERSION } from "./honkerDb.ts";
+import { convertRetiredFlows } from "./flows/staticPlaylistFromFlow.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 
 const RENAMED_SETTING_KEYS = [
@@ -88,12 +89,13 @@ function storeCurrentIntegrations() {
   if (changed) dbOps.updateSettings({ integrations });
 }
 
-export function migrateStoredData() {
+export async function migrateStoredData() {
   moveRenamedSettingKeys();
   flowPlaylistConfig.saveNormalizedFlows();
   storeExistingFileMode();
   storeCurrentIntegrations();
   migrateLegacyAdmin();
+  await convertRetiredFlows();
   dbOps.setJSONSetting(STORED_DATA_MIGRATION_SETTING, {
     version: STORED_DATA_MIGRATION_VERSION,
     completedAt: Date.now(),

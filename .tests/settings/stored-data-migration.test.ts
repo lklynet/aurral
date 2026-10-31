@@ -10,6 +10,7 @@ const [
   { processSystemTask },
   { resolveUser },
   { invalidateFlowPlaylistConfigCache },
+  { STORED_DATA_MIGRATION_VERSION },
 ] = await setupIsolatedBackend(
   "stored-data-migration",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -17,6 +18,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/middleware/auth.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const writeRaw = (key: string, value: unknown) =>
@@ -112,7 +114,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
   const admin = resolveUser("owner", "correct horse battery");
   assert.equal(admin?.role, "admin");
   assert.equal(userOps.countUsers(), 1);
-  assert.equal(readJson("storedDataMigration").version, 1);
+  assert.equal(readJson("storedDataMigration").version, STORED_DATA_MIGRATION_VERSION);
 });
 
 test("keeps current settings when an older key repeats them", async () => {

@@ -1,17 +1,9 @@
-import fsp from "fs/promises";
 import { Hono } from "hono";
 import * as v from "valibot";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
-import {
-  buildPlaylistTrackIdentity,
-  flowPlaylistConfig,
-  isRetiredFlow,
-} from "../../../services/playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
-import { remapLegacyPath } from "../../../services/downloadPaths.ts";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
-import { schedulePlaylistMbidEnrichment } from "../../../services/playlistMbidEnrichmentService.ts";
 import { buildLidarrImportListItems } from "../../../services/lidarrImportListFeed.ts";
 import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.ts";
 import {
@@ -30,13 +22,11 @@ import {
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.ts";
 import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.ts";
+import { saveFlowAsStaticPlaylist } from "../../../services/flows/staticPlaylistFromFlow.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
-import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
-
-const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
 const count = v.union([v.number(), v.string()]);
 const flowFields = {
@@ -85,10 +75,6 @@ export default new Hono<AppEnv>()
         if (!flow) {
           return c.json({ error: "Flow not found" }, 404);
         }
-        if (isRetiredFlow(flow)) {
-          return c.json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE }, 409);
-        }
-
         const { token, tokenScope } = markFlowMutationToken(flowId);
         const result = await playlistOperationQueue.enqueuePayload({
           kind: "manual-start-flow",
@@ -246,9 +232,6 @@ export default new Hono<AppEnv>()
         }
 
         if (enabled) {
-          if (isRetiredFlow(flow)) {
-            return c.json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE }, 409);
-          }
           flowPlaylistConfig.setEnabled(flowId, true);
           flowPlaylistConfig.scheduleNextRun(flowId);
           playlistManager.requestPlaylistSync([flowId]);
@@ -301,20 +284,16 @@ export default new Hono<AppEnv>()
     requireFlowAccess,
     validate("json", v.object({ name: v.nullish(v.string()) })),
     async (c) => {
-      let playlist = null;
       try {
-        const flowId = c.req.param("flowId");
-        const flow = getAccessibleFlow(c.var.user, flowId);
+        const flow = getAccessibleFlow(c.var.user, c.req.param("flowId"));
         if (!flow) {
           return c.json({ error: "Flow not found" }, 404);
         }
-
-        const requestedName = String(c.req.valid("json").name || "").trim();
-        const flowJobs = downloadTracker.getByPlaylistType(flowId);
-        const completedJobs = flowJobs.filter(
-          (job) => job?.status === "done" && typeof job?.finalPath === "string",
-        );
-        if (completedJobs.length === 0) {
+        const saved = await saveFlowAsStaticPlaylist(flow, {
+          name: String(c.req.valid("json").name || "").trim() || `${flow.name} Static`,
+          ownerUserId: flow.ownerUserId ?? c.var.user.id,
+        });
+        if (!saved) {
           return c.json(
             {
               error: "No completed tracks available",
@@ -323,69 +302,9 @@ export default new Hono<AppEnv>()
             400,
           );
         }
-
-        const uniqueCompletedJobsByIdentity = new Map<string, DownloadJob>();
-        for (const job of completedJobs) {
-          const identity = buildPlaylistTrackIdentity(job);
-          if (uniqueCompletedJobsByIdentity.has(identity)) continue;
-          uniqueCompletedJobsByIdentity.set(identity, job);
-        }
-        const uniqueCompletedJobs = [...uniqueCompletedJobsByIdentity.values()];
-        const trackFromJob = (job: DownloadJob) => ({
-          artistName: job.artistName,
-          trackName: job.trackName,
-          albumName: job.albumName || null,
-          artistMbid: job.artistMbid || null,
-          albumMbid: job.albumMbid || null,
-          releaseMbid: job.releaseMbid || null,
-          trackMbid: job.trackMbid || null,
-          releaseYear: job.releaseYear || null,
-          durationMs: job.durationMs || null,
-          trackNumber: job.trackNumber || null,
-          discNumber: job.discNumber || null,
-          artistAliases: job.artistAliases || [],
-          reason: job.reason || null,
-        });
-        const tracks = uniqueCompletedJobs.map(trackFromJob);
-        playlist = flowPlaylistConfig.createStaticPlaylist({
-          name: requestedName || `${flow.name} Static`,
-          sourceName: flow.name,
-          sourceFlowId: flowId,
-          recordHistory: flow.recordHistory !== false,
-          tracks,
-          ownerUserId: flow.ownerUserId ?? c.var.user.id,
-        });
-
-        for (const job of uniqueCompletedJobs) {
-          const safeSourcePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
-          const stat = await fsp.stat(safeSourcePath);
-          if (!stat.isFile()) {
-            throw new Error(`Track file is missing: ${job.finalPath}`);
-          }
-
-          const jobId = downloadTracker.addJob(trackFromJob(job), playlist.id);
-          if (jobId) {
-            downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
-          }
-        }
-
-        await playlistManager.ensurePlaylistArtwork(playlist.id);
-        playlistManager.requestPlaylistSync([playlist.id]);
-        await playlistManager.scheduleScanLibrary(true);
-        schedulePlaylistMbidEnrichment(playlist.id, {
-          reason: "flow-static-playlist",
-          priority: 5,
-        });
-
-        return c.json({ success: true, playlist, trackCount: uniqueCompletedJobs.length }, 200);
+        return c.json({ success: true, ...saved }, 200);
       } catch (error) {
         const failure = asAppError(error);
-        if (playlist?.id) {
-          try {
-            await playlistManager.weeklyReset([playlist.id]);
-            flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
-          } catch {}
-        }
         if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
           return c.json({ error: "Playlist name already exists", message: failure.message }, 400);
         }

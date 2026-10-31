@@ -1238,6 +1238,39 @@ initializeSchemaOnStartup(db, dbHelpers);
 tryAddColumn("ALTER TABLE library_management ADD COLUMN last_missing_search_at INTEGER");
 tryAddColumn("ALTER TABLE library_tracks ADD COLUMN monitored INTEGER NOT NULL DEFAULT 1");
 
+export const RETIRED_FLOWS_SETTING = "migration:retired-flows-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '[]')")
+    .run(RETIRED_FLOWS_SETTING);
+  if (claimed.changes === 0) return;
+  const stored = db
+    .prepare<[], Pick<SettingsRow, "value">>(
+      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
+    )
+    .get();
+  const flows = v.safeParse(
+    v.array(v.looseObject({ id: v.optional(v.unknown()), type: v.optional(v.unknown()) })),
+    stored ? JSON.parse(stored.value) : null,
+  );
+  if (!flows.success) return;
+  const retiredIds = flows.output.flatMap((flow) =>
+    flow.type === "editorial" && typeof flow.id === "string" ? [flow.id] : [],
+  );
+  if (retiredIds.length === 0) return;
+  db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(
+    JSON.stringify(retiredIds),
+    RETIRED_FLOWS_SETTING,
+  );
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(
+    JSON.stringify(
+      flows.output.map((flow) =>
+        flow.type === "editorial" ? { ...flow, enabled: false, nextRunAt: null } : flow,
+      ),
+    ),
+  );
+}).immediate();
+
 const aurralAlbumMonitoredMigrationKey = "migration:aurral-album-monitored-v1";
 db.transaction(() => {
   const claimed = db

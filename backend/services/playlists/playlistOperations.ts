@@ -19,7 +19,6 @@ import {
   dedupePlaylistTracks,
   filterMissingPlaylistTracks,
   flowPlaylistConfig,
-  isRetiredFlow,
   normalizePlaylistTrack,
   rebuildStaticPlaylistTracksFromJobs,
   tracksShareMembership,
@@ -324,7 +323,6 @@ async function runFlowSeed({
   }
   const flow = flowPlaylistConfig.getFlow(safeFlowId);
   if (!flow) return { missing: true };
-  if (isRetiredFlow(flow)) return { skipped: true, retired: true };
   if (!isAnyDownloadSourceConfigured()) {
     const error: Error & { code?: string } = new Error(getDownloadSourceNotConfiguredMessage());
     error.code = "NO_DOWNLOAD_SOURCE";
@@ -553,7 +551,6 @@ async function createStaticPlaylistLocked({
   sourceName = null,
   sourceFlowId = null,
   discoverPresetId = null,
-  type = null,
   tracks = [],
   ownerUserId = null,
   importSource = null,
@@ -569,7 +566,6 @@ async function createStaticPlaylistLocked({
       sourceName,
       sourceFlowId,
       discoverPresetId,
-      type: typeof type === "string" ? type : null,
       tracks: normalizedTracks,
       ownerUserId,
       importSource: isRecord(importSource) ? importSource : null,

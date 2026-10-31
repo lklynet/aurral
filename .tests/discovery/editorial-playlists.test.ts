@@ -1,7 +1,6 @@
 import * as v from "valibot";
 import { test, beforeEach, afterAll, afterEach, vi, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { playlistTrack } from "../playlists/fixtures.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { localDownloadWorker } from "../download/fixtures.ts";
 
@@ -19,7 +18,6 @@ const [
   operationsModule,
   operationQueueModule,
   workerModule,
-  trackerModule,
   importSyncModule,
   editorialModule,
   persistenceModule,
@@ -33,7 +31,6 @@ const [
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/importLists/importListSync.ts"),
   () => import("../../backend/services/discovery/editorialPlaylists.ts"),
   () => import("../../backend/services/discovery/persistence.ts"),
@@ -45,7 +42,6 @@ const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfig
 const { processPlaylistOperation, playlistOperationSchema } = operationsModule;
 const { playlistOperationQueue } = operationQueueModule;
 const downloadWorker = localDownloadWorker(workerModule.downloadWorker);
-const { downloadTracker } = trackerModule;
 const { syncStaticPlaylistImport } = importSyncModule;
 const {
   addEditorialPlaylistToLibrary,
@@ -429,53 +425,4 @@ test("Listening History flows follow recent listening each time they run", async
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
 
   assert.deepEqual(seeds, ["Pinned", "Slowdive", "Pinned", "Ride"]);
-});
-
-test("retired Last.fm editorial flows keep their tracks and never run again", async () => {
-  const plan = vi.spyOn(downloadWorker, "prepareFlowRunPlan").mockImplementation(async () => ({
-    primaryTracks: [
-      {
-        ...playlistTrack({ artistName: "New Artist", trackName: "New Song" }),
-        reason: "Test plan",
-      },
-    ],
-  }));
-  const dueFlow = (
-    id: string,
-    extra: { type?: string; tag?: string; discoverPresetId?: string } = {},
-  ) => ({
-    id,
-    name: id,
-    enabled: true,
-    size: 20,
-    nextRunAt: Date.now() - 60_000,
-    ...extra,
-  });
-  dbOps.updateSettings({
-    integrations: {
-      lastfm: { apiKey: "test-key" },
-      deemix: { enabled: true, url: "http://deemix.invalid", bitrate: 1 },
-    },
-    flows: [
-      dueFlow("metal-mayhem", { type: "editorial", tag: "metal", discoverPresetId: "top-metal" }),
-      dueFlow("discover-weekly"),
-    ],
-  });
-  invalidateFlowPlaylistConfigCache();
-  downloadTracker.addJobs([{ artistName: "Old Artist", trackName: "Old Song" }], "metal-mayhem");
-
-  assert.deepEqual(
-    flowPlaylistConfig.getDueForRefresh().map((flow) => flow.id),
-    ["discover-weekly"],
-  );
-
-  for (const kind of ["manual-start-flow", "enable-flow-refresh", "scheduled-flow-refresh"]) {
-    await processPlaylistOperation({ kind, flowId: "metal-mayhem" });
-  }
-
-  assert.equal(plan.mock.calls.length, 0);
-  assert.deepEqual(
-    downloadTracker.getByPlaylistId("metal-mayhem").map((job) => job.trackName),
-    ["Old Song"],
-  );
 });

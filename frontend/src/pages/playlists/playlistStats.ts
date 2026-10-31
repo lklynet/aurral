@@ -28,9 +28,6 @@ export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "sharedPlaylists"> & {
   sharedPlaylists: StaticPlaylist[];
 };
 
-export const isEditorialFlow = (flow: Partial<Flow> | null | undefined) =>
-  String(flow?.type || "").trim() === "editorial";
-
 const statCount = (value: number | null | undefined) => Number(value || 0);
 
 export const getFlowDisplayTrackCount = (
