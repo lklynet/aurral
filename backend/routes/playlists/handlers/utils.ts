@@ -23,7 +23,6 @@ import { requirePermission } from "../../../middleware/guards.ts";
 import { createMiddleware } from "hono/factory";
 import * as v from "valibot";
 import type { Context } from "hono";
-import type { StoredFlow } from "../../../services/playlists/flowPlaylistConfig.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
 import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
 
@@ -40,127 +39,61 @@ export const requireFlowAccessIfSignedIn = createMiddleware<AppEnv>(async (c, ne
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_SIZE;
 
-type FlowEntryObject = {
-  name?: unknown;
-  artistName?: unknown;
-  artist?: unknown;
-  tag?: unknown;
-  label?: unknown;
-  value?: unknown;
-};
-
-type FlowEntry = FlowEntryObject | string | number | boolean | null | undefined;
-
-const getFlowEntryName = (value: FlowEntry) => {
-  if (typeof value === "string" || typeof value === "number") {
-    const text = String(value).trim();
-    return text || null;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const candidates = [
-    value.name,
-    value.artistName,
-    value.artist,
-    value.tag,
-    value.label,
-    value.value,
-  ];
-  for (const candidate of candidates) {
-    const text = String(candidate || "").trim();
-    if (text) return text;
-  }
-  return null;
-};
-
-export const normalizeFlowStringArray = (value: unknown) => {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((entry) => getFlowEntryName(entry)).filter(Boolean))];
-  }
-  if (value && typeof value === "object") {
-    return [
-      ...new Set(
-        Object.keys(value)
-          .map((entry) => String(entry || "").trim())
-          .filter(Boolean),
+const fourDigitYear = (label: string) =>
+  v.optional(
+    v.pipe(
+      v.unknown(),
+      v.transform((value) =>
+        value == null || String(value).trim() === "" ? null : Math.trunc(Number(value)),
       ),
-    ];
-  }
-  const single = getFlowEntryName(value as FlowEntry);
-  return single ? [single] : [];
-};
+      v.nullable(
+        v.pipe(
+          v.number(`${label} must be a 4-digit year`),
+          v.minValue(1000, `${label} must be a 4-digit year`),
+          v.maxValue(9999, `${label} must be a 4-digit year`),
+        ),
+      ),
+    ),
+  );
 
-type FlowPayload = Pick<
-  StoredFlow,
-  | "name"
-  | "mix"
-  | "size"
-  | "tags"
-  | "relatedArtists"
-  | "recentListening"
-  | "scheduleDays"
-  | "recordHistory"
-  | "showInLibrary"
-  | "yearFrom"
-  | "yearTo"
->;
+const hasText = (values: unknown) =>
+  Array.isArray(values) && values.some((value) => String(value ?? "").trim() !== "");
 
-export const validateFlowPayload = ({
-  name,
-  mix,
-  size,
-  tags,
-  relatedArtists,
-  recentListening,
-  scheduleDays,
-  recordHistory,
-  showInLibrary,
-  yearFrom,
-  yearTo,
-}: FlowPayload = {}) => {
-  if (!name || !String(name).trim()) {
-    return "name is required";
-  }
-  const parsedSize = Number(size);
-  if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
-    return "size must be a positive number";
-  }
-  const shares = splitFlowTotal(mix, Math.round(parsedSize));
-  if (!shares) {
-    return "at least one source must be enabled";
-  }
-  const hasFocusSeeds =
-    recentListening === true ||
-    normalizeFlowStringArray(tags).length > 0 ||
-    normalizeFlowStringArray(relatedArtists).length > 0;
-  if (shares.focus > 0 && !hasFocusSeeds) {
-    return "Focus needs a tag, a similar artist, or recent listening";
-  }
-  if (!Array.isArray(scheduleDays) || scheduleDays.length === 0) {
-    return "scheduleDays must include at least one day";
-  }
-  if (recordHistory !== undefined && typeof recordHistory !== "boolean") {
-    return "recordHistory must be a boolean";
-  }
-  if (showInLibrary !== undefined && typeof showInLibrary !== "boolean") {
-    return "showInLibrary must be a boolean";
-  }
-  const hasYearFrom = yearFrom != null && String(yearFrom).trim() !== "";
-  const hasYearTo = yearTo != null && String(yearTo).trim() !== "";
-  if (hasYearFrom) {
-    const parsed = Number(yearFrom);
-    if (!Number.isFinite(parsed) || Math.trunc(parsed) < 1000 || Math.trunc(parsed) > 9999) {
-      return "yearFrom must be a 4-digit year";
-    }
-  }
-  if (hasYearTo) {
-    const parsed = Number(yearTo);
-    if (!Number.isFinite(parsed) || Math.trunc(parsed) < 1000 || Math.trunc(parsed) > 9999) {
-      return "yearTo must be a 4-digit year";
-    }
-  }
-  return null;
+const flowRules = v.pipe(
+  v.looseObject({
+    name: v.pipe(v.string("name is required"), v.trim(), v.nonEmpty("name is required")),
+    size: v.pipe(
+      v.union([v.number(), v.string()], "size must be a positive number"),
+      v.transform(Number),
+      v.number("size must be a positive number"),
+      v.finite("size must be a positive number"),
+      v.gtValue(0, "size must be a positive number"),
+    ),
+    mix: v.nullish(v.record(v.string(), v.unknown())),
+    scheduleDays: v.pipe(
+      v.array(v.unknown(), "scheduleDays must include at least one day"),
+      v.nonEmpty("scheduleDays must include at least one day"),
+    ),
+    yearFrom: fourDigitYear("yearFrom"),
+    yearTo: fourDigitYear("yearTo"),
+  }),
+  v.check(
+    ({ mix, size }) => splitFlowTotal(mix, Math.round(size)) != null,
+    "at least one source must be enabled",
+  ),
+  v.check(
+    (flow) =>
+      !splitFlowTotal(flow.mix, Math.round(flow.size))?.focus ||
+      flow.recentListening === true ||
+      hasText(flow.tags) ||
+      hasText(flow.relatedArtists),
+    "Focus needs a tag, a similar artist, or recent listening",
+  ),
+);
+
+export const flowPayloadError = (payload: unknown) => {
+  const result = v.safeParse(flowRules, payload);
+  return result.success ? null : result.issues[0].message;
 };
 
 export const markFlowMutationToken = (flowId: string) => {

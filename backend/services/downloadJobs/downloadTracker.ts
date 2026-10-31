@@ -361,9 +361,6 @@ const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
 const selectAllStmt = db.prepare<[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`,
 );
-const updatePlaylistTypeStmt = db.prepare(
-  `UPDATE ${JOBS_TABLE} SET playlist_type = ?, playlist_id = ? WHERE playlist_type = ?`,
-);
 const clearSlskdMetaStmt = db.prepare(`
   UPDATE ${JOBS_TABLE}
   SET download_source = NULL,
@@ -1124,7 +1121,6 @@ export class DownloadTracker {
   }
 
   _load() {
-    updatePlaylistTypeStmt.run("discover", "discover", "recommended");
     const rows = selectAllStmt.all();
     for (const row of rows) {
       const job = rowToJob(row);
@@ -1910,24 +1906,6 @@ export class DownloadTracker {
       }
     }
     return jobs;
-  }
-
-  migratePlaylistTypes(idMap: Map<string, string>) {
-    if (!idMap || idMap.size === 0) return 0;
-    let count = 0;
-    for (const [fromId, toId] of idMap.entries()) {
-      updatePlaylistTypeStmt.run(toId, toId, fromId);
-      for (const job of this.jobs.values()) {
-        if (job.playlistType === fromId) {
-          job.playlistId = toId;
-          job.playlistType = toId;
-          count += 1;
-        }
-      }
-    }
-    this._rebuildStatsByPlaylistType();
-    if (count > 0) this._touchRevision();
-    return count;
   }
 
   resetDownloadingToPending() {

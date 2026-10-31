@@ -1,34 +1,10 @@
 import type { InferResponseType } from "hono/client";
 import type { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
-import type { FlowMix } from "../../../../lib/flows.ts";
 
 type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
 
-export interface Flow {
-  artworkRevision?: number;
-  id: string;
-  name: string;
-  enabled: boolean;
-  type: string | null;
-  discoverPresetId: string | null;
-  size: number;
-  mix: FlowMix;
-  tags: string[];
-  relatedArtists: string[];
-  recentListening: boolean;
-  deepDive: boolean;
-  recordHistory: boolean;
-  yearFrom: number | null;
-  yearTo: number | null;
-  scheduleDays: number[];
-  scheduleTime: string;
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  ownerUserId: number | null;
-  ownerUsername: string | null;
-  showInLibrary: boolean;
-}
+export type Flow = PlaylistStatusSnapshot["flows"][number];
 
 export type PlaylistStats = PlaylistStatusSnapshot["stats"];
 
@@ -48,8 +24,7 @@ export interface StaticPlaylist {
   trackIdentities: string[];
 }
 
-export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlaylists"> & {
-  flows: Flow[];
+export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "sharedPlaylists"> & {
   sharedPlaylists: StaticPlaylist[];
 };
 

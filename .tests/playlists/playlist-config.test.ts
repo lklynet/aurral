@@ -19,7 +19,6 @@ const [
   { db },
   { dbOps },
   playlistConfigModule,
-  flowHandlerUtils,
   { api },
   libraryScanWorker,
   { downloadTracker },
@@ -29,7 +28,6 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/routes/playlists/handlers/utils.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -41,7 +39,6 @@ const {
   tracksShareMembership,
   invalidateFlowPlaylistConfigCache,
 } = playlistConfigModule;
-const { validateFlowPayload } = flowHandlerUtils;
 const sendAs = (user: ReturnType<typeof testUser>, method: string, path: string, body: object) =>
   signedInAs(user)
     .route("/", api)
@@ -354,21 +351,37 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
   );
 });
 
-test("rejects non-boolean listening history payloads", () => {
+test("an edit that turns on Focus checks the flow's saved seeds", async () => {
   dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
-  const payload = {
-    name: "Validated History",
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Seedless",
     size: 20,
     mix: { discover: 100 },
     scheduleDays: [1],
-  };
+  });
+  const focusOnly = { mix: { discover: 0, focus: 20 } };
 
-  assert.equal(
-    validateFlowPayload({ ...payload, recordHistory: "false" }),
-    "recordHistory must be a boolean",
+  const rejected = await sendAs(
+    testUser(1, { role: "admin" }),
+    "PUT",
+    `/flows/${flow.id}`,
+    focusOnly,
   );
-  assert.equal(validateFlowPayload({ ...payload, recordHistory: false }), null);
-  assert.equal(validateFlowPayload(payload), null);
+  assert.equal(rejected.status, 400);
+  assert.equal(
+    (await rejected.json()).message,
+    "Focus needs a tag, a similar artist, or recent listening",
+  );
+
+  flowPlaylistConfig.updateFlow(flow.id, { tags: ["jazz"] });
+  const accepted = await sendAs(
+    testUser(1, { role: "admin" }),
+    "PUT",
+    `/flows/${flow.id}`,
+    focusOnly,
+  );
+  assert.equal(accepted.status, 200);
+  assert.equal((await accepted.json()).flow.mix.focus, 100);
 });
 
 test("stores and swaps optional release year range", () => {

@@ -16,7 +16,7 @@ import { buildLidarrImportListItems } from "../../../services/lidarrImportListFe
 import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.ts";
 import {
   DEFAULT_LIMIT,
-  validateFlowPayload,
+  flowPayloadError,
   markFlowMutationToken,
   isFlowMutationTokenCurrent,
   restoreFlowMutationToken,
@@ -152,7 +152,7 @@ export default new Hono<AppEnv>()
         if (fields.name.trim()) template.name = fields.name.trim();
       }
       const payload = template ?? fields;
-      const validationError = validateFlowPayload(payload);
+      const validationError = flowPayloadError(payload);
       if (validationError) {
         return c.json({ error: validationError, message: validationError }, 400);
       }
@@ -176,7 +176,7 @@ export default new Hono<AppEnv>()
         return c.json({ error: "Flow not found" }, 404);
       }
       const body = c.req.valid("json");
-      const validationError = validateFlowPayload({ ...existingFlow, ...body });
+      const validationError = flowPayloadError({ ...existingFlow, ...body });
       if (validationError) {
         return c.json({ error: validationError, message: validationError }, 400);
       }
