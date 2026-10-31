@@ -340,6 +340,7 @@ export function selectDeezerTrackPreview(
   const targetArtist = normalizeTitle(artistName);
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
+  const mainArtist = normalizeTitle(artistName.split(/,|&|\s(?:feat\.?|ft\.?|with|x)\s/i)[0]);
 
   return (
     candidates.find((candidate) => {
@@ -349,7 +350,7 @@ export function selectDeezerTrackPreview(
         candidate.preview &&
         candidateTrack &&
         candidateArtist &&
-        (candidateArtist === targetArtist || targetArtist.startsWith(`${candidateArtist} `)) &&
+        (candidateArtist === targetArtist || candidateArtist === mainArtist) &&
         (candidateTrack === targetTrack ||
           candidateTrack.includes(targetTrack) ||
           targetTrack.includes(candidateTrack))
