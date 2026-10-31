@@ -101,7 +101,10 @@ export const playlistJobsQueryOptions = (playlistId: MaybeText) =>
           ...withAuthenticatedTrackArtwork(job),
           albumName: job.albumName || null,
           reason: job.reason || null,
-          streamUrl: job.status === "done" && job.id ? getPlaylistTrackStreamUrl(job.id) : null,
+          streamUrl:
+            (job.status === "done" || job.status === "saved") && job.id
+              ? getPlaylistTrackStreamUrl(job.id)
+              : null,
         })),
       ),
     enabled: Boolean(playlistId),

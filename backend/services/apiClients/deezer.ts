@@ -348,7 +348,8 @@ export function selectDeezerTrackPreview(
       return (
         candidate.preview &&
         candidateTrack &&
-        candidateArtist === targetArtist &&
+        candidateArtist &&
+        (candidateArtist === targetArtist || targetArtist.startsWith(`${candidateArtist} `)) &&
         (candidateTrack === targetTrack ||
           candidateTrack.includes(targetTrack) ||
           targetTrack.includes(candidateTrack))

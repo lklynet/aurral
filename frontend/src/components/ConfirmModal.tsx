@@ -7,6 +7,8 @@ interface ConfirmModalProps {
   title: string;
   body: string;
   confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "danger" | "primary";
   busyLabel: string;
   busy?: boolean;
   onCancel: () => void;
@@ -18,6 +20,8 @@ export function ConfirmModal({
   title,
   body,
   confirmLabel,
+  cancelLabel = "Cancel",
+  tone = "danger",
   busyLabel,
   busy = false,
   onCancel,
@@ -52,9 +56,9 @@ export function ConfirmModal({
         </p>
         <div className="artist-modal__actions">
           <button type="button" onClick={onCancel} className="btn btn-secondary" disabled={busy}>
-            Cancel
+            {cancelLabel}
           </button>
-          <button type="button" onClick={onConfirm} className="btn btn-danger" disabled={busy}>
+          <button type="button" onClick={onConfirm} className={`btn btn-${tone}`} disabled={busy}>
             {busy ? <DotLoader size="sm" label={null} /> : null}
             {busy ? busyLabel : confirmLabel}
           </button>

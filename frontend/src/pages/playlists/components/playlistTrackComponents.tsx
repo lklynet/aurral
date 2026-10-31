@@ -35,8 +35,10 @@ import { TrackList } from "../../../components/TrackList";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import {
+  canPlayTrack,
   getTrackAvailability,
   getTrackSearchAction,
+  queueTrackOverrides,
   shouldShowAddToLibrary,
 } from "../trackAvailability.ts";
 import Tooltip from "../../../components/Tooltip";
@@ -402,8 +404,10 @@ export function usePlaylistTrackPlayback<T extends PlaylistPanelTrack>({
   const getQueueTracks = useCallback(
     () =>
       tracks
-        .filter((track) => track.status === "done" && track.streamUrl)
-        .map((track) => normalizePlaylistQueueTrack(track, { recordHistory })),
+        .filter(canPlayTrack)
+        .map((track) =>
+          normalizePlaylistQueueTrack(track, queueTrackOverrides(track, recordHistory)),
+        ),
     [recordHistory, tracks],
   );
   return useAlbumTrackListToolbar({ getQueueTracks, playbackSource });
@@ -553,10 +557,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   );
   const selectedCount = selectedIds.size;
   const recordHistory = playbackSource?.recordHistory !== false;
-  const playableTracks = useMemo(
-    () => sortedTracks.filter((track) => track.status === "done" && track.streamUrl),
-    [sortedTracks],
-  );
+  const playableTracks = useMemo(() => sortedTracks.filter(canPlayTrack), [sortedTracks]);
   const isSourceActive = matchesSource(playbackSource);
   const currentTrackId = isSourceActive && currentTrack?.id ? currentTrack.id : null;
 
@@ -577,7 +578,10 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   const trackCover = (track: T) =>
     track.artworkUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "";
   const toQueueTrack = (track: T) =>
-    normalizePlaylistQueueTrack({ ...track, artworkUrl: trackCover(track) }, { recordHistory });
+    normalizePlaylistQueueTrack(
+      { ...track, artworkUrl: trackCover(track) },
+      queueTrackOverrides(track, recordHistory),
+    );
 
   const handlePlayTrack = (track: T) => {
     if (!track?.streamUrl) return;
@@ -603,7 +607,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   };
 
   const rows = sortedTracks.map((track, index) => {
-    const canPlay = showPlaybackControls && track.status === "done" && Boolean(track.streamUrl);
+    const canPlay = showPlaybackControls && canPlayTrack(track);
     const searchAction = getTrackSearchAction(track, showTrackAvailability);
     const canReSearch =
       typeof onReSearchTrack === "function" && Boolean(track.id) && searchAction !== null;
@@ -674,7 +678,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       active: isCurrent,
       playing: isCurrent && isRunning,
       loading: isCurrent && isLoading,
-      missing: showPlaybackControls && !canPlay,
+      missing: showPlaybackControls && (!canPlay || track.status === "saved"),
       status:
         showPlaybackControls && !canPlay && (isReSearching || track.status !== "saved")
           ? ({

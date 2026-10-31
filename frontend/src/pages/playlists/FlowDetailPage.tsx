@@ -141,6 +141,8 @@ function FlowDetail({ flow }: { flow: Flow }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);
+  const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
+  const [downloadingSaved, setDownloadingSaved] = useState(false);
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
@@ -285,9 +287,23 @@ function FlowDetail({ flow }: { flow: Flow }) {
       setDraft((current) => ({ ...current, ...changes }));
       showSuccess(successMessage);
       await fetchStatus();
+      return true;
     } catch (err) {
       showError(getApiErrorMessage(err, "Failed to update flow setting"));
+      return false;
     }
+  };
+
+  const enableAutoDownload = async () => {
+    if (await updateSetting({ autoDownload: true }, "New tracks will download automatically"))
+      setConfirmDownloadSaved(savedCount > 0);
+  };
+
+  const downloadSavedNow = async () => {
+    setDownloadingSaved(true);
+    await handleDownloadSaved();
+    setDownloadingSaved(false);
+    setConfirmDownloadSaved(false);
   };
 
   const recipeFieldProps = {
@@ -385,12 +401,12 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   checked: flow.autoDownload !== false,
                   separatorBefore: true,
                   onSelect: () =>
-                    updateSetting(
-                      { autoDownload: flow.autoDownload === false },
-                      flow.autoDownload === false
-                        ? "New tracks will download automatically"
-                        : "New tracks will wait for you to download them",
-                    ),
+                    flow.autoDownload === false
+                      ? enableAutoDownload()
+                      : updateSetting(
+                          { autoDownload: false },
+                          "New tracks will wait for you to download them",
+                        ),
                 }),
                 optionMenuItem({
                   id: "scrobble",
@@ -542,6 +558,18 @@ function FlowDetail({ flow }: { flow: Flow }) {
         busy={deleting}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
+      />
+      <ConfirmModal
+        open={confirmDownloadSaved}
+        title={`Download ${formatTrackTotal(savedCount)} already in this flow?`}
+        body="New tracks will download automatically from now on."
+        confirmLabel="Download now"
+        cancelLabel="Not now"
+        tone="primary"
+        busyLabel="Downloading"
+        busy={downloadingSaved}
+        onCancel={() => setConfirmDownloadSaved(false)}
+        onConfirm={downloadSavedNow}
       />
     </CollectionPage>
   );

@@ -20,6 +20,7 @@ const [
   { downloadWorker },
   { flowTrackSource },
   { api },
+  { default: axios },
 ] = await setupIsolatedBackend(
   "flow-auto-download",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -30,6 +31,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
   () => import("../../backend/routes/api.ts"),
+  () => import("../../lib/axiosFetch.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -103,14 +105,17 @@ const flowStatuses = (flowId: string) =>
     .map((job) => `${job.trackName}:${job.status}`)
     .sort();
 
-const postFlow = (path: string, body: object) =>
+const requestPlaylists = (path: string, init?: RequestInit) =>
   signedInAs(testUser(1, { role: "admin", permissions: { accessFlow: true } }))
     .route("/", api)
-    .request(`/playlists${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    .request(`/playlists${path}`, init);
+
+const postFlow = (path: string, body: object) =>
+  requestPlaylists(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
 test("a flow with auto-download off lists new tracks without queueing them and reuses owned ones", async () => {
   useIntegrations(slskd);
@@ -174,4 +179,27 @@ test("downloading a flow without a download source explains what is missing", as
 
   assert.equal(response.status, 409);
   assert.match((await response.json()).message, /download source/i);
+});
+
+test("a track that is not downloaded plays its Deezer preview", async () => {
+  const flow = createFlow({ autoDownload: false });
+  await processPlaylistOperation({ kind: "manual-start-flow", flowId: flow.id });
+  const job = downloadTracker
+    .getByPlaylistType(flow.id)
+    .find((entry) => entry.trackName === "New Track");
+  assert.ok(job);
+  const clip = "https://cdnt-preview.dzcdn.net/42.mp3";
+  vi.spyOn(axios, "get").mockImplementation(async (url) => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
+    data: String(url).endsWith("/search")
+      ? { data: [{ id: 42, title: "New Track", artist: { name: "New Artist" }, preview: clip }] }
+      : { id: 42, title: "New Track", preview: clip },
+  }));
+
+  const response = await requestPlaylists(`/stream/${job.id}`);
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), clip);
 });
