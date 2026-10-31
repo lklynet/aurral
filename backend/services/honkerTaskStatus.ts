@@ -53,8 +53,15 @@ export const QUEUE_DEFINITIONS = [
     queue: "weekly-flow-operation",
     label: "Playlist operations",
     workerLabel: "Playlist operation worker",
-    description: "Applies playlist edits, manual runs, flow changes, and track actions.",
+    description: "Applies playlist edits, flow cleanup, and track actions.",
     worker: "weekly-flow-operation",
+  },
+  {
+    queue: "flow-run",
+    label: "Flow runs",
+    workerLabel: "Flow run worker",
+    description: "Picks new tracks for flows and queues their downloads.",
+    worker: "flow-run",
   },
   {
     queue: "slskd-pipeline",
@@ -326,10 +333,13 @@ interface TaskPayloadView {
   listenHistoryProfile?: { listenHistoryUsername?: unknown } | null;
 }
 
+const operationLabel = (p: TaskPayloadView | null | undefined) =>
+  formatPayloadLabel(p?.label || p?.kind) || null;
+
 const PAYLOAD_LABEL_KEY = {
   "slskd-pipeline": "phase",
-  "weekly-flow-operation": (p: TaskPayloadView | null | undefined) =>
-    formatPayloadLabel(p?.label || p?.kind) || null,
+  "weekly-flow-operation": operationLabel,
+  "flow-run": operationLabel,
   "playlist-mbid-enrichment": "playlistId",
   "library-scan": (p: TaskPayloadView | null | undefined) => (p?.force ? "Manual" : null),
   "discovery-user-refresh": (p: TaskPayloadView | null | undefined) =>

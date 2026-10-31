@@ -36,6 +36,7 @@ export const HONKER_QUEUE_NAMES = [
   "system-task-maintenance",
   "system-task-inbox",
   "weekly-flow-operation",
+  "flow-run",
   "slskd-pipeline",
   "playlist-mbid-enrichment",
   "library-scan",
@@ -382,6 +383,17 @@ const playlistOperation = registerQueue({
 
 export const getPlaylistOperationQueue = playlistOperation.getQueue;
 export const enqueuePlaylistOperationJob = playlistOperation.enqueueJob;
+
+const flowRun = registerQueue({
+  name: "flow-run",
+  visibilityTimeoutS: 3600,
+  maxAttempts: 3,
+  workerModule: "./playlists/playlistOperationWorker.ts",
+  workerStartFn: "startFlowRunWorker",
+});
+
+export const getFlowRunQueue = flowRun.getQueue;
+export const enqueueFlowRunJob = flowRun.enqueueJob;
 
 const playlistMbidEnrichment = registerQueue({
   name: "playlist-mbid-enrichment",

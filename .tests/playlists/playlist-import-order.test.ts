@@ -692,7 +692,7 @@ test("a stale flow plan does not cancel jobs when settings change during plannin
       flowId: flow.id,
     });
     await planningStarted.promise;
-    flowPlaylistConfig.updateFlow(flow.id, { name: "Changed During Planning" });
+    flowPlaylistConfig.updateFlow(flow.id, { tags: ["jazz"] });
     deferredPlan.resolve(emptyPlan());
 
     await assert.rejects(refresh, /Flow settings changed while planning/);
@@ -701,6 +701,111 @@ test("a stale flow plan does not cancel jobs when settings change during plannin
     assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
   } finally {
     flowTrackSource.buildFlowRunPlan = originalBuildPlan;
+    downloadWorker.stop();
+  }
+});
+
+test("renaming a flow while it plans still applies the plan", async () => {
+  const originalBuildPlan = flowTrackSource.buildFlowRunPlan;
+  const planningStarted = Promise.withResolvers<void>();
+  const deferredPlan = Promise.withResolvers<ReturnType<typeof emptyPlan>>();
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Renamed During Planning",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+    });
+    flowPlaylistConfig.setEnabled(flow.id, true);
+    flowTrackSource.buildFlowRunPlan = async () => {
+      planningStarted.resolve();
+      return deferredPlan.promise;
+    };
+
+    const refresh = processPlaylistOperation({ kind: "scheduled-flow-refresh", flowId: flow.id });
+    await planningStarted.promise;
+    flowPlaylistConfig.updateFlow(flow.id, { name: "New Name" });
+    deferredPlan.resolve(emptyPlan());
+
+    assert.deepEqual(await refresh, {
+      jobIds: [],
+      tracksQueued: 0,
+      empty: true,
+      flowName: "New Name",
+    });
+  } finally {
+    flowTrackSource.buildFlowRunPlan = originalBuildPlan;
+    downloadWorker.stop();
+  }
+});
+
+test("a playlist edit queued while a flow plans runs without waiting for the plan", async () => {
+  const originalBuildPlan = flowTrackSource.buildFlowRunPlan;
+  const planningStarted = Promise.withResolvers<void>();
+  const deferredPlan = Promise.withResolvers<ReturnType<typeof emptyPlan>>();
+  const flowFinished = Promise.withResolvers<void>();
+  const edited = Promise.withResolvers<void>();
+  const { stopFlowRunWorker, stopPlaylistOperationWorker } =
+    await import("../../backend/services/playlists/playlistOperationWorker.ts");
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Planning Slowly",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+    });
+    const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Mine", tracks: [] });
+    flowTrackSource.buildFlowRunPlan = async () => {
+      planningStarted.resolve();
+      return deferredPlan.promise;
+    };
+    const updateStaticPlaylist = flowPlaylistConfig.updateStaticPlaylist.bind(flowPlaylistConfig);
+    vi.spyOn(flowPlaylistConfig, "updateStaticPlaylist").mockImplementation((id, updates) => {
+      const updated = updateStaticPlaylist(id, updates);
+      if (id === playlist.id) edited.resolve();
+      return updated;
+    });
+    const markLastRunAt = flowPlaylistConfig.markLastRunAt.bind(flowPlaylistConfig);
+    vi.spyOn(flowPlaylistConfig, "markLastRunAt").mockImplementation((id) => {
+      const marked = markLastRunAt(id);
+      if (id === flow.id) flowFinished.resolve();
+      return marked;
+    });
+
+    await playlistOperationQueue.enqueuePayload({ kind: "manual-start-flow", flowId: flow.id });
+    await planningStarted.promise;
+    await playlistOperationQueue.enqueuePayload({
+      kind: "shared-playlist-update",
+      playlistId: playlist.id,
+      name: "Edited",
+      hasNameUpdate: true,
+      tracks: [],
+      hasTracksUpdate: false,
+    });
+    await edited.promise;
+
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id)?.name, "Edited");
+    deferredPlan.resolve(emptyPlan());
+    await flowFinished.promise;
+  } finally {
+    deferredPlan.resolve(emptyPlan());
+    await Promise.all([stopFlowRunWorker(), stopPlaylistOperationWorker()]);
+    flowTrackSource.buildFlowRunPlan = originalBuildPlan;
+    vi.restoreAllMocks();
     downloadWorker.stop();
   }
 });
