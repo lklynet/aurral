@@ -403,3 +403,62 @@ test("artist photos come from the Library when plays have no ID, and a broken ph
   assert.equal(artwork.Artist, "https://img.test/artist.jpg");
   assert.equal(artwork.Other, "https://img.test/deezer.jpg");
 });
+
+test("custom artwork set in the Library replaces the covers and colors in a recap", async () => {
+  const store = await import("../../backend/services/libraryMediaStore.ts");
+  const artwork = await import("../../backend/services/customArtworkService.ts");
+  const deezer = await import("../../backend/services/apiClients/deezer.ts");
+  const beats = await import("../../backend/services/wrapped/beats.ts");
+  const { default: sharp } = await import("sharp");
+  vi.spyOn(deezer, "deezerGetTrackPreview").mockResolvedValue(null);
+  vi.spyOn(beats, "songBeats").mockResolvedValue(null);
+  const artist = store.upsertLibraryArtist({ identityKey: "artist", name: "Artist" });
+  const album = store.upsertLibraryAlbum({
+    identityKey: "album",
+    artistId: artist.id,
+    title: "LP",
+  });
+  const track = store.upsertLibraryTrack({
+    identityKey: "song",
+    title: "Song",
+    artistName: "Artist",
+  });
+  store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  store.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: "/library/song.flac",
+    available: true,
+  });
+  const image = (r: number, g: number, b: number) =>
+    sharp({ create: { width: 24, height: 24, channels: 3, background: { r, g, b } } })
+      .png()
+      .toBuffer();
+  const albumArt = await artwork.saveCustomArtworkUpload(
+    "album",
+    album.id,
+    await image(240, 40, 120),
+    "image/png",
+  );
+  listen(one.id, period.start + 1000);
+
+  const before = await history.buildWrappedSummary(one.id, period);
+  const albumUrl = artwork.buildCustomArtworkUrl("album", album.id, albumArt.updatedAt);
+  assert.equal(before.topSongs[0].artwork, albumUrl);
+  assert.equal(before.topAlbums[0].artwork, albumUrl);
+  assert.match(before.topAlbums[0].color ?? "", /^#f028/);
+
+  const trackArt = await artwork.saveCustomArtworkUpload(
+    "track",
+    track.id,
+    await image(40, 200, 80),
+    "image/png",
+  );
+  const after = await history.buildWrappedSummary(one.id, period);
+  assert.equal(
+    after.topSongs[0].artwork,
+    artwork.buildCustomArtworkUrl("track", track.id, trackArt.updatedAt),
+  );
+  assert.equal(after.topAlbums[0].artwork, albumUrl);
+});
