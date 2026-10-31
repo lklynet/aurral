@@ -347,19 +347,8 @@ const getStoredStaticPlaylists = () => {
   }
   staticPlaylistsCachedAt = Date.now();
   const stored = dbOps.getJSONSetting("sharedPlaylists", v.unknown());
-  if (Array.isArray(stored)) {
-    const next = stored.map(normalizeStaticPlaylist);
-    const needsSave =
-      next.length !== stored.length ||
-      next.some((playlist, index) => JSON.stringify(playlist) !== JSON.stringify(stored[index]));
-    if (needsSave) {
-      dbOps.updateSettings({ sharedPlaylists: next });
-    }
-    cachedStaticPlaylists = next;
-    return cachedStaticPlaylists;
-  }
-  dbOps.updateSettings({ sharedPlaylists: [] });
-  cachedStaticPlaylists = [];
+  if (!Array.isArray(stored)) dbOps.updateSettings({ sharedPlaylists: [] });
+  cachedStaticPlaylists = Array.isArray(stored) ? stored.map(normalizeStaticPlaylist) : [];
   return cachedStaticPlaylists;
 };
 
@@ -462,8 +451,9 @@ export const flowPlaylistConfig = {
     return getStoredFlows();
   },
 
-  saveNormalizedFlows() {
+  saveNormalized() {
     setFlows(getStoredFlows());
+    setStaticPlaylists(getStoredStaticPlaylists());
   },
 
   getFlowsForUser(user: AccessUser) {

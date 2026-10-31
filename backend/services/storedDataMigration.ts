@@ -91,7 +91,7 @@ function storeCurrentIntegrations() {
 
 export async function migrateStoredData() {
   moveRenamedSettingKeys();
-  flowPlaylistConfig.saveNormalizedFlows();
+  flowPlaylistConfig.saveNormalized();
   storeExistingFileMode();
   storeCurrentIntegrations();
   migrateLegacyAdmin();
