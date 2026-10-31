@@ -1,4 +1,5 @@
 import { db } from "../../config/db-sqlite.ts";
+import { DEFAULT_FLOW_SIZE } from "../../../lib/flows.ts";
 import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.ts";
 import { randomUUID } from "crypto";
 import * as v from "valibot";
@@ -12,19 +13,17 @@ import {
   recordTrackJobQueued,
   recordTrackJobSearching,
 } from "../aurralHistoryService.ts";
+import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
 import {
   buildCoreTrackIdentity,
   buildImportTrackIdentity,
   buildPlaylistTrackIdentity,
   dedupePlaylistTracks,
   filterMissingPlaylistTracks,
-  flowPlaylistConfig,
-  isRetiredFlow,
   normalizePlaylistTrack,
   rebuildStaticPlaylistTracksFromJobs,
   tracksShareMembership,
-  DEFAULT_SIZE,
-} from "./flowPlaylistConfig.ts";
+} from "./playlistTracks.ts";
 import {
   jobDownloadedItsFile,
   normalizeExistingFileMode,
@@ -48,9 +47,11 @@ import {
   withPlaylistMutationLock,
 } from "../downloadJobs/mutationGuards.ts";
 import { withHonkerLock } from "../honkerDb.ts";
+import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
-import type { PlaylistTrack, StaticPlaylist } from "./flowPlaylistConfig.ts";
+import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
+import type { PlaylistTrack } from "./playlistTracks.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.ts";
 import {
@@ -149,6 +150,13 @@ interface FlowOutcome {
   empty?: boolean;
   flowName?: string;
 }
+
+const withPlaylistOperationLock = <T>(operation: () => T) =>
+  withHonkerLock("weekly-flow-operation", operation, {
+    ttlSeconds: 180,
+    waitTimeoutMs: 30 * 60 * 1000,
+    retryDelayMs: 250,
+  });
 
 const flowSeedingWorker = () => {
   if (!("seedFlowRun" in downloadWorker)) {
@@ -316,7 +324,6 @@ async function runFlowSeed({
   }
   const flow = flowPlaylistConfig.getFlow(safeFlowId);
   if (!flow) return { missing: true };
-  if (isRetiredFlow(flow)) return { skipped: true, retired: true };
   if (!isAnyDownloadSourceConfigured()) {
     const error: Error & { code?: string } = new Error(getDownloadSourceNotConfiguredMessage());
     error.code = "NO_DOWNLOAD_SOURCE";
@@ -325,75 +332,81 @@ async function runFlowSeed({
   if (requireEnabled && flow.enabled !== true) return { skipped: true };
   if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
   const effectiveSize =
-    Number.isFinite(Number(size)) && Number(size) > 0 ? Number(size) : flow.size || DEFAULT_SIZE;
-  const flowSnapshot = JSON.stringify(flow);
-  const preparedPlan = await flowSeedingWorker().prepareFlowRunPlan(flow, {
+    Number.isFinite(Number(size)) && Number(size) > 0
+      ? Number(size)
+      : flow.size || DEFAULT_FLOW_SIZE;
+  const spec = flowRunSpec(flow);
+  const recipe = JSON.stringify(spec);
+  const assertRecipeUnchanged = (current: FlowConfig) => {
+    if (JSON.stringify(flowRunSpec(current)) !== recipe) {
+      throw new Error("Flow settings changed while planning; retrying");
+    }
+  };
+  const preparedPlan = await flowSeedingWorker().prepareFlowRunPlan(spec, {
     size: effectiveSize,
   });
 
-  const result = await withPlaylistMutation(
-    safeFlowId,
-    async (): Promise<FlowOutcome> => {
-      if (!isLatestPlaylistOperationToken(tokenScope, token)) {
-        return { cancelled: true };
-      }
-      const latestFlow = flowPlaylistConfig.getFlow(safeFlowId);
-      if (!latestFlow) return { missing: true };
-      if (requireEnabled && latestFlow.enabled !== true) return { skipped: true };
-      if (!isOwnerActive(latestFlow.ownerUserId)) {
-        return { skipped: true, inactiveOwner: true };
-      }
-      if (JSON.stringify(latestFlow) !== flowSnapshot) {
-        throw new Error("Flow settings changed while planning; retrying");
-      }
-
-      activatePlaylistDownloadGeneration(safeFlowId);
-      recordFlowGenerationStarted({ flowId: safeFlowId });
-      playlistManager.updateConfig();
-      await playlistManager.weeklyReset([safeFlowId]);
-      downloadTracker.clearByPlaylistId(safeFlowId);
-
-      if (!isLatestPlaylistOperationToken(tokenScope, token)) {
-        return { cancelled: true };
-      }
-      const seeded = await flowSeedingWorker().seedFlowRun(safeFlowId, latestFlow, {
-        size: effectiveSize,
-        plan: preparedPlan,
-      });
-      playlistManager.requestPlaylistSync([safeFlowId]);
-      if (scheduleNext) {
-        flowPlaylistConfig.scheduleNextRun(safeFlowId);
-      }
-      return {
-        jobIds: seeded?.jobIds || [],
-        tracksQueued: Number(seeded?.tracksQueued || 0),
-        empty: Number(seeded?.tracksQueued || 0) === 0,
-        flowName: latestFlow.name,
-      };
-    },
-    {
-      clearPending: false,
-      async beforeMutation(): Promise<FlowOutcome | undefined> {
+  const result = await withPlaylistOperationLock(() =>
+    withPlaylistMutation(
+      safeFlowId,
+      async (): Promise<FlowOutcome> => {
         if (!isLatestPlaylistOperationToken(tokenScope, token)) {
           return { cancelled: true };
         }
-        const current = flowPlaylistConfig.getFlow(safeFlowId);
-        if (!current) return { missing: true };
-        if (requireEnabled && current.enabled !== true) return { skipped: true };
-        if (!isOwnerActive(current.ownerUserId)) {
+        const latestFlow = flowPlaylistConfig.getFlow(safeFlowId);
+        if (!latestFlow) return { missing: true };
+        if (requireEnabled && latestFlow.enabled !== true) return { skipped: true };
+        if (!isOwnerActive(latestFlow.ownerUserId)) {
           return { skipped: true, inactiveOwner: true };
         }
-        if (JSON.stringify(current) !== flowSnapshot) {
-          throw new Error("Flow settings changed while planning; retrying");
-        }
-        const existingFlowJobs = downloadTracker.getByPlaylistId(safeFlowId);
-        await cancelPlaylistDownloadWork(safeFlowId, existingFlowJobs, { lock: false });
+        assertRecipeUnchanged(latestFlow);
+
+        activatePlaylistDownloadGeneration(safeFlowId);
+        recordFlowGenerationStarted({ flowId: safeFlowId });
+        playlistManager.updateConfig();
+        await playlistManager.weeklyReset([safeFlowId]);
+        downloadTracker.clearByPlaylistId(safeFlowId);
+
         if (!isLatestPlaylistOperationToken(tokenScope, token)) {
           return { cancelled: true };
         }
-        return undefined;
+        const seeded = await flowSeedingWorker().seedFlowRun(safeFlowId, latestFlow, {
+          size: effectiveSize,
+          plan: preparedPlan,
+        });
+        playlistManager.requestPlaylistSync([safeFlowId]);
+        if (scheduleNext) {
+          flowPlaylistConfig.scheduleNextRun(safeFlowId);
+        }
+        return {
+          jobIds: seeded?.jobIds || [],
+          tracksQueued: Number(seeded?.tracksQueued || 0),
+          empty: Number(seeded?.tracksQueued || 0) === 0,
+          flowName: latestFlow.name,
+        };
       },
-    },
+      {
+        clearPending: false,
+        async beforeMutation(): Promise<FlowOutcome | undefined> {
+          if (!isLatestPlaylistOperationToken(tokenScope, token)) {
+            return { cancelled: true };
+          }
+          const current = flowPlaylistConfig.getFlow(safeFlowId);
+          if (!current) return { missing: true };
+          if (requireEnabled && current.enabled !== true) return { skipped: true };
+          if (!isOwnerActive(current.ownerUserId)) {
+            return { skipped: true, inactiveOwner: true };
+          }
+          assertRecipeUnchanged(current);
+          const existingFlowJobs = downloadTracker.getByPlaylistId(safeFlowId);
+          await cancelPlaylistDownloadWork(safeFlowId, existingFlowJobs, { lock: false });
+          if (!isLatestPlaylistOperationToken(tokenScope, token)) {
+            return { cancelled: true };
+          }
+          return undefined;
+        },
+      },
+    ),
   );
 
   if (Array.isArray(result?.jobIds)) rescanLibraryForFlows([safeFlowId]);
@@ -541,7 +554,6 @@ async function createStaticPlaylistLocked({
   sourceName = null,
   sourceFlowId = null,
   discoverPresetId = null,
-  type = null,
   tracks = [],
   ownerUserId = null,
   importSource = null,
@@ -557,7 +569,6 @@ async function createStaticPlaylistLocked({
       sourceName,
       sourceFlowId,
       discoverPresetId,
-      type: typeof type === "string" ? type : null,
       tracks: normalizedTracks,
       ownerUserId,
       importSource: isRecord(importSource) ? importSource : null,
@@ -1008,57 +1019,41 @@ export async function processPlaylistOperation(
   payload: v.InferOutput<typeof playlistOperationSchema>,
 ) {
   const { kind } = payload;
-  return withHonkerLock(
-    "weekly-flow-operation",
-    async () => {
-      switch (kind) {
-        case "share-import":
-          return (await import("../shareLinks/import.ts")).importShare(payload);
-        case "manual-start-flow":
-          return runFlowSeed(payload);
-        case "scheduled-flow-refresh":
-          return runFlowSeed({
-            ...payload,
-            requireEnabled: true,
-            scheduleNext: true,
-          });
-        case "enable-flow-refresh":
-          return runFlowSeed({
-            ...payload,
-            requireEnabled: true,
-          });
-        case "disable-flow-cleanup":
-          return runFlowCleanup(payload);
-        case "delete-flow":
-          return deleteFlow(payload);
-        case "reset-playlists":
-          return resetPlaylists(payload);
-        case "shared-playlist-create":
-          return createStaticPlaylist(payload);
-        case "shared-playlist-append-tracks":
-          return appendStaticPlaylistTracks(payload);
-        case "shared-playlist-update":
-          return updateStaticPlaylist(payload);
-        case "shared-playlist-bulk": {
-          const { processStaticPlaylistBulkOperation } = await import("./bulkOperations.ts");
-          return processStaticPlaylistBulkOperation(payload.operationId);
-        }
-        case "shared-playlist-delete-track":
-          return deleteStaticPlaylistTrack(payload);
-        case "shared-playlist-research-track":
-          return researchPlaylistTrack(payload);
-        case "library-track-research":
-          return researchLibraryTrack(payload);
-        case "shared-playlist-delete":
-          return deleteStaticPlaylist(payload);
-        default:
-          throw new Error(`Unknown playlist operation: ${kind || "unknown"}`);
+  if (kind === "manual-start-flow") return runFlowSeed(payload);
+  if (kind === "scheduled-flow-refresh") {
+    return runFlowSeed({ ...payload, requireEnabled: true, scheduleNext: true });
+  }
+  if (kind === "enable-flow-refresh") return runFlowSeed({ ...payload, requireEnabled: true });
+  return withPlaylistOperationLock(async () => {
+    switch (kind) {
+      case "share-import":
+        return (await import("../shareLinks/import.ts")).importShare(payload);
+      case "disable-flow-cleanup":
+        return runFlowCleanup(payload);
+      case "delete-flow":
+        return deleteFlow(payload);
+      case "reset-playlists":
+        return resetPlaylists(payload);
+      case "shared-playlist-create":
+        return createStaticPlaylist(payload);
+      case "shared-playlist-append-tracks":
+        return appendStaticPlaylistTracks(payload);
+      case "shared-playlist-update":
+        return updateStaticPlaylist(payload);
+      case "shared-playlist-bulk": {
+        const { processStaticPlaylistBulkOperation } = await import("./bulkOperations.ts");
+        return processStaticPlaylistBulkOperation(payload.operationId);
       }
-    },
-    {
-      ttlSeconds: 180,
-      waitTimeoutMs: 30 * 60 * 1000,
-      retryDelayMs: 250,
-    },
-  );
+      case "shared-playlist-delete-track":
+        return deleteStaticPlaylistTrack(payload);
+      case "shared-playlist-research-track":
+        return researchPlaylistTrack(payload);
+      case "library-track-research":
+        return researchLibraryTrack(payload);
+      case "shared-playlist-delete":
+        return deleteStaticPlaylist(payload);
+      default:
+        throw new Error(`Unknown playlist operation: ${kind || "unknown"}`);
+    }
+  });
 }

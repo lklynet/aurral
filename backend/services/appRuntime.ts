@@ -67,6 +67,7 @@ const WORKER_STARTS: Record<(typeof HONKER_QUEUE_NAMES)[number], [string, string
     "./playlists/playlistOperationWorker.ts",
     "startPlaylistOperationWorker",
   ],
+  "flow-run": ["./playlists/playlistOperationWorker.ts", "startFlowRunWorker"],
   "playlist-mbid-enrichment": [
     "./playlistMbidEnrichmentWorker.ts",
     "startPlaylistMbidEnrichmentWorker",

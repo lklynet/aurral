@@ -22,7 +22,7 @@ import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQ
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
-export const STORED_DATA_MIGRATION_VERSION = 1;
+export const STORED_DATA_MIGRATION_VERSION = 3;
 export const STORED_DATA_MIGRATION_SETTING = "storedDataMigration";
 export const IDENTITY_MARKER_MIGRATION_VERSION = 2;
 export const IDENTITY_MARKER_MIGRATION_SETTING = "identityMarkerMigration";
@@ -36,6 +36,7 @@ export const HONKER_QUEUE_NAMES = [
   "system-task-maintenance",
   "system-task-inbox",
   "weekly-flow-operation",
+  "flow-run",
   "slskd-pipeline",
   "playlist-mbid-enrichment",
   "library-scan",
@@ -382,6 +383,17 @@ const playlistOperation = registerQueue({
 
 export const getPlaylistOperationQueue = playlistOperation.getQueue;
 export const enqueuePlaylistOperationJob = playlistOperation.enqueueJob;
+
+const flowRun = registerQueue({
+  name: "flow-run",
+  visibilityTimeoutS: 3600,
+  maxAttempts: 3,
+  workerModule: "./playlists/playlistOperationWorker.ts",
+  workerStartFn: "startFlowRunWorker",
+});
+
+export const getFlowRunQueue = flowRun.getQueue;
+export const enqueueFlowRunJob = flowRun.enqueueJob;
 
 const playlistMbidEnrichment = registerQueue({
   name: "playlist-mbid-enrichment",

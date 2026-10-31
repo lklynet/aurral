@@ -20,10 +20,7 @@ process.on("message", async (message) => {
     const { reloadDiscoveryPersistedCache } = await import("../discovery/persistence.ts");
     reloadDiscoveryPersistedCache();
     const { flowTrackSource } = await import("./flowTrackSource.ts");
-    const plan = await flowTrackSource.buildFlowRunPlan(
-      Reflect.get(message, "flow"),
-      Reflect.get(message, "options"),
-    );
+    const plan = await flowTrackSource.buildFlowRunPlan(Reflect.get(message, "flow"));
     resultExitCode = 0;
     awaitingAcknowledgement = true;
     process.send!({ type: "flow-plan-result", plan });

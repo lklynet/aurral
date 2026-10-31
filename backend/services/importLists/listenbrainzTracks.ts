@@ -1,4 +1,4 @@
-import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.ts";
+import { dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 
 const PLAYLIST_TRACK_EXTENSION = "https://musicbrainz.org/doc/jspf#track";
 const TRACK_URI_PREFIX = "https://musicbrainz.org/recording/";

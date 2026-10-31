@@ -14,6 +14,7 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "system-task": "downloads",
   playback: "downloads",
   "weekly-flow-operation": "downloads",
+  "flow-run": "downloads",
   "slskd-pipeline": "downloads",
   "playlist-mbid-enrichment": "downloads",
   "library-files": "downloads",

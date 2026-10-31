@@ -12,7 +12,6 @@ import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
 import deezerLogo from "../../../images/logos/deezer-color.svg";
 import {
   formatTrackCountLabel,
-  isEditorialFlow,
   type Flow,
   type PlaylistStats,
   type PlaylistStatus,
@@ -74,7 +73,6 @@ export const formatFlowTrackLabel = (count: number, stats: PlaylistStats | null 
   Number(stats?.total || 0) > 0 ? formatTrackCountLabel(count, stats) : formatTrackTotal(count);
 
 export function describeFlowSchedule(flow: Partial<Flow> | null | undefined, now: number) {
-  if (isEditorialFlow(flow)) return "No longer updates";
   if (flow?.enabled !== true) return "Off";
   const next = formatNextRun(flow.nextRunAt, now);
   if (!next) return null;

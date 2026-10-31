@@ -1,97 +1,98 @@
+import { Fragment, useId } from "react";
 import {
-  MixSlider,
-  getFocusDraftValidation,
   CommaTokenInput,
-  fetchFlowTagSuggestions,
   fetchFlowArtistSuggestions,
-  WEEKDAY_OPTIONS,
-  SCHEDULE_HOUR_OPTIONS,
-} from "./MixSlider.tsx";
+  fetchFlowTagSuggestions,
+} from "./CommaTokenInput.tsx";
+import PillToggle from "../../../components/PillToggle";
 import Tooltip from "../../../components/Tooltip";
 import { Select } from "../../../components/Select";
-import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
+import { FLOW_SOURCES, normalizeScheduleDays, type FlowSource } from "../../../../../lib/flows.ts";
+import {
+  FOCUS_NEEDS_SEEDS,
+  flowDraftTotal,
+  focusNeedsSeeds,
+  type FlowDraft,
+} from "../flowPageUtils.ts";
 
 type FlowDraftUpdater = (updater: (prev: FlowDraft) => FlowDraft) => void;
 
-interface FlowScheduleFieldsProps {
-  draft: FlowDraft;
-  inputClassName?: string;
-  onDraftChange: FlowDraftUpdater;
-  onClearError?: () => void;
-  sizeLabel?: string;
-}
+const SOURCES: Record<FlowSource, { label: string; description: string }> = {
+  discover: { label: "Discover", description: "Your recommendations" },
+  mix: { label: "Library", description: "Artists you own, tracks you don't" },
+  trending: { label: "Trending", description: "Trending this week" },
+  focus: { label: "Focus", description: "Similar artists or your recent listening" },
+  newReleases: { label: "New releases", description: "Recent albums you're missing" },
+};
 
-interface PresetRecipeFieldsProps extends FlowScheduleFieldsProps {
-  errorMessage?: string | null;
-  title: string;
-  description: string;
-}
+const MAX_SOURCE_TRACKS = 100;
 
-interface FlowFormFieldsProps extends FlowScheduleFieldsProps {
-  errorMessage?: string | null;
-  normalizeMixPercent: typeof normalizeMixPercent;
-}
+const WEEKDAY_OPTIONS = [
+  { id: 0, short: "Su", full: "Sunday" },
+  { id: 1, short: "M", full: "Monday" },
+  { id: 2, short: "T", full: "Tuesday" },
+  { id: 3, short: "W", full: "Wednesday" },
+  { id: 4, short: "Th", full: "Thursday" },
+  { id: 5, short: "F", full: "Friday" },
+  { id: 6, short: "S", full: "Saturday" },
+];
 
-export function FlowScheduleFields({
+const SCHEDULE_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
+  value: `${String(hour).padStart(2, "0")}:00`,
+  label: `${hour % 12 || 12}:00 ${hour >= 12 ? "PM" : "AM"}`,
+}));
+
+const toTrackCount = (value: string) =>
+  Math.min(MAX_SOURCE_TRACKS, Math.max(0, Math.round(Number(value) || 0)));
+
+export function FlowFormFields({
   draft,
   inputClassName = "flow-page__field-control",
+  errorMessage,
   onDraftChange,
   onClearError,
-  sizeLabel = "Tracks",
-}: FlowScheduleFieldsProps) {
-  const updateDraft = (updater: (prev: FlowDraft) => FlowDraft) => {
-    onDraftChange((prev) => updater(prev));
-    if (onClearError) onClearError();
+}: {
+  draft: FlowDraft;
+  inputClassName?: string;
+  errorMessage?: string | null;
+  onDraftChange: FlowDraftUpdater;
+  onClearError?: () => void;
+}) {
+  const updateDraft: FlowDraftUpdater = (updater) => {
+    onDraftChange(updater);
+    onClearError?.();
   };
-  const scheduleDays = Array.isArray(draft?.scheduleDays)
-    ? [
-        ...new Set(
-          draft.scheduleDays
-            .map((entry) => Number(entry))
-            .filter((entry) => Number.isFinite(entry) && entry >= 0 && entry <= 6),
-        ),
-      ].sort((a, b) => a - b)
-    : [];
-  const scheduleTime = String(draft?.scheduleTime || "00:00");
+  const setCount = (source: FlowSource, count: number) =>
+    updateDraft((prev) => ({ ...prev, counts: { ...prev.counts, [source]: count } }));
+  const scheduleDays = normalizeScheduleDays(draft.scheduleDays);
+  const idPrefix = useId();
+  const yearInput = (key: "yearFrom" | "yearTo", label: string) => (
+    <input
+      type="number"
+      min="1000"
+      max="9999"
+      step="1"
+      inputMode="numeric"
+      placeholder="Any"
+      aria-label={label}
+      className={`${inputClassName} flow-page__field-input--size`}
+      value={draft[key] ?? ""}
+      onChange={(event) => {
+        const value = event.target.value;
+        updateDraft((prev) => ({ ...prev, [key]: value }));
+      }}
+    />
+  );
 
   return (
-    <div className="flow-page__form-section">
-      <div className="flow-page__schedule-row">
-        <div className="flow-page__field">
-          <label className="flow-page__field-label">{sizeLabel}</label>
-          <div className="flow-page__field-round">
-            <input
-              type="number"
-              min="1"
-              max="100"
-              className={`${inputClassName} flow-page__field-input--size`}
-              value={draft.size}
-              onChange={(event) => {
-                const value = event.target.value;
-                updateDraft((prev) => ({ ...prev, size: value }));
-              }}
-            />
-          </div>
-        </div>
-        <div className="flow-page__field">
-          <label className="flow-page__field-label">Update hour</label>
-          <div className="flow-page__field-round flow-page__field-round--select">
-            <Select
-              className={`${inputClassName} flow-page__field-select`}
-              aria-label="Update hour"
-              value={scheduleTime}
-              onChange={(time) =>
-                updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))
-              }
-              options={SCHEDULE_HOUR_OPTIONS}
-            />
-          </div>
-        </div>
-        <div className="flow-page__field flow-page__field--schedule-days">
-          <label className="flow-page__field-label">Update days</label>
-          <div className="flow-page__weekday-grid">
+    <div className="flow-page__form">
+      <div className="flow-page__form-section">
+        <div className="flow-page__schedule-line">
+          <span className="flow-page__schedule-word">Updates</span>
+          <div className="flow-page__weekday-grid" role="group" aria-label="Update days">
             {WEEKDAY_OPTIONS.map((day) => {
               const checked = scheduleDays.includes(day.id);
+              const isLastDay = checked && scheduleDays.length === 1;
               return (
                 <Tooltip key={day.id} content={day.full}>
                   <button
@@ -99,29 +100,16 @@ export function FlowScheduleFields({
                     className={`flow-page__weekday${checked ? " is-active" : ""}`}
                     aria-label={day.full}
                     aria-pressed={checked}
-                    aria-disabled={checked && scheduleDays.length === 1}
+                    aria-disabled={isLastDay}
                     onClick={() => {
-                      if (checked && scheduleDays.length === 1) return;
+                      if (isLastDay) return;
                       updateDraft((prev) => {
-                        const current = Array.isArray(prev?.scheduleDays) ? prev.scheduleDays : [];
-                        const normalized = [
-                          ...new Set(
-                            current
-                              .map((entry) => Number(entry))
-                              .filter(
-                                (entry) => Number.isFinite(entry) && entry >= 0 && entry <= 6,
-                              ),
-                          ),
-                        ];
-                        if (checked && normalized.length === 1) {
-                          return prev;
-                        }
-                        const next = checked
-                          ? normalized.filter((entry) => entry !== day.id)
-                          : [...normalized, day.id];
+                        const current = normalizeScheduleDays(prev.scheduleDays);
                         return {
                           ...prev,
-                          scheduleDays: next.sort((a, b) => a - b),
+                          scheduleDays: checked
+                            ? current.filter((entry) => entry !== day.id)
+                            : normalizeScheduleDays([...current, day.id]),
                         };
                       });
                     }}
@@ -132,238 +120,124 @@ export function FlowScheduleFields({
               );
             })}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function PresetRecipeFields({
-  draft,
-  inputClassName = "flow-page__field-control",
-  errorMessage,
-  onDraftChange,
-  onClearError,
-  title,
-  description,
-  sizeLabel = "Tracks",
-}: PresetRecipeFieldsProps) {
-  return (
-    <div className="flow-page__form">
-      <div className="flow-page__preset-recipe">
-        <p className="flow-page__preset-recipe-label">{title}</p>
-        <p className="flow-page__preset-recipe-desc">{description}</p>
-      </div>
-      <FlowScheduleFields
-        draft={draft}
-        inputClassName={inputClassName}
-        onDraftChange={onDraftChange}
-        onClearError={onClearError}
-        sizeLabel={sizeLabel}
-      />
-      {errorMessage ? <div className="flow-page__error-text">{errorMessage}</div> : null}
-    </div>
-  );
-}
-
-export function ReleaseRadarRecipeFields(
-  props: Omit<PresetRecipeFieldsProps, "title" | "description" | "sizeLabel">,
-) {
-  return (
-    <PresetRecipeFields
-      {...props}
-      title="New releases"
-      description="Picks a track from each recent album missing from your Library. Includes only Library artists and may return fewer than Max tracks."
-      sizeLabel="Max tracks"
-    />
-  );
-}
-
-export function FlowFormFields({
-  draft,
-  inputClassName = "flow-page__field-control",
-  errorMessage,
-  onDraftChange,
-  onClearError,
-  normalizeMixPercent,
-}: FlowFormFieldsProps) {
-  const updateDraft = (updater: (prev: FlowDraft) => FlowDraft) => {
-    onDraftChange((prev) => updater(prev));
-    if (onClearError) onClearError();
-  };
-  const normalizedMix = normalizeMixPercent(draft?.mix);
-  const totalSize = Math.max(0, Math.round(Number(draft?.size) || 0));
-  const { focusEnabled, focusValidationError } = getFocusDraftValidation(
-    draft,
-    normalizeMixPercent,
-  );
-
-  const mixScaled = (() => {
-    const entries = [
-      { key: "discover", value: normalizedMix.discover },
-      { key: "mix", value: normalizedMix.mix },
-      { key: "trending", value: normalizedMix.trending },
-      { key: "focus", value: normalizedMix.focus },
-    ];
-    const scaled = entries.map((e) => ({
-      ...e,
-      raw: (e.value / 100) * totalSize,
-    }));
-    const floored = scaled.map((e) => ({
-      ...e,
-      count: Math.floor(e.raw),
-      remainder: e.raw - Math.floor(e.raw),
-    }));
-    let leftover = totalSize - floored.reduce((acc, e) => acc + e.count, 0);
-    const ordered = [...floored].sort((a, b) => b.remainder - a.remainder);
-    for (let i = 0; i < ordered.length && leftover > 0; i++) {
-      ordered[i].count += 1;
-      leftover -= 1;
-    }
-    const out: Record<string, number> = {};
-    for (const item of ordered) out[item.key] = item.count;
-    return out;
-  })();
-
-  return (
-    <div className="flow-page__form">
-      <FlowScheduleFields
-        draft={draft}
-        inputClassName={inputClassName}
-        onDraftChange={onDraftChange}
-        onClearError={onClearError}
-      />
-
-      <div className="flow-page__form-section">
-        <div className="flow-page__field-label flow-page__field-label--section">Source mix</div>
-
-        <div>
-          <MixSlider
-            mix={draft.mix}
-            trackCounts={mixScaled}
-            trailingControl={
-              <Tooltip content="Uses tracks ranked 10 to 25 instead of the top 10.">
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateDraft((prev) => ({
-                      ...prev,
-                      deepDive: !(prev?.deepDive === true),
-                    }))
-                  }
-                  className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}`}
-                  aria-pressed={draft.deepDive === true}
-                  aria-label={"Deep dive. Uses tracks ranked 10 to 25 instead of the top 10."}
-                >
-                  <span>Deep Dive</span>
-                  <span className="flow-page__mix-toggle-state">
-                    {draft.deepDive === true ? "On" : "Off"}
-                  </span>
-                </button>
-              </Tooltip>
-            }
-            onChange={(nextMix) =>
-              updateDraft((prev) => ({
-                ...prev,
-                mix: nextMix,
-              }))
-            }
-            normalizeMixPercent={normalizeMixPercent}
+          <span className="flow-page__schedule-word">at</span>
+          <Select
+            className={`${inputClassName} flow-page__field-select`}
+            aria-label="Update hour"
+            value={String(draft.scheduleTime || "00:00")}
+            onChange={(time) => updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))}
+            options={SCHEDULE_HOUR_OPTIONS}
           />
         </div>
       </div>
 
-      <div
-        className={`flow-page__form-section${focusEnabled ? "" : " flow-page__form-section--dimmed"}`}
-      >
-        <div className="flow-page__field">
-          <div className="flow-page__field-label flow-page__field-label--section">
-            Focus filters
-          </div>
-          {focusValidationError ? (
-            <div className="flow-page__warning-text">{focusValidationError}</div>
-          ) : null}
+      <div className="flow-page__form-section">
+        <div className="flow-page__section-head">
+          <span className="flow-page__section-title">Tracks</span>
+          <span className="flow-page__section-total">{flowDraftTotal(draft)}</span>
         </div>
+        <div className="flow-page__sources" role="group" aria-label="Sources">
+          {FLOW_SOURCES.map((source) => {
+            const { label, description } = SOURCES[source];
+            const count = draft.counts[source];
+            const countId = `${idPrefix}-${source}`;
+            const showFocusOptions = source === "focus" && count > 0;
+            return (
+              <Fragment key={source}>
+                <div className={`flow-page__source${count > 0 ? "" : " is-off"}`}>
+                  <label className="flow-page__source-name" htmlFor={countId}>
+                    {label}
+                  </label>
+                  {showFocusOptions ? (
+                    <div className="flow-page__source-detail">
+                      <CommaTokenInput
+                        value={draft.includeRelatedArtists}
+                        placeholder="Similar to these artists"
+                        fetchSuggestions={fetchFlowArtistSuggestions}
+                        suggestionLabel="Similar artist suggestions"
+                        onChange={(includeRelatedArtists) =>
+                          updateDraft((prev) => ({ ...prev, includeRelatedArtists }))
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <span className="flow-page__source-detail">{description}</span>
+                  )}
+                  <input
+                    id={countId}
+                    type="number"
+                    min="0"
+                    max={MAX_SOURCE_TRACKS}
+                    inputMode="numeric"
+                    aria-label={`${label} tracks`}
+                    className={`${inputClassName} flow-page__source-count`}
+                    value={count}
+                    onChange={(event) => setCount(source, toTrackCount(event.target.value))}
+                  />
+                </div>
+                {showFocusOptions ? (
+                  <label className="flow-page__switch flow-page__source-option">
+                    <PillToggle
+                      checked={draft.recentListening === true}
+                      aria-label="Also use my recent listening"
+                      onChange={(event) =>
+                        updateDraft((prev) => ({ ...prev, recentListening: event.target.checked }))
+                      }
+                    />
+                    Also use my recent listening
+                  </label>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </div>
+        {focusNeedsSeeds(draft) ? (
+          <div className="flow-page__warning-text">{FOCUS_NEEDS_SEEDS}</div>
+        ) : null}
+        <div className="flow-page__toggle-row">
+          <label className="flow-page__switch">
+            <PillToggle
+              checked={draft.deepDive === true}
+              aria-label="Deeper cuts"
+              onChange={(event) =>
+                updateDraft((prev) => ({ ...prev, deepDive: event.target.checked }))
+              }
+            />
+            Deeper cuts
+          </label>
+          <span className="flow-page__hint">
+            {"Tracks ranked 10 to 25 instead of each artist's top 10"}
+          </span>
+        </div>
+      </div>
 
-        <div className="flow-page__form-grid">
-          <div className="flow-page__field">
-            <label className="flow-page__field-label">Tags (genre, decade, mood)</label>
+      <div className="flow-page__form-section">
+        <div className="flow-page__section-title">Filters</div>
+        <div className="flow-page__filter-row">
+          <div className="flow-page__field flow-page__field--grow">
+            <label className="flow-page__field-label">Tags</label>
             <CommaTokenInput
               value={draft.includeTags}
-              placeholder="indie, 80s, happy"
+              placeholder="hip hop, 80s, happy"
               fetchSuggestions={fetchFlowTagSuggestions}
-              suggestionLabel="Genre tag suggestions"
-              onChange={(nextValue) =>
-                updateDraft((prev) => ({
-                  ...prev,
-                  includeTags: nextValue,
-                }))
-              }
+              suggestionLabel="Tag suggestions"
+              excludable
+              onChange={(includeTags) => updateDraft((prev) => ({ ...prev, includeTags }))}
             />
+            <div className="flow-page__hint">Start a tag with - to leave it out.</div>
           </div>
-
           <div className="flow-page__field">
-            <label className="flow-page__field-label">Related artists</label>
-            <CommaTokenInput
-              value={draft.includeRelatedArtists}
-              placeholder="artist a, artist b"
-              fetchSuggestions={fetchFlowArtistSuggestions}
-              suggestionLabel="Related artist suggestions"
-              onChange={(nextValue) =>
-                updateDraft((prev) => ({
-                  ...prev,
-                  includeRelatedArtists: nextValue,
-                }))
-              }
-            />
-          </div>
-
-          <div className="flow-page__field">
-            <label className="flow-page__field-label">Release year(s)</label>
+            <label className="flow-page__field-label">Released</label>
             <div className="flow-page__year-range">
-              <div className="flow-page__field-round">
-                <input
-                  type="number"
-                  min="1000"
-                  max="9999"
-                  step="1"
-                  inputMode="numeric"
-                  placeholder="Any"
-                  aria-label="Release year from"
-                  className={`${inputClassName} flow-page__field-input--size`}
-                  value={draft.yearFrom ?? ""}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    updateDraft((prev) => ({ ...prev, yearFrom: value }));
-                  }}
-                />
-              </div>
-              <span className="flow-page__year-range-sep" aria-hidden="true">
-                –
-              </span>
-              <div className="flow-page__field-round">
-                <input
-                  type="number"
-                  min="1000"
-                  max="9999"
-                  step="1"
-                  inputMode="numeric"
-                  placeholder="Any"
-                  aria-label="Release year to"
-                  className={`${inputClassName} flow-page__field-input--size`}
-                  value={draft.yearTo ?? ""}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    updateDraft((prev) => ({ ...prev, yearTo: value }));
-                  }}
-                />
-              </div>
+              {yearInput("yearFrom", "Release year from")}
+              <span className="flow-page__year-range-sep">to</span>
+              {yearInput("yearTo", "Release year to")}
             </div>
           </div>
         </div>
       </div>
 
-      {errorMessage && <div className="flow-page__error-text">{errorMessage}</div>}
+      {errorMessage ? <div className="flow-page__error-text">{errorMessage}</div> : null}
     </div>
   );
 }

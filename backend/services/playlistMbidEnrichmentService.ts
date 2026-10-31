@@ -9,13 +9,12 @@ import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
+import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylistConfig.ts";
 import {
-  flowPlaylistConfig,
   normalizePlaylistTrack,
   tracksShareMembership,
   type PlaylistTrack,
-  type StaticPlaylist,
-} from "./playlists/flowPlaylistConfig.ts";
+} from "./playlists/playlistTracks.ts";
 import { dbOps } from "../db/helpers/index.ts";
 
 const PLAYLIST_MBID_ENRICHMENT_DELAY_SECONDS = 20;

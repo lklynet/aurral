@@ -3,10 +3,8 @@ import * as v from "valibot";
 import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
-import {
-  flowPlaylistConfig,
-  orderJobsByPlaylistTracks,
-} from "../../../services/playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
+import { orderJobsByPlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
 import { getPlaylistStatusSnapshot } from "../../../services/playlists/playlistStatusSnapshot.ts";
 import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";

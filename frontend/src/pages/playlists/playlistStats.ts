@@ -4,36 +4,7 @@ import { formatDateTime } from "../../utils/dateTime.ts";
 
 type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
 
-export interface FlowMix {
-  discover: number;
-  mix: number;
-  trending: number;
-  focus: number;
-}
-
-export interface Flow {
-  artworkRevision?: number;
-  id: string;
-  name: string;
-  enabled: boolean;
-  type: string | null;
-  discoverPresetId: string | null;
-  size: number;
-  mix: FlowMix;
-  tags: string[];
-  relatedArtists: string[];
-  deepDive: boolean;
-  recordHistory: boolean;
-  yearFrom: number | null;
-  yearTo: number | null;
-  scheduleDays: number[];
-  scheduleTime: string;
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  ownerUserId: number | null;
-  ownerUsername: string | null;
-  showInLibrary: boolean;
-}
+export type Flow = PlaylistStatusSnapshot["flows"][number];
 
 export type PlaylistStats = PlaylistStatusSnapshot["stats"];
 
@@ -53,18 +24,9 @@ export interface StaticPlaylist {
   trackIdentities: string[];
 }
 
-export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlaylists"> & {
-  flows: Flow[];
+export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "sharedPlaylists"> & {
   sharedPlaylists: StaticPlaylist[];
 };
-
-export const RELEASE_RADAR_PRESET_ID = "release-radar";
-
-export const isReleaseRadarFlow = (flow: Partial<Flow> | null | undefined) =>
-  String(flow?.discoverPresetId || "").trim() === RELEASE_RADAR_PRESET_ID;
-
-export const isEditorialFlow = (flow: Partial<Flow> | null | undefined) =>
-  String(flow?.type || "").trim() === "editorial";
 
 const statCount = (value: number | null | undefined) => Number(value || 0);
 
@@ -73,11 +35,8 @@ export const getFlowDisplayTrackCount = (
   stats: PlaylistStats | null | undefined,
   trackListLength = 0,
 ) => {
-  if (isReleaseRadarFlow(flow)) {
-    const actual = Math.max(statCount(trackListLength), statCount(stats?.total));
-    return actual > 0 ? actual : statCount(flow?.size);
-  }
-  return Math.max(statCount(flow?.size), statCount(trackListLength), statCount(stats?.total));
+  const found = Math.max(statCount(trackListLength), statCount(stats?.total));
+  return found > 0 ? found : statCount(flow?.size);
 };
 
 export const getStaticPlaylistTrackCount = (

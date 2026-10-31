@@ -25,19 +25,11 @@ import { getApiErrorMessage } from "../onboardingUtils.tsx";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
-import {
-  formatFlowLastRun,
-  getFlowDisplayTrackCount,
-  isEditorialFlow,
-  isReleaseRadarFlow,
-} from "./playlistStats";
+import { formatFlowLastRun, getFlowDisplayTrackCount } from "./playlistStats";
 import {
   buildFlowFromForm,
-  buildReleaseRadarFlowFromForm,
   flowToForm,
   isFlowDirty,
-  isScheduleOnlyFlowDirty,
-  normalizeMixPercent,
   normalizeNameKey,
   reserveUniqueName,
 } from "./flowPageUtils";
@@ -58,11 +50,6 @@ import { asApiError } from "../../utils/api/core.ts";
 
 const FlowFormFields = lazy(() =>
   import("./components/flowFormComponents.tsx").then((m) => ({ default: m.FlowFormFields })),
-);
-const ReleaseRadarRecipeFields = lazy(() =>
-  import("./components/flowFormComponents.tsx").then((m) => ({
-    default: m.ReleaseRadarRecipeFields,
-  })),
 );
 
 const DETAIL_TABS = [
@@ -148,15 +135,10 @@ function FlowDetail({ flow }: { flow: Flow }) {
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
-  const retired = isEditorialFlow(flow);
-  const activeTab = retired ? "tracks" : tab;
-  const isPresetRecipe = isReleaseRadarFlow(flow);
-  const recipeDirty = isPresetRecipe
-    ? isScheduleOnlyFlowDirty(flow, draft)
-    : isFlowDirty(flow, draft);
+  const recipeDirty = isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
-  const canRunNow = !retired && enabled && !running && !activity;
+  const canRunNow = enabled && !running && !activity;
   const metaParts = [
     flow.ownerUsername || user?.username || null,
     formatFlowTrackLabel(getFlowDisplayTrackCount(flow, stats, tracks.length), stats),
@@ -194,9 +176,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
     setSavingRecipe(true);
     setRecipeError("");
     try {
-      const payload = isReleaseRadarFlow(flow)
-        ? buildReleaseRadarFlowFromForm(flow, draft)
-        : buildFlowFromForm(draft);
+      const payload = buildFlowFromForm(draft);
       const response = await updateFlow(payload);
       setDraft(flowToForm(response?.flow || { ...flow, ...payload }));
       showSuccess("Recipe saved");
@@ -313,13 +293,11 @@ function FlowDetail({ flow }: { flow: Flow }) {
             onClick={() => canRunNow && handleRunNow()}
             aria-disabled={!canRunNow}
             label={
-              retired
-                ? "This flow no longer updates"
-                : !enabled
-                  ? "Turn the flow on to run it"
-                  : running || activity
-                    ? "Flow is running"
-                    : "Run now"
+              !enabled
+                ? "Turn the flow on to run it"
+                : running || activity
+                  ? "Flow is running"
+                  : "Run now"
             }
           >
             {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
@@ -333,11 +311,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
               <DotLoader size="xs" label={null} />
               {activity}
             </p>
-          ) : retired ? (
-            <p className="native-library-detail__meta">
-              Editorial playlists moved to Deezer. This flow no longer updates. Existing tracks
-              stay. <Link to="/discover/playlists">Browse playlists</Link>
-            </p>
           ) : null
         }
         actions={
@@ -350,12 +323,10 @@ function FlowDetail({ flow }: { flow: Flow }) {
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            {retired ? null : (
-              <span className="playlist-detail__switch">
-                <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
-                <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
-              </span>
-            )}
+            <span className="playlist-detail__switch">
+              <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
+              <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
+            </span>
             <LibraryItemMenu
               label={flow.name}
               contextMenu={false}
@@ -426,7 +397,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
           className="artist-segmented playlist-detail__tabs"
           role="tablist"
           aria-label="Flow views"
-          hidden={retired}
         >
           {DETAIL_TABS.map((entry) => (
             <button
@@ -448,11 +418,11 @@ function FlowDetail({ flow }: { flow: Flow }) {
         </div>
         <div
           role="tabpanel"
-          id={`flow-panel-${activeTab}`}
-          aria-labelledby={`flow-tab-${activeTab}`}
+          id={`flow-panel-${tab}`}
+          aria-labelledby={`flow-tab-${tab}`}
           className="playlist-detail__panel"
         >
-          {activeTab === "tracks" ? (
+          {tab === "tracks" ? (
             <PlaylistTracks
               entry={flow}
               kind="flow"
@@ -467,14 +437,10 @@ function FlowDetail({ flow }: { flow: Flow }) {
               recordHistory={flow.recordHistory !== false}
             />
           ) : null}
-          {activeTab === "recipe" ? (
+          {tab === "recipe" ? (
             <div className="flow-page__form flow-page__detail-recipe">
               <Suspense fallback={null}>
-                {isReleaseRadarFlow(flow) ? (
-                  <ReleaseRadarRecipeFields {...recipeFieldProps} />
-                ) : (
-                  <FlowFormFields {...recipeFieldProps} normalizeMixPercent={normalizeMixPercent} />
-                )}
+                <FlowFormFields {...recipeFieldProps} />
               </Suspense>
               <div className="flow-page__recipe-actions">
                 {recipeDirty ? (

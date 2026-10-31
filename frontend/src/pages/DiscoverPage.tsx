@@ -60,16 +60,12 @@ const saveServerLayout = (layout: DiscoverSection[]) =>
   parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } }));
 
 const TOP_TAG_LIMIT = 12;
-const FEED_LIST_LIMIT = 6;
 
 const feedRailClass = (feedStyle: DiscoverFeedStyle) =>
   `discover-feed-rail discover-feed-rail--${feedStyle}`;
 
-const feedItemLimit = (feedStyle: DiscoverFeedStyle) =>
-  feedStyle === "list" ? FEED_LIST_LIMIT : DISCOVER_PREVIEW_ITEM_LIMIT;
-
 const feedSkeletons = (feedStyle: DiscoverFeedStyle, round = false) =>
-  Array.from({ length: FEED_LIST_LIMIT }, (_, index) => (
+  Array.from({ length: DISCOVER_PREVIEW_ITEM_LIMIT }, (_, index) => (
     <SkeletonFeedTile key={index} feedStyle={feedStyle} round={round} />
   ));
 
@@ -409,7 +405,7 @@ function DiscoverPage() {
         >
           {newsArticles.length > 0 ? (
             newsArticles
-              .slice(0, feedItemLimit(feedStyle))
+              .slice(0, DISCOVER_PREVIEW_ITEM_LIMIT)
               .map((article) => (
                 <NewsFeedTile
                   key={article.id}
@@ -587,7 +583,7 @@ function DiscoverPage() {
             headerActions={nearbyHeaderActions}
             className={feedRailClass(feedStyle)}
           >
-            {nearbyShows.slice(0, feedItemLimit(feedStyle)).map((show) => (
+            {nearbyShows.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((show) => (
               <ShowFeedTile key={show.id} show={show} feedStyle={feedStyle} />
             ))}
           </DiscoverRail>

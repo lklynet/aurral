@@ -250,7 +250,7 @@ test("deleting a library track removes it from playlists that referenced its dow
   }
 });
 
-test("deleting a library track preserves a file still referenced by a playlist job", async () => {
+test("deleting a library track deletes a file a playlist reused and drops it from that playlist", async () => {
   const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-shared-file-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-shared-file-${process.pid}-${Date.now()}`;
@@ -298,15 +298,26 @@ test("deleting a library track preserves a file still referenced by a playlist j
   assert.ok(playlistJobId != null);
   downloadTracker.setDone(libraryJobId, filePath, "Album");
   downloadTracker.setDone(playlistJobId, filePath, "Album");
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: `${identity} playlist`,
+    tracks: [
+      { artistName: "Artist", trackName: "Track", canonicalJobId: playlistJobId },
+      { artistName: "Artist", trackName: "Imported Track" },
+    ],
+  });
+  const keptTracks = playlist.tracks.slice(1);
 
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   try {
     assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
-    assert.equal(await fsp.readFile(filePath, "utf8"), "shared audio");
+    await assert.rejects(fsp.access(filePath));
     assert.equal(downloadTracker.getJob(libraryJobId), null);
-    assert.equal(downloadTracker.getJob(playlistJobId)?.finalPath, filePath);
+    assert.equal(downloadTracker.getJob(playlistJobId), null);
+    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.tracks, keptTracks);
   } finally {
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
       "aurral",
       filePath,

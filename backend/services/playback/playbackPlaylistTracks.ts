@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { flowPlaylistConfig, orderJobsByPlaylistTracks } from "../playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
+import { orderJobsByPlaylistTracks } from "../playlists/playlistTracks.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { resolveExistingTrackPath, resolveDownloadRoot } from "../downloadPaths.ts";
 

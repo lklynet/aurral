@@ -1115,3 +1115,27 @@ test("classifies reused Lidarr files without making them eligible for upgrades",
   assert.equal(decorated.qualityState, "external");
   assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");
 });
+
+test("clearing a playlist removes all of its jobs or none of them", () => {
+  const tracker = new DownloadTracker();
+  for (const trackName of ["First", "Second"]) {
+    assert.ok(tracker.addJob({ artistName: "Artist", trackName }, "atomic-clear") != null);
+  }
+  db.exec(
+    `CREATE TEMP TRIGGER fail_clear BEFORE DELETE ON playlist_download_jobs WHEN OLD.track_name = 'Second' BEGIN SELECT RAISE(ABORT, 'disk gone'); END`,
+  );
+  try {
+    assert.throws(() => tracker.clearByPlaylistId("atomic-clear"), /disk gone/);
+  } finally {
+    db.exec("DROP TRIGGER fail_clear");
+  }
+
+  assert.equal(
+    db
+      .prepare<[string], { count: number }>(
+        `SELECT COUNT(*) AS count FROM playlist_download_jobs WHERE playlist_type = ?`,
+      )
+      .get("atomic-clear")?.count,
+    2,
+  );
+});

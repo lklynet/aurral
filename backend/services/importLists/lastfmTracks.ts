@@ -1,4 +1,4 @@
-import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.ts";
+import { dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 
 interface LastfmNamedEntity {
   name?: string;

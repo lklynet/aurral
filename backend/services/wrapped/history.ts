@@ -16,6 +16,7 @@ import { guessArtistMbid } from "../artistMatch.ts";
 import { fetchDeezerArtistImageUrl } from "../releaseGroupCoverService.ts";
 import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
 import { buildImageProxyUrl, warmImageProxy, warmPublicImageUrl } from "../imageProxyService.ts";
+import { buildCustomArtworkUrl, getCustomArtwork } from "../customArtworkService.ts";
 import getSharp from "../sharpConfig.ts";
 import { getArtistImage } from "../imageService.ts";
 import { songBeats } from "./beats.ts";
@@ -547,8 +548,11 @@ export function vividColor(pixels: Uint8Array) {
     .join("")}`;
 }
 
-async function artworkColor(source: string) {
-  const [{ imagePath }, sharp] = await Promise.all([warmImageProxy(source), getSharp()]);
+async function artworkColor(source: string, localPath?: string) {
+  const [imagePath, sharp] = await Promise.all([
+    localPath ?? warmImageProxy(source).then((entry) => entry.imagePath),
+    getSharp(),
+  ]);
   return vividColor(
     await sharp(imagePath).resize(24, 24, { fit: "cover" }).removeAlpha().raw().toBuffer(),
   );
@@ -590,18 +594,34 @@ async function artistPhoto({
 export async function buildWrappedSummary(userId: number, period: Period) {
   const history = await collectWrappedHistory(userId, period);
   const summary = calculateWrapped(history.plays, period, enrichFromLibrary);
+  const customPaths = new Map<string, string>();
+  const cover = async (
+    row: { artwork: string | null },
+    ...targets: [kind: "track" | "album", id: number | null][]
+  ) => {
+    for (const [kind, id] of targets) {
+      const custom = id == null ? null : getCustomArtwork(kind, id);
+      if (!custom) continue;
+      row.artwork = buildCustomArtworkUrl(kind, custom.id, custom.updatedAt);
+      customPaths.set(row.artwork, custom.filePath);
+      return;
+    }
+    row.artwork = await cachedImage(row.artwork);
+  };
+  await Promise.all([
+    ...summary.topSongs.map((song) =>
+      cover(song, ["track", song.libraryTrackId], ["album", song.libraryAlbumId]),
+    ),
+    ...summary.topAlbums.map((album) => cover(album, ["album", album.libraryAlbumId])),
+  ]);
   const covers = [...summary.topSongs, ...summary.topAlbums];
-  await Promise.all(covers.map(async (row) => (row.artwork = await cachedImage(row.artwork))));
   await Promise.all(
     summary.topArtists.map(async (artist) => {
       artist.artwork =
         (await artistPhoto(artist)) ??
-        (await cachedImage(
-          artist.artwork,
-          ...covers
-            .filter((row) => wrappedKey(row.artist) === artist.key)
-            .map((row) => row.artwork),
-        ));
+        (await cachedImage(artist.artwork)) ??
+        covers.find((row) => row.artwork && wrappedKey(row.artist) === artist.key)?.artwork ??
+        null;
     }),
   );
   const featured = summary.topSongs.slice(0, 5);
@@ -619,7 +639,8 @@ export async function buildWrappedSummary(userId: number, period: Period) {
     if (song && !featured.includes(song)) featured.push(song);
   await Promise.all([
     ...[...summary.topArtists, ...featured, ...summary.topAlbums].map(async (row) => {
-      if (row.artwork) row.color = await artworkColor(row.artwork).catch(() => null);
+      if (row.artwork)
+        row.color = await artworkColor(row.artwork, customPaths.get(row.artwork)).catch(() => null);
     }),
     ...featured.map(async (song) => {
       const preview = await deezerGetTrackPreview({

@@ -9,7 +9,8 @@ const [
   { dbOps, userOps },
   { processSystemTask },
   { resolveUser },
-  { invalidateFlowPlaylistConfigCache },
+  { invalidateFlowPlaylistConfigCache, flowPlaylistConfig },
+  { STORED_DATA_MIGRATION_VERSION },
 ] = await setupIsolatedBackend(
   "stored-data-migration",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -17,6 +18,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/middleware/auth.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const writeRaw = (key: string, value: unknown) =>
@@ -55,11 +57,10 @@ test("stores older settings, flows, worker options, and sign-in in their current
   reset();
   writeRaw("weeklyFlows", [
     {
-      id: "discover",
+      id: "old-flow",
       name: "Old Discover",
       size: 20,
-      tags: { ambient: 3, drone: 1 },
-      relatedArtists: { Burial: 2 },
+      tags: ["ambient", "drone"],
     },
   ]);
   writeRaw("sharedFlowPlaylists", [
@@ -87,12 +88,10 @@ test("stores older settings, flows, worker options, and sign-in in their current
   }
 
   const [flow] = readJson("flows");
-  assert.equal(flow.name, "Old Discover");
-  assert.notEqual(flow.id, "discover");
-  assert.deepEqual(flow.tags, ["ambient", "drone"]);
-  assert.deepEqual(flow.relatedArtists, ["Burial"]);
-  invalidateFlowPlaylistConfigCache();
-  assert.equal(readJson("flows")[0].id, flow.id, "the stored flow keeps one ID across reads");
+  assert.deepEqual(
+    [flow.id, flow.name, flow.tags],
+    ["old-flow", "Old Discover", ["ambient", "drone"]],
+  );
 
   assert.equal(readJson("sharedPlaylists")[0].name, "Old Playlist");
   assert.deepEqual(
@@ -115,7 +114,34 @@ test("stores older settings, flows, worker options, and sign-in in their current
   const admin = resolveUser("owner", "correct horse battery");
   assert.equal(admin?.role, "admin");
   assert.equal(userOps.countUsers(), 1);
-  assert.equal(readJson("storedDataMigration").version, 1);
+  assert.equal(readJson("storedDataMigration").version, STORED_DATA_MIGRATION_VERSION);
+});
+
+test("stores static playlists in their current form once, so reading them never writes", async () => {
+  reset();
+  writeRaw("sharedPlaylists", [
+    {
+      id: "old-playlist",
+      name: " Night Bus ",
+      tracks: [
+        { artist: "Burial", title: "Archangel" },
+        { artistName: "Burial", trackName: "Archangel" },
+      ],
+    },
+  ]);
+  const raw = readRaw("sharedPlaylists");
+
+  flowPlaylistConfig.getStaticPlaylists();
+  assert.equal(readRaw("sharedPlaylists"), raw);
+
+  await runMigration();
+
+  const [stored] = readJson("sharedPlaylists");
+  assert.equal(stored.name, "Night Bus");
+  assert.equal(stored.tracks.length, 1);
+  assert.equal(typeof stored.tracks[0].membershipId, "string");
+  assert.equal(typeof stored.createdAt, "number");
+  assert.deepEqual(flowPlaylistConfig.getStaticPlaylists(), [stored]);
 });
 
 test("keeps current settings when an older key repeats them", async () => {

@@ -1,52 +1,45 @@
+export const LISTENING_HISTORY_PRESET_ID = "focus-listening-history";
+export const RELEASE_RADAR_PRESET_ID = "release-radar";
+
 export const DISCOVER_PLAYLIST_PRESETS = [
   {
     id: "discover-weekly",
     name: "Discover Weekly",
     description: "Fresh picks from your recommendation profile",
-    mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+    mix: { discover: 100 },
     size: 20,
-    deepDive: false,
   },
   {
     id: "trending-mix",
     name: "Trending Mix",
     description: "Tracks from globally trending artists",
-    mix: { discover: 0, mix: 0, trending: 100, focus: 0 },
+    mix: { trending: 100 },
     size: 20,
-    deepDive: false,
   },
   {
     id: "library-blend",
     name: "Library Blend",
     description: "Tracks from artists in your library",
-    mix: { discover: 0, mix: 100, trending: 0, focus: 0 },
+    mix: { mix: 100 },
     size: 20,
-    deepDive: false,
   },
   {
-    id: "focus-listening-history",
+    id: LISTENING_HISTORY_PRESET_ID,
     name: "Listening History",
     description: "Tracks based on what you've recently been listening to",
-    mix: { discover: 0, mix: 0, trending: 0, focus: 100 },
+    mix: { focus: 100 },
     size: 20,
-    deepDive: false,
-    tags: [],
-    relatedArtists: [],
+  },
+  {
+    id: RELEASE_RADAR_PRESET_ID,
+    name: "Release Radar",
+    description: "Up to one track from each recent album missing in your library",
+    mix: { newReleases: 100 },
+    size: 20,
   },
 ];
 
-export const RELEASE_RADAR_PRESET = {
-  id: "release-radar",
-  name: "Release Radar",
-  description: "Up to one track from each recent album missing in your library",
-  mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
-  size: 20,
-  deepDive: false,
-};
-
 export const getDiscoverPlaylistPreset = (presetId: string) => {
   const id = String(presetId || "").trim();
-  if (!id) return null;
-  if (id === RELEASE_RADAR_PRESET.id) return { ...RELEASE_RADAR_PRESET };
   return DISCOVER_PLAYLIST_PRESETS.find((preset) => preset.id === id) || null;
 };

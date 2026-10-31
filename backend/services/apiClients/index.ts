@@ -35,9 +35,11 @@ export {
   deezerGetArtistTopTrackList,
   deezerGetRelatedArtists,
   getDeezerArtist,
+  getDeezerAlbumsForArtist,
   deezerGetAlbumTracks,
   enrichTracksWithDeezerPreviews,
   getDeezerPreviewLink,
+  normalizeTitle,
 } from "./deezer.ts";
 
 export { resolveArtistAndAlbumMbids, resolveDeezerAlbumToMbid } from "./crossProvider.ts";

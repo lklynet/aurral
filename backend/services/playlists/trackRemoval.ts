@@ -9,9 +9,9 @@ import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTrack
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
-  tracksShareMembership,
   type StaticPlaylist,
 } from "./flowPlaylistConfig.ts";
+import { tracksShareMembership } from "./playlistTracks.ts";
 import { cancelDownloadWorkForJobs } from "../downloadJobs/downloadCancellationService.ts";
 import {
   isDownloadJobCancelled,

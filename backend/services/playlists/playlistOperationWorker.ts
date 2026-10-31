@@ -1,6 +1,6 @@
 import type { Job } from "@russellthehippo/honker-node";
 import createHonkerWorker from "../honkerWorkerFactory.ts";
-import { getPlaylistOperationQueue } from "../honkerDb.ts";
+import { getFlowRunQueue, getPlaylistOperationQueue } from "../honkerDb.ts";
 import { playlistOperationSchema, processPlaylistOperation } from "./playlistOperations.ts";
 import { setPlaylistOperationWorkerState } from "./playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
@@ -16,6 +16,7 @@ const PERMANENT_ERROR_CODES = new Set([
 ]);
 
 let currentLabel: string | null = null;
+let flowRunLabel: string | null = null;
 
 const isPlaylistImport = (payload: PlaylistOperation) =>
   payload.kind === "shared-playlist-create" && payload.importSource != null;
@@ -32,10 +33,22 @@ const importContext = (payload: PlaylistOperation, job: Job) => ({
   operationId: job.id,
 });
 
+const labelOf = (payload: { label?: unknown; kind: string }) =>
+  typeof payload.label === "string" && payload.label ? payload.label : payload.kind;
+
 function syncWorkerState() {
   setPlaylistOperationWorkerState({
-    currentLabel,
+    currentLabel: flowRunLabel ?? currentLabel,
   });
+}
+
+function retryDecision(error: unknown, job: Pick<Job, "attempts">) {
+  const failure = asAppError(error);
+  const message = failure?.message || String(error);
+  if (PERMANENT_ERROR_CODES.has(String(failure?.code || "")) || job.attempts >= 3) {
+    return { action: "fail" as const, message };
+  }
+  return { action: "retry" as const, delayS: 60, message };
 }
 
 const worker = createHonkerWorker({
@@ -55,8 +68,7 @@ const worker = createHonkerWorker({
   retryDelayS: 60,
   shouldLogFailure: (job) => !isPlaylistImport(job.payload),
   onJobDequeue(payload, job) {
-    currentLabel =
-      typeof payload.label === "string" && payload.label ? payload.label : payload.kind;
+    currentLabel = labelOf(payload);
     syncWorkerState();
     if (isPlaylistImport(payload)) {
       logger.info("playlist-import", "Playlist import job started", {
@@ -103,28 +115,46 @@ const worker = createHonkerWorker({
     }
   },
   resolveRetry(error, job) {
-    const failure = asAppError(error);
-    const message = failure?.message || String(error);
-    const permanent = PERMANENT_ERROR_CODES.has(String(failure?.code || ""));
+    const decision = retryDecision(error, job);
     if (isPlaylistImport(job.payload)) {
-      logger[permanent || job.attempts >= 3 ? "error" : "warn"](
+      const failed = decision.action === "fail";
+      logger[failed ? "error" : "warn"](
         "playlist-import",
-        permanent || job.attempts >= 3
-          ? "Playlist import failed"
-          : "Playlist import attempt failed; retrying",
+        failed ? "Playlist import failed" : "Playlist import attempt failed; retrying",
         {
           ...importContext(job.payload, job),
           attempt: job.attempts,
-          reason: message,
+          reason: decision.message,
         },
       );
     }
-    if (permanent || job.attempts >= 3) {
-      return { action: "fail", message };
-    }
-    return { action: "retry", delayS: 60, message };
+    return decision;
   },
 });
+
+const flowRunWorker = createHonkerWorker({
+  name: "flow-run",
+  schema: playlistOperationSchema,
+  getQueue: getFlowRunQueue,
+  processJob: processPlaylistOperation,
+  idlePollS: 5,
+  retryDelayS: 60,
+  onJobDequeue(payload) {
+    flowRunLabel = labelOf(payload);
+    syncWorkerState();
+  },
+  onJobSuccess() {
+    flowRunLabel = null;
+    syncWorkerState();
+  },
+  onJobError() {
+    flowRunLabel = null;
+    syncWorkerState();
+  },
+  resolveRetry: retryDecision,
+});
+
+export const { start: startFlowRunWorker, stop: stopFlowRunWorker } = flowRunWorker;
 
 export const {
   start: startPlaylistOperationWorker,
@@ -134,7 +164,7 @@ export const {
 
 export function getPlaylistOperationWorkerStatus() {
   return {
-    running: worker.isRunning(),
-    currentLabel,
+    running: worker.isRunning() || flowRunWorker.isRunning(),
+    currentLabel: flowRunLabel ?? currentLabel,
   };
 }

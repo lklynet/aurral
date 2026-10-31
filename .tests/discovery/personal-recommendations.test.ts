@@ -235,14 +235,14 @@ test("tag search and flow plans read the user's own pool", async () => {
 
   const source = new FlowTrackSource();
   let harvested: (string | null | undefined)[] = [];
-  source._harvestTopTracksFromArtists = async (artists) => {
+  source._harvestArtists = async (artists) => {
     harvested = artists.map((artist) => artist.name);
     return [];
   };
   await source.buildFlowRunPlan({
     ownerUserId: alice.id,
     size: 2,
-    mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+    mix: { discover: 100 },
   });
   assert.ok(harvested.includes(FROM_LIKED.name));
 });
@@ -252,14 +252,14 @@ test("flows without an owner read the first admin's pool", async () => {
   try {
     const source = new FlowTrackSource();
     let harvested: (string | null | undefined)[] = [];
-    source._harvestTopTracksFromArtists = async (artists) => {
+    source._harvestArtists = async (artists) => {
       harvested = artists.map((artist) => artist.name);
       return [];
     };
     await source.buildFlowRunPlan({
       ownerUserId: null,
       size: 2,
-      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      mix: { discover: 100 },
     });
     assert.ok(harvested.includes(FROM_LIKED.name));
   } finally {

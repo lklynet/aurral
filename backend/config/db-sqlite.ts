@@ -10,6 +10,7 @@ import { ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import * as v from "valibot";
 import { logger } from "../services/logger.ts";
+import type { SettingsRow } from "../db/rows.ts";
 
 const DATA_DIR = ensureDataDir();
 
@@ -767,6 +768,35 @@ db.transaction(() => {
   fs.rmSync(path.join(DATA_DIR, "discover-artwork"), { recursive: true, force: true });
 }).immediate();
 
+const flowSourcesMigrationKey = "migration:flow-sources-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(flowSourcesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const stored = db
+    .prepare<[], Pick<SettingsRow, "value">>(
+      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
+    )
+    .get();
+  const flows = v.safeParse(v.array(v.looseObject({})), stored ? JSON.parse(stored.value) : null);
+  if (!flows.success) return;
+  const migrated = flows.output.map((flow) => {
+    if (flow.discoverPresetId === "release-radar") {
+      return { ...flow, mix: { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 100 } };
+    }
+    if (flow.discoverPresetId !== "focus-listening-history") return flow;
+    const related = Array.isArray(flow.relatedArtists) ? flow.relatedArtists.join(", ") : "";
+    const generated = flow.description === `Tracks related to ${related}`;
+    return {
+      ...flow,
+      recentListening: true,
+      ...(generated ? { relatedArtists: [], description: null } : {}),
+    };
+  });
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));
+}).immediate();
+
 const perUserDiscoveryMigrationKey = "migration:per-user-discovery-v1";
 db.transaction(() => {
   const claimed = db
@@ -1207,6 +1237,39 @@ export const dbHelpers = {
 initializeSchemaOnStartup(db, dbHelpers);
 tryAddColumn("ALTER TABLE library_management ADD COLUMN last_missing_search_at INTEGER");
 tryAddColumn("ALTER TABLE library_tracks ADD COLUMN monitored INTEGER NOT NULL DEFAULT 1");
+
+export const RETIRED_FLOWS_SETTING = "migration:retired-flows-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '[]')")
+    .run(RETIRED_FLOWS_SETTING);
+  if (claimed.changes === 0) return;
+  const stored = db
+    .prepare<[], Pick<SettingsRow, "value">>(
+      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
+    )
+    .get();
+  const flows = v.safeParse(
+    v.array(v.looseObject({ id: v.optional(v.unknown()), type: v.optional(v.unknown()) })),
+    stored ? JSON.parse(stored.value) : null,
+  );
+  if (!flows.success) return;
+  const retiredIds = flows.output.flatMap((flow) =>
+    flow.type === "editorial" && typeof flow.id === "string" ? [flow.id] : [],
+  );
+  if (retiredIds.length === 0) return;
+  db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(
+    JSON.stringify(retiredIds),
+    RETIRED_FLOWS_SETTING,
+  );
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(
+    JSON.stringify(
+      flows.output.map((flow) =>
+        flow.type === "editorial" ? { ...flow, enabled: false, nextRunAt: null } : flow,
+      ),
+    ),
+  );
+}).immediate();
 
 const aurralAlbumMonitoredMigrationKey = "migration:aurral-album-monitored-v1";
 db.transaction(() => {

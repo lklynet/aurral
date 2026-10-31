@@ -471,6 +471,7 @@ export function PlaylistTracks({
       <PlaylistTracksPanel
         label={`${entry.name || "Playlist"} tracks`}
         showTrackStatus={isFlow}
+        showReasons={isFlow}
         tracks={tracks}
         loading={loading}
         error={error}

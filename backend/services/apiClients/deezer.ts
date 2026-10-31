@@ -459,10 +459,12 @@ export async function getDeezerAlbumsForArtist(
   if (!artist?.id) return [];
   const cacheKey = `dz-albums:${artist.id}`;
   return cachedOrInflight(deezerAlbumCache, cacheKey, deezerInflightRequests, async () => {
-    const raw = await deezerList(deezerAlbumSchema, `/artist/${artist.id}/albums`, {
-      params: { limit: 100 },
-      timeout: 3000,
-    });
+    const raw = await deezerLimiter.schedule(() =>
+      deezerList(deezerAlbumSchema, `/artist/${artist.id}/albums`, {
+        params: { limit: 100 },
+        timeout: 3000,
+      }),
+    );
     const allowed = ["album", "ep", "single"];
     const albums = raw
       .filter((a) => allowed.includes((a.record_type || "").toLowerCase()))
@@ -630,7 +632,9 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
 
   return cachedOrInflight(deezerAlbumTrackCache, cacheKey, deezerInflightRequests, async () => {
     try {
-      const raw = await deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeout: 3000 });
+      const raw = await deezerLimiter.schedule(() =>
+        deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeout: 3000 }),
+      );
       const tracks = raw.map((t, i) => ({
         id: String(t.id),
         mbid: String(t.id),
@@ -641,6 +645,7 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
         mediumNumber: t.disk_number || null,
         length: t.duration ? t.duration * 1000 : null,
         duration_ms: t.duration ? t.duration * 1000 : null,
+        rank: t.rank ?? 0,
         preview_url: t.preview ? deezerPreviewPath(t.id) : null,
       }));
       deezerAlbumTrackCache.set(cacheKey, tracks);

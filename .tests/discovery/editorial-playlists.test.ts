@@ -1,7 +1,6 @@
 import * as v from "valibot";
 import { test, beforeEach, afterAll, afterEach, vi, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { playlistTrack } from "../playlists/fixtures.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { localDownloadWorker } from "../download/fixtures.ts";
 
@@ -19,11 +18,11 @@ const [
   operationsModule,
   operationQueueModule,
   workerModule,
-  trackerModule,
   importSyncModule,
   editorialModule,
   persistenceModule,
   flowTemplatesModule,
+  { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "editorial-playlists",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -32,18 +31,17 @@ const [
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/importLists/importListSync.ts"),
   () => import("../../backend/services/discovery/editorialPlaylists.ts"),
   () => import("../../backend/services/discovery/persistence.ts"),
   () => import("../../backend/services/flows/flowTemplates.ts"),
+  () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
 
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const { processPlaylistOperation, playlistOperationSchema } = operationsModule;
 const { playlistOperationQueue } = operationQueueModule;
 const downloadWorker = localDownloadWorker(workerModule.downloadWorker);
-const { downloadTracker } = trackerModule;
 const { syncStaticPlaylistImport } = importSyncModule;
 const {
   addEditorialPlaylistToLibrary,
@@ -384,80 +382,47 @@ test("an album link without a Deezer album ID still finds the album", async () =
   );
 });
 
-test("flow templates keep their recipe and need history for Listening History", async () => {
+test("flow templates keep their recipe and need history for Listening History", () => {
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
   const available = Object.fromEntries(
-    (await listFlowTemplates(OWNER)).map((template) => [template.id, template.available]),
+    listFlowTemplates(OWNER).map((template) => [template.id, template.available]),
   );
   assert.equal(available["release-radar"], true);
   assert.equal(available["focus-listening-history"], false);
-  await assert.rejects(buildFlowFromTemplate(OWNER, "focus-listening-history"), {
+  assert.throws(() => buildFlowFromTemplate(OWNER, "focus-listening-history"), {
     statusCode: 400,
   });
-  await assert.rejects(buildFlowFromTemplate(OWNER, "nope"), { statusCode: 400 });
+  assert.throws(() => buildFlowFromTemplate(OWNER, "nope"), { statusCode: 400 });
 
-  const radar = await buildFlowFromTemplate(OWNER, "release-radar");
-  assert.equal(radar.discoverPresetId, "release-radar");
+  const radar = buildFlowFromTemplate(OWNER, "release-radar");
   const created = flowPlaylistConfig.createFlow({ ...radar, ownerUserId: 7 });
   assert.equal(flowPlaylistConfig.getFlow(created.id)!.discoverPresetId, "release-radar");
+  assert.equal(flowPlaylistConfig.getFlow(created.id)!.mix.newReleases, 100);
 
   synchronizeDiscoveryCacheFromWorker({
-    basedOn: [
-      { name: "Library Artist", source: "library" },
-      { name: "Slowdive", source: "lastfm" },
-      { name: "Ride", source: "local" },
-    ],
+    basedOn: [{ name: "Slowdive", source: "lastfm" }],
   });
-  const history = await buildFlowFromTemplate(OWNER, "focus-listening-history");
-  assert.deepEqual(history.relatedArtists, ["Slowdive", "Ride"]);
+  const history = buildFlowFromTemplate(OWNER, "focus-listening-history");
+  assert.equal(history.recentListening, true);
+  assert.deepEqual(history.relatedArtists, []);
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
 });
 
-test("retired Last.fm editorial flows keep their tracks and never run again", async () => {
-  const plan = vi.spyOn(downloadWorker, "prepareFlowRunPlan").mockImplementation(async () => ({
-    primaryTracks: [
-      {
-        ...playlistTrack({ artistName: "New Artist", trackName: "New Song" }),
-        reason: "Test plan",
-      },
-    ],
-  }));
-  const dueFlow = (
-    id: string,
-    extra: { type?: string; tag?: string; discoverPresetId?: string } = {},
-  ) => ({
-    id,
-    name: id,
-    enabled: true,
-    size: 20,
-    nextRunAt: Date.now() - 60_000,
-    ...extra,
-  });
-  dbOps.updateSettings({
-    integrations: {
-      lastfm: { apiKey: "test-key" },
-      deemix: { enabled: true, url: "http://deemix.invalid", bitrate: 1 },
-    },
-    flows: [
-      dueFlow("metal-mayhem", { type: "editorial", tag: "metal", discoverPresetId: "top-metal" }),
-      dueFlow("discover-weekly"),
-    ],
-  });
-  invalidateFlowPlaylistConfigCache();
-  downloadTracker.addJobs([{ artistName: "Old Artist", trackName: "Old Song" }], "metal-mayhem");
+test("Listening History flows follow recent listening each time they run", async () => {
+  const source = new FlowTrackSource();
+  const seeds: string[] = [];
+  source._getSimilarArtists = async (artist) => {
+    seeds.push(artist);
+    return [];
+  };
+  const flow = { ownerUserId: OWNER.id, recentListening: true, relatedArtists: ["Pinned"] };
+  const context = { ownerUserId: OWNER.id };
 
-  assert.deepEqual(
-    flowPlaylistConfig.getDueForRefresh().map((flow) => flow.id),
-    ["discover-weekly"],
-  );
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Slowdive", source: "lastfm" }] });
+  await source.getFocusTracks(4, flow, context);
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Ride", source: "lastfm" }] });
+  await source.getFocusTracks(4, flow, context);
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
 
-  for (const kind of ["manual-start-flow", "enable-flow-refresh", "scheduled-flow-refresh"]) {
-    await processPlaylistOperation({ kind, flowId: "metal-mayhem" });
-  }
-
-  assert.equal(plan.mock.calls.length, 0);
-  assert.deepEqual(
-    downloadTracker.getByPlaylistId("metal-mayhem").map((job) => job.trackName),
-    ["Old Song"],
-  );
+  assert.deepEqual(seeds, ["Pinned", "Slowdive", "Pinned", "Ride"]);
 });

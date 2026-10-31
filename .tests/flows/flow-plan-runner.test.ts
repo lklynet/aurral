@@ -40,7 +40,6 @@ test("flow planning returns a child result without moving playlist mutation stat
     assert.deepEqual(child.request, {
       type: "build-flow-plan",
       flow: { id: "flow-1" },
-      options: {},
     });
     child.emit("message", { type: "flow-plan-result", plan: { primaryTracks: [] } });
     assert.deepEqual(await pending, { primaryTracks: [] });

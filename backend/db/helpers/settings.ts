@@ -116,7 +116,6 @@ export interface SettingsOps {
     schema: Schema,
   ) => v.InferOutput<Schema> | null;
   setJSONSetting: (key: string, value: unknown) => void;
-  getPlaylistSetting: (key: keyof typeof PLAYLIST_SETTING_LEGACY_KEYS) => unknown;
   getUserDiscoverLayout: (userId: number) => unknown;
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
   getUserTheme: (userId: number) => unknown;
@@ -146,24 +145,8 @@ const deleteSettingsByPrefixStmt = db.prepare<[string]>(
   "DELETE FROM settings WHERE key LIKE ? || '%'",
 );
 
-const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
-
-const PLAYLIST_SETTING_LEGACY_KEYS = {
-  flows: ["weeklyFlows"],
-  sharedPlaylists: ["sharedFlowPlaylists"],
-};
-
-function readStoredSettingJson<Schema extends v.GenericSchema>(
-  schema: Schema,
-  primaryKey: string,
-  legacyKeys: string[] = [],
-) {
-  for (const key of [primaryKey, ...legacyKeys]) {
-    const value = dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
-    if (value != null) return value;
-  }
-  return null;
-}
+const readStoredSettingJson = <Schema extends v.GenericSchema>(schema: Schema, key: string) =>
+  dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
 
 function normalizeMissingTrackSearchSettings(raw: StoredMissingTrackSearch | null | undefined) {
   const search: StoredMissingTrackSearch = raw && typeof raw === "object" ? raw : {};
@@ -188,7 +171,6 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
     Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
       ? Math.min(3, Math.floor(parsedConcurrency))
       : 2;
-  const retryCycleMinutes = PLAYLIST_WORKER_RETRY_CYCLE_MINUTES;
   const retryPausedPlaylistIds = Array.isArray(worker.retryPausedPlaylistIds)
     ? [
         ...new Set(
@@ -198,7 +180,6 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
     : [];
   return {
     concurrency,
-    retryCycleMinutes,
     retryPausedPlaylistIds,
     existingFileMode: normalizeExistingFileMode(worker.existingFileMode),
   };
@@ -236,10 +217,6 @@ export const dbOps = {
 
   setJSONSetting(key, value) {
     upsertSettingStmt.run(key, dbHelpers.stringifyJSON(value));
-  },
-
-  getPlaylistSetting(key) {
-    return readStoredSettingJson(v.unknown(), key, PLAYLIST_SETTING_LEGACY_KEYS[key]);
   },
 
   getUserDiscoverLayout(userId) {
@@ -321,7 +298,7 @@ export const dbOps = {
     const subsonic =
       readStoredSettingJson(v.looseObject({ favoriteAutoKeep: flag }), "subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
-      readStoredSettingJson(v.looseObject({}), "playlistWorker", ["weeklyFlowWorker"]),
+      readStoredSettingJson(v.looseObject({}), "playlistWorker"),
     );
     const missingTrackSearch = normalizeMissingTrackSearchSettings(
       readStoredSettingJson(v.looseObject({}), "missingTrackSearch"),

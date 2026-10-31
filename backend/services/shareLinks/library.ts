@@ -6,11 +6,8 @@ import {
   getLibraryForTrackMatches,
 } from "../libraryQueryService.ts";
 import { selectCanonicalFile } from "../canonicalFileSelector.ts";
-import {
-  flowPlaylistConfig,
-  playlistJobEntries,
-  type StaticPlaylist,
-} from "../playlists/flowPlaylistConfig.ts";
+import { flowPlaylistConfig, type StaticPlaylist } from "../playlists/flowPlaylistConfig.ts";
+import { playlistJobEntries } from "../playlists/playlistTracks.ts";
 import { findSharedTrack } from "../../../lib/shareManifest.ts";
 
 const BROWSER_FORMATS = new Set(["mp3", "flac", "ogg", "oga", "opus", "wav", "aac", "webm"]);

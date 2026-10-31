@@ -57,6 +57,7 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "system-task": 2 * 60 * 60 * 1000,
   playback: 2 * 60 * 60 * 1000,
   "weekly-flow-operation": 2 * 60 * 60 * 1000,
+  "flow-run": 2 * 60 * 60 * 1000,
   "slskd-pipeline": 6 * 60 * 60 * 1000,
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });

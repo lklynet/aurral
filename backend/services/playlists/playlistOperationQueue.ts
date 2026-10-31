@@ -1,6 +1,10 @@
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
-import { enqueuePlaylistOperationJob, getHonkerQueueDepth } from "../honkerDb.ts";
+import {
+  enqueueFlowRunJob,
+  enqueuePlaylistOperationJob,
+  getHonkerQueueDepth,
+} from "../honkerDb.ts";
 import type { HonkerEnqueueOptions, HonkerPayload } from "../honkerDb.ts";
 import type { JsonValue } from "@russellthehippo/honker-node";
 import { shouldStartQueueHere } from "../backgroundWorkerQueues.ts";
@@ -9,9 +13,17 @@ import type { BulkOperationInput } from "./bulkOperationStore.ts";
 
 let workerCurrentLabel: string | null = null;
 
+const FLOW_RUN_KINDS: ReadonlySet<unknown> = new Set([
+  "manual-start-flow",
+  "scheduled-flow-refresh",
+  "enable-flow-refresh",
+]);
+
 async function enqueuePayload(payload: HonkerPayload = {}, options: HonkerEnqueueOptions = {}) {
-  const jobId = enqueuePlaylistOperationJob(payload, options);
-  return { queued: true, operationId: jobId };
+  const enqueue = FLOW_RUN_KINDS.has(payload.kind)
+    ? enqueueFlowRunJob
+    : enqueuePlaylistOperationJob;
+  return { queued: true, operationId: enqueue(payload, options) };
 }
 
 async function enqueueBulkPayload(record: BulkOperationInput) {
@@ -36,7 +48,7 @@ async function enqueueBulkPayload(record: BulkOperationInput) {
 function getStatus() {
   let pending = 0;
   try {
-    pending = getHonkerQueueDepth("weekly-flow-operation");
+    pending = getHonkerQueueDepth("weekly-flow-operation") + getHonkerQueueDepth("flow-run");
   } catch {}
   return {
     processing: Boolean(workerCurrentLabel) || pending > 0,
