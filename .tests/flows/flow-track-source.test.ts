@@ -206,10 +206,12 @@ test("excluded tags drop matching artists from Library and match spelling varian
   source._getLibraryOwnership = async () => ({ ownedTitles: new Set(), ownedAlbums: new Set() });
   source._pickTrack = async (name) => ({ trackName: `${name} Song` });
   source._getArtistTopTagLists = async (artists) =>
-    artists.map((artist) => (artist.name === "Carol Singer" ? ["pop", "Christ-mas"] : ["rap"]));
+    artists.map((artist) =>
+      artist.name === "Carol Singer" ? ["pop", "Singer/Songwriter"] : ["rap"],
+    );
 
   const tracks = await source.getMixTracks(2, {
-    filters: source._buildFilters({ excludeTags: ["christ mas"] }, new Set()),
+    filters: source._buildFilters({ excludeTags: ["singer-songwriter"] }, new Set()),
   });
 
   assert.deepEqual(

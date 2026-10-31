@@ -15,7 +15,6 @@ import { logger } from "../logger.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
-import { genreKey } from "../musicGenres.ts";
 import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
@@ -604,7 +603,8 @@ export class FlowTrackSource {
     const fetchedTags = new Map(missing.map((entry, index) => [entry, fetched[index]]));
     return entries.filter((entry) => {
       const tags = entry.artist.tags?.length ? entry.artist.tags : fetchedTags.get(entry) || [];
-      if (hasBlockedTag(tags, blocked) || hasBlockedTag(tags, filters.excludeTags)) return false;
+      if (hasBlockedTag(tags, blocked)) return false;
+      if (tags.some((tag) => filters.excludeTags.has(tagKey(tag)))) return false;
       return filters.tags.size === 0 || this._matchedTag(tags, filters) !== null;
     });
   }
@@ -796,7 +796,7 @@ export class FlowTrackSource {
     }
     return {
       tags,
-      excludeTags: new Set((flow.excludeTags ?? []).map(genreKey)),
+      excludeTags: new Set((flow.excludeTags ?? []).map(tagKey).filter(Boolean)),
       yearFrom: flow.yearFrom ?? null,
       yearTo: flow.yearTo ?? null,
     };
