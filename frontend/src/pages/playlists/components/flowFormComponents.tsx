@@ -67,23 +67,21 @@ export function FlowFormFields({
   const scheduleDays = normalizeScheduleDays(draft.scheduleDays);
   const idPrefix = useId();
   const yearInput = (key: "yearFrom" | "yearTo", label: string) => (
-    <div className="flow-page__field-round">
-      <input
-        type="number"
-        min="1000"
-        max="9999"
-        step="1"
-        inputMode="numeric"
-        placeholder="Any"
-        aria-label={label}
-        className={`${inputClassName} flow-page__field-input--size`}
-        value={draft[key] ?? ""}
-        onChange={(event) => {
-          const value = event.target.value;
-          updateDraft((prev) => ({ ...prev, [key]: value }));
-        }}
-      />
-    </div>
+    <input
+      type="number"
+      min="1000"
+      max="9999"
+      step="1"
+      inputMode="numeric"
+      placeholder="Any"
+      aria-label={label}
+      className={`${inputClassName} flow-page__field-input--size`}
+      value={draft[key] ?? ""}
+      onChange={(event) => {
+        const value = event.target.value;
+        updateDraft((prev) => ({ ...prev, [key]: value }));
+      }}
+    />
   );
 
   return (
@@ -123,17 +121,13 @@ export function FlowFormFields({
             })}
           </div>
           <span className="flow-page__schedule-word">at</span>
-          <div className="flow-page__field-round flow-page__field-round--select">
-            <Select
-              className={`${inputClassName} flow-page__field-select`}
-              aria-label="Update hour"
-              value={String(draft.scheduleTime || "00:00")}
-              onChange={(time) =>
-                updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))
-              }
-              options={SCHEDULE_HOUR_OPTIONS}
-            />
-          </div>
+          <Select
+            className={`${inputClassName} flow-page__field-select`}
+            aria-label="Update hour"
+            value={String(draft.scheduleTime || "00:00")}
+            onChange={(time) => updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))}
+            options={SCHEDULE_HOUR_OPTIONS}
+          />
         </div>
       </div>
 
