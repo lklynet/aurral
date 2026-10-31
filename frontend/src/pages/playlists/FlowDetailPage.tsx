@@ -25,19 +25,11 @@ import { getApiErrorMessage } from "../onboardingUtils.tsx";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
-import {
-  formatFlowLastRun,
-  getFlowDisplayTrackCount,
-  isEditorialFlow,
-  isReleaseRadarFlow,
-} from "./playlistStats";
+import { formatFlowLastRun, getFlowDisplayTrackCount, isEditorialFlow } from "./playlistStats";
 import {
   buildFlowFromForm,
-  buildReleaseRadarFlowFromForm,
   flowToForm,
   isFlowDirty,
-  isScheduleOnlyFlowDirty,
-  normalizeMixPercent,
   normalizeNameKey,
   reserveUniqueName,
 } from "./flowPageUtils";
@@ -58,11 +50,6 @@ import { asApiError } from "../../utils/api/core.ts";
 
 const FlowFormFields = lazy(() =>
   import("./components/flowFormComponents.tsx").then((m) => ({ default: m.FlowFormFields })),
-);
-const ReleaseRadarRecipeFields = lazy(() =>
-  import("./components/flowFormComponents.tsx").then((m) => ({
-    default: m.ReleaseRadarRecipeFields,
-  })),
 );
 
 const DETAIL_TABS = [
@@ -150,10 +137,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
   const enabled = flow.enabled === true;
   const retired = isEditorialFlow(flow);
   const activeTab = retired ? "tracks" : tab;
-  const isPresetRecipe = isReleaseRadarFlow(flow);
-  const recipeDirty = isPresetRecipe
-    ? isScheduleOnlyFlowDirty(flow, draft)
-    : isFlowDirty(flow, draft);
+  const recipeDirty = isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
   const canRunNow = !retired && enabled && !running && !activity;
@@ -194,9 +178,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
     setSavingRecipe(true);
     setRecipeError("");
     try {
-      const payload = isReleaseRadarFlow(flow)
-        ? buildReleaseRadarFlowFromForm(flow, draft)
-        : buildFlowFromForm(draft);
+      const payload = buildFlowFromForm(draft);
       const response = await updateFlow(payload);
       setDraft(flowToForm(response?.flow || { ...flow, ...payload }));
       showSuccess("Recipe saved");
@@ -470,11 +452,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
           {activeTab === "recipe" ? (
             <div className="flow-page__form flow-page__detail-recipe">
               <Suspense fallback={null}>
-                {isReleaseRadarFlow(flow) ? (
-                  <ReleaseRadarRecipeFields {...recipeFieldProps} />
-                ) : (
-                  <FlowFormFields {...recipeFieldProps} normalizeMixPercent={normalizeMixPercent} />
-                )}
+                <FlowFormFields {...recipeFieldProps} />
               </Suspense>
               <div className="flow-page__recipe-actions">
                 {recipeDirty ? (

@@ -92,7 +92,7 @@ test("flows exclude only hard-blocked artists", async () => {
     ...playlistTrack(track),
     reason: "Release radar",
   });
-  source.getReleaseRadarTracks = async () => [
+  source.getNewReleaseTracks = async () => [
     radarTrack({ artistName: "Blocked Artist", trackName: "Blocked Track" }),
     radarTrack({
       artistName: "Renamed Artist",
@@ -103,7 +103,7 @@ test("flows exclude only hard-blocked artists", async () => {
   ];
   const plan = await source.buildFlowRunPlan({
     ownerUserId: 7,
-    discoverPresetId: "release-radar",
+    mix: { newReleases: 100 },
     size: 2,
   });
 

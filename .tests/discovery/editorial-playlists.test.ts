@@ -24,6 +24,7 @@ const [
   editorialModule,
   persistenceModule,
   flowTemplatesModule,
+  { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "editorial-playlists",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -37,6 +38,7 @@ const [
   () => import("../../backend/services/discovery/editorialPlaylists.ts"),
   () => import("../../backend/services/discovery/persistence.ts"),
   () => import("../../backend/services/flows/flowTemplates.ts"),
+  () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
 
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
@@ -384,33 +386,49 @@ test("an album link without a Deezer album ID still finds the album", async () =
   );
 });
 
-test("flow templates keep their recipe and need history for Listening History", async () => {
+test("flow templates keep their recipe and need history for Listening History", () => {
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
   const available = Object.fromEntries(
-    (await listFlowTemplates(OWNER)).map((template) => [template.id, template.available]),
+    listFlowTemplates(OWNER).map((template) => [template.id, template.available]),
   );
   assert.equal(available["release-radar"], true);
   assert.equal(available["focus-listening-history"], false);
-  await assert.rejects(buildFlowFromTemplate(OWNER, "focus-listening-history"), {
+  assert.throws(() => buildFlowFromTemplate(OWNER, "focus-listening-history"), {
     statusCode: 400,
   });
-  await assert.rejects(buildFlowFromTemplate(OWNER, "nope"), { statusCode: 400 });
+  assert.throws(() => buildFlowFromTemplate(OWNER, "nope"), { statusCode: 400 });
 
-  const radar = await buildFlowFromTemplate(OWNER, "release-radar");
-  assert.equal(radar.discoverPresetId, "release-radar");
+  const radar = buildFlowFromTemplate(OWNER, "release-radar");
   const created = flowPlaylistConfig.createFlow({ ...radar, ownerUserId: 7 });
   assert.equal(flowPlaylistConfig.getFlow(created.id)!.discoverPresetId, "release-radar");
+  assert.equal(flowPlaylistConfig.getFlow(created.id)!.mix.newReleases, 100);
 
   synchronizeDiscoveryCacheFromWorker({
-    basedOn: [
-      { name: "Library Artist", source: "library" },
-      { name: "Slowdive", source: "lastfm" },
-      { name: "Ride", source: "local" },
-    ],
+    basedOn: [{ name: "Slowdive", source: "lastfm" }],
   });
-  const history = await buildFlowFromTemplate(OWNER, "focus-listening-history");
-  assert.deepEqual(history.relatedArtists, ["Slowdive", "Ride"]);
+  const history = buildFlowFromTemplate(OWNER, "focus-listening-history");
+  assert.equal(history.recentListening, true);
+  assert.deepEqual(history.relatedArtists, []);
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
+});
+
+test("Listening History flows follow recent listening each time they run", async () => {
+  const source = new FlowTrackSource();
+  const seeds: string[] = [];
+  source._getSimilarArtists = async (artist) => {
+    seeds.push(artist);
+    return [];
+  };
+  const flow = { ownerUserId: OWNER.id, recentListening: true, relatedArtists: ["Pinned"] };
+  const context = { ownerUserId: OWNER.id };
+
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Slowdive", source: "lastfm" }] });
+  await source.getFocusTracks(4, flow, context);
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Ride", source: "lastfm" }] });
+  await source.getFocusTracks(4, flow, context);
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
+
+  assert.deepEqual(seeds, ["Pinned", "Slowdive", "Pinned", "Ride"]);
 });
 
 test("retired Last.fm editorial flows keep their tracks and never run again", async () => {

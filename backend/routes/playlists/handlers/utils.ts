@@ -15,7 +15,7 @@ import {
   restartWorkerIfPending,
   withPlaylistMutation,
 } from "../../../services/downloadJobs/mutationGuards.ts";
-import { normalizeFlowMixForValidation } from "../../../services/flows/flowValidation.ts";
+import { splitFlowTotal } from "../../../../lib/flows.ts";
 import { logger } from "../../../services/logger.ts";
 import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.ts";
 import { hasPermission } from "../../../middleware/auth.ts";
@@ -98,6 +98,7 @@ type FlowPayload = Pick<
   | "size"
   | "tags"
   | "relatedArtists"
+  | "recentListening"
   | "scheduleDays"
   | "recordHistory"
   | "showInLibrary"
@@ -111,6 +112,7 @@ export const validateFlowPayload = ({
   size,
   tags,
   relatedArtists,
+  recentListening,
   scheduleDays,
   recordHistory,
   showInLibrary,
@@ -124,15 +126,16 @@ export const validateFlowPayload = ({
   if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
     return "size must be a positive number";
   }
-  const normalizedMix = normalizeFlowMixForValidation(mix);
-  const totalWeight = Object.values(normalizedMix).reduce((sum, value) => sum + value, 0);
-  if (totalWeight <= 0) {
+  const shares = splitFlowTotal(mix, 100);
+  if (!shares) {
     return "at least one source must be enabled";
   }
-  const normalizedTags = normalizeFlowStringArray(tags);
-  const normalizedRelated = normalizeFlowStringArray(relatedArtists);
-  if (normalizedMix.focus > 0 && normalizedTags.length === 0 && normalizedRelated.length === 0) {
-    return "Focus needs at least one genre tag or related artist";
+  const hasFocusSeeds =
+    recentListening === true ||
+    normalizeFlowStringArray(tags).length > 0 ||
+    normalizeFlowStringArray(relatedArtists).length > 0;
+  if (shares.focus > 0 && !hasFocusSeeds) {
+    return "Focus needs a tag, a similar artist, or recent listening";
   }
   if (!Array.isArray(scheduleDays) || scheduleDays.length === 0) {
     return "scheduleDays must include at least one day";

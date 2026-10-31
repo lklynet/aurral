@@ -4,17 +4,13 @@ import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.ts";
 import { deletePlaylistArtworkState } from "../playlistArtworkState.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
+import { normalizeFlowMix, type FlowSource } from "../../../lib/flows.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 
 type AccessUser = (Pick<RequestUser, "id"> & Partial<Pick<RequestUser, "role">>) | null | undefined;
 type OwnedEntity = { ownerUserId?: number | null };
 
-export interface FlowMixInput {
-  discover?: unknown;
-  mix?: unknown;
-  trending?: unknown;
-  focus?: unknown;
-}
+export type FlowMixInput = Partial<Record<FlowSource, unknown>>;
 
 type FlowEntryObject = {
   name?: unknown;
@@ -37,6 +33,7 @@ export interface StoredFlow {
   scheduleDays?: unknown;
   scheduleTime?: unknown;
   deepDive?: unknown;
+  recentListening?: unknown;
   yearFrom?: unknown;
   yearTo?: unknown;
   nextRunAt?: unknown;
@@ -64,6 +61,7 @@ interface FlowUpdates {
   scheduleDays?: unknown;
   scheduleTime?: unknown;
   deepDive?: unknown;
+  recentListening?: unknown;
   recordHistory?: unknown;
   showInLibrary?: unknown;
   yearFrom?: unknown;
@@ -159,7 +157,6 @@ export const IMPORT_SOURCE_PROVIDERS = new Set([
   "deezer-playlist",
   "aurral-share",
 ]);
-const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
 const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -343,45 +340,6 @@ const computeNextRunAt = (
   return buildScheduledTime(fromTimeMs + 7 * DAY_MS, scheduleTime);
 };
 
-const normalizeMix = (mix: FlowMixInput | null | undefined): typeof DEFAULT_MIX => {
-  const raw = {
-    discover: Number(mix?.discover ?? 0),
-    mix: Number(mix?.mix ?? 0),
-    trending: Number(mix?.trending ?? 0),
-    focus: Number(mix?.focus ?? 0),
-  };
-  const sum = raw.discover + raw.mix + raw.trending + raw.focus;
-  if (!Number.isFinite(sum) || sum <= 0) {
-    return { ...DEFAULT_MIX };
-  }
-  const weights: { key: keyof typeof DEFAULT_MIX; value: number }[] = [
-    { key: "discover", value: raw.discover },
-    { key: "mix", value: raw.mix },
-    { key: "trending", value: raw.trending },
-    { key: "focus", value: raw.focus },
-  ];
-  const scaled = weights.map((w) => ({
-    ...w,
-    raw: (w.value / sum) * 100,
-  }));
-  const floored = scaled.map((w) => ({
-    ...w,
-    count: Math.floor(w.raw),
-    remainder: w.raw - Math.floor(w.raw),
-  }));
-  let remaining = 100 - floored.reduce((acc, w) => acc + w.count, 0);
-  const ordered = [...floored].sort((a, b) => b.remainder - a.remainder);
-  for (let i = 0; i < ordered.length && remaining > 0; i++) {
-    ordered[i].count += 1;
-    remaining -= 1;
-  }
-  const out: Partial<typeof DEFAULT_MIX> = {};
-  for (const item of ordered) {
-    out[item.key] = item.count;
-  }
-  return out as typeof DEFAULT_MIX;
-};
-
 const resolvePresetDescription = (discoverPresetId: unknown) => {
   const id = String(discoverPresetId || "").trim();
   if (!id) return null;
@@ -391,7 +349,7 @@ const resolvePresetDescription = (discoverPresetId: unknown) => {
 const normalizeFlow = (flow: StoredFlow) => {
   const name = String(flow?.name || "").trim();
   const size = clampSize(flow?.size);
-  const mix = normalizeMix(flow?.mix);
+  const mix = normalizeFlowMix(flow?.mix);
   const normalizedTagsArray = normalizeStringArray(flow?.tags);
   const normalizedRelatedArray = normalizeStringArray(flow?.relatedArtists);
   const legacyTags = normalizeWeightMap(flow?.tags);
@@ -410,6 +368,7 @@ const normalizeFlow = (flow: StoredFlow) => {
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
+    recentListening: flow?.recentListening === true,
     yearFrom,
     yearTo,
     nextRunAt:
@@ -947,6 +906,7 @@ export const flowPlaylistConfig = {
     mix,
     size,
     deepDive,
+    recentListening,
     recordHistory,
     yearFrom,
     yearTo,
@@ -975,6 +935,7 @@ export const flowPlaylistConfig = {
       mix,
       size,
       deepDive,
+      recentListening,
       yearFrom,
       yearTo,
       tags,
@@ -1023,6 +984,10 @@ export const flowPlaylistConfig = {
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
+      recentListening:
+        typeof updates?.recentListening === "boolean"
+          ? updates.recentListening
+          : current.recentListening,
       recordHistory:
         typeof updates?.recordHistory === "boolean" ? updates.recordHistory : current.recordHistory,
       showInLibrary:

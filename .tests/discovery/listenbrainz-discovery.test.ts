@@ -286,17 +286,17 @@ test("flows that only know an artist's MBID still get Deezer's related artists",
 test("without a Last.fm key a Mix flow picks the library artist's own Deezer top track", async () => {
   const plan = await new FlowTrackSource().buildFlowRunPlan({
     size: 1,
-    mix: { discover: 0, mix: 100, trending: 0, focus: 0 },
+    mix: { mix: 100 },
   });
 
   assert.deepEqual(
     plan.primaryTracks.map((track) => [
-      "source" in track ? track.source : undefined,
+      track.reason,
       track.artistName,
       track.trackName,
       track.albumName,
     ]),
-    [["mix", LIBRARY.name, "Hit Song", "First Album"]],
+    [["In your Library", LIBRARY.name, "Hit Song", "First Album"]],
   );
   assert.equal(
     requests.some((url) => url.pathname === "/artist/8/top"),

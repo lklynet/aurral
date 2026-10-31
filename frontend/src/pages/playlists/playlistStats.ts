@@ -1,15 +1,9 @@
 import type { InferResponseType } from "hono/client";
 import type { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
+import type { FlowMix } from "../../../../lib/flows.ts";
 
 type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
-
-export interface FlowMix {
-  discover: number;
-  mix: number;
-  trending: number;
-  focus: number;
-}
 
 export interface Flow {
   artworkRevision?: number;
@@ -22,6 +16,7 @@ export interface Flow {
   mix: FlowMix;
   tags: string[];
   relatedArtists: string[];
+  recentListening: boolean;
   deepDive: boolean;
   recordHistory: boolean;
   yearFrom: number | null;
@@ -58,11 +53,6 @@ export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlayl
   sharedPlaylists: StaticPlaylist[];
 };
 
-export const RELEASE_RADAR_PRESET_ID = "release-radar";
-
-export const isReleaseRadarFlow = (flow: Partial<Flow> | null | undefined) =>
-  String(flow?.discoverPresetId || "").trim() === RELEASE_RADAR_PRESET_ID;
-
 export const isEditorialFlow = (flow: Partial<Flow> | null | undefined) =>
   String(flow?.type || "").trim() === "editorial";
 
@@ -73,11 +63,8 @@ export const getFlowDisplayTrackCount = (
   stats: PlaylistStats | null | undefined,
   trackListLength = 0,
 ) => {
-  if (isReleaseRadarFlow(flow)) {
-    const actual = Math.max(statCount(trackListLength), statCount(stats?.total));
-    return actual > 0 ? actual : statCount(flow?.size);
-  }
-  return Math.max(statCount(flow?.size), statCount(trackListLength), statCount(stats?.total));
+  const found = Math.max(statCount(trackListLength), statCount(stats?.total));
+  return found > 0 ? found : statCount(flow?.size);
 };
 
 export const getStaticPlaylistTrackCount = (

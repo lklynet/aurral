@@ -10,6 +10,7 @@ import { ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import * as v from "valibot";
 import { logger } from "../services/logger.ts";
+import type { SettingsRow } from "../db/rows.ts";
 
 const DATA_DIR = ensureDataDir();
 
@@ -765,6 +766,34 @@ db.transaction(() => {
     db.prepare("DELETE FROM _honker_live WHERE queue = 'discovery-playlist-build'").run();
   }
   fs.rmSync(path.join(DATA_DIR, "discover-artwork"), { recursive: true, force: true });
+}).immediate();
+
+const flowSourcesMigrationKey = "migration:flow-sources-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(flowSourcesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const stored = db
+    .prepare<[], Pick<SettingsRow, "value">>(
+      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
+    )
+    .get();
+  const flows = v.safeParse(v.array(v.looseObject({})), stored ? JSON.parse(stored.value) : null);
+  if (!flows.success) return;
+  const migrated = flows.output.map((flow) => {
+    if (flow.discoverPresetId === "release-radar") {
+      return { ...flow, mix: { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 100 } };
+    }
+    if (flow.discoverPresetId !== "focus-listening-history") return flow;
+    const related = Array.isArray(flow.relatedArtists) ? flow.relatedArtists.join(", ") : "";
+    return {
+      ...flow,
+      recentListening: true,
+      ...(flow.description === `Tracks related to ${related}` ? { description: null } : {}),
+    };
+  });
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));
 }).immediate();
 
 const perUserDiscoveryMigrationKey = "migration:per-user-discovery-v1";

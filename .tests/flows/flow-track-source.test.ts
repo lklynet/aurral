@@ -1,13 +1,58 @@
-import { test } from "vite-plus/test";
+import { afterEach, beforeEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { FlowTrackSource } from "../../backend/services/flows/flowTrackSource.ts";
 
+type DeezerArtist = {
+  id: number;
+  name: string;
+  albums: { id: number; title: string; release_date: string; record_type?: string }[];
+  albumTracks?: Record<number, { id: number; title: string; rank: number; duration: number }[]>;
+};
+
+const deezerArtists = new Map<string, DeezerArtist>();
+
+const json = (body: unknown) =>
+  new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+
+const respond = (url: URL) => {
+  if (url.pathname === "/search/artist") {
+    const artist = deezerArtists.get(url.searchParams.get("q") ?? "");
+    return json({ data: artist ? [{ id: artist.id, name: artist.name }] : [] });
+  }
+  const artist = [...deezerArtists.values()].find(
+    (entry) => url.pathname === `/artist/${entry.id}/albums`,
+  );
+  if (artist) {
+    return json({
+      data: artist.albums.map((album) => ({ record_type: "album", ...album })),
+    });
+  }
+  const albumId = Number(url.pathname.match(/^\/album\/(\d+)\/tracks$/)?.[1]);
+  const tracks = [...deezerArtists.values()].find((entry) => entry.albumTracks?.[albumId])
+    ?.albumTracks?.[albumId];
+  return json(tracks ? { data: tracks } : { error: { code: 800 } });
+};
+
+beforeEach(() => {
+  deezerArtists.clear();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    respond(new URL(String(input))),
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
 const candidate = (
-  entry: Parameters<FlowTrackSource["_buildTrackEntry"]>[0],
+  source: FlowTrackSource,
+  artistName: string,
   origin: Parameters<FlowTrackSource["_buildBaseCandidate"]>[1],
 ) => {
-  const source = new FlowTrackSource();
-  const track = source._buildTrackEntry(entry);
+  const track = source._buildTrackEntry({ artistName, trackName: `${artistName} Song` });
   assert.ok(track);
   return source._buildBaseCandidate(track, origin);
 };
@@ -23,6 +68,12 @@ const topTrack = (
   popularity: 0,
 });
 
+const years = (source: FlowTrackSource, yearFrom: number, yearTo: number) => ({
+  ...source._buildFilters({}, new Set()),
+  yearFrom,
+  yearTo,
+});
+
 test("year range matching accepts bounds and rejects unknown years when set", () => {
   const source = new FlowTrackSource();
   assert.equal(source._matchesYearRange("1985", null, null), true);
@@ -36,75 +87,151 @@ test("year range matching accepts bounds and rejects unknown years when set", ()
   assert.equal(source._matchesYearRange(null, null, null), true);
 });
 
-test("candidate selection skips tracks outside the year range", async () => {
+test("a plan fills each source's share, then backfills without repeating an artist", () => {
   const source = new FlowTrackSource();
-  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
-  const used = new Set<string>();
-  const picked = await source._selectFromCandidates(
-    [
-      candidate({ artistName: "A", trackName: "Old", releaseYear: "1975" }, "focus"),
-      candidate({ artistName: "B", trackName: "Fit", releaseYear: "1984" }, "focus"),
-      candidate({ artistName: "C", trackName: "New", releaseYear: "2001" }, "focus"),
+  const plan = source._assembleFlowPlan({
+    candidateMap: {
+      discover: [
+        candidate(source, "Shared", "discover"),
+        candidate(source, "Discover", "discover"),
+      ],
+      mix: [candidate(source, "Shared", "mix")],
+      trending: [],
+      focus: [],
+      newReleases: [],
+    },
+    excludeArtistKeys: new Set(),
+    targetSize: 3,
+    sourceTargets: { discover: 1, mix: 1, trending: 1, focus: 0, newReleases: 0 },
+  });
+  assert.deepEqual(
+    plan.primaryTracks.map((track) => track.artistName),
+    ["Shared", "Discover"],
+  );
+  assert.equal("source" in plan.primaryTracks[0], false);
+});
+
+test("a year range picks a popular track from a release first out in that range", async () => {
+  deezerArtists.set("Year Band", {
+    id: 101,
+    name: "Year Band",
+    albums: [
+      { id: 1011, title: "Old Album", release_date: "2019-05-01" },
+      { id: 1012, title: "Old Album (Remastered)", release_date: "2025-02-01" },
+      { id: 1013, title: "New Album", release_date: "2025-09-01" },
     ],
-    2,
-    used,
-    1980,
-    1989,
-  );
-  assert.equal(picked.length, 1);
-  assert.equal(picked[0].trackName, "Fit");
+  });
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [
+    topTrack("Old Hit", "Old Album (Remastered)"),
+    topTrack("New Hit", "New Album"),
+  ];
+
+  const pick = await source._pickTrackInYears("Year Band", years(source, 2025, 2026), false);
+
+  assert.equal(pick?.trackName, "New Hit");
+  assert.equal(pick?.releaseYear, "2025");
 });
 
-test("assemble applies year range only to focus candidates", async () => {
-  const source = new FlowTrackSource();
-  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
-  const plan = await source._assembleFlowPlan({
-    candidateMap: {
-      focus: [
-        candidate({ artistName: "Focus Old", trackName: "Old", releaseYear: "1970" }, "focus"),
-        candidate({ artistName: "Focus Fit", trackName: "Fit", releaseYear: "1985" }, "focus"),
+test("a year range falls back to the best track of an in-range release", async () => {
+  deezerArtists.set("Deep Band", {
+    id: 102,
+    name: "Deep Band",
+    albums: [
+      { id: 1021, title: "Classic", release_date: "2001-01-01" },
+      { id: 1022, title: "Comeback", release_date: "2026-03-01" },
+    ],
+    albumTracks: {
+      1022: [
+        { id: 1, title: "Intro", rank: 10, duration: 60 },
+        { id: 2, title: "Single", rank: 900, duration: 200 },
+        { id: 3, title: "Outro", rank: 40, duration: 90 },
       ],
-      mix: [candidate({ artistName: "Mix Old", trackName: "Keep", releaseYear: "1960" }, "mix")],
-      discover: [],
-      trending: [],
     },
-    excludeArtistKeys: new Set(),
-    targetSize: 2,
-    sourceTargets: { focus: 1, mix: 1, discover: 0, trending: 0 },
-    yearFrom: 1980,
-    yearTo: 1989,
   });
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [topTrack("Classic Hit", "Classic")];
+
+  const pick = await source._pickTrackInYears("Deep Band", years(source, 2025, 2026), false);
+
+  assert.equal(pick?.trackName, "Single");
+  assert.equal(pick?.albumName, "Comeback");
+  assert.equal(pick?.durationMs, 200000);
+});
+
+test("tags filter trending artists and match spelling variants", async () => {
+  const source = new FlowTrackSource();
+  const chartTrack = (artistName: string) => ({
+    artistName,
+    artistMbid: null,
+    name: `${artistName} Song`,
+    albumName: null,
+  });
+  source._getTrendingChart = async () => [chartTrack("Pop Star"), chartTrack("Rapper")];
+  source._getArtistTopTagLists = async (artists) =>
+    artists.map((artist) => (artist.name === "Rapper" ? ["Hip-Hop"] : ["pop"]));
+
+  const tracks = await source.getTrendingTracks(2, {
+    filters: source._buildFilters({ tags: ["hip hop"] }, new Set()),
+  });
+
   assert.deepEqual(
-    plan.primaryTracks.map((track) => track.trackName),
-    ["Fit", "Keep"],
+    tracks.map((track) => [track.artistName, track.reason]),
+    [["Rapper", "Trending this week"]],
   );
 });
 
-test("shortfall backfill does not reintroduce out-of-range focus tracks", async () => {
+test("discover takes its picks from the top of the ranking and says why", async () => {
   const source = new FlowTrackSource();
-  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
-  const plan = await source._assembleFlowPlan({
-    candidateMap: {
-      focus: [
-        candidate({ artistName: "Focus Old", trackName: "Old", releaseYear: "1970" }, "focus"),
-        candidate(
-          { artistName: "Focus Also Old", trackName: "Older", releaseYear: "1965" },
-          "focus",
-        ),
-      ],
-      mix: [candidate({ artistName: "Mix Keep", trackName: "Filler", releaseYear: "1950" }, "mix")],
-      discover: [],
-      trending: [],
+  source._getRecommendations = () => [
+    { name: "First", matchPercent: 90, supportingSeeds: [{ artistName: "Seed One" }] },
+    { name: "Second", matchPercent: 80, sourceArtists: ["Seed Two"] },
+    { name: "Third", matchPercent: 70 },
+    { name: "Fourth", matchPercent: 60 },
+  ];
+  source._getArtistTopTrackList = async (name) => [topTrack(`${name} Song`, `${name} Album`)];
+
+  const tracks = await source.getDiscoverTracks(2);
+
+  assert.deepEqual(tracks.map((track) => [track.artistName, track.reason]).sort(), [
+    ["First", "Similar to Seed One"],
+    ["Second", "Similar to Seed Two"],
+  ]);
+});
+
+test("discover filters by an artist's own tags, not tags borrowed from its seeds", async () => {
+  const source = new FlowTrackSource();
+  const looked: (string | null | undefined)[] = [];
+  source._getRecommendations = () => [
+    {
+      name: "Pop Act",
+      matchPercent: 90,
+      tags: ["hip hop"],
+      candidateTagsHydrated: true,
+      tagSource: "inherited",
     },
-    excludeArtistKeys: new Set(),
-    targetSize: 2,
-    sourceTargets: { focus: 2, mix: 0, discover: 0, trending: 0 },
-    yearFrom: 1980,
-    yearTo: 1989,
+    {
+      name: "Rapper",
+      matchPercent: 80,
+      tags: ["Hip-Hop"],
+      candidateTagsHydrated: true,
+      tagSource: "lastfm_artist",
+    },
+  ];
+  source._getArtistTopTagLists = async (artists) => {
+    looked.push(...artists.map((artist) => artist.name));
+    return artists.map(() => ["pop"]);
+  };
+  source._getArtistTopTrackList = async (name) => [topTrack(`${name} Song`, `${name} Album`)];
+
+  const tracks = await source.getDiscoverTracks(2, {
+    filters: source._buildFilters({ tags: ["hip hop"] }, new Set()),
   });
+
+  assert.deepEqual(looked, ["Pop Act"]);
   assert.deepEqual(
-    plan.primaryTracks.map((track) => `${track.source}:${track.trackName}`),
-    ["mix:Filler"],
+    tracks.map((track) => track.artistName),
+    ["Rapper"],
   );
 });
 
@@ -123,24 +250,7 @@ test("mix album pick prefers top track list metadata before track.getInfo", () =
   assert.equal(picked?.albumName, "New Album");
 });
 
-test("library artist key set can be built from preloaded artists", async () => {
-  const source = new FlowTrackSource();
-  const keys = await source._getLibraryArtistKeySet({
-    libraryArtists: [
-      {
-        id: "artist-id",
-        mbid: "artist-mbid",
-        artistName: "Library Artist",
-      },
-    ],
-  });
-
-  assert.ok(keys.has("artist-id"));
-  assert.ok(keys.has("artist-mbid"));
-  assert.ok(keys.has("library artist"));
-});
-
-test("release radar picks a release track from metadata before Last.fm fallbacks", async () => {
+test("new releases pick a release track from metadata before Last.fm fallbacks", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [
     {
@@ -164,7 +274,6 @@ test("release radar picks a release track from metadata before Last.fm fallbacks
     artistName: "Library Artist",
     albumTitle: "New Album",
     albumMbid: "album-mbid",
-    artistMbid: "artist-mbid",
     releaseYear: "2026",
   });
 
@@ -174,7 +283,7 @@ test("release radar picks a release track from metadata before Last.fm fallbacks
   assert.equal(track?.durationMs, 185000);
 });
 
-test("release radar does not substitute an unrelated artist top track", async () => {
+test("new releases do not substitute an unrelated artist top track", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
@@ -186,14 +295,13 @@ test("release radar does not substitute an unrelated artist top track", async ()
     artistName: "Car Seat Headrest",
     albumTitle: "Teen of Denial (Joe's Story)",
     albumMbid: "album-mbid",
-    artistMbid: "artist-mbid",
     releaseYear: "2026",
   });
 
   assert.equal(track, null);
 });
 
-test("release radar accepts artist top track fallback only when the album matches", async () => {
+test("new releases accept an artist top track only when the album matches", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
@@ -206,7 +314,6 @@ test("release radar accepts artist top track fallback only when the album matche
     artistName: "Car Seat Headrest",
     albumTitle: "Teen of Denial (Joe's Story)",
     albumMbid: "album-mbid",
-    artistMbid: "artist-mbid",
     releaseYear: "2026",
   });
 
