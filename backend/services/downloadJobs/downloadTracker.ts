@@ -344,6 +344,9 @@ const updateStmt = db.prepare(`
 `);
 
 const deleteStmt = db.prepare(`DELETE FROM ${JOBS_TABLE} WHERE id = ?`);
+const deleteJobRows = db.transaction((ids: string[]) => {
+  for (const id of ids) deleteStmt.run(id);
+});
 const updateAlbumGrabAttemptedStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET album_grab_attempted = ? WHERE id = ?`,
 );
@@ -2066,6 +2069,7 @@ export class DownloadTracker {
     }
     discardReviewFiles(toDelete.map((id) => this.jobs.get(id)!));
     cancelDownloadJobs(toDelete);
+    deleteJobRows(toDelete);
     for (const id of toDelete) {
       this.jobs.delete(id);
       if (cleanPending) {
@@ -2073,7 +2077,6 @@ export class DownloadTracker {
         this.pendingRetrySet.delete(id);
         this._removeFromPendingQueues(id);
       }
-      deleteStmt.run(id);
     }
     if (toDelete.length > 0) {
       this._rebuildStatsByPlaylistType();
