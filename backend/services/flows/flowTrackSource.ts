@@ -26,6 +26,7 @@ import { getRecentListeningArtists } from "./flowTemplates.ts";
 import BoundedMap from "../boundedMap.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
+import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 
 type ArtistTopTrack = {
   name: string;
@@ -87,6 +88,17 @@ type TrackPick = Omit<TrackEntryInput, "artistName" | "reason">;
 type FlowTrackEntry = NonNullable<ReturnType<FlowTrackSource["_buildTrackEntry"]>>;
 
 type FlowFilters = { tags: Map<string, string>; yearFrom: number | null; yearTo: number | null };
+
+type RecentRelease = Pick<
+  Awaited<ReturnType<typeof getRecentMissingReleases>>[number],
+  | "artistName"
+  | "artistMbid"
+  | "foreignArtistId"
+  | "releaseDate"
+  | "albumName"
+  | "mbid"
+  | "foreignAlbumId"
+>;
 
 type HarvestArtist = ArtistMatchFields & { tags?: string[] | null; reason?: string };
 
@@ -401,10 +413,14 @@ export class FlowTrackSource {
     );
   }
 
-  _pickTrackFromRanges(trackList: ArtistTopTrack[], ranges: DeepDiveRange[]) {
+  _pickTrackFromRanges(
+    trackList: ArtistTopTrack[],
+    ranges: DeepDiveRange[],
+    keep: (track: ArtistTopTrack) => boolean = () => true,
+  ) {
     for (const range of ranges) {
       const candidates = this._sliceRange(trackList, range.start, range.end).filter(
-        (track) => String(track?.name || "").trim().length > 0,
+        (track) => String(track?.name || "").trim().length > 0 && keep(track),
       );
       const pick = this._pickRandomTrack(candidates);
       if (pick) return pick;
@@ -587,11 +603,13 @@ export class FlowTrackSource {
     if (releases.length === 0) return null;
     const byTitle = new Map(releases.map((release) => [normalizeTitle(release.title), release]));
     const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
-    const popular = (await this._getArtistTopTrackList(artistName)).filter(
+    const hit = this._pickTrackFromRanges(
+      await this._getArtistTopTrackList(artistName),
+      this._deepDiveRanges(deepDive),
       (track) =>
-        track.albumName && byTitle.has(normalizeTitle(track.albumName)) && !isOwned(track.name),
+        Boolean(track.albumName && byTitle.has(normalizeTitle(track.albumName))) &&
+        !isOwned(track.name),
     );
-    const hit = this._pickTrackFromRanges(popular, this._deepDiveRanges(deepDive));
     const hitRelease = hit?.albumName ? byTitle.get(normalizeTitle(hit.albumName)) : null;
     if (hit && hitRelease) {
       return {
@@ -801,7 +819,7 @@ export class FlowTrackSource {
   }
 
   async getDiscoverTracks(limit: number, context: Partial<SourceContext> = {}) {
-    const { ownerUserId, deepDive, filters, excludeArtistKeys } = {
+    const { ownerUserId, deepDive, filters, excludeArtistKeys, blockedTags } = {
       ...DEFAULT_CONTEXT,
       ...context,
     };
@@ -824,6 +842,7 @@ export class FlowTrackSource {
     return this._harvestArtists(rankedWindows(artists, limit), limit, {
       filters,
       excludeArtistKeys,
+      blockedTags,
       pick: (_artist, name) => this._pickTrack(name, filters, deepDive),
     });
   }
@@ -1090,20 +1109,20 @@ export class FlowTrackSource {
     };
   }
 
+  async _getRecentReleases(limit: number): Promise<RecentRelease[]> {
+    const { getRecentMissingReleases } = await import("../discovery/recentReleases.ts");
+    return getRecentMissingReleases(limit, { includeFuture: false });
+  }
+
   async getNewReleaseTracks(limit: number, context: Partial<SourceContext> = {}) {
     const { filters, excludeArtistKeys } = { ...DEFAULT_CONTEXT, ...context };
     if (limit <= 0) return [];
-    const { getRecentMissingReleases } = await import("../discovery/recentReleases.ts");
-    const albums = await getRecentMissingReleases(
+    const albums = await this._getRecentReleases(
       this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : limit,
-      { includeFuture: false },
     );
-    const albumByArtist = new Map<string, (typeof albums)[number]>();
-    for (const album of albums) {
-      if (!albumByArtist.has(album.artistName)) albumByArtist.set(album.artistName, album);
-    }
+    const albumsByArtist = Map.groupBy(albums, (album) => album.artistName);
     return this._harvestArtists(
-      [...albumByArtist.values()].map((album) => ({
+      [...albumsByArtist.values()].map(([album]) => ({
         name: album.artistName,
         artistMbid: album.artistMbid || album.foreignArtistId || null,
         reason: "New release",
@@ -1113,16 +1132,18 @@ export class FlowTrackSource {
         filters,
         excludeArtistKeys,
         pick: async (_artist, name) => {
-          const album = albumByArtist.get(name);
-          if (!album) return null;
-          const releaseYear = String(album.releaseDate || "").slice(0, 4) || null;
-          if (!this._matchesYearRange(releaseYear, filters.yearFrom, filters.yearTo)) return null;
-          return this._pickTrackFromRelease({
-            artistName: album.artistName,
-            albumTitle: album.albumName,
-            albumMbid: album.mbid || album.foreignAlbumId || null,
-            releaseYear,
-          });
+          for (const album of albumsByArtist.get(name) ?? []) {
+            const releaseYear = String(album.releaseDate || "").slice(0, 4) || null;
+            if (!this._matchesYearRange(releaseYear, filters.yearFrom, filters.yearTo)) continue;
+            const pick = await this._pickTrackFromRelease({
+              artistName: album.artistName,
+              albumTitle: album.albumName,
+              albumMbid: album.mbid || album.foreignAlbumId || null,
+              releaseYear,
+            });
+            if (pick) return pick;
+          }
+          return null;
         },
       },
     );

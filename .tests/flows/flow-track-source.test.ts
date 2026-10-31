@@ -251,6 +251,76 @@ test("discover filters by an artist's own tags, not tags borrowed from its seeds
   );
 });
 
+test("discover skips an artist whose own tags include a blocked genre", async () => {
+  const source = new FlowTrackSource();
+  source._getRecommendations = () => [
+    {
+      name: "Country Rapper",
+      matchPercent: 90,
+      tags: ["country", "rap"],
+      candidateTagsHydrated: true,
+    },
+    { name: "Rapper", matchPercent: 80, tags: ["rap"], candidateTagsHydrated: true },
+  ];
+  source._getArtistTopTrackList = async (name) => [topTrack(`${name} Song`, `${name} Album`)];
+
+  const tracks = await source.getDiscoverTracks(2, {
+    filters: source._buildFilters({ tags: ["rap"] }, new Set()),
+    blockedTags: new Set(["country"]),
+  });
+
+  assert.deepEqual(
+    tracks.map((track) => track.artistName),
+    ["Rapper"],
+  );
+});
+
+test("Deep Dive with a year range keeps preferring tracks ranked 10 to 25", async () => {
+  deezerArtists.set("Dive Band", {
+    id: 103,
+    name: "Dive Band",
+    albums: [
+      { id: 1031, title: "Old Album", release_date: "2010-01-01" },
+      { id: 1032, title: "New Album", release_date: "2025-06-01" },
+    ],
+  });
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () =>
+    Array.from({ length: 16 }, (_, rank) =>
+      topTrack(`Track ${rank}`, rank === 0 || rank === 12 ? "New Album" : "Old Album"),
+    );
+
+  const pick = await source._pickTrackInYears("Dive Band", years(source, 2025, 2026), true);
+
+  assert.equal(pick?.trackName, "Track 12");
+});
+
+test("new releases try an artist's older release when the newest has no usable track", async () => {
+  const source = new FlowTrackSource();
+  const release = (albumName: string, releaseDate: string) => ({
+    artistName: "Band",
+    artistMbid: null,
+    foreignArtistId: null,
+    releaseDate,
+    albumName,
+    mbid: "",
+    foreignAlbumId: "",
+  });
+  source._getRecentReleases = async () => [
+    release("Newest", "2026-03-01"),
+    release("Older", "2026-01-01"),
+  ];
+  source._pickTrackFromRelease = async ({ albumTitle }) =>
+    albumTitle === "Older" ? { trackName: "Older Single", albumName: "Older" } : null;
+
+  const tracks = await source.getNewReleaseTracks(5);
+
+  assert.deepEqual(
+    tracks.map((track) => track.trackName),
+    ["Older Single"],
+  );
+});
+
 test("mix album pick prefers top track list metadata before track.getInfo", () => {
   const source = new FlowTrackSource();
   const ownedTitles = new Set(["owned track"]);

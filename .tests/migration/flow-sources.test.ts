@@ -71,7 +71,7 @@ test("upgrading moves Release Radar to New releases and Listening History to rec
         id: "history",
         discoverPresetId: "focus-listening-history",
         description: null,
-        relatedArtists: ["Slowdive", "Ride"],
+        relatedArtists: [],
         recentListening: true,
       },
       { ...flows[2], recentListening: true },

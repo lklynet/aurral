@@ -787,10 +787,11 @@ db.transaction(() => {
     }
     if (flow.discoverPresetId !== "focus-listening-history") return flow;
     const related = Array.isArray(flow.relatedArtists) ? flow.relatedArtists.join(", ") : "";
+    const generated = flow.description === `Tracks related to ${related}`;
     return {
       ...flow,
       recentListening: true,
-      ...(flow.description === `Tracks related to ${related}` ? { description: null } : {}),
+      ...(generated ? { relatedArtists: [], description: null } : {}),
     };
   });
   db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));
