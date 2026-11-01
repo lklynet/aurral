@@ -137,7 +137,7 @@ function Onboarding() {
       if (token) setStoredAuth({ token });
       invalidateBootstrapCache();
       navigate("/welcome", { replace: true });
-      await refreshAuth();
+      if (!(await refreshAuth())) window.location.assign("/welcome");
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to save"));
       setSubmitting(false);

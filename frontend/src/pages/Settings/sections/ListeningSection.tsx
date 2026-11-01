@@ -54,12 +54,16 @@ function useListenHistory() {
   const { user } = useAuth();
   const { showError } = useToast();
   const queryClient = useQueryClient();
-  const { data } = useQuery(listeningHistoryQueryOptions(user?.id));
+  const options = listeningHistoryQueryOptions(user?.id);
+  const { data } = useQuery(options);
   const { mutate } = useMutation({
     mutationFn: (json: ListenHistoryUpdate) =>
       parseResponse(usersClient.me["listening-history"].$patch({ json })),
-    onSuccess: (next) => queryClient.setQueryData(queryKeys.listeningHistory(user?.id), next),
+    onMutate: (json) =>
+      queryClient.setQueryData(options.queryKey, (current) => current && { ...current, ...json }),
+    onSuccess: (next) => queryClient.setQueryData(options.queryKey, next),
     onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: options.queryKey });
       const failure = readApiError(error);
       showError(failure.error || failure.text || "Couldn't save listening history");
     },
