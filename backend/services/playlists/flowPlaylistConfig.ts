@@ -32,6 +32,7 @@ interface StoredFlow {
   name?: unknown;
   ownerUserId?: unknown;
   enabled?: unknown;
+  autoDownload?: unknown;
   recordHistory?: unknown;
   showInLibrary?: unknown;
   scheduleDays?: unknown;
@@ -68,6 +69,7 @@ interface FlowUpdates {
   recentListening?: unknown;
   recordHistory?: unknown;
   showInLibrary?: unknown;
+  autoDownload?: unknown;
   yearFrom?: unknown;
   yearTo?: unknown;
 }
@@ -223,6 +225,7 @@ const normalizeFlow = (flow: StoredFlow) => {
     name: name || "Flow",
     ownerUserId: normalizeOwnerUserId(flow?.ownerUserId),
     enabled: flow?.enabled === true,
+    autoDownload: flow?.autoDownload !== false,
     recordHistory: flow?.recordHistory !== false,
     showInLibrary: flow?.showInLibrary === true,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
@@ -503,6 +506,7 @@ export const flowPlaylistConfig = {
     deepDive,
     recentListening,
     recordHistory,
+    autoDownload,
     yearFrom,
     yearTo,
     tags,
@@ -538,6 +542,7 @@ export const flowPlaylistConfig = {
       discoverPresetId,
       description,
       recordHistory,
+      autoDownload,
       scheduleDays,
       scheduleTime,
       ownerUserId: normalizedOwnerUserId,
@@ -586,6 +591,8 @@ export const flowPlaylistConfig = {
         typeof updates?.recordHistory === "boolean" ? updates.recordHistory : current.recordHistory,
       showInLibrary:
         typeof updates?.showInLibrary === "boolean" ? updates.showInLibrary : current.showInLibrary,
+      autoDownload:
+        typeof updates?.autoDownload === "boolean" ? updates.autoDownload : current.autoDownload,
       yearFrom,
       yearTo,
       enabled: current.enabled,

@@ -340,21 +340,21 @@ export function selectDeezerTrackPreview(
   const targetArtist = normalizeTitle(artistName);
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
-
-  return (
+  const mainArtist = normalizeTitle(artistName.split(/,|&|\s(?:feat\.?|ft\.?|with|x)\s/i)[0]);
+  const byArtist = (artist: string) =>
     candidates.find((candidate) => {
-      const candidateArtist = normalizeTitle(candidate.artist?.name);
       const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
       return (
         candidate.preview &&
         candidateTrack &&
-        candidateArtist === targetArtist &&
+        normalizeTitle(candidate.artist?.name) === artist &&
         (candidateTrack === targetTrack ||
           candidateTrack.includes(targetTrack) ||
           targetTrack.includes(candidateTrack))
       );
-    }) || null
-  );
+    });
+
+  return byArtist(targetArtist) || (mainArtist ? byArtist(mainArtist) : null) || null;
 }
 
 export async function deezerGetTrackPreview({

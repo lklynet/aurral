@@ -107,6 +107,7 @@ export function AurralAlbumStatus({
         {state.active && <DotLoader size="xs" label={null} />}
         <span>{state.label}</span>
       </p>
+      {state.note && <p className="native-library-album-status__recovery">{state.note}</p>}
       {state.recovery?.message && (
         <p className="native-library-album-status__recovery">
           {state.recovery.message}

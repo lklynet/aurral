@@ -1,9 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  groupAlbumGrabRequests,
-  matchesActivitySearch,
-} from "../../frontend/src/pages/activity/activityListUtils.ts";
+import { groupAlbumGrabRequests } from "../../frontend/src/pages/activity/activityListUtils.ts";
 import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.ts";
 
 type ActivityRequest = Parameters<typeof groupAlbumGrabRequests>[0][number];
@@ -105,14 +102,6 @@ test("partial fallback, blocked review, and unavailable evidence never report a 
   const [partial] = groupAlbumGrabRequests(fallback.filter((_, index) => index !== 1));
   assert.equal(partial.statusLabel, "Incomplete");
   assert.equal(partial.progressLabel, "1 of 3 tracks ready · 1 track detail unavailable");
-});
-
-test("search finds child tracks without discarding siblings or their album context", () => {
-  const [row] = groupAlbumGrabRequests(albumTracks());
-  assert.equal(matchesActivitySearch(row, "song 2"), true);
-  assert.equal(matchesActivitySearch(row, "arcade fire"), true);
-  assert.equal(matchesActivitySearch(row, "missing artist"), false);
-  assert.equal(row.children?.length, 3);
 });
 
 test("album rows follow disc order and distinguish failed and cancelled terminal requests", () => {

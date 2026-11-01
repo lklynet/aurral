@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
+  buildAlbumAddAction,
   countReleaseTracks,
   describeAlbumRequestResult,
   isAlbumCompleteInLibrary,
@@ -41,6 +42,19 @@ test("album request results describe what happens without naming a manager", () 
   );
   for (const message of [queued.message, blocked.message])
     assert.doesNotMatch(message, /Aurral|Lidarr/);
+});
+
+test("an album that isn't out yet says it will wait, before and after the request", () => {
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  assert.equal(buildAlbumAddAction(true, {}, day(30)).label, "Download when it's out");
+  assert.equal(buildAlbumAddAction(true, {}, day(0)).label, "Download album");
+  assert.equal(buildAlbumAddAction(true, {}, null).label, "Download album");
+  const waiting = describeAlbumRequestResult(
+    { status: "inLibrary", albumStatus: { status: "unreleased" }, album: { releaseDate: day(30) } },
+    "Dummy",
+  );
+  assert.match(waiting.message, /^Dummy comes out .+\. Aurral will download it then\.$/);
 });
 
 test("an unmonitored Aurral album counts the release's tracks, so a downloaded single isn't complete", () => {

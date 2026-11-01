@@ -35,10 +35,7 @@ import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.ts";
 import { isAurralOwnedPath } from "../qualityProfileService.ts";
 import { playlistManager } from "./playlistManager.ts";
-import {
-  getDownloadSourceNotConfiguredMessage,
-  isAnyDownloadSourceConfigured,
-} from "../downloadSourceService.ts";
+import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import {
   restartWorkerIfPending,
@@ -255,6 +252,28 @@ const queueTracksForPlaylist = async (tracks: PlaylistTrack[], playlistId: strin
   return { reusedJobIds, jobIds, createdJobIds };
 };
 
+async function reuseSavedFlowTracks(flowId: string, jobIds: string[]) {
+  const existingFileMode = normalizeExistingFileMode(
+    downloadWorker.getWorkerSettings().existingFileMode,
+  );
+  if (existingFileMode === "download") return;
+  for (const jobId of jobIds) {
+    const job = downloadTracker.getJob(jobId);
+    if (job?.status !== "saved") continue;
+    await reuseTrackForPlaylist(job, flowId, {
+      existingFileMode,
+      downloadRoot: downloadWorker.downloadRoot,
+      existingJobId: jobId,
+      excludeJobIds: [jobId],
+      skipHistory: true,
+    }).catch((error: unknown) => {
+      console.warn(
+        `[Flows] Reuse failed for ${job.artistName} - ${job.trackName}: ${asAppError(error)?.message || error}`,
+      );
+    });
+  }
+}
+
 const filterTracksMissingDownloadJobs = (tracks: PlaylistTrack[], playlistId: string) => {
   const existingJobs = downloadTracker.getByPlaylistType(playlistId);
   const missing: PlaylistTrack[] = [];
@@ -324,11 +343,6 @@ async function runFlowSeed({
   }
   const flow = flowPlaylistConfig.getFlow(safeFlowId);
   if (!flow) return { missing: true };
-  if (!isAnyDownloadSourceConfigured()) {
-    const error: Error & { code?: string } = new Error(getDownloadSourceNotConfiguredMessage());
-    error.code = "NO_DOWNLOAD_SOURCE";
-    throw error;
-  }
   if (requireEnabled && flow.enabled !== true) return { skipped: true };
   if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
   const effectiveSize =
@@ -370,18 +384,21 @@ async function runFlowSeed({
         if (!isLatestPlaylistOperationToken(tokenScope, token)) {
           return { cancelled: true };
         }
+        const autoDownload = latestFlow.autoDownload && isAnyDownloadSourceConfigured();
         const seeded = await flowSeedingWorker().seedFlowRun(safeFlowId, latestFlow, {
           size: effectiveSize,
           plan: preparedPlan,
+          saved: !autoDownload,
         });
+        if (!autoDownload) await reuseSavedFlowTracks(safeFlowId, seeded.jobIds);
         playlistManager.requestPlaylistSync([safeFlowId]);
         if (scheduleNext) {
           flowPlaylistConfig.scheduleNextRun(safeFlowId);
         }
         return {
           jobIds: seeded?.jobIds || [],
-          tracksQueued: Number(seeded?.tracksQueued || 0),
-          empty: Number(seeded?.tracksQueued || 0) === 0,
+          tracksQueued: autoDownload ? seeded.tracksQueued : 0,
+          empty: seeded.tracksQueued === 0,
           flowName: latestFlow.name,
         };
       },
@@ -418,8 +435,23 @@ async function runFlowSeed({
     });
   } else {
     await restartWorkerIfPending();
+    recordFlowTracksGenerated({ flowId: safeFlowId, tracksFound: result?.jobIds?.length });
   }
   return result;
+}
+
+async function downloadSavedFlowTracks({ flowId }: OperationPayload = {}) {
+  const safeFlowId = String(flowId || "").trim();
+  if (!flowPlaylistConfig.getFlow(safeFlowId)) return { missing: true };
+  let queued = 0;
+  for (const job of downloadTracker.getByPlaylistType(safeFlowId)) {
+    if (job.status !== "saved" || !downloadTracker.setPending(job.id, null)) continue;
+    recordTrackJobQueued(downloadTracker.getJob(job.id));
+    queued += 1;
+  }
+  if (queued > 0) await wakeDownloadWorker();
+  playlistManager.requestPlaylistSync([safeFlowId]);
+  return { queued };
 }
 
 function rescanLibraryForFlows(flowIds: string[]) {
@@ -1030,6 +1062,8 @@ export async function processPlaylistOperation(
         return (await import("../shareLinks/import.ts")).importShare(payload);
       case "disable-flow-cleanup":
         return runFlowCleanup(payload);
+      case "flow-download-saved":
+        return downloadSavedFlowTracks(payload);
       case "delete-flow":
         return deleteFlow(payload);
       case "reset-playlists":

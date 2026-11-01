@@ -938,18 +938,18 @@ export const recordFlowGenerationStarted = ({ flowId }: { flowId?: string | null
 export const recordFlowTracksGenerated = ({
   flowId,
   tracksQueued = 0,
-}: { flowId?: string | null; tracksQueued?: number } = {}) => {
+  tracksFound = 0,
+}: { flowId?: string | null; tracksQueued?: number; tracksFound?: number } = {}) => {
   const id = String(flowId || "").trim();
-  if (!id || tracksQueued <= 0) return null;
+  const count = tracksQueued || tracksFound;
+  if (!id || count <= 0) return null;
   const flowName = resolvePlaylistName(id);
+  const tracks = count === 1 ? "1 track" : `${count} tracks`;
   return upsertAurralHistory({
     referenceId: id,
     kind: "flow_generating",
     title: `Generated playlist for ${flowName}`,
-    subtitle:
-      tracksQueued === 1
-        ? "1 track queued for download"
-        : `${tracksQueued} tracks queued for download`,
+    subtitle: tracksQueued > 0 ? `${tracks} queued for download` : `${tracks} found`,
     status: "completed",
     statusLabel: "Generated",
     href: buildPlaylistHref(id),
