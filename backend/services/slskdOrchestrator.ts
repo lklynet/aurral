@@ -418,10 +418,13 @@ async function pollSlskdEventsForCandidate(payload: SlskdPayload) {
   let completion: { transfer: SlskdTransfer | null; localFilename?: string } | null = null;
   for (const event of result.events) {
     if (!eventMatchesCandidate(event, candidate)) continue;
-    completion =
-      event.type === "DownloadFileComplete"
-        ? { transfer: event.data.transfer, localFilename: event.data.localFilename }
-        : { transfer: null };
+    // slskd follows every DownloadFileComplete with a DownloadDirectoryComplete,
+    // usually in the same page. Keep the file's transfer and saved path.
+    if (event.type === "DownloadFileComplete") {
+      completion = { transfer: event.data.transfer, localFilename: event.data.localFilename };
+    } else if (!completion?.transfer) {
+      completion = { transfer: null };
+    }
   }
   return { eventOffset: nextOffset, completion };
 }
