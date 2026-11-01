@@ -379,7 +379,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                       },
                       optionMenuItem({
                         id: "keep-removed",
-                        label: "Keep removed tracks in library",
+                        label: `Keep tracks ${providerLabel} removes`,
                         checked: importSource?.keepRemovedTracks !== false,
                         onSelect: () =>
                           updateKeepRemoved(importSource?.keepRemovedTracks === false),
