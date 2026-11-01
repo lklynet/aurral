@@ -134,7 +134,9 @@ function PlaylistImportConfig({
           disabled={importing}
         />
         <span className="playlist-import__retention-copy">
-          <span className="playlist-import__retention-title">Keep removed tracks in library</span>
+          <span className="playlist-import__retention-title">
+            Keep tracks {externalSource} removes
+          </span>
         </span>
       </label>
 
