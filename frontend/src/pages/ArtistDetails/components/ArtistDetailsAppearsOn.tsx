@@ -19,6 +19,7 @@ import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
+import { artworkHoverTint } from "../../../utils/imageColors.ts";
 
 const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>
@@ -107,7 +108,12 @@ export function ArtistDetailsAppearsOn({
             coverOptions(releaseGroup),
           );
           return (
-            <article key={releaseGroup.id} className="artist-release-card" data-artwork-scope>
+            <article
+              key={releaseGroup.id}
+              className="artist-release-card"
+              data-artwork-scope
+              {...artworkHoverTint}
+            >
               <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
                   <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />

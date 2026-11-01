@@ -47,6 +47,7 @@ import { artistsClient } from "../../utils/api/clients/artists.ts";
 import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
+import { artworkHoverTint } from "../../utils/imageColors.ts";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -479,7 +480,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     }
 
     return (
-      <article key={releaseGroup.id} className="artist-release-card">
+      <article key={releaseGroup.id} className="artist-release-card" {...artworkHoverTint}>
         <div className="artist-release-card__cover">
           {cover ? (
             <ArtworkImage src={cover} alt="" loading="lazy" decoding="async" />

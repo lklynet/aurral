@@ -15154,12 +15154,12 @@ a.blocklist-page__name:focus-visible {
 }
 
 .artist-details-page .artist-release-card:focus-within {
-  background-color: var(--aurral-surface-hover);
+  background-color: var(--card-tint-surface, var(--aurral-surface-hover));
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-details-page .artist-release-card:hover:not(:disabled) {
-    background-color: var(--aurral-surface-hover);
+    background-color: var(--card-tint-surface, var(--aurral-surface-hover));
   }
 }
 
