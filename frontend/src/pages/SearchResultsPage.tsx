@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import type { InfiniteData, QueryKey } from "@tanstack/react-query";
 import type { ApiError } from "../utils/api/core.ts";
-import { getApiErrorMessage, getApiErrorText } from "./onboardingUtils.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import {
   LIBRARY_LOOKUP_BATCH_SIZE,
   libraryLookupBatchQuery,

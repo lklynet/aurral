@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { parseResponse } from "hono/client";
 import { shareLinksClient } from "../utils/api/clients/shareLinks.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle.ts";
-import { getApiErrorMessage } from "./onboardingUtils.tsx";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { DotLoader } from "../components/DotLoader.tsx";
 import { queryKeys } from "../queryClient.ts";
 import "./ShareImportPage.css";

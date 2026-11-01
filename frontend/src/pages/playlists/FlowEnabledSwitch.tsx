@@ -6,7 +6,7 @@ import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import { getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorText } from "../../utils/api/errors.ts";
 
 export function FlowEnabledSwitch({ flow, onChanged }: { flow: Flow; onChanged?: () => unknown }) {
   const { showSuccess, showError } = useToast();

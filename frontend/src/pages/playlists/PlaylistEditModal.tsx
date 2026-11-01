@@ -13,7 +13,7 @@ import {
 } from "../../utils/api/clients/playlistArtwork.ts";
 import { getPlaylistArtworkPreviewUrl } from "../../utils/api/playlistUrls.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import { getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorText } from "../../utils/api/errors.ts";
 
 type CoverDraft =
   | { kind: "generated"; pick: PlaylistCoverPick }

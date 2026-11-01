@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ApiError } from "../../utils/api/core.ts";
-import { getApiErrorMessage, getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../../utils/api/errors.ts";
 import {
   AlertCircle,
   ArrowUpCircle,

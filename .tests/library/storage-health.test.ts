@@ -541,14 +541,14 @@ async function checkJellyfinWithLibraries(
   return result.sections.find((section) => section.id === "jellyfin");
 }
 
-test("Jellyfin health warns when the mapped Downloads Folder is in no Jellyfin library", async (t: import("vite-plus/test").TestContext) => {
+test("Jellyfin health warns when the mapped Library folder is in no Jellyfin library", async (t: import("vite-plus/test").TestContext) => {
   const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music"]);
 
   assert.equal(jellyfin?.status, "warn");
   assert.match(String(jellyfin?.steps[0]?.detail), /\/downloads\/aurral is outside/);
 });
 
-test("Jellyfin health passes when a library holds the mapped Downloads Folder", async (t: import("vite-plus/test").TestContext) => {
+test("Jellyfin health passes when a library holds the mapped Library folder", async (t: import("vite-plus/test").TestContext) => {
   const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music", "/downloads"]);
 
   assert.equal(jellyfin?.status, "pass");

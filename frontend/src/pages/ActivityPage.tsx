@@ -35,7 +35,7 @@ import ActivityAlbumRow from "./activity/ActivityAlbumRow";
 import ActivityStatusTabs from "./activity/ActivityStatusTabs";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
-import { getApiErrorText } from "./onboardingUtils.tsx";
+import { getApiErrorText } from "../utils/api/errors.ts";
 
 import { Navigate, useParams, useSearchParams } from "react-router";
 import RouteLink from "../components/RouteLink";

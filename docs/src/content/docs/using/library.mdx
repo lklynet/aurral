@@ -3,7 +3,7 @@ title: Library
 description: Browse, play, add, and remove the music in your Library.
 ---
 
-The Library is Aurral's index of your music. It includes the files in the Downloads Folder, in your [read-only folders](#add-music-aurral-only-reads), and, if you connect Lidarr, in the Lidarr root folders. Open **Library** in the sidebar to see these sections:
+The Library is Aurral's index of your music. It includes the files in the Library folder, in your [read-only folders](#add-music-aurral-only-reads), and, if you connect Lidarr, in the Lidarr root folders. Open **Library** in the sidebar to see these sections:
 
 - **Library** shows recently added albums and a short track list.
 - **Favorites** shows your starred artists, albums, and tracks.
@@ -45,10 +45,10 @@ On a Discover artist page, you can search releases by title. Filter by all relea
 
 Each artist and album has one manager, Lidarr or Aurral:
 
-- **With Lidarr connected**, new artists and albums go to Lidarr. Lidarr monitors them and downloads albums into its root folders. Artists and albums that Aurral already has stay Aurral's, and you can still monitor, search, and remove them. Aurral also downloads the tracks for playlists, flows, and single-track downloads into the Downloads Folder.
-- **Without Lidarr**, Aurral monitors artists and downloads albums and tracks with your download clients into the Downloads Folder.
+- **With Lidarr connected**, new artists and albums go to Lidarr. Lidarr monitors them and downloads albums into its root folders. Artists and albums that Aurral already has stay Aurral's, and you can still monitor, search, and remove them. Aurral also downloads the tracks for playlists, flows, and single-track downloads into the Library folder.
+- **Without Lidarr**, Aurral monitors artists and downloads albums and tracks with your download clients into the Library folder.
 
-Lidarr is connected when **Settings > Lidarr > Enabled** is on and the API key is set. When Lidarr is connected but cannot be reached, Lidarr actions show an error and Lidarr's music stays in the Library. Aurral does not take over.
+Lidarr is connected when **Settings > Library > Lidarr > Enabled** is on and the API key is set. When Lidarr is connected but cannot be reached, Lidarr actions show an error and Lidarr's music stays in the Library. Aurral does not take over.
 
 The buttons are the same either way. To get an album, select **Download album**. To get a track, select its **+** button and choose **Add to library**. To follow an artist, open the artist's page and select **Monitor**. Discover and Search cards don't add artists. See [Artists](#artists).
 
@@ -147,15 +147,15 @@ To look for another recording of a track that Aurral downloaded, right-click the
 
 When you delete a track that Aurral manages, Aurral deletes its file. If no other file exists for the track, Aurral also removes the track, and any album or artist that is left empty. If one of several files cannot be deleted, Aurral keeps the track until a later attempt succeeds.
 
-To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Aurral then also deletes the tracks' lyrics files, and album art and folders that the music leaves empty in the Downloads Folder, and removes those tracks from any playlist that used them. Otherwise the files stay on disk.
+To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Aurral then also deletes the tracks' lyrics files, and album art and folders that the music leaves empty in the Library folder, and removes those tracks from any playlist that used them. Otherwise the files stay on disk.
 
 - When you delete an album, the artist's monitoring leaves it out from then on. Deleting a track file also keeps the track out of the artist's top tracks. To let monitoring download it again, request it yourself or select **Allow again** in the artist's **Monitoring rules…** or in **Settings > Monitoring**.
 - Deleting an album or artist that Lidarr has needs Lidarr. If Lidarr cannot be reached, nothing is deleted.
-- Aurral deletes files only in the Downloads Folder. A file in a Lidarr root folder or a read-only folder stays, even when a playlist used it.
+- Aurral deletes files only in the Library folder. A file in a Lidarr root folder or a read-only folder stays, even when a playlist used it.
 
 ## Where Aurral keeps files
 
-Aurral keeps permanent tracks in `Artist/Album/Track` folders in the Downloads Folder. When Aurral knows a track's position on the album, it names the file `07 - Title`, or `2-07 - Title` past the first disc, so the folder lists in album order and a title that repeats on another disc gets its own file.
+Aurral keeps permanent tracks in `Artist/Album/Track` folders in the Library folder. When Aurral knows a track's position on the album, it names the file `07 - Title`, or `2-07 - Title` past the first disc, so the folder lists in album order and a title that repeats on another disc gets its own file.
 
 Flow tracks are temporary. They live under `_flows` and are not part of the Library, with two exceptions:
 
@@ -168,7 +168,7 @@ Aurral stores static playlist membership in its own database. Deleting a static 
 
 ## How the Library finds new files
 
-Aurral keeps the Library in its own database. It scans the Downloads Folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data, so Lidarr's files need MusicBrainz tags to match reliably. See [Tag Lidarr's files](/integrations/lidarr/#tag-lidarrs-files).
+Aurral keeps the Library in its own database. It scans the Library folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data, so Lidarr's files need MusicBrainz tags to match reliably. See [Tag Lidarr's files](/integrations/lidarr/#tag-lidarrs-files).
 
 When a file changes in a watched folder, Aurral scans the changed file or folder. It skips files whose size and modification time did not change. It waits a moment for a move or rename to finish. It ignores `_playlists`, `_staging`, `_fallback`, `_flows`, `aurral-weekly-flow`, and hidden folders.
 
@@ -198,9 +198,9 @@ When a scan finishes, an open Library page reloads. **Recently added** sorting o
 
 If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Status > Storage > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).
 
-When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral removes Lidarr's music from the Library and stops watching the Lidarr root folders. See [Turning Lidarr off](#turning-lidarr-off).
+When you turn off Lidarr in **Settings > Library > Lidarr > Enabled**, Aurral removes Lidarr's music from the Library and stops watching the Lidarr root folders. See [Turning Lidarr off](#turning-lidarr-off).
 
-When a Lidarr root folder is inside the Downloads Folder, Aurral leaves that folder to Lidarr while Lidarr is connected. When the Downloads Folder is inside a Lidarr root folder, the Lidarr scan skips the Downloads Folder.
+When a Lidarr root folder is inside the Library folder, Aurral leaves that folder to Lidarr while Lidarr is connected. When the Library folder is inside a Lidarr root folder, the Lidarr scan skips the Library folder.
 
 ## Tags
 
@@ -226,23 +226,23 @@ To have Aurral see music it should never change, such as a library you organize 
 Aurral never renames, moves, tags, upgrades, or deletes a file in a read-only folder, and never writes anything into the folder. To make sure, mount the folder read-only. See [Mount a read-only folder](/getting-started/storage/#mount-a-read-only-folder).
 
 - The music joins the Library. You can play it, favorite it, add it to playlists, and serve it to Subsonic clients. Discover recommends artists from it like the rest of the Library.
-- Aurral manages its artists and albums. They start **Not monitored**. When you monitor an artist or download an album's missing tracks, the new files go to the Downloads Folder, and the read-only files stay where they are.
+- Aurral manages its artists and albums. They start **Not monitored**. When you monitor an artist or download an album's missing tracks, the new files go to the Library folder, and the read-only files stay where they are.
 - Playlists and flows use a read-only file in place instead of downloading a copy.
 - **Delete track file** is not offered for a track that has only a read-only file. Deleting an album or artist leaves the read-only files, so their music stays in the Library.
 
-A read-only folder cannot be inside the Downloads Folder, contain it, or overlap another read-only folder. It can be a Lidarr root folder. While Lidarr is on, Lidarr manages that music. When you turn Lidarr off, the read-only folder keeps it in the Library.
+A read-only folder cannot be inside the Library folder, contain it, or overlap another read-only folder. It can be a Lidarr root folder. While Lidarr is on, Lidarr manages that music. When you turn Lidarr off, the read-only folder keeps it in the Library.
 
-To remove a folder, select its remove button. Its music leaves the Library, and its files stay on disk. Playlist and flow tracks that used its files download again into the Downloads Folder.
+To remove a folder, select its remove button. Its music leaves the Library, and its files stay on disk. Playlist and flow tracks that used its files download again into the Library folder.
 
 To hand the music over to Aurral later, so that it can rename, tag, and upgrade it, import the folder and then remove it from the read-only folders.
 
 ## Bring your existing music
 
-To have Aurral manage music from another folder, such as an old library, a Lidarr root folder, or ripped CDs, open **Settings > Library** and use **Import a folder**. Aurral files the music in the Downloads Folder. To let Aurral see a folder without changing it, [add it as a read-only folder](#add-music-aurral-only-reads) instead. Choose the folder and a mode:
+To have Aurral manage music from another folder, such as an old library, a Lidarr root folder, or ripped CDs, open **Settings > Library** and use **Import a folder**. Aurral files the music in the Library folder. To let Aurral see a folder without changing it, [add it as a read-only folder](#add-music-aurral-only-reads) instead. Choose the folder and a mode:
 
-- **Move** moves each file into the Downloads Folder and removes the source folders it empties.
+- **Move** moves each file into the Library folder and removes the source folders it empties.
 - **Copy** copies each file and leaves the source folder as it is.
-- **Hardlink** adds each file to the Downloads Folder without using more space. It works only when the folder and the Downloads Folder are on the same filesystem and mount. When it is not available, Aurral says why.
+- **Hardlink** adds each file to the Library folder without using more space. It works only when the folder and the Library folder are on the same filesystem and mount. When it is not available, Aurral says why.
 
 Select **Import folder**. Aurral reads each file's tags and files it under the same `Artist/Album/07 - Title` names that downloads use. The import runs in the background and continues after a restart. **Stop** ends it after the current file, and files already done stay done. When it finishes, Aurral shows how many files it filed and how many the Library already had, and lists each file it skipped with the reason.
 
@@ -267,11 +267,11 @@ When the folder is a Lidarr root folder, Lidarr still points at it. Move takes t
 
 A hardlinked file shares its data with another file, such as a torrent client's copy. Filling in tags or upgrading gives the Library its own file, so the other link keeps its tags and data. The Library file then uses its own space.
 
-Music that you copy into the Downloads Folder yourself also joins the Library. It keeps its file names until you clean up the Library.
+Music that you copy into the Library folder yourself also joins the Library. It keeps its file names until you clean up the Library.
 
 ## Clean up the Library
 
-Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When the metadata provider cannot be reached, files keep their tags and say so, and the next clean up tries again. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
+Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library** and select **Clean up Library**. Aurral moves each file in the Library folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When the metadata provider cannot be reached, files keep their tags and say so, and the next clean up tries again. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
 Earlier versions of Aurral left the disc out of the name, so Clean up also renames tracks past the first disc from `07 - Title` to `2-07 - Title`. A file keeps the track number from its tags or name when the Library's album has no number for it.
 
@@ -294,5 +294,5 @@ To fix a wrong or missing link, open the artist menu and select **Edit MusicBrai
 ## Known limits
 
 - Aurral hands an album to Lidarr only when Lidarr downloads or monitors it. Aurral never takes albums from Lidarr.
-- When you remove an album and keep its files in the Downloads Folder, the next full scan adds it back, unmonitored. To remove it for good, delete its files too.
+- When you remove an album and keep its files in the Library folder, the next full scan adds it back, unmonitored. To remove it for good, delete its files too.
 - Lidarr files tagged with a release ID but no release group ID can show up as a second copy of an album that Aurral also has.

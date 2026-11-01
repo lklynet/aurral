@@ -59,7 +59,7 @@ import {
 } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { getApiErrorMessage, getApiErrorText } from "../pages/onboardingUtils";
+import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 
 type SuggestionMode = "tag" | "unified";

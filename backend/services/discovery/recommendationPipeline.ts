@@ -170,6 +170,8 @@ interface MergedRecommendation extends DiscoveryRecommendation {
   reasonCodes: string[];
 }
 
+export const STARTER_SEED_SOURCE = "charts";
+
 const SOURCE_BASE_WEIGHTS = {
   library: 1,
   local: 1.25,
@@ -178,6 +180,7 @@ const SOURCE_BASE_WEIGHTS = {
   koito: 1.3,
   spotify: 1.2,
   feedback: 1.5,
+  [STARTER_SEED_SOURCE]: 0.5,
 } satisfies Record<string, number>;
 
 const DISCOVERY_MODE_MULTIPLIERS = {
@@ -446,17 +449,20 @@ export const buildDiscoverySeedList = ({
 const LIKED_SEED_SHARE = 0.2;
 const HISTORY_SEED_SHARE = 0.6;
 const LIKED_SEED_AFFINITY = 2.4;
+const STARTER_SEED_TARGET = 24;
 
 export const selectDiscoverySeeds = ({
   likedArtists = [],
   historyArtists = [],
   libraryArtists = [],
+  starterArtists = [],
   limit = 50,
   excludedKeys = new Set(),
 }: {
   likedArtists?: SeedArtistInput[];
   historyArtists?: SeedArtistInput[];
   libraryArtists?: SeedArtistInput[];
+  starterArtists?: SeedArtistInput[];
   limit?: number;
   excludedKeys?: Set<string>;
 } = {}) => {
@@ -475,7 +481,7 @@ export const selectDiscoverySeeds = ({
   );
   const historyCount = Math.min(history.length, remaining - libraryCount);
 
-  return buildDiscoverySeedList({
+  const personal = buildDiscoverySeedList({
     historyArtists: [
       ...liked.slice(0, likedCount).map((artist) => ({
         ...artist,
@@ -487,6 +493,20 @@ export const selectDiscoverySeeds = ({
     ],
     libraryArtists: library.slice(0, libraryCount),
   }).slice(0, limit);
+
+  const starterCount = Math.min(limit, STARTER_SEED_TARGET) - personal.length;
+  if (starterCount <= 0) return personal;
+  const takenKeys = new Set(personal.flatMap((seed) => seed.identityKeys));
+  const starters = starterArtists
+    .filter((artist) => {
+      const keys = normalizeArtistIdentityKeys(artist);
+      if (keys.some((key) => takenKeys.has(key) || excludedKeys.has(key))) return false;
+      keys.forEach((key) => takenKeys.add(key));
+      return true;
+    })
+    .slice(0, starterCount)
+    .map((artist) => ({ ...artist, source: STARTER_SEED_SOURCE, profileBucket: "starter" }));
+  return [...personal, ...buildDiscoverySeedList({ historyArtists: starters })];
 };
 
 const buildReasonCodes = ({

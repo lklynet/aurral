@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { ArrowRight } from "./icons";
 import { DotLoader } from "./DotLoader";
-import { getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { libraryFilesClient } from "../utils/api/clients/libraryFiles.ts";
 import {

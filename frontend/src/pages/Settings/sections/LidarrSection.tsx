@@ -351,7 +351,7 @@ export function LidarrSection() {
   const connected = lidarr.enabled !== false && Boolean(lidarr.url && lidarr.apiKey);
 
   return (
-    <SettingsPage title="Lidarr">
+    <SettingsPage title="Lidarr" back="Library">
       <ConnectionGroup />
       {connected ? (
         <>

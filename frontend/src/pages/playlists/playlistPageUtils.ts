@@ -16,7 +16,7 @@ import {
   type PlaylistStats,
   type PlaylistStatus,
 } from "./playlistStats";
-import { getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorText } from "../../utils/api/errors.ts";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([
   "spotify-playlist",

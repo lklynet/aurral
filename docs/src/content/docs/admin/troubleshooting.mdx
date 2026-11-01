@@ -10,12 +10,12 @@ Start with **Settings > Status > Storage > Run checks**. Most file problems show
 - Use a URL that the Aurral server can reach, not the URL in your browser.
 - If both containers share a Docker network, the URL is often `http://lidarr:8686`.
 - Make sure that the Lidarr API key is correct.
-- Make sure that **Enabled** is on in **Settings > Lidarr**.
+- Make sure that **Enabled** is on in **Settings > Library > Lidarr**.
 
 ## Discover is empty
 
 - Make sure that your Library has artists, or that you have listening history. Aurral picks seed artists from both.
-- Set your listening-history provider in **Settings > Listening > History**.
+- Add your listening history in **Settings > Listening**.
 - Without a Last.fm API key, Aurral finds similar artists only for seed artists that ListenBrainz knows. Adding a key in **Settings > Discovery > Last.fm** often fills an empty list.
 - If the status next to the **Discover** title shows a refresh step, wait a minute. Each user's first set takes about as long as a few dozen ListenBrainz or Last.fm requests.
 - Start a refresh in **Settings > Discovery**. It refreshes trending artists and then rebuilds every user's recommendations. Discover and **Settings > Discovery** keep showing the refresh until your own recommendations are rebuilt, and they show **Refresh failed** if it stops.
@@ -39,16 +39,16 @@ If a download client still shows work after the removal, check that client's que
 
 ## Lidarr is unreachable
 
-When Lidarr fails several requests in a row, Aurral pauses Lidarr requests, and **Settings > Lidarr** says that Lidarr is unreachable. Lidarr's music stays in the Library, and Aurral does not take over Lidarr's artists and albums.
+When Lidarr fails several requests in a row, Aurral pauses Lidarr requests, and **Settings > Library > Lidarr** says that Lidarr is unreachable. Lidarr's music stays in the Library, and Aurral does not take over Lidarr's artists and albums.
 
 1. Check that Lidarr is running and that the Aurral server can reach the **Server URL**.
-2. In **Settings > Lidarr**, select **Test connection**.
+2. In **Settings > Library > Lidarr**, select **Test connection**.
 
 Do not turn off **Enabled** to fix an outage. Turning Lidarr off removes its music from the Library. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
 
 ## Lidarr's music disappeared from the Library
 
-Aurral removes Lidarr's music when **Settings > Lidarr > Enabled** is off or the API key is empty. Turn Lidarr on, enter the API key, and save. Aurral scans the Lidarr root folders again.
+Aurral removes Lidarr's music when **Settings > Library > Lidarr > Enabled** is off or the API key is empty. Turn Lidarr on, enter the API key, and save. Aurral scans the Lidarr root folders again.
 
 ## Albums are missing from the Library
 
@@ -58,23 +58,23 @@ An album whose files all went missing from disk leaves the list. If that happene
 
 ## Settings warn that roots overlap
 
-Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. The check applies your Lidarr remote path mappings. Aurral allows the overlap, but Lidarr can rename, import, or delete files under its root folders.
+Aurral shows this warning when the Library folder and a Lidarr root folder are the same folder, or when one is inside the other. The check applies your Lidarr remote path mappings. Aurral allows the overlap, but Lidarr can rename, import, or delete files under its root folders.
 
-While the folders overlap, Aurral treats files in a Lidarr root folder as Lidarr's and never deletes them. A Lidarr root folder inside the Downloads Folder is scanned only as Lidarr's. Aurral never moves files to remove the overlap.
+While the folders overlap, Aurral treats files in a Lidarr root folder as Lidarr's and never deletes them. A Lidarr root folder inside the Library folder is scanned only as Lidarr's. Aurral never moves files to remove the overlap.
 
-To clear the warning, set **Settings > Library > Downloads folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
+To clear the warning, set **Settings > Library > Library folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
 
 ## Browse folders does not show my media folder
 
-By default, **Browse folders** opens only `/data`, the app data folder, and the Downloads Folder. If your media mount is at another path, such as `/music`, set `FILE_BROWSE_ROOTS=/music` and recreate the container. See [Environment variables](/admin/environment/#mounts-and-permissions).
+By default, **Browse folders** opens only `/data`, the app data folder, and the Library folder. If your media mount is at another path, such as `/music`, set `FILE_BROWSE_ROOTS=/music` and recreate the container. See [Environment variables](/admin/environment/#mounts-and-permissions).
 
 ## Files do not appear in Navidrome
 
-- Make sure that **Settings > Library > Downloads folder > Path** is under the shared media mount.
+- Make sure that **Settings > Library > Library folder > Path** is under the shared media mount.
 - If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr. See [Filesystem and mounts](/getting-started/storage/).
 - In **Settings > Playback > Navidrome**, test the connection.
-- Make sure that Navidrome scans the Downloads Folder, not only the Lidarr library.
-- The **Aurral Playlists** library stays empty until the first download finishes. Check for a file in the Downloads Folder or under `_flows`, then wait for the Navidrome scan.
+- Make sure that Navidrome scans the Library folder, not only the Lidarr library.
+- The **Aurral Playlists** library stays empty until the first download finishes. Check for a file in the Library folder or under `_flows`, then wait for the Navidrome scan.
 - If the library is missing, make sure that the Navidrome account can manage libraries through the API.
 - Read about [removing missing tracks in Navidrome](/integrations/navidrome/#remove-missing-tracks).
 
@@ -83,7 +83,7 @@ By default, **Browse folders** opens only `/data`, the app data folder, and the 
 The log can show `Lidarr track exists but file is not accessible from Aurral`. Completed slskd or Usenet files can also stay in their download folders. The **Lidarr library** storage check can fail while Lidarr itself works.
 
 1. Mount the parent host folder that Lidarr uses into Aurral, for example `N:/ServerFolders/Music:/music`. Do not use separate mounts for the library and the downloads.
-2. Set **Downloads Folder > Path** under that mount, for example `/music/Aurral`.
+2. Set **Library folder > Path** under that mount, for example `/music/Aurral`.
 3. Set `FILE_BROWSE_ROOTS=/music`, so that **Browse folders** can open the mount.
 4. After you change `volumes` or `environment` in the Compose file, recreate the container: `docker compose up -d --force-recreate`.
 5. Run **Settings > Status > Storage > Run checks**. The **Lidarr library** section shows the exact path that Aurral cannot read.
@@ -105,8 +105,8 @@ The **Lidarr library** storage check can fail on a sample track outside every Li
 First, wait for Navidrome to finish its scan. Aurral adds tracks to a Navidrome playlist only after Navidrome indexes them.
 
 - Make sure that the **Lidarr library** storage check passes.
-- Make sure that Navidrome scans the Downloads Folder and each Lidarr folder that playlists reuse.
-- Make sure that the Downloads Folder has the same absolute path in both containers.
+- Make sure that Navidrome scans the Library folder and each Lidarr folder that playlists reuse.
+- Make sure that the Library folder has the same absolute path in both containers.
 - Run a flow, or edit and save a static playlist.
 - Run a full Navidrome scan and wait for Aurral's next update.
 
@@ -116,7 +116,7 @@ See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 
 **Sync to Plex now** can succeed while the playlists have no tracks. The **Aurral** library can also stay empty while Plex scans.
 
-- Make sure that Plex can read the Downloads Folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
+- Make sure that Plex can read the Library folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
 - If Plex and Aurral use different paths, set **Settings > Playback > Plex > Aurral Library path in Plex** to the folder that Plex sees. If they use the same path, leave it blank.
 - Wait for the Plex settings to save, then select **Sync to Plex now** again.
 - Wait for the first scan. It can take several minutes. Aurral syncs a playlist again for about 15 minutes while Plex indexes its tracks.

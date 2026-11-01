@@ -8,12 +8,14 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { userOps }, { lastfmStationClient }] = await setupIsolatedBackend(
-  "lastfm-stations",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/importLists/lastfmStations.ts"),
-);
+const [isolatedState, { db }, { userOps }, { lastfmStationClient }, { updateListenHistory }] =
+  await setupIsolatedBackend(
+    "lastfm-stations",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/importLists/lastfmStations.ts"),
+    () => import("../../backend/services/listeningHistory.ts"),
+  );
 
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -85,10 +87,7 @@ test("lastfmStationClient lists the three stations in a stable order", async () 
 test("lastfmStationClient reuses a Last.fm username from the profile", async () => {
   const user = userOps.createUser("profile-user", "hash");
   assert.ok(user != null);
-  userOps.updateUser(user.id, {
-    listenHistoryProvider: "lastfm",
-    listenHistoryUsername: "profile-lastfm",
-  });
+  updateListenHistory(user.id, { lastfm: "profile-lastfm" });
   let requestedUrl = "";
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     requestedUrl = String(url);

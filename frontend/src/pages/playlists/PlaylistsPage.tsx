@@ -23,7 +23,7 @@ import {
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
-import { getApiErrorMessage } from "../onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 type ImportRequest = Pick<ComponentProps<typeof PlaylistImportModal>, "initialShareUrl">;
 

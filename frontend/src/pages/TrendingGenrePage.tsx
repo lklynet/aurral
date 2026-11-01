@@ -17,7 +17,7 @@ import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.
 import { trendingGenreQueryOptions } from "../queryOptions.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { mapPreviewTracks, type PreviewTrack } from "./deezerPreviewTracks.ts";
-import { getApiErrorMessage } from "./onboardingUtils";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import {
   PlaylistTracksPanel,
   usePlaylistTrackPlayback,

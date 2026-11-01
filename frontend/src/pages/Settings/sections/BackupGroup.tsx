@@ -4,7 +4,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { backupClient } from "../../../utils/api/clients/backup.ts";
 import { healthClient } from "../../../utils/api/clients/health.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
-import { getApiErrorMessage } from "../../onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../../utils/api/errors.ts";
 import { useServerSettings } from "../SettingsProviders";
 import { SettingsGroup, SettingsRow } from "../SettingsLayout";
 

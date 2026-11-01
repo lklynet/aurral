@@ -26,7 +26,7 @@ import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import { getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorText } from "../../utils/api/errors.ts";
 
 type FlowTemplate = InferResponseType<
   (typeof flowsClient)["flow-templates"]["$get"],

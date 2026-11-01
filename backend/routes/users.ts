@@ -23,96 +23,16 @@ import {
   requestUserDiscoveryRefresh,
 } from "../services/discovery/index.ts";
 import {
-  getListenHistoryProfile,
-  listenHistoryProfilesEqual,
-  normalizeListenHistoryProvider,
-  normalizeListenHistoryUrl,
-  normalizeListenHistoryUsername,
-  resolveListenHistorySettings,
+  getListenHistory,
+  ListenHistoryError,
+  updateListenHistory,
 } from "../services/listeningHistory.ts";
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
-import { normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
 import { disconnectUserPlex, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
-import { asAppError, type AppError } from "../../lib/errors.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
-import { isErrorStatus } from "./shared/errorStatus.ts";
-
-type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;
-
-type ListenHistoryBody = {
-  lastfmUsername?: unknown;
-  listenHistoryProvider?: unknown;
-  listenHistoryUsername?: unknown;
-  listenHistoryUrl?: unknown;
-};
 
 type UserUpdate = Parameters<typeof userOps.updateUser>[1];
-
-const buildListenHistoryUpdates = (body: ListenHistoryBody, existing: UserRecord) => {
-  const hasLegacyLastfmUpdate = Object.hasOwn(body, "lastfmUsername");
-  const hasListenHistoryProviderUpdate = Object.hasOwn(body, "listenHistoryProvider");
-  const hasListenHistoryUsernameUpdate = Object.hasOwn(body, "listenHistoryUsername");
-  const hasListenHistoryUrlUpdate = Object.hasOwn(body, "listenHistoryUrl");
-  if (
-    !hasListenHistoryProviderUpdate &&
-    !hasListenHistoryUsernameUpdate &&
-    !hasListenHistoryUrlUpdate &&
-    !hasLegacyLastfmUpdate
-  ) {
-    return null;
-  }
-
-  const provider = normalizeListenHistoryProvider(
-    hasListenHistoryProviderUpdate
-      ? body.listenHistoryProvider
-      : hasLegacyLastfmUpdate
-        ? "lastfm"
-        : existing.listenHistoryProvider,
-  );
-
-  if (provider === "local") {
-    return {
-      listenHistoryProvider: "local",
-      listenHistoryUsername: null,
-      listenHistoryUrl: null,
-    };
-  }
-
-  if (provider === "koito") {
-    const rawUrl = hasListenHistoryUrlUpdate ? body.listenHistoryUrl : existing.listenHistoryUrl;
-    const trimmedUrl = normalizeListenHistoryUrl(rawUrl);
-    if (!trimmedUrl) {
-      const error: AppError = new Error("Koito URL is required");
-      error.statusCode = 400;
-      throw error;
-    }
-    const urlValidation = validateExternalUrl(trimmedUrl);
-    if (!urlValidation.valid) {
-      const error: AppError = new Error(urlValidation.error || "Invalid Koito URL");
-      error.statusCode = 400;
-      throw error;
-    }
-    return {
-      listenHistoryProvider: "koito",
-      listenHistoryUrl: normalizeKoitoBaseUrl(urlValidation.url),
-      listenHistoryUsername: null,
-    };
-  }
-
-  const username = normalizeListenHistoryUsername(
-    hasListenHistoryUsernameUpdate
-      ? body.listenHistoryUsername
-      : hasLegacyLastfmUpdate
-        ? body.lastfmUsername
-        : existing.listenHistoryUsername,
-  );
-  return {
-    listenHistoryProvider: provider,
-    listenHistoryUsername: username,
-    listenHistoryUrl: null,
-  };
-};
 
 const reconcileLocalBypassAfterUserMutation = () => {
   const result = reconcileLocalNetworkBypassSetting();
@@ -138,15 +58,6 @@ const normalizeQualityProfileId = (value: unknown) => {
   return Math.trunc(parsed);
 };
 
-const refreshDiscoveryForListenHistoryChange = (
-  userId: number,
-  existingProfile: ReturnType<typeof getListenHistoryProfile>,
-  nextProfile: ReturnType<typeof getListenHistoryProfile>,
-) => {
-  if (listenHistoryProfilesEqual(existingProfile, nextProfile)) return;
-  requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
-};
-
 const isValidPermissions = (permissions: unknown): permissions is Record<string, boolean> =>
   typeof permissions === "object" &&
   permissions !== null &&
@@ -170,11 +81,10 @@ const updateUserBody = v.object({
   role: v.optional(v.string()),
   status: v.optional(v.string()),
   allowIdentityAdoption: v.optional(v.boolean()),
-  listenHistoryProvider: nullableText,
-  listenHistoryUsername: nullableText,
-  listenHistoryUrl: nullableText,
-  lastfmUsername: nullableText,
 });
+const listenHistoryBody = v.partial(
+  v.object({ lastfm: nullableText, listenbrainz: nullableText, koito: nullableText }),
+);
 const themeBody = v.object({ theme: v.optional(v.unknown()) });
 const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
 const lidarrPreferencesBody = v.object({
@@ -195,6 +105,7 @@ export default new Hono<AppEnv>()
       return c.json(
         users.map((user) => ({
           ...user,
+          listenHistory: getListenHistory(user.id),
           plexLink: plexConnectionStore.getPublicStatus(user.id),
           plexGlobalAccount: globalPlexAccount,
         })),
@@ -267,22 +178,6 @@ export default new Hono<AppEnv>()
       if (permissions != null && !isValidPermissions(permissions)) {
         return c.json({ error: INVALID_PERMISSIONS_ERROR }, 400);
       }
-      const existingProfile = getListenHistoryProfile(existing);
-      let listenHistoryUpdates = null;
-      try {
-        listenHistoryUpdates = buildListenHistoryUpdates(body, existing);
-      } catch (error) {
-        const failure = asAppError(error);
-        return c.json(
-          { error: failure?.message || "Invalid listening history settings" },
-          isErrorStatus(failure?.statusCode) ? failure.statusCode : 400,
-        );
-      }
-      const requestedProfile = getListenHistoryProfile({
-        ...existing,
-        ...(listenHistoryUpdates || {}),
-      });
-      refreshDiscoveryForListenHistoryChange(id, existingProfile, requestedProfile);
       if (isSelf && !isAdmin) {
         if (
           permissions !== undefined ||
@@ -293,9 +188,6 @@ export default new Hono<AppEnv>()
           return c.json({ error: "Forbidden" }, 403);
         }
         const updates: UserUpdate = {};
-        if (listenHistoryUpdates) {
-          Object.assign(updates, listenHistoryUpdates);
-        }
         if (password) {
           const { currentPassword } = body;
           if (!currentPassword) {
@@ -318,10 +210,6 @@ export default new Hono<AppEnv>()
               id,
               username: existing.username,
               role: existing.role,
-              listenHistoryProvider: existing.listenHistoryProvider,
-              listenHistoryUsername: existing.listenHistoryUsername,
-              listenHistoryUrl: existing.listenHistoryUrl,
-              lastfmUsername: existing.lastfmUsername,
               lidarrRootFolderPath: existing.lidarrRootFolderPath,
               lidarrQualityProfileId: existing.lidarrQualityProfileId,
             },
@@ -381,9 +269,6 @@ export default new Hono<AppEnv>()
         }
         updates.allowIdentityAdoption = allowIdentityAdoption;
       }
-      if (listenHistoryUpdates) {
-        Object.assign(updates, listenHistoryUpdates);
-      }
       if (Object.keys(updates).length === 0) {
         return c.json(
           {
@@ -391,10 +276,6 @@ export default new Hono<AppEnv>()
             username: existing.username,
             role: existing.role,
             permissions: existing.permissions,
-            listenHistoryProvider: existing.listenHistoryProvider,
-            listenHistoryUsername: existing.listenHistoryUsername,
-            listenHistoryUrl: existing.listenHistoryUrl,
-            lastfmUsername: existing.lastfmUsername,
             lidarrRootFolderPath: existing.lidarrRootFolderPath,
             lidarrQualityProfileId: existing.lidarrQualityProfileId,
           },
@@ -413,21 +294,25 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to update user", message: failure?.message }, 500);
     }
   })
-  .get("/me/listening-history", requireAuth, (c) => {
-    try {
-      const user = userOps.getUserById(c.var.user.id);
-      if (!user) {
-        return c.json({ error: "User not found" }, 404);
+  .get("/me/listening-history", requireAuth, requireUserAccount, (c) =>
+    c.json(getListenHistory(c.var.user.id), 200),
+  )
+  .patch(
+    "/me/listening-history",
+    requireAuth,
+    requireUserAccount,
+    validate("json", listenHistoryBody),
+    (c) => {
+      try {
+        const { history, changed } = updateListenHistory(c.var.user.id, c.req.valid("json"));
+        if (changed) requestUserDiscoveryRefresh(c.var.user.id, { reason: "listening_history" });
+        return c.json(history, 200);
+      } catch (error) {
+        if (error instanceof ListenHistoryError) return c.json({ error: error.message }, 400);
+        throw error;
       }
-      return c.json(resolveListenHistorySettings(user), 200);
-    } catch (e) {
-      const failure = asAppError(e);
-      return c.json(
-        { error: "Failed to get listening history settings", message: failure?.message },
-        500,
-      );
-    }
-  })
+    },
+  )
   .get("/me/lidarr-preferences", requireAuth, async (c) => {
     try {
       const user = userOps.getUserById(c.var.user.id);

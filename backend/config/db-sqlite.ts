@@ -1199,21 +1199,33 @@ if (!userColumns.includes("subsonic_password")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN subsonic_password TEXT");
 }
 
+const hasListenHistorySources = db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'listen_history_sources'")
+  .get();
 db.exec(`
-  UPDATE users
-  SET listen_history_username = NULLIF(TRIM(lastfm_username), '')
-  WHERE (listen_history_username IS NULL OR TRIM(listen_history_username) = '')
-    AND lastfm_username IS NOT NULL
-    AND TRIM(lastfm_username) != '';
+  CREATE TABLE IF NOT EXISTS listen_history_sources (
+    user_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    account TEXT NOT NULL,
+    PRIMARY KEY (user_id, provider),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
+if (!hasListenHistorySources) {
+  db.exec(`
+    INSERT OR IGNORE INTO listen_history_sources (user_id, provider, account)
+    SELECT id, 'koito', TRIM(listen_history_url) FROM users
+    WHERE LOWER(TRIM(COALESCE(listen_history_provider, ''))) IN ('', 'koito')
+      AND TRIM(COALESCE(listen_history_url, '')) != '';
 
-db.exec(`
-  UPDATE users
-  SET listen_history_provider = 'lastfm'
-  WHERE (listen_history_provider IS NULL OR TRIM(listen_history_provider) = '')
-    AND listen_history_username IS NOT NULL
-    AND TRIM(listen_history_username) != '';
-`);
+    INSERT OR IGNORE INTO listen_history_sources (user_id, provider, account)
+    SELECT id, COALESCE(NULLIF(LOWER(TRIM(listen_history_provider)), ''), 'lastfm'),
+      COALESCE(NULLIF(TRIM(listen_history_username), ''), TRIM(lastfm_username))
+    FROM users
+    WHERE LOWER(TRIM(COALESCE(listen_history_provider, ''))) IN ('', 'lastfm', 'listenbrainz')
+      AND COALESCE(NULLIF(TRIM(listen_history_username), ''), TRIM(lastfm_username), '') != '';
+  `);
+}
 
 export const dbHelpers = {
   parseJSON: (text: string | null | undefined): unknown => {

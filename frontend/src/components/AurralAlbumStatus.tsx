@@ -8,7 +8,7 @@ import { DotLoader } from "./DotLoader";
 import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
 import { SettingsLink } from "../pages/Settings/settingsRoute";
-import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { queryKeys } from "../queryClient.ts";
 import { cancelAurralAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
 import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";

@@ -146,7 +146,7 @@ export async function removeEmptiedFolder(directory: string, stopAt: string) {
 
 const HARDLINK_REASONS: Partial<Record<string, string>> = {
   EXDEV:
-    "The source folder and the Downloads Folder are on different filesystems or mounts. In Docker, mount one parent folder that holds both.",
+    "The source folder and the Library folder are on different filesystems or mounts. In Docker, mount one parent folder that holds both.",
 };
 
 export async function probeHardlink(sourceFile: string, targetDirectory: string) {

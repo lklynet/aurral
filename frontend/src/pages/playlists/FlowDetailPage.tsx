@@ -29,7 +29,7 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { parseResponse, type InferRequestType } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
-import { getApiErrorMessage } from "../onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";

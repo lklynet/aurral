@@ -10,7 +10,6 @@ import {
   Link,
   Monitor,
   Music,
-  Server,
   SlidersHorizontal,
   User,
   Users,
@@ -29,7 +28,6 @@ export const SETTINGS_SECTIONS = [
   { id: "playback", label: "Playback", icon: Music, group: "server" },
   { id: "discovery", label: "Discovery", icon: Compass, group: "server" },
   { id: "notifications", label: "Notifications", icon: Bell, group: "server" },
-  { id: "lidarr", label: "Lidarr", icon: Server, group: "server" },
   { id: "status", label: "Status", icon: Activity, group: "server" },
   { id: "metadata", label: "Metadata", icon: Database, group: "server", hidden: true },
 ] as const;
@@ -82,14 +80,13 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
     },
   },
   listening: {
-    sections: ["History", "Scrobbling", "Discovery tastes"],
+    sections: ["Services", "Discovery tastes"],
     services: {
       "Last.fm": "scrobbling listening history username recommendations",
-      ListenBrainz: "scrobbling user token listening history",
-      Koito: "scrobbling API key URL listening history",
+      ListenBrainz: "scrobbling user token listening history username recommendations",
+      Koito: "scrobbling API key URL listening history recommendations",
     },
     fields: {
-      Source: "listening history provider recommendations local",
       "Reset discovery tastes": "more like this less like this blocklist",
     },
   },
@@ -131,9 +128,19 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
     },
   },
   library: {
-    sections: ["Downloads folder", "Read-only folders", "Import a folder", "Clean up Library"],
+    sections: [
+      "Library folder",
+      "Read-only folders",
+      "Import a folder",
+      "Clean up Library",
+      "Library managers",
+    ],
+    services: {
+      Lidarr:
+        "connection API key server URL external URL root folder quality profile metadata profile tag monitor search on add community guide",
+    },
     fields: {
-      "Downloads folder": "path media library root",
+      "Library folder": "downloads folder path media library root",
       "Read-only folders": "existing music never changes",
       "Import folder":
         "ingest existing music library folder move copy hardlink Lidarr root monitor",
@@ -214,21 +221,6 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
       "Flow finished": "notification event webhook Gotify",
       "Request made": "notification event webhook Gotify",
       "Request available": "notification event webhook Gotify",
-    },
-  },
-  lidarr: {
-    sections: ["Connection", "Defaults", "Community guide"],
-    fields: {
-      Enabled: "enable disable turn off reconnect unreachable",
-      "Server URL": "address host connection API key test",
-      "External URL": "browser view on lidarr public address",
-      "Root folder": "lidarr default path",
-      "Quality profile": "lidarr default profile",
-      "Metadata profile": "lidarr default metadata",
-      Tag: "lidarr tag",
-      Monitor: "default monitoring option albums existing future missing latest first",
-      "Search on add": "missing albums artists",
-      "Community guide": "Davo recommended settings custom formats naming scheme apply",
     },
   },
   status: {

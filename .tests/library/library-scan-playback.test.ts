@@ -470,7 +470,7 @@ test("a queued media scan without folders reports unavailable services and scans
   assert.equal(recovered.length, 3);
 });
 
-test("a Downloads Folder inside a Lidarr root is still scanned on every server", async (t) => {
+test("a Library folder inside a Lidarr root is still scanned on every server", async (t) => {
   const musicRoot = state.baseDir;
   dbOps.updateSettings({
     integrations: { ...mediaServers, lidarr: { ...lidarr, rootFolderPath: musicRoot } },
@@ -801,7 +801,7 @@ test(
 );
 
 test(
-  "deleting a flow indexes a shared file moved into the Downloads Folder and tells servers both folders",
+  "deleting a flow indexes a shared file moved into the Library folder and tells servers both folders",
   { timeout: 10000 },
   async (t) => {
     const requests = stubMediaServers(t);

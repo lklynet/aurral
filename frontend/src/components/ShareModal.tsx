@@ -6,7 +6,7 @@ import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { shareLinksClient } from "../utils/api/clients/shareLinks.ts";
-import { getApiErrorText } from "../pages/onboardingUtils";
+import { getApiErrorText } from "../utils/api/errors.ts";
 import { Select } from "./Select";
 import { shareLink, type ShareItem, type ShareKind } from "../utils/shareLink";
 import { formatDateTime } from "../utils/dateTime.ts";

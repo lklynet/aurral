@@ -174,7 +174,7 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   assert.equal(fileRow(filePath).length, 1);
 });
 
-test("a read-only folder cannot overlap the Downloads Folder or another read-only folder", async () => {
+test("a read-only folder cannot overlap the Library folder or another read-only folder", async () => {
   const folder = await makeFolder("overlap");
   await mkdir(path.join(folder, "Nested"), { recursive: true });
   const inDownloads = path.join(resolveDownloadRoot(), "Inside");

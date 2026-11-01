@@ -576,7 +576,7 @@ test("album removal never deletes a file Lidarr also lists as available", async 
   );
 });
 
-test("album removal never deletes a reused file outside the Downloads Folder", async () => {
+test("album removal never deletes a reused file outside the Library folder", async () => {
   const { album, tracks, jobFor } = await createAurralAlbum({ trackCount: 2, filesFor: [1] });
   const lidarrPath = path.join(isolatedState.baseDir, "music", `reused-${album.id}.flac`);
   await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
@@ -593,7 +593,7 @@ test("album removal never deletes a reused file outside the Downloads Folder", a
   assert.equal(albumRow(album.id), undefined);
 });
 
-test("album removal deletes files in a Downloads Folder subfolder whose name starts with two dots", async () => {
+test("album removal deletes files in a Library folder subfolder whose name starts with two dots", async () => {
   const { album, tracks } = await createAurralAlbum({ trackCount: 1, filesFor: [] });
   const filePath = path.join(resolveDownloadRoot(), "..Live", `dotted-${album.id}.flac`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });

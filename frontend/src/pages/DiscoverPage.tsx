@@ -26,6 +26,7 @@ import NearbyLocationControl from "../components/NearbyLocationControl";
 import { NewsFeedTile, ShowFeedTile } from "../components/DiscoverFeed";
 import { useToast } from "../contexts/ToastContext";
 import { DiscoverRail } from "../components/DiscoverRail";
+import { DiscoverHistoryPrompt } from "./DiscoverHistoryPrompt";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
@@ -755,6 +756,8 @@ function DiscoverPage() {
           )}
         </div>
       </section>
+
+      <DiscoverHistoryPrompt userId={authUser?.id} />
 
       {discoverSections.filter((section) => section.enabled).map(renderSection)}
 

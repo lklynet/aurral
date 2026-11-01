@@ -22,7 +22,7 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { parseResponse, type InferRequestType } from "hono/client";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
-import { getApiErrorMessage } from "../onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { getStaticPlaylistTrackCount } from "./playlistStats";
@@ -43,7 +43,7 @@ import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
 import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
-import { getApiErrorText } from "../onboardingUtils.tsx";
+import { getApiErrorText } from "../../utils/api/errors.ts";
 
 interface PlaylistDetailProps {
   playlist: StaticPlaylist;

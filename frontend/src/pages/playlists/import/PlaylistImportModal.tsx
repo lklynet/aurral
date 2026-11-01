@@ -9,14 +9,14 @@ import { parseResponse, type InferRequestType, type InferResponseType } from "ho
 import { playlistImportsClient } from "../../../utils/api/clients/playlistImports.ts";
 import { shareLinksClient } from "../../../utils/api/clients/shareLinks.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
-import { usersClient } from "../../../utils/api/clients/users.ts";
 import { formatTrackTotal } from "../playlistPageUtils.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import { listeningHistoryQueryOptions } from "../../../queryOptions.ts";
 import { reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
-import { getApiErrorBody, getApiErrorMessage } from "../../onboardingUtils.tsx";
+import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
 
 declare global {
   interface Window {
@@ -417,15 +417,10 @@ export function PlaylistImportModal({
   };
 
   const lastfmProfileQuery = useQuery({
-    queryKey: queryKeys.listeningHistory(user?.id),
-    queryFn: ({ signal }) =>
-      parseResponse(usersClient.me["listening-history"].$get({}, { init: { signal } })),
-    enabled: open && source === "lastfm" && lastfmRequestedUsername === null,
+    ...listeningHistoryQueryOptions(user?.id),
+    enabled: user?.id != null && open && source === "lastfm" && lastfmRequestedUsername === null,
   });
-  const profileLastfmUsername =
-    lastfmProfileQuery.data?.listenHistoryProvider === "lastfm"
-      ? String(lastfmProfileQuery.data?.listenHistoryUsername || "").trim()
-      : "";
+  const profileLastfmUsername = lastfmProfileQuery.data?.lastfm ?? "";
   const lastfmUsernameRequest = lastfmRequestedUsername ?? profileLastfmUsername;
   const lastfmUsernameInput = lastfmUsernameDraft ?? profileLastfmUsername;
   const lastfmPlaylistsQuery = useQuery({

@@ -281,7 +281,7 @@ async function planAlbum(albumId: number, context: CleanupPlanContext) {
       items.push({
         sourcePath: file.path,
         status: "skipped",
-        reason: "The new name does not fit inside the Downloads Folder.",
+        reason: "The new name does not fit inside the Library folder.",
         details,
       });
       continue;

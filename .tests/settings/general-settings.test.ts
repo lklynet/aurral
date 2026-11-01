@@ -550,7 +550,7 @@ test("queues a news refresh only when news settings change", async () => {
   clearNewsRefresh();
 });
 
-test("the Downloads Folder cannot move into or around a read-only folder", async (t: import("vite-plus/test").TestContext) => {
+test("the Library folder cannot move into or around a read-only folder", async (t: import("vite-plus/test").TestContext) => {
   const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const folder = await mkdtemp(join(tmpdir(), "aurral-settings-read-only-"));

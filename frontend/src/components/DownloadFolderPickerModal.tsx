@@ -4,7 +4,7 @@ import { filesystemClient } from "../utils/api/clients/filesystem.ts";
 
 import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "./icons";
-import { getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";

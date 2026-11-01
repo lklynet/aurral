@@ -1,177 +1,124 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-
+import { signedInAs } from "../helpers/honoApp.ts";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { userOps, dbOps }, listeningHistoryModule] =
+const [isolatedState, { db }, { userOps, dbOps }, { api }, discovery, { getUserDiscovery }] =
   await setupIsolatedBackend(
     "listening-history",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/listeningHistory.ts"),
+    () => import("../../backend/routes/api.ts"),
+    () => import("../../backend/services/discovery/index.ts"),
+    () => import("../../backend/services/discovery/userDiscovery.ts"),
   );
 
-const bcryptModule = await import("bcrypt");
+let userId = 0;
+const app = signedInAs(() => ({
+  id: userId,
+  username: "alice",
+  role: "user",
+  permissions: {},
+})).route("/", api);
 
-const bcrypt = bcryptModule.default;
-const { getListenHistoryProfile, hasListenHistoryProfile, resolveListenHistorySettings } =
-  listeningHistoryModule;
+const patchHistory = async (json: unknown) => {
+  const response = await app.request("/users/me/listening-history", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(json),
+  });
+  return { status: response.status, body: await response.json() };
+};
+
+const originalFetch = globalThis.fetch;
+const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 
 beforeEach(() => {
   resetDatabase(db);
+  dbOps.invalidateSettingsCache();
+  const user = userOps.createUser("alice", "hash");
+  assert.ok(user);
+  userId = user.id;
 });
 
 afterAll(async () => {
+  globalThis.fetch = originalFetch;
+  if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
+  else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   await cleanupIsolatedState(isolatedState);
 });
 
-test("normalizes legacy and explicit listening history profiles", () => {
-  assert.deepEqual(getListenHistoryProfile({ lastfm_username: "alice" }), {
-    listenHistoryProvider: "lastfm",
-    listenHistoryUsername: "alice",
-    listenHistoryUrl: null,
-    lastfmUsername: "alice",
+test("a user keeps a history source for each service and can clear one", async () => {
+  const saved = await patchHistory({
+    lastfm: " listener ",
+    listenbrainz: "brainz-listener",
+    koito: "http://koito.local:4110/apis/listenbrainz/",
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.body, {
+    lastfm: "listener",
+    listenbrainz: "brainz-listener",
+    koito: "http://koito.local:4110",
   });
 
-  assert.deepEqual(
-    getListenHistoryProfile({
-      listenHistoryProvider: "listenbrainz",
-      listenHistoryUsername: "  roofuskit  ",
-    }),
-    {
-      listenHistoryProvider: "listenbrainz",
-      listenHistoryUsername: "roofuskit",
-      listenHistoryUrl: null,
-      lastfmUsername: null,
-    },
-  );
-});
-
-test("user updates persist listenbrainz separately from legacy lastfm field", () => {
-  const hash = bcrypt.hashSync("secret", 4);
-  const user = userOps.createUser("alice", hash, "user");
-  assert.ok(user != null);
-
-  const updated = userOps.updateUser(user.id, {
-    listenHistoryProvider: "listenbrainz",
-    listenHistoryUsername: "roofuskit",
+  const cleared = await patchHistory({ listenbrainz: "" });
+  assert.deepEqual(cleared.body, {
+    lastfm: "listener",
+    listenbrainz: null,
+    koito: "http://koito.local:4110",
   });
 
-  assert.equal(updated?.listenHistoryProvider, "listenbrainz");
-  assert.equal(updated?.listenHistoryUsername, "roofuskit");
-  assert.equal(updated?.lastfmUsername, null);
-
-  const stored = userOps.getUserById(user.id);
-  assert.equal(stored?.listenHistoryProvider, "listenbrainz");
-  assert.equal(stored?.listenHistoryUsername, "roofuskit");
-  assert.equal(stored?.lastfmUsername, null);
+  const response = await app.request("/users/me/listening-history");
+  assert.deepEqual(await response.json(), cleared.body);
 });
 
-test("legacy lastfm_username still resolves as a lastfm profile", () => {
-  const hash = bcrypt.hashSync("secret", 4);
-  const user = userOps.createUser("bob", hash, "user");
-  assert.ok(user != null);
+test("an invalid Koito URL is rejected without touching other sources", async () => {
+  await patchHistory({ lastfm: "listener" });
 
-  db.prepare(
-    "UPDATE users SET lastfm_username = ?, listen_history_provider = NULL, listen_history_username = NULL WHERE id = ?",
-  ).run("legacybob", user.id);
+  const rejected = await patchHistory({ lastfm: "someone-else", koito: "ftp://koito.local" });
 
-  const stored = userOps.getUserById(user.id);
-  assert.equal(stored?.listenHistoryProvider, "lastfm");
-  assert.equal(stored?.listenHistoryUsername, "legacybob");
-  assert.equal(stored?.lastfmUsername, "legacybob");
+  assert.equal(rejected.status, 400);
+  const response = await app.request("/users/me/listening-history");
+  assert.deepEqual(await response.json(), { lastfm: "listener", listenbrainz: null, koito: null });
 });
 
-test("resolveListenHistorySettings does not use a global username", () => {
-  const settings = {
-    integrations: {
-      lastfm: {
-        username: "leefamous",
-        apiKey: "test",
-      },
-    },
+test("discovery builds from every history source", async () => {
+  process.env.LASTFM_API_KEY = "test-key";
+  const similarMbids = new Map([
+    ["From Lastfm", "00000000-0000-4000-8000-000000000001"],
+    ["From Brainz", "00000000-0000-4000-8000-000000000002"],
+  ]);
+  globalThis.fetch = async (url) => {
+    const target = new URL(String(url));
+    const method = target.searchParams.get("method");
+    const artist = target.searchParams.get("artist") ?? "";
+    const body = target.pathname.includes("/stats/user/brainz-listener/artists")
+      ? { payload: { artists: [{ artist_name: "From Brainz", listen_count: 40 }] } }
+      : method === "user.getTopArtists"
+        ? { topartists: { artist: [{ name: "From Lastfm", playcount: "50" }] } }
+        : method === "artist.getSimilar"
+          ? {
+              similarartists: {
+                artist: [{ name: `Like ${artist}`, mbid: similarMbids.get(artist), match: "0.9" }],
+              },
+            }
+          : {};
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   };
-  dbOps.updateSettings(settings);
-  assert.deepEqual(resolveListenHistorySettings({}), {
-    listenHistoryProvider: "lastfm",
-    listenHistoryUsername: null,
-    listenHistoryUrl: null,
-    lastfmUsername: null,
-  });
-});
+  await patchHistory({ lastfm: "listener", listenbrainz: "brainz-listener" });
 
-test("local history is a valid profile without an external identity", () => {
-  assert.deepEqual(resolveListenHistorySettings({ listenHistoryProvider: "local" }), {
-    listenHistoryProvider: "local",
-    listenHistoryUsername: null,
-    listenHistoryUrl: null,
-    lastfmUsername: null,
-  });
-});
+  await discovery.updateUserDiscoveryCache(userId);
 
-test("resolveListenHistorySettings keeps explicit user profile over default", () => {
-  const settings = {
-    integrations: {
-      lastfm: { username: "leefamous", apiKey: "test" },
-    },
-  };
-  dbOps.updateSettings(settings);
-  assert.deepEqual(
-    resolveListenHistorySettings({
-      listenHistoryProvider: "lastfm",
-      listenHistoryUsername: "otheruser",
-    }),
-    {
-      listenHistoryProvider: "lastfm",
-      listenHistoryUsername: "otheruser",
-      listenHistoryUrl: null,
-      lastfmUsername: "otheruser",
-    },
-  );
-});
-
-test("koito profile uses instance url instead of username", () => {
-  assert.deepEqual(
-    getListenHistoryProfile({
-      listenHistoryProvider: "koito",
-      listenHistoryUrl: "https://koito.example.com/",
-      listenHistoryUsername: "ignored",
-    }),
-    {
-      listenHistoryProvider: "koito",
-      listenHistoryUsername: null,
-      listenHistoryUrl: "https://koito.example.com",
-      lastfmUsername: null,
-    },
-  );
-  assert.equal(
-    hasListenHistoryProfile({
-      listenHistoryProvider: "koito",
-      listenHistoryUrl: "https://koito.example.com",
-    }),
-    true,
-  );
-});
-
-test("user updates persist koito url on profile", () => {
-  const hash = bcrypt.hashSync("secret", 4);
-  const user = userOps.createUser("alice", hash, "user");
-  assert.ok(user != null);
-
-  const updated = userOps.updateUser(user.id, {
-    listenHistoryProvider: "koito",
-    listenHistoryUrl: "http://koito.local:4110/",
-  });
-
-  assert.equal(updated?.listenHistoryProvider, "koito");
-  assert.equal(updated?.listenHistoryUrl, "http://koito.local:4110");
-  assert.equal(updated?.listenHistoryUsername, null);
-
-  const stored = userOps.getUserById(user.id);
-  assert.equal(stored?.listenHistoryProvider, "koito");
-  assert.equal(stored?.listenHistoryUrl, "http://koito.local:4110");
+  const { body } = getUserDiscovery(userId, 0);
+  assert.deepEqual(body.recommendations.map((artist) => artist.name).sort(), [
+    "Like From Brainz",
+    "Like From Lastfm",
+  ]);
 });

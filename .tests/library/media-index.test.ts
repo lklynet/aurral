@@ -612,7 +612,7 @@ test("files in a folder Lidarr no longer has leave the Library", async (t: impor
   assert.deepEqual([mediaSources(stays), mediaSources(leaves)], [["lidarr"], []]);
 });
 
-test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while it is on", async (t: import("vite-plus/test").TestContext) => {
+test("a Lidarr root folder inside the Library folder belongs to Lidarr while it is on", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-nested-lidarr-"));
   const music = path.join(downloads, "music");
   const tag = `Nested ${process.pid}`;

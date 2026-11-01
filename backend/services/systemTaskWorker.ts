@@ -235,8 +235,14 @@ export async function processSystemTask(
       return;
     }
     case "trending-charts-refresh": {
-      const { refreshTrendingCharts } = await import("./discovery/trendingCharts.ts");
+      const { getChartStarterArtists, refreshTrendingCharts } =
+        await import("./discovery/trendingCharts.ts");
+      const hadStarters = getChartStarterArtists(1).length > 0;
       await refreshTrendingCharts();
+      if (!hadStarters && getChartStarterArtists(1).length > 0) {
+        const { enqueueAllUserDiscoveryRefreshes } = await import("./discovery/provider.ts");
+        enqueueAllUserDiscoveryRefreshes("charts_ready");
+      }
       return;
     }
     case "playlist-startup-migration": {

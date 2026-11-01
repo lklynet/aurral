@@ -397,10 +397,10 @@ export function computeLibraryRootOverlaps({
       lidarrRoot,
       message:
         relation === "equal"
-          ? "The Lidarr root folder is the Downloads Folder. Aurral treats every file there as Lidarr's and never deletes it."
+          ? "The Lidarr root folder is the Library folder. Aurral treats every file there as Lidarr's and never deletes it."
           : relation === "nested-b-in-a"
-            ? "The Lidarr root folder is inside the Downloads Folder. Aurral leaves that folder to Lidarr while Lidarr is on."
-            : "The Downloads Folder is inside the Lidarr root folder. Lidarr can rename, import, or delete Aurral's downloads.",
+            ? "The Lidarr root folder is inside the Library folder. Aurral leaves that folder to Lidarr while Lidarr is on."
+            : "The Library folder is inside the Lidarr root folder. Lidarr can rename, import, or delete Aurral's downloads.",
     });
   }
   return warnings;

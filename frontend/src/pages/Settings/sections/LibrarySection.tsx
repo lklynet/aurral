@@ -25,7 +25,11 @@ import {
   SettingsNote,
   SettingsPage,
   SettingsRow,
+  SettingsServiceRow,
+  useSettingsItem,
 } from "../SettingsLayout";
+import { configuredStatus, connectedServices } from "../utils/serviceStatus";
+import { LidarrSection } from "./LidarrSection";
 import "./library.css";
 
 type FileOperation = ComponentProps<typeof LibraryFileOperation>["operation"];
@@ -35,7 +39,7 @@ type ReadOnlyFolder = InferResponseType<
 >["folders"][number];
 
 const MODE_HELP = {
-  move: "Moves files to the Downloads Folder and removes empty source folders.",
+  move: "Moves files to the Library folder and removes empty source folders.",
   copy: "Keeps source files and uses space for a second copy.",
   hardlink: "Uses no extra space until tags change or a file is upgraded. Source files stay.",
 };
@@ -46,7 +50,7 @@ const MONITOR_HELP = {
   albums: "Upgrades imported tracks and downloads missing album tracks.",
 };
 
-const OUTSIDE_DOWNLOADS = "Choose a folder outside the Downloads Folder.";
+const OUTSIDE_LIBRARY_FOLDER = "Choose a folder outside the Library folder.";
 
 const errorMessage = (error: unknown, fallback: string) => {
   const failure = readApiError(error);
@@ -63,10 +67,10 @@ function folderStatus(folder: ReadOnlyFolder, scanning: boolean) {
   return { text: countLabel(folder.tracks, "track") };
 }
 
-function DownloadsFolderGroup() {
+function LibraryFolderGroup() {
   const { settings, updateSettings } = useServerSettings();
   return (
-    <SettingsGroup title="Downloads folder">
+    <SettingsGroup title="Library folder">
       <RootOverlapWarning rootWarnings={settings.rootWarnings} />
       <SettingsRow
         label="Path"
@@ -193,7 +197,7 @@ function ReadOnlyFoldersGroup({ onChanged }: { onChanged: () => Promise<void> })
         <SettingsRow
           label="Add a folder"
           htmlFor="library-read-only-folder"
-          help={addError || OUTSIDE_DOWNLOADS}
+          help={addError || OUTSIDE_LIBRARY_FOLDER}
           tone={addError ? "warning" : "default"}
         >
           <DownloadFolderField
@@ -283,7 +287,7 @@ function ImportGroup({
   const folderHelp = check.loading
     ? "Checking the folder…"
     : check.error ||
-      (result ? `${countLabel(result.audioFiles, "music file")} found.` : OUTSIDE_DOWNLOADS);
+      (result ? `${countLabel(result.audioFiles, "music file")} found.` : OUTSIDE_LIBRARY_FOLDER);
 
   const start = async () => {
     if (!result) return;
@@ -305,7 +309,7 @@ function ImportGroup({
   return (
     <SettingsGroup
       title="Import a folder"
-      note="Imports music into the Downloads Folder with Aurral naming. Existing files are never overwritten. To leave a folder unchanged, add it as a read-only folder instead."
+      note="Imports music into the Library folder with Aurral naming. Existing files are never overwritten. To leave a folder unchanged, add it as a read-only folder instead."
     >
       <SettingsRow
         label="Folder"
@@ -420,7 +424,7 @@ function CleanUpGroup({
   return (
     <SettingsGroup
       title="Clean up Library"
-      note="Organizes files in the Downloads Folder and fills missing tags. Playlists, favorites, and media servers follow the files. Lidarr files stay untouched. When names clash, Aurral keeps the better copy and offers to delete the other."
+      note="Organizes files in the Library folder and fills missing tags. Playlists, favorites, and media servers follow the files. Lidarr files stay untouched. When names clash, Aurral keeps the better copy and offers to delete the other."
     >
       <SettingsActions>
         <button
@@ -438,7 +442,25 @@ function CleanUpGroup({
   );
 }
 
+function LibraryManagersGroup() {
+  const { settings } = useServerSettings();
+  return (
+    <SettingsGroup title="Library managers" note="Hand artists and albums to another app.">
+      <SettingsServiceRow
+        to="library/lidarr"
+        name="Lidarr"
+        status={configuredStatus(connectedServices(settings.integrations).lidarr)}
+      />
+    </SettingsGroup>
+  );
+}
+
 export function LibrarySection() {
+  if (useSettingsItem() === "lidarr") return <LidarrSection />;
+  return <LibraryOverview />;
+}
+
+function LibraryOverview() {
   const files = useLibraryFiles();
   const operationQuery = useLibraryFileOperation(files.data?.operation?.id ?? null);
   const operation = operationQuery.data || files.data?.operation || null;
@@ -450,7 +472,7 @@ export function LibrarySection() {
 
   return (
     <SettingsPage title="Library">
-      <DownloadsFolderGroup />
+      <LibraryFolderGroup />
       <ReadOnlyFoldersGroup onChanged={refresh} />
       <ImportGroup
         busy={busy}
@@ -462,6 +484,7 @@ export function LibrarySection() {
         operation={operation?.kind === "cleanup" ? operation : null}
         onChanged={refresh}
       />
+      <LibraryManagersGroup />
       {files.isError ? (
         <SettingsGroup>
           <SettingsNote tone="warning">

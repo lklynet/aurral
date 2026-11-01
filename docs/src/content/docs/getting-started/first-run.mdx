@@ -1,11 +1,9 @@
 ---
 title: First run
-description: Create the admin account, choose Lidarr or the Downloads Folder, and check storage.
+description: Create the admin account, choose where your music lives, and connect your services.
 ---
 
-The first run creates your admin account and chooses where your music lives. Connect Lidarr if you want Lidarr to manage artists and albums. Skip it to let Aurral manage your music in its Downloads Folder.
-
-![Aurral Lidarr connection settings](../../../assets/screenshots/settings-lidarr.webp)
+The first run creates your admin account, chooses where your music lives, and offers your listening history and services to connect. Everything after the account is optional and stays in Settings.
 
 ## Before you start
 
@@ -20,16 +18,14 @@ Complete [Filesystem and mounts](/getting-started/storage/) first. In short:
 
 1. Open Aurral. Enter a username and password for the admin account.
 2. If you are the only user on a home network, turn on **Auto-login on local network**. See [Local-network auto-login](/admin/users/#local-network-auto-login).
-3. Connect Lidarr, or select **Skip for now**.
-   - To connect Lidarr, enter the Lidarr URL and API key, then select **Test connection**.
-   - If you skip Lidarr, enter the Downloads Folder, such as `/data/downloads/aurral`. You can connect Lidarr later.
-4. Open **Settings > Library**. Make sure that **Downloads folder > Path** is a writable path inside Aurral.
-5. Open **Settings > Status > Storage** and select **Run checks**. Fix each failed check.
-6. Connect the download clients and the playback server that you use.
+3. Under **Your music**, choose the music you already have, if any:
+   - **Read in place** plays the files where they are and never changes them.
+   - **Import** copies them into the Library folder. The originals stay put.
+4. Set the **Library folder**, such as `/data/downloads/aurral`. Aurral keeps the music it adds here.
+5. Under **Connect**, add your Last.fm or ListenBrainz history, a playback server, or Lidarr. Each opens its Settings page. Select **Go to Aurral** when you are done.
+6. Open **Settings > Status > Storage** and select **Run checks**. Fix each failed check.
 
-Use an HTTPS Lidarr URL when the connection leaves your trusted network. Aurral sends the Lidarr API key to this URL. On a private Docker Compose network, `http://lidarr:8686` is acceptable.
-
-**Test connection** checks the Lidarr API only. **Storage health** checks that Aurral can read your files and write to the Downloads Folder. Its **Lidarr library** section checks the Lidarr files, and Aurral skips that section when Lidarr is not connected. Its **Aurral-native playback** section checks that the built-in player can read indexed media.
+**Storage health** checks that Aurral can read your files and write to the Library folder. Its **Lidarr library** section checks the Lidarr files, and Aurral skips that section when Lidarr is not connected. Its **Aurral-native playback** section checks that the built-in player can read indexed media.
 
 Aurral also runs a Subsonic server at `/rest`. Subsonic players can connect to it with an Aurral account. See [Navidrome and Subsonic](/integrations/navidrome/).
 
@@ -39,6 +35,7 @@ Aurral also runs a Subsonic server at `/rest`. Subsonic players can connect to i
 - **Navidrome.** Open **Settings > Playback > Navidrome**. Aurral creates its playlist library when a flow or playlist first downloads a track. See [Navidrome](/integrations/navidrome/).
 - **Plex.** Open **Settings > Playback > Plex** and connect your Plex account. After a flow downloads tracks, select **Sync to Plex now**. See [Plex](/integrations/plex/).
 - **Jellyfin.** Open **Settings > Playback > Jellyfin**. See [Jellyfin](/integrations/jellyfin/).
+- **Lidarr.** Open **Settings > Library > Lidarr** if you want Lidarr to manage artists and albums. See [Lidarr](/integrations/lidarr/).
 
 If a service uses a different path, see [When paths cannot match](/getting-started/storage/#when-paths-cannot-match). Mount the folder inside Aurral before you add a path mapping.
 

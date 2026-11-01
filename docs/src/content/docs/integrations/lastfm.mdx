@@ -13,7 +13,7 @@ An admin adds the Last.fm **API key** and **Shared secret** in **Settings > Disc
 
 ## Scrobble to Last.fm
 
-1. Open **Settings > Listening > Scrobbling > Last.fm**.
+1. Open **Settings > Listening > Last.fm**.
 2. Select **Connect Last.fm**.
 3. Approve access in the Last.fm window.
 
@@ -23,9 +23,9 @@ Each user connects their own account while signed in. The instance API key canno
 
 ## Per-user listening history
 
-Each user chooses a history source in **Settings > Listening > History**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. Aurral reads it with the admin's API key, so without a key, choose ListenBrainz or Koito instead. To use only the plays recorded in Aurral, choose **Local only**.
+Each user can add a Last.fm username in **Settings > Listening > Last.fm**. Connecting scrobbling fills it in. Aurral reads it with the admin's API key, so without a key, use ListenBrainz or Koito instead.
 
-When a user chooses Last.fm, ListenBrainz, or Koito, Aurral combines the provider's history with the plays recorded in Aurral.
+Aurral combines every history source a user adds with the plays recorded in Aurral.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
@@ -39,4 +39,4 @@ Aurral queues each play and retries temporary failures. Because of the retries, 
 
 An admin sets the refresh interval and the discovery mode in **Settings > Discovery**. The modes are Safer, Balanced, and Deeper.
 
-If Last.fm is unavailable, users can choose ListenBrainz or [Koito](/integrations/koito/) as their history source in **Settings > Listening**.
+If Last.fm is unavailable, users can add ListenBrainz or [Koito](/integrations/koito/) history in **Settings > Listening**.

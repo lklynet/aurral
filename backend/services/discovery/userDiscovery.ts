@@ -11,6 +11,7 @@ import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.ts";
 import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.ts";
 import {
   serveRecommendations,
+  STARTER_SEED_SOURCE,
   withArtistRouteId,
   type DiscoveryRecommendation,
 } from "./recommendationPipeline.ts";
@@ -175,7 +176,7 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
         : recommendations,
       recommendationCount: recommendations.length,
       globalTop,
-      basedOn: source.basedOn || [],
+      basedOn: (source.basedOn || []).filter((seed) => seed.source !== STARTER_SEED_SOURCE),
       topTags: withoutBlockedTags(source.topTags || [], blockedTags),
       topGenres: withoutBlockedTags(source.topGenres || [], blockedTags),
       lastUpdated: source.lastUpdated || null,

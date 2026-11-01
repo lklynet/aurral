@@ -13,7 +13,7 @@ import {
   type DiscoverArtist,
   type normalizeDiscoveryData,
 } from "./discoverUtils";
-import { getApiErrorText } from "./onboardingUtils";
+import { getApiErrorText } from "../utils/api/errors.ts";
 
 export type DiscoverData = Omit<
   NonNullable<ReturnType<typeof normalizeDiscoveryData>>,

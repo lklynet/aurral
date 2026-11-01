@@ -5,7 +5,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import { getAppBasePath } from "../utils/basePath.ts";
 import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
-import { getApiErrorBody, getApiErrorText } from "./onboardingUtils";
+import { getApiErrorBody, getApiErrorText } from "../utils/api/errors.ts";
 import { parseResponse } from "hono/client";
 import { authClient } from "../utils/api/clients/auth.ts";
 import { DotLoader } from "../components/DotLoader";

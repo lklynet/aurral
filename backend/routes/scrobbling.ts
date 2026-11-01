@@ -8,7 +8,6 @@ import {
   lastfmGetSession,
   listenbrainzValidateToken,
 } from "../services/apiClients/index.ts";
-import { userOps } from "../db/helpers/index.ts";
 import { requireAuth, requirePermission, requireUserAccount } from "../middleware/guards.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
@@ -19,6 +18,12 @@ import {
   scrobbleConnectionStore,
 } from "../services/scrobbleConnectionStore.ts";
 import { logger } from "../services/logger.ts";
+import { requestUserDiscoveryRefresh } from "../services/discovery/index.ts";
+import {
+  getListenHistory,
+  updateListenHistory,
+  type ListenHistoryProvider,
+} from "../services/listeningHistory.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 const LASTFM_LINK_COOKIE = "aurral_lastfm_link";
@@ -26,6 +31,11 @@ const LASTFM_LINK_TTL_MS = 10 * 60 * 1000;
 const providerErrorStatus = (error: unknown) => {
   const status = Number(asAppError(error)?.response?.status);
   return status >= 400 && status < 500 ? 400 : 502;
+};
+const useForHistory = (userId: number, provider: ListenHistoryProvider, account: string | null) => {
+  if (!account || getListenHistory(userId)[provider]) return;
+  updateListenHistory(userId, { [provider]: account });
+  requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
 };
 const encode = (value: string) => Buffer.from(value).toString("base64url");
 const decode = (value: string) => Buffer.from(String(value || ""), "base64url").toString("utf8");
@@ -225,6 +235,7 @@ export default new Hono<AppEnv>()
         token: key,
         displayName: session.session.name,
       });
+      useForHistory(userId, "lastfm", session.session.name);
     } catch (error) {
       const failure = asAppError(error);
       logger.error("scrobbling", "Last.fm connection could not be saved", {
@@ -274,6 +285,7 @@ export default new Hono<AppEnv>()
           token,
           displayName: validation.user_name,
         });
+        useForHistory(c.var.user.id, "listenbrainz", connection!.displayName);
         return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
       } catch (error) {
         const failure = asAppError(error);
@@ -295,11 +307,7 @@ export default new Hono<AppEnv>()
     validate("json", koitoBody),
     async (c) => {
       const body = c.req.valid("json");
-      const rawUrl = (
-        body.url ||
-        userOps.getUserById(c.var.user.id)?.listenHistoryUrl ||
-        ""
-      ).trim();
+      const rawUrl = (body.url || getListenHistory(c.var.user.id).koito || "").trim();
       const validation = validateExternalUrl(rawUrl);
       const token = (body.token || "").trim();
       if (!validation.valid || !token) {
@@ -330,6 +338,7 @@ export default new Hono<AppEnv>()
           baseUrl,
           displayName: new URL(baseUrl).host,
         });
+        useForHistory(c.var.user.id, "koito", baseUrl);
         return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
       } catch (error) {
         const failure = asAppError(error);

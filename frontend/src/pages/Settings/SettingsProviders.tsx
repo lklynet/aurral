@@ -13,7 +13,7 @@ type AccountSettings = ReturnType<typeof useAccountSettings>;
 const ServerSettingsContext = createContext<ServerSettings | null>(null);
 const AccountSettingsContext = createContext<AccountSettings | null>(null);
 
-const HEALTH_SECTIONS = new Set<SettingsSectionId>(["general", "status", "lidarr", "discovery"]);
+const HEALTH_SECTIONS = new Set<SettingsSectionId>(["general", "status", "library", "discovery"]);
 
 export function ServerSettingsProvider({
   section,

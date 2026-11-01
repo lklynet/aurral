@@ -351,6 +351,12 @@ export interface LidarrArtistIdMapRow {
   updated_at: number;
 }
 
+export interface ListenHistorySourcesRow {
+  user_id: number;
+  provider: string;
+  account: string;
+}
+
 export interface MetadataProviderBudgetRow {
   base_url: string | null;
   next_request_at: number;

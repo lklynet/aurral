@@ -249,7 +249,7 @@ export const queryKeys = {
   prowlarrIndexers: ["settings", "prowlarr-indexers"],
   tasteFeedback: (userId: MaybeId): QueryKey => ["discovery", "feedback", userId],
   blockedTags: (userId: MaybeId): QueryKey => ["discovery", "blocked-tags", userId],
-  spotifyImport: (userId: MaybeId): QueryKey => ["discovery", "spotify-import", userId],
+  spotifyHistory: (userId: MaybeId): QueryKey => ["discovery", "spotify-history", userId],
   scrobbleStatus: ["scrobbling", "status"],
   apiKey: ["auth", "api-key"],
   myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],

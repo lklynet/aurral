@@ -4,7 +4,7 @@ import { dbOps, userOps } from "../../db/helpers/index.ts";
 import type { LibraryArtistsRow, LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
 import { lastfmRequest } from "../apiClients/lastfm.ts";
 import { listenbrainzRequest } from "../apiClients/listenbrainz.ts";
-import { getListenHistoryProfile } from "../listeningHistory.ts";
+import { getListenHistory } from "../listeningHistory.ts";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
 import { normalizeKoitoBaseUrl } from "../koitoClient.ts";
 import { NavidromeClient } from "../navidrome.ts";
@@ -368,28 +368,22 @@ export async function collectWrappedHistory(userId: number, period: Period) {
   if (!user || user.status !== "active") throw new Error("User account unavailable");
   const settings = dbOps.getSettings();
   const connections = scrobbleConnectionStore.getConnections(userId);
-  const profile = getListenHistoryProfile(user);
+  const history = getListenHistory(userId);
   const readers: { source: Source; read: (page: number) => Promise<Page> }[] = [];
   const local = readLocalWrappedHistory(userId, period);
   readers.push({
     source: "aurral",
     read: async () => ({ plays: local, more: local.length > MAX_PLAYS }),
   });
-  const lastfm =
-    connections.lastfm?.displayName ||
-    (profile.listenHistoryProvider === "lastfm" ? profile.listenHistoryUsername : null);
+  const lastfm = connections.lastfm?.displayName || history.lastfm;
   if (lastfm) readers.push({ source: "lastfm", read: lastfmWrappedReader(lastfm, period) });
-  const listenbrainz =
-    connections.listenbrainz?.displayName ||
-    (profile.listenHistoryProvider === "listenbrainz" ? profile.listenHistoryUsername : null);
+  const listenbrainz = connections.listenbrainz?.displayName || history.listenbrainz;
   if (listenbrainz)
     readers.push({
       source: "listenbrainz",
       read: listenbrainzWrappedReader(listenbrainz, period, connections.listenbrainz?.token),
     });
-  const koito =
-    connections.koito?.baseUrl ||
-    (profile.listenHistoryProvider === "koito" ? profile.listenHistoryUrl : null);
+  const koito = connections.koito?.baseUrl || history.koito;
   if (koito)
     readers.push({ source: "koito", read: koitoReader(koito, connections.koito?.token, period) });
   const soleUser = userOps.getAllUsers().length === 1;

@@ -596,7 +596,7 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
   const lidarrRoots = configuredLidarrRoots(options);
   if (lidarrRoots.some((candidate) => pathsOverlap(rootPath, candidate))) {
     const reason =
-      "Skipped legacy playlist file migration because the Downloads Folder overlaps a Lidarr root folder";
+      "Skipped legacy playlist file migration because the Library folder overlaps a Lidarr root folder";
     log(logger, "warn", `[AurralMigration] ${reason}`);
     return {
       status: "blocked",
@@ -911,7 +911,7 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
       state.items[sourcePath] = {
         ...item,
         status: "removed",
-        reason: "no longer in the Downloads Folder",
+        reason: "no longer in the Library folder",
         updatedAt: Date.now(),
       };
       continue;

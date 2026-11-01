@@ -2,13 +2,6 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "./settings.ts";
-import {
-  DEFAULT_LISTEN_HISTORY_PROVIDER,
-  getListenHistoryProfile,
-  normalizeListenHistoryProvider,
-  normalizeListenHistoryUsername,
-  normalizeListenHistoryUrl,
-} from "../../services/listeningHistory.ts";
 import type { UsersRow } from "../rows.ts";
 
 export type UserPermissions = Record<string, unknown>;
@@ -19,10 +12,6 @@ interface UserUpdate {
   subsonicPassword?: string | null;
   role?: string;
   permissions?: UserPermissions;
-  lastfmUsername?: string | null;
-  listenHistoryProvider?: string | null;
-  listenHistoryUsername?: string | null;
-  listenHistoryUrl?: string | null;
   lidarrRootFolderPath?: string | null;
   lidarrQualityProfileId?: number | string | null;
   status?: string;
@@ -38,10 +27,6 @@ type UsersListRow = Pick<
   | "username"
   | "role"
   | "permissions"
-  | "lastfm_username"
-  | "listen_history_provider"
-  | "listen_history_username"
-  | "listen_history_url"
   | "lidarr_root_folder_path"
   | "lidarr_quality_profile_id"
   | "status"
@@ -56,7 +41,7 @@ const getUserByUsernameStmt = db.prepare<[string], UsersRow>(
   "SELECT * FROM users WHERE username = ?",
 );
 const getAllUsersStmt = db.prepare<[], UsersListRow>(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption FROM users ORDER BY username",
+  "SELECT id, username, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption FROM users ORDER BY username",
 );
 const getUserByIdStmt = db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare<
@@ -73,7 +58,7 @@ const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ? WHERE id = ?",
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ? WHERE id = ?",
 );
 const getSubsonicPasswordByIdStmt = db.prepare<[number], Pick<UsersRow, "subsonic_password">>(
   "SELECT subsonic_password FROM users WHERE id = ?",
@@ -120,7 +105,6 @@ export const userOps = {
   getUserByUsername(username: string) {
     const row = getUserByUsernameStmt.get(String(username).trim().toLowerCase());
     if (!row) return null;
-    const history = getListenHistoryProfile(row);
     return {
       id: row.id,
       username: row.username,
@@ -136,13 +120,11 @@ export const userOps = {
       hasLocalPassword: !!row.has_local_password,
       needsIdentityMigration: !!row.needs_identity_migration,
       allowIdentityAdoption: !!row.allow_identity_adoption,
-      ...history,
     };
   },
   getUserById(id: number | string | null | undefined) {
     const row = getUserByIdStmt.get(parseInt(String(id), 10));
     if (!row) return null;
-    const history = getListenHistoryProfile(row);
     return {
       id: row.id,
       username: row.username,
@@ -158,7 +140,6 @@ export const userOps = {
       hasLocalPassword: !!row.has_local_password,
       needsIdentityMigration: !!row.needs_identity_migration,
       allowIdentityAdoption: !!row.allow_identity_adoption,
-      ...history,
     };
   },
   getUserAuthById(id: number | string) {
@@ -194,7 +175,6 @@ export const userOps = {
   getAllUsers() {
     const rows = getAllUsersStmt.all();
     return rows.map((r) => ({
-      ...getListenHistoryProfile(r),
       id: r.id,
       username: r.username,
       role: r.role || "user",
@@ -241,10 +221,6 @@ export const userOps = {
         username: un,
         role,
         permissions: perms,
-        listenHistoryProvider: DEFAULT_LISTEN_HISTORY_PROVIDER,
-        listenHistoryUsername: null,
-        listenHistoryUrl: null,
-        lastfmUsername: null,
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
         status: "active",
@@ -278,28 +254,6 @@ export const userOps = {
       data.permissions !== undefined
         ? { ...DEFAULT_PERMISSIONS, ...data.permissions }
         : existing.permissions;
-    const listenHistoryProvider = normalizeListenHistoryProvider(
-      data.listenHistoryProvider !== undefined
-        ? data.listenHistoryProvider
-        : data.lastfmUsername !== undefined
-          ? "lastfm"
-          : existing.listenHistoryProvider,
-    );
-    const listenHistoryUsername = normalizeListenHistoryUsername(
-      data.listenHistoryUsername !== undefined
-        ? data.listenHistoryUsername
-        : data.lastfmUsername !== undefined
-          ? data.lastfmUsername
-          : existing.listenHistoryUsername,
-    );
-    const listenHistoryUrl = normalizeListenHistoryUrl(
-      data.listenHistoryUrl !== undefined ? data.listenHistoryUrl : existing.listenHistoryUrl,
-    );
-    const resolvedUsername = ["koito", "local"].includes(listenHistoryProvider)
-      ? null
-      : listenHistoryUsername;
-    const resolvedUrl = listenHistoryProvider === "koito" ? listenHistoryUrl : null;
-    const lastfmUsername = listenHistoryProvider === "lastfm" ? resolvedUsername : null;
     const lidarrRootFolderPath =
       data.lidarrRootFolderPath !== undefined
         ? data.lidarrRootFolderPath
@@ -337,10 +291,6 @@ export const userOps = {
         subsonicPassword,
         role,
         dbHelpers.stringifyJSON(permissions),
-        lastfmUsername,
-        listenHistoryProvider,
-        resolvedUsername,
-        resolvedUrl,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
         status,
@@ -355,10 +305,6 @@ export const userOps = {
         username,
         role,
         permissions,
-        listenHistoryProvider,
-        listenHistoryUsername: resolvedUsername,
-        listenHistoryUrl: resolvedUrl,
-        lastfmUsername,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
         status,
