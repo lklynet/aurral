@@ -8,7 +8,7 @@ import {
   touchReauth,
 } from "../config/session-helpers.ts";
 import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/guards.ts";
-import { getApiKey, rotateApiKey } from "../middleware/auth.ts";
+import { getApiKey, isApiKeyManagedByEnv, rotateApiKey } from "../middleware/auth.ts";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
@@ -146,10 +146,15 @@ export default new Hono<AppEnv>()
     touchReauth(token);
     return c.json({ success: true }, 200);
   })
-  .get("/api-key", requireAuth, requireAdmin, (c) => c.json({ apiKey: getApiKey() }, 200))
-  .post("/api-key/rotate", requireAuth, requireAdmin, (c) =>
-    c.json({ apiKey: rotateApiKey() }, 200),
+  .get("/api-key", requireAuth, requireAdmin, (c) =>
+    c.json({ apiKey: getApiKey(), managedByEnv: isApiKeyManagedByEnv() }, 200),
   )
+  .post("/api-key/rotate", requireAuth, requireAdmin, (c) => {
+    if (isApiKeyManagedByEnv()) {
+      return c.json({ error: "API key is set by AURRAL_API_KEY and cannot be rotated" }, 409);
+    }
+    return c.json({ apiKey: rotateApiKey() }, 200);
+  })
   .get("/oidc/login", async (c) => {
     try {
       const login = await startOidcLogin({ secure: isSecure(c) });

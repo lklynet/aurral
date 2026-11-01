@@ -6,7 +6,7 @@ import { getRequestListener } from "@hono/node-server";
 dns.setDefaultResultOrder("ipv4first");
 
 import { app } from "./app.ts";
-import { isProxyAuthEnabled } from "./middleware/auth.ts";
+import { getEnvApiKey, isProxyAuthEnabled } from "./middleware/auth.ts";
 import { isOidcEnabled } from "./services/oidcAuth.ts";
 import { logger, logUnhandledRejection } from "./services/logger.ts";
 import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
@@ -34,6 +34,13 @@ process.on("uncaughtException", (error) => {
 process.on("unhandledRejection", logUnhandledRejection);
 
 const PORT = process.env.PORT || 3001;
+
+try {
+  getEnvApiKey();
+} catch (error) {
+  logger.error("system", asAppError(error)?.message || "AURRAL_API_KEY is invalid");
+  process.exit(1);
+}
 
 if (isProxyAuthEnabled() && !process.env.AUTH_PROXY_TRUSTED_IPS) {
   logger.warn(
