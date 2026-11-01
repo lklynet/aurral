@@ -18,6 +18,7 @@ import {
 } from "../../components/icons";
 import { ReleaseMetric } from "./components/ReleaseMetric";
 import AddActionButton from "../../components/AddActionButton";
+import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import PillToggle from "../../components/PillToggle";
 import ReleaseStatusCheck from "./components/ReleaseStatusCheck";
@@ -457,6 +458,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             )}
             {isComplete ? (
               <ReleaseStatusCheck partial={status?.partial} />
+            ) : status?.status === "waiting" ? (
+              <ReleaseWaitBadge releaseDate={releaseGroup["first-release-date"]} />
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton
@@ -492,6 +495,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           <div className="artist-release-card__action">
             {isComplete ? (
               <ReleaseStatusCheck partial={status?.partial} />
+            ) : status?.status === "waiting" ? (
+              <ReleaseWaitBadge releaseDate={releaseGroup["first-release-date"]} />
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton

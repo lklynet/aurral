@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
+  isAwaitingRelease,
   shouldPollAlbumStatus,
   shouldPollAlbumStatuses,
 } from "../../frontend/src/utils/aurralAlbumStatus.ts";
@@ -112,4 +113,16 @@ test("retry re-requests the album through Aurral", () => {
       .albumMbid,
     "rg-mbid",
   );
+});
+
+test("only a monitored Aurral album with no files and a future date waits for its release", () => {
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const waiting = { managedBy: "aurral", monitored: true, releaseDate: day(30), trackFileCount: 0 };
+  assert.equal(isAwaitingRelease(waiting), true);
+  assert.equal(isAwaitingRelease({ ...waiting, managedBy: "lidarr" }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, monitored: false }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, trackFileCount: 1 }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, releaseDate: day(0) }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, releaseDate: null }), false);
 });

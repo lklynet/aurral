@@ -111,6 +111,7 @@ import {
 } from "../utils/libraryPageData.ts";
 import {
   aurralAlbumStatusKey,
+  isAwaitingRelease,
   buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
   shouldPollAlbumStatuses,
@@ -121,7 +122,11 @@ import {
   resolveAlbumManager,
 } from "../utils/libraryDestination.ts";
 import { describeAlbumRequestResult } from "../utils/albumAddAction.ts";
-import { canDownloadAurralAlbum, getMonitoringMenuAction } from "../utils/aurralMonitoring.ts";
+import {
+  canDownloadAurralAlbum,
+  getAlbumMonitoredState,
+  getMonitoringMenuAction,
+} from "../utils/aurralMonitoring.ts";
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
@@ -2391,6 +2396,13 @@ function LibraryPage() {
         const researchAlbum = researchAlbumRelation
           ? albumsById.get(String(researchAlbumRelation.albumId))
           : null;
+        const awaitingRelease =
+          !file &&
+          isAwaitingRelease({
+            managedBy: album?.managedBy,
+            monitored: getAlbumMonitoredState(album ?? null),
+            releaseDate: album?.releaseDate,
+          });
         const downloadKey = trackDownloadIdentity(track);
         const downloadState = trackDownloadStates[downloadKey];
         const backgroundDownload =
@@ -2462,7 +2474,7 @@ function LibraryPage() {
                 },
               ]
             : []),
-          ...(!file
+          ...(!file && !awaitingRelease
             ? [
                 {
                   id: "download",
@@ -2527,28 +2539,29 @@ function LibraryPage() {
             label: albumName,
             to: libraryAlbumPath(album),
           },
-          time: formatDuration(trackDurationMs(track)) || "Unavailable",
+          time: formatDuration(trackDurationMs(track)) || (awaitingRelease ? "—" : "Unavailable"),
           timeMissing: !file,
           active,
           playing: active && isRunning,
           loading: active && isLoading,
           missing: !file,
           onPlay: file ? () => playTrack(track, tracks) : null,
-          trailing: !file ? (
-            <TooltipButton
-              className="native-library-track__download"
-              onClick={downloadTrack}
-              disabled={downloadPending}
-              label={downloadLabel}
-              aria-label={downloadLabel}
-            >
-              {downloadPending ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <Download aria-hidden="true" />
-              )}
-            </TooltipButton>
-          ) : null,
+          trailing:
+            !file && !awaitingRelease ? (
+              <TooltipButton
+                className="native-library-track__download"
+                onClick={downloadTrack}
+                disabled={downloadPending}
+                label={downloadLabel}
+                aria-label={downloadLabel}
+              >
+                {downloadPending ? (
+                  <DotLoader size="sm" label={null} />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+              </TooltipButton>
+            ) : null,
           menu: {
             items: trackMenuItems,
             additionalItemsAfter: queueItems.at(-1)?.id ?? "play",
@@ -2803,7 +2816,7 @@ function LibraryPage() {
               </span>
             )}
             {meta.details && meta.details + " · "}
-            {meta.partial ? (
+            {meta.partial && aurralState?.status !== "unreleased" ? (
               <span className="native-library-card__status" data-tone="warning">
                 {meta.count}
                 <span className="sr-only"> available</span>

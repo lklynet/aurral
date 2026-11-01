@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton, { type LibraryDestination } from "./AddActionButton";
+import ReleaseWaitBadge from "./ReleaseWaitBadge";
+import { isAwaitingRelease } from "../utils/aurralAlbumStatus.ts";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
@@ -22,6 +24,9 @@ export type SearchAlbum = {
   primaryType?: string | null;
   secondaryTypes?: string[] | null;
   ownerConflict?: { message: string } | null;
+  managedBy?: string | null;
+  monitored?: boolean;
+  trackFileCount?: number;
 };
 
 type SearchAlbumResultsProps = {
@@ -108,6 +113,8 @@ function AlbumAction({
       </Tooltip>
     );
   }
+
+  if (isAwaitingRelease(album)) return <ReleaseWaitBadge releaseDate={album.releaseDate} />;
 
   if (!canAddAlbum) return null;
 

@@ -2,7 +2,8 @@ import ArtworkImage from "../components/ArtworkImage";
 import { memo, useState, useEffect, type ReactNode } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
 
-import { Clock, Music } from "../components/icons";
+import { Music } from "../components/icons";
+import ReleaseWaitBadge from "../components/ReleaseWaitBadge";
 import ArtistImage from "../components/ArtistImage";
 import AddActionButton from "../components/AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
@@ -291,12 +292,7 @@ export const AlbumCard = memo(
             </div>
           ) : awaitingRelease ? (
             <div className="artist-discover-card__action">
-              <Tooltip content={`Downloads ${albumRelease?.detail}`}>
-                <span className="artist-release-card__status artist-release-card__status--waiting">
-                  <Clock aria-hidden="true" />
-                  <span className="sr-only">Downloads {albumRelease?.detail}</span>
-                </span>
-              </Tooltip>
+              <ReleaseWaitBadge releaseDate={album.releaseDate} />
             </div>
           ) : canAddAlbum && typeof onAlbumAction === "function" ? (
             <div className="artist-discover-card__action">

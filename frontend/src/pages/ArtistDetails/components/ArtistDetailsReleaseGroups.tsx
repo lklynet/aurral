@@ -5,6 +5,7 @@ import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
 import ReleaseStatusCheck from "./ReleaseStatusCheck";
 import AddActionButton from "../../../components/AddActionButton";
+import ReleaseWaitBadge from "../../../components/ReleaseWaitBadge";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
@@ -178,6 +179,8 @@ export function ArtistDetailsReleaseGroups({
                 <div className="artist-release-card__action">
                   {status?.status === "available" || status?.status === "added" ? (
                     <ReleaseStatusCheck partial={status?.partial} />
+                  ) : status?.status === "waiting" ? (
+                    <ReleaseWaitBadge releaseDate={releaseGroup["first-release-date"]} />
                   ) : canAddAlbum ? (
                     <div>
                       <AddActionButton

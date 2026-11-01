@@ -15,6 +15,8 @@ import { getReleaseMetric, isVisibleLibraryAlbum, type ReleaseGroup } from "../u
 import { canSearchLibraryAlbum } from "../../../utils/libraryDestination";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
+import { formatReleaseWait, isAwaitingRelease } from "../../../utils/aurralAlbumStatus.ts";
+import { formatCalendarDate } from "../../../utils/dateTime.ts";
 import { OptionalLink } from "../../../components/RouteLink";
 import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
 import type {
@@ -111,13 +113,18 @@ export function ArtistDetailsLibraryAlbums({
       ["adding", "searching", "downloading", "moving", "processing"].includes(
         downloadStatus.status,
       );
+    const awaitingRelease = isAwaitingRelease({
+      ...libraryAlbum,
+      trackFileCount: libraryAlbum.statistics?.trackFileCount,
+    });
     const canReSearch =
       canSearchLibraryAlbum(libraryAlbum, { lidarrConnected }) &&
       !isComplete &&
+      !awaitingRelease &&
       !String(libraryAlbum.id ?? "").startsWith("pending-") &&
       !isActiveSearch &&
       (downloadStatus?.status === "failed" || libraryAlbum.monitored);
-    return { downloadStatus, isComplete, canReSearch };
+    return { downloadStatus, isComplete, canReSearch, awaitingRelease };
   };
   const visibleAlbums = sortedAlbums.filter((album) => {
     const { isComplete } = getAlbumState(album);
@@ -129,9 +136,10 @@ export function ArtistDetailsLibraryAlbums({
     .map((album) => album.mbid || album.foreignAlbumId || album.id)
     .filter(Boolean)
     .join(",");
-  const incompleteAlbumCount = sortedAlbums.filter(
-    (album) => !getAlbumState(album).isComplete,
-  ).length;
+  const incompleteAlbumCount = sortedAlbums.filter((album) => {
+    const { isComplete, awaitingRelease } = getAlbumState(album);
+    return !isComplete && !awaitingRelease;
+  }).length;
   const filterOptions = [
     {
       value: "all",
@@ -337,7 +345,8 @@ export function ArtistDetailsLibraryAlbums({
       <div ref={railRef} className="artist-library-rail">
         {visibleAlbums.map((libraryAlbum) => {
           const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
-          const { downloadStatus, isComplete, canReSearch } = getAlbumState(libraryAlbum);
+          const { downloadStatus, isComplete, canReSearch, awaitingRelease } =
+            getAlbumState(libraryAlbum);
           const coverUrl =
             (rgId && albumCovers[rgId]) ||
             albumCovers[libraryAlbum.id] ||
@@ -349,6 +358,7 @@ export function ArtistDetailsLibraryAlbums({
             downloadStatus?.status === "available";
           const showIncompleteStatus =
             !hasDownloadedStatus &&
+            !awaitingRelease &&
             (canReSearch ||
               downloadStatus?.status === "failed" ||
               libraryAlbum.statistics?.percentOfTracks > 0);
@@ -357,6 +367,7 @@ export function ArtistDetailsLibraryAlbums({
             /^\d{4}$/.test(releaseYear) ? releaseYear : null,
             libraryAlbum.albumType || null,
             showIncompleteStatus ? "Incomplete" : null,
+            awaitingRelease ? `Out ${formatCalendarDate(libraryAlbum.releaseDate)}` : null,
           ].filter(Boolean);
 
           return (
@@ -389,6 +400,14 @@ export function ArtistDetailsLibraryAlbums({
                         role="img"
                         aria-label="Downloaded"
                         className="artist-status-dot artist-status-dot--complete"
+                      />
+                    </Tooltip>
+                  ) : awaitingRelease ? (
+                    <Tooltip content={formatReleaseWait(libraryAlbum.releaseDate)}>
+                      <span
+                        role="img"
+                        aria-label={formatReleaseWait(libraryAlbum.releaseDate)}
+                        className="artist-status-dot artist-status-dot--waiting"
                       />
                     </Tooltip>
                   ) : showIncompleteStatus ? (
