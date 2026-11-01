@@ -20,12 +20,9 @@ function ApiKeyRow() {
   const queryClient = useQueryClient();
   const apiKeyQuery = useQuery({
     queryKey: queryKeys.apiKey,
-    queryFn: async ({ signal }) => {
-      const res = await parseResponse(authClient["api-key"].$get({}, { init: { signal } }));
-      return { apiKey: res.apiKey || null, managedByEnv: res.managedByEnv };
-    },
+    queryFn: ({ signal }) => parseResponse(authClient["api-key"].$get({}, { init: { signal } })),
   });
-  const apiKey = apiKeyQuery.data?.apiKey ?? null;
+  const apiKey = apiKeyQuery.data?.apiKey || null;
   const managedByEnv = apiKeyQuery.data?.managedByEnv ?? false;
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -50,9 +47,7 @@ function ApiKeyRow() {
     setRotating(true);
     try {
       const res = await parseResponse(authClient["api-key"].rotate.$post());
-      queryClient.setQueryData(queryKeys.apiKey, {
-        apiKey: res.apiKey || null,
-      });
+      queryClient.setQueryData(queryKeys.apiKey, { ...res, managedByEnv: false });
       showSuccess("API key rotated");
     } catch {
       showError("Failed to rotate API key");
@@ -92,19 +87,17 @@ function ApiKeyRow() {
           >
             {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           </TooltipButton>
-          <TooltipButton
-            label={
-              managedByEnv
-                ? "Cannot rotate API Key when it is managed by an environment variable"
-                : undefined
-            }
-            className="btn btn-secondary btn-sm"
-            onClick={rotate}
-            disabled={rotating || managedByEnv}
-          >
-            {rotating ? <DotLoader size="xs" label={null} /> : null}
-            Rotate
-          </TooltipButton>
+          {managedByEnv ? null : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={rotate}
+              disabled={rotating}
+            >
+              {rotating ? <DotLoader size="xs" label={null} /> : null}
+              Rotate
+            </button>
+          )}
         </>
       ) : (
         <SettingsNote tone="error">Couldn&apos;t load the API key.</SettingsNote>

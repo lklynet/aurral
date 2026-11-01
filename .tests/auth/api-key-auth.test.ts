@@ -75,7 +75,7 @@ test("an empty AURRAL_API_KEY is treated as unset", () => {
   assert.equal(getEnvApiKey(), null);
 });
 
-test("the GET API key route return AURRAL_API_KEY", async () => {
+test("the GET API key route returns AURRAL_API_KEY", async () => {
   process.env.AURRAL_API_KEY = envApiKey;
   const app = signedInAs(testUser(1, { role: "admin" })).route("/", authRoutes);
 
