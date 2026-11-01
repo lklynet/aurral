@@ -24,7 +24,11 @@ import {
 } from "../../../utils/libraryDestination.ts";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
-import { buildAurralAlbumRetryPayload } from "../../../utils/aurralAlbumStatus.ts";
+import {
+  buildAurralAlbumRetryPayload,
+  formatReleaseWait,
+  isAwaitingRelease,
+} from "../../../utils/aurralAlbumStatus.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import {
   deduplicateAlbums,
@@ -758,6 +762,9 @@ export function useArtistDetailsLibrary({
         const sizeOnDisk = album.statistics?.sizeOnDisk ?? 0;
         const isComplete = percentOfTracks >= 100 || sizeOnDisk > 0;
         if (isComplete) return false;
+        if (isAwaitingRelease({ ...album, trackFileCount: album.statistics?.trackFileCount })) {
+          return false;
+        }
         const downloadStatus = downloadStatuses[album.id];
         const isActiveSearch =
           downloadStatus &&
@@ -907,6 +914,14 @@ export function useArtistDetailsLibrary({
         status: "available",
         label: "Complete",
         partial: (album.statistics?.percentOfTracks ?? 0) < 100,
+        libraryId: album.id,
+        albumInfo: album,
+      };
+    }
+    if (isAwaitingRelease({ ...album, trackFileCount: album.statistics?.trackFileCount })) {
+      return {
+        status: "waiting",
+        label: formatReleaseWait(album.releaseDate),
         libraryId: album.id,
         albumInfo: album,
       };

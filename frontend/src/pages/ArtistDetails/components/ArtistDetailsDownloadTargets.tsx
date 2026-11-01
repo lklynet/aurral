@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Share } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
+import ReleaseWaitBadge from "../../../components/ReleaseWaitBadge";
 import {
   CollectionHeader,
   CollectionPlayButtons,
@@ -305,7 +306,9 @@ export function ArtistDetailsDownloadTargets({
                   onPlay={handlePlayAll}
                   onShuffle={handleShufflePlay}
                 />
-                {canAddAlbum && releaseGroupId ? (
+                {albumStatus?.status === "waiting" ? (
+                  <ReleaseWaitBadge releaseDate={release!["first-release-date"]} />
+                ) : canAddAlbum && releaseGroupId ? (
                   <AddActionButton
                     {...getAlbumAddAction({ ...albumStatus }, libraryDestination)}
                     ownerConflict={albumStatus?.ownerConflict}

@@ -1,4 +1,26 @@
+import { isUnreleased } from "../../../lib/releaseDate.ts";
 import { formatCalendarDate } from "./dateTime.ts";
+
+export const isAwaitingRelease = ({
+  managedBy,
+  monitored,
+  releaseDate,
+  trackFileCount,
+}: {
+  managedBy?: string | null;
+  monitored?: boolean | null;
+  releaseDate?: string | null;
+  trackFileCount?: number | null;
+}) =>
+  managedBy === "aurral" &&
+  monitored === true &&
+  !Number(trackFileCount) &&
+  isUnreleased(releaseDate);
+
+export const formatReleaseWait = (releaseDate: string | null | undefined) => {
+  const date = formatCalendarDate(releaseDate);
+  return date ? `Downloads ${date}` : "Downloads when it's out";
+};
 
 const STATUS_DISPLAY = {
   queued: { label: "Queued", tone: "neutral" },
@@ -9,7 +31,7 @@ const STATUS_DISPLAY = {
   blocked: { label: "Needs attention", tone: "warning" },
   cancelled: { label: "Cancelled", tone: "neutral" },
   missing: { label: "Missing", tone: "neutral" },
-  unreleased: { label: "Not out yet", tone: "neutral" },
+  unreleased: { label: "Not out yet", tone: "scheduled" },
 };
 
 export type AlbumStatus = keyof typeof STATUS_DISPLAY;
@@ -62,13 +84,6 @@ export const shouldPollAlbumStatuses = (
   statuses: Record<string, AlbumStatusEntry | undefined> | null | undefined,
 ) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
-const releaseNote = (releaseDate: string | null | undefined) => {
-  const date = formatCalendarDate(releaseDate);
-  return date
-    ? `Aurral downloads it when it comes out on ${date}.`
-    : "Aurral downloads it when it comes out.";
-};
-
 export const describeAurralAlbumStatus = ({
   status,
   recovery,
@@ -78,9 +93,8 @@ export const describeAurralAlbumStatus = ({
   const display = STATUS_DISPLAY[status];
   const code = recovery?.code || null;
   return {
-    note: status === "unreleased" ? releaseNote(releaseDate) : null,
     status,
-    label: display.label,
+    label: status === "unreleased" ? formatReleaseWait(releaseDate) : display.label,
     tone: display.tone,
     active: shouldPollAlbumStatus(status),
     actions: albumActions(status, code),

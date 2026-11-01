@@ -16,6 +16,8 @@ import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { Link, useLocation, useParams } from "react-router";
 import { AlertCircle, Share } from "../../components/icons";
 import AddActionButton from "../../components/AddActionButton";
+import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
+import { formatReleaseWait, isAwaitingRelease } from "../../utils/aurralAlbumStatus.ts";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import {
@@ -254,6 +256,7 @@ function ReleasePage() {
     libraryDestination,
     release["first-release-date"],
   );
+  const awaitingRelease = !isComplete && isAwaitingRelease(libraryInfo ?? {});
   const albumDownloading =
     !isComplete &&
     (isAlbumDownloading(releaseMbid) ||
@@ -605,6 +608,15 @@ function ReleasePage() {
           ) : null
         }
         meta={headerPending ? <SkeletonText width="11em" /> : releaseMeta}
+        status={
+          awaitingRelease ? (
+            <div className="native-library-album-status" data-tone="scheduled">
+              <p className="native-library-album-status__label">
+                {formatReleaseWait(libraryInfo?.releaseDate)}
+              </p>
+            </div>
+          ) : null
+        }
         actions={
           <>
             <CollectionPlayButtons
@@ -615,7 +627,9 @@ function ReleasePage() {
               onPlay={preview.handlePlayAll}
               onShuffle={preview.handleShufflePlay}
             />
-            {canAddAlbum && !isComplete ? (
+            {awaitingRelease ? (
+              <ReleaseWaitBadge releaseDate={libraryInfo?.releaseDate} />
+            ) : canAddAlbum && !isComplete ? (
               <AddActionButton
                 {...albumAddAction}
                 ownerConflict={ownerConflict}
@@ -678,7 +692,7 @@ function ReleasePage() {
         preview={preview}
         playbackSource={playbackSource}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
-        onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+        onAddTrackToLibrary={awaitingRelease ? undefined : handleReleaseTrackAddToLibrary}
         libraryTrackSavingKey={libraryTrackSavingKey}
         albumDownloading={albumDownloading}
         ownedTrackMbids={libraryInfo?.ownedTrackMbids}

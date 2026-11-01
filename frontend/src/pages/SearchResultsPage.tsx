@@ -20,6 +20,8 @@ import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoi
 import SearchAlbumResults, { type SearchAlbum } from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
 import AddActionButton from "../components/AddActionButton";
+import ReleaseWaitBadge from "../components/ReleaseWaitBadge";
+import { isAwaitingRelease } from "../utils/aurralAlbumStatus.ts";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import SearchMixedResultList, {
   type SearchImageMap,
@@ -88,6 +90,8 @@ type SearchPage = UnifiedSearchResponse | CatalogSearchPage;
 type SearchResultItem = SearchItem & {
   durationMs?: number | null;
   monitored?: boolean;
+  managedBy?: string | null;
+  trackFileCount?: number;
   ownerConflict?: { message: string };
 };
 type AlbumActionTarget = Pick<
@@ -106,6 +110,8 @@ type AlbumLibraryState =
       libraryArtistId?: string | number | null;
       status?: string;
       monitored?: boolean;
+      trackFileCount?: number;
+      releaseDate?: string;
       ownerConflict?: { message: string };
     };
 
@@ -966,6 +972,7 @@ function SearchResults() {
       }
 
       if (item.type === "album") {
+        if (isAwaitingRelease(item)) return <ReleaseWaitBadge releaseDate={item.releaseDate} />;
         if (!canAddAlbum || !item.id) return null;
         const albumId = String(item.id);
         const pending = !!pendingAlbumIds[albumId] || isAlbumDownloading(albumId);

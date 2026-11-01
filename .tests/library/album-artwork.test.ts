@@ -512,6 +512,25 @@ describe("with sign-in required", () => {
     );
   });
 
+  test("an album with no files and no cover shows its artist's photo", async (t) => {
+    const requests = stubImageHost(t, blue);
+    const mbid = "5b0e5a7c-6f3d-4a52-9e1c-2f7a1d3c8b40";
+    const upcoming = libraryStore.upsertLibraryArtist({
+      identityKey: "upcoming-artist",
+      name: "Upcoming Artist",
+      mbid,
+    });
+    dbOps.setImage(mbid, "https://images.example/upcoming-artist.png");
+    const waiting = await albumFixture("upcoming-album", [], { artistId: upcoming.id });
+    const owned = await albumFixture("upcoming-owned", [null], { artistId: upcoming.id });
+
+    const result = await requestCover(waiting.id);
+    assert.equal(result.status, 200);
+    assert.equal(await isBlue(result.body), true);
+    assert.equal((await requestCover(owned.id)).status, 404);
+    assert.deepEqual(requests, ["https://images.example/upcoming-artist.png"]);
+  });
+
   test("art for albums that leave the Library is pruned", async () => {
     const album = await albumFixture("pruned", [image]);
     assert.equal((await requestCover(album.id)).status, 200);

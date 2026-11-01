@@ -69,6 +69,7 @@
   --aurral-success: light-dark(#15803d, #22c55e);
   --aurral-danger: light-dark(#dc2626, #ef4444);
   --aurral-warning: light-dark(#b45309, #f59e0b);
+  --aurral-scheduled: light-dark(#a16207, #facc15);
   --aurral-ring: light-dark(#17171775, #ffffff75);
   --aurral-scrim: light-dark(#e5e7ebb8, #000000b8);
   --aurral-border: light-dark(#17171714, #ffffff14);
@@ -681,6 +682,15 @@ textarea:disabled {
 
 .btn-add-action--managed {
   cursor: default;
+}
+
+.release-wait-badge {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--aurral-scheduled);
 }
 
 .btn-add-action:disabled {
@@ -4117,6 +4127,10 @@ textarea:disabled {
   background: var(--aurral-warning);
 }
 
+.artist-status-dot--waiting {
+  background: var(--aurral-scheduled);
+}
+
 .artist-release-card__title,
 .artist-card-title {
   margin: 0;
@@ -4766,15 +4780,6 @@ textarea:disabled {
 }
 
 .artist-release-card__status .library-check {
-  width: 2rem;
-  height: 2rem;
-}
-
-.artist-release-card__status--waiting {
-  color: var(--aurral-text);
-}
-
-.artist-release-card__status--waiting svg {
   width: 2rem;
   height: 2rem;
 }
@@ -8937,6 +8942,10 @@ textarea:disabled {
   color: var(--aurral-warning);
 }
 
+.native-library-card__status[data-tone="scheduled"] {
+  color: var(--aurral-scheduled);
+}
+
 .native-library-card__status[data-tone="danger"] {
   color: var(--aurral-danger);
 }
@@ -10013,6 +10022,10 @@ button.native-library-genre-row:focus-visible {
 
 .native-library-album-status[data-tone="warning"] .native-library-album-status__label {
   color: var(--aurral-warning);
+}
+
+.native-library-album-status[data-tone="scheduled"] .native-library-album-status__label {
+  color: var(--aurral-scheduled);
 }
 
 .native-library-album-status[data-tone="danger"] .native-library-album-status__label {

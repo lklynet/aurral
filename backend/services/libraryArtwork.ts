@@ -81,9 +81,10 @@ const albumStmt = db.prepare<
   [number],
   Pick<LibraryAlbumsRow, "mbid" | "release_group_mbid" | "title" | "metadata_json"> & {
     artist_name: string;
+    artist_mbid: string | null;
   }
 >(`SELECT album.mbid, album.release_group_mbid, album.title, album.metadata_json,
-    artist.name AS artist_name
+    artist.name AS artist_name, artist.mbid AS artist_mbid
   FROM library_albums AS album
   JOIN library_artists AS artist ON artist.id = album.artist_id
   WHERE album.id = ?`);
@@ -252,7 +253,14 @@ function metadataImageUrl(metadataJson: string | null) {
   );
 }
 
-async function findAlbumArtwork(albumId: number): Promise<ArtworkLookup> {
+async function findArtistPhoto(mbid: string, artistName: string): Promise<ArtworkLookup> {
+  const image = await getArtistImage(mbid, { artistName });
+  const photo = image.url ? await downloadArtwork(image.url) : null;
+  if (photo?.artwork) return photo;
+  return { artwork: null, transient: Boolean(photo?.transient || image.transientError) };
+}
+
+async function findAlbumCover(albumId: number): Promise<ArtworkLookup> {
   const fileArtwork = await readFileArtwork(albumId);
   if (fileArtwork) return { artwork: fileArtwork };
   const album = albumStmt.get(albumId);
@@ -270,14 +278,21 @@ async function findAlbumArtwork(albumId: number): Promise<ArtworkLookup> {
   return { artwork: null, transient: Boolean(fromMetadata?.transient || cover?.transientError) };
 }
 
+async function findAlbumArtwork(albumId: number): Promise<ArtworkLookup> {
+  const cover = await findAlbumCover(albumId);
+  if (cover.artwork || albumFilesStmt.get(albumId)) return cover;
+  const album = albumStmt.get(albumId);
+  if (!album?.artist_mbid) return cover;
+  const photo = await findArtistPhoto(album.artist_mbid, album.artist_name);
+  return photo.artwork ? photo : { artwork: null, transient: cover.transient || photo.transient };
+}
+
 async function findArtistArtwork(artistId: number): Promise<ArtworkLookup> {
   const artist = artistStmt.get(artistId);
   if (!artist) return { artwork: null };
   if (artist.mbid) {
-    const image = await getArtistImage(artist.mbid, { artistName: artist.name });
-    const photo = image.url ? await downloadArtwork(image.url) : null;
-    if (photo?.artwork) return photo;
-    if (photo?.transient || image.transientError) return { artwork: null, transient: true };
+    const photo = await findArtistPhoto(artist.mbid, artist.name);
+    if (photo.artwork || photo.transient) return photo;
   }
   for (const album of artistAlbumsStmt.all(artistId, ARTIST_FALLBACK_ALBUMS)) {
     const stored = await getLibraryArtwork("album", String(album.id));
