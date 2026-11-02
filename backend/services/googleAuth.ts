@@ -107,7 +107,7 @@ async function getDiscoveryConfig(config: { clientId: string; clientSecret: stri
     issuerUrl,
     config.clientId,
     config.clientSecret,
-    client.ClientSecretBasic(config.clientSecret),
+    client.ClientSecretPost(config.clientSecret),
     discoveryOptions,
   );
   discoveryKey = key;

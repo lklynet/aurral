@@ -41,6 +41,9 @@ const exchangeRequest = ({
   ip?: string | null;
 }) => ({ cookie: headers.cookie, ip, userAgent: headers["user-agent"] ?? null });
 
+const googleClientId = "355608985897-test_client.apps.googleusercontent.com";
+const googleClientSecret = "GOCSPX-test_client.secret";
+
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleKey = {
   ...publicKey.export({ format: "jwk" }),
@@ -58,7 +61,7 @@ const createIdToken = (
   const header = encode({ alg: "RS256", kid: googleKey.kid, typ: "JWT" });
   const payload = encode({
     iss: issuer,
-    aud: "google-client-id",
+    aud: googleClientId,
     sub: "google-subject",
     email: "person@example.com",
     nonce,
@@ -76,8 +79,8 @@ function enableGoogleConfig(issuer: string) {
     integrations: {
       google: {
         enabled: true,
-        clientId: "google-client-id",
-        clientSecret: "google-client-secret",
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
         redirectUri: `${issuer}callback`,
       },
     },
@@ -88,19 +91,36 @@ async function createGoogleIssuer(claimOverrides = {}) {
   let issuer: string;
   let nonce: string | null;
   const discoveryServer = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
+    response.setHeader("content-type", "application/json");
     if (request.url === "/jwks") {
       response.end(JSON.stringify({ keys: [googleKey] }));
       return;
     }
     if (request.method === "POST" && request.url === "/token") {
-      response.end(
-        JSON.stringify({
-          access_token: "access-token",
-          token_type: "Bearer",
-          id_token: createIdToken(issuer, nonce, claimOverrides),
-        }),
-      );
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        const parameters = new URLSearchParams(body);
+        if (
+          request.headers.authorization ||
+          parameters.get("client_id") !== googleClientId ||
+          parameters.get("client_secret") !== googleClientSecret
+        ) {
+          response.writeHead(401);
+          response.end(JSON.stringify({ error: "invalid_client" }));
+          return;
+        }
+        response.end(
+          JSON.stringify({
+            access_token: "access-token",
+            token_type: "Bearer",
+            id_token: createIdToken(issuer, nonce, claimOverrides),
+          }),
+        );
+      });
       return;
     }
     response.end(
