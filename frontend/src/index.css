@@ -3029,6 +3029,27 @@ textarea:disabled {
   height: 1rem;
 }
 
+.app-toast__artwork {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  width: 2.75rem;
+  height: 2.75rem;
+  overflow: hidden;
+  border-radius: var(--aurral-radius);
+}
+
+.app-toast__artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-toast__artwork img:only-child {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+}
+
 .app-toast__content {
   display: flex;
   min-width: 0;
@@ -14775,8 +14796,7 @@ a.blocklist-page__name:focus-visible {
 .artist-nearby-zip-editor:not(.artist-nearby-zip-editor--menu),
 .flow-page__token-suggestions,
 .blocklist-page__suggestions,
-.reload-prompt,
-.wrapped-announcement {
+.reload-prompt {
   border: 1px solid var(--aurral-border-overlay);
   border-radius: var(--aurral-radius-popover);
   background: var(--aurral-surface-popover);
