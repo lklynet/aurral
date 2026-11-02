@@ -464,7 +464,19 @@ async function restoreFolderCover(folder: string) {
   }
 }
 
-export const syncAlbumFolderCovers = (albumId: number) =>
+const folderSyncs = new Map<number, Promise<void>>();
+
+export function syncAlbumFolderCovers(albumId: number) {
+  const sync = (folderSyncs.get(albumId) ?? Promise.resolve()).then(() =>
+    syncFolderCovers(albumId),
+  );
+  folderSyncs.set(albumId, sync);
+  return sync.finally(() => {
+    if (folderSyncs.get(albumId) === sync) folderSyncs.delete(albumId);
+  });
+}
+
+const syncFolderCovers = (albumId: number) =>
   warnOnFailure(albumId, async () => {
     const custom = getCustomArtwork("album", albumId);
     if (custom) {
