@@ -1,7 +1,7 @@
 import { DotLoader } from "../../../components/DotLoader";
 import { SettingsAdapterFields } from "../components/SettingsAdapterFields";
 import { useServerSettings } from "../SettingsProviders";
-import { configuredStatus } from "../utils/serviceStatus";
+import { configuredStatus, connectedServices } from "../utils/serviceStatus";
 import {
   SettingsActions,
   SettingsGroup,
@@ -62,16 +62,14 @@ function AdapterServerDetail({
 export function PlaybackSection() {
   const { settings } = useServerSettings();
   const item = useSettingsItem();
-  const { navidrome, plex, jellyfin } = settings.integrations;
-  const navidromeReady = Boolean(navidrome.url && navidrome.username && navidrome.password);
-  const jellyfinReady = Boolean(jellyfin.url && jellyfin.apiKey && jellyfin.userId);
+  const connected = connectedServices(settings.integrations);
 
   if (item === "plex") return <PlexDetail />;
   if (item === "navidrome") {
     return (
       <AdapterServerDetail
         server="navidrome"
-        ready={navidromeReady}
+        ready={connected.navidrome}
         failureHint="Check the URL and credentials, then retry."
         note="Any Subsonic server works."
       />
@@ -81,7 +79,7 @@ export function PlaybackSection() {
     return (
       <AdapterServerDetail
         server="jellyfin"
-        ready={jellyfinReady}
+        ready={connected.jellyfin}
         failureHint="Check the URL, API key, and user ID, then retry."
       />
     );
@@ -93,17 +91,17 @@ export function PlaybackSection() {
         <SettingsServiceRow
           to="playback/navidrome"
           name="Navidrome"
-          status={configuredStatus(Boolean(navidrome.url))}
+          status={configuredStatus(connected.navidrome)}
         />
         <SettingsServiceRow
           to="playback/plex"
           name="Plex"
-          status={configuredStatus(Boolean(plex.token && plex.url))}
+          status={configuredStatus(connected.plex)}
         />
         <SettingsServiceRow
           to="playback/jellyfin"
           name="Jellyfin"
-          status={configuredStatus(jellyfinReady)}
+          status={configuredStatus(connected.jellyfin)}
         />
       </SettingsGroup>
     </SettingsPage>

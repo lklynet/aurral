@@ -1,5 +1,5 @@
 import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
-import { getApiErrorBody, getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { getApiErrorBody, getApiErrorMessage } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
 import { shouldPollAlbumStatus, type AlbumStatus } from "./aurralAlbumStatus.ts";
 import { normalizeLibraryManager } from "./libraryDestination.ts";

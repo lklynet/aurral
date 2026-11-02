@@ -1,4 +1,4 @@
-import { getApiErrorBody } from "../pages/onboardingUtils.tsx";
+import { getApiErrorBody } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
 import { parseResponse } from "hono/client";
 import { authClient } from "./api/clients/auth.ts";

@@ -121,7 +121,7 @@ const folderName = (value: string | null | undefined, fallback: string) =>
   sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
 
 // The Library's naming: Artist/Album/07 - Title.ext, or 2-07 - Title.ext past
-// the first disc, under the Downloads Folder.
+// the first disc, under the Library folder.
 export function buildLibraryTrackPath(
   root: string,
   track: {

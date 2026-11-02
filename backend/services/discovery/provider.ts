@@ -3,7 +3,11 @@ import { lastfmRequest, listenbrainzRequest } from "../apiClients/index.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
-import { getListenHistoryProfile, hasListenHistoryProfile } from "../listeningHistory.ts";
+import {
+  getListenHistory,
+  LISTEN_HISTORY_PROVIDERS,
+  type ListenHistoryProvider,
+} from "../listeningHistory.ts";
 import {
   getLibraryArtistKeyProjection,
   sampleLibraryArtistsForDiscovery,
@@ -121,7 +125,7 @@ export const requestUserDiscoveryRefresh = (
   return { enqueued: true, operationId };
 };
 
-const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
+export const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
   const users = userOps.getAllUsers().filter((user) => (user.status || "active") === "active");
   const baseDelay = getDiscoveryUserRefreshDelaySeconds();
   let queued = 0;
@@ -138,22 +142,15 @@ const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
 type ListenHistoryArtist = { mbid: string | null; artistName: string; playcount: number };
 
 const fetchListenHistoryArtists = async (
-  listenHistoryProfile: Parameters<typeof getListenHistoryProfile>[0],
+  provider: ListenHistoryProvider,
+  account: string,
   discoveryPeriod: string,
 ): Promise<ListenHistoryArtist[]> => {
-  const profile = getListenHistoryProfile(listenHistoryProfile);
-  if (!hasListenHistoryProfile(profile) || discoveryPeriod === "none") {
-    return [];
-  }
-
-  if (profile.listenHistoryProvider === "listenbrainz") {
-    const data = await listenbrainzRequest(
-      `/1/stats/user/${encodeURIComponent(profile.listenHistoryUsername!)}/artists`,
-      {
-        count: 50,
-        range: getListenbrainzRange(discoveryPeriod)!,
-      },
-    );
+  if (provider === "listenbrainz") {
+    const data = await listenbrainzRequest(`/1/stats/user/${encodeURIComponent(account)}/artists`, {
+      count: 50,
+      range: getListenbrainzRange(discoveryPeriod)!,
+    });
     const artists: ListenbrainzTopArtist[] = Array.isArray(data?.payload?.artists)
       ? data.payload.artists
       : [];
@@ -171,9 +168,9 @@ const fetchListenHistoryArtists = async (
       .filter((artist) => artist.artistName);
   }
 
-  if (profile.listenHistoryProvider === "koito") {
+  if (provider === "koito") {
     const { fetchKoitoTopArtists } = await import("../koitoClient.ts");
-    return fetchKoitoTopArtists(profile.listenHistoryUrl, {
+    return fetchKoitoTopArtists(account, {
       discoveryPeriod,
       limit: 50,
     });
@@ -182,7 +179,7 @@ const fetchListenHistoryArtists = async (
   const userTopArtists = await lastfmRequest(
     "user.getTopArtists",
     {
-      user: profile.listenHistoryUsername,
+      user: account,
       limit: 50,
       period: discoveryPeriod,
     },
@@ -408,20 +405,24 @@ const feedbackArtists = (feedback: DiscoveryFeedbackEntry[], action: string) =>
     .map((entry) => ({ mbid: entry.artistId, artistName: entry.artistName }));
 
 const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedbackEntry[]) => {
-  const profile = getListenHistoryProfile(user);
-  let externalHistory: (ListenHistoryArtist & {
-    source: typeof profile.listenHistoryProvider;
-  })[] = [];
-  try {
-    externalHistory = (await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod())).map(
-      (artist) => ({ ...artist, source: profile.listenHistoryProvider }),
-    );
-  } catch (error) {
-    logger.error(
-      "discovery",
-      `[Discovery] Failed to fetch ${profile.listenHistoryProvider} artists for user ${user.id}: ${asAppError(error)?.message}`,
-    );
-  }
+  const history = getListenHistory(user.id);
+  const period = getLastfmDiscoveryPeriod();
+  const externalHistory = await Promise.all(
+    LISTEN_HISTORY_PROVIDERS.map(async (provider) => {
+      const account = history[provider];
+      if (!account || period === "none") return [];
+      try {
+        const artists = await fetchListenHistoryArtists(provider, account, period);
+        return artists.map((artist) => ({ ...artist, source: provider }));
+      } catch (error) {
+        logger.error(
+          "discovery",
+          `[Discovery] Failed to fetch ${provider} artists for user ${user.id}: ${asAppError(error)?.message}`,
+        );
+        return [];
+      }
+    }),
+  );
   const localHistory = getTopPlayedArtists(user.id, { limit: 50 }).map((artist) => ({
     ...artist,
     source: "local",
@@ -431,12 +432,19 @@ const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedback
     source: "spotify",
   }));
   const library = sampleLibraryArtistsForDiscovery({ recentLimit: 20, randomLimit: 40 });
+  const { getChartStarterArtists } = await import("./trendingCharts.ts");
+  const limit = getDiscoveryRecommendationSeedLimit();
 
   return selectDiscoverySeeds({
     likedArtists: feedbackArtists(feedback, "more_like_this"),
-    historyArtists: interleaveLists(externalHistory, localHistory, spotifyHistory),
+    historyArtists: interleaveLists<ListenHistoryArtist & { source: string }>(
+      ...externalHistory,
+      localHistory,
+      spotifyHistory,
+    ),
     libraryArtists: interleaveLists(library.recent, library.random),
-    limit: getDiscoveryRecommendationSeedLimit(),
+    starterArtists: getChartStarterArtists(limit),
+    limit,
     excludedKeys: buildExistingArtistKeySet([
       ...feedbackArtists(feedback, "less_like_this"),
       ...feedbackArtists(feedback, "block_artist"),

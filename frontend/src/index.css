@@ -5592,6 +5592,30 @@ textarea:disabled {
   }
 }
 
+.discover-history-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  border-radius: var(--aurral-radius);
+  background: var(--aurral-surface-raised);
+}
+
+.discover-history-prompt__message {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-sm);
+}
+
+.discover-history-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .discover-recommended-empty {
   display: flex;
   flex-wrap: wrap;
@@ -13445,19 +13469,9 @@ a.blocklist-page__name:focus-visible {
   min-width: 0;
 }
 
-.onboarding-step--center {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
 .onboarding-step__header {
   display: grid;
   gap: 0.5rem;
-}
-
-.onboarding-step__header--center {
-  text-align: center;
 }
 
 .onboarding-title {
@@ -13472,13 +13486,6 @@ a.blocklist-page__name:focus-visible {
   font-size: var(--aurral-font-3xl);
 }
 
-.onboarding-copy {
-  margin: 0;
-  color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-base);
-  line-height: 1.5;
-}
-
 .onboarding-fields {
   display: grid;
   gap: 0.75rem;
@@ -13491,12 +13498,20 @@ a.blocklist-page__name:focus-visible {
   line-height: 1.45;
 }
 
-.onboarding-hint--center {
-  text-align: center;
-}
-
 .onboarding-fields > .btn {
   width: 100%;
+}
+
+.onboarding-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.onboarding-section__title {
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+  font-weight: 600;
 }
 
 .onboarding-toggle-row {
@@ -15899,10 +15914,6 @@ a.blocklist-page__name:focus-visible {
   letter-spacing: var(--aurral-tracking-title);
 }
 
-.onboarding-copy {
-  max-width: 38rem;
-}
-
 .onboarding-fields {
   gap: 1rem;
 }
@@ -15932,19 +15943,9 @@ a.blocklist-page__name:focus-visible {
 }
 
 .onboarding-field__error,
-.onboarding-status {
-  margin: 0;
-  font-size: var(--aurral-font-sm);
-  line-height: 1.45;
-}
-
 .onboarding-field__error,
 .onboarding-error {
   color: var(--aurral-danger);
-}
-
-.onboarding-status--success {
-  color: var(--aurral-success);
 }
 
 .onboarding-error {

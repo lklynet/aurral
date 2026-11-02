@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, LockOpen } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
-import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import {
   setAurralTrackKeepFile,
   setAurralTrackMonitoring,

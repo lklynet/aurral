@@ -8,7 +8,7 @@ import { parseResponse, type InferResponseType } from "hono/client";
 import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { apiFetchWithin } from "../../utils/api/core.ts";
 import { queryKeys } from "../../queryClient.ts";
-import { getApiErrorMessage } from "../onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 const manualSearch = playlistJobsClient.jobs[":jobId"]["manual-search"];
 const searchFetch = apiFetchWithin(150_000);

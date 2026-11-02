@@ -18,7 +18,9 @@ import {
   type SettingsState,
 } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import { appSettingsQueryOptions } from "../../../queryOptions.ts";
 import { readApiError } from "../utils/apiError.ts";
+import { useSettingsItem } from "../SettingsLayout";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };
@@ -323,12 +325,7 @@ export function useSettingsData(
     return next;
   }, []);
 
-  const settingsQuery = useQuery({
-    queryKey: queryKeys.appSettings,
-    queryFn: ({ signal }) => parseResponse(settingsClient.$get({}, { init: { signal } })),
-    enabled: false,
-    staleTime: 30_000,
-  });
+  const settingsQuery = useQuery({ ...appSettingsQueryOptions(), enabled: false });
   const playbackQuery = useQuery({
     queryKey: queryKeys.playbackSettings,
     queryFn: ({ signal }) =>
@@ -365,10 +362,13 @@ export function useSettingsData(
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     },
   });
+  const settingsItem = useSettingsItem();
   const lidarrQueries = useQueries({
     queries: buildLidarrQueries(
       lidarrResourceConfig,
-      activeSection === "lidarr" && settings.integrations?.lidarr?.enabled !== false,
+      activeSection === "library" &&
+        settingsItem === "lidarr" &&
+        settings.integrations?.lidarr?.enabled !== false,
     ),
   });
   const [

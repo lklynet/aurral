@@ -68,9 +68,9 @@ Aurral also deletes files on its own, for example when a flow rotates tracks, wh
 
 ## Where files go
 
-Aurral stores static playlist membership as references to Library tracks. Permanent tracks use `Artist/Album/Track` folders in the Downloads Folder. Set this folder in **Settings > Library > Downloads folder > Path**.
+Aurral stores static playlist membership as references to Library tracks. Permanent tracks use `Artist/Album/Track` folders in the Library folder. Set this folder in **Settings > Library > Library folder > Path**.
 
-Flow files are temporary. They live under `_flows` in the Downloads Folder.
+Flow files are temporary. They live under `_flows` in the Library folder.
 
 For setup, see:
 
@@ -112,7 +112,7 @@ An existing file stays available when it is below the cutoff. Aurral replaces it
 
 If an upgrade search for a track is already queued, Aurral says so. Any user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
 
-To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Downloads Folder, including music that Aurral did not download.
+To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Library folder, including music that Aurral did not download.
 
 Upgrade downloads wait behind downloads of missing tracks. Aurral searches slskd, Usenet, and deemix for upgrades, in your source priority order. It first looks for the release of the track's album and takes only that track from it. Upgrades that start together for several tracks of one album look for their release once, even when the tracks are in different playlists. Automatic upgrades and **Search all** start all upgrades of an album together. They skip the playlists of a suspended or disabled user until the account is active again. An upgrade that starts while another one downloads a release of the same album waits for that download, for up to 30 minutes. If no source has the release, it searches for the track alone. It stops at the first source that gives a valid, better file. It then waits for the next interval before it tries that track again. Aurral does not use yt-dlp for upgrades.
 

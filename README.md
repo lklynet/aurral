@@ -70,13 +70,13 @@ services:
       - ./config:/config
 ```
 
-Set `MEDIA_ROOT` to your host media folder. If you use Lidarr, use the host folder that Lidarr already mounts. Keep `/data` as the container path, and use the same mount for your download clients and your playback server. Then set Aurral's Downloads Folder to a container path such as `/data/downloads/aurral`. See [Filesystem and mounts](https://docs.aurral.org/getting-started/storage/).
+Set `MEDIA_ROOT` to your host media folder. If you use Lidarr, use the host folder that Lidarr already mounts. Keep `/data` as the container path, and use the same mount for your download clients and your playback server. Then set Aurral's Library folder to a container path such as `/data/downloads/aurral`. See [Filesystem and mounts](https://docs.aurral.org/getting-started/storage/).
 
 ```bash
 docker compose up -d
 ```
 
-Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want it to manage your library, or skip it and let Aurral keep your music in its Downloads Folder. Lidarr is optional, and you can connect it later.
+Open `http://localhost:3001`, create your admin account, and choose where your music lives. Then connect your listening history and any services you use, such as Navidrome, Plex, Jellyfin, or Lidarr. All of them are optional.
 
 To get the latest merged changes, use `ghcr.io/lklynet/aurral:nightly`. Nightly builds can be less stable than releases. See [Choose an image tag](https://docs.aurral.org/getting-started/docker/#choose-an-image-tag).
 

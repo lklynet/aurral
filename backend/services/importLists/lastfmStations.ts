@@ -1,5 +1,5 @@
 import { asAppError } from "../../../lib/errors.ts";
-import { userOps } from "../../db/helpers/index.ts";
+import { getListenHistory } from "../listeningHistory.ts";
 import { parseLastfmStation } from "./lastfmTracks.ts";
 
 const LASTFM_STATIONS = [
@@ -40,10 +40,8 @@ export function normalizeLastfmStation(value: unknown) {
 function resolveUsername(userId: number | undefined, requestedUsername: unknown) {
   const requested = String(requestedUsername || "").trim();
   if (requested) return normalizeLastfmUsername(requested);
-  const user = userOps.getUserById(userId);
-  if (user?.listenHistoryProvider === "lastfm" && user.listenHistoryUsername) {
-    return normalizeLastfmUsername(user.listenHistoryUsername);
-  }
+  const username = userId == null ? null : getListenHistory(userId).lastfm;
+  if (username) return normalizeLastfmUsername(username);
   throw invalidUsernameError();
 }
 

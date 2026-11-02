@@ -15,7 +15,7 @@ export function describeLidarrConnectionState({
       reason: "disabled",
       title: "Lidarr is off",
       message:
-        "Only music in the Downloads Folder is shown. Enable Lidarr and save to restore its music.",
+        "Only music in the Library folder is shown. Enable Lidarr and save to restore its music.",
     };
   }
   if (!String(lidarr?.url || "").trim() || !String(lidarr?.apiKey || "").trim()) {
@@ -34,12 +34,12 @@ export function describeLidarrConnectionState({
 
 function describeRootOverlap(warning: RootOverlapWarning) {
   const root = warning?.lidarrRoot;
-  if (warning?.type === "equal") return `The Lidarr root ${root} is the Downloads Folder.`;
+  if (warning?.type === "equal") return `The Lidarr root ${root} is the Library folder.`;
   if (warning?.type === "nested-b-in-a") {
-    return `The Lidarr root ${root} is inside the Downloads Folder.`;
+    return `The Lidarr root ${root} is inside the Library folder.`;
   }
   if (warning?.type === "nested-a-in-b") {
-    return `The Downloads Folder is inside the Lidarr root ${root}.`;
+    return `The Library folder is inside the Lidarr root ${root}.`;
   }
   return warning?.message || "";
 }

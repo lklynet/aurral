@@ -4,7 +4,7 @@ import { ModalShell } from "../components/PlaylistModals";
 import { DotLoader } from "../components/DotLoader";
 import { updateLibraryArtistMbid } from "../utils/api/endpoints/library.ts";
 import { asApiError } from "../utils/api/core.ts";
-import { getApiErrorText } from "./onboardingUtils";
+import { getApiErrorText } from "../utils/api/errors.ts";
 
 const MBID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 

@@ -5,6 +5,8 @@ import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
 import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
+import { settingsClient } from "./utils/api/clients/settings.ts";
+import { usersClient } from "./utils/api/clients/users.ts";
 import {
   getPlaylistTrackStreamUrl,
   withAuthenticatedTrackArtwork,
@@ -20,6 +22,32 @@ export const discoveryQueryOptions = (userId: MaybeId) =>
       normalizeDiscoveryData(
         await parseResponse(discoveryClient.$get({ query: {} }, { init: { signal } })),
       ),
+    staleTime: 30_000,
+  });
+
+export const listeningHistoryQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.listeningHistory(userId),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["listening-history"].$get({}, { init: { signal } })),
+    enabled: userId != null,
+    staleTime: 30_000,
+  });
+
+export const spotifyHistoryQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.spotifyHistory(userId),
+    queryFn: async ({ signal }) =>
+      (await parseResponse(discoveryClient["spotify-import"].$get({}, { init: { signal } })))
+        .summary,
+    enabled: userId != null,
+    staleTime: 30_000,
+  });
+
+export const appSettingsQueryOptions = () =>
+  queryOptions({
+    queryKey: queryKeys.appSettings,
+    queryFn: ({ signal }) => parseResponse(settingsClient.$get({}, { init: { signal } })),
     staleTime: 30_000,
   });
 

@@ -30,7 +30,7 @@ import {
   usePlaylistTrackPlayback,
 } from "./playlists/components/playlistTrackComponents.tsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
-import { getApiErrorMessage } from "./onboardingUtils";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { playlistPath } from "../navigation/playlistPaths";
 import { readRouteSeed } from "../navigation/routeSeed.ts";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";

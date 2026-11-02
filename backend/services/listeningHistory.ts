@@ -1,110 +1,56 @@
-import { stripTrailingSlashes } from "./textUtils.ts";
+import { db } from "../config/db-sqlite.ts";
+import type { ListenHistorySourcesRow } from "../db/rows.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
+import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import { normalizeKoitoBaseUrl } from "./koitoClient.ts";
 
-export const LISTEN_HISTORY_PROVIDERS = ["local", "lastfm", "listenbrainz", "koito"];
-export const DEFAULT_LISTEN_HISTORY_PROVIDER = "lastfm";
+export const LISTEN_HISTORY_PROVIDERS = ["lastfm", "listenbrainz", "koito"] as const;
+export type ListenHistoryProvider = (typeof LISTEN_HISTORY_PROVIDERS)[number];
+export type ListenHistory = Record<ListenHistoryProvider, string | null>;
 
-type ListenHistorySource = {
-  listenHistoryProvider?: unknown;
-  listen_history_provider?: unknown;
-  listenHistoryUsername?: unknown;
-  listen_history_username?: unknown;
-  listenHistoryUrl?: unknown;
-  listen_history_url?: unknown;
-  lastfmUsername?: unknown;
-  lastfm_username?: unknown;
-};
+export class ListenHistoryError extends Error {}
 
-export function normalizeListenHistoryProvider(value: unknown) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  return LISTEN_HISTORY_PROVIDERS.includes(normalized)
-    ? normalized
-    : DEFAULT_LISTEN_HISTORY_PROVIDER;
-}
+const selectStmt = db.prepare<[number], Pick<ListenHistorySourcesRow, "provider" | "account">>(
+  "SELECT provider, account FROM listen_history_sources WHERE user_id = ?",
+);
+const upsertStmt = db.prepare<[number, string, string]>(
+  "INSERT INTO listen_history_sources (user_id, provider, account) VALUES (?, ?, ?) ON CONFLICT (user_id, provider) DO UPDATE SET account = excluded.account",
+);
+const deleteStmt = db.prepare<[number, string]>(
+  "DELETE FROM listen_history_sources WHERE user_id = ? AND provider = ?",
+);
 
-export function normalizeListenHistoryUsername(value: unknown) {
-  if (value == null) return null;
-  const normalized = String(value).trim();
-  return normalized || null;
-}
-
-export function normalizeListenHistoryUrl(value: unknown) {
-  if (value == null) return null;
-  const normalized = stripTrailingSlashes(String(value).trim());
-  return normalized || null;
-}
-
-export function getListenHistoryProfile(source: ListenHistorySource = {}) {
-  const safeSource: ListenHistorySource =
-    source && typeof source === "object" && !Array.isArray(source) ? source : {};
-  const explicitUsername = safeSource.listenHistoryUsername ?? safeSource.listen_history_username;
-  const legacyLastfmUsername = safeSource.lastfmUsername ?? safeSource.lastfm_username;
-  const username = normalizeListenHistoryUsername(
-    explicitUsername != null ? explicitUsername : legacyLastfmUsername,
-  );
-  const url = normalizeListenHistoryUrl(
-    safeSource.listenHistoryUrl ?? safeSource.listen_history_url,
-  );
-  const hasExplicitProvider =
-    safeSource.listenHistoryProvider !== undefined ||
-    safeSource.listen_history_provider !== undefined;
-  const provider =
-    username || url
-      ? hasExplicitProvider
-        ? normalizeListenHistoryProvider(
-            safeSource.listenHistoryProvider ?? safeSource.listen_history_provider,
-          )
-        : legacyLastfmUsername != null
-          ? "lastfm"
-          : url
-            ? "koito"
-            : DEFAULT_LISTEN_HISTORY_PROVIDER
-      : normalizeListenHistoryProvider(
-          safeSource.listenHistoryProvider ?? safeSource.listen_history_provider,
-        );
-
-  return {
-    listenHistoryProvider: provider,
-    listenHistoryUsername: provider === "koito" || provider === "local" ? null : username,
-    listenHistoryUrl: provider === "koito" ? url : null,
-    lastfmUsername: provider === "lastfm" ? username : null,
-  };
-}
-
-export function hasListenHistoryProfile(profile: ListenHistorySource) {
-  const normalized = getListenHistoryProfile(profile);
-  if (normalized.listenHistoryProvider === "local") return true;
-  if (normalized.listenHistoryProvider === "koito") {
-    return !!normalized.listenHistoryUrl;
+export function getListenHistory(userId: number) {
+  const history: ListenHistory = { lastfm: null, listenbrainz: null, koito: null };
+  for (const { provider, account } of selectStmt.all(userId)) {
+    if (isOwnKey(history, provider)) history[provider] = account;
   }
-  return !!normalizeListenHistoryUsername(normalized.listenHistoryUsername);
+  return history;
 }
 
-export function listenHistoryProfilesEqual(a: ListenHistorySource, b: ListenHistorySource) {
-  const left = getListenHistoryProfile(a);
-  const right = getListenHistoryProfile(b);
-  return (
-    left.listenHistoryProvider === right.listenHistoryProvider &&
-    left.listenHistoryUsername === right.listenHistoryUsername &&
-    left.listenHistoryUrl === right.listenHistoryUrl
-  );
+function normalizeAccount(provider: ListenHistoryProvider, value: string | null | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (provider !== "koito") return trimmed;
+  const validation = validateExternalUrl(trimmed);
+  if (!validation.valid) throw new ListenHistoryError(validation.error || "Invalid Koito URL");
+  return normalizeKoitoBaseUrl(validation.url);
 }
 
-export function resolveListenHistorySettings(user: ListenHistorySource = {}) {
-  const profile = getListenHistoryProfile(user);
-  if (hasListenHistoryProfile(profile)) {
-    return {
-      listenHistoryProvider: profile.listenHistoryProvider,
-      listenHistoryUsername: profile.listenHistoryUsername,
-      listenHistoryUrl: profile.listenHistoryUrl,
-      lastfmUsername: profile.lastfmUsername,
-    };
+const writeListenHistory = db.transaction((userId: number, next: Partial<ListenHistory>) => {
+  for (const [provider, account] of Object.entries(next)) {
+    if (account) upsertStmt.run(userId, provider, account);
+    else deleteStmt.run(userId, provider);
   }
-  return {
-    listenHistoryProvider: profile.listenHistoryProvider,
-    listenHistoryUsername: profile.listenHistoryUsername,
-    listenHistoryUrl: profile.listenHistoryUrl,
-    lastfmUsername: profile.lastfmUsername,
-  };
+});
+
+export function updateListenHistory(userId: number, updates: Partial<ListenHistory>) {
+  const current = getListenHistory(userId);
+  const changes = Object.fromEntries(
+    LISTEN_HISTORY_PROVIDERS.filter((provider) => provider in updates)
+      .map((provider) => [provider, normalizeAccount(provider, updates[provider])] as const)
+      .filter(([provider, account]) => current[provider] !== account),
+  );
+  if (Object.keys(changes).length > 0) writeListenHistory(userId, changes);
+  return { history: { ...current, ...changes }, changed: Object.keys(changes).length > 0 };
 }

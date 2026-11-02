@@ -1,5 +1,5 @@
 import { asApiError } from "../../../utils/api/core.ts";
-import { getApiErrorBody, getApiErrorText } from "../../onboardingUtils.tsx";
+import { getApiErrorBody, getApiErrorText } from "../../../utils/api/errors.ts";
 
 export function readApiError(error: unknown) {
   return {

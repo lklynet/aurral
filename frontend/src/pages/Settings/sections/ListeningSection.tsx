@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseResponse, type InferResponseType } from "hono/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
+import { listeningHistoryQueryOptions, spotifyHistoryQueryOptions } from "../../../queryOptions.ts";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import { DotLoader } from "../../../components/DotLoader";
-import { SettingsInput } from "../components/SettingsField";
-import { Select } from "../../../components/Select";
+import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
 import { readApiError } from "../utils/apiError.ts";
 import { formatDate } from "../../../utils/dateTime.ts";
 import { readSpotifyExport } from "../../../utils/spotifyExportFiles.ts";
-import { useAccountSettingsContext } from "../SettingsProviders";
 import { SettingsLink } from "../settingsRoute";
 import {
   SettingsActions,
@@ -28,16 +28,17 @@ import {
 
 type ScrobbleStatus = InferResponseType<typeof scrobblingClient.status.$get, 200>;
 type ConnectionStatus = ScrobbleStatus[string] | undefined;
+type ListenHistoryUpdate = InferRequestType<
+  (typeof usersClient.me)["listening-history"]["$patch"]
+>["json"];
 
-const PROVIDER_LABELS = {
+const PROVIDERS = ["lastfm", "listenbrainz", "koito"] as const;
+type ScrobbleProvider = (typeof PROVIDERS)[number];
+const PROVIDER_LABELS: Record<ScrobbleProvider, string> = {
   lastfm: "Last.fm",
   listenbrainz: "ListenBrainz",
   koito: "Koito",
-} as const;
-type ScrobbleProvider = keyof typeof PROVIDER_LABELS;
-
-const isScrobbleProvider = (value: string | null): value is ScrobbleProvider =>
-  value !== null && Object.hasOwn(PROVIDER_LABELS, value);
+};
 
 function useScrobbleStatus() {
   return useQuery({
@@ -46,16 +47,48 @@ function useScrobbleStatus() {
   });
 }
 
-function scrobbleServiceStatus(status: ConnectionStatus): ServiceStatus {
-  if (!status?.connected) return { label: "Not set up", tone: "muted" };
-  return { label: status.displayName ? `Connected as ${status.displayName}` : "Connected" };
+function useListenHistory() {
+  const { user } = useAuth();
+  const { showError } = useToast();
+  const queryClient = useQueryClient();
+  const options = listeningHistoryQueryOptions(user?.id);
+  const { data } = useQuery(options);
+  const { mutate } = useMutation({
+    mutationFn: (json: ListenHistoryUpdate) =>
+      parseResponse(usersClient.me["listening-history"].$patch({ json })),
+    onMutate: (json) =>
+      queryClient.setQueryData(options.queryKey, (current) => current && { ...current, ...json }),
+    onSuccess: (next) => queryClient.setQueryData(options.queryKey, next),
+    onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: options.queryKey });
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Couldn't save listening history");
+    },
+  });
+  return { history: data, save: mutate };
+}
+
+const connectedLabel = (status: ConnectionStatus) =>
+  status?.displayName ? `Connected as ${status.displayName}` : "Connected";
+
+function serviceStatus(history: string | null, scrobbling: ConnectionStatus): ServiceStatus {
+  const on = [history ? "history" : null, scrobbling?.connected ? "scrobbling" : null]
+    .filter((part) => part !== null)
+    .join(", ");
+  if (!on) return { label: "Not set up", tone: "muted" };
+  return { label: on[0].toUpperCase() + on.slice(1) };
 }
 
 function useScrobbleActions(provider: ScrobbleProvider) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const [busy, setBusy] = useState(false);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.scrobbleStatus });
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.scrobbleStatus }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.listeningHistory(user?.id) }),
+    ]);
 
   const run = async (action: () => Promise<unknown>, success: string, failure: string) => {
     setBusy(true);
@@ -124,27 +157,30 @@ function LastfmDetail({ status }: { status: ConnectionStatus }) {
 
   if (status?.configured !== true) {
     return (
-      <SettingsNote>
-        {hasPermission("accessSettings") ? (
-          <>
-            Add a Last.fm API key and secret in{" "}
-            <SettingsLink to="discovery/lastfm" className="settings-link">
-              Discovery
-            </SettingsLink>{" "}
-            first.
-          </>
-        ) : (
-          "An admin needs to add a Last.fm API key before you can connect."
-        )}
-      </SettingsNote>
+      <SettingsGroup title="Scrobbling">
+        <SettingsNote>
+          {hasPermission("accessSettings") ? (
+            <>
+              Add a Last.fm API key and secret in{" "}
+              <SettingsLink to="discovery/lastfm" className="settings-link">
+                Discovery
+              </SettingsLink>{" "}
+              first.
+            </>
+          ) : (
+            "An admin needs to add a Last.fm API key before you can connect."
+          )}
+        </SettingsNote>
+      </SettingsGroup>
     );
   }
 
   return (
     <SettingsGroup
+      title="Scrobbling"
       note={
         status?.connected
-          ? `${scrobbleServiceStatus(status).label}.`
+          ? `${connectedLabel(status)}.`
           : "Sign in to Last.fm to send it your plays."
       }
     >
@@ -177,14 +213,13 @@ function TokenDetail({
   const connected = status?.connected === true;
   const { busy, run, disconnect } = useScrobbleActions(provider);
   const [token, setToken] = useState("");
-  const [url, setUrl] = useState("");
   const label = PROVIDER_LABELS[provider];
 
   const connect = async () => {
     const linked = await run(
       () =>
         provider === "koito"
-          ? parseResponse(scrobblingClient.koito.link.$put({ json: { token, url } }))
+          ? parseResponse(scrobblingClient.koito.link.$put({ json: { token } }))
           : parseResponse(scrobblingClient.listenbrainz.link.$put({ json: { token } })),
       `${label} connected.`,
       `Couldn't connect ${label}`,
@@ -194,11 +229,12 @@ function TokenDetail({
 
   return (
     <SettingsGroup
+      title="Scrobbling"
       note={
         connected
-          ? `${scrobbleServiceStatus(status).label}.`
+          ? `${connectedLabel(status)}.`
           : provider === "koito"
-            ? "Koito uses the ListenBrainz format."
+            ? "Uses the Koito URL above."
             : undefined
       }
     >
@@ -208,17 +244,6 @@ function TokenDetail({
           void connect();
         }}
       >
-        {provider === "koito" ? (
-          <SettingsRow label="Koito URL" htmlFor="scrobble-koito-url">
-            <SettingsInput
-              id="scrobble-koito-url"
-              type="url"
-              placeholder="https://koito.example.com"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-            />
-          </SettingsRow>
-        ) : null}
         <SettingsRow
           label={provider === "koito" ? "API key" : "User token"}
           htmlFor="scrobble-token"
@@ -252,19 +277,42 @@ function TokenDetail({
   );
 }
 
-function ScrobbleDetail({
-  provider,
-  status,
-}: {
-  provider: ScrobbleProvider;
-  status: ScrobbleStatus;
-}) {
+function ServiceDetail({ provider }: { provider: ScrobbleProvider }) {
+  const { hasPermission } = useAuth();
+  const { history, save } = useListenHistory();
+  const scrobbleStatus = useScrobbleStatus();
+  const canScrobble = provider !== "koito" || hasPermission("accessSettings");
+  const inputId = `listening-history-${provider}`;
+
   return (
     <SettingsPage title={PROVIDER_LABELS[provider]} back="Listening">
-      {provider === "lastfm" ? (
-        <LastfmDetail status={status.lastfm} />
+      <SettingsGroup title="History">
+        <SettingsRow
+          label={provider === "koito" ? "Koito URL" : "Username"}
+          htmlFor={inputId}
+          help={
+            canScrobble && provider !== "koito"
+              ? "Filled in when you connect scrobbling."
+              : undefined
+          }
+        >
+          <SettingsCommitInput
+            id={inputId}
+            type={provider === "koito" ? "url" : "text"}
+            placeholder={provider === "koito" ? "https://koito.example.com:4110" : undefined}
+            autoComplete="off"
+            disabled={!history}
+            value={history?.[provider] ?? ""}
+            onCommit={(value) => save({ [provider]: value.trim() || null })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+      {!canScrobble ? null : scrobbleStatus.isError ? (
+        <SettingsNote tone="warning">Couldn&apos;t load scrobbling.</SettingsNote>
+      ) : !scrobbleStatus.data ? null : provider === "lastfm" ? (
+        <LastfmDetail status={scrobbleStatus.data.lastfm} />
       ) : (
-        <TokenDetail provider={provider} status={status[provider]} />
+        <TokenDetail provider={provider} status={scrobbleStatus.data[provider]} />
       )}
     </SettingsPage>
   );
@@ -321,12 +369,12 @@ function ResetTastesRow() {
 
 const SPOTIFY_PRIVACY_URL = "https://www.spotify.com/account/privacy/";
 
-type SpotifyImportSummary = InferResponseType<
+type SpotifyHistorySummary = InferResponseType<
   (typeof discoveryClient)["spotify-import"]["$get"],
   200
 >["summary"];
 
-const spotifyImportHelp = (summary: NonNullable<SpotifyImportSummary>) =>
+const spotifyHistoryHelp = (summary: NonNullable<SpotifyHistorySummary>) =>
   [
     summary.plays ? `${summary.plays.toLocaleString()} plays` : null,
     `${summary.artists.toLocaleString()} artists`,
@@ -335,24 +383,19 @@ const spotifyImportHelp = (summary: NonNullable<SpotifyImportSummary>) =>
     .filter(Boolean)
     .join(" · ");
 
-function SpotifyHistoryRow() {
+function SpotifyDetail() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const queryKey = queryKeys.spotifyImport(user?.id);
-  const { data: summary } = useQuery({
-    queryKey,
-    queryFn: async ({ signal }) =>
-      (await parseResponse(discoveryClient["spotify-import"].$get({}, { init: { signal } })))
-        .summary,
-  });
+  const query = spotifyHistoryQueryOptions(user?.id);
+  const { data: summary } = useQuery(query);
 
-  const run = async (action: () => Promise<{ summary: SpotifyImportSummary }>, done: string) => {
+  const run = async (action: () => Promise<{ summary: SpotifyHistorySummary }>, done: string) => {
     setBusy(true);
     try {
-      queryClient.setQueryData(queryKey, (await action()).summary);
+      queryClient.setQueryData(query.queryKey, (await action()).summary);
       showSuccess(done);
     } catch (error) {
       const failure = readApiError(error);
@@ -378,151 +421,113 @@ function SpotifyHistoryRow() {
   };
 
   return (
-    <SettingsRow
-      label="Spotify history"
-      help={
-        summary ? (
-          spotifyImportHelp(summary)
-        ) : (
-          <>
-            Choose your Spotify data export.{" "}
-            <a
-              href={SPOTIFY_PRIVACY_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="settings-link"
-            >
-              Request it
-            </a>
-          </>
-        )
-      }
-    >
-      <input
-        ref={fileInput}
-        type="file"
-        accept=".zip,.json,application/zip,application/json"
-        multiple
-        hidden
-        onChange={(event) => {
-          const files = [...(event.target.files ?? [])];
-          event.target.value = "";
-          if (files.length) void importFiles(files);
-        }}
-      />
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
-        disabled={busy}
-        onClick={() => fileInput.current?.click()}
-      >
-        {busy ? <DotLoader size="xs" label={null} /> : null}
-        {summary ? "Replace" : "Import"}
-      </button>
-      {summary ? (
-        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={remove}>
-          Remove
-        </button>
-      ) : null}
-    </SettingsRow>
-  );
-}
-
-function HistoryGroup() {
-  const account = useAccountSettingsContext();
-  const provider = account.listenHistoryProvider;
-
-  return (
-    <SettingsGroup title="History">
-      <SettingsRow
-        label="Source"
-        htmlFor="listening-history-source"
-        help="Used for your recommendations."
-      >
-        <Select
-          id="listening-history-source"
-          value={provider}
-          onChange={(next) => {
-            account.setListenHistoryProvider(next);
-            if (next === "local") {
-              account.setListenHistoryUsername("");
-              account.setListenHistoryUrl("");
-            }
-          }}
-          options={[
-            { value: "local", label: "Aurral plays only" },
-            { value: "lastfm", label: "Last.fm" },
-            { value: "listenbrainz", label: "ListenBrainz" },
-            { value: "koito", label: "Koito" },
-          ]}
-        />
-      </SettingsRow>
-      {provider === "koito" ? (
-        <SettingsRow label="Koito URL" htmlFor="listening-history-url">
-          <SettingsInput
-            id="listening-history-url"
-            type="url"
-            placeholder="https://koito.example.com:4110"
-            autoComplete="off"
-            value={account.listenHistoryUrl}
-            onChange={(event) => account.setListenHistoryUrl(event.target.value)}
-          />
-        </SettingsRow>
-      ) : provider !== "local" ? (
+    <SettingsPage title="Spotify" back="Listening">
+      <SettingsGroup title="History">
         <SettingsRow
-          label={`${provider === "listenbrainz" ? "ListenBrainz" : "Last.fm"} username`}
-          htmlFor="listening-history-username"
+          label="Data export"
+          help={
+            summary ? (
+              spotifyHistoryHelp(summary)
+            ) : (
+              <>
+                Choose your Spotify data export.{" "}
+                <a
+                  href={SPOTIFY_PRIVACY_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="settings-link"
+                >
+                  Request it
+                </a>
+              </>
+            )
+          }
         >
-          <SettingsInput
-            id="listening-history-username"
-            type="text"
-            autoComplete="off"
-            value={account.listenHistoryUsername}
-            onChange={(event) => account.setListenHistoryUsername(event.target.value)}
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".zip,.json,application/zip,application/json"
+            multiple
+            hidden
+            onChange={(event) => {
+              const files = [...(event.target.files ?? [])];
+              event.target.value = "";
+              if (files.length) void importFiles(files);
+            }}
           />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy}
+            onClick={() => fileInput.current?.click()}
+          >
+            {busy ? <DotLoader size="xs" label={null} /> : null}
+            {summary ? "Replace" : "Import"}
+          </button>
+          {summary ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={busy}
+              onClick={remove}
+            >
+              Remove
+            </button>
+          ) : null}
         </SettingsRow>
-      ) : null}
-      <SpotifyHistoryRow />
-    </SettingsGroup>
+      </SettingsGroup>
+    </SettingsPage>
   );
 }
 
 export function ListeningSection() {
-  const { hasPermission } = useAuth();
-  const account = useAccountSettingsContext();
+  const { user, hasPermission } = useAuth();
+  const { history } = useListenHistory();
   const scrobbleStatus = useScrobbleStatus();
   const item = useSettingsItem();
-  const providers: ScrobbleProvider[] = hasPermission("accessSettings")
-    ? ["lastfm", "listenbrainz", "koito"]
-    : ["lastfm", "listenbrainz"];
+  const provider = PROVIDERS.find((id) => id === item);
+  const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
 
-  if (isScrobbleProvider(item) && providers.includes(item) && scrobbleStatus.data) {
-    return <ScrobbleDetail provider={item} status={scrobbleStatus.data} />;
-  }
+  if (provider) return <ServiceDetail provider={provider} />;
+  if (item === "spotify") return <SpotifyDetail />;
 
   return (
     <SettingsPage title="Listening">
-      {account.loading ? (
-        <p className="settings-loading">
-          <DotLoader size="sm" label={null} /> Loading…
-        </p>
-      ) : (
-        <HistoryGroup />
-      )}
-      <SettingsGroup title="Scrobbling" note="Send the songs you finish to a listening service.">
+      <SettingsGroup
+        title="Services"
+        note="Your history shapes recommendations. Scrobbling sends what you play."
+      >
         {scrobbleStatus.isError ? (
           <SettingsNote tone="warning">Couldn&apos;t load your scrobbling services.</SettingsNote>
         ) : null}
-        {providers.map((provider) => (
+        {PROVIDERS.map((id) => (
           <SettingsServiceRow
-            key={provider}
-            to={`listening/${provider}`}
-            name={PROVIDER_LABELS[provider]}
+            key={id}
+            to={`listening/${id}`}
+            name={PROVIDER_LABELS[id]}
             status={
-              scrobbleStatus.data ? scrobbleServiceStatus(scrobbleStatus.data[provider]) : null
+              history && scrobbleStatus.data
+                ? serviceStatus(
+                    history[id],
+                    id === "koito" && !hasPermission("accessSettings")
+                      ? undefined
+                      : scrobbleStatus.data[id],
+                  )
+                : null
             }
           />
         ))}
+        <SettingsServiceRow
+          to="listening/spotify"
+          name="Spotify"
+          status={
+            spotify === undefined
+              ? null
+              : spotify
+                ? { label: "History" }
+                : { label: "Not set up", tone: "muted" }
+          }
+        />
       </SettingsGroup>
       <SettingsGroup title="Discovery tastes">
         <ResetTastesRow />

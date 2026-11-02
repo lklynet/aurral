@@ -330,7 +330,6 @@ interface TaskPayloadView {
   phase?: unknown;
   playlistId?: unknown;
   force?: unknown;
-  listenHistoryProfile?: { listenHistoryUsername?: unknown } | null;
 }
 
 const operationLabel = (p: TaskPayloadView | null | undefined) =>
@@ -342,8 +341,6 @@ const PAYLOAD_LABEL_KEY = {
   "flow-run": operationLabel,
   "playlist-mbid-enrichment": "playlistId",
   "library-scan": (p: TaskPayloadView | null | undefined) => (p?.force ? "Manual" : null),
-  "discovery-user-refresh": (p: TaskPayloadView | null | undefined) =>
-    p?.listenHistoryProfile?.listenHistoryUsername || null,
 };
 
 const PAYLOAD_DETAIL_KEY = {
@@ -355,10 +352,6 @@ const PAYLOAD_DETAIL_KEY = {
       : "Scans playlists for tracks missing MusicBrainz IDs and queues enrichment jobs.",
   "library-scan": (p: TaskPayloadView | null | undefined, desc: string) =>
     p?.force ? "Refreshes Aurral's library view after a requested refresh." : desc,
-  "discovery-user-refresh": (p: TaskPayloadView | null | undefined, desc: string) =>
-    p?.listenHistoryProfile?.listenHistoryUsername
-      ? `Refreshes listening history for ${p.listenHistoryProfile.listenHistoryUsername}.`
-      : desc,
 };
 
 let schemaEnsured = false;
@@ -672,15 +665,6 @@ function summarizePayload(queue: string, payloadValue: unknown): string {
 
   if (Array.isArray(payload.mbids)) {
     parts.push(`MBIDs: ${payload.mbids.length}`);
-  }
-
-  const profile = payload.listenHistoryProfile;
-  if (profile && typeof profile === "object") {
-    const username = profile.listenHistoryUsername || profile.username;
-    const provider = profile.listenHistoryProvider || profile.provider;
-    if (provider || username) {
-      parts.push(`Profile: ${[provider, username].filter(Boolean).join(" / ")}`);
-    }
   }
 
   if (!parts.length && queue && !queueDefinitionByName.has(queue)) {

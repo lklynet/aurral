@@ -24,7 +24,7 @@ import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { asApiError } from "../utils/api/core.ts";
-import { getApiErrorText } from "./onboardingUtils";
+import { getApiErrorText } from "../utils/api/errors.ts";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";

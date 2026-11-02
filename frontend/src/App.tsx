@@ -42,6 +42,7 @@ function ActivityRootRedirect() {
 const Login = lazy(() => import("./pages/Login"));
 const SsoComplete = lazy(() => import("./pages/SsoComplete"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Welcome = lazy(() => import("./pages/Welcome"));
 const SearchResultsPage = lazy(routeModules.search);
 const DiscoverPage = lazy(routeModules.discover);
 const ShowsPage = lazy(routeModules.shows);
@@ -210,64 +211,71 @@ function ProtectedLayout() {
 
   return (
     <DiscoverRecentProvider>
-      <ProtectedRoute>
-        <PlaylistBulkActionsProvider>
-          <Layout
-            headerActions={<UpdateIndicator visible={!user || user.role === "admin"} />}
-            overlay={
-              wrappedSeason && (
-                <Suspense fallback={null}>
-                  <WrappedAnnouncement />
-                </Suspense>
-              )
-            }
-          >
-            <SpotifyReconnectNotice />
-            {healthIssue === "lidarr" && isHealthy && (
-              <div className="app-status-banner app-status-banner--warning">
-                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                <p className="app-status-banner__text app-status-banner__text--warning">
-                  Lidarr is busy. Library updates may be delayed.
-                </p>
-              </div>
-            )}
+      <PlaylistBulkActionsProvider>
+        <Layout
+          headerActions={<UpdateIndicator visible={!user || user.role === "admin"} />}
+          overlay={
+            wrappedSeason && (
+              <Suspense fallback={null}>
+                <WrappedAnnouncement />
+              </Suspense>
+            )
+          }
+        >
+          <SpotifyReconnectNotice />
+          {healthIssue === "lidarr" && isHealthy && (
+            <div className="app-status-banner app-status-banner--warning">
+              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+              <p className="app-status-banner__text app-status-banner__text--warning">
+                Lidarr is busy. Library updates may be delayed.
+              </p>
+            </div>
+          )}
 
-            {healthIssue === "degraded" && (
-              <div className="app-status-banner app-status-banner--warning">
-                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                <p className="app-status-banner__text app-status-banner__text--warning">
-                  Aurral is responding slowly.{" "}
-                  {bootstrap?.lidarrConfigured
-                    ? "Lidarr may be busy. Try again in a minute."
-                    : "Try again in a minute."}
-                </p>
-              </div>
-            )}
+          {healthIssue === "degraded" && (
+            <div className="app-status-banner app-status-banner--warning">
+              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+              <p className="app-status-banner__text app-status-banner__text--warning">
+                Aurral is responding slowly.{" "}
+                {bootstrap?.lidarrConfigured
+                  ? "Lidarr may be busy. Try again in a minute."
+                  : "Try again in a minute."}
+              </p>
+            </div>
+          )}
 
-            {healthIssue === "backend" && isHealthy === false && (
-              <div className="app-status-banner app-status-banner--error">
-                <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
-                <p className="app-status-banner__text app-status-banner__text--error">
-                  Cannot reach Aurral. Check the server connection.
-                </p>
-              </div>
-            )}
+          {healthIssue === "backend" && isHealthy === false && (
+            <div className="app-status-banner app-status-banner--error">
+              <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
+              <p className="app-status-banner__text app-status-banner__text--error">
+                Cannot reach Aurral. Check the server connection.
+              </p>
+            </div>
+          )}
 
-            {isHealthy && !rootFolderConfigured && (
-              <div className="app-status-banner app-status-banner--warning">
-                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                <p className="app-status-banner__text app-status-banner__text--warning">
-                  Choose a Downloads Folder in Settings → Library.
-                </p>
-              </div>
-            )}
-            <Suspense fallback={<PageLoader />}>
-              <Outlet />
-            </Suspense>
-          </Layout>
-        </PlaylistBulkActionsProvider>
-      </ProtectedRoute>
+          {isHealthy && !rootFolderConfigured && (
+            <div className="app-status-banner app-status-banner--warning">
+              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+              <p className="app-status-banner__text app-status-banner__text--warning">
+                Choose a Library folder in Settings → Library.
+              </p>
+            </div>
+          )}
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
+        </Layout>
+      </PlaylistBulkActionsProvider>
     </DiscoverRecentProvider>
+  );
+}
+
+function AuthGate() {
+  const context = useOutletContext<AppOutletContext>();
+  return (
+    <ProtectedRoute>
+      <Outlet context={context} />
+    </ProtectedRoute>
   );
 }
 
@@ -281,74 +289,87 @@ const appRoutes = createRoutesFromElements(
         </Suspense>
       }
     />
-    <Route element={<ProtectedLayout />}>
-      <Route path="/" element={<DiscoverPage />} />
-      <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
-      <Route path="/shows/:filter" element={<ShowsPage />} />
-      <Route path="/search" element={<SearchResultsPage />} />
+    <Route element={<AuthGate />}>
       <Route
-        path="/discover/playlists/deezer/:playlistId"
-        element={<EditorialPlaylistDetailPage />}
-      />
-      <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
-      <Route path="/discover/news" element={<NewsPage />} />
-      <Route path="/discover/recommended/:view?" element={<RecommendedPage />} />
-      <Route path="/discover/trending" element={<TrendingPage />} />
-      <Route path="/discover/trending/genres/:genreId" element={<TrendingGenrePage />} />
-      <Route
-        path="/library/playlists"
+        path="/welcome"
         element={
-          <PermissionRoute permission="accessFlow">
-            <PlaylistsPage />
-          </PermissionRoute>
+          <Suspense fallback={<ScreenLoader />}>
+            <Welcome />
+          </Suspense>
         }
       />
-      <Route
-        path="/library/playlists/:playlistId"
-        element={
-          <PermissionRoute permission="accessFlow">
-            <PlaylistDetailPage />
-          </PermissionRoute>
-        }
-      />
-      <Route path="/library/album/:albumId" element={<LibraryPage />} />
-      <Route path="/library/artist/:artistId" element={<LibraryPage />} />
-      <Route path="/library/:section?" element={<LibraryPage />} />
-      <Route
-        path="/flows"
-        element={
-          <PermissionRoute permission="accessFlow">
-            <FlowsPage />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/flows/:flowId"
-        element={
-          <PermissionRoute permission="accessFlow">
-            <FlowDetailPage />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/playlists"
-        element={
-          <PermissionRoute permission="accessFlow">
-            <PlaylistRedirect />
-          </PermissionRoute>
-        }
-      />
-      <Route path="/activity" element={<ActivityRootRedirect />} />
-      <Route path="/activity/:view" element={<ActivityPage />} />
-      <Route path="/artist/:mbid/albums" element={<ArtistReleaseListPage mode="releases" />} />
-      <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
-      <Route path="/artist/:mbid/appears-on" element={<ArtistReleaseListPage mode="appearsOn" />} />
-      <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
-      <Route path="/wrapped" element={<WrappedPage />} />
-      <Route path="/blocklist" element={<BlocklistPage />} />
-      <Route path="/go/:kind" element={<ResolveLinkPage />} />
-      <Route path="/share/import" element={<ShareImportPage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<DiscoverPage />} />
+        <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
+        <Route path="/shows/:filter" element={<ShowsPage />} />
+        <Route path="/search" element={<SearchResultsPage />} />
+        <Route
+          path="/discover/playlists/deezer/:playlistId"
+          element={<EditorialPlaylistDetailPage />}
+        />
+        <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
+        <Route path="/discover/news" element={<NewsPage />} />
+        <Route path="/discover/recommended/:view?" element={<RecommendedPage />} />
+        <Route path="/discover/trending" element={<TrendingPage />} />
+        <Route path="/discover/trending/genres/:genreId" element={<TrendingGenrePage />} />
+        <Route
+          path="/library/playlists"
+          element={
+            <PermissionRoute permission="accessFlow">
+              <PlaylistsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="/library/playlists/:playlistId"
+          element={
+            <PermissionRoute permission="accessFlow">
+              <PlaylistDetailPage />
+            </PermissionRoute>
+          }
+        />
+        <Route path="/library/album/:albumId" element={<LibraryPage />} />
+        <Route path="/library/artist/:artistId" element={<LibraryPage />} />
+        <Route path="/library/:section?" element={<LibraryPage />} />
+        <Route
+          path="/flows"
+          element={
+            <PermissionRoute permission="accessFlow">
+              <FlowsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="/flows/:flowId"
+          element={
+            <PermissionRoute permission="accessFlow">
+              <FlowDetailPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="/playlists"
+          element={
+            <PermissionRoute permission="accessFlow">
+              <PlaylistRedirect />
+            </PermissionRoute>
+          }
+        />
+        <Route path="/activity" element={<ActivityRootRedirect />} />
+        <Route path="/activity/:view" element={<ActivityPage />} />
+        <Route path="/artist/:mbid/albums" element={<ArtistReleaseListPage mode="releases" />} />
+        <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
+        <Route
+          path="/artist/:mbid/appears-on"
+          element={<ArtistReleaseListPage mode="appearsOn" />}
+        />
+        <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
+        <Route path="/wrapped" element={<WrappedPage />} />
+        <Route path="/blocklist" element={<BlocklistPage />} />
+        <Route path="/go/:kind" element={<ResolveLinkPage />} />
+        <Route path="/share/import" element={<ShareImportPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
     </Route>
   </Route>,
 );

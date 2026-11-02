@@ -3,7 +3,7 @@ import { parseResponse } from "hono/client";
 import { Eye, EyeOff } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
-import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
 import {

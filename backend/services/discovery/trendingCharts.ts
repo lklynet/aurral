@@ -11,7 +11,7 @@ import {
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { listOf, orNull } from "../../db/helpers/storedSchemas.ts";
 import { findLibraryPlaylist } from "./editorialPlaylists.ts";
-import { mapWithConcurrency } from "./helpers.ts";
+import { interleaveLists, mapWithConcurrency } from "./helpers.ts";
 import type { TrendingChartDaysRow, TrendingChartsRow } from "../../db/rows.ts";
 
 const DEEZER_CHARTS_USER_ID = 637006841;
@@ -470,6 +470,29 @@ export function getTrendingCharts(userId: number) {
       : null,
     genres,
   };
+}
+
+export function getChartStarterArtists(limit: number) {
+  const artists = readChart(selectChartStmt.get("artists"), artistsChartSchema)?.items ?? [];
+  const genreArtists = EDITORIAL_GENRES.map(({ id }) => [
+    ...new Set(
+      (readChart(selectChartStmt.get(`genre:${id}`), genreChartSchema)?.items ?? []).map(
+        (item) => item.artistName,
+      ),
+    ),
+  ]);
+  const seen = new Set<string>();
+  return interleaveLists<{ artistName: string; mbid: string | null }>(
+    artists.map((artist) => ({ artistName: artist.name, mbid: artist.mbid })),
+    ...genreArtists.map((names) => names.map((artistName) => ({ artistName, mbid: null }))),
+  )
+    .filter(({ artistName }) => {
+      const key = artistName.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
 }
 
 export function getTrendingGenreChart(genreId: number) {

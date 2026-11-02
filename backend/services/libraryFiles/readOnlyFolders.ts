@@ -45,12 +45,12 @@ async function resolveNewFolder(requested: unknown) {
   const downloadRoot = await realPath(resolveDownloadRoot());
   if (isPathWithin(downloadRoot, folder)) {
     throw new ReadOnlyFolderError(
-      "This folder is in the Downloads Folder, which Aurral manages. Choose a folder outside it.",
+      "This folder is in the Library folder, which Aurral manages. Choose a folder outside it.",
     );
   }
   if (isPathWithin(folder, downloadRoot)) {
     throw new ReadOnlyFolderError(
-      "The Downloads Folder is inside this folder. Choose a folder that does not contain it.",
+      "The Library folder is inside this folder. Choose a folder that does not contain it.",
     );
   }
   for (const existing of readOnlyFolderPaths()) {

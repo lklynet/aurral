@@ -108,8 +108,8 @@ const deepestHolders = (folders: { owner: string; root: string }[], filePath: st
 };
 
 // The deepest library folder holding a path owns it. Lidarr owns a folder it
-// shares with the Downloads Folder or a read-only folder, and a read-only
-// folder owns what it shares with the Downloads Folder.
+// shares with the Library folder or a read-only folder, and a read-only
+// folder owns what it shares with the Library folder.
 export function libraryFolderOwner(
   filePath: string,
   {
@@ -137,7 +137,7 @@ export function libraryFolderOwner(
 }
 
 // A scan skips a path that a deeper folder of another owner holds. A folder
-// Lidarr shares with the Downloads Folder is scanned by both.
+// Lidarr shares with the Library folder is scanned by both.
 export function createLibraryScanExclusion(
   source: string,
   {

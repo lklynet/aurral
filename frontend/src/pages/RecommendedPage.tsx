@@ -442,7 +442,7 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
           <h2 className="search-empty-panel__title">No recommendations yet</h2>
           <p className="search-empty-panel__message">
             Add artists you like, or{" "}
-            <SettingsLink to="listening">import your Spotify history</SettingsLink>.
+            <SettingsLink to="listening/spotify">import your Spotify history</SettingsLink>.
           </p>
           <RouteLink to="/search" className="btn btn-primary">
             Search artists

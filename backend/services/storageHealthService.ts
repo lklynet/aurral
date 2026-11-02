@@ -501,15 +501,15 @@ async function checkDownloadsSection() {
 
   if (!downloadFolder) {
     steps.push(
-      healthStep("configured", "fail", "Downloads folder is configured", {
-        fix: `Choose a downloads folder under your shared mount, for example ${suggested}.`,
+      healthStep("configured", "fail", "Library folder is configured", {
+        fix: `Choose a Library folder under your shared mount, for example ${suggested}.`,
       }),
     );
     return buildSection("downloads", "Aurral downloads", steps);
   }
 
   steps.push(
-    healthStep("configured", "pass", "Downloads folder is configured", {
+    healthStep("configured", "pass", "Library folder is configured", {
       detail: downloadFolder,
     }),
   );
@@ -522,7 +522,7 @@ async function checkDownloadsSection() {
 
   if (!exists) {
     steps.push(
-      healthStep("exists", "fail", "Downloads folder exists in the container", {
+      healthStep("exists", "fail", "Library folder exists in the container", {
         detail: downloadFolder,
         fix: "Create the folder or pick a path that already exists inside the mounted volume.",
       }),
@@ -531,7 +531,7 @@ async function checkDownloadsSection() {
   }
 
   steps.push(
-    healthStep("exists", "pass", "Downloads folder exists in the container", {
+    healthStep("exists", "pass", "Library folder exists in the container", {
       detail: downloadFolder,
     }),
   );
@@ -541,7 +541,7 @@ async function checkDownloadsSection() {
     steps.push(
       healthStep("writable", "fail", "Aurral can create and move files", {
         detail: writeProbe.detail,
-        fix: "Check container permissions (PUID/PGID), read-only mounts, ACLs, and filesystem permissions for the configured downloads folder.",
+        fix: "Check container permissions (PUID/PGID), read-only mounts, ACLs, and filesystem permissions for the configured Library folder.",
       }),
     );
     return buildSection("downloads", "Aurral downloads", steps);
@@ -964,7 +964,7 @@ async function checkNativePlaybackSection() {
   if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "warn", "Library media is ready for native playback", {
-        fix: "Add music to the Downloads Folder or connect Lidarr, then scan the Library and run Storage Health again.",
+        fix: "Add music to the Library folder or connect Lidarr, then scan the Library and run Storage Health again.",
       }),
     ]);
   }
@@ -1119,7 +1119,7 @@ async function checkJellyfinSection() {
       detail: `${expectedPath} is outside every Jellyfin music library${
         locations.length ? `: ${formatLimitedList(locations)}` : ""
       }`,
-      fix: "Add the Downloads Folder to a Jellyfin music library and scan it. Jellyfin playlists can only hold tracks in its libraries. If Jellyfin sees the folder at another path, also add a Jellyfin path mapping under Settings → Downloads → Remote path mappings.",
+      fix: "Add the Library folder to a Jellyfin music library and scan it. Jellyfin playlists can only hold tracks in its libraries. If Jellyfin sees the folder at another path, also add a Jellyfin path mapping under Settings → Downloads → Remote path mappings.",
     }),
   ]);
 }

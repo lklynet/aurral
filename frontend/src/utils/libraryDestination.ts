@@ -1,4 +1,4 @@
-import { getApiErrorBody } from "../pages/onboardingUtils.tsx";
+import { getApiErrorBody } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
 
 const MANAGER_NAMES = {

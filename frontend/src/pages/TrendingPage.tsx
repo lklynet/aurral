@@ -22,7 +22,7 @@ import { normalizePlaylistQueueTrack } from "../utils/audioQueue.ts";
 import { formatRelativeTime } from "../utils/dateTime.ts";
 import { DiscoverPlaylistSection, editorialPlaylistPath } from "./DiscoverPlaylistSection";
 import { mapPreviewTracks } from "./deezerPreviewTracks.ts";
-import { getApiErrorMessage } from "./onboardingUtils";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { TrendingArtistsRail } from "./TrendingArtistsRail";
 import { useEditorialShelf } from "./useEditorialShelf";
 import { useTrackSaveActions } from "./useTrackSaveActions";

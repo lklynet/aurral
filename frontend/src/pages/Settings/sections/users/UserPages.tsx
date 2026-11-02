@@ -52,11 +52,16 @@ export function describeUser(user: SettingsUser, ssoEnabled: boolean) {
     .join(" · ");
 }
 
-function formatListenHistory(user: SettingsUser) {
-  if (!user.listenHistoryUsername && !user.listenHistoryUrl) return null;
-  if (user.listenHistoryProvider === "koito") return `Koito: ${user.listenHistoryUrl}`;
-  const provider = user.listenHistoryProvider === "listenbrainz" ? "ListenBrainz" : "Last.fm";
-  return `${provider}: ${user.listenHistoryUsername}`;
+function formatListenHistory({ listenHistory: { lastfm, listenbrainz, koito } }: SettingsUser) {
+  return (
+    [
+      lastfm ? `Last.fm: ${lastfm}` : null,
+      listenbrainz ? `ListenBrainz: ${listenbrainz}` : null,
+      koito ? `Koito: ${koito}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
+  );
 }
 
 function PermissionsGroup({

@@ -30,7 +30,6 @@ import { DownloadsSection } from "./sections/DownloadsSection";
 import { PlaybackSection } from "./sections/PlaybackSection";
 import { DiscoverySection } from "./sections/DiscoverySection";
 import { NotificationsSection } from "./sections/NotificationsSection";
-import { LidarrSection } from "./sections/LidarrSection";
 import { StatusSection } from "./sections/StatusSection";
 import { MetadataSection } from "./sections/MetadataSection";
 import "./settings.css";
@@ -48,7 +47,6 @@ const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   playback: PlaybackSection,
   discovery: DiscoverySection,
   notifications: NotificationsSection,
-  lidarr: LidarrSection,
   status: StatusSection,
   metadata: MetadataSection,
 };

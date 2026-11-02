@@ -19,7 +19,7 @@ Aurral stops its active search when it has enough suitable results, reaches its 
 
 The API key is optional. Leave it empty when slskd runs without authentication, for example with `SLSKD_NO_AUTH=true`, `--no-auth`, or `web.authentication.disabled: true`. Use this only when a reverse proxy that requires sign-in sits in front of slskd.
 
-Aurral reads each completed file at the path that slskd reports, and moves it into the Downloads Folder.
+Aurral reads each completed file at the path that slskd reports, and moves it into the Library folder.
 
 If slskd runs on Windows and reports host paths such as `N:\...`, mount the parent folder in Aurral. Then add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **slskd**.
 

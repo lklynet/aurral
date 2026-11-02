@@ -3,7 +3,7 @@ title: Plex
 description: Connect Plex to scan Aurral downloads and publish playlists to Plex and Plexamp.
 ---
 
-Plex is optional. Aurral connects to the Plex API and creates an **Aurral** music library in Plex Media Server. Plex must also be able to read the files in the Downloads Folder.
+Plex is optional. Aurral connects to the Plex API and creates an **Aurral** music library in Plex Media Server. Plex must also be able to read the files in the Library folder.
 
 Aurral builds a Plex playlist for each enabled flow and each static playlist. The playlists appear in Plex and Plexamp. Aurral builds a playlist only after Plex indexes its audio files.
 
@@ -33,26 +33,26 @@ volumes:
 
 Settings save automatically after each change.
 
-Aurral creates the **Aurral** library at the Downloads Folder, as Plex sees it. Permanent tracks are in `Artist/Album/Track` folders. Temporary flow tracks are under `_flows/<flow-id>`. Aurral adds `_flows` as a second folder of the library.
+Aurral creates the **Aurral** library at the Library folder, as Plex sees it. Permanent tracks are in `Artist/Album/Track` folders. Temporary flow tracks are under `_flows/<flow-id>`. Aurral adds `_flows` as a second folder of the library.
 
-You do not need to create this library in Plex yourself. It stays empty until a flow downloads tracks. When files in the Downloads Folder change, Aurral asks Plex to scan only the changed folders. Changes made close together share one request. When more than 20 folders change at once, as after a **Full scan**, Aurral refreshes the whole **Aurral** library instead. Plex can take several minutes to scan new files.
+You do not need to create this library in Plex yourself. It stays empty until a flow downloads tracks. When files in the Library folder change, Aurral asks Plex to scan only the changed folders. Changes made close together share one request. When more than 20 folders change at once, as after a **Full scan**, Aurral refreshes the whole **Aurral** library instead. Plex can take several minutes to scan new files.
 
 ## Plex compared with Navidrome
 
-You can use both. They read the same Downloads Folder.
+You can use both. They read the same Library folder.
 
 |                 | Navidrome                                    | Plex                                       |
 | --------------- | -------------------------------------------- | ------------------------------------------ |
 | Playlists       | Navidrome playlists through the Subsonic API | Plex playlists through the Plex API        |
 | Library         | Aurral creates a library and asks for scans  | Aurral creates an **Aurral** music library |
-| Different paths | Mount the Downloads Folder at the same path  | Set **Plex Aurral Library path**           |
+| Different paths | Mount the Library folder at the same path    | Set **Plex Aurral Library path**           |
 | Playlist names  | `username - playlist name` by default        | Playlist name                              |
 
 ## Plex Aurral Library path
 
-Leave **Plex Aurral Library path** blank when Aurral and Plex see the Downloads Folder at the same path.
+Leave **Plex Aurral Library path** blank when Aurral and Plex see the Library folder at the same path.
 
-If Plex uses a different path, enter the Downloads Folder as Plex sees it. Aurral uses this path as the library root.
+If Plex uses a different path, enter the Library folder as Plex sees it. Aurral uses this path as the library root.
 
 | Aurral writes to         | Plex sees                | Plex Aurral Library path |
 | ------------------------ | ------------------------ | ------------------------ |
@@ -155,7 +155,7 @@ services:
       - /srv/media:/data:ro
 ```
 
-Set the Downloads Folder in Aurral, for example `/data/downloads/aurral`. Aurral creates the **Aurral** library in Plex through the API.
+Set the Library folder in Aurral, for example `/data/downloads/aurral`. Aurral creates the **Aurral** library in Plex through the API.
 
 Remote path mappings for Lidarr on Windows change how Aurral reads files. They do not replace **Plex Aurral Library path**.
 

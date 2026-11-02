@@ -4,7 +4,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage.tsx";
 import Tooltip from "./Tooltip.tsx";
 import TooltipButton from "./TooltipButton.tsx";
-import { getApiErrorMessage, getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { cacheImageLocally } from "../utils/api/endpoints/images.ts";
 import type { CustomArtworkResult } from "../utils/api/endpoints/library.ts";

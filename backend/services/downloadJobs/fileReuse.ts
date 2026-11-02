@@ -871,7 +871,7 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
 const isWithinFolder = (folder: string, filePath: string) =>
   filePath === path.resolve(folder) || isPathInsideRoot(filePath, path.resolve(folder));
 
-// A download that reused a file outside the Downloads Folder needs Aurral's
+// A download that reused a file outside the Library folder needs Aurral's
 // own copy once that file's folder leaves the Library.
 export function requeueJobsUsingRemovedFolders({
   downloadRoot = resolveDownloadRoot(),

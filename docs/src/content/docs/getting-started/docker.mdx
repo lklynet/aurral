@@ -6,7 +6,7 @@ description: Run Aurral in Docker and choose an image tag.
 Aurral runs in Docker. It needs two mounts:
 
 - `/config` for Aurral's database, settings, users, and jobs.
-- A media mount for the Downloads Folder, completed downloads, and the Lidarr library if you use Lidarr.
+- A media mount for the Library folder, completed downloads, and the Lidarr library if you use Lidarr.
 
 Read [Filesystem and mounts](/getting-started/storage/) before you write the Compose file. Every service that shares files with Aurral must see those files at the same path.
 
@@ -41,7 +41,7 @@ docker compose up -d
 
 1. Open `http://localhost:3001`.
 2. Create the admin account.
-3. Connect Lidarr, or select **Skip for now** and set the Downloads Folder.
+3. Connect Lidarr, or select **Skip for now** and set the Library folder.
 4. Run the storage checks.
 
 Continue with [First run](/getting-started/first-run/).

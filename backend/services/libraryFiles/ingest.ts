@@ -119,12 +119,12 @@ export async function resolveIngestSource(
   const root = await fs.realpath(downloadRoot).catch(() => path.resolve(downloadRoot));
   if (isPathWithin(root, source)) {
     throw new IngestSourceError(
-      "This folder is already in the Downloads Folder. Use Clean up Library to rename files there.",
+      "This folder is already in the Library folder. Use Clean up Library to rename files there.",
     );
   }
   if (isPathWithin(source, root)) {
     throw new IngestSourceError(
-      "The Downloads Folder is inside this folder. Choose a folder outside it.",
+      "The Library folder is inside this folder. Choose a folder outside it.",
     );
   }
   return source;
@@ -365,7 +365,7 @@ async function planItem(
   if (!isPathInsideRoot(target, root)) {
     return {
       status: "skipped",
-      reason: "The file's name does not fit inside the Downloads Folder.",
+      reason: "The file's name does not fit inside the Library folder.",
       details,
     };
   }
@@ -596,7 +596,7 @@ async function isFilledCopy({ sourcePath, targetPath, details }: FiledItem) {
 export async function applyIngestItem(operation: LibraryFileOperation, item: FiledItem) {
   const root = resolveDownloadRoot();
   if (!isPathInsideRoot(item.targetPath, root)) {
-    return { status: "failed", reason: "The destination is outside the Downloads Folder." };
+    return { status: "failed", reason: "The destination is outside the Library folder." };
   }
   if (await passesThroughLinkedFolder(root, item.targetPath)) {
     return { status: "skipped", reason: LINKED_FOLDER_REASON };
@@ -604,7 +604,7 @@ export async function applyIngestItem(operation: LibraryFileOperation, item: Fil
   if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
     return {
       status: "failed",
-      reason: "Skipped: a link in the Downloads Folder already points to this file.",
+      reason: "Skipped: a link in the Library folder already points to this file.",
     };
   }
   if (item.details.action === "remove-duplicate") return removeDuplicateSource(item);

@@ -989,7 +989,7 @@ test("hardlink and move leave one file on disk under the Library name", async ()
   assert.equal(await exists(moveSource), true);
 });
 
-test("move never removes a source file that a link in the Downloads Folder leads back to", async () => {
+test("move never removes a source file that a link in the Library folder leads back to", async () => {
   const source = newSource();
   const only = await makeTrack(path.join(source, "Alias", "Album", "01 - One.flac"), {
     artist: "Alias",
@@ -1007,7 +1007,7 @@ test("move never removes a source file that a link in the Downloads Folder leads
   assert.deepEqual(await readFile(only), bytes);
 });
 
-test("never files music through a linked folder in the Downloads Folder, which the Library scan does not follow", async () => {
+test("never files music through a linked folder in the Library folder, which the Library scan does not follow", async () => {
   const source = newSource();
   const only = await makeTrack(path.join(source, "a.flac"), {
     artist: "Linked",
@@ -1208,15 +1208,15 @@ test("an ingest whose saved options Aurral can't read stops without filing anyth
   assert.ok(await operations.startCleanup());
 });
 
-test("the source check rejects the Downloads Folder and unreadable folders, and flags a Lidarr root folder", async () => {
+test("the source check rejects the Library folder and unreadable folders, and flags a Lidarr root folder", async () => {
   await mkdir(root, { recursive: true });
   await assert.rejects(
     checkIngestSource({ sourcePath: path.join(root) }),
-    /already in the Downloads Folder/,
+    /already in the Library folder/,
   );
   await assert.rejects(
     checkIngestSource({ sourcePath: isolatedState.baseDir }),
-    /Downloads Folder is inside/,
+    /Library folder is inside/,
   );
   if (process.getuid?.() !== 0) {
     const source = newSource();

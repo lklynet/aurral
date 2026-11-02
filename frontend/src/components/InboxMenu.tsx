@@ -20,7 +20,7 @@ import { DotLoader } from "./DotLoader";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import Tooltip from "./Tooltip";
 import RelativeTime from "./RelativeTime";
-import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 
 type InboxListResponse = InferResponseType<typeof inboxClient.$get, 200>;
 type InboxListItem = NonNullable<InboxListResponse["items"][number]> & { id: string };

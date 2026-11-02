@@ -633,7 +633,7 @@ test("Clean up keeps a file's track number from its tags when the Library's albu
   assert.equal(await exists(download), false);
 });
 
-test("Clean up leaves Lidarr's files alone when Lidarr shares the Downloads Folder", async () => {
+test("Clean up leaves Lidarr's files alone when Lidarr shares the Library folder", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
     ...settings,

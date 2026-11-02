@@ -23,7 +23,7 @@ function isInLibraryFolder(filePath: string) {
 }
 
 // A review file is a source's copy that Aurral has not imported. Discarding
-// it never touches a file in the Downloads Folder or a Lidarr root folder.
+// it never touches a file in the Library folder or a Lidarr root folder.
 export async function discardReviewFile(job: ReviewFileJob) {
   const stagingPath = String(job?.stagingPath || "").trim();
   if (!stagingPath) return;

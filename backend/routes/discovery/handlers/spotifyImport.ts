@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import * as v from "valibot";
-import { requireAuth } from "../../../middleware/guards.ts";
+import { requireAuth, requireUserAccount } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { SPOTIFY_IMPORT_MAX_ARTISTS } from "../../../../lib/spotifyExport.ts";
@@ -36,16 +36,16 @@ const refresh = (userId: number) =>
   requestUserDiscoveryRefresh(userId, { reason: "spotify_import", delaySeconds: 0 });
 
 export default new Hono<AppEnv>()
-  .get("/spotify-import", requireAuth, (c) =>
+  .get("/spotify-import", requireAuth, requireUserAccount, (c) =>
     c.json({ summary: getSpotifyImportSummary(c.var.user.id) }, 200),
   )
-  .put("/spotify-import", requireAuth, validate("json", importInput), (c) => {
+  .put("/spotify-import", requireAuth, requireUserAccount, validate("json", importInput), (c) => {
     const userId = c.var.user.id;
     saveSpotifyImport(userId, c.req.valid("json").artists);
     refresh(userId);
     return c.json({ summary: getSpotifyImportSummary(userId) }, 200);
   })
-  .delete("/spotify-import", requireAuth, (c) => {
+  .delete("/spotify-import", requireAuth, requireUserAccount, (c) => {
     const userId = c.var.user.id;
     if (clearSpotifyImport(userId)) refresh(userId);
     return c.json({ summary: null }, 200);

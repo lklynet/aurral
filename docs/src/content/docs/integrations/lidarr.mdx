@@ -3,7 +3,7 @@ title: Lidarr
 description: Connect Lidarr to manage artists and albums, and let Aurral read the Lidarr library.
 ---
 
-Lidarr is optional. Aurral can add and download artists and albums in its own Downloads Folder without Lidarr. Connect Lidarr when you want Lidarr to manage some or all of your artists and albums, or when you want Aurral to show Lidarr queue and history status.
+Lidarr is optional. Aurral can add and download artists and albums in its own Library folder without Lidarr. Connect Lidarr when you want Lidarr to manage some or all of your artists and albums, or when you want Aurral to show Lidarr queue and history status.
 
 The Lidarr integration has two parts:
 
@@ -14,7 +14,7 @@ The API connection can work while file access fails. Mount the same media root i
 
 ## Connect Lidarr
 
-Connect Lidarr during first-run setup, or later in **Settings > Lidarr**.
+Connect Lidarr from the last step of first-run setup, or later in **Settings > Library > Lidarr**.
 
 ![Aurral Lidarr integration settings](../../../assets/screenshots/settings-lidarr.webp)
 
@@ -31,7 +31,7 @@ To apply the quality profile, custom formats, and file naming from Davo's Commun
 
 Turning off **Enabled** and saving disconnects Lidarr's root folders. Aurral removes Lidarr's music from the Library, and downloads its own copy of playlist and flow tracks that used a Lidarr file. The files stay on disk, and Aurral keeps the connection details. Turn **Enabled** on again to add Lidarr's music back. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
 
-If Lidarr only stops answering, nothing is removed. **Settings > Lidarr** says when Lidarr is off or unreachable.
+If Lidarr only stops answering, nothing is removed. **Settings > Library > Lidarr** says when Lidarr is off or unreachable.
 
 If you want Aurral to manage the music that Lidarr downloaded, ingest Lidarr's root folder before you turn Lidarr off. Copy or Hardlink leaves Lidarr's library as it is. See [Bring your existing music](/using/library/#bring-your-existing-music).
 
@@ -94,7 +94,7 @@ Aurral accepts other Lidarr webhook events but ignores them. It updates request 
 
 ## What Aurral changes
 
-Changes to Lidarr artists and albums go through the Lidarr API. Changes to Aurral artists and albums write to the Downloads Folder. Aurral never writes to or deletes files in a Lidarr root folder.
+Changes to Lidarr artists and albums go through the Lidarr API. Changes to Aurral artists and albums write to the Library folder. Aurral never writes to or deletes files in a Lidarr root folder.
 
 ## Import list feeds
 

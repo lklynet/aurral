@@ -1,7 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { getApiErrorMessage } from "../../frontend/src/pages/onboardingUtils.tsx";
+import { getApiErrorMessage } from "../../frontend/src/utils/api/errors.ts";
 
 const failedRequest = (data: unknown) =>
   Object.assign(new Error("Request failed with status code 502"), {
