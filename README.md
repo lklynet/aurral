@@ -62,9 +62,18 @@ Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid), [Ho
 <p align="center">Aurral is free and open source. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> keep it that way.</p>
 
 <p align="center">
+  <a href="https://github.com/bmikaili"><img src="https://github.com/bmikaili.png?size=120" width="60" alt="@bmikaili" /></a>
+  <a href="https://github.com/booxter"><img src="https://github.com/booxter.png?size=120" width="60" alt="@booxter" /></a>
+  <a href="https://github.com/Barosky"><img src="https://github.com/Barosky.png?size=120" width="60" alt="@Barosky" /></a>
+  <a href="https://github.com/pcsokonay"><img src="https://github.com/pcsokonay.png?size=120" width="60" alt="@pcsokonay" /></a>
+  <a href="https://github.com/okcodemaybe"><img src="https://github.com/okcodemaybe.png?size=120" width="60" alt="@okcodemaybe" /></a>
+  <a href="https://github.com/jakobbjelver"><img src="https://github.com/jakobbjelver.png?size=120" width="60" alt="@jakobbjelver" /></a>
+  <a href="https://github.com/zachyzissou"><img src="https://github.com/zachyzissou.png?size=120" width="60" alt="@zachyzissou" /></a>
+  <a href="https://github.com/erleijen"><img src="https://github.com/erleijen.png?size=120" width="60" alt="@erleijen" /></a>
+</p>
+
+<p align="center">
   <a href="https://macroscope.com/open-source">
     <img src="docs/src/assets/macroscope-open-source-sponsor.webp" width="500" alt="Sponsored by Macroscope" />
   </a>
 </p>
-
-![sponsors badge](https://readme-contribs.as93.net/sponsors/lklynet)
