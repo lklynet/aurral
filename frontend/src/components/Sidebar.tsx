@@ -332,7 +332,7 @@ function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
   return (
     <>
       <div
-        className={`sidebar-brand${stageBackdropVariant ? ` sidebar-brand--${stageBackdropVariant}` : ""}`}
+        className={`sidebar-brand${stageBackdropVariant ? ` sidebar-brand--${stageBackdropVariant}` : ""}${isIcons ? " sidebar-brand--icons" : ""}`}
       >
         {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
         <TooltipButton
