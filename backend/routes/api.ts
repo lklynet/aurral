@@ -32,6 +32,7 @@ import scrobbling from "./scrobbling.ts";
 import search from "./search.ts";
 import settings from "./settings/index.ts";
 import shareLinks from "./shareLinks.ts";
+import starPrompt from "./starPrompt.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
 import settingsPlayback from "./settings/playback.ts";
 import updates from "./updates.ts";
@@ -93,6 +94,7 @@ export const api = new Hono<AppEnv>()
   .route("/", news)
   .route("/", playEvents)
   .route("/", shareLinks)
+  .route("/", starPrompt)
   .route("/", wrapped)
   .route("/", lidarrWebhook)
   .route("/", lidarrFeed);
