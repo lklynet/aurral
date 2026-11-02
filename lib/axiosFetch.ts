@@ -144,9 +144,6 @@ function buildAuthHeader(auth: AxiosBasicAuth | undefined) {
   return `Basic ${encoded}`;
 }
 
-// Indexers and download clients attribute traffic by User-Agent. Without one,
-// Node's undici fetch sends "undici", so e.g. a Prowlarr grab cannot be traced
-// back to Aurral. This only fills the gap; callers that set their own UA keep it.
 const APP_USER_AGENT = `Aurral/${resolveAppVersion({ envValue: process.env.APP_VERSION })}`;
 
 const MAX_REDIRECTS = 5;
