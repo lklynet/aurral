@@ -515,6 +515,30 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+test("accepts double-encoded media IDs and keeps missing or malformed IDs missing", async () => {
+  const song = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3
+    .song[0];
+  for (const method of ["stream", "download"]) {
+    for (const id of [song.id, encodeURIComponent(song.id)]) {
+      const result = await request(method, { id });
+      assert.equal(result.response.status, 200);
+      assert.equal(result.body, "0123456789");
+    }
+    for (const id of ["song:missing", "song%3Amissing", "song%3Abad%ZZ", "song%253Amissing"]) {
+      assert.equal((await request(method, { id })).response.status, 404);
+    }
+  }
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (playlist) => playlist.name === "Canonical Flow",
+  );
+  assert.ok(flow);
+  for (const id of [flow.coverArt, encodeURIComponent(flow.coverArt)]) {
+    const result = await request("getCoverArt", { id });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body, "flow-artwork");
+  }
+});
+
 test("saves a personal play queue through form POST, filters missing songs, and clears it", async () => {
   const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
   const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
@@ -2099,5 +2123,74 @@ test("resolves playlist release-group artwork without a library album row", asyn
     assert.equal(artwork, libraryArtwork.localUrl);
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("repairs repeated and form-posted IDs in playlists, favorites, and play queues", async () => {
+  const song = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3
+    .song[0];
+  const encoded = encodeURIComponent(song.id);
+  const libraryJobs = db.prepare<[], { id: string }>(
+    "SELECT id FROM playlist_download_jobs WHERE playlist_type = 'library'",
+  );
+  const priorJobs = new Set(libraryJobs.all().map((job) => job.id));
+  const name = "shared%3Aplaylist%20name";
+  const created = responseJson(
+    await request("createPlaylist", { name, songId: [encoded, encoded] }),
+  ).playlist;
+  try {
+    assert.equal(created.name, name);
+    assert.equal(created.entry.length, 1);
+    await request("createPlaylist", { playlistId: created.id });
+    const updated = responseJson(
+      await request("updatePlaylist", {
+        playlistId: encodeURIComponent(created.id),
+        songIdToAdd: [encoded, encoded],
+      }),
+    );
+    assert.equal(updated.status, "ok");
+    assert.equal(
+      responseJson(await request("getPlaylist", { id: created.id })).playlist.entry.length,
+      1,
+    );
+    const replaced = responseJson(
+      await request("createPlaylist", {
+        playlistId: encodeURIComponent(created.id),
+        songId: encoded,
+      }),
+    ).playlist;
+    assert.equal(replaced.entry.length, 1);
+    const body = new URLSearchParams({ current: encoded });
+    body.append("id", encoded);
+    body.append("id", song.id);
+    assert.equal(
+      responseJson(await request("savePlayQueue", {}, { method: "POST", body })).status,
+      "ok",
+    );
+    const queue = responseJson(await request("getPlayQueue")).playQueue;
+    assert.deepEqual(
+      queue.entry.map((entry) => entry.id),
+      [song.id, song.id],
+    );
+    assert.equal(queue.current, song.id);
+    assert.equal(
+      responseJson(
+        await request("star", {
+          albumId: encodeURIComponent(song.albumId),
+          artistId: encodeURIComponent(song.artistId),
+        }),
+      ).status,
+      "ok",
+    );
+    const starred = responseJson(await request("getStarred2")).starred2;
+    assert.ok(starred.album.some((entry) => entry.id === song.albumId));
+    assert.ok(starred.artist.some((entry) => entry.id === song.artistId));
+  } finally {
+    await request("unstar", { albumId: song.albumId, artistId: song.artistId });
+    await request("savePlayQueue");
+    await request("deletePlaylist", { id: encodeURIComponent(created.id) });
+    for (const job of libraryJobs.all()) {
+      if (!priorJobs.has(job.id)) downloadTracker.removeJob(job.id);
+    }
   }
 });
