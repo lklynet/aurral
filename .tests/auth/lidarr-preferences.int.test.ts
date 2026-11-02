@@ -38,7 +38,7 @@ type Artist = NonNullable<Awaited<ReturnType<LidarrClient["getArtist"]>>> & {
   statistics?: { albumCount: number; trackCount: number; sizeOnDisk: number };
 };
 type PostedArtist = Partial<Artist>;
-type Command = LidarrCommand & { artistIds?: number[] };
+type Command = LidarrCommand & { artistId?: number };
 type Preferences = Awaited<ReturnType<LidarrClient["getArtistAddPreferenceSummary"]>>;
 
 function json(
@@ -823,8 +823,5 @@ test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists
     assert.equal(response.status, 200, JSON.stringify(payload));
   }
 
-  assert.deepEqual(
-    fakeLidarr.state.commands.map((command) => [command.name, command.artistIds]),
-    [["ArtistSearch", [followedId]]],
-  );
+  assert.deepEqual(fakeLidarr.state.commands, [{ name: "ArtistSearch", artistId: followedId }]);
 });

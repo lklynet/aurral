@@ -1981,13 +1981,9 @@ export class LidarrClient {
   }
 
   async triggerArtistSearch(artistId: number) {
-    return this.request(
-      "/command",
-      "POST",
-      { name: "ArtistSearch", artistIds: [artistId] },
-      false,
-      { parse: one(commandSchema) },
-    );
+    return this.request("/command", "POST", { name: "ArtistSearch", artistId }, false, {
+      parse: one(commandSchema),
+    });
   }
 
   async getQueue(options: LidarrRequestOptions = {}) {
