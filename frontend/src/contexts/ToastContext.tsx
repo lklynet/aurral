@@ -2,11 +2,13 @@ import { createContext, useContext, useState, useCallback, useRef, useMemo } fro
 import type { ReactNode } from "react";
 import { ToastContainer } from "../components/Toast";
 import type { ToastType } from "../components/Toast";
+import { stackToast } from "../utils/toastStack.ts";
 
 const MAX_TOASTS = 4;
 
 type ToastContent = {
   duration?: number;
+  artwork?: string[];
   onClose?: () => void;
 } & (
   | { message: ReactNode }
@@ -48,12 +50,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           "action" in message)
           ? message
           : { message };
-      const next = [
+      const { kept, evicted } = stackToast(
+        toastsRef.current,
         { ...content, id, type, duration: content.duration ?? duration },
-        ...toastsRef.current,
-      ];
-      replaceToasts(next.slice(0, MAX_TOASTS));
-      next.slice(MAX_TOASTS).forEach((toast) => toast.onClose?.());
+        MAX_TOASTS,
+      );
+      replaceToasts(kept);
+      evicted.forEach((toast) => toast.onClose?.());
       return id;
     },
     [replaceToasts],

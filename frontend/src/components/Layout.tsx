@@ -55,10 +55,9 @@ type SidebarResizeSession = { pointerId: number; left: number; grabOffset: numbe
 type LayoutProps = {
   children: ReactNode;
   headerActions: ReactNode;
-  overlay?: ReactNode;
 };
 
-function Layout({ children, headerActions, overlay }: LayoutProps) {
+function Layout({ children, headerActions }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrollbar, setScrollbar] = useState({
     visible: false,
@@ -516,7 +515,6 @@ function Layout({ children, headerActions, overlay }: LayoutProps) {
           >
             <div className="app-main__content">{children}</div>
           </main>
-          {overlay}
           <div
             ref={scrollbarTrackRef}
             className={`app-main-scrollbar${scrollbar.visible ? " is-visible" : ""}${
