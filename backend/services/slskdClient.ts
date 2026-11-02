@@ -91,8 +91,6 @@ const downloadEventTypes = new Set(["DownloadFileComplete", "DownloadDirectoryCo
 const downloadEventSchema = v.union([
   v.looseObject({
     type: v.literal("DownloadFileComplete"),
-    // localFilename is where slskd saved the file. It differs from the remote
-    // name when slskd renamed the download to avoid an existing file.
     data: v.pipe(
       v.string(),
       v.parseJson(),

@@ -162,7 +162,6 @@ test("an slskd download-complete event passes on the path slskd saved the file t
     state: "Completed, Succeeded",
   };
   const localFilename = "/downloads/Album/01 First_639268025041726158.flac";
-  // slskd records the folder completion right after the file's.
   vi.spyOn(client, "getEvents").mockImplementation(async () => ({
     events: [
       { type: "DownloadFileComplete", data: { transfer: done, localFilename } },

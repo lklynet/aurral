@@ -85,8 +85,6 @@ test("locateCompletedDownload uses transfer filename when slskd reports a local 
 test("locateCompletedDownload uses the file slskd saved when it renamed a duplicate", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-locate-"));
   const remote = "Music\\Artist\\Album\\01 - Track.flac";
-  // An earlier download of the same file is still in slskd's folder, so
-  // slskd saved this one under a new name.
   const olderPath = path.join(root, "Album", "01 - Track.flac");
   const savedPath = path.join(root, "Album", "01 - Track_639268025041726158.flac");
   await fs.mkdir(path.dirname(olderPath), { recursive: true });

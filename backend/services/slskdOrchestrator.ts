@@ -418,8 +418,6 @@ async function pollSlskdEventsForCandidate(payload: SlskdPayload) {
   let completion: { transfer: SlskdTransfer | null; localFilename?: string } | null = null;
   for (const event of result.events) {
     if (!eventMatchesCandidate(event, candidate)) continue;
-    // slskd follows every DownloadFileComplete with a DownloadDirectoryComplete,
-    // usually in the same page. Keep the file's transfer and saved path.
     if (event.type === "DownloadFileComplete") {
       completion = { transfer: event.data.transfer, localFilename: event.data.localFilename };
     } else if (!completion?.transfer) {
@@ -583,9 +581,6 @@ export async function locateCompletedDownload(
   } = {},
 ) {
   const expectedSizeBytes = Number(options.expectedSizeBytes || 0);
-  // slskd saves a second download of a name that already exists as
-  // "<name>_<ticks>.<ext>". Only its event knows that name; predicting the
-  // path from the remote name would pick up the older file instead.
   const localPath = resolveTransferLocalPath(options.localFilename, slskdRoot);
   if (localPath) {
     const reported = await statMatchingFile(localPath, expectedSizeBytes);
