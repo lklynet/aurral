@@ -236,15 +236,15 @@ afterAll(async () => {
 
 test("orders newest albums by media arrival before applying pagination", () => {
   assert.deepEqual(
-    getAlbumList({ type: "newest", size: "1" }).map((album) => album.title),
+    getAlbumList({ type: "newest", size: "1" }).map((album) => album.name),
     ["Old Album"],
   );
   assert.deepEqual(
-    getAlbumList({ type: "newest", size: "1", offset: "1" }).map((album) => album.title),
+    getAlbumList({ type: "newest", size: "1", offset: "1" }).map((album) => album.name),
     ["New Album"],
   );
   assert.deepEqual(
-    getAlbumList({ type: "byYear", fromYear: "2024", toYear: "2010" }).map((album) => album.title),
+    getAlbumList({ type: "byYear", fromYear: "2024", toYear: "2010" }).map((album) => album.name),
     ["New Album", "Artist A Collection", "Old Album"],
   );
 });
@@ -291,15 +291,15 @@ test("implements starred and frequent album lists without inventing ratings", ()
     );
 
     assert.deepEqual(
-      getAlbumList({ type: "starred" }, user).map((album) => album.title),
+      getAlbumList({ type: "starred" }, user).map((album) => album.name),
       ["New Album"],
     );
     assert.deepEqual(
-      getAlbumList({ type: "frequent" }, user).map((album) => album.title),
+      getAlbumList({ type: "frequent" }, user).map((album) => album.name),
       ["Old Album", "New Album"],
     );
     assert.deepEqual(
-      getAlbumList({ type: "frequent", size: "1", offset: "1" }, user).map((album) => album.title),
+      getAlbumList({ type: "frequent", size: "1", offset: "1" }, user).map((album) => album.name),
       ["New Album"],
     );
     assert.deepEqual(getAlbumList({ type: "highest" }, user), []);
@@ -338,7 +338,7 @@ test("recent albums follow each user's latest plays of available albums", () => 
   const recentTitles = (
     user: ReturnType<typeof testUser>,
     options: { size?: string; offset?: string } = {},
-  ) => getAlbumList({ type: "recent", ...options }, user).map((album) => album.title);
+  ) => getAlbumList({ type: "recent", ...options }, user).map((album) => album.name);
   const setAvailable = db.prepare(
     "UPDATE library_media_files SET available = ? WHERE path LIKE '%/Other Artist Song.flac'",
   );

@@ -32,6 +32,8 @@ const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refr
 const { enqueueHonkerStartupTasks, getHonkerDb, getInboxTaskQueue } = honkerDb;
 const { processSystemTask } = systemTaskWorker;
 
+const showDate = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+
 let userId: number;
 
 function clearRefreshState() {
@@ -233,7 +235,7 @@ test("refresh adds nearby shows for library artists only", async () => {
     id,
     name: `${performer} live`,
     url: `https://www.ticketmaster.com/event/${id}`,
-    dates: { start: { localDate: "2026-11-01" } },
+    dates: { start: { localDate: showDate } },
     _embedded: {
       venues: [{ name: "Hall", city: { name: "New York" } }],
       attractions: [{ name: performer }],
@@ -283,7 +285,7 @@ test("refresh adds nearby shows for library artists only", async () => {
         {
           sourceKey: "library-show",
           title: "Inbox Refresh Artist live",
-          subtitle: "Inbox Refresh Artist · 2026-11-01 · Hall · New York",
+          subtitle: `Inbox Refresh Artist · ${showDate} · Hall · New York`,
         },
       ],
     );
@@ -317,7 +319,7 @@ test("scheduled refresh finds shows near the location last used on Discover", as
               {
                 id: "chicago-show",
                 name: "Inbox Refresh Artist in Chicago",
-                dates: { start: { localDate: "2026-12-01" } },
+                dates: { start: { localDate: showDate } },
                 _embedded: { attractions: [{ name: "Inbox Refresh Artist" }] },
               },
             ],

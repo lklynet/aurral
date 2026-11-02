@@ -904,7 +904,6 @@ test("browses library artists, albums, and songs with stable protocol IDs", asyn
   const artistsResult = responseJson(await request("getArtists"));
   const artist = artistsResult.artists.index[0].artist[0];
   assert.match(artist.id, /^artist:/);
-  assert.equal(artist.genre, "Rock");
   assert.equal(artistsResult.artists.ignoredArticles, "The El La Los Las Le Les");
   const artistsXml = await request("getArtists", { f: "xml" });
   assert.match(artistsXml.body, /<artists[^>]*><index name="C"><artist id="artist:/);
@@ -924,7 +923,7 @@ test("browses library artists, albums, and songs with stable protocol IDs", asyn
   assert.equal(unchanged.indexes.index, undefined);
   assert.ok(Array.isArray(indexes.indexes.index));
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
-  assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
+  assert.equal(albumList.albumList2.album[0].name, "Canonical Album");
   assert.deepEqual(
     [
       ...responseJson(
@@ -1042,9 +1041,7 @@ test("browses library artists, albums, and songs with stable protocol IDs", asyn
   assert.equal(song.genre, "Rock");
   assert.equal(song.musicBrainzId, "33333333-3333-4333-8333-333333333333");
   assert.equal(song.mediaType, "song");
-  assert.equal(album.mediaType, "album");
   assert.equal(artist.musicBrainzId, "11111111-1111-4111-8111-111111111111");
-  assert.equal(artist.mediaType, "artist");
   assert.equal(album.musicBrainzId, "22222222-2222-4222-8222-222222222222");
   assert.match(
     (await request("getSong", { id: song.id, f: "xml" })).body,

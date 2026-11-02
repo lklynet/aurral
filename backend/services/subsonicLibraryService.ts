@@ -92,7 +92,7 @@ type ParsedKind =
   | "art-playlist"
   | "art-playlist-track";
 type ParsedId = { [K in ParsedKind]: { kind: K; key: string } }[ParsedKind];
-type StarredResult = { album: SubsonicAlbum[]; artist: SubsonicArtist[]; song: SubsonicSong[] };
+type StarredResult = { artist: SubsonicArtist[]; album: SubsonicAlbum[]; song: SubsonicSong[] };
 type SubsonicQuery = {
   musicFolderId?: string;
   genre?: string;
@@ -143,22 +143,15 @@ type LibrarySong = SubsonicSong & { title: string };
 type SubsonicAlbum = {
   id: string;
   name: string;
-  title: string;
-  album: string;
   artist: string;
   artistId: string;
   artists: ProtocolArtist[];
-  parent: string;
-  isDir: boolean;
-  isVideo: boolean;
   created: string;
   coverArt: string;
   songCount: number;
   duration: number;
-  song: SubsonicSong[];
   starred?: string;
   musicBrainzId: string;
-  mediaType: string;
   year?: number;
 } & SubsonicGenreFields;
 type SubsonicArtist = {
@@ -166,11 +159,9 @@ type SubsonicArtist = {
   name: string;
   coverArt: string;
   albumCount: number;
-  album?: SubsonicAlbum[];
   starred?: string;
   musicBrainzId: string;
-  mediaType: string;
-} & SubsonicGenreFields;
+};
 type SubsonicPlaylist = {
   id: string;
   name: string;
@@ -393,14 +384,9 @@ const albumData = (library: IndexedLibrary, album: LibraryAlbum) => {
   const value: SubsonicAlbum = {
     id: idFor("album", album.identityKey),
     name: album.title,
-    title: album.title,
-    album: album.title,
     artist: artistValue.name,
     artistId: artistValue.id,
     artists: [artistValue],
-    parent: artistValue.id,
-    isDir: true,
-    isVideo: false,
     created: isoDate(album.createdAt),
     coverArt: coverArtForAlbum(library, album),
     songCount: tracks.length,
@@ -408,12 +394,10 @@ const albumData = (library: IndexedLibrary, album: LibraryAlbum) => {
       (total, track) => total + seconds(firstFile(track, album.id, album.managedBy)?.durationMs),
       0,
     ),
-    song: [],
     starred: library.starredAt?.get(`album:${album.identityKey}`),
     // OpenSubsonic wants the release MBID here; Lidarr-indexed albums only know the
     // release-group id, so they report an empty value rather than a wrong one.
     musicBrainzId: album.mbid || "",
-    mediaType: "album",
   };
   const releaseYear = year(album.releaseDate);
   if (releaseYear != null) value.year = releaseYear;
@@ -435,42 +419,37 @@ const toAlbum = (library: IndexedLibrary, album: LibraryAlbum) => {
   return { ...value, song: tracks.map((track) => toSong(library, track, album)) };
 };
 
-const toArtist = (library: IndexedLibrary, artist: LibraryArtist) => {
-  const albums = artistAlbums(library, artist);
-  const genres = entityGenres(artist);
-  const value: SubsonicArtist = {
-    id: idFor("artist", artist.identityKey),
-    name: artist.name,
-    coverArt: idFor("artist", artist.identityKey),
-    albumCount: albums.length,
-    album: albums.map((album) => toAlbumSummary(library, album)),
-    starred: library.starredAt?.get(`artist:${artist.identityKey}`),
-    musicBrainzId: artist.mbid || "",
-    mediaType: "artist",
-  };
-  if (genres.length) {
-    value.genre = genres[0];
-    value.genres = genres.map((name) => ({ name }));
-  }
-  return value;
-};
-
 const toArtistSummary = (
   artist: LibraryArtist & { albumCount?: number },
   library: { starredAt?: StarredAt | null } = {},
-): SubsonicArtist => {
-  const genres = entityGenres(artist);
+): SubsonicArtist => ({
+  id: idFor("artist", artist.identityKey),
+  name: artist.name,
+  coverArt: idFor("artist", artist.identityKey),
+  albumCount: artist.albumCount ?? artist.albumIds.length,
+  starred: library.starredAt?.get(`artist:${artist.identityKey}`),
+  musicBrainzId: artist.mbid || "",
+});
+
+const toArtist = (library: IndexedLibrary, artist: LibraryArtist) => {
+  const albums = artistAlbums(library, artist);
   return {
-    id: idFor("artist", artist.identityKey),
-    name: artist.name,
-    coverArt: idFor("artist", artist.identityKey),
-    albumCount: artist.albumCount ?? artist.albumIds.length,
-    starred: library.starredAt?.get(`artist:${artist.identityKey}`),
-    musicBrainzId: artist.mbid || "",
-    mediaType: "artist",
-    ...(genres.length ? { genre: genres[0], genres: genres.map((name) => ({ name })) } : {}),
+    ...toArtistSummary({ ...artist, albumCount: albums.length }, library),
+    album: albums.map((album) => toAlbumSummary(library, album)),
   };
 };
+
+export const toChildAlbum = ({ name, songCount, ...album }: SubsonicAlbum) => ({
+  ...album,
+  parent: album.artistId,
+  isDir: true,
+  isVideo: false,
+  title: name,
+  album: name,
+  mediaType: "album",
+});
+
+export const toIndexArtist = ({ id, name, starred }: SubsonicArtist) => ({ id, name, starred });
 
 const indexFocusedLibrary = (
   library: LibraryInput,
@@ -758,7 +737,9 @@ export function getMusicDirectory(value: string, user?: SubsonicUser) {
   const parsed = parseId(value);
   if (parsed?.kind === "artist") {
     const artist = getArtist(value, user);
-    return artist ? { id: artist.id, name: artist.name, child: artist.album || [] } : null;
+    return artist
+      ? { id: artist.id, name: artist.name, child: artist.album.map(toChildAlbum) }
+      : null;
   }
   if (parsed?.kind === "album") {
     const album = getAlbum(value, user);
@@ -796,7 +777,7 @@ export function searchLibrary(
   const trackLibrary = indexFocusedLibrary(result.tracks, starredAt);
   return {
     artist: artistLibrary.artists.map((artist) => toArtistSummary(artist, artistLibrary)),
-    album: albumLibrary.albums.map((album) => toAlbum(albumLibrary, album)),
+    album: albumLibrary.albums.map((album) => toAlbumSummary(albumLibrary, album)),
     song: trackLibrary.tracks.map((track) => toSong(trackLibrary, track)),
   };
 }
@@ -1583,7 +1564,7 @@ export function getStarredIdentityKeys(user: SubsonicUser) {
 }
 
 const buildStarred = (library: IndexedLibrary, rows: StarRow[], user: SubsonicUser) => {
-  const starred: StarredResult = { album: [], artist: [], song: [] };
+  const starred: StarredResult = { artist: [], album: [], song: [] };
   for (const row of rows) {
     const parsed = { kind: row.entity_kind, key: row.entity_key };
     if (["flow-song", "shared-song"].includes(parsed.kind)) {
