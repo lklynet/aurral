@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { setStoredAuth } from "../utils/api/core.ts";
+import { invalidateBootstrapCache } from "../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
 import { authClient } from "../utils/api/clients/auth.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -66,6 +67,7 @@ const SsoComplete = () => {
         }
         if (!("token" in result) || !result.token) throw new Error("Missing SSO session token");
         setStoredAuth({ token: result.token });
+        invalidateBootstrapCache();
         return refreshAuth();
       })
       .then((refreshed) => {
