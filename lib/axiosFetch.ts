@@ -9,6 +9,7 @@ import {
   type Response as UndiciResponse,
 } from "undici";
 import { resolvePublicUrl } from "./publicUrl.ts";
+import { resolveAppVersion } from "./app-version.ts";
 
 type FetchResponse = UndiciResponse | Response;
 
@@ -143,6 +144,11 @@ function buildAuthHeader(auth: AxiosBasicAuth | undefined) {
   return `Basic ${encoded}`;
 }
 
+// Indexers and download clients attribute traffic by User-Agent. Without one,
+// Node's undici fetch sends "undici", so e.g. a Prowlarr grab cannot be traced
+// back to Aurral. This only fills the gap; callers that set their own UA keep it.
+const APP_USER_AGENT = `Aurral/${resolveAppVersion({ envValue: process.env.APP_VERSION })}`;
+
 const MAX_REDIRECTS = 5;
 const SENSITIVE_REDIRECT_HEADERS = new Set([
   "authorization",
@@ -183,6 +189,9 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
   url = appendParams(url, config.params);
 
   const headers = headersToObject(config.headers);
+  if (!Object.keys(headers).some((key) => key.toLowerCase() === "user-agent")) {
+    headers["User-Agent"] = APP_USER_AGENT;
+  }
   const authHeader = buildAuthHeader(config.auth);
   if (authHeader) headers.Authorization = authHeader;
 
