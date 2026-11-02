@@ -7,7 +7,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from "./icons";
+import { AlertCircle, CheckCircle, Info, TriangleAlert, X, type IconComponent } from "./icons";
 import { DotLoader } from "./DotLoader";
 
 const TOAST_ICONS = {
@@ -29,6 +29,7 @@ export interface ToastItem {
   message?: ReactNode;
   description?: ReactNode;
   artwork?: string[];
+  icon?: IconComponent;
   action?: { label: string; onClick?: () => void; dismiss?: boolean };
   duration?: number;
 }
@@ -47,6 +48,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
     message,
     description,
     artwork,
+    icon,
     action,
     duration = 3000,
   } = toast;
@@ -150,7 +152,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
     if (action?.dismiss !== false) dismiss();
   };
 
-  const Icon = TOAST_ICONS[type] || TOAST_ICONS.info;
+  const Icon = icon ?? TOAST_ICONS[type] ?? TOAST_ICONS.info;
   const body = description || message;
 
   return (
@@ -171,7 +173,10 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
           ))}
         </div>
       ) : (
-        <div className="app-toast__icon" aria-hidden="true">
+        <div
+          className={`app-toast__icon${icon ? " app-toast__icon--large" : ""}`}
+          aria-hidden="true"
+        >
           <Icon />
         </div>
       )}

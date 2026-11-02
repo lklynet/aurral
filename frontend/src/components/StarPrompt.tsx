@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { GitHub } from "./icons";
 import { starPromptClient } from "../utils/api/clients/starPrompt.ts";
 
 export default function StarPrompt() {
@@ -21,9 +22,10 @@ export default function StarPrompt() {
         addToast(
           {
             title: "Enjoying Aurral?",
-            message: "A GitHub star helps more people find it.",
+            message: "A star helps others find it.",
+            icon: GitHub,
             action: {
-              label: "Star on GitHub",
+              label: "Star",
               onClick: () =>
                 window.open("https://github.com/lklynet/aurral", "_blank", "noopener,noreferrer"),
             },
