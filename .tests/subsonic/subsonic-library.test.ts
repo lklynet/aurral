@@ -26,6 +26,7 @@ const [isolatedState, { db }, subsonic, libraryStore, artworkService] = await se
 const {
   getSong,
   getAlbum,
+  getArtist,
   getAlbumList,
   getGenres,
   getMusicDirectory,
@@ -899,6 +900,151 @@ test("reports registered audio types for library song formats", () => {
       available: true,
     });
     assert.equal(getSong(idFor("song", `mime:${format}`))!.contentType, expected);
+  }
+});
+
+test.each(["Various Artists", "Album Owner"])(
+  "keeps track artists separate from the album artist %s",
+  (artistName) => {
+    const artist = upsertLibraryArtist({
+      identityKey: `track-artists:${artistName}`,
+      name: artistName,
+      mbid: "11111111-1111-4111-8111-111111111111",
+    });
+    const album = upsertLibraryAlbum({
+      identityKey: `track-artists:album:${artistName}`,
+      artistId: artist.id,
+      title: "Compilation",
+      albumArtist: artist.name,
+    });
+    const artistValue = {
+      id: idFor("artist", artist.identity_key),
+      name: artist.name,
+      musicBrainzId: artist.mbid,
+    };
+    const tracks = ["The Premiers", "Another Performer", artistName, null, "   "].map(
+      (trackArtist, index) => {
+        const track = upsertLibraryTrack({
+          identityKey: `track-artists:${artistName}:${index}`,
+          title: `Compilation Song ${index}`,
+          artistName: trackArtist,
+        });
+        linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+        upsertLibraryMediaFile({
+          albumId: album.id,
+          trackId: track.id,
+          source: "aurral",
+          path: `/test/track-artists/${artistName}/${index}.flac`,
+          available: true,
+        });
+        return track;
+      },
+    );
+
+    try {
+      const result = getAlbum(idFor("album", album.identity_key));
+      assert.ok(result);
+      assert.equal(result.artist, artistName);
+      assert.deepEqual(result.artists, [artistValue]);
+
+      for (const [index, track] of tracks.entries()) {
+        const expectedName = track.artist_name?.trim() || artistName;
+        const expectedArtist =
+          expectedName === artistName
+            ? artistValue
+            : {
+                id: idFor("artist", `name:artist:${expectedName.toLocaleLowerCase()}`),
+                name: expectedName,
+                musicBrainzId: "",
+              };
+        const songs: (ReturnType<typeof getSong> | undefined)[] = [
+          result.song[index],
+          getSong(idFor("song", track.identity_key)),
+          subsonic
+            .searchLibrary(track.title)
+            .song.find((entry) => entry.id === idFor("song", track.identity_key)),
+        ];
+        for (const song of songs) {
+          assert.ok(song);
+          assert.equal(song.artist, expectedName);
+          assert.deepEqual(song.artists, [expectedArtist]);
+          assert.deepEqual(song.albumArtists, [artistValue]);
+          assert.equal(song.artistId, artistValue.id);
+        }
+      }
+    } finally {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+      for (const track of tracks) {
+        db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+      }
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    }
+  },
+);
+
+test.each([
+  ["a name", () => "The Performers"],
+  ["another artist's record ID", (decoyId: number) => String(decoyId)],
+])("opens a compilation track artist named %s from the library", (_, performerName) => {
+  const various = upsertLibraryArtist({
+    identityKey: "performer:various",
+    name: "Various Artists",
+  });
+  const compilation = upsertLibraryAlbum({
+    identityKey: "performer:compilation",
+    artistId: various.id,
+    title: "Performer Compilation",
+    albumArtist: various.name,
+  });
+  const performer = upsertLibraryArtist({
+    identityKey: "performer:artist",
+    name: performerName(various.id),
+    mbid: "22222222-2222-4222-8222-222222222222",
+  });
+  const ownAlbum = upsertLibraryAlbum({
+    identityKey: "performer:own-album",
+    artistId: performer.id,
+    title: "Performer Album",
+    albumArtist: performer.name,
+  });
+  const tracks = [
+    { album: compilation, artistName: performerName(various.id).toLowerCase() },
+    { album: ownAlbum, artistName: performer.name },
+  ].map(({ album, artistName }, index) => {
+    const track = upsertLibraryTrack({
+      identityKey: `performer:track:${index}`,
+      title: `Performer Song ${index}`,
+      artistName,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      albumId: album.id,
+      trackId: track.id,
+      source: "aurral",
+      path: `/test/performer/${index}.flac`,
+      available: true,
+    });
+    return track;
+  });
+
+  try {
+    const song = getSong(idFor("song", tracks[0].identity_key));
+    const opened = getArtist(requireFixture(song?.artists[0]).id);
+    assert.equal(opened?.id, idFor("artist", performer.identity_key));
+    assert.equal(opened?.name, performer.name);
+    assert.equal(getArtist(idFor("artist", "name:artist:nobody here")), null);
+  } finally {
+    for (const album of [compilation, ownAlbum]) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    }
+    for (const track of tracks) db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    for (const artist of [various, performer]) {
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    }
   }
 });
 
