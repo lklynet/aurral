@@ -6,10 +6,6 @@
   display: flex;
   width: min(340px, calc(100% - 2 * var(--aurral-space-page)));
   overflow: hidden;
-  border: 1px solid var(--aurral-border-overlay);
-  border-radius: var(--aurral-radius-popover);
-  background: var(--aurral-surface-popover);
-  box-shadow: var(--aurral-shadow-popover);
 }
 .wrapped-announcement-art {
   display: grid;

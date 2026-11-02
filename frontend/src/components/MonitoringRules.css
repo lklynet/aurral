@@ -23,8 +23,6 @@
   flex: 0 0 auto;
   height: 2.5rem;
   border-color: var(--aurral-border);
-  border-radius: var(--aurral-radius-sm);
-  background: var(--aurral-surface-raised);
 }
 
 .monitoring-rules__hint {
