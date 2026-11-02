@@ -86,6 +86,17 @@ const getParameters = (params: SubsonicParams, names: string[]) =>
       .filter(Boolean);
   });
 
+function repairDoubleEncodedId(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(repairDoubleEncodedId);
+  if (typeof value !== "string" || !/^[a-z-]+%3a/i.test(value)) return value;
+  // Some clients encode IDs before URLSearchParams, including the kind separator.
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 const normalizeSearchQuery = (value: string) => {
   const query = String(value || "").trim();
   return query === '""' ? "" : query;
@@ -344,6 +355,17 @@ const streamOffset = v.pipe(
 async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string) {
   // OpenSubsonic formPost: parameters may arrive in a urlencoded body; query wins on conflicts.
   const params: SubsonicParams = { ...(await formParameters(c)), ...c.req.queries() };
+  for (const name of [
+    "id",
+    "albumId",
+    "artistId",
+    "playlistId",
+    "songId",
+    "songIdToAdd",
+    "current",
+  ]) {
+    if (Object.hasOwn(params, name)) params[name] = repairDoubleEncodedId(params[name]);
+  }
   const method = requestedMethod.replace(/\.view$/i, "").toLowerCase();
   if (method === "getopensubsonicextensions") {
     // Must be reachable without any authentication parameters so clients can probe capabilities.

@@ -327,3 +327,40 @@ test("sorts both artist indexes using their advertised ignored articles", async 
     );
   }
 });
+
+test("preserves name-based ID escapes when repairing double encoding", async () => {
+  const name = "artist:foo%20bar 雪";
+  const identityKey = `name:artist:${name}`;
+  const artist = libraryStore.upsertLibraryArtist({ identityKey, name });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: `name:album:${name}`,
+    artistId: artist.id,
+    title: name,
+    albumArtist: name,
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: `name:track:${name}`,
+    title: name,
+    artistName: name,
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    source: "lidarr",
+    path: `/test/${name}.flac`,
+    format: "flac",
+    available: true,
+  });
+  const canonicalId = libraryStore.subsonicId("artist", identityKey);
+  assert.match(canonicalId, /%2520/);
+  for (const id of [
+    canonicalId,
+    encodeURIComponent(canonicalId),
+    encodeURIComponent(canonicalId).replaceAll("%3A", "%3a"),
+  ]) {
+    const result = await request("getArtist", { id, f: "json" });
+    assert.equal(result.json.status, "ok");
+    assert.equal(result.json.artist.id, canonicalId);
+    assert.equal(result.json.artist.name, name);
+  }
+});
