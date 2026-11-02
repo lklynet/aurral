@@ -253,6 +253,7 @@ function TokenDetail({
             id="scrobble-token"
             type="password"
             autoComplete="off"
+            placeholder={connected ? "••••••••••••" : undefined}
             value={token}
             onChange={(event) => setToken(event.target.value)}
           />
