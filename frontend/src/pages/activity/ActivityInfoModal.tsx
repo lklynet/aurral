@@ -25,7 +25,7 @@ const formatSource = (item: Partial<ActivityRequest>) => {
   if (item.sourceSummary) return item.sourceSummary;
   if (item.albumGrab) return text(item.actualDownloadSource) || "Unknown";
   const source = text(item.downloadSource || item.downloadClient || item.source);
-  if (!source) return "";
+  if (!source || source === "unknown") return "";
   return source === "lidarr" ? "Lidarr" : source === "aurral" ? "Aurral" : source;
 };
 

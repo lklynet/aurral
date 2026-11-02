@@ -50,7 +50,6 @@ const STALE_TRACK_JOB_MS = 15 * 60 * 1000;
 const STALE_AURRAL_JOB_MS = 60 * 60 * 1000;
 
 const KIND_SOURCE_MAP = {
-  track_download: "slskd",
   album_requested: "lidarr",
   artist_added: "lidarr",
   track_reused_lidarr: "lidarr",
@@ -129,7 +128,9 @@ const resolveTrackDownloadHistorySource = (downloadSource: unknown, downloadClie
   }
   if (normalized === "ytdlp") return "ytdlp";
   if (normalized === "deemix") return "deemix";
-  return "slskd";
+  if (normalized === "slskd") return "slskd";
+  if (normalized === "share") return "share";
+  return "unknown";
 };
 
 const CLIENT_LABELS = {
@@ -139,9 +140,17 @@ const CLIENT_LABELS = {
   slskd: "slskd",
   ytdlp: "yt-dlp",
   deemix: "deemix",
+  share: "Aurral share",
 };
-const resolveDownloadClientLabel = (downloadSource: unknown, downloadClient: unknown) =>
-  CLIENT_LABELS[resolveTrackDownloadHistorySource(downloadSource, downloadClient)] || "slskd";
+const resolveDownloadClientLabel = (downloadSource: unknown, downloadClient: unknown) => {
+  const source = resolveTrackDownloadHistorySource(downloadSource, downloadClient);
+  return isOwnKey(CLIENT_LABELS, source) ? CLIENT_LABELS[source] : null;
+};
+
+const downloadClientSuffix = (job: HistoryJob | null | undefined) => {
+  const label = resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient);
+  return label ? ` via ${label}` : "";
+};
 
 const resolveHistorySource = (
   kind: string | null,
@@ -1081,7 +1090,7 @@ export const recordTrackJobActivity = ({
   return upsertAurralHistory({
     referenceId: id,
     kind: "track_download",
-    title: title || `Searching ${clientLabel} for ${track}`,
+    title: title || `Searching ${clientLabel ? `${clientLabel} ` : ""}for ${track}`,
     subtitle: subtitle || `${artist} · ${playlistName}`,
     status,
     statusLabel,
@@ -1092,7 +1101,7 @@ export const recordTrackJobActivity = ({
       artistName: artist,
       ...(album ? { albumName: album } : {}),
       playlistId,
-      downloadSource: downloadSource || "slskd",
+      downloadSource: downloadSource || null,
       downloadClient: downloadClient || null,
       ...(albumMbid ? { albumMbid } : {}),
       ...(groupId ? { requestGroupId: groupId } : {}),
@@ -1124,7 +1133,6 @@ export const recordTrackJobSearching = (job: HistoryJob | null | undefined) =>
   recordTrackJob(job, {
     status: "processing",
     statusLabel: "Searching",
-    title: `Searching ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)} for ${job?.trackName || "track"}`,
   });
 
 export const getTrackJobRequesterId = (jobId: string) =>
@@ -1161,14 +1169,14 @@ export const recordTrackJobDownloading = (job: HistoryJob | null | undefined) =>
   recordTrackJob(job, {
     status: "processing",
     statusLabel: "Downloading",
-    title: `Downloading ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`,
+    title: `Downloading ${job?.trackName || "track"}${downloadClientSuffix(job)}`,
   });
 
 export const recordTrackJobWaiting = (job: HistoryJob | null | undefined, reason: string) =>
   recordTrackJob(job, {
     status: "processing",
     statusLabel: "Waiting",
-    title: `Waiting to download ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`,
+    title: `Waiting to download ${job?.trackName || "track"}${downloadClientSuffix(job)}`,
     subtitle: reason,
   });
 
@@ -1357,7 +1365,7 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
       : status === "blocked"
         ? `Review needed for ${job?.trackName || "track"}`
         : status === "processing"
-          ? `Downloading ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`
+          ? `Downloading ${job?.trackName || "track"}${downloadClientSuffix(job)}`
           : `Queued ${job?.trackName || "track"}`;
   return {
     id: stableId("track_download", job?.id),
@@ -1373,7 +1381,7 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
       artistName: job?.artistName,
       ...(job?.albumName ? { albumName: job.albumName } : {}),
       playlistId,
-      downloadSource: job?.downloadSource || "slskd",
+      downloadSource: job?.downloadSource || null,
       downloadClient: job?.downloadClient || null,
     },
     createdAt: Number(job?.createdAt) || Date.now(),
@@ -1444,6 +1452,13 @@ export const getAurralHistoryRequests = async (
     .map((entry) => {
       const jobId = String(entry.metadata?.jobId || "").trim();
       const job = jobId ? jobsById.get(jobId) : null;
+      if (entry.kind === "track_download" && job) {
+        entry.metadata = {
+          ...entry.metadata,
+          downloadSource: job.downloadSource || null,
+          downloadClient: job.downloadClient || null,
+        };
+      }
       const albumGrabId = entry.metadata?.albumGrabId;
       const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
       const canonicalAlbumId =

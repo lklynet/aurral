@@ -19,6 +19,8 @@ const {
   getAurralHistoryRequests,
   recordTrackJobBlocked,
   recordTrackJobDownloading,
+  recordTrackJobSearching,
+  recordTrackJobCompleted,
   recordTrackJobQueued,
   toHistoryRequestItem,
 } = historyModule;
@@ -246,6 +248,7 @@ test("queued library track jobs appear in activity immediately", async () => {
   assert.equal(entry?.statusLabel, "Queued");
   assert.equal(entry?.inQueue, true);
   assert.equal(entry?.trackName, "Queued Song");
+  assert.equal(entry?.source, "unknown");
 });
 
 test("queued album track jobs open their album, and other library jobs open the library playlist", async () => {
@@ -343,6 +346,7 @@ test("pending tracker jobs without history appear in activity immediately", asyn
   assert.equal(entry?.statusLabel, "Queued");
   assert.equal(entry?.inQueue, true);
   assert.equal(entry?.trackName, "Unrecorded Song");
+  assert.equal(entry?.source, "unknown");
 });
 
 test("pending playlist imports appear in activity before the worker starts", async () => {
@@ -709,3 +713,83 @@ test("a history entry with an unreadable field keeps the rest of its details", a
   assert.equal(entry.playlistName, null);
   assert.equal(entry.requestedBy, null);
 });
+
+test.each([
+  [null, null, "unknown"],
+  ["", null, "unknown"],
+  ["unrecognized", null, "unknown"],
+  ["slskd", null, "slskd"],
+  [" DEEMIX ", null, "deemix"],
+  ["ytdlp", null, "ytdlp"],
+  ["share", null, "share"],
+  ["usenet", null, "nzbget"],
+  ["usenet", "sabnzbd", "sabnzbd"],
+  ["usenet", "tidarr", "tidarr"],
+])(
+  "stored track history resolves source %s with client %s as %s",
+  async (downloadSource, downloadClient, source) => {
+    upsertAurralHistory({
+      referenceId: "stored-track",
+      kind: "track_download",
+      title: "Downloaded Song",
+      status: "completed",
+      metadata: { jobId: "stored-track", downloadSource, downloadClient },
+    });
+
+    const entry = (await getAurralHistoryRequests()).find((item) => item.jobId === "stored-track");
+    assert.equal(entry?.source, source);
+  },
+);
+
+test("track activity preserves an unknown source until a provider is selected", async () => {
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+  assert.ok(jobId != null);
+  const job = () => requireFixture(downloadTracker.getJob(jobId));
+  const entry = async () =>
+    requireFixture((await getAurralHistoryRequests()).find((item) => item.jobId === jobId));
+
+  const queued = recordTrackJobQueued(job());
+  assert.equal(queued?.metadata?.downloadSource, null);
+  recordTrackJobSearching(job());
+  assert.equal((await entry()).source, "unknown");
+  assert.equal((await entry()).title, "Searching for Song");
+  recordTrackJobDownloading(job());
+  assert.equal((await entry()).title, "Downloading Song");
+
+  downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "deemix" });
+  recordTrackJobDownloading(job());
+  assert.equal((await entry()).source, "deemix");
+  assert.equal((await entry()).title, "Downloading Song via deemix");
+  recordTrackJobCompleted(job());
+  assert.equal((await entry()).source, "deemix");
+});
+
+test.each([null, "deemix"])(
+  "tracker source %s corrects older Soulseek defaults in queued and completed history",
+  async (downloadSource) => {
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+    assert.ok(jobId != null);
+    upsertAurralHistory({
+      referenceId: jobId,
+      kind: "track_download",
+      title: "Queued Song",
+      status: "pending",
+      statusLabel: "Queued",
+      metadata: { jobId, downloadSource: "slskd" },
+    });
+    if (downloadSource) downloadTracker.updateDownloadMetadata(jobId, { downloadSource });
+    const entry = async () =>
+      requireFixture((await getAurralHistoryRequests()).find((item) => item.jobId === jobId));
+    assert.equal((await entry()).source, downloadSource || "unknown");
+
+    upsertAurralHistory({
+      referenceId: jobId,
+      kind: "track_download",
+      title: "Downloaded Song",
+      status: "completed",
+      metadata: { jobId, downloadSource: "slskd" },
+    });
+    downloadTracker.setDone(jobId, "/tmp/song.flac", "Album");
+    assert.equal((await entry()).source, downloadSource || "unknown");
+  },
+);
