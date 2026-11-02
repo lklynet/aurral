@@ -15573,7 +15573,6 @@ a.blocklist-page__name:focus-visible {
 
 .login-header {
   margin-bottom: 2rem;
-  text-align: center;
 }
 
 .login-logo {
@@ -15590,6 +15589,7 @@ a.blocklist-page__name:focus-visible {
   font-weight: 700;
   letter-spacing: var(--aurral-tracking-display);
   line-height: 1.1;
+  text-align: center;
 }
 
 .login-subtitle {
