@@ -984,7 +984,10 @@ test.each(["Various Artists", "Album Owner"])(
   },
 );
 
-test("opens a compilation track artist that is in the library by name", () => {
+test.each([
+  ["a name", () => "The Performers"],
+  ["another artist's record ID", (decoyId: number) => String(decoyId)],
+])("opens a compilation track artist named %s from the library", (_, performerName) => {
   const various = upsertLibraryArtist({
     identityKey: "performer:various",
     name: "Various Artists",
@@ -997,7 +1000,7 @@ test("opens a compilation track artist that is in the library by name", () => {
   });
   const performer = upsertLibraryArtist({
     identityKey: "performer:artist",
-    name: "The Performers",
+    name: performerName(various.id),
     mbid: "22222222-2222-4222-8222-222222222222",
   });
   const ownAlbum = upsertLibraryAlbum({
@@ -1007,7 +1010,7 @@ test("opens a compilation track artist that is in the library by name", () => {
     albumArtist: performer.name,
   });
   const tracks = [
-    { album: compilation, artistName: "the performers" },
+    { album: compilation, artistName: performerName(various.id).toLowerCase() },
     { album: ownAlbum, artistName: performer.name },
   ].map(({ album, artistName }, index) => {
     const track = upsertLibraryTrack({

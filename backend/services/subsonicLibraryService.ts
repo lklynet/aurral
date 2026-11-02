@@ -44,7 +44,12 @@ import type {
   LibraryTrack,
   LibraryTrackFile,
 } from "./libraryQueryService.ts";
-import type { LibraryAlbumsRow, SubsonicStarChangesRow, SubsonicStarsRow } from "../db/rows.ts";
+import type {
+  LibraryAlbumsRow,
+  LibraryArtistsRow,
+  SubsonicStarChangesRow,
+  SubsonicStarsRow,
+} from "../db/rows.ts";
 import { subsonicId as idFor } from "./libraryMediaStore.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
@@ -648,21 +653,24 @@ export function listArtists(user: SubsonicUser) {
 export function getArtist(value: string, user?: SubsonicUser) {
   const parsed = parseId(value);
   if (parsed?.kind !== "artist") return null;
-  const name = parsed.key.startsWith("name:artist:")
-    ? parsed.key.slice("name:artist:".length)
-    : null;
+  const named = parsed.key.startsWith("name:artist:")
+    ? db
+        .prepare<[string], Pick<LibraryArtistsRow, "id">>(
+          "SELECT id FROM library_artists WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1",
+        )
+        .get(parsed.key.slice("name:artist:".length))
+    : undefined;
   const library = indexFocusedLibrary(
     getLibraryForArtistReferences({
       source: "all",
       availableOnly: true,
-      references: name ? [parsed.key, name] : [parsed.key],
+      references: named ? [parsed.key, String(named.id)] : [parsed.key],
       includeSharedAlbums: true,
     }),
     starredAtFor(user),
   );
   const artist =
-    findLibraryEntry(library, parsed) ||
-    library.artists.find((entry) => entry.name.toLocaleLowerCase() === name);
+    findLibraryEntry(library, parsed) || (named ? library.artistsById.get(named.id) : undefined);
   return artist?.identityKey ? toArtist(library, artist) : null;
 }
 
