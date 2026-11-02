@@ -13,6 +13,7 @@ import {
   saveCustomArtworkUpload,
   saveCustomArtworkUrl,
 } from "../../../services/customArtworkService.ts";
+import { syncAlbumFolderCovers } from "../../../services/libraryArtwork.ts";
 import { sendFile } from "../../../services/fileResponses.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -90,6 +91,7 @@ export default new Hono<AppEnv>()
       const { kind, id } = c.req.param();
       try {
         const artwork = await saveCustomArtworkUpload(kind, id, body, contentType);
+        if (kind === "album") await syncAlbumFolderCovers(Number(id));
         return c.json({ ok: true, updatedAt: artwork.updatedAt }, 200);
       } catch (error) {
         return c.json(
@@ -112,6 +114,7 @@ export default new Hono<AppEnv>()
       const { kind, id } = c.req.param();
       try {
         const artwork = await saveCustomArtworkUrl(kind, id, c.req.valid("json").url);
+        if (kind === "album") await syncAlbumFolderCovers(Number(id));
         return c.json({ ok: true, updatedAt: artwork.updatedAt }, 200);
       } catch (error) {
         return c.json(
@@ -127,5 +130,6 @@ export default new Hono<AppEnv>()
   .delete("/artwork/:kind/:id", requireAuth, canEditArtwork, validateTarget, async (c) => {
     const { kind, id } = c.req.param();
     await removeCustomArtwork(kind, id);
+    if (kind === "album") await syncAlbumFolderCovers(Number(id));
     return c.json({ ok: true }, 200);
   });

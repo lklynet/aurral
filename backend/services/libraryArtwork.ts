@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseFile, selectCover } from "music-metadata";
 import { db } from "../config/db-sqlite.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import type {
@@ -19,12 +21,15 @@ import {
   optimizeImageBuffer,
 } from "./imageProxyService.ts";
 import { getArtistImage } from "./imageService.ts";
+import { getCustomArtwork } from "./customArtworkService.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
+import getSharp from "./sharpConfig.ts";
 import { readLibraryMetadata } from "./libraryMetadata.ts";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.ts";
 
 export type LibraryArtworkKind = "album" | "artist";
 type Artwork = { buffer: Uint8Array; contentType: string };
-type ArtworkLookup = { artwork: Artwork | null; transient?: boolean };
+type ArtworkLookup = { artwork: Artwork | null; transient?: boolean; fromFiles?: boolean };
 type StoredArtwork = { filePath: string; contentType: string };
 
 const ARTWORK_DIR = path.join(resolveAurralDataDir(), "library-artwork");
@@ -32,6 +37,9 @@ const MISSING_TTL_SECONDS = 24 * 60 * 60;
 const TRANSIENT_TTL_SECONDS = 5 * 60;
 const ARTIST_FALLBACK_ALBUMS = 5;
 const SIDECAR_NAMES = ["cover", "folder", "front", "album"];
+const COVER_MARKER = "aurral:album-cover";
+// Navidrome and Aurral both ignore this name, so a kept cover stays hidden.
+const ORIGINAL_COVER = "cover-original";
 const SIDECAR_CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -91,6 +99,17 @@ const albumStmt = db.prepare<
 const albumFilesStmt = db.prepare<[number], Pick<LibraryMediaFilesRow, "path">>(
   `SELECT path FROM library_media_files
   WHERE album_id = ? AND available = 1 ORDER BY path COLLATE NOCASE LIMIT 100`,
+);
+const aurralFilesStmt = db.prepare<[number], Pick<LibraryMediaFilesRow, "path">>(
+  "SELECT path FROM library_media_files WHERE album_id = ? AND available = 1 AND source = 'aurral'",
+);
+const changedAlbumsStmt = db.prepare<
+  [string],
+  { album_id: NonNullable<LibraryMediaFilesRow["album_id"]> }
+>(
+  `SELECT DISTINCT album_id FROM library_media_files
+  WHERE source = 'aurral' AND available = 1 AND album_id IS NOT NULL
+    AND path IN (SELECT value FROM json_each(?))`,
 );
 const artistStmt = db.prepare<[number], Pick<LibraryArtistsRow, "mbid" | "name">>(
   "SELECT mbid, name FROM library_artists WHERE id = ?",
@@ -262,7 +281,7 @@ async function findArtistPhoto(mbid: string, artistName: string): Promise<Artwor
 
 async function findAlbumCover(albumId: number): Promise<ArtworkLookup> {
   const fileArtwork = await readFileArtwork(albumId);
-  if (fileArtwork) return { artwork: fileArtwork };
+  if (fileArtwork) return { artwork: fileArtwork, fromFiles: true };
   const album = albumStmt.get(albumId);
   if (!album) return { artwork: null };
   const metadataUrl = metadataImageUrl(album.metadata_json);
@@ -344,13 +363,139 @@ async function loadArtwork(kind: LibraryArtworkKind, id: number, version: string
   if (stored) return stored;
   const scannedAt = latestScanStmt.get()?.completedAt ?? 0;
   if (missingArtwork.get(key) === scannedAt) return null;
-  const { artwork, transient } =
+  const { artwork, transient, fromFiles } =
     kind === "album" ? await findAlbumArtwork(id) : await findArtistArtwork(id);
-  const created = artwork && (await storeArtwork(kind, id, version, artwork));
-  if (!created) {
+  const created = artwork ? await storeArtwork(kind, id, version, artwork) : null;
+  if (!artwork || !created) {
     missingArtwork.set(key, scannedAt, transient ? TRANSIENT_TTL_SECONDS : MISSING_TTL_SECONDS);
+    return null;
   }
+  if (kind === "album" && !fromFiles) await writeFolderCovers(id, artwork);
   return created;
+}
+
+const albumFolders = (albumId: number) =>
+  new Set(aurralFilesStmt.all(albumId).map((file) => path.dirname(file.path)));
+
+const encodeCover = async (buffer: Uint8Array) =>
+  (await getSharp())(buffer)
+    .jpeg({ quality: 90 })
+    .withExif({ IFD0: { ImageDescription: COVER_MARKER } })
+    .toBuffer();
+
+async function isAurralCover(filePath: string) {
+  try {
+    const { exif } = await (await getSharp())(filePath).metadata();
+    return Boolean(exif?.includes(COVER_MARKER));
+  } catch {
+    return false;
+  }
+}
+
+async function moveWithoutReplacing(from: string, to: string) {
+  try {
+    await fs.copyFile(from, to, constants.COPYFILE_EXCL);
+  } catch (error) {
+    if (asAppError(error)?.code === "EEXIST") return;
+    throw error;
+  }
+  await fs.rm(from, { force: true });
+}
+
+async function writeNewFile(filePath: string, contents: Buffer) {
+  await fs.writeFile(filePath, contents, { flag: "wx" }).catch((error) => {
+    if (asAppError(error)?.code !== "EEXIST") throw error;
+  });
+}
+
+async function warnOnFailure(albumId: number, work: () => Promise<void>) {
+  try {
+    await work();
+  } catch (error) {
+    logger.warn("library", "Could not update album art in the album folder", {
+      albumId,
+      reason: safeLogDiagnostic(error),
+    });
+  }
+}
+
+const writeFolderCovers = (albumId: number, artwork: Artwork) =>
+  warnOnFailure(albumId, async () => {
+    if (getCustomArtwork("album", albumId)) return;
+    let cover: Buffer | undefined;
+    for (const folder of albumFolders(albumId)) {
+      const names = await fs.readdir(folder).catch(() => null);
+      if (!names || names.some((name) => sidecarRank(name) >= 0)) continue;
+      cover ??= await encodeCover(artwork.buffer);
+      await writeNewFile(path.join(folder, "cover.jpg"), cover);
+    }
+  });
+
+async function placeCustomCover(folder: string, cover: Buffer) {
+  const target = path.join(folder, "cover.jpg");
+  const current = await fs.readFile(target).catch(() => null);
+  if (current?.equals(cover)) return;
+  for (const name of await fs.readdir(folder)) {
+    if (sidecarRank(name) !== 0) continue;
+    const filePath = path.join(folder, name);
+    if (await isAurralCover(filePath)) await fs.rm(filePath, { force: true });
+    else {
+      const original = path.join(folder, `${ORIGINAL_COVER}${path.extname(name)}`);
+      await moveWithoutReplacing(filePath, original);
+    }
+  }
+  await writeNewFile(target, cover);
+}
+
+async function restoreFolderCover(folder: string) {
+  const names = await fs.readdir(folder).catch(() => null);
+  if (!names) return;
+  for (const name of names) {
+    const filePath = path.join(folder, name);
+    if (sidecarRank(name) === 0 && (await isAurralCover(filePath))) {
+      await fs.rm(filePath, { force: true });
+    }
+  }
+  for (const name of names) {
+    const extension = path.extname(name);
+    if (path.basename(name, extension).toLowerCase() !== ORIGINAL_COVER) continue;
+    if (!SIDECAR_CONTENT_TYPES[extension.toLowerCase()]) continue;
+    await moveWithoutReplacing(path.join(folder, name), path.join(folder, `cover${extension}`));
+  }
+}
+
+const folderSyncs = new Map<number, Promise<void>>();
+
+export function syncAlbumFolderCovers(albumId: number) {
+  const sync = (folderSyncs.get(albumId) ?? Promise.resolve()).then(() =>
+    syncFolderCovers(albumId),
+  );
+  folderSyncs.set(albumId, sync);
+  return sync.finally(() => {
+    if (folderSyncs.get(albumId) === sync) folderSyncs.delete(albumId);
+  });
+}
+
+const syncFolderCovers = (albumId: number) =>
+  warnOnFailure(albumId, async () => {
+    const custom = getCustomArtwork("album", albumId);
+    if (custom) {
+      const cover = await encodeCover(await fs.readFile(custom.filePath));
+      for (const folder of albumFolders(albumId)) await placeCustomCover(folder, cover);
+      return;
+    }
+    for (const folder of albumFolders(albumId)) await restoreFolderCover(folder);
+    await fs.rm(itemFolder("album", albumId), { recursive: true, force: true });
+    const version = getLibraryArtworkVersions("album", [albumId]).get(String(albumId));
+    missingArtwork.delete(`album:${albumId}:${version}`);
+    await getLibraryArtwork("album", String(albumId));
+  });
+
+export async function resolveChangedAlbumCovers(filePaths: Iterable<string>) {
+  for (const { album_id } of changedAlbumsStmt.all(JSON.stringify([...filePaths]))) {
+    if (getCustomArtwork("album", album_id)) await syncAlbumFolderCovers(album_id);
+    else await getLibraryArtwork("album", String(album_id)).catch(() => null);
+  }
 }
 
 export function getLibraryArtwork(kind: LibraryArtworkKind, id: string) {
