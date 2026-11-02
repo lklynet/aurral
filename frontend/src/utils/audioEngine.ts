@@ -1,4 +1,5 @@
 import { Howl } from "howler";
+import { createPlayTracker } from "./playTracker.ts";
 
 declare module "howler" {
   interface Howl {
@@ -15,6 +16,7 @@ type AudioSnapshot = {
 
 type AudioHandlers = {
   onEnd?: () => void;
+  onPlayed?: () => void;
   onLoadError?: (...args: unknown[]) => void;
 };
 
@@ -30,6 +32,8 @@ type AudioEntry = {
   node: HTMLAudioElement | null;
   onMediaEvent: () => void;
   onEnded: () => void;
+  onTimeUpdate: () => void;
+  onSeeking: () => void;
 };
 
 const IDLE_SNAPSHOT: AudioSnapshot = {
@@ -127,7 +131,17 @@ export function createAudioEngine() {
       entry.wantsPlay = false;
       entry.handlers?.onEnd?.();
     };
+    const tracker = createPlayTracker();
+    entry.onTimeUpdate = () => {
+      const node = entry.node;
+      if (entry !== current || !node) return;
+      if (node.seeking) tracker.seeking();
+      else if (tracker.update(node.currentTime, node.duration)) entry.handlers?.onPlayed?.();
+    };
+    entry.onSeeking = tracker.seeking;
     entry.node?.addEventListener("ended", entry.onEnded);
+    entry.node?.addEventListener("timeupdate", entry.onTimeUpdate);
+    entry.node?.addEventListener("seeking", entry.onSeeking);
     for (const event of MEDIA_EVENTS) entry.node?.addEventListener(event, entry.onMediaEvent);
     return entry;
   };
@@ -136,6 +150,8 @@ export function createAudioEngine() {
     if (!entry) return;
     entry.handlers = null;
     entry.node?.removeEventListener("ended", entry.onEnded);
+    entry.node?.removeEventListener("timeupdate", entry.onTimeUpdate);
+    entry.node?.removeEventListener("seeking", entry.onSeeking);
     for (const event of MEDIA_EVENTS) entry.node?.removeEventListener(event, entry.onMediaEvent);
     entry.howl.unload();
   };
@@ -159,6 +175,7 @@ export function createAudioEngine() {
       autoplay = true,
       startAt = 0,
       onEnd,
+      onPlayed,
       onLoadError,
     }: AudioHandlers & {
       src: string;
@@ -171,7 +188,7 @@ export function createAudioEngine() {
       else if (sameSource(preloaded, src, format)) discardPreload();
       const previous = current;
       current = reusable ?? createEntry({ src, format });
-      current.handlers = { onEnd, onLoadError };
+      current.handlers = { onEnd, onPlayed, onLoadError };
       release(previous);
       if (startAt > 0) {
         current.startAt = startAt;
