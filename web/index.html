@@ -8,7 +8,7 @@
       name="description"
       content="The best open-source music discovery for your self-hosted library. Recommendations, rotating flows, and playlist downloads. Works alone or alongside Lidarr."
     />
-    <meta name="theme-color" content="#050505" />
+    <meta name="theme-color" content="#000000" />
     <link rel="canonical" href="https://aurral.org/" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="preload" as="image" href="screenshots/discover.webp" />
@@ -29,7 +29,8 @@
         --font-sans:
           ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        --chrome: #050505;
+        --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+        --chrome: #000000;
         --surface: #111111;
         --text: #f5f5f5;
         --text-muted: rgb(255 255 255 / 58%);
@@ -59,9 +60,13 @@
       }
 
       body {
-        background: var(--chrome);
+        background-color: var(--chrome);
+        background-image: var(--grain);
+        background-repeat: repeat;
+        background-size: 256px 256px;
         color: var(--text);
         font: 400 17px / 1.55 var(--font-sans);
+        isolation: isolate;
         margin: 0;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -148,9 +153,7 @@
       /* Navigation */
 
       .nav {
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        background: rgb(5 5 5 / 80%);
+        background: rgb(0 0 0 / var(--nav-opacity, 0));
         border-bottom: 1px solid transparent;
         position: sticky;
         top: 0;
@@ -159,6 +162,8 @@
       }
 
       .nav.is-scrolled {
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         border-bottom-color: var(--border);
       }
 
@@ -333,6 +338,70 @@
         justify-items: center;
         padding-block: 72px 56px;
         text-align: center;
+      }
+
+      .hero-atmosphere {
+        height: 800px;
+        inset: 0 0 auto;
+        isolation: isolate;
+        mask-image: linear-gradient(#000 40%, transparent 100%);
+        overflow: hidden;
+        pointer-events: none;
+        position: fixed;
+        z-index: -1;
+      }
+
+      .hero-light,
+      .hero-glow,
+      .hero-grain {
+        inset: 0;
+        position: absolute;
+      }
+
+      .hero-light {
+        filter: brightness(var(--light-power, 1));
+        transform: scale(var(--light-power, 1));
+        transform-origin: left top;
+        background:
+          radial-gradient(
+            ellipse 24% 34% at var(--pulled-x, 0%) var(--pulled-y, 0%),
+            rgb(211 200 176 / var(--pulled-energy, 0)),
+            transparent 75%
+          ),
+          radial-gradient(
+            ellipse 95% 130% at var(--source-x, 0%) var(--source-y, -8%),
+            color-mix(in srgb, #f3e5c5 var(--source-energy, 100%), transparent) 0%,
+            color-mix(in srgb, #b5afa2b0 var(--source-energy, 100%), transparent) 18%,
+            color-mix(in srgb, #65625880 var(--source-energy, 100%), transparent) 40%,
+            transparent 73%
+          );
+      }
+
+      .hero-glow {
+        display: none;
+        filter: brightness(var(--light-power, 1));
+        height: 100%;
+        opacity: var(--pull-opacity, 0);
+        width: 100%;
+      }
+
+      .hero-grain {
+        background-image: url("spotlight-grain.svg");
+        mask-image: linear-gradient(145deg, #000, transparent 85%);
+        mix-blend-mode: soft-light;
+        opacity: calc(0.6 * var(--light-power, 1));
+      }
+
+      @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+        .hero-glow {
+          display: block;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .hero-light {
+          transform: none;
+        }
       }
 
       .hero .actions {
@@ -863,6 +932,58 @@
 
     <a class="skip" href="#main">Skip to content</a>
 
+    <div class="hero-atmosphere" aria-hidden="true">
+      <div class="hero-light" aria-hidden="true"></div>
+      <svg class="hero-glow" viewBox="0 0 720 440" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <filter
+            id="hero-merge"
+            filterUnits="userSpaceOnUse"
+            x="-160"
+            y="-160"
+            width="1040"
+            height="760"
+            color-interpolation-filters="sRGB"
+          >
+            <feGaussianBlur stdDeviation="12" />
+            <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 14 -3.8" />
+            <feGaussianBlur stdDeviation="14" />
+          </filter>
+          <mask
+            id="hero-light-mask"
+            maskUnits="userSpaceOnUse"
+            x="0"
+            y="0"
+            width="720"
+            height="440"
+            style="mask-type: alpha"
+          >
+            <g filter="url(#hero-merge)" fill="white">
+              <g data-corner-light transform="translate(5 -10)">
+                <ellipse rx="180" ry="155" />
+                <path data-light-neck d="M0 0 Z" />
+                <circle data-light-blob r="0" />
+              </g>
+            </g>
+          </mask>
+          <linearGradient
+            id="hero-warmth"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="117"
+            y2="0"
+          >
+            <stop data-source-warmth stop-color="#f3e5c5" />
+            <stop offset="0.5" stop-color="#a8a598" />
+            <stop offset="1" stop-color="#d3c8b0" />
+          </linearGradient>
+        </defs>
+        <rect width="720" height="440" fill="url(#hero-warmth)" mask="url(#hero-light-mask)" />
+      </svg>
+      <div class="hero-grain" aria-hidden="true"></div>
+    </div>
+
     <header class="nav" data-nav>
       <div class="wrap">
         <a class="brand" href="/" aria-label="Aurral home">
@@ -1369,10 +1490,200 @@
     </footer>
 
     <script type="module">
+      const hero = document.querySelector(".hero");
+      const atmosphere = document.querySelector(".hero-atmosphere");
       const nav = document.querySelector("[data-nav]");
-      const onScroll = () => nav.classList.toggle("is-scrolled", scrollY > 8);
+      const cornerLight = atmosphere.querySelector("[data-corner-light]");
+      const lightNeck = atmosphere.querySelector("[data-light-neck]");
+      const lightBlob = atmosphere.querySelector("[data-light-blob]");
+      const warmth = atmosphere.querySelector("#hero-warmth");
+      const sourceWarmth = atmosphere.querySelector("[data-source-warmth]");
+      let fadeDistance = 1;
+      let lightPower = 1;
+      const interactiveLight = matchMedia(
+        "(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)",
+      );
+      let lightX = 0;
+      let lightY = 0;
+      let shoulderX = 0;
+      let shoulderY = 0;
+      let velocityX = 0;
+      let velocityY = 0;
+      let targetX = lightX;
+      let targetY = lightY;
+      let lightFrame = 0;
+      let lastLightTime = 0;
+      let cursorX = 0;
+      let cursorY = 0;
+      let hasLightPointer = false;
+
+      const boundReach = (reach, x, y) => {
+        if (!hasLightPointer || !lightPower) return reach;
+        const edge = 1 / Math.hypot(x / 180, y / 155);
+        const available = Math.max(0, (cursorX * x + cursorY * y) / lightPower - edge * 0.65 + 4);
+        const limit = Math.max(available / (1.4 + 52 / 105), (available - 52) / 1.4);
+        return Math.min(reach, limit);
+      };
+      const paintLight = () => {
+        const reach = Math.hypot(lightX, lightY);
+        const x = reach ? lightX / reach : 1;
+        const y = reach ? lightY / reach : 0;
+        const shoulderReach = Math.hypot(shoulderX, shoulderY);
+        const baseX = shoulderReach ? shoulderX / shoulderReach : x;
+        const baseY = shoulderReach ? shoulderY / shoulderReach : y;
+        const edge = 1 / Math.hypot(x / 180, y / 155);
+        const baseEdge = 1 / Math.hypot(baseX / 180, baseY / 155);
+        const radius = 52 * Math.min(1, reach / 105);
+        const tipX = x * (edge * 0.65 + reach * 1.4);
+        const tipY = y * (edge * 0.65 + reach * 1.4);
+        const draw = Math.min(1, reach / 185);
+        const glowX = (tipX / 720) * 100;
+        const glowY = (tipY / 440) * 100;
+        atmosphere.style.setProperty("--pull-opacity", String(draw * 0.45));
+        atmosphere.style.setProperty("--source-energy", `${100 - draw * 60}%`);
+        atmosphere.style.setProperty("--source-x", `${glowX * draw * 0.22}%`);
+        atmosphere.style.setProperty("--source-y", `${-8 + (glowY + 8) * draw * 0.22}%`);
+        atmosphere.style.setProperty("--pulled-x", `${glowX}%`);
+        atmosphere.style.setProperty("--pulled-y", `${glowY}%`);
+        atmosphere.style.setProperty("--pulled-energy", String(draw * 0.24));
+        sourceWarmth.setAttribute("stop-opacity", String(1 - draw * 0.55));
+        warmth.setAttribute("x2", String(tipX));
+        warmth.setAttribute("y2", String(tipY));
+        const rootX = baseX * baseEdge * 0.72;
+        const rootY = baseY * baseEdge * 0.72;
+        const neckX = rootX * 0.45 + tipX * 0.55;
+        const neckY = rootY * 0.45 + tipY * 0.55;
+        const neckWidth = Math.max(10, 35 - reach * 0.13);
+        const joinX = tipX - x * radius * 0.35;
+        const joinY = tipY - y * radius * 0.35;
+        const point = (cx, cy, width) =>
+          `${(cx - y * width).toFixed(2)} ${(cy + x * width).toFixed(2)}`;
+        lightNeck.setAttribute(
+          "d",
+          [
+            `M${point(rootX, rootY, 75)}`,
+            `C${point(rootX + x * 40, rootY + y * 40, 75)} ${point(neckX - x * 40, neckY - y * 40, neckWidth)} ${point(neckX, neckY, neckWidth)}`,
+            `C${point(neckX + x * 35, neckY + y * 35, neckWidth)} ${point(joinX - x * radius * 0.6, joinY - y * radius * 0.6, radius * 0.85)} ${point(joinX, joinY, radius * 0.85)}`,
+            `L${point(joinX, joinY, -radius * 0.85)}`,
+            `C${point(joinX - x * radius * 0.6, joinY - y * radius * 0.6, -radius * 0.85)} ${point(neckX + x * 35, neckY + y * 35, -neckWidth)} ${point(neckX, neckY, -neckWidth)}`,
+            `C${point(neckX - x * 40, neckY - y * 40, -neckWidth)} ${point(rootX + x * 40, rootY + y * 40, -75)} ${point(rootX, rootY, -75)} Z`,
+          ].join(" "),
+        );
+        lightBlob.setAttribute("cx", String(tipX));
+        lightBlob.setAttribute("cy", String(tipY));
+        lightBlob.setAttribute("r", String(radius));
+        cornerLight.setAttribute("transform", `translate(5 -10) scale(${lightPower})`);
+      };
+      const moveLight = (time) => {
+        lightFrame = 0;
+        const elapsed = lastLightTime ? Math.min(time - lastLightTime, 40) : 16;
+        lastLightTime = time;
+        const amount = 1 - Math.exp(-elapsed / 250);
+        shoulderX += (targetX - shoulderX) * amount;
+        shoulderY += (targetY - shoulderY) * amount;
+        const steps = Math.ceil(elapsed / 8);
+        const dt = elapsed / steps / 1000;
+        for (let step = 0; step < steps; step++) {
+          velocityX += ((targetX - lightX) * 25 - velocityX * 12) * dt;
+          velocityY += ((targetY - lightY) * 25 - velocityY * 12) * dt;
+          lightX += velocityX * dt;
+          lightY += velocityY * dt;
+        }
+        const settled =
+          Math.hypot(targetX - lightX, targetY - lightY) < 0.1 &&
+          Math.hypot(targetX - shoulderX, targetY - shoulderY) < 0.1 &&
+          Math.hypot(velocityX, velocityY) < 0.5;
+        if (settled) {
+          lightX = targetX;
+          lightY = targetY;
+          shoulderX = targetX;
+          shoulderY = targetY;
+          velocityX = 0;
+          velocityY = 0;
+          lastLightTime = 0;
+        } else {
+          lightFrame = requestAnimationFrame(moveLight);
+        }
+        paintLight();
+      };
+      const stopLight = () => {
+        cancelAnimationFrame(lightFrame);
+        lightFrame = 0;
+        lastLightTime = 0;
+        lightX = 0;
+        lightY = 0;
+        shoulderX = 0;
+        shoulderY = 0;
+        velocityX = 0;
+        velocityY = 0;
+        targetX = 0;
+        targetY = 0;
+        hasLightPointer = false;
+        paintLight();
+      };
+      const releaseLight = () => {
+        hasLightPointer = false;
+        targetX = 0;
+        targetY = 0;
+        if (!lightFrame && (lightX || lightY || shoulderX || shoulderY)) {
+          lightFrame = requestAnimationFrame(moveLight);
+        }
+      };
+      document.addEventListener("pointermove", (event) => {
+        if (!interactiveLight.matches || event.pointerType === "touch" || !lightPower) return;
+        const bounds = atmosphere.getBoundingClientRect();
+        if (event.clientY > bounds.bottom) {
+          releaseLight();
+          return;
+        }
+        const x = ((event.clientX - bounds.left) / bounds.width) * 720 - 5;
+        const y = ((event.clientY - bounds.top) / bounds.height) * 440 + 10;
+        cursorX = x;
+        cursorY = y;
+        hasLightPointer = true;
+        const distance = Math.hypot(x, y);
+        const directionX = distance ? x / distance : 1;
+        const directionY = distance ? y / distance : 0;
+        const proximity = Math.hypot(x / (180 * lightPower), y / (155 * lightPower));
+        const influence = Math.min(1, Math.max(0, (3.4 - proximity) / 1.6));
+        const stretch = Math.min(1, Math.max(0, (proximity - 0.35) / 1.5));
+        const reach = boundReach(
+          185 * stretch ** 2 * (3 - 2 * stretch) * influence ** 2 * (3 - 2 * influence),
+          directionX,
+          directionY,
+        );
+        targetX = directionX * reach;
+        targetY = directionY * reach;
+        if (!lightFrame && (reach || lightX || lightY || shoulderX || shoulderY)) {
+          lightFrame = requestAnimationFrame(moveLight);
+        }
+      });
+      document.documentElement.addEventListener("pointerleave", releaseLight);
+      addEventListener("blur", releaseLight);
+      document.addEventListener("pointercancel", releaseLight);
+      interactiveLight.addEventListener("change", stopLight);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stopLight();
+      });
+
+      const onScroll = () => {
+        const progress = Math.min(1, Math.max(0, scrollY) / fadeDistance);
+        lightPower = 1 - progress;
+        atmosphere.hidden = lightPower === 0;
+        atmosphere.style.setProperty("--light-power", String(lightPower));
+        paintLight();
+        nav.style.setProperty("--nav-opacity", String(0.8 * (1 - lightPower)));
+        nav.classList.toggle("is-scrolled", scrollY > 0);
+        if (!lightPower) stopLight();
+      };
+      const sizeAtmosphere = () => {
+        fadeDistance = hero.getBoundingClientRect().bottom + scrollY;
+        atmosphere.style.height = `${fadeDistance + 240}px`;
+        onScroll();
+      };
+      new ResizeObserver(sizeAtmosphere).observe(hero);
       addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
+      sizeAtmosphere();
 
       document.querySelector("[data-integration-count]").textContent = String(
         document.querySelectorAll("[data-integration]").length,
