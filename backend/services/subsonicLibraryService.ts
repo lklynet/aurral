@@ -334,6 +334,11 @@ const toSong = (
   ];
   const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   const artistValue = protocolArtist(artist, track.artistName || "Unknown Artist");
+  const trackArtistName = track.artistName?.trim();
+  const trackArtistValue =
+    trackArtistName && trackArtistName !== artistValue.name
+      ? protocolArtist(null, trackArtistName)
+      : artistValue;
   const format = String(file?.format || "mp3").toLowerCase();
   const song: LibrarySong = {
     id: idFor("song", track.identityKey),
@@ -342,11 +347,11 @@ const toSong = (
     isVideo: false,
     title: track.title,
     album: album?.title || "Unknown Album",
-    artist: artistValue.name,
+    artist: trackArtistValue.name,
     albumId: album ? idFor("album", album.identityKey) : undefined,
     artistId: artistValue.id,
     albumArtists: [artistValue],
-    artists: [artistValue],
+    artists: [trackArtistValue],
     contentType: audioContentType(format),
     created: isoDate(track.createdAt ?? file?.createdAt ?? file?.mtimeMs),
     track: Number(relation?.trackNumber) || 0,
