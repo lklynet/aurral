@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: "Aurral - Music Discovery",
           short_name: "Aurral",
-          description: "Self-hosted music discovery and library management.",
+          description: "Find new music, get it, and play it, all on your own server.",
           theme_color: "#000000",
           background_color: "#000000",
           display: "standalone",

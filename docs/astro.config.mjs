@@ -6,7 +6,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Aurral",
-      description: "Documentation for Aurral: self-hosted music discovery and library management.",
+      description: "Aurral docs. Find new music, get it, and play it, all on your own server.",
       logo: {
         alt: "Aurral",
         src: "./src/assets/logo.svg",

@@ -2,7 +2,7 @@
   "name": "aurral",
   "version": "2.0.0",
   "private": true,
-  "description": "Self-hosted music discovery and library management.",
+  "description": "Find new music, get it, and play it, all on your own server.",
   "keywords": [
     "lidarr",
     "music",
