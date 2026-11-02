@@ -648,16 +648,21 @@ export function listArtists(user: SubsonicUser) {
 export function getArtist(value: string, user?: SubsonicUser) {
   const parsed = parseId(value);
   if (parsed?.kind !== "artist") return null;
+  const name = parsed.key.startsWith("name:artist:")
+    ? parsed.key.slice("name:artist:".length)
+    : null;
   const library = indexFocusedLibrary(
     getLibraryForArtistReferences({
       source: "all",
       availableOnly: true,
-      references: [parsed.key],
+      references: name ? [parsed.key, name] : [parsed.key],
       includeSharedAlbums: true,
     }),
     starredAtFor(user),
   );
-  const artist = findLibraryEntry(library, parsed);
+  const artist =
+    findLibraryEntry(library, parsed) ||
+    library.artists.find((entry) => entry.name.toLocaleLowerCase() === name);
   return artist?.identityKey ? toArtist(library, artist) : null;
 }
 

@@ -26,6 +26,7 @@ const [isolatedState, { db }, subsonic, libraryStore, artworkService] = await se
 const {
   getSong,
   getAlbum,
+  getArtist,
   getAlbumList,
   getGenres,
   getMusicDirectory,
@@ -982,6 +983,67 @@ test.each(["Various Artists", "Album Owner"])(
     }
   },
 );
+
+test("opens a compilation track artist that is in the library by name", () => {
+  const various = upsertLibraryArtist({
+    identityKey: "performer:various",
+    name: "Various Artists",
+  });
+  const compilation = upsertLibraryAlbum({
+    identityKey: "performer:compilation",
+    artistId: various.id,
+    title: "Performer Compilation",
+    albumArtist: various.name,
+  });
+  const performer = upsertLibraryArtist({
+    identityKey: "performer:artist",
+    name: "The Performers",
+    mbid: "22222222-2222-4222-8222-222222222222",
+  });
+  const ownAlbum = upsertLibraryAlbum({
+    identityKey: "performer:own-album",
+    artistId: performer.id,
+    title: "Performer Album",
+    albumArtist: performer.name,
+  });
+  const tracks = [
+    { album: compilation, artistName: "the performers" },
+    { album: ownAlbum, artistName: performer.name },
+  ].map(({ album, artistName }, index) => {
+    const track = upsertLibraryTrack({
+      identityKey: `performer:track:${index}`,
+      title: `Performer Song ${index}`,
+      artistName,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      albumId: album.id,
+      trackId: track.id,
+      source: "aurral",
+      path: `/test/performer/${index}.flac`,
+      available: true,
+    });
+    return track;
+  });
+
+  try {
+    const song = getSong(idFor("song", tracks[0].identity_key));
+    const opened = getArtist(requireFixture(song?.artists[0]).id);
+    assert.equal(opened?.id, idFor("artist", performer.identity_key));
+    assert.equal(opened?.name, performer.name);
+    assert.equal(getArtist(idFor("artist", "name:artist:nobody here")), null);
+  } finally {
+    for (const album of [compilation, ownAlbum]) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    }
+    for (const track of tracks) db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    for (const artist of [various, performer]) {
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    }
+  }
+});
 
 test("reports known file bitrates in kbps and omits unknown ones", () => {
   const artist = upsertLibraryArtist({ identityKey: "bitrate:artist", name: "Bitrate Artist" });
