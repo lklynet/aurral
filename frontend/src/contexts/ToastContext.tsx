@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useMemo } fro
 import type { ReactNode } from "react";
 import { ToastContainer } from "../components/Toast";
 import type { ToastType } from "../components/Toast";
+import type { IconComponent } from "../components/icons";
 import { stackToast } from "../utils/toastStack.ts";
 
 const MAX_TOASTS = 4;
@@ -9,6 +10,7 @@ const MAX_TOASTS = 4;
 type ToastContent = {
   duration?: number;
   artwork?: string[];
+  icon?: IconComponent;
   onClose?: () => void;
 } & (
   | { message: ReactNode }

@@ -3029,6 +3029,16 @@ textarea:disabled {
   height: 1rem;
 }
 
+.app-toast__icon--large {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.app-toast__icon--large svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
 .app-toast__artwork {
   display: grid;
   flex-shrink: 0;
@@ -14934,6 +14944,10 @@ a.blocklist-page__name:focus-visible {
 
 .app-toast--loading .app-toast__icon {
   color: var(--aurral-text-muted);
+}
+
+.app-toast .app-toast__icon--large {
+  color: var(--aurral-text);
 }
 
 .artist-details-page {
