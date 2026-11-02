@@ -221,6 +221,9 @@ importers:
       hono:
         specifier: ^4.13.13
         version: 4.13.13
+      libxml2-wasm:
+        specifier: ^0.7.2
+        version: 0.7.2
       music-metadata:
         specifier: ^12.2.1
         version: 12.2.1
@@ -3499,6 +3502,10 @@ packages:
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
+
+  libxml2-wasm@0.7.2:
+    resolution: {integrity: sha512-Ek8Fdb8fIl6mBCvrMGImkOP02aDpANwus0PV827v4gobV9jnoYEHNoPTwWokt71egUBl+sng53fjZ5y2PexLqQ==}
+    engines: {node: '>=18'}
 
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
@@ -7748,6 +7755,8 @@ snapshots:
       invert-kv: 3.0.1
 
   leven@3.1.0: {}
+
+  libxml2-wasm@0.7.2: {}
 
   lightningcss-android-arm64@1.33.0:
     optional: true

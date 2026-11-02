@@ -37,6 +37,8 @@ import {
   resolveStreamPath,
   searchLibrary,
   starMany,
+  toChildAlbum,
+  toIndexArtist,
   updateSubsonicPlaylist,
   unstarMany,
 } from "../services/subsonicLibraryService.ts";
@@ -466,23 +468,23 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     return ok({ playQueue: getPlayQueue(user) });
   }
   if (method === "getalbumlist" || method === "getalbumlist2") {
-    const responseKey = method === "getalbumlist" ? "albumList" : "albumList2";
-    return ok({
-      [responseKey]: {
-        album: getAlbumList(
-          {
-            fromYear: getParameter(params, "fromYear"),
-            genre: getParameter(params, "genre"),
-            offset: getParameter(params, "offset"),
-            size: getParameter(params, "size"),
-            toYear: getParameter(params, "toYear"),
-            type: getParameter(params, "type"),
-            musicFolderId: getParameter(params, "musicFolderId"),
-          },
-          user,
-        ),
+    const albums = getAlbumList(
+      {
+        fromYear: getParameter(params, "fromYear"),
+        genre: getParameter(params, "genre"),
+        offset: getParameter(params, "offset"),
+        size: getParameter(params, "size"),
+        toYear: getParameter(params, "toYear"),
+        type: getParameter(params, "type"),
+        musicFolderId: getParameter(params, "musicFolderId"),
       },
-    });
+      user,
+    );
+    return ok(
+      method === "getalbumlist"
+        ? { albumList: { album: albums.map(toChildAlbum) } }
+        : { albumList2: { album: albums } },
+    );
   }
   if (method === "getgenres") {
     return ok({ genres: { genre: getGenres() } });
@@ -533,7 +535,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
       indexes: {
         ignoredArticles: IGNORED_ARTICLES,
         lastModified,
-        ...(unchanged ? {} : { index: groupArtists(listArtists(user)) }),
+        ...(unchanged ? {} : { index: groupArtists(listArtists(user).map(toIndexArtist)) }),
       },
     });
   }
@@ -601,21 +603,30 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   }
   if (method === "search3" || method === "search2") {
     const query = normalizeSearchQuery(getParameter(params, "query"));
-    return ok({
-      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(
-        query,
-        {
-          musicFolderId: getParameter(params, "musicFolderId"),
-          artistCount: getParameter(params, "artistCount"),
-          artistOffset: getParameter(params, "artistOffset"),
-          albumCount: getParameter(params, "albumCount"),
-          albumOffset: getParameter(params, "albumOffset"),
-          songCount: getParameter(params, "songCount"),
-          songOffset: getParameter(params, "songOffset"),
-        },
-        user,
-      ),
-    });
+    const result = searchLibrary(
+      query,
+      {
+        musicFolderId: getParameter(params, "musicFolderId"),
+        artistCount: getParameter(params, "artistCount"),
+        artistOffset: getParameter(params, "artistOffset"),
+        albumCount: getParameter(params, "albumCount"),
+        albumOffset: getParameter(params, "albumOffset"),
+        songCount: getParameter(params, "songCount"),
+        songOffset: getParameter(params, "songOffset"),
+      },
+      user,
+    );
+    return ok(
+      method === "search3"
+        ? { searchResult3: result }
+        : {
+            searchResult2: {
+              artist: result.artist.map(toIndexArtist),
+              album: result.album.map(toChildAlbum),
+              song: result.song,
+            },
+          },
+    );
   }
   if (method === "getplaylists") {
     return ok({
@@ -649,9 +660,18 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     }
   }
   if (method === "getstarred" || method === "getstarred2") {
-    return ok({
-      [method === "getstarred" ? "starred" : "starred2"]: getStarred(user),
-    });
+    const starred = getStarred(user);
+    return ok(
+      method === "getstarred2"
+        ? { starred2: starred }
+        : {
+            starred: {
+              artist: starred.artist.map(toIndexArtist),
+              album: starred.album.map(toChildAlbum),
+              song: starred.song,
+            },
+          },
+    );
   }
   if (method === "star" || method === "unstar") {
     const targets = getParameters(params, ["id", "albumId", "artistId"]);

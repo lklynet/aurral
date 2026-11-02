@@ -55,6 +55,7 @@
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "hono": "^4.13.13",
+    "libxml2-wasm": "^0.7.2",
     "music-metadata": "^12.2.1",
     "node-taglib-sharp": "^6.0.3",
     "react": "^19.3.1",
