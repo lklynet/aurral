@@ -17,7 +17,14 @@ const [
   { buildPublicLibrary },
   libraryStore,
   { scanMusicRoot },
-  { clearLibraryArtwork, getLibraryArtworkVersions, pruneLibraryArtwork },
+  {
+    clearLibraryArtwork,
+    getLibraryArtworkVersions,
+    pruneLibraryArtwork,
+    resolveChangedAlbumCovers,
+    syncAlbumFolderCovers,
+  },
+  { saveCustomArtworkUpload, removeCustomArtwork },
 ] = await setupIsolatedBackend(
   "album-artwork",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -28,6 +35,7 @@ const [
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/libraryArtwork.ts"),
+  () => import("../../backend/services/customArtworkService.ts"),
 );
 
 const root = path.join(isolatedState.baseDir, "music");
@@ -253,6 +261,75 @@ test("installs without sign-in serve covers to requests without a token", async 
   const result = await requestCover(album.id, { token: null });
   assert.equal(result.status, 200);
   assert.equal(result.contentType, "image/webp");
+});
+
+test("a changed album with only provider art gets a cover.jpg in its folder", async (t) => {
+  stubImageHost(t, blue);
+  const album = await albumFixture("folder-cover", [null, null], {
+    metadata: { images: [{ remoteUrl: "https://images.example/folder-cover.png" }] },
+  });
+  await resolveChangedAlbumCovers([path.join(album.folder, "001.mp3")]);
+  const cover = await fs.readFile(path.join(album.folder, "cover.jpg"));
+  assert.equal((await sharp(cover).metadata()).format, "jpeg");
+  assert.equal(await isBlue(cover), true);
+});
+
+test("album folders with art or outside Aurral's folder get no cover.jpg", async (t) => {
+  stubImageHost(t, blue);
+  const metadata = (name: string) => ({
+    metadata: { images: [{ remoteUrl: `https://images.example/${name}.png` }] },
+  });
+  const embedded = await albumFixture("keeps-embedded", [image], metadata("keeps-embedded"));
+  const broken = await albumFixture("keeps-broken-art", [null], metadata("keeps-broken-art"));
+  await writeFile(path.join(broken.folder, "folder.jpg"), "not an image");
+  const readOnly = await albumFixture("keeps-read-only", [null], metadata("keeps-read-only"));
+  db.prepare("UPDATE library_media_files SET source = 'readonly' WHERE album_id = ?").run(
+    readOnly.id,
+  );
+
+  const albums = [embedded, broken, readOnly];
+  await resolveChangedAlbumCovers(albums.map((album) => path.join(album.folder, "000.mp3")));
+  for (const album of albums) {
+    await assert.rejects(access(path.join(album.folder, "cover.jpg")), album.title);
+  }
+});
+
+test("custom album art becomes the folder cover and removing it brings back the user's cover", async () => {
+  const album = await albumFixture("custom-folder-cover", [null]);
+  const own = path.join(album.folder, "cover.jpg");
+  await sharp(image).jpeg().toFile(own);
+
+  await saveCustomArtworkUpload("album", album.id, blue, "image/png");
+  await syncAlbumFolderCovers(album.id);
+  assert.equal(await isBlue(await fs.readFile(own)), true);
+  assert.equal(
+    await isBlue(await fs.readFile(path.join(album.folder, "cover-original.jpg"))),
+    false,
+  );
+
+  await removeCustomArtwork("album", album.id);
+  await syncAlbumFolderCovers(album.id);
+  assert.equal(await isBlue(await fs.readFile(own)), false);
+  await assert.rejects(access(path.join(album.folder, "cover-original.jpg")));
+});
+
+test("removing custom art from an album without its own cover brings back the found cover", async (t) => {
+  stubImageHost(t, blue);
+  const album = await albumFixture("custom-provider-cover", [null], {
+    metadata: { images: [{ remoteUrl: "https://images.example/custom-provider-cover.png" }] },
+  });
+  const cover = path.join(album.folder, "cover.jpg");
+  await resolveChangedAlbumCovers([path.join(album.folder, "000.mp3")]);
+  assert.equal(await isBlue(await fs.readFile(cover)), true);
+
+  await saveCustomArtworkUpload("album", album.id, image, "image/png");
+  await syncAlbumFolderCovers(album.id);
+  assert.equal(await isBlue(await fs.readFile(cover)), false);
+  await assert.rejects(access(path.join(album.folder, "cover-original.jpg")));
+
+  await removeCustomArtwork("album", album.id);
+  await syncAlbumFolderCovers(album.id);
+  assert.equal(await isBlue(await fs.readFile(cover)), true);
 });
 
 describe("with sign-in required", () => {

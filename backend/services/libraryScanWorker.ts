@@ -467,6 +467,10 @@ const {
         force,
         changedFiles,
       });
+      if (changedPaths) {
+        const { resolveChangedAlbumCovers } = await import("./libraryArtwork.ts");
+        await resolveChangedAlbumCovers(changedFiles);
+      }
     } finally {
       try {
         playlistManager.schedulePlaybackScan([
