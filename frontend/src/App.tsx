@@ -27,6 +27,7 @@ import ReloadPrompt from "./components/ReloadPrompt";
 import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
+import StarPrompt from "./components/StarPrompt";
 import { DotLoader } from "./components/DotLoader";
 import { SkeletonPageTitle } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
@@ -223,6 +224,7 @@ function ProtectedLayout() {
           }
         >
           <SpotifyReconnectNotice />
+          <StarPrompt />
           {healthIssue === "lidarr" && isHealthy && (
             <div className="app-status-banner app-status-banner--warning">
               <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />

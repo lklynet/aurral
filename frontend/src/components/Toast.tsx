@@ -88,6 +88,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
       dismiss();
       return;
     }
+    if (remainingRef.current === Infinity) return;
 
     startedAtRef.current = Date.now();
     timerRef.current = window.setTimeout(dismiss, remainingRef.current);
