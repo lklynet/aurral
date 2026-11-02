@@ -50,7 +50,11 @@ export default function WrappedAnnouncement() {
           action: { label: "Undo", onClick: () => setHidden(false) },
         });
     },
-    onError: () => showError("Wrapped could not be hidden. Try again."),
+    onError: (_error, hidden) =>
+      showError({
+        message: "Wrapped could not be hidden.",
+        action: { label: "Try again", onClick: () => setHidden(hidden) },
+      }),
   });
 
   const ready = Boolean(summary?.totalPlays) && !query.data?.bannerHidden;
