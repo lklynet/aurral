@@ -239,10 +239,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
             autoplay,
           });
         },
+        onPlayed: () => recordPlay(track),
         onEnd: () => {
           const cur = stateRef.current;
           if (cur.currentIndex < 0) return;
-          recordPlay(track);
           const action: QueueAction = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
           const next = queueReducer(cur, action);
           if (next.autoplay) loadTrackRef.current(next, next.currentIndex);
