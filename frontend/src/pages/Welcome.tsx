@@ -4,7 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSiteLogo } from "../hooks/useSiteLogo";
-import { appSettingsQueryOptions, listeningHistoryQueryOptions } from "../queryOptions.ts";
+import {
+  appSettingsQueryOptions,
+  listeningHistoryQueryOptions,
+  spotifyHistoryQueryOptions,
+} from "../queryOptions.ts";
 import { SettingsServiceRow } from "./Settings/SettingsLayout";
 import { readSettingsPath } from "./Settings/settingsRoute";
 import { normalizeSettings } from "./Settings/utils";
@@ -46,6 +50,7 @@ export default function Welcome() {
   const location = useLocation();
   const { user, hasPermission } = useAuth();
   const { data: history } = useQuery(listeningHistoryQueryOptions(user?.id));
+  const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
 
   return (
     <div className="onboarding-page">
@@ -81,6 +86,11 @@ export default function Welcome() {
                     status={history ? configuredStatus(Boolean(history[provider])) : null}
                   />
                 ))}
+                <SettingsServiceRow
+                  to="listening/spotify"
+                  name="Spotify"
+                  status={spotify === undefined ? null : configuredStatus(Boolean(spotify))}
+                />
               </div>
             </section>
             {hasPermission("accessSettings") ? (

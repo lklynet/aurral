@@ -5,10 +5,7 @@ import { parseResponse, type InferRequestType, type InferResponseType } from "ho
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
-import {
-  listeningHistoryQueryOptions,
-  spotifyHistoryQueryOptions,
-} from "../../../queryOptions.ts";
+import { listeningHistoryQueryOptions, spotifyHistoryQueryOptions } from "../../../queryOptions.ts";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
@@ -461,7 +458,7 @@ function SpotifyDetail() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            disabled={busy || summary === undefined}
+            disabled={busy}
             onClick={() => fileInput.current?.click()}
           >
             {busy ? <DotLoader size="xs" label={null} /> : null}
@@ -489,7 +486,6 @@ export function ListeningSection() {
   const scrobbleStatus = useScrobbleStatus();
   const item = useSettingsItem();
   const provider = PROVIDERS.find((id) => id === item);
-
   const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
 
   if (provider) return <ServiceDetail provider={provider} />;

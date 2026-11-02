@@ -85,6 +85,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
       "Last.fm": "scrobbling listening history username recommendations",
       ListenBrainz: "scrobbling user token listening history username recommendations",
       Koito: "scrobbling API key URL listening history recommendations",
+      Spotify: "streaming history data export import zip recommendations",
     },
     fields: {
       "Reset discovery tastes": "more like this less like this blocklist",
