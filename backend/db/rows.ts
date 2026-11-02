@@ -541,6 +541,18 @@ export interface SlskdTransferHistoryRow {
   cleaned_at: number | null;
 }
 
+export interface SpotifyImportArtistsRow {
+  user_id: number;
+  artist: string;
+  plays: number;
+  score: number;
+  liked_tracks: number;
+  followed: number;
+  first_played_at: number | null;
+  last_played_at: number | null;
+  imported_at: number;
+}
+
 export interface SubsonicPlayQueuesRow {
   user_id: number;
   song_ids: string;

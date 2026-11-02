@@ -7,6 +7,7 @@ import feedback from "./handlers/feedback.ts";
 import main from "./handlers/main.ts";
 import preferences from "./handlers/preferences.ts";
 import shows from "./handlers/shows.ts";
+import spotifyImport from "./handlers/spotifyImport.ts";
 import tags from "./handlers/tags.ts";
 import trending from "./handlers/trending.ts";
 
@@ -20,4 +21,5 @@ export default new Hono<AppEnv>()
   .route("/", editorial)
   .route("/", trending)
   .route("/", shows)
+  .route("/", spotifyImport)
   .route("/", preferences);

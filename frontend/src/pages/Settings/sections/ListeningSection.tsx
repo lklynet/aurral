@@ -11,6 +11,8 @@ import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
+import { formatDate } from "../../../utils/dateTime.ts";
+import { readSpotifyExport } from "../../../utils/spotifyExportFiles.ts";
 import { useAccountSettingsContext } from "../SettingsProviders";
 import { SettingsLink } from "../settingsRoute";
 import {
@@ -317,6 +319,115 @@ function ResetTastesRow() {
   );
 }
 
+const SPOTIFY_PRIVACY_URL = "https://www.spotify.com/account/privacy/";
+
+type SpotifyImportSummary = InferResponseType<
+  (typeof discoveryClient)["spotify-import"]["$get"],
+  200
+>["summary"];
+
+const spotifyImportHelp = (summary: NonNullable<SpotifyImportSummary>) =>
+  [
+    summary.plays ? `${summary.plays.toLocaleString()} plays` : null,
+    `${summary.artists.toLocaleString()} artists`,
+    formatDate(new Date(summary.importedAt), { month: "short", day: "numeric", year: "numeric" }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+function SpotifyHistoryRow() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { showSuccess, showError } = useToast();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const queryKey = queryKeys.spotifyImport(user?.id);
+  const { data: summary } = useQuery({
+    queryKey,
+    queryFn: async ({ signal }) =>
+      (await parseResponse(discoveryClient["spotify-import"].$get({}, { init: { signal } })))
+        .summary,
+  });
+
+  const run = async (action: () => Promise<{ summary: SpotifyImportSummary }>, done: string) => {
+    setBusy(true);
+    try {
+      queryClient.setQueryData(queryKey, (await action()).summary);
+      showSuccess(done);
+    } catch (error) {
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Couldn't update your Spotify history");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importFiles = (files: File[]) =>
+    run(async () => {
+      const artists = await readSpotifyExport(files);
+      if (artists.length === 0) throw new Error("No Spotify listening history in those files.");
+      return parseResponse(discoveryClient["spotify-import"].$put({ json: { artists } }));
+    }, "Spotify history imported. Your recommendations are rebuilding.");
+
+  const remove = () => {
+    if (!window.confirm("Remove your Spotify history from your recommendations?")) return;
+    void run(
+      () => parseResponse(discoveryClient["spotify-import"].$delete()),
+      "Spotify history removed.",
+    );
+  };
+
+  return (
+    <SettingsRow
+      label="Spotify history"
+      help={
+        summary ? (
+          spotifyImportHelp(summary)
+        ) : (
+          <>
+            Choose your Spotify data export.{" "}
+            <a
+              href={SPOTIFY_PRIVACY_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="settings-link"
+            >
+              Request it
+            </a>
+          </>
+        )
+      }
+    >
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".zip,.json,application/zip,application/json"
+        multiple
+        hidden
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          event.target.value = "";
+          if (files.length) void importFiles(files);
+        }}
+      />
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={busy}
+        onClick={() => fileInput.current?.click()}
+      >
+        {busy ? <DotLoader size="xs" label={null} /> : null}
+        {summary ? "Replace" : "Import"}
+      </button>
+      {summary ? (
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={remove}>
+          Remove
+        </button>
+      ) : null}
+    </SettingsRow>
+  );
+}
+
 function HistoryGroup() {
   const account = useAccountSettingsContext();
   const provider = account.listenHistoryProvider;
@@ -371,6 +482,7 @@ function HistoryGroup() {
           />
         </SettingsRow>
       ) : null}
+      <SpotifyHistoryRow />
     </SettingsGroup>
   );
 }

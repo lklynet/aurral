@@ -52,6 +52,7 @@ import {
 import { buildTagProfile, collectSeedTags, type SourceHealth } from "./tasteProfile.ts";
 import { buildRecommendationsFromSeeds } from "./recommendations.ts";
 import { getTopPlayedArtists } from "../playEventService.ts";
+import { getTopSpotifyImportArtists } from "../spotify/spotifyImport.ts";
 
 const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
@@ -425,11 +426,15 @@ const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedback
     ...artist,
     source: "local",
   }));
+  const spotifyHistory = getTopSpotifyImportArtists(user.id, 50).map((artist) => ({
+    ...artist,
+    source: "spotify",
+  }));
   const library = sampleLibraryArtistsForDiscovery({ recentLimit: 20, randomLimit: 40 });
 
   return selectDiscoverySeeds({
     likedArtists: feedbackArtists(feedback, "more_like_this"),
-    historyArtists: interleaveLists(externalHistory, localHistory),
+    historyArtists: interleaveLists(externalHistory, localHistory, spotifyHistory),
     libraryArtists: interleaveLists(library.recent, library.random),
     limit: getDiscoveryRecommendationSeedLimit(),
     excludedKeys: buildExistingArtistKeySet([
