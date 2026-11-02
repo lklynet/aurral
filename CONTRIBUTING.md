@@ -64,6 +64,10 @@ Keep UI changes focused and explain any new interaction in the pull request.
 
 Before opening the pull request, run the checks that apply to your change and describe any manual testing in the pull request. Maintainers may ask for a smaller diff, more context, or a separate pull request.
 
+## Screenshots
+
+Store app screenshots in `web/screenshots/`. The README, docs, and marketing site share these files. Replace the file there to update all three.
+
 ## Run the checks
 
 Use Node.js from `.nvmrc` and pnpm from `packageManager` in `package.json`. Run `pnpm install --frozen-lockfile` at the repository root to install the app and docs dependencies. If you use the global Vite+ CLI, `vp install --frozen-lockfile` selects the pinned pnpm version.
