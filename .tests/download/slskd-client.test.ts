@@ -791,7 +791,10 @@ test("getEvents reads the download completions slskd stores as JSON text", async
     response.end(
       JSON.stringify([
         { type: "PrivateMessageReceived", data: JSON.stringify({ message: "hello" }) },
-        { type: "DownloadFileComplete", data: JSON.stringify({ transfer }) },
+        {
+          type: "DownloadFileComplete",
+          data: JSON.stringify({ transfer, localFilename: "/downloads/Album/01 - Track.flac" }),
+        },
         {
           type: "DownloadDirectoryComplete",
           data: JSON.stringify({ username: "peer", remoteDirectoryName: "Artist\\Album" }),
@@ -810,6 +813,11 @@ test("getEvents reads the download completions slskd stores as JSON text", async
           : event.data.remoteDirectoryName,
       ),
       ["transfer-1", "Artist\\Album"],
+    );
+    const [fileEvent] = events;
+    assert.equal(
+      fileEvent.type === "DownloadFileComplete" ? fileEvent.data.localFilename : null,
+      "/downloads/Album/01 - Track.flac",
     );
     assert.deepEqual([count, totalCount], [4, 40]);
   } finally {

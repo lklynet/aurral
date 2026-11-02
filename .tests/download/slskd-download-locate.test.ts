@@ -82,6 +82,27 @@ test("locateCompletedDownload uses transfer filename when slskd reports a local 
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test("locateCompletedDownload uses the file slskd saved when it renamed a duplicate", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-locate-"));
+  const remote = "Music\\Artist\\Album\\01 - Track.flac";
+  const olderPath = path.join(root, "Album", "01 - Track.flac");
+  const savedPath = path.join(root, "Album", "01 - Track_639268025041726158.flac");
+  await fs.mkdir(path.dirname(olderPath), { recursive: true });
+  await fs.writeFile(olderPath, "audio", "utf8");
+  await fs.writeFile(savedPath, "audio", "utf8");
+  const expectedSizeBytes = Buffer.byteLength("audio");
+
+  assert.equal(await locateCompletedDownload(root, null, remote, { expectedSizeBytes }), olderPath);
+  assert.equal(
+    await locateCompletedDownload(root, null, remote, {
+      expectedSizeBytes,
+      localFilename: savedPath,
+    }),
+    savedPath,
+  );
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test("locateCompletedDownload skips a missing slskd root and checks the playlist root", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-fallback-"));
   const missingSlskdRoot = path.join(root, "missing-slskd");

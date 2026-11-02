@@ -147,6 +147,47 @@ test("an slskd download-complete event for the candidate finishes polling with i
   assert.equal(next?.eventOffset, 12);
 });
 
+test("an slskd download-complete event passes on the path slskd saved the file to", async () => {
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
+  const client = getDownloadClient("slskd");
+  const done = {
+    id: "transfer-1",
+    username: "Peer",
+    filename: "Music\\Album\\01 First.flac",
+    state: "Completed, Succeeded",
+  };
+  const localFilename = "/downloads/Album/01 First_639268025041726158.flac";
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({
+    events: [
+      { type: "DownloadFileComplete", data: { transfer: done, localFilename } },
+      {
+        type: "DownloadDirectoryComplete",
+        data: { username: "Peer", remoteDirectoryName: "Music\\Album" },
+      },
+    ],
+    count: 2,
+    totalCount: 2,
+  }));
+  const jobId = addJob();
+
+  const next = await processPipelinePayload({
+    phase: "poll",
+    source: "slskd",
+    jobId,
+    eventOffset: 0,
+    candidateIndex: 0,
+    candidates: [{ raw: { user: "peer", file: "Music/Album/01 First.flac" } }],
+  });
+
+  assert.equal(next?.phase, "finalize");
+  assert.deepEqual(next?.batch, { transfers: [done], localFilename });
+});
+
 test("a rejected slskd transfer moves to the next user instead of retrying the same one", async () => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),

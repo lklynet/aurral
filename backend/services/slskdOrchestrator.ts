@@ -74,7 +74,7 @@ import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trac
 import type { SearchTrackRequest } from "./trackMatching/trackIdentity.ts";
 import type { HistoryJob } from "./aurralHistoryService.ts";
 
-type SlskdBatch = { transfers?: SlskdTransfer[] };
+type SlskdBatch = { transfers?: SlskdTransfer[]; localFilename?: string };
 type SlskdTransferRef = { id?: string | null; username?: string | null } | null | undefined;
 
 type SlskdAlbumFile = { file?: string | null; size?: number | null; jobId?: string | null };
@@ -415,10 +415,14 @@ async function pollSlskdEventsForCandidate(payload: SlskdPayload) {
   }
   const result = await slskdClient.getEvents(offset, 50);
   const nextOffset = Math.max(offset + result.count, result.totalCount);
-  let completion: { transfer: SlskdTransfer | null } | null = null;
+  let completion: { transfer: SlskdTransfer | null; localFilename?: string } | null = null;
   for (const event of result.events) {
     if (!eventMatchesCandidate(event, candidate)) continue;
-    completion = { transfer: event.type === "DownloadFileComplete" ? event.data.transfer : null };
+    if (event.type === "DownloadFileComplete") {
+      completion = { transfer: event.data.transfer, localFilename: event.data.localFilename };
+    } else if (!completion?.transfer) {
+      completion = { transfer: null };
+    }
   }
   return { eventOffset: nextOffset, completion };
 }
@@ -573,9 +577,15 @@ export async function locateCompletedDownload(
   options: {
     expectedSizeBytes?: number | null;
     transfer?: Pick<SlskdTransfer, "filename"> | null;
+    localFilename?: string | null;
   } = {},
 ) {
   const expectedSizeBytes = Number(options.expectedSizeBytes || 0);
+  const localPath = resolveTransferLocalPath(options.localFilename, slskdRoot);
+  if (localPath) {
+    const reported = await statMatchingFile(localPath, expectedSizeBytes);
+    if (reported) return reported;
+  }
   const transferFilename = readTransferFilename(options.transfer);
   const transferPath = resolveTransferLocalPath(transferFilename, slskdRoot);
   if (transferPath) {
@@ -1436,11 +1446,11 @@ async function handlePoll(payload: SlskdPayload, helpers: SlskdHelpers) {
   };
   if (eventSignal.completion) {
     const candidate = getPayloadCandidate(basePayload);
-    const { transfer } = eventSignal.completion;
+    const { transfer, localFilename } = eventSignal.completion;
     return {
       ...basePayload,
       phase: "finalize",
-      batch: { transfers: transfer ? [transfer] : [] },
+      batch: { transfers: transfer ? [transfer] : [], ...(localFilename ? { localFilename } : {}) },
       pollAttempts,
       candidate,
     };
@@ -1610,6 +1620,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
   const sourcePath = await locateCompletedDownload(slskdRoot, playlistRoot, remoteFile, {
     expectedSizeBytes: Number(candidate?.raw?.size || 0),
     transfer,
+    localFilename: payload.batch?.localFilename,
   });
   if (typeof sourcePath !== "string" || !sourcePath.trim()) {
     const reason = slskdRoot
