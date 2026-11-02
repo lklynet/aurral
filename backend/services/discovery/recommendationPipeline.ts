@@ -176,6 +176,7 @@ const SOURCE_BASE_WEIGHTS = {
   lastfm: 1.2,
   listenbrainz: 1.3,
   koito: 1.3,
+  spotify: 1.2,
   feedback: 1.5,
 } satisfies Record<string, number>;
 

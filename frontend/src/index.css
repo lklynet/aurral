@@ -8003,6 +8003,13 @@ textarea:disabled {
   line-height: 1.5;
 }
 
+.search-empty-panel__message a {
+  color: var(--aurral-text);
+  text-decoration: underline;
+  text-decoration-color: var(--aurral-border-strong);
+  text-underline-offset: 0.125rem;
+}
+
 .search-empty-panel .btn,
 .native-library-state .btn,
 .native-library-state__action {

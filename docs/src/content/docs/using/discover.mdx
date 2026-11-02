@@ -15,6 +15,7 @@ Each user gets their own recommendations. Aurral picks a set of seed artists for
 
 - Artists you marked **More like this**
 - Your listening history in Aurral, and from Last.fm, ListenBrainz, or Koito
+- Your imported [Spotify history](#spotify-history)
 - A sample of your Library. Recently added artists are always in the sample, and the rest changes on every refresh.
 
 Aurral then ranks the results by how similar they are, how well their genres match your seeds, and how many of your seeds point to them. Aurral only uses tags that name a genre on MusicBrainz, plus a few broad ones like indie and rap, so tags like "seen live" or "female vocalists" don't show up as genres or count toward matches. Trending artists are the same for everyone.
@@ -114,7 +115,15 @@ Select **Save as playlist** to add the top songs as a synced playlist that follo
 
 ## Per-user listening history
 
-Each user chooses a listening-history provider in **Settings > Listening > History**. Choose **Local only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider. When you change the provider, Aurral rebuilds your recommendations.
+Each user chooses a listening-history provider in **Settings > Listening > History**. Choose **Aurral plays only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider. When you change the provider, Aurral rebuilds your recommendations.
+
+### Spotify history
+
+Import your Spotify history to give Discover a head start. Request your data on Spotify's [privacy page](https://www.spotify.com/account/privacy/). **Account data** covers the last year and arrives within a few days. **Extended streaming history** covers every year and can take up to 30 days. Spotify emails you a zip file.
+
+In **Settings > Listening > History**, select **Import** next to **Spotify history** and choose the zip, or the JSON files inside it. Your browser reads the files and sends Aurral only how often you played each artist, the songs you liked, and the artists you follow. Plays shorter than 30 seconds, and podcasts, don't count. Recent plays count more than old ones.
+
+Aurral rebuilds your recommendations right after you import. Imported plays shape recommendations only. They don't appear in your history or Wrapped, and they aren't scrobbled. Select **Replace** to import a newer export, or **Remove** to stop using it.
 
 ## Shows
 

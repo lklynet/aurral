@@ -6,6 +6,7 @@ import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
 import { Pause, Play, ThumbsDown, ThumbsUp } from "../components/icons";
 import RouteLink from "../components/RouteLink";
+import { SettingsLink } from "./Settings/settingsRoute";
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import TooltipButton from "../components/TooltipButton";
 import { useToast } from "../contexts/ToastContext";
@@ -440,7 +441,8 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
         <div className="search-empty-panel" role="status">
           <h2 className="search-empty-panel__title">No recommendations yet</h2>
           <p className="search-empty-panel__message">
-            Add artists you like to get recommendations.
+            Add artists you like, or{" "}
+            <SettingsLink to="listening">import your Spotify history</SettingsLink>.
           </p>
           <RouteLink to="/search" className="btn btn-primary">
             Search artists

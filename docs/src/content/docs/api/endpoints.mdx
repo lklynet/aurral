@@ -309,6 +309,9 @@ include `albumGrab.canonicalAlbumId`.
 | `GET`    | `/api/discover/blocked-tags`                  | Genres the current user blocked                                                                                  |
 | `POST`   | `/api/discover/blocked-tags`                  | Block a genre with `{ tag }`. Rejects tags that are not genres                                                   |
 | `DELETE` | `/api/discover/blocked-tags`                  | Unblock the genre in the `tag` query parameter                                                                   |
+| `GET`    | `/api/discover/spotify-import`                | The current user's imported Spotify history summary, or `null`                                                   |
+| `PUT`    | `/api/discover/spotify-import`                | Replace the current user's imported Spotify history with `{ artists }` totals                                    |
+| `DELETE` | `/api/discover/spotify-import`                | Remove the current user's imported Spotify history                                                               |
 | `GET`    | `/api/discover/preferences`                   | Discovery preferences                                                                                            |
 | `POST`   | `/api/discover/preferences`                   | Update discovery preferences                                                                                     |
 | `POST`   | `/api/discover/preferences/reset`             | Reset discovery preferences                                                                                      |

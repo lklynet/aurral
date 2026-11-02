@@ -212,6 +212,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_album_stats_user_ranking
     ON play_album_stats(user_id, play_count DESC, last_played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS spotify_import_artists (
+    user_id INTEGER NOT NULL,
+    artist TEXT NOT NULL COLLATE NOCASE,
+    plays INTEGER NOT NULL,
+    score REAL NOT NULL,
+    liked_tracks INTEGER NOT NULL,
+    followed INTEGER NOT NULL,
+    first_played_at INTEGER,
+    last_played_at INTEGER,
+    imported_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, artist),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_spotify_import_artists_user_score
+    ON spotify_import_artists(user_id, score DESC);
+
   CREATE TABLE IF NOT EXISTS wrapped_reports (
     user_id INTEGER PRIMARY KEY,
     year INTEGER NOT NULL,
