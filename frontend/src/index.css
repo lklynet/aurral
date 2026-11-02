@@ -2019,6 +2019,11 @@ textarea:disabled {
   height: 3.5rem;
   overflow: hidden;
   user-select: none;
+  transition: opacity var(--aurral-duration-slow) var(--aurral-ease-standard);
+}
+
+.sidebar-brand--icons .sidebar-stage-backdrop {
+  opacity: 0;
 }
 
 .sidebar-stage-backdrop__art {
@@ -2033,14 +2038,14 @@ textarea:disabled {
   --stage-bp-bottom: var(--aurral-stage-blueprint-bottom);
 }
 
-:root[data-theme="light"] .sidebar-brand--nightly,
-:root[data-theme="light"] .sidebar-brand--preview {
+:root[data-theme="light"] .sidebar-brand--nightly:not(.sidebar-brand--icons),
+:root[data-theme="light"] .sidebar-brand--preview:not(.sidebar-brand--icons) {
   --sidebar-brand-ink: var(--aurral-overlay-foreground-soft);
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .sidebar-brand--nightly,
-  :root:not([data-theme]) .sidebar-brand--preview {
+  :root:not([data-theme]) .sidebar-brand--nightly:not(.sidebar-brand--icons),
+  :root:not([data-theme]) .sidebar-brand--preview:not(.sidebar-brand--icons) {
     --sidebar-brand-ink: var(--aurral-overlay-foreground-soft);
   }
 }
@@ -3027,6 +3032,16 @@ textarea:disabled {
 .app-toast__icon svg {
   width: 1rem;
   height: 1rem;
+}
+
+.app-toast__icon--large {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.app-toast__icon--large svg {
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .app-toast__artwork {
@@ -14934,6 +14949,10 @@ a.blocklist-page__name:focus-visible {
 
 .app-toast--loading .app-toast__icon {
   color: var(--aurral-text-muted);
+}
+
+.app-toast .app-toast__icon--large {
+  color: var(--aurral-text);
 }
 
 .artist-details-page {
