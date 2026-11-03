@@ -34,6 +34,7 @@ const LOG_FILE = "aurral.log";
 const READ_CHUNK_BYTES = 64 * 1024;
 const MAX_LINE_BYTES = 16 * 1024;
 const MAX_PROBLEMS = 200;
+const CLOCK_SKEW_MS = 60_000;
 const HEADER = /^\{"id":(\d+),"ts":"([^"]+)","level":"(debug|info|warn|error)"/;
 
 const rotatedName = (index: number) => (index === 0 ? LOG_FILE : `aurral.${index}.log`);
@@ -158,7 +159,10 @@ export async function readLogEntries(dir: string, query: LogQuery) {
     if (!header) continue;
     const id = Number(header[1]);
     if (query.after != null && id <= query.after) break;
-    if (query.since != null && Date.parse(header[2]) < query.since) break;
+    if (query.since != null && Date.parse(header[2]) < query.since) {
+      if (Date.parse(header[2]) < query.since - CLOCK_SKEW_MS) break;
+      continue;
+    }
     if (query.before != null && id >= query.before) continue;
     if (levelRank(header[3]) < minRank) continue;
     if (text && !line.toLowerCase().includes(text)) continue;
@@ -180,7 +184,10 @@ export async function readLogProblems(dir: string, { since }: { since: number })
   for await (const line of linesNewestFirst(dir)) {
     const header = HEADER.exec(line);
     if (!header) continue;
-    if (Date.parse(header[2]) < since) break;
+    if (Date.parse(header[2]) < since) {
+      if (Date.parse(header[2]) < since - CLOCK_SKEW_MS) break;
+      continue;
+    }
     if (levelRank(header[3]) < warnRank) continue;
     const entry = parseEntry(line);
     if (!entry) continue;

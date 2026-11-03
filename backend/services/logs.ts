@@ -19,6 +19,14 @@ const LOG_DIR = path.join(resolveAurralDataDir(), "logs");
 const DEBUG_SETTING = "debugLogging";
 const MAX_EXPORT_ENTRIES = 20000;
 const AUTH_FAILURE_STATUSES = new Set([401, 403, 407]);
+const TOKEN_SEGMENT = /^[\w:.-]{20,}$/;
+const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+const safePath = (pathname: string) =>
+  pathname
+    .split("/")
+    .map((segment) => (TOKEN_SEGMENT.test(segment) && !UUID.test(segment) ? "***" : segment))
+    .join("/");
 
 export const isDebugLoggingOn = () => dbOps.getJSONSetting(DEBUG_SETTING, v.boolean()) === true;
 
@@ -33,7 +41,7 @@ export function logOutgoingFailures() {
     const level =
       status === null || status >= 500 || AUTH_FAILURE_STATUSES.has(status) ? "warn" : "debug";
     recordLog(level, "http", `${method} ${host} ${status ? `returned ${status}` : "failed"}`, {
-      path: pathname,
+      path: safePath(pathname),
       ms,
       ...(code ? { code } : {}),
       reason: message,

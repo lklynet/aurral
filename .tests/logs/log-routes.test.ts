@@ -128,18 +128,23 @@ test("any signed-in user can report a browser error", async () => {
   });
 });
 
-test("failed integration calls are saved without their query string", async () => {
+test("failed integration calls are saved without their query string or path tokens", async () => {
   logOutgoingFailures();
   const lidarr = await createMockHttpServer((_request, response) => {
     response.writeHead(503).end("busy");
   });
   try {
     await assert.rejects(axios.get(`${lidarr.url}/api/v1/album?apikey=hunter2`));
+    await assert.rejects(
+      axios.post(`${lidarr.url}/api/webhooks/123456789/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789`, {}),
+    );
   } finally {
     await lidarr.close();
   }
 
-  const saved = reported.at(-1);
+  const [saved, webhook] = reported.slice(-2);
+  assert.doesNotMatch(JSON.stringify(webhook), /AbCdEf/);
+  assert.partialDeepStrictEqual(webhook, { data: { path: "/api/webhooks/123456789/***" } });
   assert.partialDeepStrictEqual(saved, {
     level: "warn",
     cat: "http",

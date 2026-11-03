@@ -123,7 +123,7 @@ function describeError(error: Error): LogError {
     ?.split("\n")
     .filter((line) => /^\s+at |@\S+:\d+/.test(line))
     .slice(0, MAX_STACK_FRAMES)
-    .map((line) => line.trim())
+    .map((line) => safeLogDiagnostic(line.trim()))
     .join("\n");
   return {
     name: safeLogDiagnostic(error.name),
