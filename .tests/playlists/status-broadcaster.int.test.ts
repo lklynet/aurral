@@ -96,6 +96,6 @@ test(
     await next((message) => message.type === "unsubscribed");
     socket.send(JSON.stringify({ type: "subscribe", channels: ["playlists"] }));
     const resubscribed = await next((message) => message.type === "playlist_status");
-    assert.equal(resubscribed.status.sharedPlaylists[0].name, "After");
+    assert.equal(resubscribed.status.sharedPlaylists[0]?.name, "After");
   },
 );

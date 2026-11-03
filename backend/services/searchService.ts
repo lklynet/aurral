@@ -41,9 +41,9 @@ async function getAlbumLibraryLookup(albumMbids: string[]) {
   try {
     const wanted = [...new Set(albumMbids)].slice(0, LIDARR_ALBUM_LOOKUP_BATCH_MAX);
     const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted);
-    for (let index = 0; index < wanted.length; index += 1) {
-      const foreignAlbumId = wanted[index];
+    for (const [index, foreignAlbumId] of wanted.entries()) {
       const result = albums[index];
+      if (!result) continue;
       if (result.status === "rejected") {
         logger.warn("library", "Album search enrichment lookup failed", {
           foreignAlbumId,

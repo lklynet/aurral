@@ -11,6 +11,7 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 import { OTHER_VERSION_LABELS, SAME_VERSION_LABELS } from "../track-matching/version-labels.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -152,8 +153,8 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
 
     const releases = await prowlarrClient.search("Artist Album");
     assert.equal(releases.length, 1);
-    assert.equal(releases[0].guid, "release-guid");
-    assert.equal(releases[0].downloadUrl, `${server.url}/api/v1/indexer/1/download?link=abc`);
+    assert.equal(releases[0]?.guid, "release-guid");
+    assert.equal(releases[0]?.downloadUrl, `${server.url}/api/v1/indexer/1/download?link=abc`);
     assert.ok(requests.some((entry) => entry?.startsWith("/api/v1/search")));
   } finally {
     await server.close();
@@ -707,8 +708,8 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
     context,
   );
 
-  assert.equal(ranked[0].raw.release.title, "Example Artist - Bright Static (2024) FLAC");
-  assert.equal(ranked[0].releaseAdmissible, true);
+  assert.equal(ranked[0]?.raw.release.title, "Example Artist - Bright Static (2024) FLAC");
+  assert.equal(ranked[0]?.releaseAdmissible, true);
   const selected = selectRankedUsenetCandidates(ranked, 2);
   assert.equal(selected.length, 2);
 });
@@ -872,7 +873,7 @@ test("a Usenet compilation grab searches as VA and by its title, never by a trac
   const credits = [
     ["Blue Swede", "Hooked on a Feeling"],
     ["Raspberries", "Go All the Way"],
-  ];
+  ] as const;
   await serveGroups(t, [
     brainzmashGroup({
       id: "usenet-compilation",
@@ -895,7 +896,7 @@ test("a Usenet compilation grab searches as VA and by its title, never by a trac
   await searchUntilDone({
     phase: "search",
     source: "usenet",
-    jobId: ids[0],
+    jobId: requireFixture(ids[0]),
     albumGrab: true,
     releaseMbid: "usenet-compilation-release",
   });
@@ -1242,7 +1243,7 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
     const retryAfter = new Map([
       ["1", "600"],
       ["2", "0"],
-    ]).get((req.url || "/").split("/")[1]);
+    ]).get(requireFixture((req.url || "/").split("/")[1]));
     if (retryAfter) {
       res.writeHead(429, { "Retry-After": retryAfter, "Content-Type": "text/xml" });
       res.end('<error code="429" description="Grab limit reached"/>');
@@ -1295,7 +1296,7 @@ test("a track spends a grab on a broken NZB but not on a Newznab error", async (
     requests.push(req.url);
     res.writeHead(200, { "Content-Type": "application/x-nzb" });
     res.end(
-      ["1", "2"].includes((req.url || "/").split("/")[1])
+      ["1", "2"].includes(requireFixture((req.url || "/").split("/")[1]))
         ? '<?xml version="1.0"?><error code="300" description="No such item"/>'
         : '<?xml version="1.0"?><nz',
     );

@@ -17,6 +17,12 @@ const SIN = Float64Array.from({ length: FRAME / 2 }, (_, k) =>
   Math.sin((-2 * Math.PI * k) / FRAME),
 );
 
+function swap(values: Float64Array, i: number, j: number) {
+  const value = values[i] ?? 0;
+  values[i] = values[j] ?? 0;
+  values[j] = value;
+}
+
 function fft(re: Float64Array, im: Float64Array) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -24,24 +30,28 @@ function fft(re: Float64Array, im: Float64Array) {
     for (; j & bit; bit >>= 1) j ^= bit;
     j ^= bit;
     if (i < j) {
-      [re[i], re[j]] = [re[j], re[i]];
-      [im[i], im[j]] = [im[j], im[i]];
+      swap(re, i, j);
+      swap(im, i, j);
     }
   }
   for (let length = 2; length <= n; length <<= 1) {
     const stride = n / length;
     for (let i = 0; i < n; i += length)
       for (let k = 0; k < length / 2; k++) {
-        const wr = COS[k * stride];
-        const wi = SIN[k * stride];
+        const wr = COS[k * stride] ?? 0;
+        const wi = SIN[k * stride] ?? 0;
         const a = i + k;
         const b = a + length / 2;
-        const tr = re[b] * wr - im[b] * wi;
-        const ti = re[b] * wi + im[b] * wr;
-        re[b] = re[a] - tr;
-        im[b] = im[a] - ti;
-        re[a] += tr;
-        im[a] += ti;
+        const ar = re[a] ?? 0;
+        const ai = im[a] ?? 0;
+        const br = re[b] ?? 0;
+        const bi = im[b] ?? 0;
+        const tr = br * wr - bi * wi;
+        const ti = br * wi + bi * wr;
+        re[b] = ar - tr;
+        im[b] = ai - ti;
+        re[a] = ar + tr;
+        im[a] = ai + ti;
       }
   }
 }
@@ -50,8 +60,8 @@ function average(values: Float32Array, span: number) {
   const result = new Float32Array(values.length);
   let sum = 0;
   for (let i = 0; i < values.length; i++) {
-    sum += values[i];
-    if (i >= span) sum -= values[i - span];
+    sum += values[i] ?? 0;
+    if (i >= span) sum -= values[i - span] ?? 0;
     result[i] = sum / Math.min(i + 1, span);
   }
   return result;
@@ -73,33 +83,42 @@ export function findBeats(samples: Float32Array) {
   let previous = new Float64Array(bins);
   for (let f = 0; f < frames; f++) {
     for (let i = 0; i < FRAME; i++) {
-      re[i] = samples[f * HOP + i] * window[i];
+      re[i] = (samples[f * HOP + i] ?? 0) * (window[i] ?? 0);
       im[i] = 0;
     }
     fft(re, im);
     const magnitude = new Float64Array(bins);
+    let rising = 0;
+    let bassRising = 0;
     for (let k = 0; k < bins; k++) {
-      magnitude[k] = Math.log1p(100 * Math.hypot(re[k], im[k]));
-      const rise = magnitude[k] - previous[k];
+      const value = Math.log1p(100 * Math.hypot(re[k] ?? 0, im[k] ?? 0));
+      magnitude[k] = value;
+      const rise = value - (previous[k] ?? 0);
       if (rise <= 0) continue;
-      flux[f] += rise;
-      if (k <= low) bass[f] += rise;
+      rising += rise;
+      if (k <= low) bassRising += rise;
     }
+    flux[f] = rising;
+    bass[f] = bassRising;
     previous = magnitude;
   }
 
   const mean = average(flux, Math.round(FPS * 0.5));
   const lead = Math.round(FPS * 0.25);
-  const onset = flux.map((value, i) => Math.max(0, value - mean[Math.min(frames - 1, i + lead)]));
+  const onset = flux.map((value, i) =>
+    Math.max(0, value - (mean[Math.min(frames - 1, i + lead)] ?? 0)),
+  );
   onset.fill(0, 0, Math.round(FPS * 0.1));
   const center = onset.reduce((sum, value) => sum + value, 0) / frames;
   const spread = Math.sqrt(onset.reduce((sum, value) => sum + (value - center) ** 2, 0) / frames);
   if (!spread) return null;
-  for (let i = 0; i < frames; i++) onset[i] /= spread;
+  onset.forEach((value, i) => {
+    onset[i] = value / spread;
+  });
 
   const correlate = (lag: number) => {
     let sum = 0;
-    for (let i = lag; i < frames; i++) sum += onset[i] * onset[i - lag];
+    for (let i = lag; i < frames; i++) sum += (onset[i] ?? 0) * (onset[i - lag] ?? 0);
     return sum / (frames - lag);
   };
   let lag = 0;
@@ -120,22 +139,26 @@ export function findBeats(samples: Float32Array) {
   const from = new Int32Array(frames).fill(-1);
   for (let t = 0; t < frames; t++) {
     let top = 0;
+    let origin = -1;
     for (let p = Math.max(0, Math.round(t - 2 * period)); p <= t - Math.round(period / 2); p++) {
-      const value = score[p] - 100 * Math.log((t - p) / period) ** 2;
-      if (from[t] < 0 || value > top) [top, from[t]] = [value, p];
+      const value = (score[p] ?? 0) - 100 * Math.log((t - p) / period) ** 2;
+      if (origin < 0 || value > top) [top, origin] = [value, p];
     }
-    score[t] = onset[t] + top;
+    from[t] = origin;
+    score[t] = (onset[t] ?? 0) + top;
   }
   let last = frames - 1;
-  for (let t = frames - 1; t > frames - 1 - period; t--) if (score[t] > score[last]) last = t;
+  for (let t = frames - 1; t > frames - 1 - period; t--)
+    if ((score[t] ?? 0) > (score[last] ?? 0)) last = t;
   const beats: number[] = [];
-  for (let t = last; t >= 0; t = from[t]) beats.unshift(t);
-  while (beats.length && beats[0] < period / 2 && onset[beats[0]] < 0.05) beats.shift();
+  for (let t = last; t >= 0; t = from[t] ?? -1) beats.unshift(t);
+  const kept = beats.findIndex((frame) => frame >= period / 2 || (onset[frame] ?? 0) >= 0.05);
+  beats.splice(0, kept === -1 ? beats.length : kept);
   if (beats.length < 8) return null;
 
   const weight = [0, 1, 2, 3].map((phase) => {
     const own = beats.filter((_, i) => i % 4 === phase);
-    return own.reduce((sum, frame) => sum + bass[frame], 0) / own.length;
+    return own.reduce((sum, frame) => sum + (bass[frame] ?? 0), 0) / own.length;
   });
   return {
     bpm: Math.round(((FPS * 60) / period) * 10) / 10,

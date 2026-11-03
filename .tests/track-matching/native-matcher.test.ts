@@ -6,6 +6,7 @@ import {
   decideRecording,
   verifyDownloadedRecording,
 } from "../../backend/services/trackMatching/nativeMatcher.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const request = {
   title: "Hoppípolla",
@@ -108,7 +109,7 @@ test("an artist alias can corroborate a recording without changing its title", (
     ],
   );
   assert.equal(result.decision, "selectable");
-  assert.ok(result.candidates[0].evidence.includes("artist"));
+  assert.ok(result.candidates[0]?.evidence.includes("artist"));
 });
 
 test("listing titles parse common album file layouts without changing song subtitles", () => {
@@ -174,7 +175,7 @@ test("known recording, variant, and duration contradictions cannot be rescued by
   ]) {
     const result = decideRecording(request, [candidate]);
     assert.equal(result.decision, "skip");
-    assert.ok(result.candidates[0].contradictions.length > 0);
+    assert.ok(requireFixture(result.candidates[0]).contradictions.length > 0);
   }
 });
 
@@ -223,7 +224,7 @@ test("a declared extended mix conflicts with a plain request", () => {
     },
   ]);
   assert.equal(result.decision, "skip");
-  assert.ok(result.candidates[0].contradictions.includes("extended-mix"));
+  assert.ok(result.candidates[0]?.contradictions.includes("extended-mix"));
 });
 
 test("an explicit different artist cannot be rescued by exact title and duration", () => {
@@ -235,14 +236,14 @@ test("an explicit different artist cannot be rescued by exact title and duration
     },
   ]);
   assert.equal(result.decision, "skip");
-  assert.ok(result.candidates[0].contradictions.includes("artist"));
+  assert.ok(result.candidates[0]?.contradictions.includes("artist"));
 });
 
 test("missing evidence is not counted as agreement", () => {
   const result = decideRecording(request, [{ title: "Hoppipolla" }]);
   assert.notEqual(result.decision, "selectable");
-  assert.equal(result.candidates[0].evidence.includes("artist"), false);
-  assert.equal(result.candidates[0].evidence.includes("duration"), false);
+  assert.equal(result.candidates[0]?.evidence.includes("artist"), false);
+  assert.equal(result.candidates[0]?.evidence.includes("duration"), false);
 });
 
 test("equal distinct candidates abstain in stable input order", () => {

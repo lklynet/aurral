@@ -16,6 +16,7 @@ import {
   extractYoutubePlaylistId,
   validateYoutubePlaylistId,
 } from "../../backend/services/importLists/youtubeMusicPlaylists.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const text = (value: string) => ({ toString: () => value });
 
@@ -296,8 +297,8 @@ test("client force refresh bypasses an in-flight playlist load", async () => {
   await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.equal(playlistRequests, 2);
-  resolvers[0]({ header: { title: text("Preview") }, contents: [] });
-  resolvers[1]({ header: { title: text("Fresh") }, contents: [] });
+  requireFixture(resolvers[0])({ header: { title: text("Preview") }, contents: [] });
+  requireFixture(resolvers[1])({ header: { title: text("Fresh") }, contents: [] });
   assert.equal((await preview).name, "Preview");
   assert.equal((await refreshed).name, "Fresh");
 });
@@ -328,7 +329,7 @@ test("client spaces provider requests shared by concurrent playlist loads", asyn
   await loads;
 
   assert.equal(starts.length, 2);
-  assert.ok(starts[1].at - starts[0].at >= 20);
+  assert.ok(requireFixture(starts[1]).at - requireFixture(starts[0]).at >= 20);
 });
 
 test(
@@ -456,9 +457,13 @@ test("client keeps the longest cooldown from overlapping rate limits", async () 
 
   const longer = client.fetch("https://music.youtube.com/youtubei/v1/browse");
   const shorter = client.fetch("https://music.youtube.com/youtubei/v1/browse");
-  responses[0](new Response(null, { status: 429, headers: { "retry-after": "120" } }));
+  requireFixture(responses[0])(
+    new Response(null, { status: 429, headers: { "retry-after": "120" } }),
+  );
   await assert.rejects(longer, { code: "YOUTUBE_PLAYLIST_RATE_LIMITED" });
-  responses[1](new Response(null, { status: 429, headers: { "retry-after": "0" } }));
+  requireFixture(responses[1])(
+    new Response(null, { status: 429, headers: { "retry-after": "0" } }),
+  );
   await assert.rejects(shorter, { code: "YOUTUBE_PLAYLIST_RATE_LIMITED" });
 
   await assert.rejects(client.fetch("https://music.youtube.com/youtubei/v1/browse"), {

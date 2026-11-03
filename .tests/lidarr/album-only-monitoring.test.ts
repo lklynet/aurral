@@ -82,7 +82,7 @@ for (const triggerSearch of [false, true]) {
         wanted.map((album) => album.foreignAlbumId),
         ["requested-album"],
       );
-      assert.equal(albums[1].monitored, false);
+      assert.equal(albums[1]?.monitored, false);
       assert.ok(artist != null);
       assert.equal(artist.monitorNewItems, "none");
       assert.ok(postedArtist != null);

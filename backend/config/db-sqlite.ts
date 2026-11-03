@@ -1103,7 +1103,7 @@ for (const [name, type] of [
   ["held_for_review", "TEXT"],
   ["disc_number", "INTEGER"],
   ["release_mbid", "TEXT"],
-]) {
+] as const) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
   }

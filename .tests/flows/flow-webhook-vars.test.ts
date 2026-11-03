@@ -9,6 +9,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -101,7 +102,7 @@ test("flow completion sends display name and track library path", async () => {
         path: playlistManager.downloadRoot,
       },
     ]);
-    assert.doesNotMatch(requests[0].path, /_playlists/);
+    assert.doesNotMatch(requireFixture(requests[0]).path, /_playlists/);
   } finally {
     playlistManager.requestPlaylistSync = original.requestPlaylistSync;
     playlistManager.scheduleScanLibrary = original.scheduleScanLibrary;

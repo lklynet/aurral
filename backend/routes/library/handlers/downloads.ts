@@ -657,7 +657,7 @@ export default new Hono<AppEnv>()
       );
       aurralIds.forEach((key, index) => {
         const status = aurralStatuses[index];
-        if (status?.error === undefined) statuses[key] = status;
+        if (status && status.error === undefined) statuses[key] = status;
       });
       return c.json(statuses, 200);
     } catch (error) {

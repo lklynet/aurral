@@ -145,9 +145,8 @@ function findResolutionForTrack(
   resolutions: TrackResolution[],
   usedResolutionIndexes: Set<number>,
 ) {
-  for (let index = 0; index < resolutions.length; index += 1) {
+  for (const [index, resolution] of resolutions.entries()) {
     if (usedResolutionIndexes.has(index)) continue;
-    const resolution = resolutions[index];
     if (
       tracksShareMembership(track, resolution.originalTrack) ||
       tracksShareMembership(track, resolution.resolvedTrack)

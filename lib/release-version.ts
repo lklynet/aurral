@@ -43,8 +43,7 @@ export function compareReleaseVersions(
 }
 
 export function extractTagNameFromRef(ref: string | undefined) {
-  const match = String(ref || "").match(/^refs\/tags\/(.+)$/);
-  return match ? match[1] : "";
+  return String(ref || "").match(/^refs\/tags\/(.+)$/)?.[1] ?? "";
 }
 
 function toReleases(tags: string[]) {
@@ -65,8 +64,8 @@ export function selectLatestRelease(refs: ReleaseRef[]) {
 }
 
 export function parseNightlyVersion(value: string | undefined) {
-  const match = NIGHTLY_VERSION_RE.exec(String(value || ""));
-  return match?.groups ? { run: Number(match.groups.run), sha: match.groups.sha } : null;
+  const groups = NIGHTLY_VERSION_RE.exec(String(value || ""))?.groups;
+  return groups?.run && groups.sha ? { run: Number(groups.run), sha: groups.sha } : null;
 }
 
 export function releaseChannel(version: string | undefined) {
@@ -106,7 +105,7 @@ export function suggestNextVersion(tags: string[], commitSubjects: string[] = []
       bump = "major";
       break;
     }
-    if (match.groups.type.toLowerCase() === "feat") {
+    if (match.groups.type?.toLowerCase() === "feat") {
       bump = "minor";
     }
   }

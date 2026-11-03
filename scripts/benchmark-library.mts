@@ -588,8 +588,8 @@ function summarizeReadSamples(samples: ChildResult[]) {
 
 type ReadSummary = ReturnType<typeof summarizeReadSamples>;
 
-function isFiniteBelow(value: number | null, limit: number) {
-  return Number.isFinite(value) && value! < limit;
+function isFiniteBelow(value: number | null | undefined, limit: number) {
+  return typeof value === "number" && Number.isFinite(value) && value < limit;
 }
 
 async function main() {
@@ -779,8 +779,12 @@ async function main() {
       }
       subsonicReads[operation] = summarizeReadSamples(samples);
     }
-    const measuredReadNames = ["search3", "randomSongs"];
-    const measuredReads = measuredReadNames.map((name) => subsonicReads[name]);
+    const subsonicRead = (name: string) => {
+      const summary = subsonicReads[name];
+      if (!summary) throw new Error(`Missing Subsonic benchmark read: ${name}`);
+      return summary;
+    };
+    const measuredReads = ["search3", "randomSongs"].map(subsonicRead);
     const measuredQueryChecks = {
       nonVacuousCompletedSamples: measuredReads.every((read) => read.nonVacuous),
       coldP95Under750ms: measuredReads.every((read) => isFiniteBelow(read.p95Ms, 750)),
@@ -820,11 +824,11 @@ async function main() {
     const boundedReadCompleted = Object.values(subsonicReads).every((read) => read.nonVacuous);
     const targetedReadChecks = {
       nonVacuousCompletedSamples: ["search3", "starred", "genres"].every(
-        (name) => subsonicReads[name].nonVacuous && subsonicReads[name].statisticsComplete,
+        (name) => subsonicRead(name).nonVacuous && subsonicRead(name).statisticsComplete,
       ),
-      searchMedianUnder300ms: isFiniteBelow(subsonicReads.search3.medianMs, 300),
-      starredMedianUnder75ms: isFiniteBelow(subsonicReads.starred.medianMs, 75),
-      genresMedianUnder75ms: isFiniteBelow(subsonicReads.genres.medianMs, 75),
+      searchMedianUnder300ms: isFiniteBelow(subsonicRead("search3").medianMs, 300),
+      starredMedianUnder75ms: isFiniteBelow(subsonicRead("starred").medianMs, 75),
+      genresMedianUnder75ms: isFiniteBelow(subsonicRead("genres").medianMs, 75),
     };
     const checks = {
       boundedReadCompleted,

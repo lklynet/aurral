@@ -80,7 +80,7 @@ export default new Hono<AppEnv>()
         const results = await Promise.allSettled(batch.map((id) => getAlbumByMbid(id, { signal })));
         batch.forEach((id, batchIndex) => {
           const result = results[batchIndex];
-          if (result.status !== "fulfilled") return;
+          if (result?.status !== "fulfilled") return;
           ratings[id] = {
             rating: result.value?.rating || null,
             firstReleaseDate: result.value?.releaseDate || null,

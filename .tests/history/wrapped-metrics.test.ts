@@ -42,8 +42,8 @@ test("a server that stamps plays at the end still matches the scrobble stamped a
     }),
   ]);
   assert.equal(merged.length, 1);
-  assert.equal(merged[0].album, "Album");
-  assert.equal(merged[0].durationMs, 300_000);
+  assert.equal(merged[0]?.album, "Album");
+  assert.equal(merged[0]?.durationMs, 300_000);
 });
 
 test("the same song across sources groups together even when their MBIDs disagree", () => {
@@ -61,7 +61,7 @@ test("the same song across sources groups together even when their MBIDs disagre
     period,
   );
   assert.equal(summary.uniqueSongs, 1);
-  assert.equal(summary.topSongs[0].plays, 2);
+  assert.equal(summary.topSongs[0]?.plays, 2);
 });
 
 test("days, streaks and months follow the listener's timezone", () => {
@@ -78,7 +78,7 @@ test("days, streaks and months follow the listener's timezone", () => {
   assert.equal(summary.totalPlays, 4);
   assert.deepEqual(summary.longestStreak, { days: 3, start: "2026-03-07", end: "2026-03-09" });
   assert.equal(summary.months.length, 12);
-  assert.equal(summary.months[11].plays, 1);
+  assert.equal(summary.months[11]?.plays, 1);
   assert.equal(summary.hours[18], 1);
 });
 
@@ -114,5 +114,5 @@ test("the calendar counts each local day and albums count the songs heard from t
     wrappedPeriod(2026, "UTC", at("2026-01-05T00:00:00Z")),
   );
   assert.deepEqual(summary.calendar, [0, 2, 0, 1]);
-  assert.equal(summary.topAlbums[0].songs, 2);
+  assert.equal(summary.topAlbums[0]?.songs, 2);
 });

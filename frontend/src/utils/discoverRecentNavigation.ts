@@ -10,7 +10,7 @@ type DiscoverRecentPageState = {
 
 export function getDiscoverArtistPath(path: unknown) {
   if (!path || typeof path !== "string") return "";
-  const pathname = path.split("?")[0];
+  const [pathname = ""] = path.split("?");
   const match = pathname.match(/^\/artist\/([^/]+)/);
   return match ? `/artist/${match[1]}` : "";
 }

@@ -79,7 +79,8 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
         Number(left.trackNumber || 0) - Number(right.trackNumber || 0) ||
         String(left.jobId).localeCompare(String(right.jobId)),
     );
-    const first = children[0];
+    const [first] = children;
+    if (!first) continue;
     const grab = first.albumGrab!;
     const total = grab.memberJobIds.length;
     const ready = children.filter(

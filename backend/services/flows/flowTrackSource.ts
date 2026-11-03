@@ -27,6 +27,7 @@ import BoundedMap from "../boundedMap.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
 import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
+import { shuffle } from "../../../lib/shuffle.ts";
 
 type ArtistTopTrack = {
   name: string;
@@ -193,19 +194,10 @@ const dedupeNames = (values: readonly unknown[] | null | undefined) => {
   return out;
 };
 
-const shuffled = <T>(items: readonly T[]) => {
-  const out = [...items];
-  for (let index = out.length - 1; index > 0; index -= 1) {
-    const swap = Math.floor(Math.random() * (index + 1));
-    [out[index], out[swap]] = [out[swap], out[index]];
-  }
-  return out;
-};
-
-const rankedWindows = <T>(items: readonly T[], size: number) => {
+const rankedWindows = <T extends {} | null>(items: readonly T[], size: number) => {
   const out: T[] = [];
   for (let start = 0; start < items.length; start += size) {
-    out.push(...shuffled(items.slice(start, start + size)));
+    out.push(...shuffle(items.slice(start, start + size)));
   }
   return out;
 };
@@ -470,7 +462,7 @@ export class FlowTrackSource {
           .toLowerCase();
         return name && !ownedTitles.has(name);
       });
-      for (const candidate of shuffled(candidates)) {
+      for (const candidate of shuffle(candidates)) {
         const albumName = String(candidate?.albumName || "").trim();
         if (!albumName) continue;
         if (!ownedAlbums.has(albumName.toLowerCase())) {
@@ -497,7 +489,7 @@ export class FlowTrackSource {
           .toLowerCase();
         return name && !ownedTitles.has(name);
       });
-      for (const candidate of shuffled(candidates)) {
+      for (const candidate of shuffle(candidates)) {
         if (checked >= maxChecks) return null;
         checked += 1;
         const trackName = String(candidate?.name || "").trim();
@@ -549,20 +541,17 @@ export class FlowTrackSource {
     const keys = artists.map(
       (artist) => String(artist.artistMbid || "").trim() || this._artistKey(artist.name),
     );
-    const missing = keys
-      .map((key, index) => ({ key, index }))
+    const missing = artists
+      .map((artist, index) => ({ key: keys[index] ?? "", artist }))
       .filter(({ key }) => key && !((this.artistTopTagsCache.get(key)?.expiresAt ?? 0) > now));
     if (missing.length > 0) {
       const lists: { name: string }[][] = await musicData.getArtistTagLists(
-        missing.map(({ index }) => ({
-          mbid: artists[index].artistMbid,
-          name: artists[index].name,
-        })),
+        missing.map(({ artist }) => ({ mbid: artist.artistMbid, name: artist.name })),
       );
       missing.forEach(({ key }, position) => {
         const tags = [
           ...new Map(
-            lists[position].map((tag) => [this._artistKey(tag.name), tag.name] as const),
+            (lists[position] ?? []).map((tag) => [this._artistKey(tag.name), tag.name] as const),
           ).values(),
         ];
         this.artistTopTagsCache.set(key, {
@@ -656,7 +645,8 @@ export class FlowTrackSource {
         releaseYear: String(hitRelease.year),
       };
     }
-    const release = shuffled(releases)[0];
+    const release = shuffle(releases)[0];
+    if (!release) return null;
     const albumTracks = (await deezerGetAlbumTracks(release.id)).filter(
       (track) => !isOwned(track.trackName),
     );
@@ -718,6 +708,7 @@ export class FlowTrackSource {
       while (batch.length < HARVEST_BATCH && cursor < end) {
         const artist = artists[cursor];
         cursor += 1;
+        if (!artist) continue;
         const name = String(artist?.name || artist?.artistName || "").trim();
         const key = this._artistKey(name);
         if (!key || seen.has(key)) continue;
@@ -856,7 +847,7 @@ export class FlowTrackSource {
       newReleases: [],
     };
     FLOW_SOURCES.forEach((source, index) => {
-      candidateMap[source] = harvested[index];
+      candidateMap[source] = harvested[index] ?? [];
     });
     return this._assembleFlowPlan({ candidateMap, excludeArtistKeys, targetSize, sourceTargets });
   }
@@ -981,7 +972,7 @@ export class FlowTrackSource {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
     return this._harvestArtists(
-      shuffled(artists).map((artist) => ({ ...artist, reason: "In your Library" })),
+      shuffle(artists).map((artist) => ({ ...artist, reason: "In your Library" })),
       limit,
       {
         filters,
@@ -1165,11 +1156,17 @@ export class FlowTrackSource {
     );
     const albumsByArtist = Map.groupBy(albums, (album) => album.artistName);
     return this._harvestArtists(
-      [...albumsByArtist.values()].map(([album]) => ({
-        name: album.artistName,
-        artistMbid: album.artistMbid || album.foreignArtistId || null,
-        reason: "New release",
-      })),
+      [...albumsByArtist.values()].flatMap(([album]) =>
+        album
+          ? [
+              {
+                name: album.artistName,
+                artistMbid: album.artistMbid || album.foreignArtistId || null,
+                reason: "New release",
+              },
+            ]
+          : [],
+      ),
       limit,
       {
         filters,

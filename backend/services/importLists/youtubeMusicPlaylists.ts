@@ -220,7 +220,7 @@ const normalizeRows = (rows: YTNodes.MusicResponsiveListItem[]) => {
     if (seen.has(identity)) {
       stats.duplicate += 1;
       excluded.push({
-        position: positions[index],
+        position: positions[index] ?? 0,
         reason: "duplicate",
         artistName: track.artistName,
         trackName: track.trackName,

@@ -13,6 +13,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, releaseManifest, serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -71,6 +72,7 @@ test("getNextPendingMatching skips future-dated retry jobs and returns ready wor
     ],
     "discover",
   );
+  assert.ok(firstId !== undefined && secondId !== undefined);
 
   tracker.setPending(firstId, "retry later", { asRetryCycle: true });
 
@@ -103,10 +105,10 @@ test("one album pipeline reserves sibling jobs before queue handoff", async () =
   assert.ok(jobIds.every((value) => value != null));
   const release = await albumRelease("album-test", ["First", "Second", "Third"]);
 
-  assert.equal(tracker.enqueueDownloadPipeline(jobIds[0], { release }), true);
+  assert.equal(tracker.enqueueDownloadPipeline(requireFixture(jobIds[0]), { release }), true);
   assert.equal(queued.length, 1);
-  assert.equal(queued[0].albumGrab, true);
-  assert.deepEqual(queued[0].albumGroupJobIds, jobIds);
+  assert.equal(queued[0]?.albumGrab, true);
+  assert.deepEqual(queued[0]?.albumGroupJobIds, jobIds);
   assert.deepEqual(
     jobIds.slice(1).map((id) => trackedJob(tracker, id).status),
     ["downloading", "downloading"],
@@ -142,8 +144,8 @@ test("a single track in a playlist reserves a release attempt before track-only 
   const release = await albumRelease("album-group", ["First", "Second"]);
   assert.equal(tracker.enqueueDownloadPipeline(id, { release }), true);
   assert.equal(queued.length, 1);
-  assert.equal(queued[0].albumGrab, true);
-  assert.deepEqual(queued[0].albumGroupJobIds, [id]);
+  assert.equal(queued[0]?.albumGrab, true);
+  assert.deepEqual(queued[0]?.albumGroupJobIds, [id]);
   assert.equal(trackedJob(tracker, id).albumGrabAttempted, true);
   assert.equal(tracker.enqueueDownloadPipeline(id, { release }), false);
   assert.equal(queued.length, 1);
@@ -186,16 +188,16 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
   const release = await albumRelease("upgrade-album", ["First", "Second"]);
 
   assert.equal(tracker.enqueueDownloadPipeline(siblingId, { release }), true);
-  assert.deepEqual(queued[0].albumGroupJobIds, [siblingId]);
+  assert.deepEqual(queued[0]?.albumGroupJobIds, [siblingId]);
   assert.equal(trackedJob(tracker, upgradeId).status, "pending");
 
   assert.equal(tracker.enqueueDownloadPipeline(upgradeId, { release }), true);
   assert.deepEqual(
     [
-      queued[1].albumGrab,
-      queued[1].albumGroupJobIds,
-      queued[1].releaseMbid,
-      queued[1].allowedSources,
+      requireFixture(queued[1]).albumGrab,
+      requireFixture(queued[1]).albumGroupJobIds,
+      requireFixture(queued[1]).releaseMbid,
+      requireFixture(queued[1]).allowedSources,
     ],
     [true, [upgradeId], "upgrade-album-release", ["slskd", "usenet", "deemix"]],
   );
@@ -208,7 +210,11 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
   assert.equal(tracker.getNextPending()?.id, upgradeId);
   assert.equal(tracker.enqueueDownloadPipeline(upgradeId, { release }), true);
   assert.deepEqual(
-    [queued[2].jobId, queued[2].albumGrab, queued[2].upgradeForJobId],
+    [
+      requireFixture(queued[2]).jobId,
+      requireFixture(queued[2]).albumGrab,
+      requireFixture(queued[2]).upgradeForJobId,
+    ],
     [upgradeId, undefined, doneId],
   );
 });
@@ -236,7 +242,7 @@ test("a queued album grab exposes durable membership without replacing track act
   );
   assert.ok(ids.every((value) => value != null));
   assert.equal(
-    tracker.enqueueDownloadPipeline(ids[0], {
+    tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
       release: await albumRelease("activity-album", ["First", "Second"]),
     }),
     true,
@@ -247,12 +253,16 @@ test("a queued album grab exposes durable membership without replacing track act
   const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(requests.length, 2);
   assert.ok(requests.every((item) => item.kind === "track_download"));
-  assert.ok(requests[0].albumGrab?.id);
-  assert.equal(requests[0].albumGrab.id, requests[1].albumGrab!.id);
-  assert.deepEqual(requests[0].albumGrab.memberJobIds, ids);
-  assert.equal(requests[0].albumGrab.phase, "search");
+  assert.ok(requests[0]?.albumGrab?.id);
+  assert.equal(requests[0]?.albumGrab.id, requireFixture(requests[1]).albumGrab!.id);
+  assert.deepEqual(requests[0]?.albumGrab.memberJobIds, ids);
+  assert.equal(requests[0]?.albumGrab.phase, "search");
   assert.equal(requests[0].albumGrab.source, null);
-  assert.ok(requests.every((item) => item.requestedAt === requests[0].albumGrab!.requestedAt)!);
+  assert.ok(
+    requests.every(
+      (item) => item.requestedAt === requireFixture(requests[0]).albumGrab!.requestedAt,
+    )!,
+  );
 });
 
 test("failed queue handoff and attempted flags alone do not create album activity", async () => {
@@ -281,9 +291,12 @@ test("failed queue handoff and attempted flags alone do not create album activit
   );
   assert.ok(ids.every((value) => value != null));
   const release = await albumRelease("failed-activity-album", ["First", "Second"]);
-  assert.throws(() => tracker.enqueueDownloadPipeline(ids[0], { release }), /handoff rejected/);
+  assert.throws(
+    () => tracker.enqueueDownloadPipeline(requireFixture(ids[0]), { release }),
+    /handoff rejected/,
+  );
   trackerModule.downloadTracker._load();
-  trackerModule.downloadTracker.setAlbumGrabAttempted(ids[0], true);
+  trackerModule.downloadTracker.setAlbumGrabAttempted(requireFixture(ids[0]), true);
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
   const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
@@ -312,15 +325,15 @@ test("album track outcomes retain source, failures, and timestamps after retry a
     ),
   );
   assert.ok(ids.every((value) => value != null));
-  tracker.enqueueDownloadPipeline(ids[0], {
+  tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
     release: await albumRelease("outcome-album", ["First", "Second"]),
   });
-  tracker.updateDownloadMetadata(ids[0], { downloadSource: "slskd" });
-  tracker.setDone(ids[0], path.join(isolatedState.baseDir, "first.flac"));
-  tracker.setFailed(ids[1], "Album file missing");
-  tracker.setPending(ids[1], "Retrying missing track");
-  tracker.updateDownloadMetadata(ids[1], { downloadSource: "ytdlp" });
-  tracker.setDone(ids[1], path.join(isolatedState.baseDir, "second.m4a"));
+  tracker.updateDownloadMetadata(requireFixture(ids[0]), { downloadSource: "slskd" });
+  tracker.setDone(requireFixture(ids[0]), path.join(isolatedState.baseDir, "first.flac"));
+  tracker.setFailed(requireFixture(ids[1]), "Album file missing");
+  tracker.setPending(requireFixture(ids[1]), "Retrying missing track");
+  tracker.updateDownloadMetadata(requireFixture(ids[1]), { downloadSource: "ytdlp" });
+  tracker.setDone(requireFixture(ids[1]), path.join(isolatedState.baseDir, "second.m4a"));
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
   const before = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
@@ -359,7 +372,7 @@ test("history limits keep an album together and pruning does not recreate remove
     ),
   );
   assert.ok(ids.every((value) => value != null));
-  tracker.enqueueDownloadPipeline(ids[0], {
+  tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
     release: await albumRelease("limited-album", ["First", "Second", "Third"]),
   });
   const older = Date.now() - 60 * 60 * 1000;
@@ -377,7 +390,7 @@ test("history limits keep an album together and pruning does not recreate remove
       createdAt: Date.now(),
     });
   }
-  tracker.setDone(ids[0], path.join(isolatedState.baseDir, "first.flac"));
+  tracker.setDone(requireFixture(ids[0]), path.join(isolatedState.baseDir, "first.flac"));
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
   const limited = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
@@ -385,12 +398,12 @@ test("history limits keep an album together and pruning does not recreate remove
   for (const id of ids.slice(1))
     tracker.setDone(id, path.join(isolatedState.baseDir, `${id}.flac`));
   tracker.clearCompleted();
-  const grab = limited[0].albumGrab;
+  const grab = requireFixture(limited[0]).albumGrab;
   assert.ok(grab != null);
   db.prepare("DELETE FROM aurral_history WHERE id = ?").run(`aurral-track_download-${ids[1]}`);
   const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(retained.length, 2);
-  assert.deepEqual(retained[0].albumGrab!.memberJobIds, grab.memberJobIds);
+  assert.deepEqual(requireFixture(retained[0]).albumGrab!.memberJobIds, grab.memberJobIds);
   assert.equal(dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`), null);
 });
 
@@ -432,7 +445,7 @@ test("album activity preserves canonical disc order and does not revive expired 
     );
   });
   assert.ok(ids.every((value) => value != null));
-  tracker.enqueueDownloadPipeline(ids[0], {
+  tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
     release: await releaseManifest({
       id: "discs",
       title: "Album",
@@ -490,7 +503,7 @@ test("album activity excludes hidden member identities from an authorized respon
     ),
   );
   assert.ok(ids.every((value) => value != null));
-  tracker.enqueueDownloadPipeline(ids[0], {
+  tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
     release: await albumRelease("visible-album", ["Public", "Private"]),
   });
   const privateEntry = dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`);
@@ -505,12 +518,12 @@ test("album activity excludes hidden member identities from an authorized respon
     await getAurralHistoryRequests(null, { id: 42, username: "listener", role: "user" })
   ).filter((item) => ids.includes(item.jobId!));
   assert.equal(visible.length, 1);
-  assert.deepEqual(visible[0].albumGrab!.memberJobIds, [ids[0]]);
+  assert.deepEqual(requireFixture(visible[0]).albumGrab!.memberJobIds, [ids[0]]);
   const admin = (
     await getAurralHistoryRequests(null, { id: 1, username: "admin", role: "admin" })
   ).filter((item) => ids.includes(item.jobId!));
   assert.equal(admin.length, 2);
-  assert.deepEqual(admin[0].albumGrab!.memberJobIds, ids);
+  assert.deepEqual(requireFixture(admin[0]).albumGrab!.memberJobIds, ids);
 });
 
 test("activity write failures do not interrupt or duplicate an album handoff", async () => {
@@ -540,9 +553,9 @@ test("activity write failures do not interrupt or duplicate an album handoff", a
     "CREATE TRIGGER reject_album_activity BEFORE INSERT ON aurral_history WHEN NEW.kind = 'album_grab' BEGIN SELECT RAISE(ABORT, 'Activity unavailable'); END",
   );
   try {
-    assert.equal(tracker.enqueueDownloadPipeline(ids[0], { release }), true);
+    assert.equal(tracker.enqueueDownloadPipeline(requireFixture(ids[0]), { release }), true);
     assert.equal(queued.length, 1);
-    assert.equal(queued[0].albumGrab, true);
+    assert.equal(queued[0]?.albumGrab, true);
     assert.equal(trackedJob(tracker, ids[1]).status, "downloading");
   } finally {
     db.exec("DROP TRIGGER reject_album_activity");
@@ -585,12 +598,12 @@ test("album grabs are skipped when only a per-track source is enabled", async ()
     assert.ok(ids.every((value) => value != null));
 
     assert.equal(
-      tracker.enqueueDownloadPipeline(ids[0], {
+      tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
         release: await albumRelease("ytdlp-album", ["First", "Second"]),
       }),
       true,
     );
-    assert.equal(queued[0].albumGrab, undefined);
+    assert.equal(requireFixture(queued[0]).albumGrab, undefined);
     assert.equal(trackedJob(tracker, ids[1]).status, "pending");
   } finally {
     process.env.PATH = previousPath;
@@ -632,7 +645,7 @@ test("album siblings return to individual searches when the leader stops mid-gra
   );
   assert.ok(ids.every((value) => value != null));
   assert.equal(
-    tracker.enqueueDownloadPipeline(ids[0], {
+    tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
       release: await albumRelease("stopped-album", titles),
     }),
     true,
@@ -643,7 +656,7 @@ test("album siblings return to individual searches when the leader stops mid-gra
   assert.ok(grab != null);
   assert.equal(grab.albumGrab, true);
 
-  tracker.setFailed(ids[0], "Stopped by the user");
+  tracker.setFailed(requireFixture(ids[0]), "Stopped by the user");
   await orchestratorWorker.processPipelineJob(grab as PipelinePayload);
 
   for (const id of ids.slice(1)) {
@@ -682,14 +695,14 @@ test("partial album fallback persists per-track mode across restart", async () =
   );
   assert.ok(ids.every((value) => value != null));
   const release = await albumRelease("partial-album", ["First", "Second", "Third"]);
-  assert.equal(tracker.enqueueDownloadPipeline(ids[0], { release }), true);
-  tracker.setPending(ids[1]);
-  tracker.setPending(ids[2]);
+  assert.equal(tracker.enqueueDownloadPipeline(requireFixture(ids[0]), { release }), true);
+  tracker.setPending(requireFixture(ids[1]));
+  tracker.setPending(requireFixture(ids[2]));
 
   const restarted = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
-  assert.equal(restarted.enqueueDownloadPipeline(ids[1], { release }), true);
+  assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[1]), { release }), true);
   assert.equal(queued.length, 2);
-  assert.equal(queued[1].albumGrab, undefined);
+  assert.equal(requireFixture(queued[1]).albumGrab, undefined);
   assert.equal(trackedJob(restarted, ids[2]).status, "pending");
 });
 
@@ -719,7 +732,7 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   );
   assert.ok(ids.every((value) => value != null));
   assert.equal(
-    tracker.enqueueDownloadPipeline(ids[0], {
+    tracker.enqueueDownloadPipeline(requireFixture(ids[0]), {
       release: await albumRelease("restart-album", ["First", "Second", "Third"]),
     }),
     true,
@@ -729,17 +742,17 @@ test("restart reuses the queued album pipeline instead of submitting another gra
     (entry) => entry.payload?.jobId === ids[0],
   );
   assert.equal(before.length, 1);
-  assert.equal(tracker.enqueueDownloadPipeline(ids[1]), true);
+  assert.equal(tracker.enqueueDownloadPipeline(requireFixture(ids[1])), true);
   assert.equal(
     listHonkerJobs("slskd-pipeline").filter(
       (entry) =>
         Array.isArray(entry.payload?.albumGroupJobIds) &&
-        entry.payload.albumGroupJobIds.includes(ids[1]),
+        entry.payload.albumGroupJobIds.includes(requireFixture(ids[1])),
     ).length,
     1,
   );
   // The attempt gave this track back to search on its own.
-  tracker.releaseFromAlbumGrab(ids[2]);
+  tracker.releaseFromAlbumGrab(requireFixture(ids[2]));
   const single = createTrackedJob(
     tracker,
     {
@@ -761,8 +774,8 @@ test("restart reuses the queued album pipeline instead of submitting another gra
 
   tracker.resetDownloadingToPending();
   const restarted = new DownloadTracker({ enqueuePipeline });
-  assert.equal(restarted.enqueueDownloadPipeline(ids[1]), true);
-  assert.equal(restarted.enqueueDownloadPipeline(ids[0]), true);
+  assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[1])), true);
+  assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[0])), true);
   assert.equal(restarted.enqueueDownloadPipeline(single), true);
   const after = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(after.length, 1);
@@ -789,7 +802,7 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
       process.env.NODE_ENV = "production";
       assert.equal(tracker.getJob(id)?.status, "done");
       assert.equal(tracker.getStats().done, 1);
-      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist.done, 1);
+      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist?.done, 1);
       assert.deepEqual(
         tracker.getByPlaylistType("playlist").map((job) => job.id),
         [id],
@@ -996,14 +1009,14 @@ test("a queued search carries the job's pinned release ID, and a changed album d
   assert.ok(jobId != null);
 
   assert.equal(tracker.enqueueDownloadPipeline(jobId, { release: null }), true);
-  assert.equal(queued[0].track!.releaseMbid, "exact-release");
+  assert.equal(requireFixture(queued[0]).track!.releaseMbid, "exact-release");
 
   tracker.setPending(jobId);
   tracker.clearSlskdDispatched(jobId);
   tracker.updateMetadata(jobId, { albumMbid: "other-group", releaseMbid: null });
   const restarted = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   assert.equal(restarted.enqueueDownloadPipeline(jobId, { release: null }), true);
-  assert.equal(queued[1].track!.releaseMbid, null);
+  assert.equal(requireFixture(queued[1]).track!.releaseMbid, null);
 });
 
 test("returns complete playlist job lists unless a caller explicitly limits them", () => {

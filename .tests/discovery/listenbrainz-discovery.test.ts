@@ -202,7 +202,7 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
     body.recommendations.map((artist) => artist.name),
     [SHARED_PICK.name, CLOSE_PICK.name],
   );
-  assert.equal(body.recommendations[0].seedCount, 2);
+  assert.equal(body.recommendations[0]?.seedCount, 2);
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "shoegaze"]);
   assert.equal(
     body.recommendations.some((artist) => artist.tags?.includes("seen live")),
@@ -268,7 +268,7 @@ test("without a Last.fm key artist pages fall back to Deezer's related artists w
     body.artists.map((artist) => [artist.id, artist.name]),
     [[RELATED.mbid, RELATED.name]],
   );
-  assert.ok(body.artists[0].image);
+  assert.ok(body.artists[0]?.image);
 });
 
 test("flows that only know an artist's MBID still get Deezer's related artists", async () => {

@@ -8,6 +8,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -342,9 +343,9 @@ test("a rescan leaves no merged album behind when a track there has a recording 
   });
   const scanId = store.beginLibraryScan({ source: "aurral", rootPath: root });
   for (const [filePath, identityKey, title] of [
-    [paths[0], "name:track:name album name artist:1:1", "初恋"],
-    [paths[1], `recording:${recording}`, "正しい街"],
-  ]) {
+    [requireFixture(paths[0]), "name:track:name album name artist:1:1", "初恋"],
+    [requireFixture(paths[1]), `recording:${recording}`, "正しい街"],
+  ] as const) {
     const track = store.upsertLibraryTrack({ identityKey, title, syncSearch: false });
     store.linkLibraryAlbumTrack({
       albumId: album.id,
@@ -357,7 +358,7 @@ test("a rescan leaves no merged album behind when a track there has a recording 
       trackId: track.id,
       albumId: album.id,
       source: "aurral",
-      path: filePath,
+      path: requireFixture(filePath),
       size: file.size,
       mtimeMs: file.mtimeMs,
       scanId,
@@ -422,9 +423,9 @@ const libraryState = (user: Listener) => {
 test("a scan of one changed file gives its own rows the merged rows' favorites and monitoring", async () => {
   const { scan, paths } = await writeLibrary(MERGED_FILES);
   const { user } = await seedMergedLibrary(paths);
-  await writeFile(paths[0], "changed fixture");
+  await writeFile(requireFixture(paths[0]), "changed fixture");
 
-  await scan({ changedPaths: [paths[0]] });
+  await scan({ changedPaths: [requireFixture(paths[0])] });
 
   assert.deepEqual(libraryState(user), {
     starredArtists: ["宇多田ヒカル", "椎名林檎"],
@@ -437,7 +438,7 @@ test("a split that takes two scans keeps each album's plays and monitoring", asy
   const { scan, paths } = await writeLibrary(MERGED_FILES);
   const { user } = await seedMergedLibrary(paths);
 
-  await scan({ unreadable: [paths[1]] });
+  await scan({ unreadable: [requireFixture(paths[1])] });
   await scan();
 
   assert.deepEqual(rowCounts(), { artists: 2, albums: 2, tracks: 2 });

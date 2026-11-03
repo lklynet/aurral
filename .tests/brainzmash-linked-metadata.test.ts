@@ -142,13 +142,11 @@ const externalResponse = (url: string, options: Parameters<typeof axios.get>[1])
 function recordExternalRequests() {
   const requests: string[] = [];
   const providerGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(
-    requireFixture(async (url, options) => {
-      if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
-      requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
-      return { status: 200, statusText: "OK", headers: {}, data: externalResponse(url, options) };
-    }),
-  );
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+    if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
+    requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
+    return { status: 200, statusText: "OK", headers: {}, data: externalResponse(url, options) };
+  });
   return requests;
 }
 
@@ -190,7 +188,7 @@ test("artist genres come from BrainzMash and Last.fm only fills artists without 
   );
   assert.deepEqual(unlinked.genres, ["classic rock"]);
   assert.equal(requests.length, 1);
-  assert.match(requests[0], /method=artist\.getTopTags$/);
+  assert.match(requireFixture(requests[0]), /method=artist\.getTopTags$/);
 });
 
 test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {

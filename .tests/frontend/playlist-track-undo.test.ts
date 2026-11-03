@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type ToastApi = ReturnType<typeof import("../../frontend/src/contexts/ToastContext.tsx").useToast>;
 type ToastMessage = Parameters<ToastApi["addToast"]>[0];
@@ -80,7 +81,7 @@ const openHarness = async (
       });
     }
     if (path.includes("/operations/")) {
-      const body = removals[Number(path.split("op-")[1]) - 1];
+      const body = requireFixture(removals[Number(path.split("op-")[1]) - 1]);
       return json({
         state: "completed",
         outcomes: body.jobIds.map((jobId) => ({ jobId, status: "removed" })),
@@ -105,13 +106,13 @@ const tracks = ["a", "b", "c"].map((id: string) => ({ id, trackName: `Song ${id.
 test("removed tracks leave the playlist at once and are only deleted when the Undo toast closes", async (t) => {
   const { changes, toast, removals, hidden } = await openHarness(t, "removal-commit");
 
-  changes.remove(playlist, [tracks[0], tracks[2]]);
+  changes.remove(playlist, [requireFixture(tracks[0]), requireFixture(tracks[2])]);
 
   assert.deepEqual(hidden(), ["a", "c"]);
   assert.deepEqual(toast.open(), [{ type: "success", message: "Removed 2 tracks from Road trip" }]);
   assert.equal(removals.length, 0);
 
-  toast.close(toast.toasts[0].id);
+  toast.close(requireFixture(toast.toasts[0]).id);
   await until(() => hidden().length === 0);
 
   assert.deepEqual(removals, [{ jobIds: ["a", "c"], keepalive: true }]);
@@ -121,9 +122,10 @@ test("removed tracks leave the playlist at once and are only deleted when the Un
 test("undoing the second of two removals restores only that track and never deletes it", async (t) => {
   const { changes, toast, removals, hidden } = await openHarness(t, "removal-sequence");
 
-  changes.remove(playlist, [tracks[0]]);
-  changes.remove(playlist, [tracks[1]]);
+  changes.remove(playlist, [requireFixture(tracks[0])]);
+  changes.remove(playlist, [requireFixture(tracks[1])]);
   const [first, second] = toast.toasts;
+  assert.ok(first !== undefined && second !== undefined);
   assert.equal(second.message, "Removed Song B from Road trip");
 
   toast.undo(second.id);
@@ -144,10 +146,10 @@ test("undoing the second of two removals restores only that track and never dele
 test("leaving the page sends pending removals and closes their Undo toasts", async (t) => {
   const { changes, toast, removals, hidden } = await openHarness(t, "removal-flush");
 
-  changes.remove(playlist, [tracks[1]]);
+  changes.remove(playlist, [requireFixture(tracks[1])]);
   changes.flush();
 
-  assert.equal(toast.toasts[0].open, false);
+  assert.equal(toast.toasts[0]?.open, false);
   await until(() => hidden().length === 0);
   assert.deepEqual(
     removals.map((removal) => removal.jobIds),
@@ -158,8 +160,8 @@ test("leaving the page sends pending removals and closes their Undo toasts", asy
 test("a rejected removal brings the tracks back and says nothing changed", async (t) => {
   const { changes, toast, hidden } = await openHarness(t, "removal-failure", { failRemoval: true });
 
-  changes.remove(playlist, [tracks[0], tracks[1]]);
-  toast.close(toast.toasts[0].id);
+  changes.remove(playlist, [requireFixture(tracks[0]), requireFixture(tracks[1])]);
+  toast.close(requireFixture(toast.toasts[0]).id);
   await until(() => hidden().length === 0);
 
   assert.deepEqual(toast.open(), [

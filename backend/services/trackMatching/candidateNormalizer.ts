@@ -105,8 +105,7 @@ export function getPathParts(filePath: unknown) {
 }
 
 export function getFileName(filePath: unknown) {
-  const parts = getPathParts(filePath);
-  return parts.length > 0 ? parts[parts.length - 1] : "";
+  return getPathParts(filePath).at(-1) ?? "";
 }
 
 export function getFileExtension(filePath: unknown) {
@@ -327,9 +326,9 @@ export function parseFilenameArtistTitle(
   baseName: string | null | undefined,
   knownArtistNames: (string | null | undefined)[] = [],
 ) {
-  const candidates = [String(baseName || "")];
-  const stripped = candidates[0].replace(/^\s*\d{1,3}(?:\s*[-._)\]]|\s+)/, "").trim();
-  if (stripped) candidates.unshift(stripped);
+  const base = String(baseName || "");
+  const stripped = base.replace(/^\s*\d{1,3}(?:\s*[-._)\]]|\s+)/, "").trim();
+  const candidates = stripped ? [stripped, base] : [base];
 
   for (const text of candidates) {
     const segments = splitArtistTitleSegments(text);

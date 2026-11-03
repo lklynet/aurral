@@ -13,6 +13,7 @@ import {
   type Fixture,
   type FixtureFile,
 } from "./fixture-corpus.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type SourceRelease = {
   release_mbid: string;
@@ -151,7 +152,7 @@ function decide(item: Fixture) {
       diagnostics.noFolder += 1;
       return null;
     }
-    const chosen = selectable[0];
+    const chosen = requireFixture(selectable[0]);
     if (item.flow === "track-with-release") {
       const trackIndex = chosen.release.tracks.findIndex(
         (track) => track.recording_mbid === raw.target_recording_mbid,
@@ -192,7 +193,7 @@ function decide(item: Fixture) {
       : fileCandidate(candidate),
   );
   const result = decideRecording(request, candidates);
-  return result.selectedIndex == null ? null : candidates[result.selectedIndex].key;
+  return result.selectedIndex == null ? null : requireFixture(candidates[result.selectedIndex]).key;
 }
 
 const split = process.argv[2] || "development";

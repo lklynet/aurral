@@ -15,6 +15,7 @@ import {
   resetDatabase,
   startServerProcess,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, { userOps, dbOps }] = await setupIsolatedBackend(
   "lidarr-preferences-api",
@@ -102,7 +103,7 @@ async function startFakeLidarr() {
     collection[index] = {
       ...collection[index],
       ...payload,
-      id: collection[index].id,
+      id: requireFixture(collection[index]).id,
     };
     return json(res, 200, collection[index]);
   }
@@ -551,7 +552,7 @@ test("POST /library/artists applies monitoring options", async () => {
     ["existing", "existing", "none"],
     ["future", "future", "all"],
     ["all", "all", "all"],
-  ];
+  ] as const;
   const cases = [
     {
       settings: { defaultMonitorOption: "none" },
@@ -709,7 +710,7 @@ test("POST /library/downloads/album checks artist and monitors only the requeste
     monitorNewItems: "none",
   });
   assert.equal(fakeLidarr.state.updatedAlbums.length, 1);
-  assert.equal(fakeLidarr.state.updatedAlbums[0].monitored, true);
+  assert.equal(fakeLidarr.state.updatedAlbums[0]?.monitored, true);
   assertPostedMonitor(
     fakeLidarr.state.artists.find((entry) => entry.id === artist.id),
     {
@@ -747,7 +748,7 @@ test("POST /library/downloads/album repairs monitoring after Lidarr search flips
   });
   assert.equal(response.status, 200, JSON.stringify(payload));
   assert.equal(fakeLidarr.state.commands.length, 1);
-  assert.equal(fakeLidarr.state.commands[0].name, "AlbumSearch");
+  assert.equal(fakeLidarr.state.commands[0]?.name, "AlbumSearch");
   assertPostedMonitor(
     fakeLidarr.state.artists.find((entry) => entry.id === artist.id),
     {

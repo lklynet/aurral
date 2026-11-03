@@ -162,12 +162,12 @@ test("playlist fetch follows every current Spotify page without a client-side si
   assert.equal(items.length, 1001);
   assert.equal(requireFixture(items.at(-1)!.item).name, "Song 1000");
   assert.equal(urls.length, 21);
-  assert.equal(new URL(urls[0]).pathname, "/v1/playlists/playlist/items");
-  assert.equal(new URL(urls[0]).searchParams.get("limit"), "50");
-  assert.match(new URL(urls[0]).searchParams.get("fields")!, /items\(item\(/);
-  assert.equal(new URL(urls[0]).searchParams.get("additional_types"), "episode");
-  assert.match(new URL(urls[0]).searchParams.get("fields")!, /\btotal\b/);
-  assert.match(new URL(urls[0]).searchParams.get("fields")!, /\boffset\b/);
+  assert.equal(new URL(requireFixture(urls[0])).pathname, "/v1/playlists/playlist/items");
+  assert.equal(new URL(requireFixture(urls[0])).searchParams.get("limit"), "50");
+  assert.match(new URL(requireFixture(urls[0])).searchParams.get("fields")!, /items\(item\(/);
+  assert.equal(new URL(requireFixture(urls[0])).searchParams.get("additional_types"), "episode");
+  assert.match(new URL(requireFixture(urls[0])).searchParams.get("fields")!, /\btotal\b/);
+  assert.match(new URL(requireFixture(urls[0])).searchParams.get("fields")!, /\boffset\b/);
 });
 
 test("playlist fetch rejects a response that stops before Spotify's declared total", async () => {

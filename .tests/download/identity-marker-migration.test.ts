@@ -10,6 +10,7 @@ import { parseFile } from "music-metadata";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { readAurralIdentity } from "../../backend/services/downloadUtils.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -151,10 +152,9 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   addFinishedJob(notDownloaded, null);
   addFinishedJob(path.join(root, "Artist", "Album", "06 Missing.flac"), "usenet");
   const untouched = await Promise.all(
-    [ownComment, outside, notDownloaded].map(async (filePath: string) => [
-      filePath,
-      await readFile(filePath),
-    ]),
+    [ownComment, outside, notDownloaded].map(
+      async (filePath: string) => [filePath, await readFile(filePath)] as const,
+    ),
   );
   const untouchedTimes = await Promise.all(untouched.map(([filePath]) => stat(filePath)));
 
@@ -176,7 +176,7 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
       bytes,
       `${path.basename(String(filePath))} should be untouched`,
     );
-    assert.equal((await stat(filePath)).mtimeMs, untouchedTimes[index].mtimeMs);
+    assert.equal((await stat(filePath)).mtimeMs, requireFixture(untouchedTimes[index]).mtimeMs);
   }
   assert.deepEqual(
     dbOps.getJSONSetting(

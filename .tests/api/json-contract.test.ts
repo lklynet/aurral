@@ -490,7 +490,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
   for (const [kind, name] of [
     ["artists", "name"],
     ["albums", "title"],
-  ]) {
+  ] as const) {
     const collection = await call(
       `/api/library/canonical?kind=${kind}&pageSize=10&availableOnly=true`,
     );

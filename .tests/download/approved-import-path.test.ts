@@ -14,6 +14,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -196,6 +197,7 @@ test("playlist job file paths are only returned to admins", async (t: import("vi
     [{ artistName: "Path Artist", trackName: "Path Track" }],
     playlistId,
   );
+  assert.ok(jobId !== undefined);
   const finalPath = path.join(process.env.DOWNLOAD_FOLDER!, "Path Artist", "Path Track.FLAC");
   downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER!, "staging.flac"));
   downloadTracker.setDone(jobId, finalPath, "Path Album");
@@ -397,7 +399,7 @@ test("a track committed after an approved review joins the same pending playlist
   assert.deepEqual(syncs, [
     { kind: "playback-playlist-sync", entityIds: [playlistId], rewrite: false },
   ]);
-  await processSystemTask(syncs[0]);
+  await processSystemTask(requireFixture(syncs[0]));
 
   const published = await fs.readFile(
     path.join(playlistManager.libraryRoot, "Reviewed concurrent commit.m3u"),

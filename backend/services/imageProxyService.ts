@@ -105,13 +105,14 @@ const safeLookup = (
   dns.lookup(hostname, { ...options, all: true }, (error, addresses) => {
     if (error) return callback(error);
     const publicAddresses = addresses.filter(({ address }) => !isPrivateAddress(address));
-    if (publicAddresses.length === 0) {
+    const [first] = publicAddresses;
+    if (!first) {
       const lookupError: NodeJS.ErrnoException = new Error("Refusing to connect to a private host");
       lookupError.code = "EHOSTUNREACH";
       return callback(lookupError);
     }
     if (options?.all) return callback(null, publicAddresses);
-    return callback(null, publicAddresses[0].address, publicAddresses[0].family);
+    return callback(null, first.address, first.family);
   });
 };
 
@@ -587,10 +588,8 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
         throw new Error(`Upstream image request failed with status ${response.status}`);
       }
 
-      const contentType = String(response.headers.get("content-type") || "")
-        .split(";")[0]
-        .trim()
-        .toLowerCase();
+      const [mediaType = ""] = String(response.headers.get("content-type") || "").split(";");
+      const contentType = mediaType.trim().toLowerCase();
       if (!isOwnKey(IMAGE_FORMATS_BY_CONTENT_TYPE, contentType)) {
         await response.body?.cancel();
         throw new Error("Upstream response is not a supported image");
@@ -694,8 +693,8 @@ export const warmPublicImageUrl = async (
       return null;
     }
   }
-  const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
-  const remote = srcMatch ? decodeURIComponent(srcMatch[1]) : normalized;
+  const src = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i)?.[1];
+  const remote = src ? decodeURIComponent(src) : normalized;
   if (
     !remote ||
     remote.startsWith("/") ||
@@ -727,11 +726,11 @@ export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined): 
     return sourceFromMeta ? buildStableImageProxyUrl(sourceFromMeta) : null;
   }
 
-  const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
+  const src = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i)?.[1];
   let remote = normalized;
-  if (srcMatch) {
+  if (src) {
     try {
-      remote = decodeURIComponent(srcMatch[1]);
+      remote = decodeURIComponent(src);
     } catch {
       return normalized;
     }
@@ -751,10 +750,10 @@ export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined): 
 };
 
 export const findCachedImage = async (rawKey: string) => {
-  const match = rawKey.trim().match(/^([a-f0-9]{64})(?:\.([a-z0-9]+))?$/i);
-  if (!match) return null;
+  const hash = rawKey.trim().match(/^([a-f0-9]{64})(?:\.([a-z0-9]+))?$/i)?.[1];
+  if (!hash) return null;
 
-  const cacheKey = match[1].toLowerCase();
+  const cacheKey = hash.toLowerCase();
   await awaitCacheIndexReady();
   let cached = getCachedEntryFromKey(cacheKey);
   if (!cached?.imagePath || !fs.existsSync(cached.imagePath)) {

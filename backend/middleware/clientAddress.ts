@@ -21,6 +21,6 @@ export const clientAddress = createMiddleware<AppEnv>(async (c, next) => {
     socketAddress && trust(socketAddress, 0) && c.req.header("x-forwarded-proto");
   c.set("clientIp", addresses.at(-1) ?? "");
   c.set("clientIps", addresses);
-  c.set("protocol", forwardedProto ? forwardedProto.split(",")[0].trim() : "http");
+  c.set("protocol", forwardedProto ? (forwardedProto.split(",")[0] ?? "").trim() : "http");
   await next();
 });

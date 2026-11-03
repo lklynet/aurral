@@ -22,6 +22,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   state,
@@ -151,7 +152,7 @@ function libraryJobs(
   group: ReturnType<typeof brainzmashGroup>,
   titles: string[],
   {
-    releaseMbid = group.releases[0].id,
+    releaseMbid = requireFixture(group.releases[0]).id,
     requestGroupId = group.id,
     requestKind,
     ...extra
@@ -159,12 +160,14 @@ function libraryJobs(
     requestKind?: "track" | "album";
   } = {},
 ) {
-  const release = group.releases.find((entry) => entry.id === releaseMbid) || group.releases[0];
+  const release = requireFixture(
+    group.releases.find((entry) => entry.id === releaseMbid) || group.releases[0],
+  );
   return titles.map((trackName) =>
     createTrackedJob(
       downloadTracker,
       {
-        artistName: group.artists[0].artistname,
+        artistName: requireFixture(group.artists[0]).artistname,
         albumName: group.title,
         albumMbid: group.id,
         releaseMbid,
@@ -183,7 +186,7 @@ function libraryJobs(
 
 // An attempt holding these tracks, as the tracker holds them when it queues one.
 function albumAttempt(ids: string[], extra: Partial<PipelinePayload> = {}): PipelinePayload {
-  const downloadAttemptId = beginDownloadAttempt(ids[0]);
+  const downloadAttemptId = beginDownloadAttempt(requireFixture(ids[0]));
   for (const id of ids) {
     setActiveDownloadAttemptId(id, downloadAttemptId);
     downloadTracker.setAlbumGrabAttempted(id, true);
@@ -192,7 +195,7 @@ function albumAttempt(ids: string[], extra: Partial<PipelinePayload> = {}): Pipe
   return {
     phase: "search",
     downloadAttemptId,
-    jobId: ids[0],
+    jobId: requireFixture(ids[0]),
     albumGrab: true,
     albumGroupJobIds: ids,
     releaseMbid: trackedJob(downloadTracker, ids[0]).releaseMbid,
@@ -291,6 +294,7 @@ test("every album source is searched by release in priority order before any tra
   vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
   const usenetSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
   const [jobId] = libraryJobs(group, ["Second"]);
+  assert.ok(jobId !== undefined);
 
   let payload: PipelinePayload | null = albumAttempt([jobId]);
   const sources: (string | null | undefined)[] = [];
@@ -369,6 +373,7 @@ test("a track request searches yt-dlp ranked first before its release, and never
   await serveGroups(t, [group]);
 
   const [track] = libraryJobs(group, ["Second"]);
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   const quick = queued(track);
   assert.ok(quick != null);
@@ -392,6 +397,7 @@ test("a track request searches yt-dlp ranked first before its release, and never
   ]);
   await serveGroups(t, [group, wholeGroup]);
   const [whole] = libraryJobs(wholeGroup, ["Second"], { requestKind: "album" });
+  assert.ok(whole !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, whole));
   assert.deepEqual(requireQueued(whole).albumGroupJobIds, [whole]);
   await runToEnd(claimQueued(whole), sources);
@@ -414,6 +420,7 @@ test("a track request starts on its release as before when an album source ranks
   ]);
   await serveGroups(t, [group]);
   const [track] = libraryJobs(group, ["Second"]);
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   await runToEnd(claimQueued(track), sources);
   assert.deepEqual(sources.searched(), ["soulseek album", "soulseek track", "yt-dlp"]);
@@ -427,6 +434,7 @@ test("a track request asked for again after its search ended searches yt-dlp fir
   ]);
   await serveGroups(t, [group]);
   const [failed, imported] = libraryJobs(group, ["Second", "Third"], { requestGroupId: null });
+  assert.ok(failed !== undefined && imported !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, failed));
   await runToEnd(claimQueued(failed), sources);
   assert.equal(trackedJob(downloadTracker, failed).status, "failed");
@@ -459,6 +467,7 @@ test("a quick search cut off by a restart searches yt-dlp again", async (t) => {
   ]);
   await serveGroups(t, [group]);
   const [track] = libraryJobs(group, ["Second"]);
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   assert.equal(claimQueued(track).quickSearch, true);
 
@@ -481,6 +490,7 @@ test("yt-dlp stays searched once for a track request after the user ranks it bel
   ]);
   await serveGroups(t, [group]);
   const [track] = libraryJobs(group, ["Second"]);
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   const attempt = await processPipelinePayload(claimQueued(track));
   assert.ok(attempt != null);
@@ -505,6 +515,7 @@ test("while metadata cannot be read, a track request of a known album starts its
   clearApiCaches();
   clearReleaseManifests();
   const [track] = libraryJobs(group, ["Second"], { trackMbid: "unread-release-recording-2" });
+  assert.ok(track !== undefined);
   const named = createTrackedJob(
     downloadTracker,
     { artistName: "Unread Band", trackName: "Third", albumName: "unread Album" },
@@ -532,6 +543,7 @@ async function quickSearchDownloaded(
   ]);
   await serveGroups(t, [group], { unavailable });
   const [track] = libraryJobs(group, ["Second"], { durationMs: 15000 });
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   const staged = path.join(
     process.env.DOWNLOAD_FOLDER!,
@@ -649,6 +661,7 @@ test("a track waiting for its release after its quick search does not hold back 
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
   const [waitingId, nextId] = libraryJobs(group, ["First", "Second"], { requestGroupId: null });
+  assert.ok(waitingId !== undefined && nextId !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, waitingId));
   down = true;
   clearApiCaches();
@@ -682,6 +695,7 @@ test("a track request whose release cannot be read through every wait after its 
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
   const [track] = libraryJobs(group, ["Second"]);
+  assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   down = true;
   clearApiCaches();
@@ -846,6 +860,7 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
       transfers: files.map((_, index) => ({ id: `transfer-${index}` })),
     }));
   const [jobId] = libraryJobs(group, ["Second"]);
+  assert.ok(jobId !== undefined);
 
   let payload: PipelinePayload | null = albumAttempt([jobId], { source: "slskd" });
   while (payload?.phase === "search") payload = await processPipelinePayload(payload);
@@ -869,7 +884,7 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   assert.deepEqual(polling.candidate, soulseekReleaseCandidates(payload)[0]);
   assert.equal(enqueue.mock.calls.length, 1);
   assert.deepEqual(
-    enqueue.mock.calls[0][0].files.map((file) => file.filename!.split("\\").at(-1)),
+    enqueue.mock.calls[0]?.[0].files.map((file) => file.filename!.split("\\").at(-1)),
     ["02 - Second.flac"],
   );
 });
@@ -1062,7 +1077,7 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
   const next = await processPipelinePayload(await processPipelinePayload(searched));
   assert.ok(next != null);
   assert.equal(next.phase, "download");
-  downloadTracker.setDone(ids[2], "/library/Deezer Band/03 Third.flac");
+  downloadTracker.setDone(requireFixture(ids[2]), "/library/Deezer Band/03 Third.flac");
   const polling = await processPipelinePayload(next);
   assert.ok(polling != null);
   assert.deepEqual(
@@ -1141,7 +1156,7 @@ test("a finished album download takes the release a merge left in its place, and
   assert.deepEqual([step.phase, step.albumGrab], ["finalize", true]);
 
   unknown = false;
-  group.releases[0].id = "deemix-waits-merged";
+  requireFixture(group.releases[0]).id = "deemix-waits-merged";
   clearApiCaches();
   step = await processPipelinePayload(step);
   assert.ok(step != null);
@@ -1178,7 +1193,7 @@ test("an album attempt whose release cannot be read when it searches gives every
   const created = mockSoulseekSearch(t, []);
   const ids = libraryJobs(group, ["First", "Second", "Third"]);
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
-  const attempt = claimQueued(ids[0]);
+  const attempt = claimQueued(requireFixture(ids[0]));
   assert.ok(attempt != null);
   assert.deepEqual(attempt.albumGroupJobIds, ids);
 
@@ -1210,7 +1225,10 @@ test("an album attempt whose release cannot be read when it searches gives every
   clearApiCaches();
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[1]));
   assert.deepEqual(
-    [requireQueued(ids[1]).albumGrab, requireQueued(ids[1]).albumGroupJobIds],
+    [
+      requireQueued(requireFixture(ids[1])).albumGrab,
+      requireQueued(requireFixture(ids[1])).albumGroupJobIds,
+    ],
     [true, [ids[1], ids[0], ids[2]]],
   );
   assert.deepEqual(
@@ -1227,6 +1245,7 @@ test("a track that waited for its release through every wait of an outage search
   let down = true;
   await serveGroups(t, [group], { unavailable: () => down });
   const [jobId] = libraryJobs(group, ["First"]);
+  assert.ok(jobId !== undefined);
   let waits = 0;
   for (; waits < 100 && !queued(jobId); waits += 1)
     await downloadWorker.processJob(trackedJob(downloadTracker, jobId));
@@ -1316,10 +1335,10 @@ test("an album attempt whose leading track stopped gives the rest back untried a
   const removedHistory = vi.spyOn(nzbget, "deleteHistoryItem").mockImplementation(async () => true);
   const finalizing = async (ids: string[], nzbId: string) => {
     await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
-    const attempt = claimQueued(ids[0]);
+    const attempt = claimQueued(requireFixture(ids[0]));
     assert.ok(attempt != null);
     assert.deepEqual(attempt.albumGroupJobIds, ids);
-    downloadTracker.setFailed(ids[0], "Stopped");
+    downloadTracker.setFailed(requireFixture(ids[0]), "Stopped");
     return { ...attempt, phase: "finalize", source: "usenet", downloadClient: "nzbget", nzbId };
   };
 
@@ -1364,7 +1383,7 @@ test("a Soulseek album attempt whose leading track stopped removes the transfers
   const removed = vi.spyOn(slskd, "deleteTransfer").mockImplementation(async () => true);
   const ids = libraryJobs(group, ["First", "Second"]);
   assert.ok(ids.every((value) => value != null));
-  downloadTracker.setDone(ids[0], "/library/Transfer Band/01 First.flac");
+  downloadTracker.setDone(requireFixture(ids[0]), "/library/Transfer Band/01 First.flac");
 
   assert.equal(
     await processPipelinePayload(
@@ -1397,13 +1416,13 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   const ids = libraryJobs(group, ["First", "Second", "Third"]);
   assert.ok(ids.every((value) => value != null));
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
-  const attempt = queued(ids[0]);
+  const attempt = queued(requireFixture(ids[0]));
   assert.ok(attempt != null);
-  enqueuePipelineStep({ ...claimQueued(ids[0]), searchIds: ["album-search"] }, {});
+  enqueuePipelineStep({ ...claimQueued(requireFixture(ids[0])), searchIds: ["album-search"] }, {});
   assert.deepEqual(attempt.albumGroupJobIds, ids);
 
   await cancelDownloadWorkForJobs([trackedJob(downloadTracker, ids[0])]);
-  downloadTracker.removeJob(ids[0]);
+  downloadTracker.removeJob(requireFixture(ids[0]));
   assert.deepEqual(queuedFor(ids), []);
   assert.deepEqual(
     stopped.mock.calls.map((call) => call[0]),
@@ -1417,7 +1436,10 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   }
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[1]));
   assert.deepEqual(
-    [requireQueued(ids[1]).albumGrab, requireQueued(ids[1]).albumGroupJobIds],
+    [
+      requireQueued(requireFixture(ids[1])).albumGrab,
+      requireQueued(requireFixture(ids[1])).albumGroupJobIds,
+    ],
     [true, [ids[1], ids[2]]],
   );
 });
@@ -1442,7 +1464,7 @@ test("an album step that fails on every retry blocks the release it downloaded, 
   const failAttempt = async (attempt: number) => {
     await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
     const finalizing = {
-      ...claimQueued(ids[0]),
+      ...claimQueued(requireFixture(ids[0])),
       phase: "finalize",
       source: "usenet",
       downloadClient: "nzbget",
@@ -1479,7 +1501,7 @@ test("an album step that fails on every retry blocks the release it downloaded, 
     assert.ok(fresh != null);
     const order = downloadTracker.peekPending(100).map((job) => job.id);
     assert.ok(
-      order.indexOf(fresh) >= 0 && order.indexOf(fresh) < order.indexOf(ids[0]),
+      order.indexOf(fresh) >= 0 && order.indexOf(fresh) < order.indexOf(requireFixture(ids[0])),
       "fresh work goes first",
     );
     assert.deepEqual(queuedFor(ids), []);
@@ -1519,7 +1541,7 @@ test("an album source whose step fails on every retry hands the attempt to the n
   const ids = libraryJobs(group, ["First", "Second"]);
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
   const searching = {
-    ...claimQueued(ids[0]),
+    ...claimQueued(requireFixture(ids[0])),
     source: "slskd",
     activeSearch: { id: "refused-search", query: "Refused Band", startedAt: 0 },
   };
@@ -1613,6 +1635,7 @@ test("an album attempt whose first source is down searches the next source once,
     return [];
   });
   const [id] = libraryJobs(group, ["Second"]);
+  assert.ok(id !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, id));
 
   let payload: PipelinePayload | null = claimQueued(id);
@@ -1664,6 +1687,7 @@ test("a track's release is chosen once, pinned on every track of its attempt, an
   const metadata = await serveGroups(t, [resolvedGroup]);
   const created = mockSoulseekSearch(t, []);
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
+  assert.ok(leader !== undefined && sibling !== undefined);
 
   await downloadWorker.processJob(trackedJob(downloadTracker, leader));
   const payload = queued(leader);
@@ -1703,9 +1727,11 @@ test("each track joins only an attempt for the release it is pinned to and liste
   const [offRelease, first] = libraryJobs(group, ["Bonus Song", "First"], {
     releaseMbid: "standard",
   });
+  assert.ok(offRelease !== undefined && first !== undefined);
   const [deluxeSecond, deluxeBonus] = libraryJobs(group, ["Second", "Bonus Song"], {
     releaseMbid: "deluxe",
   });
+  assert.ok(deluxeSecond !== undefined && deluxeBonus !== undefined);
 
   await downloadWorker.processJob(trackedJob(downloadTracker, offRelease));
   assert.equal(requireQueued(offRelease).albumGrab, undefined);
@@ -1769,7 +1795,10 @@ test("tracks pinned to a release MusicBrainz merged away share one attempt on th
 
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
   assert.deepEqual(
-    [requireQueued(ids[0]).releaseMbid, requireQueued(ids[0]).albumGroupJobIds],
+    [
+      requireQueued(requireFixture(ids[0])).releaseMbid,
+      requireQueued(requireFixture(ids[0])).albumGroupJobIds,
+    ],
     ["resolved-release", ids],
   );
   assert.deepEqual(
@@ -1799,6 +1828,7 @@ test("a track that can search by release, found mid-search with no queued step, 
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   await serveGroups(t, [resolvedGroup]);
   const [interrupted] = resolvedJobs(["Second"]);
+  assert.ok(interrupted !== undefined);
   db.prepare("UPDATE playlist_download_jobs SET slskd_search_id = ? WHERE id = ?").run(
     "interrupted-search",
     interrupted,
@@ -1823,6 +1853,7 @@ test("an album attempt with no album source enabled searches for the track inste
   ]);
   await serveGroups(t, [group]);
   const [jobId] = libraryJobs(group, ["Second"]);
+  assert.ok(jobId !== undefined);
 
   await processPipelinePayload(albumAttempt([jobId]));
   assert.ok(search.mock.calls.length > 0);
@@ -1848,6 +1879,7 @@ test("an album transfer queued before attempts named their release keeps its tra
   const metadata = await serveGroups(t, [resolvedGroup]);
   const transfer = vi.spyOn(slskd, "getTransfer").mockImplementation(async () => null);
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
+  assert.ok(leader !== undefined && sibling !== undefined);
 
   const resumed = await processPipelinePayload(legacyAttempt([leader, sibling], legacyTransfer));
   assert.ok(resumed != null);
@@ -1916,6 +1948,7 @@ test("an album search queued before attempts named their release stops its searc
   const created = mockSoulseekSearch(t, []);
   const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
+  assert.ok(leader !== undefined && sibling !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, leader));
   const { releaseMbid: _releaseMbid, ...queuedLegacy } = claimQueued(leader);
 
@@ -2016,12 +2049,15 @@ test("a two-disc Soulseek release pairs each track with its own disc, in disc fo
     byUser.discs,
     ids.map((id, index) => [
       id,
-      `CD${tracklist[index][0]}/0${tracklist[index][1]} - ${tracklist[index][2]}.flac`,
+      `CD${requireFixture(tracklist[index])[0]}/0${requireFixture(tracklist[index])[1]} - ${requireFixture(tracklist[index])[2]}.flac`,
     ]),
   );
   assert.deepEqual(
     byUser.straight,
-    ids.map((id, index) => [id, `Disc Album/0${index + 1} - ${tracklist[index][2]}.flac`]),
+    ids.map((id, index) => [
+      id,
+      `Disc Album/0${index + 1} - ${requireFixture(tracklist[index])[2]}.flac`,
+    ]),
   );
 });
 
@@ -2038,6 +2074,7 @@ test("after an album attempt falls back, a sibling's own track search puts the c
   // The first folder is the release plus a bonus song; the second is the release missing one song.
   mockSoulseekSearch(t, [folder("bonus", titles), folder("exact", ["First", "Third"])]);
   const [leader, sibling] = resolvedJobs(["Second", "Third"], "affinity-request");
+  assert.ok(leader !== undefined && sibling !== undefined);
 
   await downloadWorker.processJob(trackedJob(downloadTracker, leader));
   let payload: PipelinePayload | null | undefined = queued(leader);

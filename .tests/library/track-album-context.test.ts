@@ -146,7 +146,7 @@ test("a release page lists the release and disc a plain request for its track se
     requireFixture(downloadTracker.getJob(plain.body.jobId)),
   );
   assert.ok(manifest != null);
-  assert.equal(manifest.releaseMbid, listed.body[2].releaseMbid);
+  assert.equal(manifest.releaseMbid, requireFixture(listed.body[2]).releaseMbid);
 });
 
 function libraryAlbum({

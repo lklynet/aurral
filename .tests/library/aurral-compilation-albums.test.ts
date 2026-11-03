@@ -1,4 +1,3 @@
-import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
@@ -136,7 +135,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
   });
   assert.equal(requested.status, 201, await requested.text());
 
-  const albumId = requireFixture(db)
+  const albumId = db
     .prepare<unknown[], { id: number }>(
       "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )!
@@ -206,7 +205,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
   const { common } = await parseFile(filePath);
   assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
   const hookedArtist = () =>
-    requireFixture(getLibraryForAlbumIds({ ids: [albumId] })!).tracks.find(
+    getLibraryForAlbumIds({ ids: [albumId] })!.tracks.find(
       (track) => track.title === "Hooked on a Feeling",
     )!.artistName;
   await scanMusicRoot({ rootPath: root, source: "aurral" });
@@ -226,7 +225,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
 });
 
 test("a compilation track whose stored aliases can't be read is still fetched by its own artist", async () => {
-  const track = requireFixture(db)
+  const track = db
     .prepare<[string], { id: number }>("SELECT id FROM library_tracks WHERE title = ?")
     .get("Go All the Way")!;
   const monitor = (monitored: boolean) =>
@@ -236,11 +235,9 @@ test("a compilation track whose stored aliases can't be read is still fetched by
       body: JSON.stringify({ monitored }),
     });
   assert.equal((await monitor(false)).status, 200);
-  requireFixture(db)
-    .prepare(
-      "UPDATE library_tracks SET metadata_json = json_set(metadata_json, '$.artistAliases', json('{}')) WHERE id = ?",
-    )
-    .run(track.id);
+  db.prepare(
+    "UPDATE library_tracks SET metadata_json = json_set(metadata_json, '$.artistAliases', json('{}')) WHERE id = ?",
+  ).run(track.id);
   downloadTracker.clearAll();
 
   const monitored = await monitor(true);

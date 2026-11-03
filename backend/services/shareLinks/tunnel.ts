@@ -7,8 +7,8 @@ import { getShareInstance, SHARE_ORIGIN } from "./store.ts";
 declare function clearTimeout(timeout: NodeJS.Timeout | string | number | null | undefined): void;
 
 const TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
-const RESTART_DELAYS_MS = [5000, 15000, 60000, 300000];
-const REGISTER_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 60000];
+const RESTART_DELAYS_MS = [5000, 15000, 60000, 300000] as const;
+const REGISTER_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 60000] as const;
 const REGISTER_TIMEOUT_MS = 15000;
 const VERIFY_GRACE_MS = 2 * 60 * 1000;
 
@@ -30,8 +30,8 @@ let state: TunnelState = "off";
 let restartTimer: NodeJS.Timeout | null = null;
 let restartAttempt = 0;
 
-const delayFor = (delays: number[], attempt: number) =>
-  delays[Math.min(attempt, delays.length - 1)];
+const delayFor = (delays: readonly [number, ...number[]], attempt: number) =>
+  delays[Math.min(attempt, delays.length - 1)] ?? delays[0];
 
 async function callLookup(method: "PUT" | "DELETE", body: { url?: string }) {
   const { id, secret } = getShareInstance();

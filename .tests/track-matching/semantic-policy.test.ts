@@ -480,6 +480,6 @@ test("native pre-download and post-download paths reject the same variant confli
   const postDownload = verifyDownloadedRecording(request, candidate);
   assert.equal(preDownload.decision, "skip");
   assert.equal(postDownload.decision, "no_match");
-  assert.ok(preDownload.candidates[0].contradictions.includes("karaoke"));
+  assert.ok(preDownload.candidates[0]?.contradictions.includes("karaoke"));
   assert.ok(postDownload.contradictions.includes("karaoke"));
 });

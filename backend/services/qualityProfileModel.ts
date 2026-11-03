@@ -77,7 +77,8 @@ export function normalizeQualityProfile(value: unknown, slskd: SlskdSettings = {
     const safeId = String(id || "").trim();
     if (TIER_BY_ID.has(safeId) && !enabled.includes(safeId)) enabled.push(safeId);
   }
-  if (enabled.length === 0) enabled.push(order[0]);
+  const [firstTier] = order;
+  if (enabled.length === 0 && firstTier) enabled.push(firstTier);
   const requestedCutoff = String(raw.cutoff || fallback.cutoff).trim();
   const cutoff = enabled.includes(requestedCutoff)
     ? requestedCutoff

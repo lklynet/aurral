@@ -13,6 +13,7 @@ import {
   createMockHttpServer,
 } from "../helpers/backendTestHarness.ts";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -80,13 +81,14 @@ assert.ok(address && typeof address !== "string");
 const baseUrl = `http://127.0.0.1:${address.port}`;
 // The payload of a Soulseek folder the release judge verified before download.
 async function verifiedGrab(ids: string[]) {
+  const jobId = requireFixture(ids[0]);
   return {
-    jobId: ids[0],
+    jobId,
     albumGrab: true,
     albumGroupJobIds: ids,
     source: "slskd",
     playlistId: "library",
-    releaseMbid: (await resolveReleaseManifest(getJob(ids[0])))?.releaseMbid ?? null,
+    releaseMbid: (await resolveReleaseManifest(getJob(jobId)))?.releaseMbid ?? null,
     candidate: { releaseVerified: true, raw: { user: "peer", files: [] } },
   };
 }
@@ -190,11 +192,11 @@ function createLibraryAlbum({
     return addJob(
       {
         artistName: artist.name,
-        trackName: tracks[index].title,
+        trackName: requireFixture(tracks[index]).title,
         albumName: album.title,
         albumMbid,
         artistMbid,
-        trackMbid: tracks[index].trackMbid,
+        trackMbid: requireFixture(tracks[index]).trackMbid,
         managedBy: "aurral",
         requestGroupId,
         ...job,
@@ -243,7 +245,7 @@ test("cancelling one Library download preserves monitoring and rejects finished 
       .prepare<unknown[], Pick<LibraryTracksRow, "monitored">>(
         "SELECT monitored FROM library_tracks WHERE id = ?",
       )
-      .get(fixture.tracks[0].id)?.monitored,
+      .get(requireFixture(fixture.tracks[0]).id)?.monitored,
     1,
   );
   const finished = fixture.jobFor(2);
@@ -318,11 +320,11 @@ test("album-grab request rows include canonical ids and request groups", async (
     albumId: fixture.album.id,
     albumName: fixture.album.title,
     managedBy: "aurral",
-    requestGroupId: getJob(ids[0]).requestGroupId,
+    requestGroupId: getJob(requireFixture(ids[0])).requestGroupId,
   });
   const { recordAlbumGrabQueued } = await import("../../backend/services/albumGrabActivity.ts");
   recordAlbumGrabQueued(
-    { albumGrab: true, jobId: ids[0], albumGroupJobIds: ids },
+    { albumGrab: true, jobId: requireFixture(ids[0]), albumGroupJobIds: ids },
     ids.map((id) => getJob(id)),
   );
   const response = await apiRequest<ActivityRow[]>("/api/requests?refresh=1");
@@ -339,7 +341,7 @@ test("album-grab request rows include canonical ids and request groups", async (
   );
   assert.ok(albumRequest);
   assert.equal(albumRequest.canonicalAlbumId, String(fixture.album.id));
-  assert.equal(albumRequest.requestGroupId, getJob(ids[0]).requestGroupId);
+  assert.equal(albumRequest.requestGroupId, getJob(requireFixture(ids[0])).requestGroupId);
 });
 
 test("track cancellation keeps failed provider cleanup pending and succeeds after recovery", async () => {
@@ -369,7 +371,7 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
       .prepare<unknown[], Pick<LibraryTracksRow, "monitored">>(
         "SELECT monitored FROM library_tracks WHERE id = ?",
       )
-      .get(fixture.tracks[0].id)?.monitored,
+      .get(requireFixture(fixture.tracks[0]).id)?.monitored,
     1,
   );
 });
@@ -868,9 +870,9 @@ test("album status aggregates library availability and per-track jobs", async (t
       polled.map((scenario) => keyFor(scenario)).sort(),
     );
     for (const scenario of polled) {
-      assert.equal(batch.body[keyFor(scenario)].status, scenario.status, scenario.name);
+      assert.equal(batch.body[keyFor(scenario)]?.status, scenario.status, scenario.name);
       assert.equal(
-        batch.body[keyFor(scenario)].recovery?.code ?? null,
+        requireFixture(batch.body[keyFor(scenario)]).recovery?.code ?? null,
         scenario.recovery ?? null,
         scenario.name,
       );
@@ -917,7 +919,11 @@ test("a download status poll finds album jobs under either album ID in any spell
     );
     downloadTracker.reconcileCommittedJobs();
 
-    const keys = [legacy, spelled, untouched].map(({ album }) => `aurral:${album.id}`);
+    const keys = [
+      `aurral:${legacy.album.id}`,
+      `aurral:${spelled.album.id}`,
+      `aurral:${untouched.album.id}`,
+    ] as const;
     const query = new URLSearchParams({ albumIds: keys.join(",") });
     const expected = {
       [keys[0]]: { status: "queued", pending: 2, failed: 0 },
@@ -935,9 +941,9 @@ test("a download status poll finds album jobs under either album ID in any spell
     );
 
     for (const [key, { status, ...counts }] of Object.entries(expected)) {
-      assert.equal(poll.body[key].status, status, key);
+      assert.equal(requireFixture(poll.body[key]).status, status, key);
       for (const [name, count] of Object.entries(counts)) {
-        assert.equal(poll.body[key].counts[name], count, `${key} ${name}`);
+        assert.equal(requireFixture(poll.body[key]).counts[name], count, `${key} ${name}`);
       }
     }
     assert.deepEqual(webPoll.response.body, poll.body);
@@ -969,11 +975,11 @@ test("re-requesting an Aurral album waits for a download source and retries canc
     assert.equal(queued.albumStatus.status, "queued");
     assert.equal(queued.jobIds.length, 3);
 
-    downloadTracker.setDownloading(queued.jobIds[0]);
-    downloadTracker.setFailed(queued.jobIds[1], "No matching source result");
+    downloadTracker.setDownloading(requireFixture(queued.jobIds[0]));
+    downloadTracker.setFailed(requireFixture(queued.jobIds[1]), "No matching source result");
     await libraryManager.cancelAurralAlbum(album.id);
-    assert.equal(getJob(queued.jobIds[0]).status, "cancelled");
-    assert.equal(getJob(queued.jobIds[1]).status, "failed");
+    assert.equal(getJob(requireFixture(queued.jobIds[0])).status, "cancelled");
+    assert.equal(getJob(requireFixture(queued.jobIds[1])).status, "failed");
 
     const retried = await request();
     assert.deepEqual([...retried.jobIds].sort(), [...queued.jobIds].sort());
@@ -983,8 +989,8 @@ test("re-requesting an Aurral album waits for a download source and retries canc
     }
     assert.equal(retried.albumStatus.status, "queued");
 
-    downloadTracker.setFailed(queued.jobIds[0], "Source failed after retry");
-    assert.equal(getJob(queued.jobIds[0]).status, "failed");
+    downloadTracker.setFailed(requireFixture(queued.jobIds[0]), "Source failed after retry");
+    assert.equal(getJob(requireFixture(queued.jobIds[0])).status, "failed");
   } finally {
     downloadWorker.start = originalWorkerStart;
     setDownloadSourceConfigured(false);
@@ -1065,8 +1071,8 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
     assert.deepEqual(
       response.body.tracks.map((track) => track.mbid).sort(),
       [
-        queuedAlbum.tracks[0].trackMbid,
-        queuedAlbum.tracks[1].trackMbid,
+        requireFixture(queuedAlbum.tracks[0]).trackMbid,
+        requireFixture(queuedAlbum.tracks[1]).trackMbid,
         "single-track-mbid",
       ].sort(),
     );
@@ -1738,7 +1744,7 @@ test("asking for an album downloads the missing tracks of the edition its track 
   db.prepare(
     "UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackList.release', 'listed-standard') WHERE id = ?",
   ).run(album.id);
-  const job = getJob(requested.body.jobIds[1]);
+  const job = getJob(requireFixture(requested.body.jobIds[1]));
   const manifest = await resolveReleaseManifest({ ...job, releaseMbid: null });
   assert.ok(manifest != null);
   assert.equal(manifest.releaseMbid, "listed-deluxe");
@@ -1797,7 +1803,7 @@ test("an album scanned with its release ID stays one album through downloads and
     }),
   );
   libraryStore.upsertLibraryMediaFile({
-    trackId: tracks[0].id,
+    trackId: requireFixture(tracks[0]).id,
     albumId: album.id,
     source: "aurral",
     path: path.join(root, "Release Artist", "Release Album", "01 - Release Song 1.flac"),
@@ -1828,7 +1834,7 @@ test("an album scanned with its release ID stays one album through downloads and
   });
   libraryStore.linkLibraryAlbumTrack({
     albumId: duplicate.id,
-    trackId: tracks[1].id,
+    trackId: requireFixture(tracks[1]).id,
     trackNumber: 2,
   });
   const filePath = path.join(root, "Release Artist", "Release Album", "02 - Release Song 2.flac");

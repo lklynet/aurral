@@ -1165,7 +1165,7 @@ export function useLibraryActions({
       (isTrackDownloading({ ...track, artistName: artist?.name || track.artistName }) ||
         isAlbumDownloading(album?.releaseGroupMbid || album?.mbid));
     const downloadPending =
-      TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status) || backgroundDownload;
+      TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status ?? "") || backgroundDownload;
     const downloadLabel = trackDownloadActionLabel(
       downloadState?.status || (backgroundDownload ? "downloading" : null),
     );

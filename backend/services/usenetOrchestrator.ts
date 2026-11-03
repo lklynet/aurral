@@ -476,6 +476,7 @@ async function advanceUsenetSearch(
       return { payload: { ...payload, searchQueryIndex: index, searchError, delaySeconds: 0 } };
     }
     const query = queries[index];
+    if (query === undefined) break;
     let releases = getCachedSearchResults("usenet", query);
     if (!releases) {
       searched = true;
@@ -631,7 +632,7 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
   const release = candidate?.raw?.release;
-  if (!release?.downloadUrl) {
+  if (!candidate || !release?.downloadUrl) {
     return helpers.failOrTryNextSource(payload, job, "No Usenet release URL available");
   }
   import("./aurralHistoryService.ts")

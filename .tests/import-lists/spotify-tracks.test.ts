@@ -22,9 +22,9 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
     },
   ]);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].artistName, "Artist A");
-  assert.equal(tracks[0].trackName, "Track One");
-  assert.equal(tracks[0].albumName, "Album A");
+  assert.equal(tracks[0]?.artistName, "Artist A");
+  assert.equal(tracks[0]?.trackName, "Track One");
+  assert.equal(tracks[0]?.albumName, "Album A");
 });
 
 test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () => {
@@ -38,7 +38,7 @@ test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () 
     },
   ]);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].trackName, "No Type Field");
+  assert.equal(tracks[0]?.trackName, "No Type Field");
 });
 
 test("parseSpotifyPlaylistItems accepts current item and legacy track wrappers", () => {

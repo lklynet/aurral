@@ -8,6 +8,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
   "slskd-backoff",
   () => import("../../backend/services/slskdClient.ts"),
@@ -46,8 +47,8 @@ test("searches from different processes start at least five seconds apart", asyn
     assert.equal(started.length, 2);
     assert.ok(mainStartedAt != null);
     assert.ok(
-      mainStartedAt - started[0] >= 4500,
-      `searches started ${mainStartedAt - started[0]}ms apart`,
+      mainStartedAt - requireFixture(started[0]) >= 4500,
+      `searches started ${mainStartedAt - requireFixture(started[0])}ms apart`,
     );
   } finally {
     vi.useRealTimers();
@@ -123,7 +124,7 @@ test("downloads enqueue during cross-process search backoff without bypassing se
       ["backing-off-search", "backing-off-search", "following-search"],
     );
     assert.ok(
-      searches[1].searchTimeout < searches[0].searchTimeout,
+      requireFixture(searches[1]).searchTimeout < requireFixture(searches[0]).searchTimeout,
       "retry must use the remaining deadline",
     );
   } finally {

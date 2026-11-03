@@ -20,10 +20,10 @@ function averageHex(data: Uint8ClampedArray) {
     b = 0,
     n = 0;
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 128) continue;
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
+    if ((data[i + 3] ?? 0) < 128) continue;
+    r += data[i] ?? 0;
+    g += data[i + 1] ?? 0;
+    b += data[i + 2] ?? 0;
     n++;
   }
   if (!n) return null;
@@ -39,7 +39,7 @@ function pickArtworkWash(data: Uint8ClampedArray) {
   const base = hexToOklch(vivid || averageHex(data));
   if (!base) return null;
   const chroma = vivid ? base.c : Math.min(base.c, NEUTRAL_CHROMA);
-  const tone = ([min, max]: readonly number[]) =>
+  const tone = ([min, max]: readonly [number, number]) =>
     oklchToHex({ l: Math.min(max, Math.max(min, base.l)), c: chroma, h: base.h });
   return { dark: tone(WASH_LIGHTNESS.dark), light: tone(WASH_LIGHTNESS.light) };
 }

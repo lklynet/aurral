@@ -104,6 +104,6 @@ test("normalizes empty migrated names", async () => {
   downloadTracker._load();
 
   const tracks = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
-  assert.equal(tracks[0].artist, "Unknown Artist");
-  assert.equal(tracks[0].title, "Unknown Track");
+  assert.equal(tracks[0]?.artist, "Unknown Artist");
+  assert.equal(tracks[0]?.title, "Unknown Track");
 });

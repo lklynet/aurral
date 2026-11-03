@@ -134,7 +134,7 @@ test("listBrowseDirectory only exposes directories within browse roots", async (
   const listing = listBrowseDirectory(tempDir);
   assert.equal(listing.path, fs.realpathSync(tempDir));
   assert.equal(listing.entries.length, 1);
-  assert.equal(listing.entries[0].name, "aurral");
+  assert.equal(listing.entries[0]?.name, "aurral");
   if (previousRoots === undefined) delete process.env.FILE_BROWSE_ROOTS;
   else process.env.FILE_BROWSE_ROOTS = previousRoots;
 });

@@ -194,9 +194,8 @@ test("unchanged library upserts do not rewrite search documents", () => {
       artistName: artist.name,
     });
     assert.equal(
-      requireFixture(db)
-        .prepare<unknown[], { count: unknown }>("SELECT count FROM search_update_probe")
-        .get()!.count,
+      db.prepare<unknown[], { count: unknown }>("SELECT count FROM search_update_probe").get()!
+        .count,
       0,
     );
   } finally {
@@ -264,7 +263,7 @@ test("search documents update transactionally and random reads use rowid samplin
   });
   assert.equal(
     queryService.getLibrarySearchPage({ query: "Renamed Needle", songLimit: 20 }).tracks.tracks[0]
-      .title,
+      ?.title,
     "Renamed Needle Song",
   );
 
@@ -337,7 +336,7 @@ test("artist pages project a large discography without library row hydration", (
       pageSize: 1,
     });
     assert.equal(page.total, 1);
-    assert.equal(page.items[0].albumCount, albumCount);
+    assert.equal(page.items[0]?.albumCount, albumCount);
     assert.deepEqual([...page.items[0].albumIds], []);
     assert.equal(
       prepared.filter(
@@ -413,14 +412,14 @@ test("album track pages count and hydrate only the requested track slice", () =>
       (sql) => sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
     );
     assert.equal(hydration.length, 1);
-    assert.match(hydration[0], /track\.id IN \(\?,\?,\?\)/);
+    assert.match(requireFixture(hydration[0]), /track\.id IN \(\?,\?,\?\)/);
     assert.equal(page.total, trackCount);
     assert.equal(page.items.length, 3);
-    assert.equal(page.albums[0].trackCount, trackCount);
-    assert.equal(page.albums[0].availableTrackCount, trackCount / 2);
-    assert.equal(page.albums[0].trackIds.length, 3);
-    assert.equal(page.albums[0].identityKey, `${key}:album`);
-    assert.equal(page.artists[0].identityKey, `${key}:artist`);
+    assert.equal(page.albums[0]?.trackCount, trackCount);
+    assert.equal(page.albums[0]?.availableTrackCount, trackCount / 2);
+    assert.equal(page.albums[0]?.trackIds.length, 3);
+    assert.equal(page.albums[0]?.identityKey, `${key}:album`);
+    assert.equal(page.artists[0]?.identityKey, `${key}:artist`);
     assert.ok(page.items.some((track) => track.files.length === 0));
     assert.ok(
       page.items.every((track) => track.albums.every((relation) => relation.albumId === album.id)),

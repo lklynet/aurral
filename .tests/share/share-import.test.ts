@@ -175,8 +175,8 @@ test("file imports reuse local music and queue only files the share makes availa
     .listHonkerJobs("slskd-pipeline")
     .filter((entry) => entry.payload?.jobId === jobs[1]?.id);
   assert.equal(transfers.length, 1);
-  assert.equal(transfers[0].payload?.source, "share");
-  assert.equal(transfers[0].payload?.manualSelection, true);
+  assert.equal(transfers[0]?.payload?.source, "share");
+  assert.equal(transfers[0]?.payload?.manualSelection, true);
   assert.equal(requests.length, 1);
 });
 
@@ -368,7 +368,7 @@ test("an unavailable album entry can be imported later when its shared file is a
     includeFiles: true,
   });
   assert.equal(downloadTracker.getAll().length, 1);
-  assert.equal(downloadTracker.getAll()[0].trackName, "Shared");
+  assert.equal(downloadTracker.getAll()[0]?.trackName, "Shared");
   const later = {
     ...album,
     tracks: album.tracks.map((track) => ({ ...track, path: "tracks/2/2", format: "wav" })),

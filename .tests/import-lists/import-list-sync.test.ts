@@ -180,7 +180,11 @@ test("disconnected providers pause synced playlists without touching them until 
   }
 
   await assert.rejects(
-    syncStaticPlaylistImport({ playlistId: spotifyPlaylists[0].id, user: { id: 7 }, force: true }),
+    syncStaticPlaylistImport({
+      playlistId: requireFixture(spotifyPlaylists[0]).id,
+      user: { id: 7 },
+      force: true,
+    }),
     (rejection: { statusCode?: number; message: string }) =>
       rejection.statusCode === 401 && /Spotify is not connected/.test(rejection.message),
   );
@@ -248,7 +252,7 @@ test("a Spotify rejection pauses that owner's remaining playlists until Spotify 
   assert.equal(requests.filter(({ token }) => token !== "working-token").length, 2);
   assert.deepEqual(
     importLogs(error).map((details) => details.playlistId),
-    [revoked[0].id],
+    [requireFixture(revoked[0]).id],
   );
   assert.deepEqual(importLogs(warn), [{ provider: "Spotify", ownerUserId: 7, playlistCount: 2 }]);
   for (const playlist of revoked.slice(1)) {

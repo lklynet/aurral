@@ -146,7 +146,7 @@ test("reports and resolves versioned custom album and track artwork", async () =
     const albumValue = getAlbum(idFor("album", album.identity_key));
     assert.ok(albumValue != null);
     assert.match(albumValue.coverArt, /^art-album:/);
-    assert.equal(albumValue.song[0].coverArt, albumValue.coverArt);
+    assert.equal(albumValue.song[0]?.coverArt, albumValue.coverArt);
     assert.equal(
       resolveCustomArtwork(albumValue.coverArt, undefined)?.filePath,
       savedAlbum.filePath,
@@ -457,13 +457,13 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
     db.prepare = prepare;
   }
   assert.equal(resolved.length, descriptors.length);
-  assert.equal(requireFixture(resolved[0]!.track).title, "Old Song");
-  assert.equal(requireFixture(resolved[0]!.track).artistName, "Artist A");
-  assert.equal(requireFixture(resolved[1]!.track).identityKey, "test-track:Mbid Song");
+  assert.equal(resolved[0]!.track.title, "Old Song");
+  assert.equal(resolved[0]!.track.artistName, "Artist A");
+  assert.equal(resolved[1]!.track.identityKey, "test-track:Mbid Song");
   assert.equal(resolved[2], null);
   assert.equal(resolved[3], null);
   // Same recording MBID, different title: the canonical track (and its playlist id) still wins.
-  assert.equal(requireFixture(resolved[4]!.track).identityKey, "test-track:Mbid Song");
+  assert.equal(resolved[4]!.track.identityKey, "test-track:Mbid Song");
   assert.equal(
     resolved.slice(5).every((entry) => entry === null),
     true,
@@ -695,11 +695,11 @@ test("favorite reads preserve shared relationships, media filters, and user isol
       result.starred.album.map((album) => album.id),
       [idFor("album", "favorite:guest-album")],
     );
-    assert.equal(result.starred.song[0].starred, new Date(1000).toISOString());
+    assert.equal(result.starred.song[0]?.starred, new Date(1000).toISOString());
     assert.equal(result.library.tracks.length, 1);
-    assert.equal(result.library.tracks[0].albums.length, 2);
-    assert.equal(result.library.tracks[0].files.length, 1);
-    assert.equal(result.library.tracks[0].files[0].available, true);
+    assert.equal(result.library.tracks[0]?.albums.length, 2);
+    assert.equal(result.library.tracks[0]?.files.length, 1);
+    assert.equal(result.library.tracks[0]?.files[0]?.available, true);
     assert.deepEqual(subsonic.getStarred(second), { artist: [], album: [], song: [] });
     assert.deepEqual(
       [...subsonic.getStarredWithLibrary(second, { availableOnly: true }).library.tracks],
@@ -724,7 +724,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
       [existing.id],
     );
     assert.deepEqual(
-      filtered.tracks[0].files.map((file) => file.path),
+      filtered.tracks[0]?.files.map((file) => file.path),
       ["/test/favorite/guest.flac"],
     );
     assert.deepEqual(
@@ -1029,7 +1029,7 @@ test.each([
   });
 
   try {
-    const song = getSong(idFor("song", tracks[0].identity_key));
+    const song = getSong(idFor("song", requireFixture(tracks[0]).identity_key));
     const opened = getArtist(requireFixture(song?.artists[0]).id);
     assert.equal(opened?.id, idFor("artist", performer.identity_key));
     assert.equal(opened?.name, performer.name);
@@ -1103,8 +1103,8 @@ test("reports known file bitrates in kbps and omits unknown ones", () => {
       ["No Quality", undefined],
     ],
   );
-  assert.equal(Object.hasOwn(songs[2], "bitRate"), false);
-  assert.equal(Object.hasOwn(songs[3], "bitRate"), false);
+  assert.equal(Object.hasOwn(requireFixture(songs[2]), "bitRate"), false);
+  assert.equal(Object.hasOwn(requireFixture(songs[3]), "bitRate"), false);
 });
 
 test("splits semicolon genre tags into separate Subsonic genres", () => {
@@ -1148,9 +1148,9 @@ test("splits semicolon genre tags into separate Subsonic genres", () => {
     result.genres,
     expected.map((name) => ({ name })),
   );
-  assert.equal(result.song[0].genre, "Metalcore");
+  assert.equal(result.song[0]?.genre, "Metalcore");
   assert.deepEqual(
-    result.song[0].genres,
+    result.song[0]?.genres,
     expected.map((name) => ({ name })),
   );
   assert.deepEqual(

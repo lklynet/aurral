@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const audioFixture = async (filePath: string) => {
   await writeFile(filePath, "");
@@ -225,8 +226,8 @@ test("a request takes the commonest edition's whole tracklist, with the lengths 
     manifest.tracks.map((entry) => entry.durationMs),
     [200000, 210000, 220000],
   );
-  assert.deepEqual(manifest.tracks[0].recordingMbidAliases, ["rec-1-old"]);
-  assert.deepEqual(manifest.tracks[0].artists, ["The Band"]);
+  assert.deepEqual(manifest.tracks[0]?.recordingMbidAliases, ["rec-1-old"]);
+  assert.deepEqual(manifest.tracks[0]?.artists, ["The Band"]);
   assert.equal(manifest.compilation, false);
   assert.deepEqual(manifest.secondaryTypes, ["Live"]);
 });
@@ -239,7 +240,7 @@ test("a pressing without a length takes the midpoint of its pressings' lengths",
     title: "Pressed",
     status: "Official",
     tracks: names.map((name, index) =>
-      track(name, `pressed-${index + 1}`, index + 1, lengths[index]),
+      track(name, `pressed-${index + 1}`, index + 1, requireFixture(lengths[index])),
     ),
   });
   await serveGroups(t, [
@@ -289,7 +290,7 @@ test("a rip of another official pressing of the same recordings in the same runn
         name,
         `${recording}-${names.indexOf(name) + 1}`,
         index + 1,
-        lengths[index],
+        requireFixture(lengths[index]),
         merged ? { oldrecordingids: [`old-${names.indexOf(name) + 1}`] } : {},
       ),
     ),
@@ -309,7 +310,9 @@ test("a rip of another official pressing of the same recordings in the same runn
         pressing("cd", cd),
         pressing("cd-again", cd),
         pressing("promo", [230000, 240000, 250000], { status: "Promotion" }),
-        pressing("reordered", [260000, 270000, 280000], { order: [names[1], names[0], names[2]] }),
+        pressing("reordered", [260000, 270000, 280000], {
+          order: [requireFixture(names[1]), requireFixture(names[0]), requireFixture(names[2])],
+        }),
         pressing("remastered", remastered, { recording: "merged", merged: true }),
         pressing("rerecorded", rerecorded, { recording: "new" }),
         pressing("unlisted", [0, 210200, 0]),
@@ -330,7 +333,7 @@ test("a rip of another official pressing of the same recordings in the same runn
     files: names.map((title, index) => ({
       title,
       artists: ["The Band"],
-      durationMs: lengths[index],
+      durationMs: lengths[index] ?? null,
       trackNumber: index + 1,
       discNumber: 1,
       filename: `0${index + 1} - ${title}.flac`,
@@ -383,19 +386,21 @@ test("a rip of another official pressing of the same recordings in the same runn
   );
 
   const offered = async (durationMs: number) =>
-    (
-      await buildSourceCandidates({
-        source: "soulseek",
-        request: trackRequestFor({ ...job("First Song", "old-1"), albumMbid: pressed }, vinyl),
-        results: [
-          {
-            file: "The Band/Old Album/01 - First Song.flac",
-            filename: "The Band/Old Album/01 - First Song.flac",
-            durationMs,
-          },
-        ],
-      })
-    ).evaluations[0].decision;
+    requireFixture(
+      (
+        await buildSourceCandidates({
+          source: "soulseek",
+          request: trackRequestFor({ ...job("First Song", "old-1"), albumMbid: pressed }, vinyl),
+          results: [
+            {
+              file: "The Band/Old Album/01 - First Song.flac",
+              filename: "The Band/Old Album/01 - First Song.flac",
+              durationMs,
+            },
+          ],
+        })
+      ).evaluations[0],
+    ).decision;
   assert.equal(await offered(203000), "accept");
   assert.equal(await offered(200100), "accept");
   assert.notEqual(await offered(197000), "accept");
@@ -446,14 +451,14 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
     }));
   const folder = "The Band - Big Album (Deluxe Edition) (Bonus Live Disc)";
 
-  const deluxe = await resolveReleaseManifest(jobsFor("deluxe")[0]);
+  const deluxe = await resolveReleaseManifest(requireFixture(jobsFor("deluxe")[0]));
   assert.ok(deluxe != null);
   assert.equal(deluxe.releaseMbid, "deluxe");
   assert.deepEqual(await imported(t, deluxe, jobsFor("deluxe"), folder, files(deluxe)), [
     "deluxe-1",
     "deluxe-2",
   ]);
-  const standard = await resolveReleaseManifest(jobsFor("standard")[0]);
+  const standard = await resolveReleaseManifest(requireFixture(jobsFor("standard")[0]));
   assert.ok(standard);
   assert.deepEqual(await imported(t, standard, jobsFor("standard"), folder, files(standard)), []);
   assert.deepEqual(
@@ -470,21 +475,21 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
   const liveAlbum = "The Band/The Band - Live in Paris (2004)/01 First Song.flac";
   const offered = await buildSourceCandidates({
     source: "soulseek",
-    request: trackRequestFor(jobsFor("deluxe")[0], deluxe),
+    request: trackRequestFor(requireFixture(jobsFor("deluxe")[0]), deluxe),
     results: [{ file: liveAlbum, filename: liveAlbum, durationMs: 210000 }],
   });
-  assert.equal(offered.evaluations[0].decision, "reject");
+  assert.equal(offered.evaluations[0]?.decision, "reject");
   const arena = await downloadedAlbum(t, "The Band - Live at the Arena (Live)", [
     {
       title: "Second Song",
       trackNumber: 7,
       discNumber: 1,
-      durationMs: deluxe.tracks[1].durationMs,
+      durationMs: requireFixture(deluxe.tracks[1]).durationMs,
       path: "07 Second Song.flac",
     },
   ]);
   const downloaded = await selectVerifiedDownloadedFile({
-    request: trackRequestFor(jobsFor("deluxe")[1], deluxe),
+    request: trackRequestFor(requireFixture(jobsFor("deluxe")[1]), deluxe),
     filePaths: arena.filePaths,
     source: "usenet",
     options: { parseFile: arena.parseAudio, release: deluxe },
@@ -669,7 +674,7 @@ test("a track search on a live release group takes the track's live copy and sti
         },
       ],
     });
-    return result.evaluations[0].decision;
+    return requireFixture(result.evaluations[0]).decision;
   };
   const downloaded = async (manifest: ReleaseManifest, name: string) =>
     (
@@ -726,7 +731,7 @@ test("a compilation keeps its Various Artists credit and names only the artists 
     manifest.tracks.map((entry) => entry.artists),
     [["A Singer"], [], []],
   );
-  assert.deepEqual(manifest.tracks[0].artistAliases, ["Singer"]);
+  assert.deepEqual(manifest.tracks[0]?.artistAliases, ["Singer"]);
   assert.deepEqual([...manifest.secondaryTypes], []);
 });
 

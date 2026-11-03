@@ -43,7 +43,7 @@ test("failed API response reasons mask credentials before logging", async () => 
         "Authorization: Bearer bearer-secret while reading /config/private/provider.json",
     },
   });
-  assert.partialDeepStrictEqual(events[0][2], {
+  assert.partialDeepStrictEqual(events[0]?.[2], {
     reason:
       "Provider failed at https://example.test/api?token=*** " +
       "Authorization=*** while reading /config/private/provider.json",

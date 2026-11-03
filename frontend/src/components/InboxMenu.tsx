@@ -58,7 +58,7 @@ const FILTER_OPTIONS = [
   { value: "news", label: "Library artist news" },
   { value: "recommendedNews", label: "Recommended artist news" },
   { value: "discovery", label: "Discoveries" },
-];
+] as const;
 
 function InboxItem({
   item,

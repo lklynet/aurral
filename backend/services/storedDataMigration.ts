@@ -13,7 +13,7 @@ const RENAMED_SETTING_KEYS = [
   ["weeklyFlows", "flows"],
   ["sharedFlowPlaylists", "sharedPlaylists"],
   ["weeklyFlowWorker", "playlistWorker"],
-];
+] as const;
 const RETIRED_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 
 function moveRenamedSettingKeys() {

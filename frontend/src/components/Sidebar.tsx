@@ -104,7 +104,7 @@ function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
 
   const activeLibraryView = useMemo(() => {
     if (!isOnLibrary) return null;
-    const segment = location.pathname.replace(/^\/library\/?/, "").split("/")[0];
+    const [segment = ""] = location.pathname.replace(/^\/library\/?/, "").split("/");
     const visibleViews = LIBRARY_VIEWS.filter(
       (view) =>
         !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],

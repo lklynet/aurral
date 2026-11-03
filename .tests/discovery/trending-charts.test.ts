@@ -62,7 +62,7 @@ const respond = (url: URL) => {
     const failure = source.appleFailures.shift();
     if (failure === "timeout") throw new DOMException("The operation timed out", "TimeoutError");
     if (failure) return new Response("<html>Bad Gateway</html>", { status: failure });
-    const albums = source.appleStorefronts[url.pathname.split("/")[3]];
+    const albums = source.appleStorefronts[url.pathname.split("/")[3] ?? ""];
     return albums
       ? json({ feed: { results: albums } })
       : new Response("<html>Internal Server Error</html>", { status: 500 });

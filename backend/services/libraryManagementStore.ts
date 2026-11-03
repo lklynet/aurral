@@ -8,10 +8,11 @@ type ManagementEntry = {
   monitorRules: Record<string, unknown> | null;
   updatedAt: number | null;
 };
-type ManagementCache = Record<string, Map<number, ManagementEntry>>;
+type EntityKind = "artist" | "album";
+type ManagementCache = Record<EntityKind, Map<number, ManagementEntry>>;
 
 const LIBRARY_OWNERS = new Set(["aurral", "lidarr"]);
-const ENTITY_KINDS = new Set(["artist", "album"]);
+const isEntityKind = (kind: string): kind is EntityKind => kind === "artist" || kind === "album";
 
 // Monitoring rules belong to one manager and mode. A write that changes either
 // without giving rules clears them, so stale rules never come back.
@@ -79,7 +80,7 @@ function getCache(): ManagementCache {
     cacheDataVersion = dataVersionStmt.get()?.data_version;
     cache = { artist: new Map(), album: new Map() };
     for (const row of selectAllStmt.all()) {
-      const map = cache[row.entity_kind];
+      const map = isEntityKind(row.entity_kind) ? cache[row.entity_kind] : undefined;
       if (map && isLibraryOwner(row.managed_by)) {
         map.set(row.entity_id, {
           managedBy: row.managed_by,
@@ -121,7 +122,7 @@ export function notifyLibraryManagementChanged() {
 }
 
 export function getLibraryManagementEntry(entityKind: string, entityId: unknown) {
-  if (!ENTITY_KINDS.has(entityKind)) return null;
+  if (!isEntityKind(entityKind)) return null;
   const id = Number(entityId);
   if (!Number.isSafeInteger(id) || id <= 0) return null;
   return getCache()[entityKind].get(id) || null;
@@ -140,7 +141,7 @@ export function getManagedByMaps() {
 }
 
 export function getManagedByMap(entityKind: string) {
-  if (!ENTITY_KINDS.has(entityKind)) return new Map<number, ManagementEntry>();
+  if (!isEntityKind(entityKind)) return new Map<number, ManagementEntry>();
   return getCache()[entityKind];
 }
 
@@ -162,7 +163,7 @@ export function setLibraryManagement({
   const owner = String(managedBy || "")
     .trim()
     .toLowerCase();
-  if (!ENTITY_KINDS.has(kind)) {
+  if (!isEntityKind(kind)) {
     throw new Error(`Invalid library management entity kind: ${entityKind}`);
   }
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -190,7 +191,7 @@ export function setLibraryManagement({
 export function clearLibraryManagement(entityKind: string, entityId: unknown) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
-  if (!ENTITY_KINDS.has(kind)) return false;
+  if (!isEntityKind(kind)) return false;
   if (!Number.isSafeInteger(id) || id <= 0) return false;
   const result = clearStmt.run(kind, id);
   if (result.changes > 0) {

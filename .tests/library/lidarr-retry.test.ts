@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, honkerDb, libraryManagerModule, systemTaskWorker] =
   await setupIsolatedBackend(
@@ -58,7 +59,7 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   assert.equal(request.mock.calls.length, 1);
 
   await systemTaskWorker.stopSystemTaskWorker();
-  const firstRetryJob = firstRetryJobs[0];
+  const firstRetryJob = requireFixture(firstRetryJobs[0]);
   db.prepare("UPDATE _honker_live SET run_at = ? WHERE id = ?").run(
     Math.floor(Date.now() / 1000) - 1,
     firstRetryJob.id,
@@ -76,9 +77,9 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   const successorJobs = getPendingRetryJobs();
   assert.equal(request.mock.calls.length, 2);
   assert.equal(successorJobs.length, 1);
-  assert.notEqual(successorJobs[0].id, claimedRetry.id);
+  assert.notEqual(requireFixture(successorJobs[0]).id, claimedRetry.id);
 
   claimedRetry.ack();
-  queue.cancel(successorJobs[0].id);
+  queue.cancel(requireFixture(successorJobs[0]).id);
   await systemTaskWorker.stopSystemTaskWorker();
 });

@@ -19,6 +19,8 @@ export function stubFetch(
 
 const parseEvent = (block: string) => {
   const [event, data] = block.split("\n");
+  if (event === undefined || data === undefined)
+    throw new Error(`Malformed stream event: ${block}`);
   return { event: event.slice("event: ".length), data: JSON.parse(data.slice("data: ".length)) };
 };
 

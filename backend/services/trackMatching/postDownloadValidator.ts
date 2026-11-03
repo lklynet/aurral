@@ -97,13 +97,10 @@ function normalizeValidationRequest(
 // numeric titles such as "99 Problems" survive.
 function stripLeadingTrackNumber(baseName: string) {
   const raw = String(baseName || "").trim();
-  const punctuated = /^\s*\d{1,3}\s*[-._)\]]\s*(.+)$/.exec(raw);
-  if (punctuated && punctuated[1].trim()) return punctuated[1].trim();
-  const spaced = /^\s*\d{1,3}\s+(\S.*)$/.exec(raw);
-  if (spaced) {
-    const remainder = spaced[1].trim();
-    if (remainder && /\s/.test(remainder)) return remainder;
-  }
+  const punctuated = /^\s*\d{1,3}\s*[-._)\]]\s*(.+)$/.exec(raw)?.[1]?.trim();
+  if (punctuated) return punctuated;
+  const remainder = /^\s*\d{1,3}\s+(\S.*)$/.exec(raw)?.[1]?.trim();
+  if (remainder && /\s/.test(remainder)) return remainder;
   return raw || null;
 }
 
@@ -586,11 +583,11 @@ export async function selectVerifiedDownloadedFile({
         downloadedFileEvidence(filePath, parsed, { album: release!.title }),
       ),
     });
-    const copies = verdict.copiesForTrack[releaseIndex];
+    const copies = verdict.copiesForTrack[releaseIndex] ?? [];
     const placed = new Set(verdict.assignment.pairs.map((pair) => pair.fileIndex));
     pool =
       copies.length > 0
-        ? copies.map((index) => parsedFiles[index])
+        ? copies.flatMap((index) => parsedFiles[index] ?? [])
         : parsedFiles.filter((_, index) => !placed.has(index));
     poolOptions = options;
   }

@@ -7,6 +7,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   state,
@@ -214,9 +215,17 @@ test("tracks from one album reuse the album search", async (t) => {
     ),
   );
 
-  const firstResult = await runToDownload({ phase: "search", source: "slskd", jobId: first });
+  const firstResult = await runToDownload({
+    phase: "search",
+    source: "slskd",
+    jobId: requireFixture(first),
+  });
   assert.equal(firstResult.next?.phase, "download");
-  const secondResult = await runToDownload({ phase: "search", source: "slskd", jobId: second });
+  const secondResult = await runToDownload({
+    phase: "search",
+    source: "slskd",
+    jobId: requireFixture(second),
+  });
   assert.ok(secondResult.next != null);
   assert.equal(secondResult.next.phase, "download");
   assert.equal(created.mock.calls.length, 1);
@@ -320,7 +329,7 @@ async function startSoulseek(t: import("vite-plus/test").TestContext) {
         return hold((status) => send(status, ""));
       }
       if (req.method === "DELETE") assert.ok(req.url != null);
-      if (req.method === "DELETE") soulseek.deleted.push(req.url.split("?")[0]);
+      if (req.method === "DELETE") soulseek.deleted.push(requireFixture(req.url.split("?")[0]));
       assert.ok(req.url != null);
       if (req.method === "GET" && req.url.startsWith("/api/v0/events")) return send(200, []);
       return send(404, "");

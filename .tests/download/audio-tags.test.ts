@@ -102,7 +102,7 @@ test("tagging a download keeps the uploader's release ID, ratings, lyrics, Repla
   assert.match(common.lyrics?.[0]?.text ?? String(common.lyrics?.[0] ?? ""), /celebrate/);
   assert.equal(common.replaygain_track_gain?.dB, -6.1);
   assert.equal(common.picture?.length, 1);
-  assert.equal(metadata.native["ID3v2.4"].filter((tag) => tag.id.startsWith("UFID")).length, 1);
+  assert.equal(metadata.native["ID3v2.4"]?.filter((tag) => tag.id.startsWith("UFID")).length, 1);
   assert.deepEqual(readAurralIdentity(metadata), {
     artistMbid: job.artistMbid,
     albumMbid: job.albumMbid,

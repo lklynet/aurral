@@ -40,8 +40,10 @@ export function loadWrappedFonts(text: string) {
 export const wrappedImageUrl = (url: string) =>
   url.startsWith("/api/") ? resolveApiPath(url) : url;
 
-const channels = (color: string) =>
-  [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
+const channels = (color: string) => {
+  const channel = (index: number) => Number.parseInt(color.slice(index, index + 2), 16);
+  return [channel(1), channel(3), channel(5)] as const;
+};
 
 export function wrappedInk(color: string) {
   const [r, g, b] = channels(color);

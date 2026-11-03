@@ -13,6 +13,7 @@ import {
 
 type SearchInput = NonNullable<Parameters<typeof buildSourceCandidates>[0]>;
 import { orderAdvertisedQualityCandidates } from "../../backend/services/qualityProfileModel.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type SoulseekResult = NonNullable<SearchInput["results"]>[number] & { size?: number };
 
@@ -38,7 +39,9 @@ async function evaluate(
 }
 
 function usableFileNames(evaluation: Awaited<ReturnType<typeof evaluate>>) {
-  return usableEvaluationEntries(evaluation).map((entry) => String(entry.candidate.raw.file));
+  return usableEvaluationEntries(evaluation).map((entry) =>
+    String(requireFixture(entry.candidate).raw.file),
+  );
 }
 
 test("dash-separated remasters and requested edits retain the complete recording title", async () => {
@@ -78,7 +81,7 @@ test("dash-separated remasters and requested edits retain the complete recording
       ],
       { artistName, trackName, durationMs: length * 1000 },
     );
-    assert.equal(evaluation.evaluations[0].decision, decision, filename);
+    assert.equal(evaluation.evaluations[0]?.decision, decision, filename);
   }
 });
 
@@ -102,7 +105,7 @@ test("Soulseek filenames preserve non-Latin title identity", async () => {
       ],
       { artistName: "X", trackName, durationMs: 200000 },
     );
-    assert.equal(evaluation.evaluations[0].decision, decision, `${trackName}/${offered}`);
+    assert.equal(evaluation.evaluations[0]?.decision, decision, `${trackName}/${offered}`);
   }
 });
 
@@ -183,8 +186,13 @@ test("folder with a matching tracklist fingerprint wins over a same-title file i
   assert.ok(usable.length > 0);
   // The misc-folder sibling ("01 - Take Me Out" parsed with no artist) must
   // not beat the release folder whose tracklist matches the request.
-  assert.match(String(usable[0].candidate.raw.file), /03 - Take Me Out\.flac$/);
-  assert.ok(usable[0].distance <= usable[usable.length - 1].distance);
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /03 - Take Me Out\.flac$/,
+  );
+  assert.ok(
+    requireFixture(usable[0]).distance <= requireFixture(usable[usable.length - 1]).distance,
+  );
 });
 
 test("self-titled folder with a conflicting year is downgraded from accept to verify", async () => {
@@ -206,8 +214,8 @@ test("self-titled folder with a conflicting year is downgraded from accept to ve
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "verify");
-  assert.equal(usable[0].aurralEvidence?.year?.conflicting, true);
+  assert.equal(usable[0]?.decision, "verify");
+  assert.equal(usable[0]?.aurralEvidence?.year?.conflicting, true);
 });
 
 test("a fitting album folder beats a same-title file from a wrong-artist album", async () => {
@@ -240,8 +248,14 @@ test("a fitting album folder beats a same-title file from a wrong-artist album",
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.ok(usable.length > 0);
-  assert.match(String(usable[0].candidate.raw.file), /Brilliant Boy\.flac$/);
-  assert.match(String(usable[0].candidate.raw.file), /Return Of The Rentals/);
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /Brilliant Boy\.flac$/,
+  );
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /Return Of The Rentals/,
+  );
 });
 
 test("falls back to a valid track outside the album folder when the album folder lacks it", async () => {
@@ -272,9 +286,12 @@ test("falls back to a valid track outside the album folder when the album folder
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.ok(usable.length > 0);
-  assert.match(String(usable[0].candidate.raw.file), /Correct Track\.mp3$/);
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /Correct Track\.mp3$/,
+  );
   assert.equal(
-    usable.some((entry) => /Other Song/.test(String(entry.candidate.raw.file))),
+    usable.some((entry) => /Other Song/.test(String(requireFixture(entry.candidate).raw.file))),
     false,
   );
 });
@@ -303,7 +320,7 @@ test("live variant is rejected by contradiction when the requested track is plai
   );
   assert.match(String(usableFileNames(evaluation)[0]), /Correct Track\.mp3$/);
   const live = evaluation.evaluations.find((entry) =>
-    /Live/.test(String(entry.candidate.raw.file)),
+    /Live/.test(String(requireFixture(entry.candidate).raw.file)),
   );
   assert.ok(live != null);
   assert.equal(live.decision, "reject");
@@ -332,9 +349,9 @@ test("strong title and album match is usable without the artist anywhere in the 
   // Nobody in the path names Gorillaz: retain this only for strict
   // post-download review, never as a straight accept.
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "review");
+  assert.equal(usable[0]?.decision, "review");
   assert.equal(
-    usable[0].reasons.some((reason) => reason.includes("requested artist")),
+    usable[0]?.reasons.some((reason) => reason.includes("requested artist")),
     true,
   );
 });
@@ -364,7 +381,9 @@ test("locked slskd files are ignored", async () => {
       artistAliases: [],
     },
   );
-  const users = usableEvaluationEntries(evaluation).map((entry) => entry.candidate.raw.user);
+  const users = usableEvaluationEntries(evaluation).map(
+    (entry) => requireFixture(entry.candidate).raw.user,
+  );
   assert.equal(users.includes("lockedUser"), false);
   assert.equal(evaluation.evaluations.length, 1);
 });
@@ -399,7 +418,9 @@ test("blacklisted users are excluded; queued users only lose ordering, not eligi
       isUserBlacklisted: (user) => user === "deadUser",
     },
   );
-  const users = usableEvaluationEntries(evaluation).map((entry) => entry.candidate.raw.user);
+  const users = usableEvaluationEntries(evaluation).map(
+    (entry) => requireFixture(entry.candidate).raw.user,
+  );
   assert.equal(users.includes("deadUser"), false);
   assert.ok(users.includes("healthyUser"));
   assert.ok(users.includes("queuedUser"));
@@ -426,7 +447,10 @@ test("soulseek backslash paths for albums are usable", async () => {
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.ok(usable.length > 0);
-  assert.match(String(usable[0].candidate.raw.file), /After Dinner Payback\.flac$/);
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /After Dinner Payback\.flac$/,
+  );
 });
 
 test("requested mix variant accepts an undeclared file and rejects a different mix", async () => {
@@ -475,7 +499,7 @@ test("requested mix variant accepts an undeclared file and rejects a different m
     track,
   );
   assert.deepEqual(usableFileNames(extended), []);
-  const rejected = extended.evaluations[0];
+  const rejected = requireFixture(extended.evaluations[0]);
   assert.equal(rejected.decision, "reject");
   assert.ok(rejected.contradictions.includes("extended-mix"));
 });
@@ -635,7 +659,7 @@ test("the folder artist score survives a guest-artist filename", async () => {
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "verify");
+  assert.equal(usable[0]?.decision, "verify");
 });
 
 test("'live' inside ordinary title words is not a variant", async () => {
@@ -658,7 +682,7 @@ test("'live' inside ordinary title words is not a variant", async () => {
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.equal((usable[0].contradictions ?? []).length, 0);
+  assert.equal((requireFixture(usable[0]).contradictions ?? []).length, 0);
 });
 
 test("quality profile orders identity-passing candidates without excluding the folder file", async () => {
@@ -694,10 +718,10 @@ test("quality profile orders identity-passing candidates without excluding the f
   };
   const ordered = orderAdvertisedQualityCandidates(usable, {
     profile: mp3Profile,
-    readName: (entry) => String(entry.candidate.raw.file),
+    readName: (entry) => String(requireFixture(entry.candidate).raw.file),
     readBitrate: (entry) => entry.candidate?.raw?.bitrate,
   });
-  assert.ok(String(ordered[0].candidate.raw.file).endsWith(".mp3"));
+  assert.ok(String(requireFixture(requireFixture(ordered[0]).candidate).raw.file).endsWith(".mp3"));
 });
 
 test("single-file folders outside the fitting set stay reachable when identity is strong", async () => {
@@ -750,11 +774,11 @@ test("single-file folders outside the fitting set stay reachable when identity i
   ];
   const evaluation = await evaluate([...albumFolder, ...loose], track);
   const usable = usableEvaluationEntries(evaluation);
-  const users = [...new Set(usable.map((entry) => entry.candidate.raw.user))];
+  const users = [...new Set(usable.map((entry) => requireFixture(entry.candidate).raw.user))];
   assert.ok(users.includes("albumPeer"));
   assert.ok(users.includes("loosePeerA"));
   assert.ok(users.includes("loosePeerB"));
-  assert.equal(usable[0].candidate.raw.user, "albumPeer");
+  assert.equal(usable[0]?.candidate?.raw.user, "albumPeer");
 });
 
 test("sibling-track conflict rejects a same-title different-track candidate", async () => {
@@ -778,7 +802,7 @@ test("sibling-track conflict rejects a same-title different-track candidate", as
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 0);
-  assert.ok(evaluation.evaluations[0].contradictions.includes("sibling-track-index"));
+  assert.ok(evaluation.evaluations[0]?.contradictions.includes("sibling-track-index"));
 });
 
 test("wrong track number with imperfect metadata is rejected; exact identity rescues it", async () => {
@@ -837,7 +861,7 @@ test("track number parsed from the filename satisfies the expected position", as
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].aurralEvidence.trackNumber.mismatch, false);
+  assert.equal(usable[0]?.aurralEvidence.trackNumber.mismatch, false);
 });
 
 test("advertised duration: near matches are usable, far matches are not offered", async () => {
@@ -903,7 +927,10 @@ test("the correct-duration file wins over a longer off-duration copy in the same
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.match(String(usable[0].candidate.raw.file), /\/Teardrop\.mp3$/);
+  assert.match(
+    String(requireFixture(requireFixture(usable[0]).candidate).raw.file),
+    /\/Teardrop\.mp3$/,
+  );
 });
 
 test("a copy whose listed size cannot hold its length is not offered, even at the exact length", async () => {
@@ -929,7 +956,7 @@ test("a copy whose listed size cannot hold its length is not offered, even at th
   });
   assert.deepEqual(
     usableEvaluationEntries(await evaluate([silent, real], track)).map((entry) => [
-      entry.candidate.raw.user,
+      requireFixture(entry.candidate).raw.user,
       entry.decision,
     ]),
     [["slow", "accept"]],
@@ -945,7 +972,7 @@ test("a copy whose listed size cannot hold its length is not offered, even at th
   assert.deepEqual(
     usableEvaluationEntries(
       await evaluate([pregap], { ...track, trackName: "[Silence]", durationMs: 4000 }),
-    ).map((entry) => entry.candidate.raw.user),
+    ).map((entry) => requireFixture(entry.candidate).raw.user),
     ["fast"],
   );
 });

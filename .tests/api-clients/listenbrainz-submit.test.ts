@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { listenbrainzSubmit } from "../../backend/services/apiClients/listenbrainz.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 test("submits a release-group ID without claiming a specific release", async (t: import("vite-plus/test").TestContext) => {
   const originalFetch = globalThis.fetch;
@@ -34,7 +35,7 @@ test("submits a release-group ID without claiming a specific release", async (t:
   });
 
   assert.ok(submitted);
-  const info = submitted.payload[0].track_metadata.additional_info;
+  const info = requireFixture(submitted.payload[0]).track_metadata.additional_info;
   assert.equal(info.release_group_mbid, "22222222-2222-4222-8222-222222222222");
   assert.equal(info.release_mbid, undefined);
 });

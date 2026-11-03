@@ -62,13 +62,14 @@ function getAt(obj: object, path: string[]) {
 }
 
 function setAt(obj: object, path: string[], value: unknown) {
+  const last = path.at(-1);
+  if (last === undefined) return;
   let cur = obj as JsonObject;
-  for (let i = 0; i < path.length - 1; i++) {
-    const p = path[i];
+  for (const p of path.slice(0, -1)) {
     if (cur[p] == null) cur[p] = {};
     cur = cur[p] as JsonObject;
   }
-  if (cur != null) cur[path[path.length - 1]] = value;
+  cur[last] = value;
 }
 
 export function decryptIntegrations<Integrations>(

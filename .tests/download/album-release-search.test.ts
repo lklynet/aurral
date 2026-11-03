@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { selectSoulseekAlbumFolder } from "../../backend/services/albumReleaseSearch.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const jobs = [
   {
@@ -43,15 +44,15 @@ const manifest = {
 
 test("a single requested track validates the whole edition and downloads only its file", () => {
   const results = copy("peer");
-  const selection = selectSoulseekAlbumFolder(results, [jobs[1]], { manifest });
+  const selection = selectSoulseekAlbumFolder(results, [requireFixture(jobs[1])], { manifest });
   assert.equal(selection.decision, "selectable");
   assert.ok(selection.selected != null);
   assert.deepEqual(
     selection.selected.files.map(({ jobId, file }) => [jobId, file]),
-    [["two", results[1].file]],
+    [["two", requireFixture(results[1]).file]],
   );
   assert.equal(
-    selectSoulseekAlbumFolder(results.slice(1), [jobs[1]], { manifest }).decision,
+    selectSoulseekAlbumFolder(results.slice(1), [requireFixture(jobs[1])], { manifest }).decision,
     "skip",
   );
 });
@@ -67,7 +68,7 @@ test("a distinct bonus song rejects a pinned release even when its quality is di
       bitrate: 128,
     },
   ];
-  for (const wanted of [jobs, [jobs[1]]]) {
+  for (const wanted of [jobs, [requireFixture(jobs[1])]]) {
     assert.equal(
       selectSoulseekAlbumFolder(results, wanted, {
         manifest,
@@ -92,7 +93,7 @@ test("a distinct bonus song rejects a pinned release even when its quality is di
 test("duplicate encodings satisfy one release position and the profile chooses the wanted copy", () => {
   const selected = selectSoulseekAlbumFolder(
     [...copy("peer"), ...copy("peer", { bitrate: 320 }, "mp3")],
-    [jobs[1]],
+    [requireFixture(jobs[1])],
     { manifest, profile: flacFirst },
   );
   assert.equal(selected.decision, "selectable");

@@ -9,6 +9,7 @@ import {
   readLogProblems,
 } from "../../backend/services/logFile.ts";
 import type { LogEntry } from "../../backend/services/logger.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const dirs: string[] = [];
 const tempDir = () => {
@@ -53,9 +54,11 @@ test("the log rotates into a fixed set of files and reads back newest first", as
 
   assert.deepEqual(readdirSync(dir).sort(), ["aurral.1.log", "aurral.2.log", "aurral.log"]);
   const entries = await readLogEntries(dir, { limit: 1000 });
-  assert.equal(entries[0].msg, "line 59");
+  assert.equal(entries[0]?.msg, "line 59");
   assert.ok(entries.length < 60);
-  assert.ok(entries.every((item, index) => index === 0 || item.id < entries[index - 1].id));
+  assert.ok(
+    entries.every((item, index) => index === 0 || item.id < requireFixture(entries[index - 1]).id),
+  );
   assert.equal(entries.at(-1)?.msg, `line ${60 - entries.length}`);
 });
 
@@ -87,6 +90,7 @@ test("queries filter by level, category, and text, and page with cursors", async
   );
 
   const [newest, second] = await readLogEntries(dir, { limit: 2 });
+  assert.ok(newest && second);
   assert.deepEqual(
     (await readLogEntries(dir, { before: second.id, limit: 10 })).map((item) => item.msg),
     ["slskd search found nothing", "scan started"],
@@ -116,8 +120,8 @@ test("problems group repeats of one failure with counts and the latest example",
       { fp: "fp-navidrome", count: 1 },
     ],
   );
-  assert.equal(problems[0].firstAt, hourAgo);
-  assert.deepEqual(problems[0].latest.data, { attempt: 2 });
+  assert.equal(problems[0]?.firstAt, hourAgo);
+  assert.deepEqual(problems[0]?.latest.data, { attempt: 2 });
 
   const recent = await readLogProblems(dir, { since: Date.now() - 30 * 60 * 1000 });
   assert.equal(recent.find((problem) => problem.fp === "fp-lidarr")?.count, 1);

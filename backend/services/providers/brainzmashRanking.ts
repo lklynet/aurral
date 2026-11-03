@@ -196,8 +196,7 @@ export function pickResolvedDurationMs({
 }
 
 export function getYear(value: unknown) {
-  const match = String(value || "").match(/\b(19\d{2}|20\d{2})\b/);
-  return match ? match[1] : null;
+  return String(value || "").match(/\b(19\d{2}|20\d{2})\b/)?.[1] ?? null;
 }
 
 function typeRank(value: unknown) {
@@ -294,7 +293,8 @@ export function median(values: number[]) {
   const sorted = values.filter((value) => Number(value) > 0).sort((left, right) => left - right);
   if (sorted.length === 0) return null;
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  const upper = sorted[middle] ?? 0;
+  return sorted.length % 2 ? upper : Math.round(((sorted[middle - 1] ?? upper) + upper) / 2);
 }
 
 const lowerId = (value: unknown) =>
@@ -342,7 +342,7 @@ export function pressingLengths(
   return tracksInOrder(release).map((track, index) => {
     const recordings = recordingIds(track, aliases);
     return pressings
-      .map((tracks) => tracks[index])
+      .flatMap((tracks) => tracks[index] ?? [])
       .filter((entry) =>
         recordingIds(entry, aliases).some((recording) => recordings.includes(recording)),
       )
@@ -363,7 +363,7 @@ export function withPressingDurations(releases: Release[], release: Release) {
       durationMs:
         track.durationMs != null && track.durationMs > 0
           ? track.durationMs
-          : (median(lengths[ordered.indexOf(track)]) ?? track.durationMs),
+          : (median(lengths[ordered.indexOf(track)] ?? []) ?? track.durationMs),
     })),
   };
 }

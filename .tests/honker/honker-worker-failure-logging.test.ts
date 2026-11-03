@@ -69,8 +69,8 @@ test("background workers log retrying and final failures without exposing the jo
         ["error", "jobs", "Job failed"],
       ],
     );
-    assert.equal(requireFixture(events[0][3]).reason, "source unavailable");
-    assert.equal(requireFixture(events[1][3]).attempt, 2);
+    assert.equal(requireFixture(requireFixture(events[0])[3]).reason, "source unavailable");
+    assert.equal(requireFixture(requireFixture(events[1])[3]).attempt, 2);
     assert.doesNotMatch(JSON.stringify(events), /do-not-log/);
   } finally {
     logger.warn = originalWarn;
@@ -131,7 +131,7 @@ test("background workers fail a job they can't read without running or retrying 
     await worker.start();
 
     assert.equal(outcomes.length, 1);
-    assert.match(outcomes[0], /^fail: Aurral can't read this job: /);
+    assert.match(requireFixture(outcomes[0]), /^fail: Aurral can't read this job: /);
     assert.deepEqual(events, [["jobs", "Job payload unreadable"]]);
   } finally {
     logger.error = originalError;

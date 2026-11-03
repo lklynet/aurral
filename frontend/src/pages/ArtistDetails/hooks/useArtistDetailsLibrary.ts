@@ -194,7 +194,7 @@ export function useArtistDetailsLibrary({
     const statuses: DownloadStatuses = downloadStatusesQuery.data || {};
     const key = JSON.stringify(
       Object.entries(statuses)
-        .map(([albumId, status]) => [albumId, status?.status || ""])
+        .map(([albumId, status]) => [albumId, status?.status || ""] as const)
         .sort(([left], [right]) => left.localeCompare(right)),
     );
     if (downloadStatusSnapshotRef.current.key === key) return downloadStatusSnapshotRef.current;
@@ -664,7 +664,7 @@ export function useArtistDetailsLibrary({
     return null;
   };
 
-  const isBlockedSearch = (result: Awaited<ReturnType<typeof searchLibraryAlbum>>) =>
+  const isBlockedSearch = (result: Awaited<ReturnType<typeof searchLibraryAlbum>> | undefined) =>
     result?.status === "blocked" || result?.albumStatus?.status === "blocked";
 
   const undoReSearchOverrides = (albumIds: LibraryAlbumId[]) => {

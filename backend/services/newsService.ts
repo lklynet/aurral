@@ -143,8 +143,8 @@ const findArticleArtists = (
   const words = normalizeName(title).split(" ");
   for (let start = 0; start < words.length; start += 1) {
     let phrase = "";
-    for (let end = start; end < Math.min(words.length, start + maxWords); end += 1) {
-      phrase = phrase ? `${phrase} ${words[end]}` : words[end];
+    for (const word of words.slice(start, start + maxWords)) {
+      phrase = phrase ? `${phrase} ${word}` : word;
       if (names.has(phrase) && !(requireCategory && isSingleWordName(phrase))) matched.add(phrase);
     }
   }

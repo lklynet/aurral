@@ -88,14 +88,14 @@ export function serializeQueue(
   );
   const window = state.playbackOrder.slice(start, start + MAX_STORED_TRACKS);
   const kept = new Set(window);
-  const keptQueueIndices = state.queue.map((_, index) => index).filter((index) => kept.has(index));
+  const keptQueue = [...state.queue.entries()].filter(([index]) => kept.has(index));
   const storedIndexOf = new Map<number, number>(
-    keptQueueIndices.map((queueIndex, index): [number, number] => [queueIndex, index]),
+    keptQueue.map(([queueIndex], index): [number, number] => [queueIndex, index]),
   );
   return JSON.stringify({
     version: VERSION,
     owner: String(owner),
-    tracks: keptQueueIndices.map((queueIndex) => storedTrack(state.queue[queueIndex])),
+    tracks: keptQueue.map(([, track]) => storedTrack(track)),
     playbackOrder: window.map((queueIndex) => storedIndexOf.get(queueIndex)),
     currentIndex: state.currentIndex - start,
     isShuffleEnabled: state.isShuffleEnabled,

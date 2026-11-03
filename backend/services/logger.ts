@@ -282,7 +282,7 @@ export function recordConsoleCall(method: ConsoleMethod, args: unknown[]) {
     ...args.map((arg) => (arg instanceof Error ? arg.message : arg)),
   );
   const tagged = /^\s*\[([^\]\n]{1,40})\]:?\s*/.exec(text);
-  const cat = tagged ? consoleCategory(tagged[1]) : "console";
+  const cat = tagged ? consoleCategory(tagged[1] ?? "") : "console";
   const msg = safeLogDiagnostic(tagged ? text.slice(tagged[0].length) : text);
   record(CONSOLE_LEVEL[method], cat, msg, undefined, error);
 }

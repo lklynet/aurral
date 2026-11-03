@@ -7,6 +7,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -285,13 +286,13 @@ test("flattenSearchResults reads files and lockedFiles payloads", () => {
   });
 
   assert.equal(results.length, 2);
-  assert.equal(results[0].user, "peerOne");
-  assert.equal(results[0].file, "Artist\\Album\\01 - Track.flac");
-  assert.equal(results[1].file, "Artist\\Album\\02 - Bonus.flac");
-  assert.equal(results[0].slots, 1);
-  assert.equal(results[0].speed, 250000);
-  assert.equal(results[0].locked, false);
-  assert.equal(results[1].locked, true);
+  assert.equal(results[0]?.user, "peerOne");
+  assert.equal(results[0]?.file, "Artist\\Album\\01 - Track.flac");
+  assert.equal(results[1]?.file, "Artist\\Album\\02 - Bonus.flac");
+  assert.equal(results[0]?.slots, 1);
+  assert.equal(results[0]?.speed, 250000);
+  assert.equal(results[0]?.locked, false);
+  assert.equal(results[1]?.locked, true);
 });
 
 test("waitForSearch treats a polling failure during cancellation as a cancelled search", async () => {
@@ -532,7 +533,7 @@ test("enqueueBatch uses current slskd download endpoint", async () => {
       calls.map((call) => call.url),
       ["/api/v0/transfers/downloads/peer"],
     );
-    assert.deepEqual(JSON.parse(calls[0].body), [
+    assert.deepEqual(JSON.parse(requireFixture(calls[0]).body), [
       { filename: "Artist/Album/Open.flac", size: 123 },
     ]);
   } finally {
@@ -625,8 +626,8 @@ test("flattenSearchResults preserves the slskd-advertised length in seconds", ()
   });
 
   assert.equal(results.length, 2);
-  assert.equal(results[0].length, 226);
-  assert.equal(results[1].length, null);
+  assert.equal(results[0]?.length, 226);
+  assert.equal(requireFixture(results[1]).length, null);
 });
 
 test("flattenSearchResults does not fall back to length when size is absent", () => {
@@ -640,8 +641,8 @@ test("flattenSearchResults does not fall back to length when size is absent", ()
   });
 
   assert.equal(results.length, 1);
-  assert.equal(results[0].size, 0);
-  assert.equal(results[0].length, 226);
+  assert.equal(results[0]?.size, 0);
+  assert.equal(results[0]?.length, 226);
 });
 
 test("waitForSearch stops its owned active search when collection is sufficient", async () => {
@@ -815,6 +816,7 @@ test("getEvents reads the download completions slskd stores as JSON text", async
       ["transfer-1", "Artist\\Album"],
     );
     const [fileEvent] = events;
+    assert.ok(fileEvent !== undefined);
     assert.equal(
       fileEvent.type === "DownloadFileComplete" ? fileEvent.data.localFilename : null,
       "/downloads/Album/01 - Track.flac",

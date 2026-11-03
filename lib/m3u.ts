@@ -60,7 +60,7 @@ export function parseM3u(content: string) {
         const seconds = Number(extinf[1]);
         info = {
           ...info,
-          display: extinf[2].trim(),
+          display: (extinf[2] ?? "").trim(),
           durationMs: seconds > 0 ? Math.round(seconds * 1000) : null,
         };
       } else if (/^#PLAYLIST:/i.test(line)) name = line.slice(10).trim() || name;

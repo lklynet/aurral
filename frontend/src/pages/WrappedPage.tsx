@@ -83,7 +83,7 @@ const percent = (part: number, whole: number) => {
 const sentenceCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const withoutEdition = (title: string) => title.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "") || title;
 
-function storySlides(summary: WrappedRecap) {
+function storySlides(summary: WrappedRecap): [Slide, ...Slide[]] {
   const include = (condition: unknown, slide: Slide) => (condition ? [slide] : []);
   return [
     { kind: "opening" },
@@ -100,9 +100,11 @@ function storySlides(summary: WrappedRecap) {
     ...include((summary.longestStreak?.days ?? 0) >= 2, { kind: "streak" }),
     { kind: "hour" },
     { kind: "share" },
-  ] satisfies Slide[];
+  ];
 }
 
+const fieldAt = (palette: readonly string[], position: number) =>
+  palette[position % palette.length] ?? "#000000";
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const introKey = (year: number) => `aurral.wrapped.intro.${year}`;
 
@@ -215,13 +217,13 @@ function Doodle({
 
 function penTiming(strokes: string[][]) {
   let pen = 0;
-  return strokes.map(([path]) => {
+  return strokes.map(([path = ""]) => {
     const values = path.match(/-?[\d.]+/g)?.map(Number) ?? [];
     let length = 0;
     for (let index = 6; index < values.length; index += 6)
       length += Math.hypot(
-        values[index] - values[index - 6],
-        values[index + 1] - values[index - 5],
+        (values[index] ?? 0) - (values[index - 6] ?? 0),
+        (values[index + 1] ?? 0) - (values[index - 5] ?? 0),
       );
     const time = Math.sqrt(length) * 0.9;
     const timing = { "--at": pen, "--d": time };
@@ -1219,8 +1221,8 @@ function Story({
   const slideRef = useRef<HTMLDivElement>(null);
   const pressed = useRef(0);
   const { index, leaving } = view;
-  const slide = slides[index];
-  const fieldOf = (position: number) => palette[position % palette.length];
+  const slide = slides[index] ?? slides[0];
+  const fieldOf = (position: number) => fieldAt(palette, position);
   const shareField = fieldOf(slides.length - 1);
   const image = useShareImage(summary, shareField, username);
   const soundtrack = useMemo(
@@ -1235,7 +1237,7 @@ function Story({
   const stream = cue && wrappedSongSource(cue.song);
   const source = stream && (songs.get(stream) ?? stream);
   const audio = useSoundtrack(
-    intro && waiting ? null : source,
+    intro && waiting ? null : (source ?? null),
     !cue || cue.song.preview !== null ? 0 : (cue.song.beats?.start ?? null),
     muted,
     vintage,
@@ -1244,21 +1246,21 @@ function Story({
   const audible = !muted && Boolean(source) && audio.current === source;
   const playing = audible && cue?.named === true;
   const last = index === slides.length - 1;
-  const cut = leaving !== null && slides[leaving].kind === "hour" && slide.kind === "share";
+  const cut = leaving !== null && slides[leaving]?.kind === "hour" && slide.kind === "share";
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (leaving === null || !frame || reducedMotion()) return;
-    const from = frame.querySelector<HTMLElement>(
-      `[data-slide="${slides[leaving].kind}"] [data-fly]`,
-    );
+    const leavingSlide = leaving === null ? undefined : slides[leaving];
+    const enteringSlide = slides[index];
+    if (!leavingSlide || !enteringSlide || !frame || reducedMotion()) return;
+    const from = frame.querySelector<HTMLElement>(`[data-slide="${leavingSlide.kind}"] [data-fly]`);
     const to =
       from &&
       frame.querySelector<HTMLElement>(
-        `[data-slide="${slides[index].kind}"] [data-fly="${from.dataset.fly}"]`,
+        `[data-slide="${enteringSlide.kind}"] [data-fly="${from.dataset.fly}"]`,
       );
     if (!from || !to) return;
-    if (from.dataset.fly === "peak") expand(from, frame, palette[index % palette.length]);
+    if (from.dataset.fly === "peak") expand(from, frame, fieldAt(palette, index));
     else fly(from, to, frame);
   }, [index, leaving, palette, slides]);
 
@@ -1434,8 +1436,8 @@ function Story({
           </TooltipButton>
         </div>
         {[leaving, index].map((position) => {
-          if (position === null) return null;
-          const entry = slides[position];
+          const entry = position === null ? undefined : slides[position];
+          if (position === null || !entry) return null;
           return (
             <div
               key={entry.kind}

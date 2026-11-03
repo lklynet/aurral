@@ -5,6 +5,7 @@ import { test, vi } from "vite-plus/test";
 import path from "node:path";
 import fs from "node:fs";
 import { EventEmitter } from "node:events";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 process.env.NODE_ENV = "test";
 
@@ -635,8 +636,8 @@ test("library watcher scans the resolved local root received from its child", ()
   changed("change", "Artist/track.flac", localRoot);
   vi.runAllTimers();
   watcher.close();
-  assert.equal(watched[0].root, "/remote-library");
-  assert.deepEqual(watched[0].options.pathMappings, [
+  assert.equal(watched[0]?.root, "/remote-library");
+  assert.deepEqual(watched[0]?.options.pathMappings, [
     { source: "all", remote: "/remote-library", local: localRoot },
   ]);
   assert.deepEqual(scanned, [
@@ -684,15 +685,15 @@ for (const firstReady of [0, 1]) {
   test(`library watcher keeps the first ready local-root owner (ready index ${firstReady})`, (t) => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { localRoot, watcher, children, scanned, errors } = createMappedWatcherTest(t);
-    const owner = children[firstReady];
-    const duplicate = children[1 - firstReady];
+    const owner = requireFixture(children[firstReady]);
+    const duplicate = requireFixture(children[1 - firstReady]);
     owner.emit("ready", localRoot);
     duplicate.emit("ready", localRoot);
     assert.equal(owner.closed, 0);
     assert.equal(duplicate.closed, 1);
     // Closing a duplicate must not release the surviving watcher's root.
-    children[2].emit("ready", path.join(localRoot, "."));
-    assert.equal(children[2].closed, 1);
+    requireFixture(children[2]).emit("ready", path.join(localRoot, "."));
+    assert.equal(children[2]?.closed, 1);
     duplicate.change("duplicate.flac");
     duplicate.emit("error", new Error("Late duplicate error"));
     owner.change("kept.flac");
@@ -715,13 +716,13 @@ for (const firstReady of [0, 1]) {
 for (const outcome of ["close", "error"]) {
   test(`library watcher releases local-root ownership after ${outcome}`, (t) => {
     const { localRoot, children, errors } = createMappedWatcherTest(t);
-    children[0].emit("ready", localRoot);
-    if (outcome === "close") children[0].close();
-    else children[0].emit("error", new Error("Watcher failed"));
-    children[1].emit("ready", localRoot);
-    assert.equal(children[1].closed, 0);
-    children[2].emit("ready", localRoot);
-    assert.equal(children[2].closed, 1);
+    requireFixture(children[0]).emit("ready", localRoot);
+    if (outcome === "close") requireFixture(children[0]).close();
+    else requireFixture(children[0]).emit("error", new Error("Watcher failed"));
+    requireFixture(children[1]).emit("ready", localRoot);
+    assert.equal(children[1]?.closed, 0);
+    requireFixture(children[2]).emit("ready", localRoot);
+    assert.equal(children[2]?.closed, 1);
     assert.equal(errors.length, outcome === "error" ? 1 : 0);
   });
 }

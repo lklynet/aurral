@@ -80,7 +80,8 @@ const resolveAlbumKey = (input: PlayEventInput) => {
     const reference = albumReference(value);
     if (!reference) continue;
     const matches = resolveAlbumKeyStmt.all(reference, reference, reference, reference);
-    if (matches.length === 1) return matches[0].identity_key;
+    const [match] = matches;
+    if (match && matches.length === 1) return match.identity_key;
   }
   return null;
 };
@@ -136,7 +137,7 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
   const connections = scrobbleConnectionStore.getConnections(userId);
   const honker = getHonkerDb();
   const tx = honker.transaction();
-  let eventId: number | undefined;
+  let eventId: number;
   try {
     const rows = tx.query(
       `
@@ -162,7 +163,9 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
         Date.now(),
       ],
     ) as { id: number }[];
-    eventId = rows[0]?.id;
+    const [row] = rows;
+    if (!row) throw new Error("Play event was not saved");
+    eventId = row.id;
     for (const [provider, connection] of Object.entries(connections)) {
       getPlayEventOutbox().enqueueTx(tx, {
         eventId,

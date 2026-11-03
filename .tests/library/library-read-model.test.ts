@@ -8,6 +8,7 @@ import {
   findLibraryTracksForAlbum,
 } from "../../backend/services/libraryReadModel.ts";
 import { selectCanonicalFile } from "../../backend/services/canonicalFileSelector.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const library = {
   artists: [
@@ -63,17 +64,17 @@ test("library read model maps the existing root to Library-shaped records", () =
   const result = buildLibraryReadModel(library);
 
   assert.equal(findLibraryArtist(result.artists, "artist-1")?.artistName, "Root Artist");
-  assert.equal(result.albums[0].artistMbid, "artist-1");
+  assert.equal(result.albums[0]?.artistMbid, "artist-1");
   assert.deepEqual(
     findLibraryTracksForAlbum(result.tracks, 2).map((track) => track.trackName),
     ["Root Track"],
   );
-  assert.equal(result.albums[0].mbid, "release-1");
-  assert.equal(result.albums[0].releaseGroupMbid, "album-1");
-  assert.equal(result.artists[0].foreignArtistId, "artist-1");
-  assert.equal(result.albums[0].statistics.sizeOnDisk, 123);
-  assert.equal(result.artists[0].statistics.sizeOnDisk, 123);
-  assert.equal(result.tracks[0].path, "/music/Root Artist/Root Album/01 Root Track.flac");
+  assert.equal(result.albums[0]?.mbid, "release-1");
+  assert.equal(result.albums[0]?.releaseGroupMbid, "album-1");
+  assert.equal(result.artists[0]?.foreignArtistId, "artist-1");
+  assert.equal(result.albums[0]?.statistics.sizeOnDisk, 123);
+  assert.equal(result.artists[0]?.statistics.sizeOnDisk, 123);
+  assert.equal(result.tracks[0]?.path, "/music/Root Artist/Root Album/01 Root Track.flac");
 });
 
 test("library album statistics exclude unavailable file sizes", () => {
@@ -90,8 +91,8 @@ test("library album statistics exclude unavailable file sizes", () => {
     ],
   });
 
-  assert.equal(result.albums[0].statistics.trackFileCount, 0);
-  assert.equal(result.albums[0].statistics.sizeOnDisk, 0);
+  assert.equal(result.albums[0]?.statistics.trackFileCount, 0);
+  assert.equal(result.albums[0]?.statistics.sizeOnDisk, 0);
 });
 
 test("library read model preserves non-MBID provider artist identity", () => {
@@ -117,9 +118,9 @@ test("library read model preserves non-MBID provider artist identity", () => {
     tracks: [],
   });
 
-  assert.equal(result.artists[0].providerId, 42);
+  assert.equal(result.artists[0]?.providerId, 42);
   assert.equal(result.artists[0].mbid, null);
-  assert.equal(result.artists[0].foreignArtistId, "705@deezer");
+  assert.equal(result.artists[0]?.foreignArtistId, "705@deezer");
   assert.equal(
     findLibraryArtist(result.artists, "lidarr-artist:705@deezer")?.name,
     "Provider Artist",
@@ -127,13 +128,15 @@ test("library read model preserves non-MBID provider artist identity", () => {
 });
 
 test("library file reads prefer the album manager before Lidarr", () => {
-  const file = selectCanonicalFile(
-    [
-      { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
-      { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
-    ],
-    2,
-    "aurral",
+  const file = requireFixture(
+    selectCanonicalFile(
+      [
+        { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
+        { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
+      ],
+      2,
+      "aurral",
+    ),
   );
 
   assert.equal(file.path, "/music/aurral.flac");

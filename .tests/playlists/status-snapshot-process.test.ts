@@ -60,18 +60,24 @@ test("production snapshots refresh persisted membership and access changes witho
     assert.equal(first.name, "Original");
     assert.equal(first.trackEntries.length, 1);
     assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
-    first.trackEntries[0].identity = "caller mutation";
+    requireFixture(first.trackEntries[0]).identity = "caller mutation";
     first.trackIdentities.push("caller mutation");
-    assert.equal(read().sharedPlaylists[0].trackIdentities.length, 1);
-    assert.notEqual(read().sharedPlaylists[0].trackEntries[0].identity, "caller mutation");
+    assert.equal(read().sharedPlaylists[0]?.trackIdentities.length, 1);
+    assert.notEqual(
+      requireFixture(requireFixture(read().sharedPlaylists[0]).trackEntries[0]).identity,
+      "caller mutation",
+    );
 
     writeFromAnotherProcess(
       "UPDATE playlist_download_jobs SET track_name = ?, status = ? WHERE id = ?",
       ["Changed track", "failed", jobId],
     );
     const updated = read();
-    assert.notEqual(updated.sharedPlaylists[0].trackIdentities[0], first.trackIdentities[0]);
-    assert.equal(updated.sharedPlaylistStats[playlist.id].failed, 1);
+    assert.notEqual(
+      requireFixture(updated.sharedPlaylists[0]).trackIdentities[0],
+      first.trackIdentities[0],
+    );
+    assert.equal(updated.sharedPlaylistStats[playlist.id]?.failed, 1);
 
     const stored = JSON.parse(
       requireFixture(
@@ -88,13 +94,13 @@ test("production snapshots refresh persisted membership and access changes witho
       JSON.stringify(stored),
       "sharedPlaylists",
     ]);
-    const renamed = read().sharedPlaylists[0];
+    const renamed = requireFixture(read().sharedPlaylists[0]);
     assert.equal(renamed.name, "Renamed elsewhere");
     assert.equal(renamed.trackIdentities.length, 2);
 
     writeFromAnotherProcess("DELETE FROM playlist_download_jobs WHERE id = ?", [jobId]);
-    assert.equal(read().sharedPlaylists[0].trackIdentities.length, 1);
-    assert.deepEqual([...read().sharedPlaylists[0].trackEntries], []);
+    assert.equal(read().sharedPlaylists[0]?.trackIdentities.length, 1);
+    assert.deepEqual([...requireFixture(read().sharedPlaylists[0]).trackEntries], []);
 
     stored[0].ownerUserId = 2;
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [

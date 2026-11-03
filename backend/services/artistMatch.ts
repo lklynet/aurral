@@ -45,23 +45,24 @@ async function heldAlbumCount(artist: NamedArtist, wanted: Set<string>) {
 // match.
 export async function matchLibraryArtist(name: string, albums: string[]): Promise<string | null> {
   const named = await namedArtists(name);
-  if (named.length === 0) {
+  const [first] = named;
+  if (!first) {
     const lead = withoutFeaturedArtists(name);
     return lead && lead !== name ? matchLibraryArtist(lead, albums) : null;
   }
-  if (named.length === 1) return named[0].id;
+  if (named.length === 1) return first.id;
   const wanted = albumKeys(albums);
   if (wanted.size === 0) return null;
   const counts = await Promise.all(named.map((artist) => heldAlbumCount(artist, wanted)));
   const most = Math.max(...counts);
-  return most > 0 && counts.indexOf(most) === counts.lastIndexOf(most)
-    ? named[counts.indexOf(most)].id
-    : null;
+  const index = counts.indexOf(most);
+  return most > 0 && index === counts.lastIndexOf(most) ? (named[index]?.id ?? null) : null;
 }
 
 async function guess(name: string, wanted: Set<string>): Promise<string | null> {
   const named = await namedArtists(name);
-  if (named.length === 0) {
+  const [first] = named;
+  if (!first) {
     const lead = withoutFeaturedArtists(name);
     return lead && lead !== name ? guess(lead, wanted) : null;
   }
@@ -70,7 +71,7 @@ async function guess(name: string, wanted: Set<string>): Promise<string | null> 
       if ((await heldAlbumCount(artist, wanted).catch(() => 0)) > 0) return artist.id;
     }
   }
-  return named[0].id;
+  return first.id;
 }
 
 function readGuess(name: string) {

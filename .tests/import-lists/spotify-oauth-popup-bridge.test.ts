@@ -65,6 +65,6 @@ test("spotify oauth callback broadcasts tokens when opener is missing", () => {
     },
   });
   assert.equal(messages.length, 1);
-  assert.equal(messages[0].type, "ready");
-  assert.equal(messages[0].payload.access_token, "a");
+  assert.equal(messages[0]?.type, "ready");
+  assert.equal(messages[0]?.payload.access_token, "a");
 });

@@ -561,9 +561,10 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
     scanMusicRoots({
       rootPaths: roots,
       source,
-      metadataReader: async (filePath: string) => tags[filePath],
+      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
     });
   const [, gone, , marked] = Object.keys(tags);
+  assert.ok(gone !== undefined && marked !== undefined);
   await scan();
   db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(
     source,
@@ -827,7 +828,7 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
     assert.equal(result.filesSeen, 1);
     assert.equal(result.filesIndexed, 1);
     assert.equal(files.length, 1);
-    assert.equal(files[0].path, filePath);
+    assert.equal(files[0]?.path, filePath);
     assert.equal(
       snapshot.artists.some((artist) => artist.name === "Aurral Fixture"),
       true,
@@ -1330,7 +1331,7 @@ function listedAlbum(
           MUSICBRAINZ_ALBUMARTISTID: artistMbid,
           MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
           MUSICBRAINZ_ALBUMID: release,
-          MUSICBRAINZ_TRACKID: recordings[name],
+          MUSICBRAINZ_TRACKID: requireFixture(recordings[name]),
         },
       ),
   };
@@ -1376,7 +1377,7 @@ test("an album lists every track of the release its files are tagged with, inclu
       ALBUM: "Bonus Single",
       TITLE: "Bonus (Radio Edit)",
       TRACKNUMBER: 1,
-      MUSICBRAINZ_TRACKID: album.group.recordings.Bonus,
+      MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Bonus),
     });
     await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
       provider.up = false;
@@ -1456,7 +1457,7 @@ test("a release that lists a song twice lists it at both places, and a file numb
     MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 5),
     MUSICBRAINZ_RELEASEGROUPID: twice.releaseGroup,
     MUSICBRAINZ_ALBUMID: uuid("bbbbbbbb", 50),
-    MUSICBRAINZ_TRACKID: twice.group.recordings.Intro,
+    MUSICBRAINZ_TRACKID: requireFixture(twice.group.recordings.Intro),
   });
   await makeTrack(path.join(root, artist, `Numbered ${process.pid}`, "04 First.flac"), {
     ARTIST: artist,
@@ -1467,7 +1468,7 @@ test("a release that lists a song twice lists it at both places, and a file numb
     MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 5),
     MUSICBRAINZ_RELEASEGROUPID: numbered.releaseGroup,
     MUSICBRAINZ_ALBUMID: uuid("bbbbbbbb", 51),
-    MUSICBRAINZ_TRACKID: numbered.group.recordings.First,
+    MUSICBRAINZ_TRACKID: requireFixture(numbered.group.recordings.First),
   });
   await withReleaseGroups(
     { [twice.releaseGroup]: twice.group, [numbered.releaseGroup]: numbered.group },
@@ -1591,7 +1592,7 @@ test("an album lists the edition its files come from, again when a file of anoth
       MUSICBRAINZ_ALBUMARTISTID: album.group.artistMbid,
       MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
       MUSICBRAINZ_ALBUMID: album.releaseGroup,
-      MUSICBRAINZ_TRACKID: album.group.recordings.Two,
+      MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Two),
     });
     await scan();
     assert.deepEqual(albumListing(title), [
@@ -1637,7 +1638,7 @@ test("an album lists the release whose recordings its files are tagged with when
       MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 9),
       MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
       MUSICBRAINZ_ALBUMID: album.releaseGroup,
-      MUSICBRAINZ_TRACKID: remastered[name],
+      MUSICBRAINZ_TRACKID: requireFixture(remastered[name]),
     });
   }
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
@@ -1682,7 +1683,7 @@ test("remastered files numbered as one disc list each song of their edition once
     MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 7),
     MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
     MUSICBRAINZ_ALBUMID: album.releaseGroup,
-    MUSICBRAINZ_TRACKID: album.group.recordings.Dawn,
+    MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Dawn),
   });
   await untagged("Tonight (Remastered 2012)", 2);
   await untagged("Dusk - 2012 Remaster", 3);
@@ -1895,7 +1896,7 @@ test("a file at a listed song's place is that song, keeping its own title when t
     ]);
 
     await taggedTrack(root, artist, title, album, "You'r in My Head", 2, uuid("c1c1c1c1", 2));
-    await taggedTrack(root, artist, title, album, "Trois", 4, merged.Three[0]);
+    await taggedTrack(root, artist, title, album, "Trois", 4, requireFixture(merged.Three[0]));
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
     assert.deepEqual(albumListing(title), [
       ["One", "have"],
@@ -1918,7 +1919,15 @@ test("a file is the listed song its recording is, before another whose title it 
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  await taggedTrack(root, artist, title, album, "Tonight", 2, album.group.recordings.Tonight);
+  await taggedTrack(
+    root,
+    artist,
+    title,
+    album,
+    "Tonight",
+    2,
+    requireFixture(album.group.recordings.Tonight),
+  );
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
@@ -1961,8 +1970,16 @@ test("a file tagged with a recording MusicBrainz merged into a release's song is
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  await taggedTrack(root, artist, title, album, "One", 1, merged.One[0]);
-  await taggedTrack(root, artist, title, album, "Two (LP Version)", 6, merged.Two[0]);
+  await taggedTrack(root, artist, title, album, "One", 1, requireFixture(merged.One[0]));
+  await taggedTrack(
+    root,
+    artist,
+    title,
+    album,
+    "Two (LP Version)",
+    6,
+    requireFixture(merged.Two[0]),
+  );
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
@@ -2105,7 +2122,7 @@ test("an album lists its release group only when the group holds one of its file
     renamed,
     "Another Name",
     1,
-    merged.One[0],
+    requireFixture(merged.One[0]),
   );
   await taggedTrack(
     root,
@@ -2114,7 +2131,7 @@ test("an album lists its release group only when the group holds one of its file
     otherSong,
     "Main Theme",
     1,
-    otherSong.group.recordings.One,
+    requireFixture(otherSong.group.recordings.One),
   );
   await taggedTrack(root, artist, `Title Only ${process.pid}`, titleOnly, "One", 1, "");
   await taggedTrack(
@@ -2124,7 +2141,7 @@ test("an album lists its release group only when the group holds one of its file
     featured,
     "One (feat. Guest)",
     1,
-    featured.group.recordings.One,
+    requireFixture(featured.group.recordings.One),
   );
   await taggedTrack(root, artist, `Credited ${process.pid}`, credited, "Duet", 1, "");
   await withReleaseGroups(
@@ -2521,18 +2538,26 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
     {
       name: "Lack/01 One.flac",
       title: "One",
-      group: capitals(groups[0]),
-      recording: capitals(recordings[0]),
+      group: capitals(requireFixture(groups[0])),
+      recording: capitals(requireFixture(recordings[0])),
       artist: capitals(artistMbid),
-      was: { artist: artistMbid, group: groups[0], track: `recording:${capitals(recordings[0])}` },
+      was: {
+        artist: artistMbid,
+        group: groups[0],
+        track: `recording:${capitals(requireFixture(recordings[0]))}`,
+      },
     },
     {
       name: "Lack/02 Two.flac",
       title: "Two",
-      group: capitals(groups[0]),
-      recording: capitals(recordings[1]),
+      group: capitals(requireFixture(groups[0])),
+      recording: capitals(requireFixture(recordings[1])),
       artist: capitals(artistMbid),
-      was: { artist: artistMbid, group: capitals(groups[0]), track: `recording:${recordings[1]}` },
+      was: {
+        artist: artistMbid,
+        group: capitals(requireFixture(groups[0])),
+        track: `recording:${recordings[1]}`,
+      },
     },
     {
       name: "Lack/03 Four.flac",
@@ -2626,9 +2651,9 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
     });
     starFor(
       userId,
-      ["album", `release-group:${capitals(groups[0])}`],
+      ["album", `release-group:${capitals(requireFixture(groups[0]))}`],
       ["artist", `mbid:${capitals(artistMbid)}`],
-      ["song", `recording:${capitals(recordings[0])}`],
+      ["song", `recording:${capitals(requireFixture(recordings[0]))}`],
       ["song", `recording:${deezer}`],
     );
 
@@ -2670,7 +2695,7 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
           "SELECT COUNT(*) FROM library_tracks WHERE identity_key IN (?, ?)",
         )
         .pluck()
-        .get(`recording:${capitals(recordings[0])}`, `recording:${deezer}`),
+        .get(`recording:${capitals(requireFixture(recordings[0]))}`, `recording:${deezer}`),
       0,
     );
   } finally {
@@ -2770,7 +2795,7 @@ test("a file retagged onto another album leaves no empty track or album behind",
       metadataReader: async (filePath: string) =>
         untagged(
           artist,
-          albumOf[filePath],
+          requireFixture(albumOf[filePath]),
           filePath === first ? "One" : "Two",
           filePath === first ? 1 : 2,
         ),
@@ -2937,7 +2962,7 @@ test("an album split between untagged and tagged files is one album that lists e
       ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
     >
   > = {};
-  const reader = async (filePath: string) => tags[filePath];
+  const reader = async (filePath: string) => requireFixture(tags[filePath]);
   const copy = await createAudioFile(root, `${artist}/Mellon Collie/01 Tonight.flac`);
   const only = await createAudioFile(root, `${artist}/Mellon Collie/02 Zero.flac`);
   tags[copy] = untagged(artist, "Mellon Collie", "Tonight, Tonight", 1);
@@ -2959,7 +2984,12 @@ test("an album split between untagged and tagged files is one album that lists e
     );
 
     for (const force of [false, true]) {
-      await scanMusicRoot({ rootPath: root, source, force, metadataReader: reader });
+      await scanMusicRoot({
+        rootPath: root,
+        source,
+        force,
+        metadataReader: reader,
+      });
       assert.deepEqual(
         artistAlbums(artist).map(({ title, identityKey, tracks }) => [title, identityKey, tracks]),
         [["Mellon Collie", `release-group:${releaseGroup}`, 2]],
@@ -3005,7 +3035,7 @@ test("an untagged file joins the one of an artist's same-titled releases that li
     "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a",
     "4e5f6a7b-8c9d-4e0f-8a1b-2c3d4e5f6a7b",
   );
-  const reader = async (filePath: string) => tags[filePath];
+  const reader = async (filePath: string) => requireFixture(tags[filePath]);
   try {
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
     const copy = await createAudioFile(root, `${artist}/Weezer/04 Buddy Holly.mp3`);
@@ -3208,7 +3238,7 @@ test("songs a catalogue album shares with other albums keep their identity and s
     hitsGroup,
     "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
   );
-  const reader = async (filePath: string) => tags[filePath];
+  const reader = async (filePath: string) => requireFixture(tags[filePath]);
   const searchedTracks = (query: string) =>
     getLibrarySearchPage({ query }).tracks.tracks.map((track) => Number(track.id));
   try {
@@ -3293,7 +3323,7 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
     scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath: string) => tags[filePath],
+      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
     });
   try {
     await scan();
@@ -3373,7 +3403,7 @@ test("a folder left empty, as by a disconnected drive, keeps its songs until the
     scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath: string) => tags[filePath],
+      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
     });
   const rows = () => Object.keys(tags).map((filePath) => fileRows(source, filePath));
   const available = () =>
@@ -3440,7 +3470,7 @@ test("an untagged track several albums list becomes each album's own tagged trac
     scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath: string) => tags[filePath],
+      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
     });
   const copies: string[] = [];
   try {
@@ -3814,14 +3844,14 @@ test("a rescan leaves the songs of files it did not walk, in another folder or o
     for (const [root, album] of [
       [roots[0], "Scanned"],
       [roots[1], "Elsewhere"],
-    ]) {
+    ] as const) {
       tags[await createAudioFile(root, `${artist}/${album}/01 Song.flac`)] = untagged(
         artist,
         album,
         "Song",
       );
     }
-    const reader = async (filePath: string) => tags[filePath];
+    const reader = async (filePath: string) => requireFixture(tags[filePath]);
     const skipped = await createAudioFile(roots[0], `_fallback/${artist}/Skipped/01 Song.flac`);
     tags[skipped] = untagged(artist, "Skipped", "Song");
     for (const root of roots)
@@ -3909,33 +3939,33 @@ test("a targeted local rescan refreshes a named file even when its size and time
     return currentMetadata;
   };
   try {
-    filePaths.push(await createAudioFile(root, "Artist/Album/01 First.flac"));
-    filePaths.push(await createAudioFile(root, "Artist/Album/02 Second.flac"));
+    const first = await createAudioFile(root, "Artist/Album/01 First.flac");
+    filePaths.push(first, await createAudioFile(root, "Artist/Album/02 Second.flac"));
 
     await scanMusicRoot({ rootPath: root, source, metadataReader });
     metadataReads.length = 0;
     currentMetadata = { ...metadata, common: { ...metadata.common, title: "Updated Step" } };
-    const indexed = getLibrarySnapshot().files.find((file) => file.path === filePaths[0]);
+    const indexed = getLibrarySnapshot().files.find((file) => file.path === first);
     await utimes(
-      filePaths[0],
-      requireFixture(requireValue(indexed)!).mtime_ms! / 1000,
-      requireFixture(requireValue(indexed)!).mtime_ms! / 1000,
+      first,
+      requireValue(indexed)!.mtime_ms! / 1000,
+      requireValue(indexed)!.mtime_ms! / 1000,
     );
     db.prepare("UPDATE library_media_files SET mtime_ms = ? WHERE source = ? AND path = ?").run(
-      (await stat(filePaths[0])).mtimeMs,
+      (await stat(first)).mtimeMs,
       source,
-      filePaths[0],
+      first,
     );
     await scanMusicRoot({
       rootPath: root,
       source,
-      changedPaths: [filePaths[0]],
+      changedPaths: [first],
       metadataReader,
     });
 
-    assert.deepEqual(metadataReads, [filePaths[0]]);
+    assert.deepEqual(metadataReads, [first]);
     assert.equal(
-      requireFixture(requireValue(getLibrarySnapshot())!).tracks.find(
+      requireValue(getLibrarySnapshot())!.tracks.find(
         (track) => track.id === requireValue(indexed).track_id,
       )!.title,
       "Updated Step",
@@ -4427,9 +4457,13 @@ test("album/track relation changes move the library timestamp", async () => {
     ).total;
 
   try {
-    linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[0].id, syncSearch: false });
+    linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: requireFixture(tracks[0]).id,
+      syncSearch: false,
+    });
     upsertLibraryMediaFile({
-      trackId: tracks[0].id,
+      trackId: requireFixture(tracks[0]).id,
       albumId: album.id,
       source: "aurral",
       path: `/tmp/relation-timestamp-${process.pid}.flac`,
@@ -4437,7 +4471,11 @@ test("album/track relation changes move the library timestamp", async () => {
     });
 
     parkTimestamp();
-    linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[1].id, syncSearch: false });
+    linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: requireFixture(tracks[1]).id,
+      syncSearch: false,
+    });
     assert.equal(relationCount(), 2);
     assert.ok(
       requireValue(albumUpdatedAt()) > 1,
@@ -4446,14 +4484,14 @@ test("album/track relation changes move the library timestamp", async () => {
     assert.ok(requireValue(getLibraryIndexLastModified()) >= requireValue(albumUpdatedAt()));
 
     upsertLibraryMediaFile({
-      trackId: tracks[1].id,
+      trackId: requireFixture(tracks[1]).id,
       albumId: album.id,
       source: "aurral",
       path: `/tmp/relation-timestamp-dropped-${process.pid}.flac`,
       available: false,
     });
     parkTimestamp();
-    assert.equal(removeLibraryTrackIfNoAvailableMedia(tracks[1].id), true);
+    assert.equal(removeLibraryTrackIfNoAvailableMedia(requireFixture(tracks[1]).id), true);
     assert.equal(relationCount(), 1);
     assert.ok(
       requireValue(albumUpdatedAt()) > 1,

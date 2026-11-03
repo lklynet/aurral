@@ -15,6 +15,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, { userOps }, libraryService, libraryStore, { api }] =
   await setupIsolatedBackend(
@@ -160,7 +161,10 @@ test("native favorites include the library favorite subset", async () => {
     favorites.library.tracks.map((entry) => entry.title),
     ["Favorite Track", "Favorite Track Two"],
   );
-  assert.equal("path" in favorites.library.tracks[0].files[0], false);
+  assert.equal(
+    "path" in requireFixture(requireFixture(favorites.library.tracks[0]).files[0]),
+    false,
+  );
 });
 
 test("library pages return bounded collection responses", async () => {
@@ -178,31 +182,31 @@ test("library pages return bounded collection responses", async () => {
   assert.equal(tracks.pageSize, 1);
   assert.equal(tracks.total, 3);
   assert.equal(tracks.items.length, 1);
-  assert.equal(tracks.items[0].artistName, "Favorite Artist");
+  assert.equal(tracks.items[0]?.artistName, "Favorite Artist");
   assert.equal(String(tracks.items[0].canonicalId), String(tracks.items[0].id));
   assert.equal(tracks.items[0].providerId, null);
-  assert.equal(tracks.items[0].source, "aurral");
-  assert.equal(tracks.items[0].available, true);
+  assert.equal(tracks.items[0]?.source, "aurral");
+  assert.equal(tracks.items[0]?.available, true);
   assert.equal(tracks.items[0].managedBy, null);
   assert.equal(tracks.items[0].monitorMode, null);
-  assert.equal(tracks.albums[0].trackCount, 2);
-  assert.equal(tracks.albums[0].availableTrackCount, 1);
+  assert.equal(tracks.albums[0]?.trackCount, 2);
+  assert.equal(tracks.albums[0]?.availableTrackCount, 1);
   assert.equal(tracks.hasMore, true);
-  assert.equal("path" in tracks.items[0].files[0], false);
+  assert.equal("path" in requireFixture(tracks.items[0].files[0]), false);
 
   const available: Page<"albums"> = await (
     await getPage({ kind: "albums", page: "1", pageSize: "1", availableOnly: "true" })
   ).json();
-  assert.equal(available.items[0].trackCount, 2);
-  assert.equal(available.items[0].availableTrackCount, 1);
+  assert.equal(available.items[0]?.trackCount, 2);
+  assert.equal(available.items[0]?.availableTrackCount, 1);
   assert.equal(String(available.items[0].canonicalId), String(available.items[0].id));
-  assert.equal(available.items[0].source, "aurral");
-  assert.equal(available.items[0].available, true);
+  assert.equal(available.items[0]?.source, "aurral");
+  assert.equal(available.items[0]?.available, true);
 
   const artists: Page<"artists"> = await (
     await getPage({ kind: "artists", page: "1", pageSize: "1" })
   ).json();
-  assert.equal(artists.items[0].userFavorite, true);
+  assert.equal(artists.items[0]?.userFavorite, true);
 });
 
 test("library rejects unbounded requests", async () => {
@@ -229,7 +233,7 @@ test("library pages filter, count, and paginate in the read query", async () => 
   const albums: Page<"albums"> = await response.json();
   assert.equal(albums.total, 1);
   assert.equal(albums.hasMore, false);
-  assert.equal(albums.items[0].title, "Favorite Album");
+  assert.equal(albums.items[0]?.title, "Favorite Album");
 });
 
 test("unfavoriting returns the removed stars so restoring keeps their original time", async () => {

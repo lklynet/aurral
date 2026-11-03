@@ -90,6 +90,7 @@ function stubBrainzMash(
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     requests += 1;
     const [, kind, mbid] = new URL(String(url)).pathname.match(/^\/(artist|album)\/([^/]+)$/) || [];
+    assert.ok(kind !== undefined && mbid !== undefined);
     if (kind === "artist" && catalogues[mbid]) {
       onArtist?.();
       return {
@@ -185,7 +186,7 @@ test("recent missing releases can be scoped to library artists", async () => {
       releases.map((album) => album.albumName),
       ["Included Release"],
     );
-    assert.equal(releases[0].artistMbid, includedArtist.mbid);
+    assert.equal(releases[0]?.artistMbid, includedArtist.mbid);
   } finally {
     removeCalendarArtist(includedArtist.id);
     removeCalendarArtist(excludedArtist.id);
@@ -241,7 +242,7 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
 
     albumDates[upcomingMbid] = "2026-11-06";
     albumDates[newMbid] = "2026-09-28";
-    catalogues[artist.mbid].push(catalogueRelease(newMbid, "New Release"));
+    requireFixture(catalogues[artist.mbid]).push(catalogueRelease(newMbid, "New Release"));
     await refresh("2026-09-29T12:00:00Z");
     assert.deepEqual(albumRequests, [newMbid]);
     assert.deepEqual(await visible("2026-09-29T12:00:00Z"), {
@@ -250,7 +251,7 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
       "Recent Release": "2026-09-10",
     });
 
-    catalogues[artist.mbid] = catalogues[artist.mbid].filter(
+    catalogues[artist.mbid] = requireFixture(catalogues[artist.mbid]).filter(
       (release) => release.Id !== recentMbid,
     );
     const result = await refresh("2026-09-30T12:00:00Z");

@@ -39,7 +39,7 @@ function settingsTarget(location: SettingsLocation, path: string | null) {
 }
 
 const parentSettingsPath = (path: string) =>
-  path.includes("/") ? path.split("/")[0] : path ? "" : null;
+  path.includes("/") ? (path.split("/")[0] ?? "") : path ? "" : null;
 
 const settingsStep = (
   location: SettingsLocation,

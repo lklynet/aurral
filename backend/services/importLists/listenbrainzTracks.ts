@@ -41,7 +41,7 @@ export function parseListenBrainzPlaylist(payload: ListenBrainzPlaylistPayload) 
     const extension = getExtension(track);
     const creator = String(track?.creator || "").trim();
     const artistMbid = getIdentifier(extension.artist_identifiers, ARTIST_URI_PREFIX);
-    const artistName = artistMbid ? creator.split(";", 1)[0].trim() : creator;
+    const artistName = artistMbid ? (creator.split(";", 1)[0] ?? "").trim() : creator;
     const trackName = String(track?.title || "").trim();
     if (!artistName || !trackName) {
       stats.incomplete += 1;

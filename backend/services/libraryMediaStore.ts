@@ -1664,7 +1664,8 @@ export function chooseLibraryAlbumRelease(
       -release.tracks.length,
     ];
     const differs = best ? rank.findIndex((value, index) => value !== best!.rank[index]) : -1;
-    if (!best || (differs >= 0 && rank[differs] > best.rank[differs])) best = { release, rank };
+    if (!best || (differs >= 0 && (rank[differs] ?? 0) > (best.rank[differs] ?? 0)))
+      best = { release, rank };
   }
   return best?.release || standard;
 }
@@ -2138,6 +2139,7 @@ function moveLegacyAlbumPlays(
   targets: LibraryAlbumsRow[],
   { final }: { final: boolean },
 ) {
+  const fallback = final ? targets[0] : undefined;
   const counts = new Map<
     string,
     { userId: number; target: LibraryAlbumsRow; plays: number; playedAt: number }
@@ -2162,7 +2164,7 @@ function moveLegacyAlbumPlays(
           isSameLibraryName(entry.album_artist, event.artist),
       ) ||
       targets.find((entry) => isSameLibraryName(entry.title, event.album)) ||
-      (final ? targets[0] : null);
+      fallback;
     if (!target) continue;
     db.prepare<[string, number]>("UPDATE play_events SET album_key = ? WHERE id = ?").run(
       target.identity_key,
@@ -2175,13 +2177,13 @@ function moveLegacyAlbumPlays(
     "UPDATE play_album_stats SET play_count = MAX(play_count - ?, 0) WHERE user_id = ? AND album_key = ?",
   );
   for (const [userId, moved] of movedByUser) takePlays.run(moved, userId, album.identity_key);
-  if (final) {
+  if (fallback) {
     for (const stats of db
       .prepare<[string], Pick<PlayAlbumStatsRow, "user_id" | "play_count" | "last_played_at">>(
         "SELECT user_id, play_count, last_played_at FROM play_album_stats WHERE album_key = ? AND play_count > 0",
       )
       .all(album.identity_key)) {
-      count(stats.user_id, targets[0], stats.play_count, stats.last_played_at);
+      count(stats.user_id, fallback, stats.play_count, stats.last_played_at);
     }
   }
   const addPlays = db.prepare<[number, string, number, number]>(
@@ -2259,7 +2261,8 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
     }
     for (const [fromId, toIds] of targetsOf("fromTrackId", "toTrackId")) {
       const { row: track, targets } = rows("library_tracks", fromId, toIds);
-      if (!track || !targets.length) continue;
+      const [firstTarget] = targets;
+      if (!track || !firstTarget) continue;
       for (const target of targets)
         copyLibraryStars("song", track.identity_key, target.identity_key);
       if (track.monitored === 1) {
@@ -2277,7 +2280,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
           .get(track.id)
       )
         continue;
-      moveQueuedLibrarySong(track.identity_key, targets[0].identity_key);
+      moveQueuedLibrarySong(track.identity_key, firstTarget.identity_key);
       db.prepare<[string]>(
         "DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?",
       ).run(track.identity_key);

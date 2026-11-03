@@ -124,7 +124,7 @@ async function scanFile(
 }
 
 const albumState = () => {
-  const albumId = requireFixture(db)
+  const albumId = db
     .prepare<unknown[], { id: number }>(
       "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )!
@@ -182,8 +182,8 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
   await scanFile(1, { downloadedByAurral: false });
 
   const adopted = albumState();
-  assert.equal(adopted.album.managedBy, "aurral");
-  assert.equal(adopted.album.monitored, false);
+  assert.equal(adopted.album?.managedBy, "aurral");
+  assert.equal(adopted.album?.monitored, false);
   assert.deepEqual(adopted.monitored, [true, false, undefined]);
 
   const requested = await postJson("/albums/request", {
@@ -196,8 +196,8 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
 
   assert.equal(requested.status, 201);
   const downloaded = albumState();
-  assert.equal(downloaded.album.monitored, true);
-  assert.equal(downloaded.album.trackIds.length, 3);
+  assert.equal(downloaded.album?.monitored, true);
+  assert.equal(downloaded.album?.trackIds.length, 3);
   assert.deepEqual(downloaded.monitored, [true, true, true]);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
 
@@ -212,7 +212,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     artistName: "Playlist Artist",
     managedBy: "aurral",
   });
-  assert.equal(albumState().album.monitored, true);
+  assert.equal(albumState().album?.monitored, true);
   assert.deepEqual(albumState().monitored, [true, true, true]);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
 });
@@ -220,8 +220,8 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
 test("downloading a missing track of an unmonitored Aurral album monitors and queues only that track", async () => {
   const { albumId } = albumState();
   await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: false });
-  const missing = albumState()
-    .album.trackIds.map((id) =>
+  const missing = requireFixture(albumState().album)
+    .trackIds.map((id) =>
       getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id),
     )
     .find((track) => requireFixture(track).mbid === trackMbids[2]);
@@ -240,7 +240,7 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
   assert.equal(downloadTracker.getJob(body.jobId)!.albumMbid, albumMbid);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
   assert.deepEqual(albumState().monitored, [false, false, true]);
-  assert.equal(albumState().album.monitored, false);
+  assert.equal(albumState().album?.monitored, false);
 });
 
 test("a file scanned into a Lidarr album stays Lidarr's", async () => {

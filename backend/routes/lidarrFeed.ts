@@ -12,7 +12,7 @@ const feedQuery = v.object({ token: v.optional(v.union([v.string(), v.array(v.st
 export default new Hono<AppEnv>()
   .basePath("/feeds")
   .get("/lidarr/flows/:file", validate("query", feedQuery), (c) => {
-    const flowId = /^(.+)\.json$/i.exec(c.req.param("file"))?.[1].trim();
+    const flowId = /^(.+)\.json$/i.exec(c.req.param("file"))?.[1]?.trim();
     const token = String(c.req.valid("query").token || "").trim();
     const items =
       flowId && verifyFlowLidarrFeedToken(flowId, token) ? buildFlowLidarrImportList(flowId) : null;

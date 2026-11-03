@@ -58,11 +58,11 @@ test("searchArtists normalizes BrainzMash artists", async () => {
 
   try {
     const result = await searchArtists("Adele", 5, 0);
-    assert.equal(result.items[0].id, "artist-mbid");
-    assert.equal(result.items[0].name, "Adele");
-    assert.equal(result.items[0].artistType, "Person");
-    assert.deepEqual(result.items[0].genres, ["pop"]);
-    assert.equal(result.items[0].imageUrl, "https://images.example/adele.jpg");
+    assert.equal(result.items[0]?.id, "artist-mbid");
+    assert.equal(result.items[0]?.name, "Adele");
+    assert.equal(result.items[0]?.artistType, "Person");
+    assert.deepEqual(result.items[0]?.genres, ["pop"]);
+    assert.equal(result.items[0]?.imageUrl, "https://images.example/adele.jpg");
     assert.equal(requests, 2);
   } finally {
     clearMetadataProviderCaches();
@@ -107,6 +107,7 @@ test("searchAlbums names the album's credited artist, not the first one listed",
   clearMetadataProviderCaches();
   try {
     const [album] = (await searchAlbums("Agaetis byrjun", 5, 0)).items;
+    assert.ok(album);
     assert.deepEqual([album.artistName, album.artistMbid], ["Sigur Rós", "sigur-ros"]);
   } finally {
     clearMetadataProviderCaches();
@@ -157,6 +158,7 @@ test("searchAlbums puts the album an artist and title search names first", async
   clearMetadataProviderCaches();
   try {
     const [first] = (await searchAlbums("Fleetwood Mac Rumours", 2, 0)).items;
+    assert.ok(first);
     assert.deepEqual([first.artistName, first.title], ["Fleetwood Mac", "Rumours"]);
   } finally {
     clearMetadataProviderCaches();
@@ -388,7 +390,7 @@ test("addAlbum force-refreshes and searches an existing album", async () => {
   });
 
   assert.equal(album.id, "42");
-  assert.equal(getAlbumByMbid.mock.calls[0][1]?.forceRefresh, true);
+  assert.equal(getAlbumByMbid.mock.calls[0]?.[1]?.forceRefresh, true);
   assert.equal(addAlbum.mock.calls.length, 0);
   assert.deepEqual(triggerAlbumSearch.mock.calls, [[42]]);
 });

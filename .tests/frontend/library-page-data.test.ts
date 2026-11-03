@@ -2,6 +2,7 @@ import { libraryAlbum, libraryTrack, libraryFile } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { idFor } from "../../backend/services/subsonicLibraryService.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const {
   albumCardMeta,
@@ -21,8 +22,8 @@ test("album track hydration does not rewrite unchanged library state", () => {
 
   const hydrated = mergeAlbumTrackPageIntoLibrary(current, page, album.id, [track]);
   assert.notStrictEqual(hydrated, current);
-  assert.equal(hydrated.albums[0].trackCount, 1);
-  assert.equal(hydrated.albums[0].availableTrackCount, 1);
+  assert.equal(hydrated.albums[0]?.trackCount, 1);
+  assert.equal(hydrated.albums[0]?.availableTrackCount, 1);
   assert.strictEqual(mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]), hydrated);
 });
 
@@ -65,7 +66,10 @@ test("library favorites include playlist-backed Subsonic songs", () => {
     ["Canonical Favorite", "Playlist Favorite"],
   );
   assert.equal(favoriteId("song", library.tracks[1]), playlistSong.id);
-  assert.match(library.tracks[1].files[0].previewUrl ?? "", /\/playlists\/stream\/job-id/);
+  assert.match(
+    requireFixture(requireFixture(library.tracks[1]).files[0]).previewUrl ?? "",
+    /\/playlists\/stream\/job-id/,
+  );
 });
 
 test("favorite ids match the ids the favorites endpoint returns", () => {

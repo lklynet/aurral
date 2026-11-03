@@ -9,6 +9,7 @@ import { test, vi } from "vite-plus/test";
 import createCache from "../../backend/services/apiClients/simpleCache.ts";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.ts";
 import axios from "../../lib/axiosFetch.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const settleWithFakeTimers = async (
   promise: Promise<void> | Promise<[void, void, void]> | Promise<[void, void]>,
@@ -31,7 +32,10 @@ test("rate limiter spaces concurrent and sequential request starts", async () =>
   await settleWithFakeTimers(request());
   assert.equal(starts.length, 5);
   for (let index = 1; index < starts.length; index += 1) {
-    assert.ok(starts[index] - starts[index - 1] >= 20, `start ${index} came too soon`);
+    assert.ok(
+      requireFixture(starts[index]) - requireFixture(starts[index - 1]) >= 20,
+      `start ${index} came too soon`,
+    );
   }
 });
 

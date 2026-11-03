@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import type { IAudioMetadata, ICommonTagsResult } from "music-metadata";
 import type { ReleaseManifest } from "../../backend/services/releaseManifest.ts";
 import { assignDownloadedAlbumFiles } from "../../backend/services/albumReleaseAssignment.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const audioFixture = async (filePath: string) => {
   await writeFile(filePath, "");
@@ -57,7 +58,7 @@ test("an unverified album must contain the pinned complete edition before import
       paths.map((filePath, index) => [
         filePath,
         {
-          ...fileTags(["First", "Second", "Bonus"][index], index + 1, 200 + index),
+          ...fileTags(requireFixture(["First", "Second", "Bonus"][index]), index + 1, 200 + index),
         },
       ]),
     );
@@ -80,13 +81,13 @@ test("an unverified album must contain the pinned complete edition before import
       bonus.rejected.map(({ jobId }) => jobId),
       ["wanted-second"],
     );
-    assert.deepEqual([...(await assign([paths[1]])).accepted], []);
+    assert.deepEqual([...(await assign([requireFixture(paths[1])])).accepted], []);
     const complete = await assign(paths.slice(0, 2));
     assert.deepEqual(
       complete.accepted.map(({ jobId, filePath }) => [jobId, filePath]),
       [["wanted-second", paths[1]]],
     );
-    const preverified = await assign([paths[1]], true);
+    const preverified = await assign([requireFixture(paths[1])], true);
     assert.deepEqual(
       preverified.accepted.map(({ jobId, filePath }) => [jobId, filePath]),
       [["wanted-second", paths[1]]],
@@ -181,7 +182,7 @@ test("album assignment fills only verified sibling jobs and never reuses a file"
     const assign = (verified: boolean) =>
       assignDownloadedAlbumFiles({
         jobs,
-        filePaths: [...paths, paths[0], join(root, "missing.flac")],
+        filePaths: [...paths, requireFixture(paths[0]), join(root, "missing.flac")],
         source: "deemix",
         manifest,
         verified,
@@ -282,7 +283,7 @@ test("album assignment places files on the pinned edition, not the requested num
     const parsed = new Map(
       paths.map((filePath, index) => [
         filePath,
-        fileTags(titles[index], index + 1, index ? 199 + index : 60),
+        fileTags(requireFixture(titles[index]), index + 1, index ? 199 + index : 60),
       ]),
     );
     const manifest = pinned(
@@ -336,7 +337,9 @@ test("album assignment places files on the pinned edition, not the requested num
 
     const themes = ["02 Theme.flac", "06 Theme.flac"].map((name) => join(root, name));
     for (const filePath of themes) await audioFixture(filePath);
-    parsed.set(themes[0], fileTags("Theme", 2, 90)).set(themes[1], fileTags("Theme", 6, 90));
+    parsed
+      .set(requireFixture(themes[0]), fileTags("Theme", 2, 90))
+      .set(requireFixture(themes[1]), fileTags("Theme", 6, 90));
     const repeated = await assignDownloadedAlbumFiles({
       jobs: [6, 2].map((trackNumber) => ({
         id: `theme-${trackNumber}`,
@@ -393,7 +396,11 @@ test("album assignment pairs each track of a two-disc download with its own disc
     const parsed = new Map(
       paths.map((filePath, index) => [
         filePath,
-        fileTags(tracklist[index][2], tracklist[index][1], 100 + index),
+        fileTags(
+          requireFixture(tracklist[index])[2],
+          requireFixture(tracklist[index])[1],
+          100 + index,
+        ),
       ]),
     );
     const manifest = pinned(
@@ -450,7 +457,7 @@ test("album assignment pairs each track of a two-disc download with its own disc
     );
     for (const [index, filePath] of running.entries()) {
       await audioFixture(filePath);
-      parsed.set(filePath, fileTags(tracklist[index][2], index + 1, 100 + index));
+      parsed.set(filePath, fileTags(requireFixture(tracklist[index])[2], index + 1, 100 + index));
     }
     assert.deepEqual(
       await assign(running),
@@ -481,7 +488,7 @@ test("album assignment pairs each track of a two-disc download with its own disc
       await audioFixture(filePath);
       parsed.set(
         filePath,
-        fileTags(lp4.tracks[index].title, index + 1, 100 + index, { album: "LP4" }),
+        fileTags(requireFixture(lp4.tracks[index]).title, index + 1, 100 + index, { album: "LP4" }),
       );
     }
     const lp4Jobs = lp4.tracks.map(({ title, trackNumber, durationMs }) => ({

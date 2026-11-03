@@ -126,7 +126,7 @@ function writeSessionFlag(key: string, active: boolean) {
 
 function normalizeDiscoverPath(path: string | undefined) {
   if (!path || typeof path !== "string") return "";
-  const [pathname, search = ""] = path.split("?");
+  const [pathname = "", search = ""] = path.split("?");
   const artistPath = getDiscoverArtistPath(pathname);
   if (artistPath) return artistPath;
   let normalizedPathname = pathname;
@@ -141,8 +141,8 @@ function normalizeDiscoverPath(path: string | undefined) {
 }
 
 function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) {
-  const pathname = path.split("?")[0];
-  const params = new URLSearchParams(path.includes("?") ? path.split("?")[1] : "");
+  const [pathname = "", search = ""] = path.split("?");
+  const params = new URLSearchParams(search);
 
   if (pathname.startsWith("/artist/")) {
     if (/\/albums$/.test(pathname)) {

@@ -35,7 +35,7 @@ export const collectSeedTags = async (seeds: DiscoverySeed[], sourceHealth: Sour
   const tagLists = await fetchArtistGenreTags(seeds, sourceHealth);
 
   seeds.forEach((seed, index) => {
-    const tags = tagLists[index];
+    const tags = tagLists[index] ?? [];
     const tagMapKey = getSeedTagMapKey(seed);
     if (tagMapKey)
       tagMap.set(
@@ -86,32 +86,27 @@ export const hydrateRecommendationCandidateTags = async ({
     : [];
   const hydrationLimit = Math.min(items.length, Math.max(0, Number(limit) || 0));
   const options = { tagAffinityMultiplier: depth >= 2 ? 0.55 : 1 };
-  const fetchIndexes = [];
+  const pending: { index: number; item: DiscoveryRecommendation }[] = [];
 
-  for (let index = 0; index < hydrationLimit; index += 1) {
-    if (canInheritTagsFromSeeds(items[index])) {
-      items[index] = applyHydratedCandidateTags(
-        items[index],
-        items[index].tags,
-        profileTagWeights,
-        {
-          ...options,
-          source: "inherited",
-        },
-      );
+  for (const [index, item] of items.slice(0, hydrationLimit).entries()) {
+    if (canInheritTagsFromSeeds(item)) {
+      items[index] = applyHydratedCandidateTags(item, item.tags, profileTagWeights, {
+        ...options,
+        source: "inherited",
+      });
     } else {
-      fetchIndexes.push(index);
+      pending.push({ index, item });
     }
   }
 
   const tagLists = await fetchArtistGenreTags(
-    fetchIndexes.map((index) => items[index]),
+    pending.map(({ item }) => item),
     sourceHealth,
   );
-  fetchIndexes.forEach((itemIndex, listIndex) => {
-    items[itemIndex] = applyHydratedCandidateTags(
-      items[itemIndex],
-      tagLists[listIndex].map((tag) => tag.name),
+  pending.forEach(({ index, item }, listIndex) => {
+    items[index] = applyHydratedCandidateTags(
+      item,
+      (tagLists[listIndex] ?? []).map((tag) => tag.name),
       profileTagWeights,
       options,
     );

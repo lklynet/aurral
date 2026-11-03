@@ -152,8 +152,7 @@ test("local and external commits refresh status and reconnects receive an unchan
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Waiting" }, playlist.id);
   vi.advanceTimersByTime(4000);
   assert.equal(
-    requireFixture(requireFixture(client).messages.at(-1)).status.sharedPlaylistStats[playlist.id]
-      .pending,
+    requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.pending,
     1,
   );
   const external = new Database(state.dbPath);
@@ -161,8 +160,7 @@ test("local and external commits refresh status and reconnects receive an unchan
     external.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
     vi.advanceTimersByTime(4000);
     assert.equal(
-      requireFixture(requireFixture(client).messages.at(-1)).status.sharedPlaylistStats[playlist.id]
-        .failed,
+      requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.failed,
       1,
     );
   } finally {
@@ -173,7 +171,7 @@ test("local and external commits refresh status and reconnects receive an unchan
   vi.advanceTimersByTime(60000);
   assert.equal(socket.inspections, inspections);
   const reconnected = socket.connect("second", { id: 1, role: "user" });
-  assert.equal(reconnected.messages[0]?.status.sharedPlaylistStats[playlist.id].failed, 1);
+  assert.equal(reconnected.messages[0]?.status.sharedPlaylistStats[playlist.id]?.failed, 1);
 });
 
 test("completed flow countdowns advance without a database write", (t) => {
@@ -187,19 +185,16 @@ test("completed flow countdowns advance without a database write", (t) => {
   const client = socket.connect("first", { id: 1, role: "admin" });
   start(t, socket);
   assert.equal(
-    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
+    requireFixture(client.messages.at(-1)).status.hint.message,
     "Next update in 2 minutes",
   );
   vi.advanceTimersByTime(60000);
   assert.equal(
-    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
+    requireFixture(client.messages.at(-1)).status.hint.message,
     "Next update in 1 minute",
   );
   vi.advanceTimersByTime(60000);
-  assert.equal(
-    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
-    "Next update soon",
-  );
+  assert.equal(requireFixture(client.messages.at(-1)).status.hint.message, "Next update soon");
 });
 
 test("download owner heartbeats and retirement refresh transient status without database writes", () => {
@@ -231,20 +226,20 @@ test("each user's countdown advances while the globally earliest countdown stays
   start(t, socket);
   vi.advanceTimersByTime(4000);
   assert.equal(
-    requireFixture(requireFixture(earlierUser).messages.at(-1)).status.hint.message,
+    requireFixture(earlierUser.messages.at(-1)).status.hint.message,
     "Next update in 1 minute",
   );
   assert.equal(
-    requireFixture(requireFixture(laterUser).messages.at(-1)).status.hint.message,
+    requireFixture(laterUser.messages.at(-1)).status.hint.message,
     "Next update in 2 minutes",
   );
   vi.advanceTimersByTime(4000);
   assert.equal(
-    requireFixture(requireFixture(earlierUser).messages.at(-1)).status.hint.message,
+    requireFixture(earlierUser.messages.at(-1)).status.hint.message,
     "Next update in 1 minute",
   );
   assert.equal(
-    requireFixture(requireFixture(laterUser).messages.at(-1)).status.hint.message,
+    requireFixture(laterUser.messages.at(-1)).status.hint.message,
     "Next update in 1 minute",
   );
 });

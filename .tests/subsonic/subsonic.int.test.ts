@@ -302,7 +302,7 @@ test("sorts both artist indexes using their advertised ignored articles", async 
   for (const [method, payload] of [
     ["getArtists", "artists"],
     ["getIndexes", "indexes"],
-  ]) {
+  ] as const) {
     const result = await request(method, { f: "json" });
     const sections = result.json[payload].index;
     assert.deepEqual(

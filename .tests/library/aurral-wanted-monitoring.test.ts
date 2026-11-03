@@ -9,6 +9,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -318,12 +319,12 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
 
   const result = await keepFile(kept);
   assert.equal(result.keepFile, true);
-  assert.deepEqual(result.cancelledJobIds, [upgradeJobsOf(kept)[0].id]);
+  assert.deepEqual(result.cancelledJobIds, [requireFixture(upgradeJobsOf(kept)[0]).id]);
   assert.ok(
-    ["cancelled", "cancel_requested"].includes(upgradeJobsOf(kept)[0].status),
-    upgradeJobsOf(kept)[0].status,
+    ["cancelled", "cancel_requested"].includes(requireFixture(upgradeJobsOf(kept)[0]).status),
+    requireFixture(upgradeJobsOf(kept)[0]).status,
   );
-  assert.notEqual(upgradeJobsOf(other)[0].status, "cancelled");
+  assert.notEqual(requireFixture(upgradeJobsOf(other)[0]).status, "cancelled");
   assert.equal(getJob(kept).status, "done");
 
   const second = await request<{ queued: number }>("/api/playlists/quality-upgrades", {

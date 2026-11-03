@@ -12,6 +12,7 @@ import {
   queueReducer,
   shouldRestartTrack,
 } from "../../frontend/src/utils/audioQueue.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const track = {
   id: "flow-track",
@@ -63,20 +64,20 @@ test("artwork changes update matching queue entries without restarting playback"
   const playing = startQueue({
     tracks: [
       {
-        ...queueTracks[0],
+        ...requireFixture(queueTracks[0]),
         libraryTrackId: 10,
         libraryAlbumId: 20,
         artwork: "old-track.jpg",
         artworkSource: "track",
       },
       {
-        ...queueTracks[1],
+        ...requireFixture(queueTracks[1]),
         libraryTrackId: 11,
         libraryAlbumId: 20,
         artwork: "old-album.jpg",
         artworkSource: "album",
       },
-      { ...queueTracks[2], artwork: "old-playlist.jpg" },
+      { ...requireFixture(queueTracks[2]), artwork: "old-playlist.jpg" },
     ],
   });
 
@@ -86,16 +87,16 @@ test("artwork changes update matching queue entries without restarting playback"
     artwork: "new-track.jpg",
     artworkSource: "track",
   });
-  assert.equal(trackUpdated.queue[0].artwork, "new-track.jpg");
-  assert.equal(trackUpdated.queue[1].artwork, "old-album.jpg");
+  assert.equal(trackUpdated.queue[0]?.artwork, "new-track.jpg");
+  assert.equal(trackUpdated.queue[1]?.artwork, "old-album.jpg");
 
   const albumUpdated = queueReducer(trackUpdated, {
     type: "UPDATE_ARTWORK",
     target: { libraryAlbumId: 20 },
     artwork: "new-album.jpg",
   });
-  assert.equal(albumUpdated.queue[0].artwork, "new-track.jpg");
-  assert.equal(albumUpdated.queue[1].artwork, "new-album.jpg");
+  assert.equal(albumUpdated.queue[0]?.artwork, "new-track.jpg");
+  assert.equal(albumUpdated.queue[1]?.artwork, "new-album.jpg");
 
   const trackReset = queueReducer(albumUpdated, {
     type: "UPDATE_ARTWORK",
@@ -109,14 +110,14 @@ test("artwork changes update matching queue entries without restarting playback"
     artwork: "newer-album.jpg",
     artworkSource: "album",
   });
-  assert.equal(albumUpdatedAgain.queue[0].artwork, "newer-album.jpg");
+  assert.equal(albumUpdatedAgain.queue[0]?.artwork, "newer-album.jpg");
 
   const playlistUpdated = queueReducer(albumUpdatedAgain, {
     type: "UPDATE_ARTWORK",
     target: { id: "t2" },
     artwork: null,
   });
-  assert.equal(playlistUpdated.queue[2].artwork, null);
+  assert.equal(requireFixture(playlistUpdated.queue[2]).artwork, null);
   assert.equal(playlistUpdated.currentIndex, playing.currentIndex);
   assert.equal(playlistUpdated.queueRevision, playing.queueRevision);
 });
@@ -126,13 +127,13 @@ test("album artwork changes preserve track overrides restored from older queues"
     type: "RESTORE_QUEUE",
     queue: [
       {
-        ...queueTracks[0],
+        ...requireFixture(queueTracks[0]),
         libraryTrackId: 10,
         libraryAlbumId: 20,
         artwork: "/api/library/artwork/track/10?v=old",
       },
       {
-        ...queueTracks[1],
+        ...requireFixture(queueTracks[1]),
         libraryTrackId: 11,
         libraryAlbumId: 20,
         artwork: "/api/library/artwork/album/20?v=old",
@@ -149,8 +150,8 @@ test("album artwork changes preserve track overrides restored from older queues"
     artworkSource: "album",
   });
 
-  assert.equal(updated.queue[0].artwork, "/api/library/artwork/track/10?v=old");
-  assert.equal(updated.queue[1].artwork, "/api/library/artwork/album/20?v=new");
+  assert.equal(updated.queue[0]?.artwork, "/api/library/artwork/track/10?v=old");
+  assert.equal(updated.queue[1]?.artwork, "/api/library/artwork/album/20?v=new");
 });
 
 const queueTracks = Array.from({ length: 8 }, (_, index) =>
@@ -166,9 +167,11 @@ const startQueue = (
 ) => queueReducer(initialQueueState, { type: "PLAY_QUEUE", tracks: queueTracks, ...options });
 
 const currentId = (state: ReturnType<typeof queueReducer>) =>
-  state.queue[state.playbackOrder[state.currentIndex]].id;
+  state.queue[state.playbackOrder[state.currentIndex] ?? -1]?.id;
 const remainingIds = (state: ReturnType<typeof queueReducer>) =>
-  state.playbackOrder.slice(state.currentIndex).map((index) => state.queue[index].id);
+  state.playbackOrder
+    .slice(state.currentIndex)
+    .map((index) => requireFixture(state.queue[index]).id);
 const allIds = queueTracks.map((track) => track.id);
 
 test("shuffle play starts with the chosen track and still plays every other track once", () => {
@@ -352,7 +355,10 @@ test("removing and reordering up next keeps the current track playing", () => {
 
   const shuffled = startQueue({ startTrackId: "t4", shuffle: true });
   const [first, ...rest] = getUpcomingTracks(shuffled).map(({ track }) => track.entryId);
-  const moved = queueReducer(shuffled, { type: "REORDER_UPCOMING", entryIds: [...rest, first] });
+  const moved = queueReducer(shuffled, {
+    type: "REORDER_UPCOMING",
+    entryIds: [...rest, requireFixture(first)],
+  });
   assert.equal(getUpcomingTracks(moved).at(-1)!.track.entryId, first);
   assert.deepEqual(upcomingIds(queueReducer(moved, { type: "SET_SHUFFLE", enabled: false })), [
     "t5",

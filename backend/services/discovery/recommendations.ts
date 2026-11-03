@@ -37,7 +37,7 @@ const getSeedTags = async (
 ) => {
   const key = getSeedTagMapKey(seed);
   if (seedTagMap.has(key)) return normalizeSeedTagList(seedTagMap.get(key));
-  const [tags] = await fetchArtistGenreTags([seed], sourceHealth);
+  const [tags = []] = await fetchArtistGenreTags([seed], sourceHealth);
   return normalizeSeedTagList(tags.map((tag) => tag.name));
 };
 

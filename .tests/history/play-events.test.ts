@@ -6,6 +6,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, playEvents, scrobbleStore, honkerDbModule] = await setupIsolatedBackend(
   "play-events",
@@ -81,9 +82,11 @@ test("pins each scrobble delivery to the connection active when the play was rec
     artist: "Artist A",
   });
   assert.ok(event != null);
-  const row = honkerDbModule
-    .getHonkerDb()
-    .query("SELECT payload FROM _honker_live WHERE queue = ?", ["_outbox:play-events"])[0];
+  const row = requireFixture(
+    honkerDbModule
+      .getHonkerDb()
+      .query("SELECT payload FROM _honker_live WHERE queue = ?", ["_outbox:play-events"])[0],
+  );
 
   assert.equal(JSON.parse(row.payload).eventId, event.id);
   assert.equal(JSON.parse(row.payload).connectionRevision, connection.connectionRevision);

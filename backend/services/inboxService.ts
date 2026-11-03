@@ -285,7 +285,11 @@ async function buildNewsItems(userId: number, now: number, enabledKinds: Set<str
   const { articles } = await getNewsForUser({ userId, limit: 100 });
   const grouped = new Map<
     string,
-    { kind: string; artist: NewsArticle["artists"][number]; articles: NewsArticle[] }
+    {
+      kind: string;
+      artist: NewsArticle["artists"][number];
+      articles: [NewsArticle, ...NewsArticle[]];
+    }
   >();
   for (const article of articles) {
     for (const artist of article.artists) {
@@ -293,9 +297,9 @@ async function buildNewsItems(userId: number, now: number, enabledKinds: Set<str
       if (!enabledKinds.has(kind)) continue;
       const day = article.publishedAt.slice(0, 10);
       const key = `${kind}:${artist.artistMbid || artist.artistName}:${day}`;
-      const group = grouped.get(key) || { kind, artist, articles: [] };
-      if (group.articles.length < 5) group.articles.push(article);
-      grouped.set(key, group);
+      const group = grouped.get(key);
+      if (!group) grouped.set(key, { kind, artist, articles: [article] });
+      else if (group.articles.length < 5) group.articles.push(article);
     }
   }
 

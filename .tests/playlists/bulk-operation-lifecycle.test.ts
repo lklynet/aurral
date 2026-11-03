@@ -54,10 +54,7 @@ test("bulk acceptance commits its queue job and durable progress together", () =
     outcomes: [{ jobId: "one", status: "removed" }],
   });
   claimed.ack();
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(result.operationId)).state,
-    "completed",
-  );
+  assert.equal(requireFixture(store.getBulkOperation(result.operationId)).state, "completed");
 });
 
 test("failed progress persistence rolls back queue acceptance", () => {
@@ -120,12 +117,9 @@ test("cleanup bounds terminal results per owner and preserves live work", () => 
     updatedAt: Date.now() - 8 * 86400000,
   });
   store.cleanupBulkOperations();
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(live.operationId)).state,
-    "queued",
-  );
+  assert.equal(requireFixture(store.getBulkOperation(live.operationId)).state, "queued");
   assert.equal(store.getBulkOperation(10000), null);
-  assert.equal(requireFixture(requireFixture(store).getBulkOperation(10104)).state, "completed");
+  assert.equal(requireFixture(store.getBulkOperation(10104)).state, "completed");
   assert.equal(store.getBulkOperation(20000), null);
   assert.equal(
     db

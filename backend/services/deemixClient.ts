@@ -277,7 +277,7 @@ async function request<T = unknown>(
     headers: session.cookie ? { Cookie: session.cookie } : {},
   });
   const setCookie = response.headers?.["set-cookie"];
-  if (setCookie) session.cookie = String(setCookie).split(";")[0];
+  if (setCookie) session.cookie = String(setCookie).split(";")[0] ?? "";
   return response.data as T;
 }
 

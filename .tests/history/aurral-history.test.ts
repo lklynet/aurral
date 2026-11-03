@@ -80,6 +80,7 @@ test("upsertAurralHistory keeps timestamp for unchanged records", async () => {
   });
 
   const [entry] = await getAurralHistoryRequests();
+  assert.ok(entry);
   assert.equal(new Date(entry.requestedAt).getTime(), baseTime - 4000);
 });
 
@@ -704,6 +705,7 @@ test("a history entry with an unreadable field keeps the rest of its details", a
   );
 
   const [entry] = await getAurralHistoryRequests();
+  assert.ok(entry);
 
   assert.equal(entry.trackName, "Song");
   assert.equal(entry.artistName, "Artist");

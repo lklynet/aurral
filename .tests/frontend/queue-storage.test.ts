@@ -7,6 +7,7 @@ import {
   normalizeQueueTrack,
 } from "../../frontend/src/utils/audioQueue.ts";
 import { parseStoredQueue, serializeQueue } from "../../frontend/src/utils/queueStorage.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const makeTracks = (count: number, token: string = "old-token") =>
   Array.from({ length: count }, (_, index) =>
@@ -38,7 +39,7 @@ const restore = (
 };
 
 const titles = (state: import("../../frontend/src/utils/audioQueue.ts").QueueState) =>
-  state.playbackOrder.map((index) => state.queue[index].title);
+  state.playbackOrder.map((index) => requireFixture(state.queue[index]).title);
 
 test("a reload brings back the same queue, order, and place, paused", () => {
   let state = playing(makeTracks(6), { shuffle: true });
@@ -77,11 +78,11 @@ test("the session token never reaches storage and the current one is used after 
 
   const restored = parseStoredQueue(stored, { owner: "u1", token: "fresh-token" });
   assert.ok(restored != null);
-  assert.ok(restored.queue[0].src);
+  assert.ok(restored.queue[0]?.src);
   const src = new URL(restored.queue[0].src, "http://aurral.test");
   assert.equal(src.searchParams.get("token"), "fresh-token");
   assert.equal(src.searchParams.get("quality"), "original");
-  assert.equal(restored.queue[0].artwork, "/api/covers/t0.jpg");
+  assert.equal(restored.queue[0]?.artwork, "/api/covers/t0.jpg");
 });
 
 test("another user's saved queue or unreadable data is not restored", () => {
@@ -115,13 +116,16 @@ test("a very long queue is saved around the current track", () => {
 
   assert.ok(stored.length < 100_000);
   assert.ok(restored.queue.length <= 200);
-  assert.equal(restored.queue[restored.playbackOrder[restored.currentIndex]].title, "Track 600");
   assert.equal(
-    restored.queue[restored.playbackOrder[restored.currentIndex + 1]].title,
+    restored.queue[restored.playbackOrder[restored.currentIndex] ?? -1]?.title,
+    "Track 600",
+  );
+  assert.equal(
+    restored.queue[restored.playbackOrder[restored.currentIndex + 1] ?? -1]?.title,
     "Track 601",
   );
   assert.equal(
-    restored.queue[restored.playbackOrder[restored.currentIndex - 1]].title,
+    restored.queue[restored.playbackOrder[restored.currentIndex - 1] ?? -1]?.title,
     "Track 599",
   );
 

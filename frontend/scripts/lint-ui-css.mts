@@ -115,22 +115,22 @@ function editDistance(left: string, right: string) {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
 
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    let diagonal = previous[0];
+    let diagonal = previous[0] ?? 0;
     previous[0] = leftIndex;
 
     for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const above = previous[rightIndex];
+      const above = previous[rightIndex] ?? 0;
       const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
       previous[rightIndex] = Math.min(
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + 1,
+        above + 1,
+        (previous[rightIndex - 1] ?? 0) + 1,
         diagonal + substitutionCost,
       );
       diagonal = above;
     }
   }
 
-  return previous[right.length];
+  return previous[right.length] ?? 0;
 }
 
 export function getClosestToken(name: string, tokenNames: Set<string>) {
@@ -219,7 +219,7 @@ export function findTypeOrShapeIssue(property: string, value: string) {
   }
   if (property === "animation" || property === "animation-iteration-count") {
     if (!/\binfinite\b/.test(trimmed)) return null;
-    const names = trimmed.split(",").map((part) => part.trim().split(/\s+/)[0]);
+    const names = trimmed.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "");
     if (property === "animation" && names.every((name) => loopingAnimations.has(name))) return null;
     return "loops an animation forever; looping motion repaints every frame, so keep it to the playback and loader exceptions.";
   }
@@ -301,9 +301,9 @@ export function lintCss(
     const suggestion = getSuggestedToken(declaration.prop.toLowerCase(), tokenNames);
     if (!suggestion) return;
 
-    for (const match of declaration.value.matchAll(/\bvar\(\s*(--[\w-]+)/g)) {
-      if (!match[1].startsWith("--aurral-")) {
-        localPropertySuggestions.set(match[1], suggestion);
+    for (const [, property] of declaration.value.matchAll(/\bvar\(\s*(--[\w-]+)/g)) {
+      if (property && !property.startsWith("--aurral-")) {
+        localPropertySuggestions.set(property, suggestion);
       }
     }
   });
@@ -311,7 +311,9 @@ export function lintCss(
   root.walkDecls((declaration) => {
     const line = sourceLine(declaration);
     const references = new Set(
-      [...declaration.value.matchAll(/\bvar\(\s*(--aurral-[\w-]+)/g)].map((match) => match[1]),
+      [...declaration.value.matchAll(/\bvar\(\s*(--aurral-[\w-]+)/g)].flatMap(
+        ([, reference]) => reference ?? [],
+      ),
     );
 
     for (const reference of references) {

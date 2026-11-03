@@ -127,8 +127,9 @@ function evaluate(
     ),
   );
   const evaluations = assessed.candidates
-    .map((match, index) => {
+    .flatMap((match, index) => {
       const candidate = normalized[index];
+      if (!candidate) return [];
       const evidence = evidenceFor(candidate, index);
       const locked = candidate.provider?.locked === true;
       const expectedTrackNumber = Number(request.trackNumber || 0);
@@ -191,50 +192,52 @@ function evaluate(
                     strongFolder
                   ? "verify"
                   : "review";
-      return {
-        candidateIndex: index,
-        candidate,
-        decision,
-        reason: locked
-          ? "locked"
-          : contradiction
-            ? "contradiction"
-            : songOffAlbum && !exactSong
-              ? "other-album"
-              : null,
-        reasons: [
-          ...match.contradictions,
-          ...(!candidate.artists?.length && !evidence?.folder?.artistScore
-            ? ["requested artist missing"]
-            : []),
-        ],
-        contradictions: [
-          ...match.contradictions,
-          ...(evidence?.folder?.artistContradicted ? ["artist"] : []),
-          ...(evidence?.folder?.ambiguousTitleAlbumArtist ? ["ambiguous-artist"] : []),
-          ...(siblingConflict ? ["sibling-track-index"] : []),
-        ],
-        distance: 1 - match.score,
-        rawDistance: 1 - match.score,
-        recommendation:
-          decision === "accept" ? "strong" : decision === "verify" ? "medium" : "none",
-        aurralEvidence: {
-          recordingMbid: match.evidence.includes("recording-mbid") ? true : null,
-          duration: match.durationGapMs == null ? null : { diffMs: match.durationGapMs },
-          folder: evidence?.folder || null,
-          year:
-            evidence?.folder?.yearConflicting == null
-              ? null
-              : { conflicting: evidence.folder.yearConflicting },
-          trackNumber: { mismatch: trackNumberMismatch },
+      return [
+        {
+          candidateIndex: index,
+          candidate,
+          decision,
+          reason: locked
+            ? "locked"
+            : contradiction
+              ? "contradiction"
+              : songOffAlbum && !exactSong
+                ? "other-album"
+                : null,
+          reasons: [
+            ...match.contradictions,
+            ...(!candidate.artists?.length && !evidence?.folder?.artistScore
+              ? ["requested artist missing"]
+              : []),
+          ],
+          contradictions: [
+            ...match.contradictions,
+            ...(evidence?.folder?.artistContradicted ? ["artist"] : []),
+            ...(evidence?.folder?.ambiguousTitleAlbumArtist ? ["ambiguous-artist"] : []),
+            ...(siblingConflict ? ["sibling-track-index"] : []),
+          ],
+          distance: 1 - match.score,
+          rawDistance: 1 - match.score,
+          recommendation:
+            decision === "accept" ? "strong" : decision === "verify" ? "medium" : "none",
+          aurralEvidence: {
+            recordingMbid: match.evidence.includes("recording-mbid") ? true : null,
+            duration: match.durationGapMs == null ? null : { diffMs: match.durationGapMs },
+            folder: evidence?.folder || null,
+            year:
+              evidence?.folder?.yearConflicting == null
+                ? null
+                : { conflicting: evidence.folder.yearConflicting },
+            trackNumber: { mismatch: trackNumberMismatch },
+          },
+          folderScore:
+            Number(evidence?.folder?.tracklistScore || 0) +
+            Number(evidence?.folder?.albumScore || 0) / 10,
+          officialAudio: isOfficialYoutubeAudio(candidate, request),
+          songOnRequestedAlbum,
+          policyVersion: MATCH_POLICY.version,
         },
-        folderScore:
-          Number(evidence?.folder?.tracklistScore || 0) +
-          Number(evidence?.folder?.albumScore || 0) / 10,
-        officialAudio: isOfficialYoutubeAudio(candidate, request),
-        songOnRequestedAlbum,
-        policyVersion: MATCH_POLICY.version,
-      };
+      ];
     })
     .sort(
       (left, right) =>
@@ -282,11 +285,12 @@ export function prefilterCandidates({
     normalized.map((candidate) => matcherCandidate(candidate, trackRequest, null)),
   );
   return normalized.map((candidate, index) => {
-    const contradictions = assessment.candidates[index].contradictions;
+    const match = assessment.candidates[index];
+    const contradictions = match?.contradictions ?? [];
     const rejected =
       candidate.provider?.locked === true ||
       contradictions.length > 0 ||
-      assessment.candidates[index].titleSimilarity < MATCH_POLICY.minTitleSimilarity;
+      (match?.titleSimilarity ?? 0) < MATCH_POLICY.minTitleSimilarity;
     return {
       candidateIndex: index,
       candidate,

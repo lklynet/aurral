@@ -292,7 +292,7 @@ test("discover API shows a match percent that follows the user's ranking, not on
       [...percents].sort((left, right) => right! - left!),
       percents,
     );
-    assert.equal(body.globalTop[0].name, "Trending Artist");
+    assert.equal(body.globalTop[0]?.name, "Trending Artist");
     assert.equal(body.globalTop[0].matchPercent, null);
   } finally {
     discovery.getDiscoveryCache().globalTop = [];
@@ -396,7 +396,7 @@ test("library seeds sample recent additions and the whole library, not the alpha
   );
 
   for (const { recent, random } of samples) {
-    assert.equal(recent[0].artistName, "Zed Newest");
+    assert.equal(recent[0]?.artistName, "Zed Newest");
     const recentNames = new Set(recent.map((artist) => artist.artistName));
     assert.equal(
       random.some((artist) => recentNames.has(artist.artistName)),

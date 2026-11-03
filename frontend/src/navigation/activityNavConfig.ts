@@ -7,7 +7,7 @@ export const ACTIVITY_VIEWS = [
 export const WANTED_VIEWS = [
   { id: "missing", label: "Missing", path: "/activity/missing" },
   { id: "cutoff", label: "Cutoff unmet", path: "/activity/missing?tab=cutoff" },
-];
+] satisfies [unknown, ...unknown[]];
 
 export const DEFAULT_ACTIVITY_VIEW = "queue";
 

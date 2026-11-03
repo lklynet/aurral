@@ -5,6 +5,7 @@ import {
   soulseekReleaseCopies,
 } from "../../backend/services/albumReleaseSearch.ts";
 import { SAME_VERSION_LABELS } from "./version-labels.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type Manifest = NonNullable<Parameters<typeof selectSoulseekAlbumFolder>[2]>["manifest"];
 
@@ -419,7 +420,7 @@ test("placeholder file names fit by their number like untitled files", () => {
         ["job-1", `${names[1]}.flac`],
         ["job-2", `${names[2]}.flac`],
       ],
-      names[0],
+      names.join(", "),
     );
   }
   const shuffled = results("peer", "The Band\\Album", ["Track 02", "Track 01", "Track 03"], album);
@@ -442,10 +443,10 @@ test("a folder missing one other track still holds the wanted track's copy", () 
     album,
   ).map((entry, index) => (index === 2 ? { ...entry, length: entry.length + 3 } : entry));
   assert.deepEqual(
-    [...soulseekReleaseCopies(offered, album, jobsFor(album)[0])],
+    [...soulseekReleaseCopies(offered, album, requireFixture(jobsFor(album)[0]))],
     offered.map((entry) => `peer\0${entry.file}`),
   );
-  assert.equal(soulseekReleaseCopies(offered, album, jobsFor(album)[2]).size, 0);
+  assert.equal(soulseekReleaseCopies(offered, album, requireFixture(jobsFor(album)[2])).size, 0);
 });
 
 test("a folder of generated silence at the release's lengths is not that release, though two of its files are real", () => {
@@ -475,7 +476,7 @@ test("a folder of generated silence at the release's lengths is not that release
   );
   const album = {
     ...base,
-    tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] })),
+    tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] ?? null })),
   };
   const number = (index: number) => String(index + 1).padStart(2, "0");
   const poisoned = results(
@@ -512,7 +513,7 @@ test("a folder of generated silence at the release's lengths is not that release
     "skip",
   );
   assert.deepEqual(
-    [...soulseekReleaseCopies([...poisoned, ...honest], album, jobsFor(album)[0])],
+    [...soulseekReleaseCopies([...poisoned, ...honest], album, requireFixture(jobsFor(album)[0]))],
     honest.map((entry) => `hyot2\0${entry.file}`),
   );
 });
@@ -544,7 +545,7 @@ test("a release's own silent track does not condemn a real rip, and one damaged 
   );
   const album = {
     ...base,
-    tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] })),
+    tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] ?? null })),
   };
   const number = (index: number) => String(index + 1).padStart(2, "0");
   const rip = (user: string, damaged: number[], speed: number) =>

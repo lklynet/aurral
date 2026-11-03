@@ -9,6 +9,7 @@ import {
   describeArtistMonitoringChange,
   isArtistMonitored,
 } from "../../frontend/src/utils/artistMonitoring.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const labels = (
   items: (
@@ -77,9 +78,9 @@ test("Aurral artists are monitored or not and open their rules, while Lidarr kee
     ["Future albums"],
   );
 
-  aurral[1].onSelect();
-  aurral[2].onSelect();
-  lidarr[2].onSelect();
+  requireFixture(aurral[1]).onSelect();
+  requireFixture(aurral[2]).onSelect();
+  requireFixture(lidarr[2]).onSelect();
   assert.deepEqual(selected, [{ monitoring: { monitored: false } }, { monitorOption: "all" }]);
   assert.deepEqual(edits, ["rules"]);
 });

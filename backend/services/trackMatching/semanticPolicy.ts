@@ -514,7 +514,9 @@ function startsWithLiveVenue(text: string) {
   const words = normalizeVariantText(text).split(" ").filter(Boolean);
   const start = words.findIndex((word) => !isReleaseNoiseWord(word));
   return (
-    start >= 0 && words[start] === "live" && ["in", "at", "from", "on"].includes(words[start + 1])
+    start >= 0 &&
+    words[start] === "live" &&
+    ["in", "at", "from", "on"].includes(words[start + 1] ?? "")
   );
 }
 
@@ -639,7 +641,7 @@ function contextContradictions(
   };
   for (const artist of asList(candidate?.artists ?? candidate?.artist)) check("artist", artist);
   for (const album of asList(candidate?.album)) check("album", album);
-  const folders = candidateFolders(candidate, prepared.requested.albumName[0]);
+  const folders = candidateFolders(candidate, prepared.requested.albumName[0] ?? "");
   for (const folder of folders.release) check("folder", folder);
   for (const folder of folders.above) check("folder", folder, true);
   return found;

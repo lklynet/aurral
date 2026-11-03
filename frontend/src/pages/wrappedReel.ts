@@ -96,16 +96,26 @@ export function beatGrid(beats: Beats) {
   const times = beats?.beats.length ? beats.beats : [0.6];
   const period = 60 / (beats?.bpm ?? 100);
   const last = times.length - 1;
+  const first = times[0] ?? 0.6;
+  const final = times[last] ?? first;
   const beat = (n: number) => {
-    if (n <= 0) return times[0] + n * period;
+    if (n <= 0) return first + n * period;
     const i = Math.floor(n);
-    return i < last ? lerp(times[i], times[i + 1], n - i) : times[last] + (n - last) * period;
+    const from = times[i];
+    const next = times[i + 1];
+    return from !== undefined && next !== undefined
+      ? lerp(from, next, n - i)
+      : final + (n - last) * period;
   };
   const beatAt = (t: number) => {
-    if (t <= times[0]) return (t - times[0]) / period;
-    for (let i = 0; i < last; i++)
-      if (t < times[i + 1]) return i + (t - times[i]) / (times[i + 1] - times[i]);
-    return last + (t - times[last]) / period;
+    if (t <= first) return (t - first) / period;
+    for (let i = 0; i < last; i++) {
+      const from = times[i];
+      const next = times[i + 1];
+      if (from !== undefined && next !== undefined && t < next)
+        return i + (t - from) / (next - from);
+    }
+    return last + (t - final) / period;
   };
   const downbeat = beats?.downbeat ?? 0;
   const bar = [0, 1, 2, 3].find((n) => beat(downbeat + n * 4) >= 1.8) ?? 3;
@@ -285,20 +295,21 @@ export function createReel({
   let arc = 0;
 
   const resample = (raw: readonly Vec[], step = 5) => {
-    const result: Vec[] = [raw[0]];
+    const [start] = raw;
+    if (!start) return [];
+    const result: Vec[] = [start];
     let carry = 0;
-    for (let i = 1; i < raw.length; i++) {
-      const [ax, ay] = raw[i - 1];
-      const [bx, by] = raw[i];
+    let [ax, ay] = start;
+    for (const [bx, by] of raw.slice(1)) {
       const length = Math.hypot(bx - ax, by - ay);
       let d = step - carry;
       for (; d <= length; d += step)
         result.push([ax + ((bx - ax) * d) / length, ay + ((by - ay) * d) / length]);
       carry = length - (d - step);
+      [ax, ay] = [bx, by];
     }
-    const last = raw[raw.length - 1];
-    const end = result[result.length - 1];
-    if (Math.hypot(last[0] - end[0], last[1] - end[1]) > 0.5) result.push(last);
+    const end = result.at(-1) ?? start;
+    if (Math.hypot(ax - end[0], ay - end[1]) > 0.5) result.push([ax, ay]);
     return result;
   };
 
@@ -309,9 +320,10 @@ export function createReel({
     { wob = 1, e = 0.5, up = false, dyn = false, slow = 1.4 }: Stroke = {},
   ) => {
     const sampled = resample(raw);
-    const path = sampled.map(([x, y], i): Vec => {
-      const a = sampled[Math.max(0, i - 1)];
-      const b = sampled[Math.min(sampled.length - 1, i + 1)];
+    const path = sampled.map((point, i): Vec => {
+      const [x, y] = point;
+      const a = sampled[i - 1] ?? point;
+      const b = sampled[i + 1] ?? point;
       const nx = -(b[1] - a[1]);
       const ny = b[0] - a[0];
       const length = Math.hypot(nx, ny) || 1;
@@ -323,17 +335,20 @@ export function createReel({
       return [x + (nx / length) * offset, y + (ny / length) * offset];
     });
     arc += sampled.length * 5;
-    const cost = [0];
-    for (let i = 1; i < path.length; i++) {
-      let turn = 0;
-      if (i > 1) {
-        const before = Math.atan2(path[i - 1][1] - path[i - 2][1], path[i - 1][0] - path[i - 2][0]);
-        const after = Math.atan2(path[i][1] - path[i - 1][1], path[i][0] - path[i - 1][0]);
-        turn = Math.abs(((after - before + 3 * Math.PI) % TAU) - Math.PI);
+    let spent = 0;
+    let heading: number | undefined;
+    const steps = path.map(([x, y], i) => {
+      const previous = path[i - 1];
+      if (previous) {
+        const after = Math.atan2(y - previous[1], x - previous[0]);
+        const turn =
+          heading === undefined ? 0 : Math.abs(((after - heading + 3 * Math.PI) % TAU) - Math.PI);
+        spent += 1 + slow * Math.min(1, turn / 0.2);
+        heading = after;
       }
-      cost.push(cost[i - 1] + 1 + slow * Math.min(1, turn / 0.2));
-    }
-    const total = cost[cost.length - 1] || 1;
+      return { x, y, cost: spent };
+    });
+    const total = spent || 1;
     const curve = (u: number) => (1 - e) * u + e * u * u * (3 - 2 * u);
     const invert = (c: number) => {
       let low = 0;
@@ -345,19 +360,22 @@ export function createReel({
       }
       return (low + high) / 2;
     };
-    path.forEach(([x, y], i) => {
+    steps.forEach(({ x, y, cost }, i) => {
       if (i === 0 && points.length) return;
       points.push({
         x,
         y,
-        t: t0 + (t1 - t0) * invert(cost[i] / total),
+        t: t0 + (t1 - t0) * invert(cost / total),
         up: up && i > 0,
         dyn,
         w: 1,
       });
     });
-    const [ex, ey] = path[path.length - 1];
-    const [px, py] = path[Math.max(0, path.length - 4)];
+    const end = path.at(-1);
+    const back = path[Math.max(0, path.length - 4)];
+    if (!end || !back) return;
+    const [ex, ey] = end;
+    const [px, py] = back;
     const length = Math.hypot(ex - px, ey - py) || 1;
     Object.assign(pen, { x: ex, y: ey, dx: (ex - px) / length, dy: (ey - py) / length, t: t1 });
   };
@@ -394,11 +412,14 @@ export function createReel({
   };
   const spline = (P: readonly Vec[], n = 14) => {
     const result: Vec[] = [];
-    for (let i = 0; i < P.length - 1; i++) {
-      const p0 = P[Math.max(0, i - 1)];
-      const p1 = P[i];
+    P.forEach((p1, i) => {
       const p2 = P[i + 1];
-      const p3 = P[Math.min(P.length - 1, i + 2)];
+      if (!p2) {
+        result.push(p1);
+        return;
+      }
+      const p0 = P[i - 1] ?? p1;
+      const p3 = P[i + 2] ?? p2;
       for (let j = 0; j < n; j++) {
         const u = j / n;
         const axis = (c: 0 | 1) =>
@@ -409,8 +430,7 @@ export function createReel({
             (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * u * u * u);
         result.push([axis(0), axis(1)]);
       }
-    }
-    result.push(P[P.length - 1]);
+    });
     return result;
   };
   type Oval = { tilt?: number; grow?: number; dy?: number; seed?: number };
@@ -491,11 +511,13 @@ export function createReel({
     );
   };
 
-  const onLogo = (flat: number[]) =>
-    Array.from({ length: flat.length / 2 }, (_, i): Vec => [
-      LOGO.x + (flat[i * 2] - 35) * LOGO.scale,
-      LOGO.y + (flat[i * 2 + 1] - 300) * LOGO.scale,
-    ]);
+  const onLogo = (flat: readonly number[]) =>
+    flat.flatMap((x, i): Vec[] => {
+      const y = flat[i + 1];
+      return i % 2 === 0 && y !== undefined
+        ? [[LOGO.x + (x - 35) * LOGO.scale, LOGO.y + (y - 300) * LOGO.scale]]
+        : [];
+    });
   const wave = spline(onLogo(WAVE));
   const ear = spline(onLogo(EAR));
   const logoStart = 0.12;
@@ -503,10 +525,9 @@ export function createReel({
   const waveLength = resample(wave).length;
   const split =
     logoStart + ((logoEnd - logoStart - 0.12) * waveLength) / (waveLength + resample(ear).length);
-  pen.x = wave[0][0];
-  pen.y = wave[0][1];
+  [pen.x, pen.y] = wave[0] ?? [pen.x, pen.y];
   add(wave, logoStart, split, { e: 0.35, wob: 0.5 });
-  add([[pen.x, pen.y], ear[0]], split, split + 0.12, { up: true, e: 1 });
+  add([[pen.x, pen.y], ear[0] ?? [pen.x, pen.y]], split, split + 0.12, { up: true, e: 1 });
   add(ear, split + 0.12, logoEnd, { e: 0.35, wob: 0.5 });
   const logoPoints = points.length;
 
@@ -742,7 +763,8 @@ export function createReel({
     range ? -225 + (450 * (value - low)) / range : 0,
     top + m * gap,
   ]);
-  to(chart[0][0], chart[0][1], [0.2, 1], at(16.5), { e: 0.25, k: 0.5 });
+  const [chartX, chartY] = chart[0] ?? [0, top];
+  to(chartX, chartY, [0.2, 1], at(16.5), { e: 0.25, k: 0.5 });
   add(spline(chart, 24), at(16.5), at(22), { e: 0.12, slow: 0.4, wob: 0.8, dyn: true });
   const span = (chart.length - 1) / 11;
   for (const [m, i, side] of [
@@ -753,7 +775,7 @@ export function createReel({
   ] as const) {
     const cover = opening.covers[i];
     const row = chart[Math.round(m * span)];
-    if (cover?.image.naturalWidth)
+    if (row && cover?.image.naturalWidth)
       snaps.push({
         image: cover.image,
         slot: cover.box,
@@ -766,7 +788,8 @@ export function createReel({
   }
   const letters = months.flatMap(({ month }, m) => {
     const letter = MONTHS[Number(month.slice(5, 7)) - 1];
-    return letter ? [{ letter, x: -640, y: chart[m][1] + 18, t: at(16.7 + m * 0.12) }] : [];
+    const point = chart[m];
+    return letter && point ? [{ letter, x: -640, y: point[1] + 18, t: at(16.7 + m * 0.12) }] : [];
   });
 
   const plays = {
@@ -800,55 +823,53 @@ export function createReel({
   });
   const nearest = (contour: Vec[]) => {
     let best = 0;
+    let closest = Infinity;
     contour.forEach(([x, y], i) => {
-      if (
-        Math.hypot(x - pen.x, y - pen.y) <
-        Math.hypot(contour[best][0] - pen.x, contour[best][1] - pen.y)
-      )
+      const distance = Math.hypot(x - pen.x, y - pen.y);
+      if (distance < closest) {
+        closest = distance;
         best = i;
+      }
     });
     const turned = [...contour.slice(best), ...contour.slice(1, best + 1)];
     return [...turned, ...turned.slice(1, 5)];
   };
   glyphs.forEach((contours, g) => {
-    const lengths = contours.map((contour) => contour.length);
-    const total = lengths.reduce((sum, length) => sum + length, 0);
+    const total = contours.reduce((sum, contour) => sum + contour.length, 0);
     let share = 0;
     contours.forEach((contour, j) => {
       const s0 = 24 + g + share;
-      share += lengths[j] / total;
+      share += contour.length / total;
       const s1 = 24 + g + share;
       const path = nearest(contour);
+      const start = path[0];
+      if (!start) return;
+      const ahead = path[2] ?? start;
       const hop = g === 0 && j === 0 ? 0.14 : 0.08;
       if (g === 0 && j === 0)
-        to(
-          path[0][0],
-          path[0][1],
-          [path[2][0] - path[0][0], path[2][1] - path[0][1]],
-          at(s0 + hop),
-          { e: 0.5, k: 0.35 },
-        );
-      else add([[pen.x, pen.y], path[0]], at(s0), at(s0 + hop), { up: true, e: 1 });
+        to(start[0], start[1], [ahead[0] - start[0], ahead[1] - start[1]], at(s0 + hop), {
+          e: 0.5,
+          k: 0.35,
+        });
+      else add([[pen.x, pen.y], start], at(s0), at(s0 + hop), { up: true, e: 1 });
       add(path, at(s0 + hop), at(s1) - 0.01, { e: 0.25, slow: 0.5, wob: 0.6 });
     });
   });
   const flood = { x: pen.x, y: pen.y, t: at(28) };
 
-  const speeds = points.map((point, i) =>
-    i && !point.up
-      ? Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y) /
-        Math.max(1e-3, point.t - points[i - 1].t)
-      : 0,
-  );
+  const speeds = points.map((point, i) => {
+    const previous = points[i - 1];
+    return previous && !point.up
+      ? Math.hypot(point.x - previous.x, point.y - previous.y) /
+          Math.max(1e-3, point.t - previous.t)
+      : 0;
+  });
   const sorted = speeds.filter(Boolean).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] || 1;
   const pressure = speeds.map((speed) => clamp(1.28 - (0.42 * speed) / median, 0.72, 1.3));
   points.forEach((point, i) => {
-    let sum = 0;
-    let count = 0;
-    for (let j = Math.max(0, i - 4); j <= Math.min(points.length - 1, i + 4); j++, count++)
-      sum += pressure[j];
-    point.w = sum / count;
+    const nearby = pressure.slice(Math.max(0, i - 4), i + 5);
+    point.w = nearby.reduce((sum, value) => sum + value, 0) / nearby.length;
   });
 
   const key = (
@@ -860,8 +881,9 @@ export function createReel({
     curve: keyof typeof ease,
     dip = 0,
   ) => ({ t, x, y, z, r, curve, dip });
+  const firstCamera = key(0, 0, 20, 1.42, 0, "inOut");
   const cameras = [
-    key(0, 0, 20, 1.42, 0, "inOut"),
+    firstCamera,
     key(at(0), 0, 10, 1.2, 0, "out"),
     key(at(2), 0, 70, 1.12, 0, "inOut"),
     key(at(4), S1.x + 20, S1.y - 90, 1.1, -0.014, "inOut", 0.36),
@@ -892,22 +914,23 @@ export function createReel({
     [24.9, 0, 0],
   ] as const;
 
+  const origin = points[0] ?? { x: 0, y: 0, t: 0 };
   const head = (t: number) => {
-    if (t < points[0].t) return -1;
+    if (t < origin.t) return -1;
     let low = 0;
     let high = points.length - 1;
     while (low < high) {
       const middle = (low + high + 1) >> 1;
-      if (points[middle].t <= t) low = middle;
+      if ((points[middle]?.t ?? Infinity) <= t) low = middle;
       else high = middle - 1;
     }
     return low;
   };
   const penAt = (t: number, stretch: number) => {
     const i = head(t);
-    if (i < 0) return { x: points[0].x, y: points[0].y, up: false };
     const a = points[i];
-    const b = points[Math.min(points.length - 1, i + 1)];
+    if (!a) return { x: origin.x, y: origin.y, up: false };
+    const b = points[i + 1] ?? a;
     const u = b.t > a.t ? clamp((t - a.t) / (b.t - a.t)) : 0;
     return {
       x: lerp(a.dyn ? a.x * stretch : a.x, b.dyn ? b.x * stretch : b.x, u),
@@ -917,23 +940,25 @@ export function createReel({
   };
   const follow = (t: number) => {
     const b = grid.since(t);
-    if (b <= FOLLOW[0][0]) return [0, 0] as const;
-    for (let i = 1; i < FOLLOW.length; i++)
-      if (b < FOLLOW[i][0]) {
-        const u = ease.inOut((b - FOLLOW[i - 1][0]) / (FOLLOW[i][0] - FOLLOW[i - 1][0]));
-        return [
-          lerp(FOLLOW[i - 1][1], FOLLOW[i][1], u),
-          lerp(FOLLOW[i - 1][2], FOLLOW[i][2], u),
-        ] as const;
+    let previous: (typeof FOLLOW)[number] = FOLLOW[0];
+    if (b <= previous[0]) return [0, 0] as const;
+    for (const next of FOLLOW) {
+      if (b < next[0]) {
+        const u = ease.inOut((b - previous[0]) / (next[0] - previous[0]));
+        return [lerp(previous[1], next[1], u), lerp(previous[2], next[2], u)] as const;
       }
+      previous = next;
+    }
     return [0, 0] as const;
   };
   const camera = (t: number) => {
-    if (t <= cameras[0].t) return cameras[0];
-    for (let i = 1; i < cameras.length; i++) {
-      if (t >= cameras[i].t) continue;
-      const a = cameras[i - 1];
-      const b = cameras[i];
+    if (t <= firstCamera.t) return firstCamera;
+    let a = firstCamera;
+    for (const b of cameras) {
+      if (t >= b.t) {
+        a = b;
+        continue;
+      }
       const e = ease[b.curve]((t - a.t) / (b.t - a.t));
       const z =
         Math.exp(lerp(Math.log(a.z), Math.log(b.z), e)) * (1 - b.dip * Math.sin(Math.PI * e));
@@ -957,7 +982,7 @@ export function createReel({
       }
       return { x, y, z, r: lerp(a.r, b.r, e) };
     }
-    return cameras[cameras.length - 1];
+    return a;
   };
 
   const torn = new Map<string, Path2D>();
@@ -976,7 +1001,7 @@ export function createReel({
     ] as const;
     const path = new Path2D();
     corners.forEach(([ax, ay], c) => {
-      const [bx, by] = corners[(c + 1) % 4];
+      const [bx, by] = corners[(c + 1) % 4] ?? corners[0];
       const length = Math.hypot(bx - ax, by - ay);
       const n = Math.ceil(length / 11);
       const nx = (by - ay) / length;
@@ -1065,29 +1090,37 @@ export function createReel({
       let maxY = -Infinity;
       let w = 0;
       for (let j = i - 1; j <= stop; j++) {
-        const x = X(points[j]);
+        const point = points[j];
+        if (!point) continue;
+        const x = X(point);
         minX = Math.min(minX, x);
         maxX = Math.max(maxX, x);
-        minY = Math.min(minY, points[j].y);
-        maxY = Math.max(maxY, points[j].y);
-        w += points[j].w;
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+        w += point.w;
       }
-      if (maxX > view.x0 && minX < view.x1 && maxY > view.y0 && minY < view.y1) {
+      const start = points[i - 1];
+      if (start && maxX > view.x0 && minX < view.x1 && maxY > view.y0 && minY < view.y1) {
         context.lineWidth = (base * widen(i) * w) / (stop - i + 2);
         context.beginPath();
-        context.moveTo(X(points[i - 1]), points[i - 1].y);
-        for (let j = i; j <= stop; j++)
-          if (points[j].up) context.moveTo(X(points[j]), points[j].y);
-          else context.lineTo(X(points[j]), points[j].y);
+        context.moveTo(X(start), start.y);
+        for (let j = i; j <= stop; j++) {
+          const point = points[j];
+          if (!point) continue;
+          if (point.up) context.moveTo(X(point), point.y);
+          else context.lineTo(X(point), point.y);
+        }
         context.stroke();
       }
       i = stop + 1;
     }
     const current = penAt(t, stretch);
-    if (last + 1 < Math.min(points.length, end) && !points[last + 1].up) {
-      context.lineWidth = base * widen(last) * points[last].w;
+    const tail = points[last];
+    const next = points[last + 1];
+    if (tail && next && last + 1 < end && !next.up) {
+      context.lineWidth = base * widen(last) * tail.w;
       context.beginPath();
-      context.moveTo(X(points[last]), points[last].y);
+      context.moveTo(X(tail), tail.y);
       context.lineTo(current.x, current.y);
       context.stroke();
     }
@@ -1095,8 +1128,8 @@ export function createReel({
   };
 
   const drawTip = (context: CanvasRenderingContext2D, t: number, z: number, stretch: number) => {
-    const fade = clamp((points[points.length - 1].t + 0.15 - t) / 0.15);
-    if (t < points[0].t || fade <= 0) return;
+    const fade = clamp(((points.at(-1) ?? origin).t + 0.15 - t) / 0.15);
+    if (t < origin.t || fade <= 0) return;
     const current = penAt(t, stretch);
     const r = Math.max(5, 2.6 / z);
     context.save();
@@ -1334,11 +1367,12 @@ export function createReel({
     }
     const amount =
       t < at(16) ? 0.11 : t < at(28) ? 0.07 : 0.07 * (1 - clamp((t - at(28)) / (period * 3)));
-    if (amount > 0.002) {
+    const noise = grain[Math.floor(t * 24) % grain.length];
+    if (noise && amount > 0.002) {
       context.save();
       context.globalAlpha = amount;
       context.globalCompositeOperation = "overlay";
-      context.drawImage(grain[Math.floor(t * 24) % grain.length], 0, 0, REEL_WIDTH, REEL_HEIGHT);
+      context.drawImage(noise, 0, 0, REEL_WIDTH, REEL_HEIGHT);
       context.restore();
     }
   };

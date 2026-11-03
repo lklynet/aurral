@@ -11,6 +11,7 @@ import {
 } from "./playlistCoverTemplates.ts";
 import { writePlaylistArtworkBuffer } from "./playlistArtwork.ts";
 import type { PlaylistArtworkState, PlaylistArtworkStyle } from "./playlistArtworkState.ts";
+import { shuffle } from "../../lib/shuffle.ts";
 
 export type PlaylistArtworkArtist = { artistName: string; artistMbid?: string | null };
 
@@ -77,11 +78,10 @@ async function loadArtistImage(artist: PlaylistArtworkArtist) {
 
 async function pickArtistImage(artists: PlaylistArtworkArtist[], previousKey?: string | null) {
   const unique = uniqueArtists(artists);
-  const candidates = [...unique.entries()].filter(([key]) => key !== previousKey);
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
+  const candidates = shuffle(
+    [...unique.entries()].filter(([key]) => key !== previousKey),
+    randomInt,
+  );
   const selected = candidates.slice(0, 6);
   const previous = previousKey ? unique.get(previousKey) : null;
   if (previous && previousKey) selected.push([previousKey, previous]);
@@ -108,7 +108,7 @@ export async function shufflePlaylistCover({
       index < 0
         ? randomInt(PLAYLIST_COVER_TEMPLATES.length)
         : (index + 1) % PLAYLIST_COVER_TEMPLATES.length
-    ];
+    ] ?? PLAYLIST_COVER_TEMPLATES[0];
   return {
     pick: { style, artistKey: image?.artistKey ?? null, template } satisfies PlaylistCoverPick,
     imageBuffer: image?.buffer ?? null,

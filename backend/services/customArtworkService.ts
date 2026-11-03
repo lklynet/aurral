@@ -113,8 +113,7 @@ export async function saveCustomArtworkUpload(
   contentType: string | undefined,
 ) {
   return withTargetOperation(kind, id, async (target) => {
-    const normalizedContentType = String(contentType || "")
-      .split(";")[0]
+    const normalizedContentType = (String(contentType || "").split(";")[0] ?? "")
       .trim()
       .toLowerCase();
     await inspectImageBuffer(buffer, normalizedContentType);

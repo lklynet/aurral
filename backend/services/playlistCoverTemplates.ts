@@ -68,7 +68,7 @@ const SIMPLE_COLORS = [
   "#522b40",
   "#263a60",
   "#984324",
-];
+] as const;
 const PALETTES = {
   a1: ["#000000", "#ffffff"],
   a2: ["#e04e23", "#171516"],
@@ -147,7 +147,11 @@ export async function renderPlaylistCover({
   const displayTitle = title.trim() || "Untitled";
   const [paper, ink] = imageBuffer
     ? PALETTES[template]
-    : [SIMPLE_COLORS[PLAYLIST_COVER_TEMPLATES.indexOf(template) % SIMPLE_COLORS.length], "#ffffff"];
+    : [
+        SIMPLE_COLORS[PLAYLIST_COVER_TEMPLATES.indexOf(template) % SIMPLE_COLORS.length] ??
+          SIMPLE_COLORS[0],
+        "#ffffff",
+      ];
   const source = imageBuffer
     ? (
         await sharp(imageBuffer, { animated: false })

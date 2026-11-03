@@ -136,7 +136,7 @@ const ArtistImage = ({
         if (signal?.aborted) return;
         if (data?.images && data.images.length > 0) {
           const front = data.images.find((img) => img.front) || data.images[0];
-          const url = front.image;
+          const url = front?.image;
           if (url) {
             const retryUrl =
               refresh && failedSourceRef.current === normalizeMediaUrl(url)

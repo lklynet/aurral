@@ -322,9 +322,9 @@ export default new Hono<AppEnv>()
       if (!lidarrClient.isConfigured()) return c.json(results, 200);
       const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
 
-      for (let index = 0; index < wanted.length; index += 1) {
-        const foreignAlbumId = wanted[index];
+      for (const [index, foreignAlbumId] of wanted.entries()) {
         const result = albums[index];
+        if (!result) continue;
         if (result.status === "rejected") {
           logger.warn("library", "Lidarr album lookup failed", {
             foreignAlbumId,

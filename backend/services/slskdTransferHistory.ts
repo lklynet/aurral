@@ -162,7 +162,7 @@ function normalizeSearchIds(value: unknown) {
 function serializeSearchIds(value: unknown) {
   const ids = normalizeSearchIds(value);
   if (ids.length === 0) return null;
-  if (ids.length === 1) return ids[0];
+  if (ids.length === 1) return ids[0] ?? null;
   return JSON.stringify(ids);
 }
 

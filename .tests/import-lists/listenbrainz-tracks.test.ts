@@ -77,5 +77,5 @@ test("parseListenBrainzPlaylist uses the primary artist name for a multi-artist 
     },
   });
 
-  assert.equal(tracks[0].artistName, "Marshmello");
+  assert.equal(tracks[0]?.artistName, "Marshmello");
 });

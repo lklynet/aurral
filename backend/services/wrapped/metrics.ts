@@ -63,16 +63,17 @@ export function wrappedPeriod(year: number, timeZone: string, cutoff = Date.now(
     const target = Date.UTC(value, 0, 1);
     let timestamp = target;
     for (let attempt = 0; attempt < 4; attempt++) {
-      const parts = Object.fromEntries(
+      const parts = new Map(
         format.formatToParts(timestamp).map(({ type, value }) => [type, Number(value)]),
       );
+      const part = (type: Intl.DateTimeFormatPartTypes) => parts.get(type) ?? 0;
       const represented = Date.UTC(
-        parts.year,
-        parts.month - 1,
-        parts.day,
-        parts.hour,
-        parts.minute,
-        parts.second,
+        part("year"),
+        part("month") - 1,
+        part("day"),
+        part("hour"),
+        part("minute"),
+        part("second"),
       );
       const next = timestamp + target - represented;
       if (next === timestamp) break;
@@ -99,6 +100,7 @@ export function mergeWrappedPlays(input: WrappedPlay[]) {
     let mirror: (typeof merged)[number] | undefined;
     for (let index = group.length - 1; index >= 0; index--) {
       const other = group[index];
+      if (!other) break;
       const gap = play.playedAt - other.playedAt;
       if (gap > MAX_MIRROR_GAP_MS) break;
       const length = [play.durationMs, other.durationMs].find(positive) ?? DEFAULT_TRACK_MS;
@@ -251,7 +253,8 @@ export function calculateWrapped(
     month.plays++;
     month.artists.set(artistKey, (month.artists.get(artistKey) ?? 0) + 1);
     months.set(date.slice(0, 7), month);
-    hours[Number(hourOf.format(play.playedAt)) % 24]++;
+    const hour = Number(hourOf.format(play.playedAt)) % 24;
+    hours[hour] = (hours[hour] ?? 0) + 1;
 
     const tags = new Set(
       (play.genres ?? []).map((genre) => genre.trim().toLowerCase()).filter(Boolean),
@@ -282,12 +285,18 @@ export function calculateWrapped(
 
   const dates = [...days.keys()].sort();
   let streak = { days: 0, start: "", end: "" };
-  for (let index = 0, runStart = 0; index < dates.length; index++) {
-    const contiguous =
-      index > 0 && Date.parse(dates[index]) - Date.parse(dates[index - 1]) === DAY_MS;
-    if (!contiguous) runStart = index;
-    if (index - runStart + 1 > streak.days)
-      streak = { days: index - runStart + 1, start: dates[runStart], end: dates[index] };
+  let runDays = 0;
+  let runStart = "";
+  let previousDate: string | undefined;
+  for (const date of dates) {
+    if (previousDate !== undefined && Date.parse(date) - Date.parse(previousDate) === DAY_MS) {
+      runDays += 1;
+    } else {
+      runDays = 1;
+      runStart = date;
+    }
+    if (runDays > streak.days) streak = { days: runDays, start: runStart, end: date };
+    previousDate = date;
   }
   const lastDate = dateOf.format(Math.max(period.start, period.end - 1));
   const lastMonth = lastDate.slice(0, 7);

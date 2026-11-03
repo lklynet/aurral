@@ -219,6 +219,7 @@ async function readSidecarCover(folder: string) {
       const stat = await fs.stat(artworkPath);
       if (!stat.isFile() || stat.size > MAX_SOURCE_IMAGE_BYTES) continue;
       const contentType = SIDECAR_CONTENT_TYPES[path.extname(name).toLowerCase()];
+      if (!contentType) continue;
       const cover = await renderCover(await fs.readFile(artworkPath), contentType);
       if (cover) return cover;
     } catch {

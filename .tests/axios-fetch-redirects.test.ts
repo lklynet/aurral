@@ -4,6 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 
 import axios from "../lib/axiosFetch.ts";
+import { requireFixture } from "./playlists/fixtures.ts";
 
 async function listen(handler: http.RequestListener) {
   const server = http.createServer(handler);
@@ -45,7 +46,7 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
     assert.equal(headers["x-plex-token"], "token");
     assert.ok(headers.authorization);
   }
-  const crossOrigin = seen[2];
+  const crossOrigin = requireFixture(seen[2]);
   assert.equal(crossOrigin["x-api-key"], undefined);
   assert.equal(crossOrigin["x-gotify-key"], undefined);
   assert.equal(crossOrigin["x-plex-token"], undefined);

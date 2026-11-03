@@ -83,7 +83,7 @@ pnpm run build             # frontend build
 
 Aurral is written in TypeScript and Node runs the `.ts` files directly, so use only type syntax that Node can strip: no `enum`, `namespace`, or constructor parameter properties. In code that Node runs, such as `backend/`, `lib/`, and the tests, write relative imports with their `.ts` extension.
 
-The code is moving to strict type checking. `typecheck-baseline.json` lists how many type errors each file still has, and `pnpm run check` fails when a file has more. When you fix type errors, run `pnpm run typecheck --update` to lower the baseline. Never raise it.
+Type checking is strict, including `noUncheckedIndexedAccess`, so `record[key]` and `array[i]` can be `undefined`. Handle the missing case, and prefer a `Map` or a union-keyed record over narrowing each read. `typecheck-baseline.json` lists how many type errors each file still has, and `pnpm run check` fails when a file has more. It is empty, so any type error fails the check. When you fix type errors, run `pnpm run typecheck --update` to lower the baseline. Never raise it.
 
 `backend/db/rows.ts` holds one row type per SQLite table, generated from the schema. Run `pnpm run db:types` after a schema change, and type queries with them, for example `db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?")`.
 

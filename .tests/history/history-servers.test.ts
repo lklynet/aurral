@@ -73,7 +73,7 @@ test("Navidrome plays import once, stay out of the app's play list, and leave on
     ],
   );
   assert.deepEqual(getPlayHistory(userId), []);
-  assert.equal(servers.listHistoryServers(userId)[0].plays, 2);
+  assert.equal(servers.listHistoryServers(userId)[0]?.plays, 2);
 
   await servers.disconnectHistoryServer(userId, "navidrome");
   assert.deepEqual(importedPlays(), []);

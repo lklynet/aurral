@@ -472,10 +472,11 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
   const results = await settled;
 
   assert.equal(maxActive, 6);
-  assert.ok(results[0].status === "fulfilled" && results[0].value);
-  assert.equal(results[0].value.foreignAlbumId, "album-0");
-  assert.equal(results[7].status, "rejected");
-  assert.equal(results[7].reason.message, "lookup failed");
+  const [first] = results;
+  assert.ok(first?.status === "fulfilled" && first.value);
+  assert.equal(first.value.foreignAlbumId, "album-0");
+  assert.equal(results[7]?.status, "rejected");
+  assert.equal(results[7]?.reason.message, "lookup failed");
 });
 
 test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t: import("vite-plus/test").TestContext) => {

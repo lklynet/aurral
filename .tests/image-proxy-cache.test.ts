@@ -63,7 +63,7 @@ test(
           })
           .route("/api", imageProxy),
       );
-      const base = `http://127.0.0.1:${listeningAddress(requireFixture(server)).port}`;
+      const base = `http://127.0.0.1:${listeningAddress(server).port}`;
       const missing = await originalFetch(
         `${base}/api/image-proxy/${randomBytes(32).toString("hex")}.webp`,
       );
@@ -145,10 +145,10 @@ test(
       );
       assert.equal(calls.filter((url: string) => url.endsWith("/fail.png")).length, 1);
       fail = false;
-      const retried = await warmImageProxy(urls[0]);
+      const retried = await warmImageProxy(requireFixture(urls[0]));
       assert.equal(retried.meta.contentType, "image/webp");
       assert.equal(calls.length, 5);
-      await warmImageProxy(urls[1]);
+      await warmImageProxy(requireFixture(urls[1]));
       assert.equal(calls.length, 5, "cached artwork must not be fetched again");
     } finally {
       gate.resolve();
@@ -225,7 +225,7 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
     server = await listen(new Hono<AppEnv>().route("/api", imageProxy));
 
     const response = await fetch(
-      `http://127.0.0.1:${listeningAddress(requireFixture(server)).port}${cached.localUrl}`,
+      `http://127.0.0.1:${listeningAddress(server).port}${cached.localUrl}`,
     );
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "image/webp");
@@ -258,7 +258,7 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
 
     for (let i = 0; i < 6; i += 1) {
       for (let j = 0; j < noise.length; j += 97) {
-        noise[j] = (noise[j] + i + 1) % 256;
+        noise[j] = (requireFixture(noise[j]) + i + 1) % 256;
       }
       const variant = await sharp(noise, {
         raw: { width: 512, height: 512, channels: 3 },

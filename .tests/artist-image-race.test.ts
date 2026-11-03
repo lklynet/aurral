@@ -1,4 +1,3 @@
-import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
@@ -380,8 +379,8 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
   const order = finishRecoveryFirst ? "first" : "last";
   test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult} ${order}`, async () => {
     const mbid = artistId(index);
-    const albumId = artistId(requireFixture(index) + 200);
-    const deezerArtistId = String(6000 + requireFixture(index));
+    const albumId = artistId(index + 200);
+    const deezerArtistId = String(6000 + index);
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;

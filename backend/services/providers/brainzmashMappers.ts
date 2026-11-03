@@ -151,7 +151,7 @@ export function getLinkedArtistProviderIds(links: { target: string }[] = []) {
 
 export function getLinkedDeezerArtistId(links: { target: string }[] = []) {
   const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
-  return providerId ? providerId.split("@")[0] : null;
+  return providerId?.split("@")[0] ?? null;
 }
 
 export function toNormalizedArtist(raw: v.InferOutput<typeof artistSchema>) {

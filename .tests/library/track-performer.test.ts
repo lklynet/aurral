@@ -231,7 +231,7 @@ test("a track whose files credit different performers keeps one credit whatever 
   const files = ["a.mp3", "b.mp3"].map((name) =>
     path.join(root, "Order Owner", "Order Album", name),
   );
-  await mkdir(path.dirname(files[0]), { recursive: true });
+  await mkdir(path.dirname(requireFixture(files[0])), { recursive: true });
   for (const file of files) await writeFile(file, "audio");
   const credits = new Map([
     [files[0], "Order Owner feat. First"],
@@ -311,10 +311,10 @@ test("a tagged performer beats files without an artist tag whatever the scan ord
     ["b.flac", "a.mp3"],
     ["a.mp3", "c.mp3", "b.flac"],
     ["c.mp3", "a.mp3", "b.flac"],
-  ];
+  ] as const;
   for (const [index, order] of orders.entries()) {
     const files = order.map((name) => path.join(root, `Album ${index}`, name));
-    await mkdir(path.dirname(files[0]), { recursive: true });
+    await mkdir(path.dirname(requireFixture(files[0])), { recursive: true });
     for (const file of files) await writeFile(file, "audio");
     const scan = (filePaths: string[]) =>
       scanMusicRoot({

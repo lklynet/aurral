@@ -125,12 +125,12 @@ test("parses RSS items, Atom entries, entities, categories, and images", () => {
   );
 
   assert.equal(articles.length, 1);
-  assert.equal(articles[0].title, "Artist One & the new album");
-  assert.equal(articles[0].description, "A new R&B story.");
-  assert.deepEqual(articles[0].categories, ["Artist One", "New Music"]);
-  assert.equal(articles[0].url, "https://example.test/story?utm_source=rss&utm_medium=rss");
-  assert.equal(articles[0].source, "Example Music");
-  assert.equal(articles[0].imageUrl, "https://example.test/image.jpg");
+  assert.equal(articles[0]?.title, "Artist One & the new album");
+  assert.equal(articles[0]?.description, "A new R&B story.");
+  assert.deepEqual(articles[0]?.categories, ["Artist One", "New Music"]);
+  assert.equal(articles[0]?.url, "https://example.test/story?utm_source=rss&utm_medium=rss");
+  assert.equal(articles[0]?.source, "Example Music");
+  assert.equal(articles[0]?.imageUrl, "https://example.test/image.jpg");
 });
 
 test("fetches RSS feed articles under the feed's configured name", async () => {
@@ -142,6 +142,7 @@ test("fetches RSS feed articles under the feed's configured name", async () => {
   }));
 
   const [article] = await rssNews.fetchRssFeed({ name: "Feed", url: "https://example.test/rss" });
+  assert.ok(article);
   assert.equal(article.title, "Artist One news");
   assert.equal(article.url, "https://example.test/story");
   assert.equal(article.source, "Feed");
@@ -160,7 +161,7 @@ test("ignores tracking pixels and badges when finding RSS HTML images", () => {
   `,
     { name: "Example", url: "https://example.test/feed" },
   );
-  assert.equal(articles[0].imageUrl, "https://example.test/article.jpg");
+  assert.equal(articles[0]?.imageUrl, "https://example.test/article.jpg");
 });
 
 test("tags stories with library artists by whole name, category, and accent-free spelling", async (t) => {
@@ -213,7 +214,7 @@ test("tags stories with library artists by whole name, category, and accent-free
     "Wet Leg and Big Thief share split single": ["Big Thief", "Wet Leg"],
   });
   assert.equal(
-    articles.every((article) => article.artists[0].newsType === "library"),
+    articles.every((article) => requireFixture(article.artists[0]).newsType === "library"),
     true,
   );
   assert.equal((await getTitles({ mode: "top" })).length, 9);
@@ -292,28 +293,27 @@ test("looks up a missing story image once", async () => {
   configureFeeds([UNTAGGED_FEED]);
   const storyUrl = "https://93.184.216.34/story";
   const storyRequests: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(
-    requireFixture(async (url) => {
-      if (url === UNTAGGED_FEED)
-        return {
-          status: 200,
-          statusText: "OK",
-          headers: {},
-          data: rss([{ title: "Story without image", url: storyUrl }]),
-        };
-      storyRequests.push(url);
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+    if (url === UNTAGGED_FEED)
       return {
         status: 200,
         statusText: "OK",
         headers: {},
-        data: '<meta property="og:image" content="https://93.184.216.34/cover.jpg">',
+        data: rss([{ title: "Story without image", url: storyUrl }]),
       };
-    }),
-  );
+    storyRequests.push(url);
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: '<meta property="og:image" content="https://93.184.216.34/cover.jpg">',
+    };
+  });
 
   await newsService.refreshNewsFeeds();
   await newsService.refreshNewsFeeds();
   const [article] = (await newsService.getNewsForUser({ userId: null, mode: "top" })).articles;
+  assert.ok(article);
 
   assert.deepEqual(storyRequests, [storyUrl]);
   assert.ok(article.imageUrl);
