@@ -61,7 +61,7 @@ The dark theme uses a true black page. The sidebar and top bar sit one step ligh
 
 Everything that floats above the page shares one surface: `--aurral-surface-popover`, a `--aurral-border-overlay` border, and `--aurral-shadow-popover`. Floating surfaces are solid, and nothing blurs the page behind them. Modals sit on `--aurral-scrim`.
 
-Pages with an artwork wash swap `--aurral-surface-hover` and `--aurral-surface-selected` for see-through versions, so hovers pick up the color beneath them. The shared floating rules reset both to solid values.
+Pages with an artwork wash swap `--aurral-surface-raised`, `--aurral-surface-hover`, and `--aurral-surface-selected` for see-through versions, so controls pick up the color beneath them. The shared floating rules reset them to solid values. A control that sits on artwork uses the solid `--aurral-overlay-raised` and `--aurral-overlay-hover` instead.
 
 Two shared rules near the end of `frontend/src/index.css` apply the surface. One covers menus, popovers, suggestions, and toasts, and the other covers modals. Add a new floating element to the matching selector list instead of setting its border, radius, background, or shadow in its own rule. The shared rules come later in the file, so those values would never show. Tooltips set the surface themselves and use `--aurral-radius-sm`. Build a new menu on an existing menu class such as `.artist-options-menu` when you can. It already has the surface and opens as a bottom sheet on phones.
 
