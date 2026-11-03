@@ -3,6 +3,18 @@ name: Nightly
 on:
   push:
     branches: ["main"]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "lib/**"
+      - "docs/package.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".nvmrc"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/nightly.yml"
   workflow_dispatch:
 
 permissions:
@@ -27,13 +39,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require current main
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Require current image inputs
         run: |
-          tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
-          if [ "${tip}" != "${GITHUB_SHA}" ]; then
-            echo "${GITHUB_SHA} is no longer the tip of main (${tip}); a newer nightly replaces it."
+          git fetch --depth=1 origin main
+          if ! git diff --quiet "${GITHUB_SHA}" FETCH_HEAD -- backend frontend lib docs/package.json package.json pnpm-lock.yaml pnpm-workspace.yaml .nvmrc Dockerfile .dockerignore .github/workflows/nightly.yml; then
+            echo "A newer commit on main changes the image; its nightly replaces this one."
             exit 1
           fi
 

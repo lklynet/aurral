@@ -79,8 +79,30 @@ jobs:
 
       - run: vp run test:integration
 
+  changes:
+    name: Detect image changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.diff.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: diff
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- backend frontend lib docs/package.json package.json pnpm-lock.yaml pnpm-workspace.yaml .nvmrc Dockerfile .dockerignore .github/workflows/ci.yml; then
+            echo "image=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "image=true" >> "${GITHUB_OUTPUT}"
+          fi
+
   container:
     name: Production container
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -195,15 +217,19 @@ jobs:
 
   validate:
     if: ${{ !cancelled() }}
-    needs: [checks, unit-tests, integration-tests, container]
+    needs: [checks, unit-tests, integration-tests, changes, container]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every job
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
+          IMAGE: ${{ needs.changes.outputs.image }}
         run: |
           for result in $RESULTS; do
+            if [ "$result" = "skipped" ] && [ "$IMAGE" = "false" ]; then
+              continue
+            fi
             if [ "$result" != "success" ]; then
               echo "Not every job succeeded: $RESULTS"
               exit 1
