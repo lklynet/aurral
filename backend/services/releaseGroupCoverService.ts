@@ -5,9 +5,14 @@ import {
   getDeezerArtistById,
   resolveDeezerAlbumForPreview,
 } from "./apiClients/deezer.ts";
-import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.ts";
+import {
+  getAlbumByMbid,
+  isMetadataNotFoundError,
+  resolveAlbumByArtistAndTitle,
+} from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
 import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
@@ -192,8 +197,14 @@ const fetchReleaseGroupCoverUncached = async (
     if (result.imageUrl) {
       return result;
     }
-  } catch {
-    sawTransientError = true;
+  } catch (error) {
+    if (!isMetadataNotFoundError(error)) {
+      sawTransientError = true;
+      logger.warn("images", "Release-group cover metadata lookup failed", {
+        releaseGroupMbid,
+        reason: safeLogDiagnostic(error),
+      });
+    }
   }
   if (normalizedAlbumTitle) {
     try {
@@ -210,8 +221,14 @@ const fetchReleaseGroupCoverUncached = async (
           return result;
         }
       }
-    } catch {
+    } catch (error) {
       sawTransientError = true;
+      logger.warn("images", "Release-group cover artist/title lookup failed", {
+        releaseGroupMbid,
+        artistName: normalizedArtistName,
+        albumTitle: normalizedAlbumTitle,
+        reason: safeLogDiagnostic(error),
+      });
     }
   }
   const deezerCover = await fetchDeezerAlbumCover(
