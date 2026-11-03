@@ -94,7 +94,11 @@ export default new Hono<AppEnv>()
   .get("/problems", noCache, validate("query", v.object({ hours })), async (c) => {
     const start = since(c.req.valid("query").hours);
     return c.json(
-      { problems: await listLogProblems(start), since: new Date(start).toISOString() },
+      {
+        problems: await listLogProblems(start),
+        since: new Date(start).toISOString(),
+        debug: isDebugLoggingOn(),
+      },
       200,
     );
   })
