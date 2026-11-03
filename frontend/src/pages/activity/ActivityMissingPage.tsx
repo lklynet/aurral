@@ -38,6 +38,7 @@ import {
 } from "./activityMissingUtils.ts";
 import Tooltip from "../../components/Tooltip";
 import type { PlaylistStatus } from "../playlists/playlistStats.ts";
+import StatePanel from "../../components/StatePanel";
 
 const WANTED_PAGE_SIZE = 25;
 
@@ -484,38 +485,33 @@ export default function ActivityMissingPage() {
         placeholder={filterPlaceholder}
       />
       {error ? (
-        <div className="search-empty-panel" role="alert">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <AlertCircle />
-          </div>
-          <h2 className="search-empty-panel__title">Couldn’t load wanted tracks</h2>
-          <p className="search-empty-panel__message">{error}</p>
-          <button type="button" className="btn btn-secondary" onClick={() => loadJobs()}>
-            Try again
-          </button>
-        </div>
+        <StatePanel
+          role="alert"
+          icon={<AlertCircle />}
+          title="Couldn’t load wanted tracks"
+          message={error}
+          onRetry={() => loadJobs()}
+        />
       ) : null}
 
       {!error && visibleJobs.length === 0 ? (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <CheckCircle2 className="artist-icon-lg" />
-          </div>
-          <h2 className="search-empty-panel__title">
-            {hasFilter
+        <StatePanel
+          icon={<CheckCircle2 className="artist-icon-lg" />}
+          title={
+            hasFilter
               ? "No tracks match your filter"
               : showingCutoff
                 ? "No cutoff gaps"
-                : "No missing tracks"}
-          </h2>
-          <p className="search-empty-panel__message">
-            {hasFilter
+                : "No missing tracks"
+          }
+          message={
+            hasFilter
               ? `${showingCutoff ? "No cutoff-unmet" : "No missing"} tracks match your filter.`
               : showingCutoff
                 ? "All Aurral tracks meet the quality cutoff."
-                : "Every requested track is available or in progress."}
-          </p>
-        </div>
+                : "Every requested track is available or in progress."
+          }
+        />
       ) : null}
 
       {!error && visibleJobs.length > 0 ? (

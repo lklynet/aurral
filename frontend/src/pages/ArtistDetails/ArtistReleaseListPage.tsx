@@ -47,6 +47,7 @@ import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
 import { artworkHoverTint } from "../../utils/imageColors.ts";
+import StatePanel from "../../components/StatePanel";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -395,15 +396,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
   if (error || !artist) {
     return (
-      <div className="search-empty-panel" role="alert">
-        <div className="search-empty-panel__icon" aria-hidden="true">
-          <AlertCircle />
-        </div>
-        <h2 className="search-empty-panel__title">
-          {error ? "Couldn't load this artist" : "Artist not found"}
-        </h2>
-        {error ? <p className="search-empty-panel__message">{error}</p> : null}
-      </div>
+      <StatePanel
+        role="alert"
+        icon={<AlertCircle />}
+        title={error ? "Couldn't load this artist" : "Artist not found"}
+        message={error}
+      />
     );
   }
 

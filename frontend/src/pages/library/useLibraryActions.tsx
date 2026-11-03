@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { parseResponse } from "hono/client";
-import { useSearchParams } from "react-router";
 import {
   Download,
   EyeOff,
@@ -18,7 +17,7 @@ import {
 import { useAurralTrackMonitoring } from "../../components/AurralTrackMonitoring";
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
-import { TrackList, type TrackListRow } from "../../components/TrackList";
+import type { TrackListRow } from "../../components/TrackList";
 import ArtworkEditorModal from "../../components/ArtworkEditorModal.tsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAudioQueue } from "../../contexts/audioQueueContext";
@@ -72,8 +71,10 @@ import {
 import {
   TrackPlaylistRemoveSubmenu,
   TrackPlaylistSubmenu,
+  type PlaylistSelection as PlaylistTarget,
 } from "../ArtistDetails/components/TrackPlaylistMenu";
 import { DeleteAlbumModal } from "../ArtistDetails/components/DeleteAlbumModal";
+import { DeleteArtistModal } from "../ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "../ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "../LibraryInfoModal";
 import {
@@ -86,29 +87,63 @@ import { queryClient, queryKeys } from "../../queryClient.ts";
 import { showFavoriteRemoved } from "../../utils/favoriteUndo.ts";
 import { libraryAlbumPath as albumLink } from "../../../../lib/albumPath.ts";
 import {
-  type ArtworkEditorState,
-  type LibraryCollection,
-  type LibraryInfoState,
-  type LibraryLookup,
-  type LibraryPageResult,
   type LibraryPageTrack,
   type LibraryRemoval,
   type LibraryTarget,
-  type PlaylistRemoveTarget,
-  type PlaylistTarget,
-  type SaveTracksOptions,
   type TrackDownloadState,
-  firstAvailableAurralFile,
   formatDuration,
-  hasAurralTrackFile,
-  hasDeletableTrackFile,
+  invalidateLibraryViews,
   isAlbumArtistCredit,
   TRACK_DOWNLOAD_ACTIVE_STATUSES,
-  trackArtistMbid,
   trackDownloadActionLabel,
   trackDownloadIdentity,
   trackDurationMs,
 } from "./libraryShared.tsx";
+
+type LibraryInfoState = LibraryTarget & {
+  artist?: LibraryArtist | null;
+  album?: LibraryAlbum | null;
+  trackNumber?: number | null;
+};
+
+type ArtworkEditorState = {
+  kind: "album" | "track";
+  id: string | number;
+  title: string;
+  currentArtwork: string;
+  hasCustomArtwork: boolean;
+  fallbackArtwork: string;
+};
+
+type LibraryLookup = {
+  albumsById: Map<string, LibraryAlbum>;
+  artistsById: Map<string, LibraryArtist>;
+};
+
+type LibraryCollection = { tracks: LibraryPageTrack[]; lookup: LibraryLookup | null };
+
+type LibraryPageResult = Awaited<ReturnType<typeof getLibraryPage>>;
+
+type PlaylistRemoveTarget = { playlistId?: string; jobId?: string };
+
+type SaveTracksOptions = {
+  key: string;
+  label: string;
+  defaultName: string;
+  lookup?: LibraryLookup | null;
+};
+
+const trackArtistMbid = (track: LibraryTrack, artist: LibraryArtist | null | undefined) =>
+  isAlbumArtistCredit(track, artist) ? artist?.mbid || null : null;
+
+const hasAurralTrackFile = (track: LibraryTrack) =>
+  (track?.files || []).some((file) => file.source === "aurral");
+
+const hasDeletableTrackFile = (track: LibraryTrack) =>
+  (track?.files || []).some((file) => file.available && file.source !== "readonly");
+
+const firstAvailableAurralFile = (track: LibraryTrack) =>
+  (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
 
 type LibraryData = LibraryViewLibrary;
 
@@ -118,7 +153,7 @@ const pageSize = LIBRARY_PAGE_SIZE;
 
 type PlaylistTrackPayload = ReturnType<typeof buildStaticPlaylistTrackPayload>;
 
-export type LibraryPlaybackSource = { type: string; id: string; label: string };
+export const LIBRARY_SOURCE = { type: "native-library", id: "library", label: "Library" };
 
 export function useLibraryActions({
   libraryQueryKey,
@@ -126,8 +161,6 @@ export function useLibraryActions({
   favoriteIds,
   isPreviewLibrary,
   forcePreview = false,
-  previewQuery = "",
-  librarySource,
   onRemoved,
 }: {
   libraryQueryKey: LibraryViewQueryKey;
@@ -135,11 +168,9 @@ export function useLibraryActions({
   favoriteIds: Set<string>;
   isPreviewLibrary: boolean;
   forcePreview?: boolean;
-  previewQuery?: string;
-  librarySource: LibraryPlaybackSource;
   onRemoved?: (removal: LibraryRemoval) => void;
 }) {
-  const [searchParams] = useSearchParams();
+  const previewQuery = forcePreview ? "?preview=1" : "";
   const { hasPermission, user } = useAuth();
   const toast = useToast();
   const shareLibrary = useLibraryShareAction();
@@ -470,15 +501,7 @@ export function useLibraryActions({
           editor.kind === "track" && result?.updatedAt ? "track" : "album",
         );
       }
-      clearLibraryPageCache();
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.libraryAlbumTracksPrefix,
-        refetchType: "none",
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
-      ]);
+      await invalidateLibraryViews();
       showSuccess("Artwork updated");
     },
     [artworkEditor, showSuccess, updateQueueArtwork],
@@ -527,13 +550,7 @@ export function useLibraryActions({
           tracks: current.tracks.filter((track) => String(track.id) !== entityId),
         };
       });
-      clearLibraryPageCache();
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.libraryAlbumTracksPrefix,
-        refetchType: "none",
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
+      void invalidateLibraryViews();
     },
     [setLibrary],
   );
@@ -744,11 +761,6 @@ export function useLibraryActions({
       patchLibraryTrack(trackId, { keepFile: result?.keepFile === true }),
   });
 
-  const getAlbumCover = useCallback(
-    (album: LibraryAlbum | null | undefined) => album?.coverUrl || "",
-    [],
-  );
-
   const buildPlayableTrack = useCallback(
     (track: LibraryPageTrack, lookup: LibraryLookup | null = null) => {
       const album = getAlbumForTrack(track, lookup?.albumsById);
@@ -775,11 +787,11 @@ export function useLibraryActions({
         libraryAlbumId: file && album ? album.id : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
-        artwork: track.artworkUrl || getAlbumCover(album),
+        artwork: track.artworkUrl || album?.coverUrl || "",
         artworkSource: track.artworkUrl ? "track" : "album",
       };
     },
-    [getAlbumCover, getAlbumForTrack, getArtistForAlbum],
+    [getAlbumForTrack, getArtistForAlbum],
   );
 
   const playableTracks = useCallback(
@@ -805,10 +817,10 @@ export function useLibraryActions({
       playQueue(playable, {
         startTrackId: startTrack?.id ?? null,
         shuffle,
-        source: librarySource,
+        source: LIBRARY_SOURCE,
       });
     },
-    [librarySource, playQueue, playableTracks],
+    [playQueue, playableTracks],
   );
 
   const loadAlbumCollection = useCallback(
@@ -845,11 +857,11 @@ export function useLibraryActions({
         const playable = playableTracks(tracks, lookup);
         if (!playable.length) return;
         const insert = position === "next" ? queueNext : addToQueue;
-        if (insert(playable, { source: librarySource }) === "queued") {
+        if (insert(playable, { source: LIBRARY_SOURCE }) === "queued") {
           showSuccess(position === "next" ? "Playing next" : "Added to queue");
         }
       }),
-    [addToQueue, librarySource, playableTracks, queueNext, showSuccess, withCollection],
+    [addToQueue, playableTracks, queueNext, showSuccess, withCollection],
   );
 
   const toggleFavorite = useCallback(
@@ -860,44 +872,34 @@ export function useLibraryActions({
       const id = favoriteId(kind, entity);
       if (!id || id.endsWith(":") || favoriteMutationInFlightRef.current) return;
       const nextStarred = !favoriteIds.has(id);
-      if (isPreviewLibrary) {
+      const applyFavorite = (ids: string[], starred: boolean) =>
         setFavoriteIds((current) => {
           const next = new Set(current);
-          if (nextStarred) next.add(id);
-          else next.delete(id);
+          for (const favorite of ids) {
+            if (starred) next.add(favorite);
+            else next.delete(favorite);
+          }
           return next;
         });
+      if (isPreviewLibrary) {
+        applyFavorite([id], nextStarred);
         return;
       }
       const previous = favoriteIds;
       favoriteMutationInFlightRef.current = true;
       setPendingFavorite(id);
-      setFavoriteIds((current) => {
-        const next = new Set(current);
-        if (nextStarred) next.add(id);
-        else next.delete(id);
-        return next;
-      });
+      applyFavorite([id], nextStarred);
       const name = entity && ("name" in entity ? entity.name : entity.title);
       try {
         const result = await updateLibraryFavorites([id], nextStarred);
         const changedIds = Array.isArray(result?.changedIds) ? result.changedIds : [];
-        const applyFavorite = (starred: boolean) =>
-          setFavoriteIds((current) => {
-            const next = new Set(current);
-            for (const changedId of changedIds) {
-              if (starred) next.add(changedId);
-              else next.delete(changedId);
-            }
-            return next;
-          });
-        applyFavorite(nextStarred);
+        applyFavorite(changedIds, nextStarred);
         if (!nextStarred) {
           showFavoriteRemoved(toast, {
             name,
             removed: result?.removed,
-            restore: () => applyFavorite(true),
-            revert: () => applyFavorite(false),
+            restore: () => applyFavorite(changedIds, true),
+            revert: () => applyFavorite(changedIds, false),
             onRestored: () =>
               queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
           });
@@ -921,20 +923,13 @@ export function useLibraryActions({
     (track: LibraryPageTrack, context?: LibraryPageTrack[] | null) => {
       const playable = buildPlayableTrack(track);
       if (!playable.src) return;
-      if (String(currentTrack?.id) === String(playable.id) && matchesSource(librarySource)) {
+      if (String(currentTrack?.id) === String(playable.id) && matchesSource(LIBRARY_SOURCE)) {
         togglePlayPause();
         return;
       }
       playTracks(context || [track], track);
     },
-    [
-      buildPlayableTrack,
-      currentTrack?.id,
-      librarySource,
-      matchesSource,
-      playTracks,
-      togglePlayPause,
-    ],
+    [buildPlayableTrack, currentTrack?.id, matchesSource, playTracks, togglePlayPause],
   );
 
   function libraryArtistPath(artist: Pick<LibraryArtist, "id">): string;
@@ -1034,7 +1029,7 @@ export function useLibraryActions({
             label: "Change artwork",
             icon: ImagePlus,
             onSelect: () =>
-              openArtworkEditor("album", album, getAlbumCover(album), album.defaultCoverUrl || ""),
+              openArtworkEditor("album", album, album.coverUrl || "", album.defaultCoverUrl || ""),
           },
         ]
       : []),
@@ -1175,7 +1170,7 @@ export function useLibraryActions({
     const downloadLabel = trackDownloadActionLabel(
       downloadState?.status || (backgroundDownload ? "downloading" : null),
     );
-    const active = String(currentTrack?.id) === String(track.id) && matchesSource(librarySource);
+    const active = String(currentTrack?.id) === String(track.id) && matchesSource(LIBRARY_SOURCE);
     const artistName = track.artistName || artist?.name || "Unknown Artist";
     const albumName = album?.title || track.albumName || "Unknown Album";
     const trackNumber = track.albums?.find(
@@ -1199,7 +1194,7 @@ export function useLibraryActions({
         if (result?.monitored) updateTrackMonitoringState(track.id, result);
       });
     const queueItems = file
-      ? getQueueItems(buildPlayableTrack(track), { source: librarySource })
+      ? getQueueItems(buildPlayableTrack(track), { source: LIBRARY_SOURCE })
       : [];
     const trackMenuItems = [
       {
@@ -1228,8 +1223,8 @@ export function useLibraryActions({
                 openArtworkEditor(
                   "track",
                   track,
-                  track.artworkUrl || (album ? getAlbumCover(album) : ""),
-                  album ? getAlbumCover(album) : "",
+                  track.artworkUrl || album?.coverUrl || "",
+                  album?.coverUrl || "",
                 ),
             },
           ]
@@ -1290,7 +1285,7 @@ export function useLibraryActions({
       },
       album: { label: albumName, to: libraryAlbumPath(album) },
       cover: {
-        src: track.artworkUrl || (album ? getAlbumCover(album) : ""),
+        src: track.artworkUrl || album?.coverUrl || "",
         label: albumName,
         to: libraryAlbumPath(album),
       },
@@ -1358,17 +1353,18 @@ export function useLibraryActions({
     };
   };
 
-  const renderTrackList = (tracks: LibraryPageTrack[], label: string) => (
-    <TrackList
-      label={label}
-      highlightKey={searchParams.get("track")}
-      rows={tracks.map((track, index) => buildLibraryTrackRow(track, index, tracks))}
-    />
-  );
-
   const renderModals = () => (
     <>
       {trackMonitoring.dialog}
+      <DeleteArtistModal
+        show={libraryRemoval?.kind === "artist"}
+        artistName={libraryRemoval?.kind === "artist" ? libraryRemoval.entity.name : undefined}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        onCancel={() => setLibraryRemoval(null)}
+        onConfirm={handleLibraryRemovalConfirm}
+        deleting={deletingLibraryEntity}
+      />
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.kind === "album" ? libraryRemoval.entity.title : undefined}
@@ -1436,7 +1432,6 @@ export function useLibraryActions({
     getAlbumForTrack,
     getArtistForAlbum,
     lookupWithPages,
-    getAlbumCover,
     albumAvailability,
     staticPlaylists,
     playlistsLoading,
@@ -1444,23 +1439,13 @@ export function useLibraryActions({
     loadStaticPlaylists,
     playlistSavingKey,
     savePlaylistTracks,
-    canDeleteAlbum,
     canDeleteArtist,
     canAddTracks,
     canChangeMonitoring,
-    canEditArtwork,
     canEditArtistMbid,
     libraryDestination,
     isAlbumDownloading,
-    isTrackDownloading,
-    libraryRemoval,
-    setLibraryRemoval,
-    deleteFiles,
-    setDeleteFiles,
-    deletingLibraryEntity,
     openLibraryRemoval,
-    handleLibraryRemovalConfirm,
-    openArtworkEditor,
     openLibraryInfo,
     trackDownloadStates,
     setTrackDownloadStates,
@@ -1468,11 +1453,9 @@ export function useLibraryActions({
     refreshLibraryActivity,
     currentTrack,
     isRunning,
-    isLoading,
     togglePlayPause,
     matchesSource,
     playTracks,
-    playTrack,
     loadAlbumCollection,
     playCollection,
     pendingFavorite,
@@ -1487,7 +1470,6 @@ export function useLibraryActions({
     albumMenuProps,
     discoverArtistState,
     buildLibraryTrackRow,
-    renderTrackList,
     renderModals,
   };
 }

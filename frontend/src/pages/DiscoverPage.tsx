@@ -54,6 +54,7 @@ import { SettingsLink } from "./Settings/settingsRoute";
 import { useArtistTint } from "../components/CollectionHeader";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
+import StatePanel from "../components/StatePanel";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
 const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$get());
@@ -698,20 +699,13 @@ function DiscoverPage() {
 
   if (error) {
     return (
-      <div className="search-empty-panel" role="alert">
-        <div className="search-empty-panel__icon" aria-hidden="true">
-          <AlertCircle />
-        </div>
-        <h2 className="search-empty-panel__title">Couldn’t load Discover</h2>
-        <p className="search-empty-panel__message">{error}</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="btn btn-secondary"
-        >
-          Try again
-        </button>
-      </div>
+      <StatePanel
+        role="alert"
+        icon={<AlertCircle />}
+        title="Couldn’t load Discover"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 

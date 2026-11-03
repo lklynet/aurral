@@ -83,6 +83,7 @@ import {
 } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
+import StatePanel from "../components/StatePanel";
 
 type UnifiedSearchResponse = Awaited<ReturnType<typeof searchUnified>>;
 type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
@@ -1388,13 +1389,12 @@ function SearchResults() {
       )}
 
       {error && (
-        <div className="search-empty-panel" role="alert">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <AlertCircle />
-          </div>
-          <h2 className="search-empty-panel__title">Couldn’t load results</h2>
-          <p className="search-empty-panel__message">{error}</p>
-        </div>
+        <StatePanel
+          role="alert"
+          icon={<AlertCircle />}
+          title="Couldn’t load results"
+          message={error}
+        />
       )}
 
       {loading && (
@@ -1420,13 +1420,11 @@ function SearchResults() {
           aria-busy={searchUpdating || undefined}
         >
           {isEmpty ? (
-            <div className="search-empty-panel">
-              <div className="search-empty-panel__icon" aria-hidden="true">
-                <Music className="artist-icon-lg" />
-              </div>
-              <h2 className="search-empty-panel__title">{emptyTitle}</h2>
-              <p className="search-empty-panel__message">{emptyMessage}</p>
-            </div>
+            <StatePanel
+              icon={<Music className="artist-icon-lg" />}
+              title={emptyTitle}
+              message={emptyMessage}
+            />
           ) : (
             <>
               {isUnifiedSearch ? (

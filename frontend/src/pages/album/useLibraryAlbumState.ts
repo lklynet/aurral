@@ -6,10 +6,7 @@ import { useAurralAlbumMonitoring } from "../../components/AurralAlbumMonitoring
 import { useToast } from "../../contexts/ToastContext";
 import { libraryAlbumsClient } from "../../utils/api/clients/libraryAlbums.ts";
 import { requestsClient } from "../../utils/api/clients/requests.ts";
-import {
-  clearLibraryPageCache,
-  type AurralMonitoringResult,
-} from "../../utils/api/endpoints/library.ts";
+import type { AurralMonitoringResult } from "../../utils/api/endpoints/library.ts";
 import { firstAvailableFile, type LibraryAlbum } from "../../utils/libraryPageData.ts";
 import { resolveAlbumManager } from "../../utils/libraryDestination.ts";
 import { canDownloadAurralAlbum, getMonitoringMenuAction } from "../../utils/aurralMonitoring.ts";
@@ -19,6 +16,7 @@ import type { ActivityRequest } from "../activity/activityListUtils.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
 import {
   activityDownloadStatus,
+  invalidateLibraryViews,
   sameTrackText,
   TRACK_DOWNLOAD_ACTIVE_STATUSES,
   trackDownloadIdentity,
@@ -77,23 +75,25 @@ export function useLibraryAlbumState({
     loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [isPreviewLibrary, libraryAlbum, loadAlbumTracks]);
 
-  const updateAlbumMonitoringState = useCallback(
-    (albumId: string | number, result: AurralMonitoringResult) => {
-      const monitored = result?.monitored === true;
+  const patchAlbum = useCallback(
+    (albumId: string | number, patch: Partial<LibraryAlbum>) => {
       setLibrary((current) => ({
         ...current,
         albums: current.albums.map((entry) =>
-          String(entry.id) === String(albumId)
-            ? { ...entry, monitored, monitorMode: monitored ? "monitored" : "unmonitored" }
-            : entry,
+          String(entry.id) === String(albumId) ? { ...entry, ...patch } : entry,
         ),
       }));
-      clearLibraryPageCache();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
+      void invalidateLibraryViews();
       refreshLibraryActivity();
     },
     [refreshLibraryActivity, setLibrary],
+  );
+  const updateAlbumMonitoringState = useCallback(
+    (albumId: string | number, result: AurralMonitoringResult) => {
+      const monitored = result?.monitored === true;
+      patchAlbum(albumId, { monitored, monitorMode: monitored ? "monitored" : "unmonitored" });
+    },
+    [patchAlbum],
   );
   const albumMonitoring = useAurralAlbumMonitoring({
     album: libraryAlbum,
@@ -113,6 +113,17 @@ export function useLibraryAlbumState({
     });
     await loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [libraryAlbum, loadAlbumTracks]);
+
+  // A download request leaves the album monitored by whichever manager took it
+  const markAlbumRequested = async (managedBy: string) => {
+    if (!libraryAlbum) return;
+    patchAlbum(libraryAlbum.id, {
+      managedBy: managedBy === "lidarr" ? "lidarr" : "aurral",
+      monitored: true,
+      monitorMode: "monitored",
+    });
+    await reloadLibraryAlbumTracks();
+  };
 
   const albumManager = resolveAlbumManager(libraryAlbum);
   const activeManager = libraryDestination.primary;
@@ -261,15 +272,14 @@ export function useLibraryAlbumState({
 
   return {
     albumTracks,
-    hasMissingAlbumTracks,
     albumMonitoring,
     albumManager,
     activeManager,
     albumMonitored,
     libraryAlbumDownloading,
     canDownloadLibraryAlbum,
-    updateAlbumMonitoringState,
     reloadLibraryAlbumTracks,
+    markAlbumRequested,
     getAlbumMonitoringMenuItem,
   };
 }

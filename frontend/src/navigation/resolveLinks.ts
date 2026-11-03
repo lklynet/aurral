@@ -64,7 +64,6 @@ const releaseTarget = (
   state: {
     artistMbid,
     artistName,
-    focusReleaseGroupMbid: albumMbid,
     focusReleaseGroup: { id: albumMbid, title: albumName || "" },
   },
 });

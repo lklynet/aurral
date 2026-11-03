@@ -25,6 +25,7 @@ export type MergedAlbumTrack<Library, Release> = {
   key: string;
   libraryTrack: Library | null;
   releaseTrack: Release | null;
+  releaseIndex: number;
   disc: number;
   number: number;
 };
@@ -37,7 +38,6 @@ const positiveNumber = (value: unknown) => {
 export const normalizeTrackTitle = (value: unknown) =>
   String(value || "")
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "");
 
@@ -54,15 +54,12 @@ const libraryPosition = (track: MergeableLibraryTrack, libraryAlbumId: string | 
   };
 };
 
-const releaseTrackKey = (track: MergeableReleaseTrack, releaseKey: string, index: number) =>
-  String(track.id || track.mbid || `${releaseKey}-${index}`);
-
-const comparePosition = (
-  left: { disc: number; number: number | null },
-  right: { disc: number; number: number | null },
-) =>
-  left.disc - right.disc ||
-  (left.number ?? Number.MAX_SAFE_INTEGER) - (right.number ?? Number.MAX_SAFE_INTEGER);
+// A release track's id in rows and the play queue
+export const releaseTrackId = (
+  track: MergeableReleaseTrack | null | undefined,
+  releaseKey: string | undefined,
+  index: number,
+) => String(track?.id || track?.mbid || `${releaseKey}-${index}`);
 
 export function mergeAlbumTracks<
   Library extends MergeableLibraryTrack,
@@ -109,37 +106,33 @@ export function mergeAlbumTracks<
     }
     if (match) unmatched.delete(match);
     rows.push({
-      key: match ? String(match.track.id) : releaseTrackKey(releaseTrack, releaseKey, index),
+      key: match ? String(match.track.id) : releaseTrackId(releaseTrack, releaseKey, index),
       libraryTrack: match?.track ?? null,
       releaseTrack,
+      releaseIndex: index,
       disc,
       number: number ?? match?.number ?? index + 1,
       sortNumber: number ?? match?.number ?? null,
     });
   });
 
+  // A library-only track goes after the last row at or before its disc and number
   for (const entry of library) {
     if (!unmatched.has(entry)) continue;
-    const row = {
+    const after = rows.findLastIndex(
+      (row) =>
+        row.disc < entry.disc ||
+        (row.disc === entry.disc && (row.sortNumber ?? Infinity) <= (entry.number ?? Infinity)),
+    );
+    rows.splice(after + 1, 0, {
       key: String(entry.track.id),
       libraryTrack: entry.track,
       releaseTrack: null,
+      releaseIndex: -1,
       disc: entry.disc,
       number: entry.number ?? 0,
       sortNumber: entry.number,
-    };
-    const position = { disc: entry.disc, number: entry.number };
-    let insertAt = rows.length;
-    for (let index = rows.length - 1; index >= 0; index -= 1) {
-      if (
-        comparePosition({ disc: rows[index].disc, number: rows[index].sortNumber }, position) <= 0
-      ) {
-        insertAt = index + 1;
-        break;
-      }
-      insertAt = index;
-    }
-    rows.splice(insertAt, 0, row);
+    });
   }
 
   return rows.map(({ sortNumber: _sortNumber, ...row }, index) => ({

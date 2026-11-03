@@ -354,7 +354,6 @@ export function PlaylistTracks({
           state: {
             artistMbid: track.artistMbid,
             artistName: track.artistName,
-            focusReleaseGroupMbid: track.albumMbid,
             focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
           },
         }

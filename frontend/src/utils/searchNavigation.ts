@@ -101,10 +101,7 @@ export function buildArtistFocusState<Overrides extends object = Record<never, n
 }
 
 export type ReleaseFocusState = {
-  focusReleaseGroupMbid: string | number;
   focusReleaseGroup: ReturnType<typeof buildReleaseFocusState>;
-  focusTrackMbid?: string | number;
-  focusTrackTitle?: string;
 };
 
 function buildReleaseFocusState(
@@ -225,12 +222,9 @@ export function getReleaseNavigationTarget(item: SearchItem | null | undefined) 
   const state: ArtistFocusState & ReleaseFocusState & { artistMbid: string } =
     buildArtistFocusState(item, {
       artistMbid: item.artistMbid,
-      focusReleaseGroupMbid: releaseGroupMbid,
       focusReleaseGroup: buildReleaseFocusState(item, releaseGroupMbid),
     });
   const trackMbid = item.type === "track" ? item.id || item.trackMbid : null;
-  if (trackMbid) state.focusTrackMbid = trackMbid;
-  if (item.type === "track" && item.title) state.focusTrackTitle = item.title;
   return {
     pathname: albumPath(releaseGroupMbid, { track: trackMbid }),
     state,

@@ -125,10 +125,6 @@ function writeSessionFlag(key: string, active: boolean) {
   } catch {}
 }
 
-const readDiscoverFlowActive = () => readSessionFlag(DISCOVER_FLOW_ACTIVE_KEY);
-const writeDiscoverFlowActive = (active: boolean) =>
-  writeSessionFlag(DISCOVER_FLOW_ACTIVE_KEY, active);
-
 function normalizeDiscoverPath(path: string | undefined) {
   if (!path || typeof path !== "string") return "";
   const [pathname, search = ""] = path.split("?");
@@ -283,16 +279,18 @@ function DiscoverFlowLocationSync({
 export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [recentPages, setRecentPages] = useState(() => readDiscoverRecentPages());
-  const [discoverFlowActive, setDiscoverFlowActiveState] = useState(() => readDiscoverFlowActive());
+  const [discoverFlowActive, setDiscoverFlowActiveState] = useState(() =>
+    readSessionFlag(DISCOVER_FLOW_ACTIVE_KEY),
+  );
 
   const setDiscoverFlowActive = useCallback((active: boolean) => {
-    writeDiscoverFlowActive(active);
+    writeSessionFlag(DISCOVER_FLOW_ACTIVE_KEY, active);
     setDiscoverFlowActiveState(active);
   }, []);
 
   const syncFromStorage = useCallback(() => {
     setRecentPages(readDiscoverRecentPages());
-    setDiscoverFlowActiveState(readDiscoverFlowActive());
+    setDiscoverFlowActiveState(readSessionFlag(DISCOVER_FLOW_ACTIVE_KEY));
   }, []);
 
   useEffect(() => {

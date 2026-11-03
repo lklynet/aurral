@@ -1,3 +1,4 @@
+import { ALBUM_DOWNLOADING_STATUSES } from "../../../utils/albumAddAction.ts";
 import ArtworkImage from "../../../components/ArtworkImage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -20,11 +21,8 @@ import { formatReleaseWait, isAwaitingRelease } from "../../../utils/aurralAlbum
 import { formatCalendarDate } from "../../../utils/dateTime.ts";
 import { OptionalLink } from "../../../components/RouteLink";
 import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
-import type {
-  DownloadStatuses,
-  LibraryAlbum,
-  LibraryAlbumId,
-} from "../hooks/useArtistDetailsLibrary.ts";
+import type { LibraryAlbum, LibraryAlbumId } from "../hooks/useArtistDetailsLibrary.ts";
+import type { DownloadStatuses } from "../../../hooks/useDownloadStatuses";
 
 type ArtistDetailsLibraryAlbumsProps = {
   artist: ArtistDetails;
@@ -109,11 +107,7 @@ export function ArtistDetailsLibraryAlbums({
     const isComplete =
       (libraryAlbum.statistics?.percentOfTracks ?? 0) >= 100 ||
       (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0;
-    const isActiveSearch =
-      downloadStatus &&
-      ["adding", "searching", "downloading", "moving", "processing"].includes(
-        downloadStatus.status,
-      );
+    const isActiveSearch = downloadStatus && ALBUM_DOWNLOADING_STATUSES.has(downloadStatus.status);
     const awaitingRelease = isAwaitingRelease({
       ...libraryAlbum,
       trackFileCount: libraryAlbum.statistics?.trackFileCount,

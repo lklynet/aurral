@@ -58,6 +58,7 @@ import type { PlaylistSelection, PlaylistTrackIdentity } from "./components/Trac
 import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
 import type { ReleaseGroup } from "./utils";
 import type { ArtistFeedbackSource } from "../../utils/artistTaste.ts";
+import StatePanel from "../../components/StatePanel";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -446,16 +447,16 @@ function ArtistDetailsPage() {
 
   if (error) {
     return (
-      <div className="search-empty-panel" role="alert">
-        <div className="search-empty-panel__icon" aria-hidden="true">
-          <AlertCircle />
-        </div>
-        <h2 className="search-empty-panel__title">Couldn’t load this artist</h2>
-        <p className="search-empty-panel__message">{error}</p>
+      <StatePanel
+        role="alert"
+        icon={<AlertCircle />}
+        title="Couldn’t load this artist"
+        message={error}
+      >
         <RouteLink to="/search" className="btn btn-secondary">
           Back to search
         </RouteLink>
-      </div>
+      </StatePanel>
     );
   }
 

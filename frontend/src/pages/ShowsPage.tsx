@@ -14,6 +14,7 @@ import {
   SHOWS_FILTERS,
   type ShowsFilterId,
 } from "../navigation/showsNavConfig";
+import StatePanel from "../components/StatePanel";
 
 const SHOWS_PAGE_LIMIT = 60;
 
@@ -102,22 +103,21 @@ function ShowsPage() {
       />
 
       {showsData?.configured === false ? (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <MapPin className="artist-icon-lg" />
-          </div>
-          <h2 className="search-empty-panel__title">Ticketmaster not configured</h2>
-          <p className="search-empty-panel__message">
-            {canManageServer
+        <StatePanel
+          icon={<MapPin className="artist-icon-lg" />}
+          title="Ticketmaster not configured"
+          message={
+            canManageServer
               ? "Add a Ticketmaster key in Settings → Discovery to find nearby shows."
-              : "An admin needs to add a Ticketmaster key to find nearby shows."}
-          </p>
+              : "An admin needs to add a Ticketmaster key to find nearby shows."
+          }
+        >
           {canManageServer ? (
             <SettingsLink to="discovery/ticketmaster" className="btn btn-primary">
               Open Settings
             </SettingsLink>
           ) : null}
-        </div>
+        </StatePanel>
       ) : showsLoading ? (
         <SkeletonStatus label="Loading shows">
           <div className="shows-page__grid">
@@ -129,21 +129,18 @@ function ShowsPage() {
           </div>
         </SkeletonStatus>
       ) : showsError ? (
-        <div className="search-empty-panel" role="alert">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <AlertCircle />
-          </div>
-          <h2 className="search-empty-panel__title">Couldn’t load nearby shows</h2>
-          <p className="search-empty-panel__message">{showsError}</p>
-        </div>
+        <StatePanel
+          role="alert"
+          icon={<AlertCircle />}
+          title="Couldn’t load nearby shows"
+          message={showsError}
+        />
       ) : zipModeActive && !appliedZip.trim() ? (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <MapPin className="artist-icon-lg" />
-          </div>
-          <h2 className="search-empty-panel__title">Enter a ZIP or postal code</h2>
-          <p className="search-empty-panel__message">Enter a ZIP or postal code.</p>
-        </div>
+        <StatePanel
+          icon={<MapPin className="artist-icon-lg" />}
+          title="Enter a ZIP or postal code"
+          message="Enter a ZIP or postal code."
+        />
       ) : hasAnyShows ? (
         <section className="shows-page__content">
           {shows.length > 0 ? (
@@ -155,23 +152,19 @@ function ShowsPage() {
               ))}
             </div>
           ) : (
-            <div className="search-empty-panel">
-              <div className="search-empty-panel__icon" aria-hidden="true">
-                <Music className="artist-icon-lg" />
-              </div>
-              <h2 className="search-empty-panel__title">No matches in this filter</h2>
-              <p className="search-empty-panel__message">{emptyMessage}</p>
-            </div>
+            <StatePanel
+              icon={<Music className="artist-icon-lg" />}
+              title="No matches in this filter"
+              message={emptyMessage}
+            />
           )}
         </section>
       ) : (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <Music className="artist-icon-lg" />
-          </div>
-          <h2 className="search-empty-panel__title">No upcoming nearby matches</h2>
-          <p className="search-empty-panel__message">{emptyMessage}</p>
-        </div>
+        <StatePanel
+          icon={<Music className="artist-icon-lg" />}
+          title="No upcoming nearby matches"
+          message={emptyMessage}
+        />
       )}
     </div>
   );

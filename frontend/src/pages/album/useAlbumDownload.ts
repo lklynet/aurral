@@ -1,5 +1,4 @@
-import { useCallback, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import {
   requestAlbumFromSearch,
@@ -44,86 +43,59 @@ export function useAlbumDownload({
     ownerConflictState && ownerConflictState.key === conflictKey
       ? ownerConflictState.conflict
       : null;
-  const { mutateAsync: requestAlbum } = useMutation({ mutationFn: requestAlbumFromSearch });
-
-  const requestLibraryAlbum = useCallback(
-    async (album: LibraryAlbum, managedBy: string) => {
-      const title = album.title || "album";
-      const result = await requestAlbum({
-        ...buildAurralAlbumRetryPayload({ album, artist: libraryArtist }),
-        managedBy,
-        triggerSearch: managedBy === "lidarr",
-      });
-      const queued = result?.jobIds?.length || 0;
-      showSuccess(
-        managedBy === "lidarr"
-          ? describeAlbumRequestResult(result, title).message
-          : queued > 0
-            ? `Queued ${queued} ${queued === 1 ? "track" : "tracks"} from ${title}`
-            : `Monitoring ${title}`,
-      );
-      await onLibraryAlbumRequested(managedBy);
-    },
-    [libraryArtist, onLibraryAlbumRequested, requestAlbum, showSuccess],
-  );
-
-  const requestReleaseAlbum = useCallback(
-    async (albumMbid: string, managedBy: string) => {
-      const result = await requestAlbum(
-        buildAlbumRequestPayload({
-          albumMbid,
-          albumName: albumTitle,
-          artistMbid,
-          artistName,
+  const downloadAlbum = async (managedBy: string) => {
+    if (requesting || !(libraryAlbum || releaseGroupMbid)) return;
+    const title = albumTitle || "album";
+    setRequesting(true);
+    try {
+      if (libraryAlbum) {
+        const result = await requestAlbumFromSearch({
+          ...buildAurralAlbumRetryPayload({ album: libraryAlbum, artist: libraryArtist }),
           managedBy,
-          triggerSearch,
-        }),
-      );
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.libraryAlbumLookup([albumMbid]),
-      });
-      const outcome = describeAlbumRequestResult(result, albumTitle || "album");
-      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
-    },
-    [albumTitle, artistMbid, artistName, requestAlbum, showInfo, showSuccess, triggerSearch],
-  );
-
-  const downloadAlbum = useCallback(
-    async (managedBy: string) => {
-      if (requesting) return;
-      if (!libraryAlbum && !releaseGroupMbid) return;
-      setRequesting(true);
-      try {
-        if (libraryAlbum) await requestLibraryAlbum(libraryAlbum, managedBy);
-        else await requestReleaseAlbum(releaseGroupMbid!, managedBy);
-      } catch (requestError) {
-        const conflict = settleLibraryOwnerConflict(requestError);
-        if (conflict) {
-          setOwnerConflictState({ key: conflictKey, conflict });
-          showInfo(`${albumTitle || "Album"}: ${conflict.message}`);
-          return;
-        }
-        showError(
-          `Could not download ${albumTitle || "the album"}: ${
-            getApiErrorMessage(requestError) || "Try again."
-          }`,
+          triggerSearch: managedBy === "lidarr",
+        });
+        const queued = result?.jobIds?.length || 0;
+        showSuccess(
+          managedBy === "lidarr"
+            ? describeAlbumRequestResult(result, title).message
+            : queued > 0
+              ? `Queued ${queued} ${queued === 1 ? "track" : "tracks"} from ${title}`
+              : `Monitoring ${title}`,
         );
-      } finally {
-        setRequesting(false);
+        await onLibraryAlbumRequested(managedBy);
+      } else if (releaseGroupMbid) {
+        const result = await requestAlbumFromSearch(
+          buildAlbumRequestPayload({
+            albumMbid: releaseGroupMbid,
+            albumName: albumTitle,
+            artistMbid,
+            artistName,
+            managedBy,
+            triggerSearch,
+          }),
+        );
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.libraryAlbumLookup([releaseGroupMbid]),
+        });
+        const outcome = describeAlbumRequestResult(result, title);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       }
-    },
-    [
-      albumTitle,
-      conflictKey,
-      libraryAlbum,
-      releaseGroupMbid,
-      requestLibraryAlbum,
-      requestReleaseAlbum,
-      requesting,
-      showError,
-      showInfo,
-    ],
-  );
+    } catch (requestError) {
+      const conflict = settleLibraryOwnerConflict(requestError);
+      if (conflict) {
+        setOwnerConflictState({ key: conflictKey, conflict });
+        showInfo(`${albumTitle || "Album"}: ${conflict.message}`);
+        return;
+      }
+      showError(
+        `Could not download ${albumTitle || "the album"}: ${
+          getApiErrorMessage(requestError) || "Try again."
+        }`,
+      );
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   return { downloadAlbum, requesting, ownerConflict };
 }

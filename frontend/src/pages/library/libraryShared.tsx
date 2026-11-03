@@ -8,7 +8,6 @@ import { libraryPreviewData, libraryPreviewFavorites } from "../libraryPreviewDa
 import type { LibraryViewData } from "../libraryViewQuery.ts";
 import type { WebSocketChannelMessage } from "../../../../backend/services/websocketService.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../../utils/libraryPageData.ts";
-import type { getLibraryPage } from "../../utils/api/endpoints/library.ts";
 
 export type LibraryPageTrack = LibraryTrack & {
   durationMs?: number | null;
@@ -27,44 +26,7 @@ export type LibraryTarget = {
 
 export type LibraryRemoval = LibraryTarget & { manager?: string | null };
 
-export type LibraryInfoState = LibraryTarget & {
-  artist?: LibraryArtist | null;
-  album?: LibraryAlbum | null;
-  trackNumber?: number | null;
-};
-
-export type ArtworkEditorState = {
-  kind: "album" | "track";
-  id: string | number;
-  title: string;
-  currentArtwork: string;
-  hasCustomArtwork: boolean;
-  fallbackArtwork: string;
-};
-
 export type TrackDownloadState = { jobId: string | null; status: string };
-
-export type LibraryLookup = {
-  albumsById: Map<string, LibraryAlbum>;
-  artistsById: Map<string, LibraryArtist>;
-};
-
-export type LibraryCollection = { tracks: LibraryPageTrack[]; lookup: LibraryLookup | null };
-
-export type LibraryPageResult = Awaited<ReturnType<typeof getLibraryPage>>;
-
-export type PlaylistTarget =
-  | { mode: "new"; name: string }
-  | { mode: "existing"; playlistId: string };
-
-export type PlaylistRemoveTarget = { playlistId?: string; jobId?: string };
-
-export type SaveTracksOptions = {
-  key: string;
-  label: string;
-  defaultName: string;
-  lookup?: LibraryLookup | null;
-};
 
 export const text = (value: unknown) => String(value || "").trim();
 
@@ -74,18 +36,6 @@ export const isAlbumArtistCredit = (
 ) =>
   !text(track?.artistName) ||
   text(track.artistName).toLowerCase() === text(artist?.name).toLowerCase();
-
-export const trackArtistMbid = (track: LibraryTrack, artist: LibraryArtist | null | undefined) =>
-  isAlbumArtistCredit(track, artist) ? artist?.mbid || null : null;
-
-export const hasAurralTrackFile = (track: LibraryTrack) =>
-  (track?.files || []).some((file) => file.source === "aurral");
-
-export const hasDeletableTrackFile = (track: LibraryTrack) =>
-  (track?.files || []).some((file) => file.available && file.source !== "readonly");
-
-export const firstAvailableAurralFile = (track: LibraryTrack) =>
-  (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
 
 export const trackDurationMs = (track: LibraryPageTrack) => {
   const fileDurationMs = (track?.files || []).find(
@@ -164,12 +114,14 @@ export function Cover({
   round = false,
   compact = false,
   thumbnail = true,
+  onError,
 }: {
   src?: string | null;
   label?: string | null;
   round?: boolean;
   compact?: boolean;
   thumbnail?: boolean;
+  onError?: () => void;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (src && src !== failedSrc) {
@@ -180,7 +132,10 @@ export function Cover({
         alt=""
         loading="lazy"
         decoding="async"
-        onError={() => setFailedSrc(src)}
+        onError={() => {
+          setFailedSrc(src);
+          onError?.();
+        }}
       />
     );
   }
@@ -209,15 +164,21 @@ export function EmptyState({ title, message }: { title: string; message: string 
   );
 }
 
-const handleLibraryScanMessage = (message: WebSocketChannelMessage) => {
-  if (message?.type !== "library_scan_completed") return;
+// Library pages and views reload; album track lists only refresh when next opened
+export const invalidateLibraryViews = () => {
   clearLibraryPageCache();
-  queryClient.invalidateQueries({
+  void queryClient.invalidateQueries({
     queryKey: queryKeys.libraryAlbumTracksPrefix,
     refetchType: "none",
   });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
+  ]);
+};
+
+const handleLibraryScanMessage = (message: WebSocketChannelMessage) => {
+  if (message?.type === "library_scan_completed") void invalidateLibraryViews();
 };
 
 // Library views reload once a library scan finishes

@@ -10,35 +10,18 @@ export type AlbumRouteState = {
   libraryArtist?: unknown;
   seed?: RouteSeed;
   focusReleaseGroup?: Partial<ReleaseFocusState["focusReleaseGroup"]>;
-  focusTrackMbid?: string | number | null;
 };
 
-export function LegacyLibraryAlbumRedirect() {
-  const { albumId } = useParams();
+// Old album URLs (/library/album/:ref, /artist/:mbid/release/:ref) open the album page
+export function LegacyAlbumRedirect() {
+  const { ref, mbid } = useParams();
   const location = useLocation();
+  const state: AlbumRouteState | null = location.state;
   return (
     <Navigate
       replace
-      to={{ pathname: albumPath(albumId || ""), search: location.search }}
-      state={location.state}
-    />
-  );
-}
-
-export function LegacyReleaseRedirect() {
-  const { mbid, releaseMbid } = useParams();
-  const location = useLocation();
-  const state: AlbumRouteState = location.state || {};
-  const search = new URLSearchParams(location.search);
-  if (state.focusTrackMbid && !search.has("track")) {
-    search.set("track", String(state.focusTrackMbid));
-  }
-  const query = search.toString();
-  return (
-    <Navigate
-      replace
-      to={{ pathname: albumPath(releaseMbid || ""), search: query ? `?${query}` : "" }}
-      state={{ ...state, artistMbid: state.artistMbid || mbid || null }}
+      to={{ pathname: albumPath(ref || ""), search: location.search }}
+      state={mbid ? { ...state, artistMbid: state?.artistMbid || mbid } : state}
     />
   );
 }

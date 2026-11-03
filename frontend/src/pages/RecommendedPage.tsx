@@ -38,6 +38,7 @@ import {
 import { RecommendedList } from "./RecommendedList";
 import { useDiscoveryRecommendations, type DiscoverData } from "./useDiscoveryRecommendations";
 import "./RecommendedPage.css";
+import StatePanel from "../components/StatePanel";
 
 type Recommendations = ReturnType<typeof useDiscoveryRecommendations>;
 type FeedbackProps = Pick<Recommendations, "artistFeedbackLookup" | "handleDiscoveryFeedback">;
@@ -412,42 +413,44 @@ function RecommendedView({ view }: { view: "for-you" | "all" }) {
     if (!data || recommendations.length === 0) {
       if (error) {
         return (
-          <div className="search-empty-panel" role="alert">
-            <h2 className="search-empty-panel__title">Recommendations didn’t load</h2>
-            <p className="search-empty-panel__message">{error}</p>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={isFetching}
-              onClick={() => refetch()}
-            >
-              Try again
-            </button>
-          </div>
+          <StatePanel
+            role="alert"
+            title="Recommendations didn’t load"
+            message={error}
+            onRetry={() => refetch()}
+            retrying={isFetching}
+          />
         );
       }
       if (updating) {
         return (
-          <div className="search-empty-panel" role="status">
-            <h2 className="search-empty-panel__title">Building your recommendations</h2>
-            <p className="search-empty-panel__message">
-              <DotLoader size="xs" label={null} />{" "}
-              {discoveryStatus?.updateProgressMessage || "This takes a few minutes."}
-            </p>
-          </div>
+          <StatePanel
+            role="status"
+            title="Building your recommendations"
+            message={
+              <>
+                <DotLoader size="xs" label={null} />{" "}
+                {discoveryStatus?.updateProgressMessage || "This takes a few minutes."}
+              </>
+            }
+          />
         );
       }
       return (
-        <div className="search-empty-panel" role="status">
-          <h2 className="search-empty-panel__title">No recommendations yet</h2>
-          <p className="search-empty-panel__message">
-            Add artists you like, or{" "}
-            <SettingsLink to="listening/spotify">import your Spotify history</SettingsLink>.
-          </p>
+        <StatePanel
+          role="status"
+          title="No recommendations yet"
+          message={
+            <>
+              Add artists you like, or{" "}
+              <SettingsLink to="listening/spotify">import your Spotify history</SettingsLink>.
+            </>
+          }
+        >
           <RouteLink to="/search" className="btn btn-primary">
             Search artists
           </RouteLink>
-        </div>
+        </StatePanel>
       );
     }
     return view === "all" ? (

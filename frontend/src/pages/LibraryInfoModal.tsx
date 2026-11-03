@@ -8,6 +8,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { libraryTracksClient } from "../utils/api/clients/libraryTracks.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
+import { formatDuration } from "./library/libraryShared.tsx";
 
 type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
@@ -91,11 +92,6 @@ const durationMs = (
   if (Number(track?.metadata?.durationMs) > 0) return Number(track.metadata?.durationMs);
   const seconds = Number(track?.metadata?.duration);
   return seconds > 0 ? Math.round(seconds * 1000) : 0;
-};
-
-const formatDuration = (duration: number | null | undefined) => {
-  const seconds = Math.floor(Number(duration || 0) / 1000);
-  return seconds ? Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0") : "";
 };
 
 const formatQuality = (quality: LibraryQuality | string | null | undefined) => {

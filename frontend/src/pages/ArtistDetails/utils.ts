@@ -387,7 +387,7 @@ export const formatAlbumDuration = (durationMs: number) => {
   return `${minutes} min`;
 };
 
-export const getReleaseTypeLabel = (release: ReleaseGroup | null | undefined) => {
+const getReleaseTypeLabel = (release: ReleaseGroup | null | undefined) => {
   const types = [
     release?.["primary-type"],
     ...(Array.isArray(release?.["secondary-types"]) ? release["secondary-types"] : []),
