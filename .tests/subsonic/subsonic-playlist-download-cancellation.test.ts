@@ -62,7 +62,6 @@ beforeEach(() => {
   resetDatabase(db);
   downloadTracker.clearAll();
   invalidateFlowPlaylistConfigCache();
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {});
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
 });

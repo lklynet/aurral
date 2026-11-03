@@ -29,7 +29,7 @@
 - **Flows** turn your taste into scheduled playlists that download themselves.
 - **Import** playlists from Spotify, YouTube Music, Last.fm, and ListenBrainz.
 - **Library** that Aurral manages for you. Lidarr is optional.
-- **Listen** in the browser, any Subsonic client, Navidrome, Plex, or Jellyfin.
+- **Listen** in the browser, any Subsonic client, or Navidrome, Plex, and Jellyfin through the Library folder.
 - **Share** anything as a link, and let friends play it from your Library.
 
 Downloads through yt-dlp, slskd, Usenet, Tidarr, and deemix. Everything is optional. [Read the docs](https://docs.aurral.org/) for the full tour.

@@ -14,13 +14,13 @@ const [
   { db },
   { downloadTracker },
   { flowPlaylistConfig },
-  { collectPlaybackPlaylistTracks },
+  { collectPlaylistFileTracks },
 ] = await setupIsolatedBackend(
-  "playback-playlist-tracks",
+  "playlist-file-tracks",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/services/playback/playbackPlaylistTracks.ts"),
+  () => import("../../backend/services/playlists/playlistFileTracks.ts"),
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -57,7 +57,7 @@ test("preserves static playlist track order", async () => {
   downloadTracker.setDone(secondJobId, secondPath, "Album");
   downloadTracker.setDone(firstJobId, firstPath, "Album");
 
-  const entries = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
+  const entries = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
   assert.deepEqual(
     entries.map((entry) => entry.path),
     [secondPath, firstPath],
@@ -80,7 +80,7 @@ test("keeps completed tracks after metadata correction", async () => {
   });
   downloadTracker.setDone(jobId, trackPath, "Resolved album");
 
-  const entries = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
+  const entries = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
   assert.deepEqual(
     entries.map((entry) => entry.path),
     [trackPath],
@@ -103,7 +103,7 @@ test("normalizes empty migrated names", async () => {
   ).run(jobId);
   downloadTracker._load();
 
-  const tracks = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
+  const tracks = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
   assert.equal(tracks[0].artist, "Unknown Artist");
   assert.equal(tracks[0].title, "Unknown Track");
 });

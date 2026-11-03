@@ -27,8 +27,6 @@ import {
   ListenHistoryError,
   updateListenHistory,
 } from "../services/listeningHistory.ts";
-import { disconnectUserPlex, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
-import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
 
@@ -101,14 +99,8 @@ export default new Hono<AppEnv>()
   .get("/", requireAuth, requireAdmin, async (c) => {
     try {
       const users = userOps.getAllUsers();
-      const globalPlexAccount = await resolveGlobalPlexAccount();
       return c.json(
-        users.map((user) => ({
-          ...user,
-          listenHistory: getListenHistory(user.id),
-          plexLink: plexConnectionStore.getPublicStatus(user.id),
-          plexGlobalAccount: globalPlexAccount,
-        })),
+        users.map((user) => ({ ...user, listenHistory: getListenHistory(user.id) })),
         200,
       );
     } catch (e) {
@@ -614,15 +606,6 @@ export default new Hono<AppEnv>()
       );
     }
 
-    if (identity.providerType === "plex") {
-      const result = await disconnectUserPlex(c.var.user.id, {
-        context: "from connected accounts",
-      });
-      if (!result.disconnected) {
-        return c.json({ error: result.error, message: result.message }, 400);
-      }
-    } else {
-      userIdentityOps.unlink(identityId);
-    }
+    userIdentityOps.unlink(identityId);
     return c.json({ success: true }, 200);
   });

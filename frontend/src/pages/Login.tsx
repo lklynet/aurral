@@ -4,11 +4,6 @@ import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import { getAppBasePath } from "../utils/basePath.ts";
-import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
-import { invalidateBootstrapCache } from "../utils/appHealth.ts";
-import { getApiErrorBody, getApiErrorText } from "../utils/api/errors.ts";
-import { parseResponse } from "hono/client";
-import { authClient } from "../utils/api/clients/auth.ts";
 import { DotLoader } from "../components/DotLoader";
 import { rememberShareImport } from "../utils/shareLink.ts";
 
@@ -25,15 +20,13 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showLocalForm, setShowLocalForm] = useState(false);
-  const [plexConnecting, setPlexConnecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [startingSso, setStartingSso] = useState(false);
-  const { login, refreshAuth, bootstrap } = useAuth();
+  const { login, bootstrap } = useAuth();
   const oidcEnabled = !!bootstrap?.oidcEnabled;
   const googleEnabled = !!bootstrap?.googleLoginEnabled;
-  const plexEnabled = !!bootstrap?.plexLoginEnabled;
   const ssoOnly = !!bootstrap?.ssoOnly;
-  const hasSsoOption = oidcEnabled || googleEnabled || plexEnabled;
+  const hasSsoOption = oidcEnabled || googleEnabled;
   const localFormVisible = !ssoOnly || !hasSsoOption || showLocalForm;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -67,66 +60,6 @@ const Login = () => {
     window.location.assign(buildApiUrl("/api/auth/google/login"));
   };
 
-  const handlePlexLogin = async () => {
-    setError("");
-    const popup = window.open("about:blank", "plex-login", "width=600,height=700");
-    if (!popup) {
-      setError("Allow popups for this site to sign in with Plex.");
-      return;
-    }
-    setPlexConnecting(true);
-    try {
-      let pin;
-      try {
-        pin = await parseResponse(authClient.plex.login.pin.$post({ json: {} }));
-      } catch (err) {
-        if (popup && !popup.closed) popup.close();
-        setError(
-          getApiErrorText(err, "message") ||
-            getApiErrorText(err, "error") ||
-            "Failed to start Plex sign-in",
-        );
-        return;
-      }
-      popup.location.href = pin.authUrl;
-      const deadline = Date.now() + 3 * 60 * 1000;
-      let result = null;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        try {
-          const res = await parseResponse(authClient.plex.login.complete.$post());
-          if ("pending" in res) continue;
-          result = res;
-          break;
-        } catch (err) {
-          const body = getApiErrorBody(err);
-          if (body && "retryable" in body && body.retryable) continue;
-          if (popup && !popup.closed) popup.close();
-          setError(
-            getApiErrorText(err, "message") ||
-              getApiErrorText(err, "error") ||
-              "Plex sign-in failed",
-          );
-          return;
-        }
-      }
-      if (popup && !popup.closed) popup.close();
-      if (!result?.token) {
-        setError("Plex sign-in timed out. Try again.");
-        return;
-      }
-      setStoredAuth({ token: result.token });
-      invalidateBootstrapCache();
-      const refreshed = await refreshAuth();
-      if (!refreshed) {
-        clearAuthStorage();
-        setError("Signed in with Plex, but could not load your account. Try again.");
-      }
-    } finally {
-      setPlexConnecting(false);
-    }
-  };
-
   return (
     <main className="login-page">
       <div className="login-card">
@@ -155,16 +88,6 @@ const Login = () => {
                 onClick={handleGoogleLogin}
               >
                 Sign in with Google
-              </button>
-            )}
-            {plexEnabled && (
-              <button
-                type="button"
-                className="btn btn-secondary btn--full login-sso-button"
-                onClick={handlePlexLogin}
-                disabled={plexConnecting}
-              >
-                {plexConnecting ? "Waiting for Plex…" : "Sign in with Plex"}
               </button>
             )}
             {localFormVisible && (

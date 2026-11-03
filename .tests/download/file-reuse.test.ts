@@ -710,11 +710,7 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
 
-  const result = await moveHandedOverTracksToLidarr({
-    downloadRoot,
-    existingFileMode: "reuse",
-    deletionGuard: { canDelete: async () => true },
-  });
+  const result = await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });
 
   assert.deepEqual(result, { moved: 1, deleted: 1 });
   assert.equal(
@@ -725,7 +721,7 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   assert.equal(await fs.readFile(lidarrPath, "utf8"), "lidarr");
 });
 
-test("Aurral copies stay when the album was not handed over or playback still uses them", async () => {
+test("Aurral copies stay when the album was not handed over", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
@@ -734,22 +730,7 @@ test("Aurral copies stay when the album was not handed over or playback still us
     trackedJob(downloadTracker, notHandedOver.jobId).finalPath,
     notHandedOver.aurralPath,
   );
-
-  await resetDatabase(db);
-  downloadTracker.clearAll();
-  const inUse = await seedHandoverAlbum();
-  const result = await moveHandedOverTracksToLidarr({
-    downloadRoot,
-    existingFileMode: "reuse",
-    deletionGuard: { canDelete: async () => false },
-  });
-
-  assert.deepEqual(result, { moved: 1, deleted: 0 });
-  assert.equal(
-    path.resolve(trackedJob(downloadTracker, inUse.jobId).finalPath!),
-    path.resolve(inUse.lidarrPath),
-  );
-  assert.equal(await fileExists(inUse.aurralPath), true);
+  assert.equal(await fileExists(notHandedOver.aurralPath), true);
 });
 
 test("turning Lidarr off requeues downloads that used a Lidarr file", async () => {

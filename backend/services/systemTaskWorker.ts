@@ -139,29 +139,31 @@ export async function processSystemTask(
       await runDueImportSourceSyncs();
       return;
     }
-    case "playback-library-scan": {
-      const { playlistManager } = await import("./playlists/playlistManager.ts");
-      playlistManager.updateConfig();
-      const results = await playlistManager.scanLibrary(
-        stringList(payload.folders) ?? playlistManager.libraryRoots(),
-        stringList(payload.destinations),
-      );
-      const failures = (results || []).filter((result) => !result.ok);
-      if (failures.length) {
-        throw new Error(
-          failures.map((result) => `${result.destination}: ${result.error!.message}`).join("; "),
-        );
+    case "playback-library-scan":
+      return;
+    case "history-server-sync": {
+      const { HISTORY_SERVER_PROVIDERS, syncAllHistoryServers, syncHistoryServer } =
+        await import("./historyServers.ts");
+      if (
+        typeof payload.userId === "number" &&
+        v.is(v.picklist(HISTORY_SERVER_PROVIDERS), payload.provider)
+      ) {
+        await syncHistoryServer(payload.userId, payload.provider);
+      } else {
+        await syncAllHistoryServers();
       }
+      return;
+    }
+    case "playback-server-cleanup": {
+      const { cleanUpPlaybackServers } = await import("./playbackServerCleanup.ts");
+      await cleanUpPlaybackServers();
       return;
     }
     case "playback-playlist-sync": {
       const { playlistManager } = await import("./playlists/playlistManager.ts");
-      playlistManager.updateConfig();
       await playlistManager.syncPlaylists({
         entityIds: stringList(payload.entityIds),
-        destinations: stringList(payload.destinations),
-        chain: stringOrNull(payload.chain),
-        attempt: typeof payload.attempt === "number" ? payload.attempt : undefined,
+        rewrite: payload.rewrite === true,
       });
       return;
     }

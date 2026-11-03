@@ -3,7 +3,6 @@ import PillToggle from "../../../../components/PillToggle";
 import { DotLoader } from "../../../../components/DotLoader";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { isReauthRequiredError, promptReauth } from "../../../../utils/reauth.ts";
-import { AdminPlexLinkField } from "../../components/AdminPlexLinkField";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../../constants";
@@ -46,7 +45,6 @@ export function describeUser(user: SettingsUser, ssoEnabled: boolean) {
         ? "Awaiting SSO claim"
         : "No SSO identity"
       : null,
-    user.plexLink.lastError ? "Plex reconnect needed" : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -288,7 +286,6 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
             </button>
           </SettingsActions>
         </PermissionsGroup>
-        <AdminPlexLinkField user={user} />
         {user.role !== "admin" ? (
           <SettingsGroup>
             <SettingsActions>

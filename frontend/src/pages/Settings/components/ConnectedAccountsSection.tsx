@@ -19,7 +19,6 @@ const unlinkIdentity = (id: number) =>
 const PROVIDER_LABELS: Partial<Record<string, string>> = {
   oidc: "Single sign-on",
   google: "Google",
-  plex: "Plex",
 };
 
 const providerLabel = (identity: Identity) =>

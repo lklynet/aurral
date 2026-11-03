@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { test, afterAll, vi } from "vite-plus/test";
+import { test, afterAll } from "vite-plus/test";
+import fs from "node:fs/promises";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
@@ -8,14 +9,14 @@ const [
   honkerDb,
   { dbOps },
   { flowPlaylistConfig },
-  { NavidromePlaybackDestination },
+  { playlistManager },
   { processSystemTask },
 ] = await setupIsolatedBackend(
   "honker-db-config",
   () => import("../../backend/services/honkerDb.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/services/playback/navidromePlaybackDestination.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
 );
 
@@ -135,27 +136,13 @@ test("startup only queues due bootstrap work and a pending migration", () => {
 
 test("playlists publish from the startup task, not when a process loads the playlist manager", async () => {
   dbOps.updateSettings({
-    integrations: {
-      navidrome: { url: "http://navidrome.invalid", username: "test", password: "password" },
-    },
     flows: [],
     sharedPlaylists: [],
   });
   const flow = flowPlaylistConfig.createFlow({ name: "Startup Flow", size: 10 });
   flowPlaylistConfig.setEnabled(flow.id, true);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Startup Playlist" });
-  const calls: string[] = [];
-  vi.spyOn(NavidromePlaybackDestination.prototype, "ensureLibrary").mockImplementation(async () => {
-    calls.push("ensure library");
-    return { ok: true };
-  });
-  vi.spyOn(NavidromePlaybackDestination.prototype, "publishPlaylist").mockImplementation(
-    async (snapshot) => {
-      assert.ok(snapshot != null);
-      calls.push(String(snapshot.entityId));
-      return { ok: true };
-    },
-  );
+  const files = () => fs.readdir(playlistManager.libraryRoot).catch(() => []);
 
   const nodeEnv = process.env.NODE_ENV;
   delete process.env.NODE_ENV;
@@ -166,16 +153,22 @@ test("playlists publish from the startup task, not when a process loads the play
   } finally {
     process.env.NODE_ENV = nodeEnv;
   }
-  assert.deepEqual([...calls], []);
+  assert.deepEqual(await files(), []);
 
   await processSystemTask({ kind: "playlist-startup-publish" });
-  assert.deepEqual([...calls], []);
+  assert.deepEqual(await files(), []);
   const [sync] = honkerDb
     .listHonkerJobs("playback")
     .filter((job) => job.payload?.kind === "playback-playlist-sync");
-  assert.deepEqual(sync.payload, { kind: "playback-playlist-sync", entityIds: null, attempt: 0 });
+  assert.deepEqual(sync.payload, {
+    kind: "playback-playlist-sync",
+    entityIds: null,
+    rewrite: false,
+  });
   honkerDb.getPlaybackTaskQueue().cancel(sync.id);
   await processSystemTask(sync.payload);
-  assert.equal(calls[0], "ensure library");
-  assert.deepEqual(calls.slice(1).sort(), [flow.id, playlist.id].sort());
+  assert.deepEqual((await files()).filter((file) => file.endsWith(".m3u")).sort(), [
+    `${flow.name}.m3u`,
+    `${playlist.name}.m3u`,
+  ]);
 });

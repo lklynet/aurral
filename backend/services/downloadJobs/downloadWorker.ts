@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "node:fs/promises";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
@@ -793,16 +794,11 @@ export class DownloadWorker {
           `playlist-finalize:${playlistKey}`,
           async () => {
             console.log(
-              `[DownloadWorker] All jobs complete for ${playlistType}, queueing media server playlist sync`,
+              `[DownloadWorker] All jobs complete for ${playlistType}, queueing playlist file sync`,
             );
-            try {
-              const { removeUnusedPlaybackFiles, createPlaybackDeletionGuard } =
-                await import("../playback/playbackFileRetention.ts");
-              await removeUnusedPlaybackFiles(
-                path.join(this.downloadRoot, "_fallback"),
-                createPlaybackDeletionGuard({ playlistRoot: this.downloadRoot }),
-              );
-            } catch {}
+            await fs
+              .rm(path.join(this.downloadRoot, "_fallback"), { recursive: true, force: true })
+              .catch(() => {});
             try {
               playlistManager.requestPlaylistSync([playlistType]);
               if (flowPlaylistConfig.isEnabled(playlistType)) {
@@ -810,7 +806,7 @@ export class DownloadWorker {
               }
             } catch (error) {
               console.error(
-                `[DownloadWorker] Failed to queue media server playlist sync for ${playlistType}:`,
+                `[DownloadWorker] Failed to queue playlist file sync for ${playlistType}:`,
                 asAppError(error)?.message,
               );
             }

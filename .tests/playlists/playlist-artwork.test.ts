@@ -48,39 +48,9 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function makeManager() {
-  const manager = Object.assign(new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER), {
-    __artworkUploads: [] as { id: string; size?: number; filename?: string; deleted?: boolean }[],
-  });
-  const client = {
-    isConfigured: () => true,
-    async ensureAurralLibrary() {},
-    async getPlaylists() {
-      return [];
-    },
-    async findSong() {
-      return null;
-    },
-    async createPlaylist(name: string) {
-      return { id: name, name };
-    },
-    async updatePlaylist() {},
-    async deletePlaylist() {},
-    async uploadPlaylistArtwork(id: string, data: Buffer, filename: string) {
-      manager.__artworkUploads.push({ id, size: data.length, filename });
-    },
-    async deletePlaylistArtwork(id: string) {
-      manager.__artworkUploads.push({ id, deleted: true });
-    },
-    async scanLibrary() {},
-  };
-  manager.navidromeDestination.client = client as unknown as NonNullable<
-    typeof manager.navidromeDestination.client
-  >;
-  return manager;
-}
+const makeManager = () => new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
 
-test("writes WebP artwork for flows and playlists without M3U files", async () => {
+test("writes WebP artwork for flows and playlists", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Late Night",
     enabled: false,
@@ -96,17 +66,15 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   await manager.syncPlaylists();
 
   const flowName = manager.getPlaylistName(flow.id);
-  const flowBase = manager._sanitize(flowName);
+  const flowBase = manager._getPlaylistBaseName(flowName);
   const flowWebp = path.join(manager.libraryRoot, `${flowBase}.webp`);
 
   const playlistName = manager.getPlaylistName(playlist.id);
-  const playlistBase = manager._sanitize(playlistName);
+  const playlistBase = manager._getPlaylistBaseName(playlistName);
   const playlistWebp = path.join(manager.libraryRoot, `${playlistBase}.webp`);
 
   await assert.doesNotReject(() => fs.access(flowWebp));
   await assert.doesNotReject(() => fs.access(playlistWebp));
-  await assert.rejects(() => fs.access(path.join(manager.libraryRoot, `${flowBase}.m3u`)));
-  await assert.rejects(() => fs.access(path.join(manager.libraryRoot, `${playlistBase}.m3u`)));
 
   const flowMeta = await sharp(flowWebp).metadata();
   assert.equal(flowMeta.width, 1000);
@@ -216,7 +184,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   await manager.syncPlaylists();
 
   const oldName = manager.getPlaylistName(flow.id);
-  const oldBase = manager._sanitize(oldName);
+  const oldBase = manager._getPlaylistBaseName(oldName);
   const oldWebp = path.join(manager.libraryRoot, `${oldBase}.webp`);
   await assert.doesNotReject(() => fs.access(oldWebp));
 
@@ -224,7 +192,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   await manager.syncPlaylists();
 
   const newName = manager.getPlaylistName(flow.id);
-  const newBase = manager._sanitize(newName);
+  const newBase = manager._getPlaylistBaseName(newName);
   const newWebp = path.join(manager.libraryRoot, `${newBase}.webp`);
   await assert.doesNotReject(() => fs.access(newWebp));
 
@@ -241,7 +209,7 @@ test("writes sidecar artwork for draft flows without playlists", async () => {
   await manager.syncPlaylists();
 
   const playlistName = manager.getPlaylistName(flow.id);
-  const base = manager._sanitize(playlistName);
+  const base = manager._getPlaylistBaseName(playlistName);
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
   const webp = path.join(manager.libraryRoot, `${base}.webp`);
 
@@ -259,10 +227,10 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   const manager = makeManager();
   await manager.syncPlaylists();
 
-  const base = manager._sanitize(manager.getPlaylistName(flow.id));
+  const base = manager._getPlaylistBaseName(manager.getPlaylistName(flow.id));
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
   const webp = path.join(manager.libraryRoot, `${base}.webp`);
-  await assert.rejects(() => fs.access(m3u));
+  await assert.doesNotReject(() => fs.access(m3u));
   await assert.doesNotReject(() => fs.access(webp));
 
   flowPlaylistConfig.setEnabled(flow.id, false);
@@ -283,7 +251,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
 
   const flowWebp = path.join(
     manager.libraryRoot,
-    `${manager._sanitize(manager.getPlaylistName(flow.id))}.webp`,
+    `${manager._getPlaylistBaseName(manager.getPlaylistName(flow.id))}.webp`,
   );
   await assert.doesNotReject(() => fs.access(flowWebp));
 
@@ -344,58 +312,6 @@ test("renaming redraws a generated cover with its new title and the same design"
   assert.deepEqual(manager.getArtworkPick(playlist.id), pick);
   assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.title, "After");
   if (newFile.safePath !== oldFile.safePath) await assert.rejects(fs.access(oldFile.safePath));
-});
-
-test("syncs artwork changes to the existing Navidrome playlist", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Artwork API" });
-  const manager = makeManager();
-  await manager.syncPlaylists();
-  manager.__artworkUploads.length = 0;
-
-  await manager.generateArtwork(playlist.id);
-  assert.equal(manager.__artworkUploads.length, 1);
-  assert.deepEqual(manager.__artworkUploads[0], {
-    id: "Artwork API",
-    size: manager.__artworkUploads[0].size,
-    filename: "Artwork API.webp",
-  });
-
-  await manager.removeArtwork(playlist.id);
-  assert.deepEqual(manager.__artworkUploads.at(-1), { id: "Artwork API", deleted: true });
-});
-
-test("automatic cover changes reach the existing Navidrome playlist", async () => {
-  const source = await sharp({
-    create: { width: 48, height: 48, channels: 3, background: "#284466" },
-  })
-    .png()
-    .toBuffer();
-  vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
-    buffer: source,
-    contentType: "image/png",
-    metadata: await sharp(source).metadata(),
-  });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Imported cover",
-    importSource: {
-      provider: "deezer-playlist",
-      externalId: "123",
-      artworkUrl: "https://images.example.test/one.png",
-    },
-  });
-  const manager = makeManager();
-  await manager.syncPlaylists();
-  manager.__artworkUploads.length = 0;
-  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
-    importSource: { ...playlist.importSource, artworkUrl: "https://images.example.test/two.png" },
-  });
-
-  await manager.syncPlaylists();
-
-  assert.deepEqual(
-    manager.__artworkUploads.map((upload) => upload.filename),
-    ["Imported cover.webp"],
-  );
 });
 
 test("renaming an imported playlist preserves its uploaded cover", async () => {

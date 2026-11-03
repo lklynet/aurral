@@ -1,16 +1,12 @@
 import axios from "../../../lib/axiosFetch.ts";
 import { db } from "../../config/db-sqlite.ts";
-import { dbOps, userOps } from "../../db/helpers/index.ts";
+import { userOps } from "../../db/helpers/index.ts";
 import type { LibraryArtistsRow, LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
 import { lastfmRequest } from "../apiClients/lastfm.ts";
 import { listenbrainzRequest } from "../apiClients/listenbrainz.ts";
 import { getListenHistory } from "../listeningHistory.ts";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
 import { normalizeKoitoBaseUrl } from "../koitoClient.ts";
-import { NavidromeClient } from "../navidrome.ts";
-import { PlexClient } from "../plex.ts";
-import { plexConnectionStore } from "../plex/plexConnectionStore.ts";
-import { JellyfinClient } from "../jellyfin.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import { fetchDeezerArtistImageUrl } from "../releaseGroupCoverService.ts";
@@ -20,7 +16,13 @@ import { buildCustomArtworkUrl, getCustomArtwork } from "../customArtworkService
 import getSharp from "../sharpConfig.ts";
 import { getArtistImage } from "../imageService.ts";
 import { songBeats } from "./beats.ts";
-import { calculateWrapped, wrappedKey, type WrappedPeriod, type WrappedPlay } from "./metrics.ts";
+import {
+  calculateWrapped,
+  WRAPPED_SOURCES,
+  wrappedKey,
+  type WrappedPeriod,
+  type WrappedPlay,
+} from "./metrics.ts";
 
 const MAX_PLAYS = 100_000;
 const PAGE_SIZE = 500;
@@ -35,6 +37,8 @@ const timestamp = (value: unknown) =>
 type Period = WrappedPeriod;
 type Source = WrappedPlay["source"];
 type Page = { plays: WrappedPlay[]; more: boolean };
+const isWrappedSource = (value: string): value is Source =>
+  WRAPPED_SOURCES.some((source) => source === value);
 
 export async function readWrappedSource(source: Source, readPage: (page: number) => Promise<Page>) {
   const plays: WrappedPlay[] = [];
@@ -70,7 +74,7 @@ export function readLocalWrappedHistory(userId: number, period: Period) {
     )
     .all(userId, period.start, period.end, MAX_PLAYS + 1)
     .map((row): WrappedPlay => ({
-      source: "aurral",
+      source: isWrappedSource(row.source) ? row.source : "aurral",
       account: String(userId),
       id: String(row.id),
       playedAt: row.played_at,
@@ -204,169 +208,9 @@ export function koitoReader(baseUrl: string, token: string | undefined, period: 
   };
 }
 
-export function navidromeReader(client: NavidromeClient, account: string, period: Period) {
-  const songs = new Map<string, Record<string, unknown>>();
-  return async (page: number): Promise<Page> => {
-    const query = new URLSearchParams({
-      from: String(Math.floor(period.start / 1000)),
-      to: String(Math.ceil(period.end / 1000) - 1),
-      _start: String((page - 1) * PAGE_SIZE),
-      _end: String(page * PAGE_SIZE),
-      _sort: "submission_time",
-      _order: "ASC",
-    });
-    const raw: unknown = await client._nativeRequest("GET", `/api/scrobble?${query}`, null, {
-      timeout: 20_000,
-    });
-    if (!Array.isArray(raw)) throw new Error("Navidrome history API unavailable");
-    const rows = raw.map(object);
-    const missing = [...new Set(rows.map((row) => text(row.mediaFileId)))].filter(
-      (id) => id && !songs.has(id),
-    );
-    for (let offset = 0; offset < missing.length; offset += 100) {
-      const ids = new URLSearchParams(missing.slice(offset, offset + 100).map((id) => ["id", id]));
-      const found: unknown = await client._nativeRequest("GET", `/api/song?${ids}`, null, {
-        timeout: 20_000,
-      });
-      for (const song of list(found).map(object)) songs.set(text(song.id), song);
-    }
-    return {
-      plays: rows.map((row): WrappedPlay => {
-        const song = songs.get(text(row.mediaFileId)) ?? {};
-        return {
-          source: "navidrome",
-          account,
-          id: String(row.id),
-          playedAt: timestamp(number(row.submissionTime)),
-          title: text(song.title),
-          artist: text(song.artist),
-          album: text(song.album),
-          trackMbid: text(song.mbzRecordingID),
-          artistMbid: text(song.mbzArtistId),
-          durationMs: number(song.duration) * 1000 || undefined,
-          genres: list(song.genres)
-            .map((genre) => text(object(genre).name))
-            .filter(Boolean),
-        };
-      }),
-      more: rows.length === PAGE_SIZE,
-    };
-  };
-}
-
-export function plexReader(client: PlexClient, accountId: string | number | null, period: Period) {
-  return async (page: number): Promise<Page> => {
-    const raw: unknown = await client.request("/status/sessions/history/all", {
-      params: {
-        type: 10,
-        "viewedAt>": Math.floor(period.start / 1000) - 1,
-        "viewedAt<": Math.ceil(period.end / 1000),
-        accountID: accountId,
-        "X-Plex-Container-Start": (page - 1) * PAGE_SIZE,
-        "X-Plex-Container-Size": PAGE_SIZE,
-      },
-      timeout: 20_000,
-    });
-    const container = object(object(raw).MediaContainer);
-    if (!Array.isArray(container.Metadata) && number(container.size) !== 0)
-      throw new Error("Plex history unavailable");
-    const rows = list(container.Metadata)
-      .map(object)
-      .filter((row) => row.type === "track");
-    return {
-      plays: rows.map((row): WrappedPlay => ({
-        source: "plex",
-        account: String(accountId ?? "owner"),
-        id: String(row.historyKey || `${row.ratingKey}:${row.viewedAt}`),
-        playedAt: timestamp(number(row.viewedAt)),
-        title: text(row.title),
-        artist: text(row.originalTitle) || text(row.grandparentTitle),
-        album: text(row.parentTitle),
-      })),
-      more: page * PAGE_SIZE < number(container.totalSize),
-    };
-  };
-}
-
-const PLAYBACK_REPORTING_QUERY = "/user_usage_stats/submit_custom_query";
-
-async function playbackReportingQuery(client: JellyfinClient, sql: string) {
-  const result = object(
-    await client.request("POST", PLAYBACK_REPORTING_QUERY, { data: { CustomQueryString: sql } }),
-  );
-  if (/error|failed|no such|not authorized/i.test(text(result.message)))
-    throw new Error("Playback Reporting query unavailable");
-  if (!Array.isArray(result.results)) throw new Error("Jellyfin Playback Reporting unavailable");
-  return result.results.map(list);
-}
-
-async function jellyfinServerOffsetMs(client: JellyfinClient) {
-  try {
-    const [row] = await playbackReportingQuery(
-      client,
-      "SELECT CAST(strftime('%s','now','localtime') AS INTEGER) - CAST(strftime('%s','now') AS INTEGER)",
-    );
-    return number(row?.[0]) * 1000;
-  } catch {
-    return 0;
-  }
-}
-
-export function jellyfinReader(client: JellyfinClient, account: string, period: Period) {
-  return async (page: number): Promise<Page> => {
-    if (page !== 1) return { plays: [], more: false };
-    const offset = await jellyfinServerOffsetMs(client);
-    const local = (time: number) =>
-      new Date(time + offset).toISOString().slice(0, 19).replace("T", " ");
-    const user = account.replaceAll("-", "").replaceAll("'", "''");
-    const rows = await playbackReportingQuery(
-      client,
-      `SELECT DateCreated, ItemId, PlayDuration FROM PlaybackActivity WHERE REPLACE(UserId, '-', '') = '${user}' AND ItemType = 'Audio' AND DateCreated >= '${local(period.start)}' AND DateCreated < '${local(period.end)}' ORDER BY DateCreated LIMIT ${MAX_PLAYS + 1}`,
-    );
-    const items = new Map<string, Record<string, unknown>>();
-    const ids = [...new Set(rows.map((row) => text(row[1])).filter(Boolean))];
-    for (let index = 0; index < ids.length; index += 100) {
-      const response: unknown = await client.request("GET", "/Items", {
-        params: {
-          ids: ids.slice(index, index + 100).join(","),
-          userId: account,
-          fields: "Genres",
-          enableImages: false,
-        },
-      });
-      for (const value of list(object(response).Items)) {
-        const item = object(value);
-        items.set(text(item.Id), item);
-      }
-    }
-    return {
-      plays: rows.map((row, index): WrappedPlay => {
-        const item = items.get(text(row[1])) ?? {};
-        const date = text(row[0]).slice(0, 19).replace(" ", "T");
-        return {
-          source: "jellyfin",
-          account,
-          id: `${date}:${text(row[1])}:${index}`,
-          playedAt: Date.parse(`${date}Z`) - offset,
-          title: text(item.Name),
-          artist: text(list(item.Artists)[0]),
-          album: text(item.Album),
-          durationMs: number(item.RunTimeTicks) / 10000 || undefined,
-          listenedMs: number(row[2]) * 1000 || undefined,
-          genres: list(item.Genres).map(text).filter(Boolean),
-        };
-      }),
-      more: rows.length > MAX_PLAYS,
-    };
-  };
-}
-
-const sameAccount = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
 export async function collectWrappedHistory(userId: number, period: Period) {
   const user = userOps.getUserById(userId);
   if (!user || user.status !== "active") throw new Error("User account unavailable");
-  const settings = dbOps.getSettings();
   const connections = scrobbleConnectionStore.getConnections(userId);
   const history = getListenHistory(userId);
   const readers: { source: Source; read: (page: number) => Promise<Page> }[] = [];
@@ -386,69 +230,6 @@ export async function collectWrappedHistory(userId: number, period: Period) {
   const koito = connections.koito?.baseUrl || history.koito;
   if (koito)
     readers.push({ source: "koito", read: koitoReader(koito, connections.koito?.token, period) });
-  const soleUser = userOps.getAllUsers().length === 1;
-  const navidrome = settings.integrations?.navidrome;
-  if (navidrome?.url && (soleUser || sameAccount(navidrome.username || "", user.username))) {
-    readers.push({
-      source: "navidrome",
-      read: navidromeReader(
-        new NavidromeClient(navidrome.url, navidrome.username || "", navidrome.password || ""),
-        navidrome.username || "",
-        period,
-      ),
-    });
-  }
-  const plex = settings.integrations?.plex;
-  const linkedPlex = plexConnectionStore.getConnection(userId);
-  if (plex?.url && (linkedPlex?.plexAccountId != null || soleUser)) {
-    const client = new PlexClient(
-      plex.url,
-      linkedPlex?.token || plex.token,
-      linkedPlex?.clientId || plex.clientId,
-    );
-    let read: ReturnType<typeof plexReader> | undefined;
-    readers.push({
-      source: "plex",
-      read: async (page) => {
-        if (!read) {
-          const raw: unknown = await client.request("/accounts", { timeout: 20_000 });
-          const accounts = list(object(object(raw).MediaContainer).Account).map(object);
-          let username = text(linkedPlex?.plexUsername) || plex.plexUsername || "";
-          const byId = accounts.filter(
-            (account) =>
-              linkedPlex?.plexAccountId != null &&
-              String(account.id) === String(linkedPlex.plexAccountId),
-          );
-          if (!username && !byId.length)
-            username = text(
-              object(await PlexClient.validateToken(client.token, client.clientId)).username,
-            );
-          const matches = byId.length
-            ? byId
-            : accounts.filter((account) => username && sameAccount(text(account.name), username));
-          if (matches.length !== 1) throw new Error("Plex account could not be identified");
-          const id = matches[0].id;
-          if (typeof id !== "string" && typeof id !== "number")
-            throw new Error("Plex account has no ID");
-          read = plexReader(client, id, period);
-        }
-        return read(page);
-      },
-    });
-  }
-  const jellyfin = settings.integrations?.jellyfin;
-  if (jellyfin?.url && jellyfin.userId) {
-    const client = new JellyfinClient(jellyfin.url, jellyfin.apiKey || "", jellyfin.userId);
-    const read = jellyfinReader(client, jellyfin.userId, period);
-    readers.push({
-      source: "jellyfin",
-      read: async (page) => {
-        if (!soleUser && !sameAccount(text(object(await client.getUser()).Name), user.username))
-          throw new Error("Link your playback account first");
-        return read(page);
-      },
-    });
-  }
   const results = await Promise.all(
     readers.map(({ source, read }) => readWrappedSource(source, read)),
   );

@@ -161,13 +161,6 @@ export function clearScheduledLibraryScan(jobId: number | null = null) {
 }
 
 export function scheduleLibraryScan(options: LibraryScanRequest = {}) {
-  if (Array.isArray(options.changedPaths) && options.changedPaths.length > 0) {
-    import("./playlists/playlistManager.ts")
-      .then(({ playlistManager }) => playlistManager.schedulePlaybackScan(options.changedPaths!))
-      .catch((error) =>
-        console.error("[libraryScanWorker] Could not queue media server scan:", error),
-      );
-  }
   return registerLibraryScan(options);
 }
 
@@ -450,35 +443,18 @@ const {
   processJob: async (payload, job) => {
     const { lidarrClient } = await import("./lidarrClient.ts");
     const { scanConfiguredLibrary } = await import("./libraryIndexService.ts");
-    const { retryPlaybackRetainedFiles } = await import("./playback/playbackFileRetention.ts");
-    const { playlistManager } = await import("./playlists/playlistManager.ts");
-    const removedRetainedFiles = await retryPlaybackRetainedFiles();
-    if (removedRetainedFiles.length > 0) {
-      scheduleLibraryScan({ includeLidarr: false, changedPaths: removedRetainedFiles });
-    }
     const { includeLidarr, force, changedPaths } = beginLibraryScanJob(job.id, payload);
     const changedFiles = new Set<string>();
-    let scanResult;
-    try {
-      scanResult = await scanConfiguredLibrary({
-        lidarrClient,
-        includeLidarr,
-        changedPaths,
-        force,
-        changedFiles,
-      });
-      if (changedPaths) {
-        const { resolveChangedAlbumCovers } = await import("./libraryArtwork.ts");
-        await resolveChangedAlbumCovers(changedFiles);
-      }
-    } finally {
-      try {
-        playlistManager.schedulePlaybackScan([
-          ...new Set([...changedFiles].map((filePath) => path.dirname(filePath))),
-        ]);
-      } catch (error) {
-        console.error("[libraryScanWorker] Could not queue media server scan:", error);
-      }
+    const scanResult = await scanConfiguredLibrary({
+      lidarrClient,
+      includeLidarr,
+      changedPaths,
+      force,
+      changedFiles,
+    });
+    if (changedPaths) {
+      const { resolveChangedAlbumCovers } = await import("./libraryArtwork.ts");
+      await resolveChangedAlbumCovers(changedFiles);
     }
     const { settleIngestedMusic } = await import("./libraryFiles/ingest.ts");
     await settleIngestedMusic();

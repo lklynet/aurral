@@ -164,6 +164,12 @@ export const SCHEDULED_SYSTEM_TASKS: ScheduledSystemTask[] = [
     payload: { kind: "import-list-sync" },
   },
   {
+    name: "history-server-sync",
+    queue: "system-task",
+    schedule: "@every 1h",
+    payload: { kind: "history-server-sync" },
+  },
+  {
     name: "share-playlist-refresh",
     queue: "system-task",
     schedule: "@every 24h",
@@ -721,6 +727,17 @@ export function enqueueHonkerStartupTasks() {
   if (identityMarkers?.version !== IDENTITY_MARKER_MIGRATION_VERSION) {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }
+  import("./playbackServerCleanup.ts")
+    .then(({ hasLegacyPlaybackServerData }) => {
+      if (hasLegacyPlaybackServerData())
+        enqueueIfAbsent({ kind: "playback-server-cleanup" }, { delaySeconds: 3, priority: 10 });
+    })
+    .catch((error) =>
+      console.warn(
+        "[Playback] Could not check for old media server data:",
+        error?.message || error,
+      ),
+    );
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
   enqueueIfAbsent({ kind: "playlist-startup-publish" }, { delaySeconds: 10, priority: 0 });
   import("./libraryFiles/operations.ts")
@@ -1059,10 +1076,12 @@ export function mergeIntoPendingHonkerJob(
     payloadKind,
     matches = () => true,
     merge,
+    delaySeconds = 0,
   }: {
     payloadKind: string;
     matches?: (payload: HonkerPayload) => boolean;
     merge: (payload: HonkerPayload) => HonkerPayload;
+    delaySeconds?: number;
   },
 ) {
   const tx = getHonkerDb().transaction();
@@ -1077,8 +1096,9 @@ export function mergeIntoPendingHonkerJob(
       .map((row) => ({ id: row.id, payload: parseHonkerPayload(row.payload) }))
       .find(({ payload }) => payload && matches(payload));
     if (target) {
-      tx.execute("UPDATE _honker_live SET payload = ? WHERE id = ?", [
+      tx.execute("UPDATE _honker_live SET payload = ?, run_at = MAX(run_at, ?) WHERE id = ?", [
         JSON.stringify(merge(target.payload!)),
+        Math.floor(Date.now() / 1000) + delaySeconds,
         target.id,
       ]);
     }

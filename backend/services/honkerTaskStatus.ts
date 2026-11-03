@@ -43,10 +43,9 @@ export const QUEUE_DEFINITIONS = [
   },
   {
     queue: "playback",
-    label: "Media server updates",
-    workerLabel: "Media server worker",
-    description:
-      "Scans connected media servers and publishes playlists to them, one job at a time.",
+    label: "Playlist files",
+    workerLabel: "Playlist file worker",
+    description: "Writes playlist files for media servers, one job at a time.",
     worker: "playback",
   },
   {
@@ -123,14 +122,19 @@ const SYSTEM_TASK_QUEUES = new Set([
 ]);
 
 export const SYSTEM_TASK_LABELS = {
-  "playback-library-scan": {
-    label: "Media server scan",
-    description: "Refreshes connected media servers after files change.",
-  },
   "playback-playlist-sync": {
-    label: "Media server playlist sync",
+    label: "Playlist file sync",
     description:
-      "Publishes changed flows and playlists to connected media servers, then retries tracks a server has not indexed yet.",
+      "Writes a playlist file for each flow and playlist, then writes changed files again once media servers have scanned new tracks.",
+  },
+  "history-server-sync": {
+    label: "Listening history import",
+    description: "Imports new plays from connected Navidrome, Plex, and Jellyfin servers.",
+  },
+  "playback-server-cleanup": {
+    label: "Old media server playlist cleanup",
+    description:
+      "Removes the playlists Aurral used to create in Navidrome, Plex, and Jellyfin, then forgets those connections.",
   },
   "weekly-flow-refresh": {
     label: "Playlist schedule check",
@@ -158,7 +162,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "playlist-startup-publish": {
     label: "Startup playlist publish",
-    description: "Queues a playlist sync to connected media servers after Aurral starts.",
+    description: "Queues a playlist file sync after Aurral starts.",
   },
   "discovery-refresh-check": {
     label: "Discovery auto refresh check",

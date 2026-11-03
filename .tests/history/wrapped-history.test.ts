@@ -11,7 +11,7 @@ import { wrappedPeriod, type WrappedPlay } from "../../backend/services/wrapped/
 
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 
-const [state, { db }, { dbOps, userOps }, history, reports, lastfm, { default: wrapped }] =
+const [state, { db }, { userOps }, history, reports, lastfm, { default: wrapped }] =
   await setupIsolatedBackend(
     "wrapped-history",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -229,28 +229,14 @@ test("local history stays scoped to the listener and the calendar year", () => {
   assert.equal(history.readLocalWrappedHistory(one.id, period).length, 1);
 });
 
-test("a disabled account keeps the shared Navidrome history out of another listener's recap", async () => {
-  userOps.updateUser(two.id, { status: "disabled" });
-  dbOps.updateSettings({
-    integrations: { navidrome: { url: "http://navidrome.test", username: "two", password: "pw" } },
-  });
-  const { sources } = await history.collectWrappedHistory(one.id, period);
+test("plays imported from a media server keep their source", () => {
+  db.prepare(
+    "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, external_id, created_at) VALUES (?, 'navidrome:1', 'Song', 'Artist', ?, 'navidrome', '1', ?)",
+  ).run(one.id, period.start, period.start);
+  listen(one.id, period.start + 1);
   assert.deepEqual(
-    sources.map((status) => status.source),
-    ["aurral"],
-  );
-});
-
-test("a Navidrome account whose name only differs by punctuation stays out of a listener's recap", async () => {
-  dbOps.updateSettings({
-    integrations: {
-      navidrome: { url: "http://navidrome.test", username: "o.n.e", password: "pw" },
-    },
-  });
-  const { sources } = await history.collectWrappedHistory(one.id, period);
-  assert.deepEqual(
-    sources.map((status) => status.source),
-    ["aurral"],
+    history.readLocalWrappedHistory(one.id, period).map((play) => play.source),
+    ["navidrome", "aurral"],
   );
 });
 
@@ -310,57 +296,6 @@ test("ListenBrainz paging keeps listens that share the boundary second", async (
   );
   const { mergeWrappedPlays } = await import("../../backend/services/wrapped/metrics.ts");
   assert.equal(mergeWrappedPlays(result.plays).length, 1001);
-});
-
-test("Navidrome looks up song details in batches", async () => {
-  const { NavidromeClient } = await import("../../backend/services/navidrome.ts");
-  const client = new NavidromeClient("http://127.0.0.1", "one", "password");
-  const scrobbles = Array.from({ length: 150 }, (_, index) => ({
-    id: index,
-    mediaFileId: `song-${index}`,
-    submissionTime: period.start / 1000 + index * 600,
-  }));
-  const request = vi.spyOn(client, "_nativeRequest").mockImplementation(async (_method, path) => {
-    if (path.startsWith("/api/scrobble")) return scrobbles;
-    const ids = new URLSearchParams(path.split("?")[1]).getAll("id");
-    return ids.map((id) => ({ id, title: id, artist: "Artist", duration: 120, mbzArtistId: "a" }));
-  });
-  const result = await history.readWrappedSource(
-    "navidrome",
-    history.navidromeReader(client, "one", period),
-  );
-  assert.equal(result.plays.length, 150);
-  assert.equal(result.plays[149].title, "song-149");
-  assert.equal(result.plays[0].artistMbid, "a");
-  assert.equal(request.mock.calls.length, 3);
-});
-
-test("Jellyfin play times are converted from the server's local clock", async () => {
-  const { JellyfinClient } = await import("../../backend/services/jellyfin.ts");
-  const client = new JellyfinClient("http://127.0.0.1", "key", "one");
-  const request = vi
-    .spyOn(client, "request")
-    .mockResolvedValueOnce({ results: [["-18000"]] })
-    .mockResolvedValueOnce({ results: [["2026-01-01 07:00:00.1234567", "song", "65"]] })
-    .mockResolvedValueOnce({
-      Items: [{ Id: "song", Name: "Song", Artists: ["Artist"], RunTimeTicks: 1800000000 }],
-    });
-  const result = await history.readWrappedSource(
-    "jellyfin",
-    history.jellyfinReader(client, "one", period),
-  );
-  assert.equal(result.plays[0].playedAt, Date.parse("2026-01-01T12:00:00Z"));
-  assert.equal(result.plays[0].listenedMs, 65000);
-
-  request.mockRejectedValueOnce(new Error("forbidden")).mockResolvedValueOnce({
-    results: [],
-    message: "no such table: PlaybackActivity",
-  });
-  const failed = await history.readWrappedSource(
-    "jellyfin",
-    history.jellyfinReader(client, "one", period),
-  );
-  assert.equal(failed.status.state, "unavailable");
 });
 
 test("a cover's color favors its vivid area over a larger plain background", () => {

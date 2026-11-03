@@ -10,9 +10,6 @@ const PATH_MAPPING_SOURCES = new Set([
   "sabnzbd",
   "tidarr",
   "deemix",
-  "plex",
-  "jellyfin",
-  "navidrome",
 ]);
 
 export function syncPathMappings(value: unknown) {
@@ -44,6 +41,10 @@ function isExplicitPathMappingSource(value: unknown) {
 type PathMappingInput = { source?: unknown; remote?: unknown; local?: unknown } | null | undefined;
 
 function normalizePathMappingEntry(entry: PathMappingInput) {
+  const named = String(entry?.source ?? "")
+    .trim()
+    .toLowerCase();
+  if (named && !PATH_MAPPING_SOURCES.has(named)) return null;
   const source = normalizePathMappingSource(entry?.source);
   const remote = normalizePathSeparators(entry?.remote);
   const localRaw = String(entry?.local || "").trim();

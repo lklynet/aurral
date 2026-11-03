@@ -11,7 +11,6 @@ import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
-import { PlexSelfLinkSection } from "../components/PlexSelfLinkSection";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
@@ -240,7 +239,6 @@ export function ProfileSection() {
         <>
           <PasswordGroup />
           <ConnectedAccountsSection />
-          <PlexSelfLinkSection />
         </>
       ) : null}
       {account.lidarrConfigured ? <LidarrDefaultsGroup /> : null}

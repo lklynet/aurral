@@ -30,16 +30,15 @@ import playlistStreams from "./playlists/handlers/stream.ts";
 import playlistWorker from "./playlists/handlers/worker.ts";
 import requests from "./requests.ts";
 import scrobbling from "./scrobbling.ts";
+import historyServers from "./historyServers.ts";
 import search from "./search.ts";
 import settings from "./settings/index.ts";
 import shareLinks from "./shareLinks.ts";
 import starPrompt from "./starPrompt.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
-import settingsPlayback from "./settings/playback.ts";
 import updates from "./updates.ts";
 import users from "./users.ts";
 import wrapped from "./wrapped.ts";
-import userPlexLink from "./users/plexLinkHandlers.ts";
 
 const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
@@ -80,16 +79,15 @@ export const api = new Hono<AppEnv>()
   .route("/", imageProxy)
   .route("/", deezer)
   .route("/", settings)
-  .route("/", settingsPlayback)
   .route("/", settingsDownloadClients)
   .route("/", updates)
   .route("/", backup)
   .route("/", auth)
   .route("/", users)
-  .route("/", userPlexLink)
   .route("/", onboarding)
   .route("/", health)
   .route("/", scrobbling)
+  .route("/", historyServers)
   .route("/", filesystem)
   .route("/", discovery)
   .route("/", news)

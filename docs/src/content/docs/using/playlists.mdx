@@ -41,11 +41,9 @@ To see the download state of each track in a static playlist, open its playlist 
 - The playlist header shows how many tracks are available.
 - To search again for a missing track, use **Re-search** in its track menu.
 
-## Playlist names on playback servers
+## Playlist files
 
-- **Navidrome.** By default, Aurral names each playlist `username - playlist name`. To use the bare playlist name, turn off **Prefix playlist names with the owner username** in **Settings > Playback > Navidrome**.
-- **Plex.** Aurral uses the bare playlist name, in the Plex account of the playlist owner. See [Plex](/integrations/plex/#per-user-plex-accounts).
-- **Jellyfin.** Aurral uses the bare playlist name, as a private playlist of the Jellyfin user with the same username. See [Jellyfin](/integrations/jellyfin/).
+Aurral writes an M3U file for each enabled flow and each static playlist. Navidrome and Jellyfin import these files as playlists. **Settings > Library > Playlist files** shows the folder and whether file names start with the owner's username. See [Navidrome](/integrations/navidrome/#playlists), [Plex](/integrations/plex/#playlists), and [Jellyfin](/integrations/jellyfin/#playlists).
 
 ## Retry or replace a track
 
@@ -55,16 +53,16 @@ To replace a finished track that Aurral downloaded, right-click it and select **
 
 ## Remove a playlist or track
 
-When you delete a playlist or remove a track, Aurral first cancels its downloads, then clears the job. The deletion can stay queued while Aurral cleans up the playback playlist and the files.
+When you delete a playlist or remove a track, Aurral first cancels its downloads, then clears the job. The deletion can stay queued while Aurral cleans up the files.
 
-When you delete a playlist, Aurral deletes the files that it downloaded for that playlist, unless another job or playback playlist still uses them.
+When you delete a playlist, Aurral deletes the files that it downloaded for that playlist, unless another job still uses them.
 
 - If a download client finishes a request after the removal, Aurral does not import the result. The client can still show the work until it reports that the work was cancelled or finished.
 - If a download client is no longer configured but still has work for the playlist, the removal fails and keeps the playlist and jobs. Configure the client again, then retry the removal.
 - Aurral does not delete Usenet or deemix files that it cannot prove it owns. If the client finishes after the removal, check its completed-download folder for files that you want to delete.
 - If you create a playlist again with the same ID, downloads from the old playlist cannot attach to the new one.
 
-Aurral also deletes files on its own, for example when a flow rotates tracks, when a synced playlist drops a track, or after an upgrade. Before this automatic cleanup, Aurral asks each connected playback server which files its playlists use. It keeps a file that a Navidrome, Plex, or Jellyfin playlist still uses, for example a flow track that you saved to another playlist in Feishin. If a server is unavailable, Aurral waits and tries the cleanup again later. When you delete a playlist or a track yourself, Aurral does not wait for this check.
+Aurral also deletes files on its own, for example when a flow rotates tracks, when a synced playlist drops a track, or after an upgrade. A playlist made in another app does not keep a file. To keep a flow track, add it to the Library or to an Aurral playlist.
 
 ## Where files go
 

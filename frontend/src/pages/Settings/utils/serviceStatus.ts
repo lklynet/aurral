@@ -13,9 +13,5 @@ export const configuredStatus = (configured: boolean): ServiceStatus =>
 
 type Integrations = ReturnType<typeof normalizeSettings>["integrations"];
 
-export const connectedServices = ({ navidrome, plex, jellyfin, lidarr }: Integrations) => ({
-  navidrome: Boolean(navidrome.url && navidrome.username && navidrome.password),
-  plex: Boolean(plex.token && plex.url),
-  jellyfin: Boolean(jellyfin.url && jellyfin.apiKey && jellyfin.userId),
-  lidarr: lidarr.enabled !== false && Boolean(lidarr.url && lidarr.apiKey),
-});
+export const lidarrConnected = ({ lidarr }: Integrations) =>
+  lidarr.enabled !== false && Boolean(lidarr.url && lidarr.apiKey);

@@ -861,7 +861,6 @@ async function deleteAurralLibraryFiles(paths: string[]) {
     paths.map(async (filePath) => {
       const removal = await removePlaylistFileIfUnshared(filePath, "library", {
         deleteIfUnshared: true,
-        protectPlayback: false,
       });
       if (removal.action === "skipped") {
         if (deletablePaths.has(path.resolve(filePath))) {

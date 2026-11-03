@@ -20,7 +20,6 @@ import {
 import { sanitizePathPart } from "./downloadUtils.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { lidarrClient } from "./lidarrClient.ts";
-import type { createPlaybackDeletionGuard } from "./playback/playbackFileRetention.ts";
 
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION = 1;
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING = "aurralDownloadFolderMigration";
@@ -38,7 +37,6 @@ const UNKNOWN_IDENTITY_VALUES = new Set([
 type MetadataReader = NonNullable<
   NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]
 >;
-type DeletionGuard = ReturnType<typeof createPlaybackDeletionGuard>;
 type MigrationLogger = Pick<Console, "info" | "warn" | "error">;
 type MigrationIdentity = NonNullable<Awaited<ReturnType<typeof resolveIdentity>>>;
 type MigrationFailure = { sourcePath: string; reason: string | undefined };
@@ -526,8 +524,6 @@ async function commitIndexedMigrationItem({
   jobs,
   identity,
   rootPath,
-  deletionGuard,
-  logger,
 }: {
   state: MigrationState;
   sourcePath: string;
@@ -535,8 +531,6 @@ async function commitIndexedMigrationItem({
   jobs: DownloadJob[];
   identity: MigrationIdentity;
   rootPath: string;
-  deletionGuard: DeletionGuard;
-  logger: MigrationLogger;
 }) {
   state.items[sourcePath] = {
     ...itemState(state, sourcePath),
@@ -554,10 +548,6 @@ async function commitIndexedMigrationItem({
   };
   saveMigrationState(state);
   if (path.resolve(sourcePath) !== path.resolve(committedPath)) {
-    if (!(await deletionGuard.canDelete(sourcePath))) {
-      retainItem(state, sourcePath, PLAYBACK_RETENTION_REASON, logger);
-      return false;
-    }
     await removeSource(sourcePath, rootPath);
   }
   state.items[sourcePath] = {
@@ -566,7 +556,6 @@ async function commitIndexedMigrationItem({
     updatedAt: Date.now(),
   };
   saveMigrationState(state);
-  return true;
 }
 
 function resolveOwnership(
@@ -660,27 +649,7 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
     failures: [],
   };
 
-  const { isPlaybackRetainedFile, createPlaybackDeletionGuard } =
-    await import("./playback/playbackFileRetention.ts");
-  const deletionGuards = new Map<string, DeletionGuard>();
-  const getDeletionGuard = (playlistId: string) => {
-    if (!deletionGuards.has(playlistId)) {
-      deletionGuards.set(
-        playlistId,
-        createPlaybackDeletionGuard({
-          excludeEntityIds: [playlistId],
-          playlistRoot: rootPath,
-        }),
-      );
-    }
-    return deletionGuards.get(playlistId)!;
-  };
   for (const sourcePath of files) {
-    if (isPlaybackRetainedFile(sourcePath)) {
-      retainItem(state, sourcePath, PLAYBACK_RETENTION_REASON, logger);
-      result.retained += 1;
-      continue;
-    }
     const jobsForSource = jobsByPath.get(sourcePath) || [];
     let stat;
     try {
@@ -707,11 +676,6 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
     }
     if (flow && jobsForSource.length === 0) {
       try {
-        if (!(await getDeletionGuard(playlistId).canDelete(sourcePath))) {
-          retainItem(state, sourcePath, PLAYBACK_RETENTION_REASON, logger);
-          result.retained += 1;
-          continue;
-        }
         await removeSource(sourcePath, rootPath);
         state.items[sourcePath] = {
           status: "removed",
@@ -834,22 +798,16 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
           throw new Error("Flow destination verification failed");
         }
       }
-      const completed = await commitIndexedMigrationItem({
+      await commitIndexedMigrationItem({
         state,
         sourcePath,
         committedPath,
         jobs: jobsForSource,
         identity,
         rootPath,
-        deletionGuard: getDeletionGuard(playlistId),
-        logger,
       });
-      if (completed) {
-        result.migrated += 1;
-        if (flow) result.flowMigrated += 1;
-      } else {
-        result.retained += 1;
-      }
+      result.migrated += 1;
+      if (flow) result.flowMigrated += 1;
     } catch (error) {
       const failure = asAppError(error);
       retainItem(state, sourcePath, `migration verification failed: ${failure?.message}`, logger);
@@ -876,18 +834,15 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
         if (!indexed.has(entry.targetPath)) {
           throw new Error("Destination was not indexed as available Aurral media");
         }
-        const completed = await commitIndexedMigrationItem({
+        await commitIndexedMigrationItem({
           state,
           sourcePath: entry.sourcePath,
           committedPath: entry.targetPath,
           jobs: entry.jobs,
           identity: entry.identity,
           rootPath,
-          deletionGuard: getDeletionGuard(entry.playlistId),
-          logger,
         });
-        if (completed) result.migrated += 1;
-        else result.retained += 1;
+        result.migrated += 1;
       } catch (error) {
         const failure = asAppError(error);
         retainItem(

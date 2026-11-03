@@ -1,6 +1,6 @@
 ---
 title: Playlist imports
-description: Import Spotify, YouTube Music, Last.fm, ListenBrainz, and Aurral share playlists.
+description: Import Spotify, YouTube Music, Last.fm, ListenBrainz, Aurral share, and M3U playlists.
 ---
 
 An imported playlist is a static playlist. It differs from a flow:
@@ -90,13 +90,24 @@ A playlist link someone shares with you opens this window with the link loaded. 
 
 When the sender stops sharing, the next sync fails with a message and the playlist stays as it is. See [Sharing](/using/sharing/).
 
+## Import an M3U file
+
+Use an M3U or M3U8 file to bring a playlist from Navidrome, Plex, Jellyfin, or another player.
+
+1. Export the playlist as M3U from the other app. In Navidrome, open the playlist and select **Export**.
+2. Select **M3U** and choose the file.
+3. Check the track count and the name.
+4. Start the import.
+
+Aurral reads the artist and title of each entry from the file. When an entry has none, it uses the folders and file name, as in `Artist/Album/01 - Title.flac`. Aurral skips entries it cannot name, web streams, and duplicates. The import saves the tracklist once and does not sync.
+
 ## What happens after an import
 
 - If the name is already in use, Aurral renames the imported playlist.
 - The playlist queues its own downloads. It does not change any flow.
 - **Activity > Queue** shows the import and its tracks at once, before the worker starts them.
 - When Aurral reuses an existing file, it marks the track as complete at once.
-- The playlist keeps the imported track order, in Aurral and in Navidrome.
+- The playlist keeps the imported track order, in Aurral and in its playlist file.
 
 ## Moving and removing selected tracks
 
@@ -128,10 +139,10 @@ One file can belong to several playlists. Aurral does not download a track again
 - Reuse does not change the track order. A track that you already have keeps its place while the missing tracks download.
 - If you add a flow track to a static playlist, both playlists use the same file. When the flow refreshes, Aurral keeps the file for the static playlist.
 - Aurral prefers files from static playlists and from Lidarr.
-- Before Aurral removes a playlist, it moves shared files to a playlist that still uses them. Navidrome does not show duplicate files.
+- Before Aurral removes a playlist, it moves shared files to a playlist that still uses them, so media servers do not show duplicate files.
 
 To reuse Lidarr files, Aurral must read them at the paths that Lidarr reports. Mount the same media root at the same container path in both services, for example `/data` with the Lidarr root folder `/data/music`. See [Filesystem and mounts](/getting-started/storage/).
 
 If Lidarr runs on Windows and Aurral runs in Docker, run **Settings > Status > Storage > Run checks**. The **Lidarr library** section shows the path that Lidarr reports. Add a mapping for that path in **Settings > Downloads > Remote path mappings**.
 
-Navidrome must scan the Lidarr library before Aurral can add a reused track to a Navidrome playlist. See [Navidrome: Existing Lidarr library](/integrations/navidrome/#existing-lidarr-library).
+A media server plays a reused Lidarr track only when it also has the Lidarr root folder in a music library. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).

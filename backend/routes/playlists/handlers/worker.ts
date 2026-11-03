@@ -121,8 +121,7 @@ export default new Hono<AppEnv>()
       return c.json(
         {
           success: true,
-          message:
-            "Playlist sync queued. Media servers publish playlists after indexing downloaded tracks.",
+          message: "Playlist file sync queued.",
         },
         200,
       );

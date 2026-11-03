@@ -42,7 +42,6 @@ Aurral supports these sign-in methods:
 - Local-network auto-login, for a single admin on a home network
 - Native OpenID Connect (OIDC)
 - Google, for users who linked a Google account
-- Plex, for users who linked a Plex account
 - Reverse-proxy authentication
 
 A user can always sign in with their local password, if they have one.
@@ -121,9 +120,9 @@ To recover, delete the new duplicate account, which has a number such as `-2` at
 
 You cannot approve a claim for the protected recovery admin.
 
-## Sign in with Google or Plex
+## Sign in with Google
 
-Google and Plex sign-in let a user sign in to an account that already exists. They never create an account and never change a role. A user must link the Google or Plex account first, while signed in another way.
+Google sign-in lets a user sign in to an account that already exists. It never creates an account and never changes a role. A user must link the Google account first, while signed in another way.
 
 ### Set up Google sign-in
 
@@ -134,16 +133,13 @@ Google and Plex sign-in let a user sign in to an account that already exists. Th
 
 Each user then opens **Settings > Profile > Sign-in methods** and selects **Connect** next to **Google**. After that, the user can select **Sign in with Google** on the sign-in page.
 
-### Set up Plex sign-in
+### Plex sign-in was removed
 
-1. Connect Plex in **Settings > Playback > Plex**.
-2. In the same place, turn on **Allow signing in to Aurral with Plex**.
-
-Each user then links their own Plex account in **Settings > Profile > Plex account**. After that, the user can select **Sign in with Plex**. A Plex Home managed user that an admin linked cannot sign in with Plex. See [Plex](/integrations/plex/#sign-in-to-aurral-with-plex).
+Aurral no longer offers Sign in with Plex. Users who signed in with Plex use their password, Google, or single sign-on instead. An admin can set a password for a user in **Settings > Users**.
 
 ### Manage connected accounts
 
-**Settings > Profile > Sign-in methods** lists the SSO, Google, and Plex identities linked to your account. To remove one, select **Disconnect**.
+**Settings > Profile > Sign-in methods** lists the SSO and Google identities linked to your account. To remove one, select **Disconnect**.
 
 You cannot remove your last way to sign in. If your account has no local password, set a password or link another account first.
 
@@ -152,13 +148,13 @@ You cannot remove your last way to sign in. If your account has no local passwor
 Some account changes need a recent sign-in:
 
 - Change your password
-- Connect or disconnect Google or Plex
+- Connect or disconnect Google
 
 If you signed in more than 15 minutes ago, Aurral asks for your current password first. If your account has no local password, sign out and sign in again, then retry.
 
 ## SSO-only sign-in mode
 
-To hide the username and password form on the sign-in page, open **Settings > Users > Sign-in** and turn on **SSO-only**. The setting has an effect only when OIDC, Google, or Plex sign-in is configured.
+To hide the username and password form on the sign-in page, open **Settings > Users > Sign-in** and turn on **SSO-only**. The setting has an effect only when OIDC or Google sign-in is configured.
 
 The sign-in page still shows **Sign in with a local account instead**, so local accounts and the recovery admin cannot be locked out.
 
@@ -205,10 +201,6 @@ AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out
 While proxy authentication is on and `AUTH_PROXY_LOGOUT_URL` is not set, Aurral hides **Log out**, because ending the Aurral session cannot end the proxy session.
 
 An account created by the proxy has no local password until an admin sets one. Admins manage these accounts in **Settings > Users**.
-
-## Per-user Plex accounts
-
-Each user can send their flows and static playlists to their own Plex account instead of the admin's. An admin links a Plex Home managed user from **Manage** in **Settings > Users**. A user with their own Plex.tv account links it in **Settings > Profile > Plex account**. See [Plex: Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts).
 
 ## Reset the admin password
 

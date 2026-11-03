@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import * as v from "valibot";
-import { userOps, userIdentityOps } from "../db/helpers/index.ts";
+import { userOps } from "../db/helpers/index.ts";
 import {
   createSession,
   deleteSession,
@@ -22,16 +22,7 @@ import {
   exchangeGoogleCallback,
   startGoogleAuth,
 } from "../services/googleAuth.ts";
-import {
-  clearedPlexLoginCookie,
-  endPlexLogin,
-  getPendingPlexLogin,
-  isSafeForwardUrl,
-  readPlexLoginTransaction,
-  startPlexLogin,
-} from "../services/plexLoginAuth.ts";
 import { logger } from "../services/logger.ts";
-import { isPlexLoginEnabled } from "./users/plexLinkHandlers.ts";
 import { isErrorStatus } from "./shared/errorStatus.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
 
@@ -57,7 +48,6 @@ const loginBody = v.object({
 });
 const reauthBody = v.object({ currentPassword: v.optional(v.string()) });
 const exchangeBody = v.object({ code: v.optional(v.string()) });
-const plexPinBody = v.object({ forwardUrl: v.nullish(v.string()) });
 
 export default new Hono<AppEnv>()
   .basePath("/auth")
@@ -243,88 +233,5 @@ export default new Hono<AppEnv>()
         { error: failure?.message || "Google exchange failed" },
         exchangeStatus(failure),
       );
-    }
-  })
-  .post("/plex/login/pin", validate("json", plexPinBody), async (c) => {
-    try {
-      if (!isPlexLoginEnabled()) return c.json({ error: "Plex login is not enabled" }, 404);
-      const { forwardUrl } = c.req.valid("json");
-      if (forwardUrl != null && !isSafeForwardUrl(forwardUrl)) {
-        return c.json({ error: "Invalid forward URL" }, 400);
-      }
-      const login = await startPlexLogin(forwardUrl, isSecure(c));
-      c.header("Set-Cookie", login.cookie);
-      return c.json({ authUrl: login.authUrl }, 200);
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("auth", "Plex login PIN generation failed:", failure?.message);
-      return c.json({ error: "Failed to start Plex login", message: failure?.message }, 500);
-    }
-  })
-  .post("/plex/login/complete", async (c) => {
-    try {
-      if (!isPlexLoginEnabled()) return c.json({ error: "Plex login is not enabled" }, 404);
-      const transactionId = readPlexLoginTransaction(c.req.header("cookie"));
-      const pending = getPendingPlexLogin(transactionId);
-      if (!pending) return c.json({ error: "Plex login session expired" }, 400);
-
-      const { PlexClient } = await import("../services/plex.ts");
-      const token = await PlexClient.checkPin(pending.pinId, pending.code, pending.clientId);
-      if (!token) return c.json({ pending: true }, 200);
-
-      let identity;
-      try {
-        identity = await PlexClient.validateToken(token, pending.clientId, {
-          throwOnTransient: true,
-        });
-      } catch {
-        return c.json(
-          { error: "Plex account validation is temporarily unavailable", retryable: true },
-          503,
-        );
-      }
-      endPlexLogin(transactionId);
-      c.header("Set-Cookie", clearedPlexLoginCookie(isSecure(c)));
-      const subject = identity?.id != null ? String(identity.id) : null;
-      if (!subject) return c.json({ error: "Could not verify the Plex account" }, 400);
-
-      const linked = userIdentityOps.findByProvider("plex", "plex", subject);
-      if (!linked) {
-        return c.json(
-          {
-            error: "not_linked",
-            message: "Plex account not linked. Sign in another way and link Plex in Profile.",
-          },
-          403,
-        );
-      }
-      const user = userOps.getUserById(linked.userId);
-      if (!user) return c.json({ error: "Linked Plex identity has no matching user" }, 500);
-      if (user.status !== "active") {
-        return c.json({ error: "This account has been suspended or disabled" }, 403);
-      }
-
-      const session = createSession(
-        user.id,
-        c.var.clientIp || null,
-        c.req.header("user-agent") || null,
-      );
-      return c.json(
-        {
-          token: session.token,
-          expiresAt: session.expiresAt,
-          user: {
-            id: user.id,
-            username: user.username,
-            role: user.role,
-            permissions: user.permissions,
-          },
-        },
-        200,
-      );
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("auth", "Plex login completion failed:", failure?.message);
-      return c.json({ error: "Plex login failed", message: failure?.message }, 500);
     }
   });

@@ -8,18 +8,9 @@ import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.ts";
 import { lidarrClient } from "./lidarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { NavidromeClient, type NavidromeLibrary } from "./navidrome.ts";
-import { PlexClient } from "./plex.ts";
-import { JellyfinClient } from "./jellyfin.ts";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
-import { normalizeSeparators } from "./textUtils.ts";
-import {
-  getPathMappings,
-  looksLikeExternalOnlyPath,
-  resolveLocalPath,
-  resolveRemotePath,
-} from "./pathMappings.ts";
+import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { commitDownloadedFile } from "./downloadUtils.ts";
 import {
@@ -186,18 +177,6 @@ function formatProbeError(error: unknown) {
   const failure = asAppError(error);
   const code = failure?.code ? `${failure.code}: ` : "";
   return `${code}${failure?.message || "Filesystem operation failed"}`;
-}
-
-function formatServiceError(error: unknown, fallback: string) {
-  const failure = asAppError(error);
-  const detail = failure?.response?.data ?? failure?.message;
-  if (typeof detail === "string" && detail.trim()) return detail;
-  if (detail != null) {
-    try {
-      return JSON.stringify(detail);
-    } catch {}
-  }
-  return fallback;
 }
 
 async function runDirectoryWriteProbe(dirPath: string) {
@@ -827,138 +806,6 @@ async function checkTidarrSection() {
   });
 }
 
-function libraryCoversAnyPath(libraryList: NavidromeLibrary[], candidates: string[]) {
-  return (Array.isArray(libraryList) ? libraryList : []).find((library) =>
-    candidates.some((candidate) => pathCoversPrefix(library?.path, candidate)),
-  );
-}
-
-async function checkNavidromeSection() {
-  const integrations = dbOps.getSettings()?.integrations || {};
-  const navidrome = integrations.navidrome || {};
-  if (!navidrome.url || !navidrome.username || !navidrome.password) {
-    return buildSection("navidrome", "Navidrome playback", [], {
-      skipped: true,
-      skipReason: "Navidrome is not configured.",
-    });
-  }
-
-  const steps = [];
-  const client = new NavidromeClient(navidrome.url, navidrome.username, navidrome.password);
-
-  try {
-    await client.ping();
-    steps.push(
-      healthStep("api", "pass", "Connected to Navidrome", {
-        detail: navidrome.url,
-      }),
-    );
-  } catch (error) {
-    steps.push(
-      healthStep("api", "fail", "Connected to Navidrome", {
-        detail: asAppError(error)?.message || "Connection failed",
-        fix: "Check the Navidrome URL, username, and password in Settings → Playback.",
-      }),
-    );
-    return buildSection("navidrome", "Navidrome playback", steps);
-  }
-
-  const expectedLibraryPath = normalizeSeparators(
-    resolveRemotePath(resolveDownloadRoot(), getPathMappings("navidrome")),
-  );
-  const expectedLibraryCandidates = [expectedLibraryPath];
-
-  let libraries: NavidromeLibrary[] = [];
-  let librariesListed = true;
-  try {
-    libraries = await client.getLibraries();
-  } catch (error) {
-    librariesListed = false;
-    steps.push(
-      healthStep("libraries", "warn", "Navidrome music libraries are readable", {
-        detail: asAppError(error)?.message || "Could not list libraries",
-        fix: "Confirm the Navidrome account can manage libraries and that the API is reachable.",
-      }),
-    );
-  }
-
-  const libraryList = Array.isArray(libraries) ? libraries : [];
-  if (librariesListed && libraryList.length === 0) {
-    steps.push(
-      healthStep("libraries", "warn", "Navidrome music libraries are configured", {
-        fix: "Add the Aurral playlist folder and any reused Lidarr library folders as Navidrome music libraries, then scan them.",
-      }),
-    );
-  } else if (libraryList.length > 0) {
-    steps.push(
-      healthStep("libraries", "pass", "Navidrome music libraries are configured", {
-        detail: formatLimitedList(
-          libraryList.map((entry) => String(entry?.path || "").trim()).filter(Boolean),
-        ),
-      }),
-    );
-  }
-
-  const relevantLibraries = libraryList.filter((library) =>
-    pathCoversPrefix(library?.path, expectedLibraryPath),
-  );
-  const unreadableLibraries = [];
-  for (const library of relevantLibraries) {
-    const libraryPath = String(library?.path || "").trim();
-    if (!libraryPath) continue;
-    const readablePath = await checkPathReadable(libraryPath, "navidrome");
-    if (!readablePath) {
-      unreadableLibraries.push(libraryPath);
-    }
-  }
-
-  if (relevantLibraries.length > 0 && unreadableLibraries.length > 0) {
-    steps.push(
-      healthStep(
-        "library-readable",
-        "fail",
-        "Relevant Navidrome libraries are readable from Aurral",
-        {
-          detail: formatLimitedList(unreadableLibraries),
-          fix: "Mount the relevant Navidrome music folders into Aurral at the same paths, or verify the corresponding Navidrome libraries separately when the apps have different filesystem views.",
-        },
-      ),
-    );
-  } else if (relevantLibraries.length > 0) {
-    steps.push(
-      healthStep(
-        "library-readable",
-        "pass",
-        "Relevant Navidrome libraries are readable from Aurral",
-        {
-          detail: formatLimitedList(
-            relevantLibraries.map((entry) => String(entry?.path || "").trim()).filter(Boolean),
-          ),
-        },
-      ),
-    );
-  }
-
-  const playlistLibrary = libraryCoversAnyPath(libraryList, expectedLibraryCandidates);
-
-  if (playlistLibrary) {
-    steps.push(
-      healthStep("aurral-library", "pass", "Navidrome scans the Aurral playlist folder", {
-        detail: playlistLibrary.path,
-      }),
-    );
-  } else {
-    steps.push(
-      healthStep("aurral-library", "warn", "Navidrome scans the Aurral playlist folder", {
-        detail: formatLimitedList(expectedLibraryCandidates),
-        fix: "Save Navidrome settings, then create or update a playlist or flow so Aurral can create the playlist library. Add that folder as a music library in Navidrome and scan it.",
-      }),
-    );
-  }
-
-  return buildSection("navidrome", "Navidrome playback", steps);
-}
-
 async function checkNativePlaybackSection() {
   const trackCount = getLibraryTrackCount({ availableOnly: true });
   if (trackCount === 0) {
@@ -1004,126 +851,6 @@ async function checkNativePlaybackSection() {
   ]);
 }
 
-type PlexLocation = { path?: string };
-type PlexLibraryEntry = { Location?: PlexLocation | PlexLocation[] };
-
-function getPlexLibraryLocations(libraries: PlexLibraryEntry[]) {
-  return (Array.isArray(libraries) ? libraries : []).flatMap((library) => {
-    const locations = Array.isArray(library?.Location)
-      ? library.Location
-      : library?.Location
-        ? [library.Location]
-        : [];
-    return locations.map((location) => String(location?.path || "").trim()).filter(Boolean);
-  });
-}
-
-async function checkPlexSection() {
-  const plex = dbOps.getSettings()?.integrations?.plex || {};
-  if (!plex.url || !plex.token) {
-    return buildSection("plex", "Plex playback", [], {
-      skipped: true,
-      skipReason: "Plex is not configured.",
-    });
-  }
-
-  const steps = [];
-  const client = new PlexClient(plex.url, plex.token, plex.clientId);
-  try {
-    const identity = await client.ping();
-    steps.push(
-      healthStep("api", "pass", "Connected to Plex", {
-        detail: identity?.version ? `${plex.url} (v${identity.version})` : plex.url,
-      }),
-    );
-  } catch (error) {
-    steps.push(
-      healthStep("api", "fail", "Connected to Plex", {
-        detail: formatServiceError(error, "Connection failed"),
-        fix: "Reconnect Plex or correct the selected Plex server URL under Settings → Playback.",
-      }),
-    );
-    return buildSection("plex", "Plex playback", steps);
-  }
-
-  let libraries;
-  try {
-    libraries = await client.getLibraries();
-  } catch (error) {
-    steps.push(
-      healthStep("libraries", "fail", "Plex music libraries are readable", {
-        detail: formatServiceError(error, "Could not list Plex libraries"),
-        fix: "Verify the Plex token can manage libraries and that the selected server is reachable.",
-      }),
-    );
-    return buildSection("plex", "Plex playback", steps);
-  }
-
-  const configuredBase = String(plex.downloadsPath || "").trim() || resolveDownloadRoot();
-  const expectedPath = normalizeSeparators(configuredBase);
-  const locations = getPlexLibraryLocations(libraries);
-  const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));
-  if (coveringLocation) {
-    steps.push(
-      healthStep("aurral-library", "pass", "Plex scans the Aurral download folder", {
-        detail: `${expectedPath} (library: ${coveringLocation})`,
-      }),
-    );
-  } else {
-    steps.push(
-      healthStep("aurral-library", "warn", "Plex scans the Aurral download folder", {
-        detail: expectedPath,
-        fix: "Confirm Plex Aurral Library path is the path the Plex server uses for Aurral's downloads, save settings, then run Sync to Plex so Aurral can create or repair its library.",
-      }),
-    );
-  }
-
-  return buildSection("plex", "Plex playback", steps);
-}
-
-async function checkJellyfinSection() {
-  const jellyfin = dbOps.getSettings()?.integrations?.jellyfin || {};
-  if (!jellyfin.url || !jellyfin.apiKey || !jellyfin.userId) {
-    return buildSection("jellyfin", "Jellyfin playback", [], {
-      skipped: true,
-      skipReason: "Jellyfin is not configured.",
-    });
-  }
-
-  const client = new JellyfinClient(jellyfin.url, jellyfin.apiKey, jellyfin.userId);
-  let locations: string[];
-  try {
-    locations = await client.getMusicLibraryLocations();
-  } catch (error) {
-    return buildSection("jellyfin", "Jellyfin playback", [
-      healthStep("libraries", "fail", "Jellyfin music libraries are readable", {
-        detail: formatServiceError(error, "Could not list Jellyfin libraries"),
-        fix: "Check the Jellyfin URL and API key in Settings → Playback.",
-      }),
-    ]);
-  }
-
-  const expectedPath = normalizeSeparators(
-    resolveRemotePath(resolveDownloadRoot(), getPathMappings("jellyfin")),
-  );
-  const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));
-  if (coveringLocation) {
-    return buildSection("jellyfin", "Jellyfin playback", [
-      healthStep("aurral-library", "pass", "Jellyfin scans the Aurral download folder", {
-        detail: `${expectedPath} (library: ${coveringLocation})`,
-      }),
-    ]);
-  }
-  return buildSection("jellyfin", "Jellyfin playback", [
-    healthStep("aurral-library", "warn", "Jellyfin scans the Aurral download folder", {
-      detail: `${expectedPath} is outside every Jellyfin music library${
-        locations.length ? `: ${formatLimitedList(locations)}` : ""
-      }`,
-      fix: "Add the Library folder to a Jellyfin music library and scan it. Jellyfin playlists can only hold tracks in its libraries. If Jellyfin sees the folder at another path, also add a Jellyfin path mapping under Settings → Downloads → Remote path mappings.",
-    }),
-  ]);
-}
-
 async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
   const volumeSection = await checkSharedVolumeSection();
   const downloadsSection = await checkDownloadsSection();
@@ -1139,9 +866,6 @@ async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
     await checkNzbgetSection(),
     await checkSabnzbdSection(),
     await checkTidarrSection(),
-    await checkNavidromeSection(),
-    await checkPlexSection(),
-    await checkJellyfinSection(),
   ];
 
   const summary = summarizeResult(sections);

@@ -169,6 +169,7 @@ const SENSITIVE_REDIRECT_HEADERS = new Set([
   "x-api-key",
   "x-gotify-key",
   "x-plex-token",
+  "x-nd-authorization",
 ]);
 const BODY_HEADERS = new Set(["content-length", "content-type", "transfer-encoding"]);
 

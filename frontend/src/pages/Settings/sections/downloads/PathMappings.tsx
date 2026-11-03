@@ -19,9 +19,6 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "sabnzbd", label: "SABnzbd" },
   { value: "tidarr", label: "Tidarr" },
   { value: "deemix", label: "deemix" },
-  { value: "plex", label: "Plex" },
-  { value: "jellyfin", label: "Jellyfin" },
-  { value: "navidrome", label: "Navidrome" },
 ];
 
 const SOURCE_VALUES = new Set(PATH_MAPPING_SOURCE_OPTIONS.map((option) => option.value));

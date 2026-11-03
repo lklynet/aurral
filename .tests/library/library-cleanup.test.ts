@@ -39,7 +39,6 @@ const [
   { playlistManager },
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
-  { retryPlaybackRetainedFiles },
   { getMetadataBaseUrl },
   { setMetadataProviderCooldown },
   { scanRegistrySchema },
@@ -57,7 +56,6 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
   () => import("../../backend/services/subsonicPlayQueueService.ts"),
-  () => import("../../backend/services/playback/playbackFileRetention.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/metadataProviderBudget.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
@@ -552,7 +550,7 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   assert.ok(refreshed.includes("stuck-mix"));
 });
 
-test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async () => {
+test("a duplicate stays when its name is behind a linked folder", async () => {
   const pair = async (artist: string) => {
     const tags = { artist, album: "Album", title: "Song", track: "1" };
     return {
@@ -570,36 +568,17 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
       ]),
     };
   };
-  const listed = await pair("Listed");
   const linked = await pair("Linked");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const { id } = await cleanUp();
-  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 1, removed: 0 });
 
   const realFolder = path.join(root, "Linked", "Real");
   await rename(path.dirname(linked.worse), realFolder);
   await symlink(realFolder, path.dirname(linked.worse));
-  let referenced = [listed.worse];
-  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (operation) =>
-    operation === "getReferencedPaths"
-      ? [
-          {
-            destination: "test",
-            key: "test",
-            operation: "getReferencedPaths",
-            ok: true,
-            paths: referenced,
-          },
-        ]
-      : [],
-  );
   await operations.removeDuplicateFiles(id);
   assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
-  referenced = [];
-  await retryPlaybackRetainedFiles();
 
-  assert.equal(await exists(listed.worse), true);
-  assert.equal(await exists(listed.better), true);
   assert.equal(await exists(path.join(realFolder, "01 - Song.mp3")), true);
   assert.equal(await exists(path.join(realFolder, "song.mp3")), true);
   assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });

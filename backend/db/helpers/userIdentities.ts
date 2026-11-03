@@ -34,9 +34,6 @@ const insertStmt = db.prepare<[number, string, string, string, string | null, nu
   "INSERT INTO user_identities (user_id, provider_type, provider_key, subject, display_name, linked_at) VALUES (?, ?, ?, ?, ?, ?)",
 );
 const deleteByIdStmt = db.prepare<[number]>("DELETE FROM user_identities WHERE id = ?");
-const deleteProviderForUserStmt = db.prepare<[number, string]>(
-  "DELETE FROM user_identities WHERE user_id = ? AND provider_type = ?",
-);
 
 const toIdentity = (row: UserIdentitiesRow): UserIdentity => ({
   id: row.id,
@@ -67,32 +64,6 @@ export const userIdentityOps = {
   unlink(id: number) {
     const result = deleteByIdStmt.run(parseInt(String(id), 10));
     return result.changes > 0;
-  },
-  replaceForUser(
-    userId: number,
-    { providerType, providerKey, subject, displayName = null }: IdentityLink,
-  ) {
-    return db.transaction(() => {
-      deleteProviderForUserStmt.run(parseInt(String(userId), 10), providerType);
-      const linkedAt = Date.now();
-      const result = insertStmt.run(
-        parseInt(String(userId), 10),
-        providerType,
-        providerKey,
-        subject,
-        displayName,
-        linkedAt,
-      );
-      return toIdentity({
-        id: result.lastInsertRowid as number,
-        user_id: userId,
-        provider_type: providerType,
-        provider_key: providerKey,
-        subject,
-        display_name: displayName,
-        linked_at: linkedAt,
-      });
-    })();
   },
   link(userId: number, { providerType, providerKey, subject, displayName = null }: IdentityLink) {
     const result = insertStmt.run(

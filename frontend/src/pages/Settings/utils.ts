@@ -89,27 +89,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
           lidarr.metadataProfileId != null ? parseInt(String(lidarr.metadataProfileId), 10) : null,
         tagId: lidarr.tagId != null ? parseInt(String(lidarr.tagId), 10) : null,
       },
-      navidrome: {
-        url: "",
-        username: "",
-        password: "",
-        prefixOwnerUsername: true,
-        ...(savedSettings.integrations?.navidrome || {}),
-      },
-      plex: {
-        url: "",
-        token: "",
-        clientId: "",
-        machineIdentifier: "",
-        downloadsPath: "",
-        ...(savedSettings.integrations?.plex || {}),
-      },
-      jellyfin: {
-        url: "",
-        apiKey: "",
-        userId: "",
-        ...(savedSettings.integrations?.jellyfin || {}),
-      },
       lastfm: {
         apiKey: "",
         discoveryPeriod: "1month",

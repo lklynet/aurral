@@ -5,7 +5,6 @@ import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
 import { lidarrCredentialParams } from "../../../utils/api/core.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
-import { playbackSettingsClient } from "../../../utils/api/clients/playbackSettings.ts";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
@@ -70,24 +69,6 @@ const defaultSettings = {
   reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,
   integrations: {
-    navidrome: {
-      url: "",
-      username: "",
-      password: "",
-      prefixOwnerUsername: true,
-    },
-    plex: {
-      url: "",
-      token: "",
-      clientId: "",
-      machineIdentifier: "",
-      downloadsPath: "",
-    },
-    jellyfin: {
-      url: "",
-      apiKey: "",
-      userId: "",
-    },
     lastfm: {
       apiKey: "",
       apiSecret: "",
@@ -326,13 +307,6 @@ export function useSettingsData(
   }, []);
 
   const settingsQuery = useQuery({ ...appSettingsQueryOptions(), enabled: false });
-  const playbackQuery = useQuery({
-    queryKey: queryKeys.playbackSettings,
-    queryFn: ({ signal }) =>
-      parseResponse(playbackSettingsClient.playback.$get({}, { init: { signal } })),
-    enabled: false,
-    staleTime: 30_000,
-  });
   const downloadClientQuery = useQuery({
     queryKey: queryKeys.downloadClientSettings,
     queryFn: ({ signal }) =>
@@ -389,12 +363,10 @@ export function useSettingsData(
   const loadingLidarrProfiles = lidarrProfilesQuery.isFetching;
   const loadingLidarrMetadataProfiles = lidarrMetadataProfilesQuery.isFetching;
   const loadingLidarrTags = lidarrTagsQuery.isFetching;
-  const playbackSettings = playbackQuery.data?.destinations || null;
   const downloadClientSettings = downloadClientQuery.data?.clients || null;
   const saving = settingsSaveMutation.isPending;
   const { mutateAsync: saveSettings } = settingsSaveMutation;
   const { refetch: refetchSettings } = settingsQuery;
-  const { refetch: refetchPlayback } = playbackQuery;
   const { refetch: refetchDownloadClients } = downloadClientQuery;
 
   const refreshHealth = useCallback(async () => {
@@ -413,7 +385,6 @@ export function useSettingsData(
       await settingsSaveSettled();
       const [settingsResult] = await Promise.all([
         refetchSettings({ throwOnError: true }),
-        refetchPlayback({ throwOnError: false }),
         refetchDownloadClients({ throwOnError: false }),
       ]);
       const savedSettings = settingsResult.data!;
@@ -439,13 +410,7 @@ export function useSettingsData(
     } catch {
       setSettingsLoaded(true);
     }
-  }, [
-    refetchDownloadClients,
-    refetchPlayback,
-    refetchSettings,
-    refreshHealth,
-    updateLidarrResourceConfig,
-  ]);
+  }, [refetchDownloadClients, refetchSettings, refreshHealth, updateLidarrResourceConfig]);
 
   const refreshLidarrResources = useCallback(
     async (config: { url: string; apiKey: string } | null = null) => {
@@ -701,7 +666,6 @@ export function useSettingsData(
     health,
     settings,
     settingsLoaded,
-    playbackSettings,
     downloadClientSettings,
     updateSettings,
     originalSettings,

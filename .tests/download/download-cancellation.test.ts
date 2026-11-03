@@ -315,7 +315,6 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
   vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(() => true);
   vi.spyOn(downloadWorker, "pruneOrphanedJobState").mockImplementation(async () => {});
   vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => true);
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
@@ -375,7 +374,6 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
   vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(() => true);
   vi.spyOn(downloadWorker, "pruneOrphanedJobState").mockImplementation(async () => {});
   vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => true);
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
 
@@ -885,7 +883,6 @@ test("clearing a shown flow or deleting any flow rescans the library", async () 
   vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
   vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(() => true);
   vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => true);
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const scans = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
@@ -925,7 +922,6 @@ test("rotating a flow shown in the library rescans the library", async () => {
     jobIds: [],
     tracksQueued: 0,
   }));
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const scans = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);

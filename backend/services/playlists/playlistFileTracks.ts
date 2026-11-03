@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
-import { orderJobsByPlaylistTracks } from "../playlists/playlistTracks.ts";
+import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
+import { orderJobsByPlaylistTracks } from "./playlistTracks.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { resolveExistingTrackPath, resolveDownloadRoot } from "../downloadPaths.ts";
 
@@ -13,7 +13,7 @@ async function isFile(filePath: string) {
   }
 }
 
-export async function collectPlaybackPlaylistTracks(
+export async function collectPlaylistFileTracks(
   entityId: string,
   options: { downloadRoot?: string | null } = {},
 ) {
