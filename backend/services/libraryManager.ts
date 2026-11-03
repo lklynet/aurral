@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import PQueue from "p-queue";
 import fsp from "fs/promises";
 import path from "path";
 import { randomUUID } from "node:crypto";
@@ -116,6 +117,7 @@ import {
 } from "./providers/brainzmashProvider.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 const LIDARR_RETRY_MS = 60000;
+const metadataLookups = new PQueue({ concurrency: 4 });
 const LIDARR_MONITOR_OPTIONS = new Set([
   "none",
   "existing",
@@ -1180,7 +1182,7 @@ export class LibraryManager {
 
     let metadata = null;
     try {
-      metadata = await getMetadataArtistByMbid(normalizedMbid);
+      metadata = await metadataLookups.add(() => getMetadataArtistByMbid(normalizedMbid));
     } catch (error) {
       const failure = asAppError(error);
       logger.warn("library", "Aurral artist metadata lookup failed", {
@@ -2336,7 +2338,7 @@ export class LibraryManager {
   }
 
   async _releaseTracks(releaseGroupMbid: string, edition: string | null | undefined) {
-    const album = await getMetadataAlbumByMbid(releaseGroupMbid);
+    const album = await metadataLookups.add(() => getMetadataAlbumByMbid(releaseGroupMbid));
     const release = selectAlbumRelease(album, { edition });
     return (Array.isArray(release?.tracks) ? release.tracks : [])
       .map((track) => ({
@@ -3467,7 +3469,7 @@ export class LibraryManager {
 
     let metadata;
     try {
-      metadata = await getMetadataAlbumByMbid(normalizedAlbumMbid);
+      metadata = await metadataLookups.add(() => getMetadataAlbumByMbid(normalizedAlbumMbid));
     } catch (error) {
       const failure = asAppError(error);
       logger.warn("library", "Aurral album metadata lookup failed", {
