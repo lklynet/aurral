@@ -80,7 +80,7 @@ test("Navidrome plays import once, stay out of the app's play list, and leave on
   assert.deepEqual(servers.listHistoryServers(userId), []);
 });
 
-test("Jellyfin play times convert from the server's local clock", async () => {
+test("Jellyfin play times convert from the server's local clock on their own date", async () => {
   const requests: string[] = [];
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -94,7 +94,12 @@ test("Jellyfin play times convert from the server's local clock", async () => {
     }
     const sql = String(JSON.parse(String(init?.body)).CustomQueryString);
     if (sql.includes("localtime")) return body({ results: [["-18000"]] });
-    return body({ results: [["2026-01-01 07:00:00.1234567", "song"]] });
+    return body({
+      results: [
+        ["2026-01-01 07:00:00.1234567", "song", "1767268800"],
+        ["2026-07-01 08:00:00.1234567", "song", "1782907200"],
+      ],
+    });
   };
 
   await servers.connectHistoryServer(userId, "jellyfin", {
@@ -106,7 +111,7 @@ test("Jellyfin play times convert from the server's local clock", async () => {
 
   assert.deepEqual(
     importedPlays().map((play) => play.played_at),
-    [Date.parse("2026-01-01T12:00:00Z")],
+    [Date.parse("2026-01-01T12:00:00Z"), Date.parse("2026-07-01T12:00:00Z")],
   );
   assert.ok(requests.includes("/user_usage_stats/submit_custom_query"));
 });

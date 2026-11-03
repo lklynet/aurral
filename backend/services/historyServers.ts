@@ -184,7 +184,9 @@ async function playbackReporting({ url, secret }: Connection, sql: string) {
   }
 }
 
-// Playback Reporting stores times in the server's local time.
+// Playback Reporting stores times in the server's local time. The date range
+// uses today's offset, which the sync overlap absorbs, and each play converts
+// with the offset of its own date.
 async function jellyfinOffsetMs(connection: Connection) {
   const [row] = await playbackReporting(
     connection,
@@ -214,7 +216,7 @@ const jellyfin: Provider = {
     for (let start = 0; ; start += PAGE_SIZE) {
       const rows = await playbackReporting(
         connection,
-        `SELECT DateCreated, ItemId FROM PlaybackActivity WHERE REPLACE(UserId, '-', '') = '${user}' AND ItemType = 'Audio' AND DateCreated >= '${local(since)}' AND DateCreated < '${local(until)}' ORDER BY DateCreated LIMIT ${PAGE_SIZE} OFFSET ${start}`,
+        `SELECT DateCreated, ItemId, CAST(strftime('%s', substr(DateCreated, 1, 19), 'utc') AS INTEGER) FROM PlaybackActivity WHERE REPLACE(UserId, '-', '') = '${user}' AND ItemType = 'Audio' AND DateCreated >= '${local(since)}' AND DateCreated < '${local(until)}' ORDER BY DateCreated LIMIT ${PAGE_SIZE} OFFSET ${start}`,
       );
       const items = new Map<string, Record<string, unknown>>();
       const ids = [...new Set(rows.map((row) => text(row[1])).filter(Boolean))];
@@ -236,7 +238,7 @@ const jellyfin: Provider = {
         return {
           id: `${date}:${text(row[1])}`,
           trackId: text(row[1]),
-          playedAt: Date.parse(`${date}Z`) - offset,
+          playedAt: number(row[2]) * 1000,
           title: text(item.Name),
           artist: text(list(item.Artists)[0]),
           album: text(item.Album),
