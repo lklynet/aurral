@@ -11816,15 +11816,6 @@ button.native-library-genre-row:focus-visible {
   white-space: nowrap;
 }
 
-.flow-editor__dirty {
-  flex-shrink: 0;
-  width: 0.375rem;
-  height: 0.375rem;
-  margin-left: auto;
-  border-radius: var(--aurral-radius-round);
-  background: var(--aurral-warning);
-}
-
 .flow-editor__count .input {
   width: 4.5rem;
   text-align: right;

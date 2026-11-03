@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { parseResponse } from "hono/client";
 import { Plus } from "../../components/icons";
@@ -8,6 +8,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
+import { afterTextEntry } from "../../utils/afterTextEntry.ts";
 import {
   SettingsGroup,
   SettingsNote,
@@ -34,7 +35,12 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
   }));
   const [view, setView] = useState<"nav" | "pane">("pane");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"save" | "create" | "download" | null>(null);
+  const [busy, setBusy] = useState<"create" | "download" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const queuedRef = useRef(false);
+  const saveRef = useRef(() => {});
+  const flush = useCallback(() => saveRef.current(), []);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
@@ -50,8 +56,15 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
     setError("");
     setView("pane");
   };
-  const leave = (next: () => void) => (dirty ? setPendingLeave(() => next) : next());
-  const close = () => leave(onClose);
+  const blocked = dirty && error !== "";
+  const leave = (next: () => void) => (blocked ? setPendingLeave(() => next) : next());
+  const close = () =>
+    blocked
+      ? setPendingLeave(() => () => {
+          saveRef.current = () => {};
+          onClose();
+        })
+      : onClose();
 
   const select = (id: string) => {
     if (id === selection.id) return setView("pane");
@@ -76,9 +89,13 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
     });
 
   const save = async () => {
-    if (!flow) return;
-    setBusy("save");
-    setError("");
+    if (!flow || !isFlowDirty(flow, draft)) return;
+    if (savingRef.current) {
+      queuedRef.current = true;
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
     try {
       const { flow: saved } = await parseResponse(
         flowsClient.flows[":flowId"].$put({
@@ -93,7 +110,6 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
       setSelection((current) =>
         current.draft === draft ? { id: flow.id, draft: flowToForm(saved) } : current,
       );
-      showSuccess(`Saved ${flow.name}`);
       await fetchStatus();
       if (flow.autoDownload === false && saved.autoDownload !== false && savedCount > 0) {
         setConfirmDownloadSaved(true);
@@ -101,9 +117,20 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save flow"));
     } finally {
-      setBusy(null);
+      savingRef.current = false;
+      setSaving(false);
+      if (queuedRef.current) {
+        queuedRef.current = false;
+        saveRef.current();
+      }
     }
   };
+
+  useEffect(() => {
+    saveRef.current = () => void save();
+  });
+  useEffect(() => afterTextEntry(flush), [draft, flush]);
+  useEffect(() => flush, [flush]);
 
   const downloadSaved = async () => {
     if (!flow) return;
@@ -138,7 +165,6 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
         label="Flows"
         view={view}
         onClose={close}
-        closeDisabled={busy === "save"}
         nav={
           <nav className="settings-dialog__group" aria-label="Flows">
             {flows.map((entry) => {
@@ -150,7 +176,6 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
                   className={`settings-dialog__link${active ? " is-active" : ""}`}
                   aria-current={active ? "page" : undefined}
                   onClick={() => select(entry.id)}
-                  disabled={busy === "save"}
                 >
                   <PlaylistArtworkThumb
                     artworkUrl={artworkUrlFor(entry.id)}
@@ -158,11 +183,6 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
                     className="flow-editor__rail-art"
                   />
                   <span className="flow-editor__rail-name">{entry.name}</span>
-                  {active && dirty ? (
-                    <span className="flow-editor__dirty">
-                      <span className="sr-only">Unsaved changes</span>
-                    </span>
-                  ) : null}
                 </button>
               );
             })}
@@ -190,36 +210,13 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
             onBack={() => setView("nav")}
             closeLabel="Close flows"
             onClose={close}
-            closeDisabled={busy === "save"}
             status={
-              busy === "save" ? (
+              saving ? (
                 <>
                   <DotLoader size="xs" label={null} /> Saving…
                 </>
-              ) : dirty ? (
-                "Unsaved"
-              ) : null
-            }
-            actions={
-              dirty ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={busy === "save"}
-                    onClick={() => open(flow.id, flowToForm(flow))}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={busy === "save"}
-                    onClick={save}
-                  >
-                    Save
-                  </button>
-                </>
+              ) : error ? (
+                "Not saved"
               ) : null
             }
           >
@@ -275,7 +272,7 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
           <ConfirmModal
             open={pendingLeave !== null}
             title="Discard unsaved changes?"
-            body={`Your changes to ${flow?.name ?? "this flow"} are not saved.`}
+            body={error}
             confirmLabel="Discard"
             busyLabel="Discarding"
             onCancel={() => setPendingLeave(null)}

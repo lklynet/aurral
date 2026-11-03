@@ -114,9 +114,9 @@ Build every section from the primitives in `pages/Settings/SettingsLayout.tsx`:
 - `SettingsServiceRow` shows a service name, a short status (**On**, **Off**, **Not set up**, or **Needs setup**), and a chevron. It opens the service's detail in the same pane. Do not add card grids or a modal per service.
 - Use a table only for a few short columns. When each item has a description or several values, use two-line rows like **Status > Tasks**: name and description on the left, schedule and result on the right.
 
-Larger editors that are not settings use the same frame: `SettingsShell` for the modal and its list, and `SettingsPane` for the bar and content column. The flow editor lists flows, and playlist import lists sources. The one action that moves forward, such as **Save** or **Import**, sits in the bar.
+Larger editors that are not settings use the same frame: `SettingsShell` for the modal and its list, and `SettingsPane` for the bar and content column. The flow editor lists flows, and playlist import lists sources. An action that moves forward, such as **Import**, sits in the bar.
 
-Account sections show for everyone. Server sections show only to people who can manage the server, and their data never loads for anyone else. Changes save automatically. A detail that edits a draft, such as a webhook, saves with its own button.
+Account sections show for everyone. Server sections show only to people who can manage the server, and their data never loads for anyone else. Changes save automatically. Toggles, selects, and actions save at once. A text field saves when focus leaves it, so a half-typed value never saves. Queue a save through `afterTextEntry` in `utils/afterTextEntry.ts` to get this rule. A detail that edits a draft, such as a webhook, saves with its own button.
 
 ## Motion
 
