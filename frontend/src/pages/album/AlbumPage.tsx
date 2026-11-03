@@ -152,8 +152,9 @@ function AlbumPage() {
   const baseRelease = useMemo<ReleaseGroup>(
     () => ({
       id: releaseGroupMbid || undefined,
-      title: String(focusRelease?.title || "").trim(),
-      "first-release-date": focusRelease?.firstReleaseDate || "",
+      // The library already knows these for an owned album, before or without MusicBrainz
+      title: String(focusRelease?.title || libraryAlbum?.title || "").trim(),
+      "first-release-date": focusRelease?.firstReleaseDate || libraryAlbum?.releaseDate || "",
       "primary-type": focusRelease ? focusRelease.primaryType || "Album" : undefined,
       "secondary-types": Array.isArray(focusRelease?.secondaryTypes)
         ? focusRelease.secondaryTypes
@@ -162,7 +163,7 @@ function AlbumPage() {
       _coverUrl: focusRelease?.coverUrl || "",
       _deezerAlbumId: focusRelease?.deezerAlbumId || "",
     }),
-    [focusRelease, releaseGroupMbid],
+    [focusRelease, libraryAlbum?.releaseDate, libraryAlbum?.title, releaseGroupMbid],
   );
   const releaseDetailsQuery = useQuery(releaseGroupDetailsQueryOptions(releaseGroupMbid));
   const release = useMemo(
@@ -556,7 +557,11 @@ function AlbumPage() {
       : albumRef.kind === "library"
         ? libraryQuery
         : releaseDetailsQuery;
-  if (!albumRef || (failed && (albumRef.kind === "library" || (failed.isError && !title)))) {
+  // A title from navigation can stand in for MusicBrainz details, unless the tracks failed too
+  if (
+    !albumRef ||
+    (failed && (albumRef.kind === "library" || (failed.isError && (!title || tracksQuery.isError))))
+  ) {
     const status = asApiError(failed?.error)?.response?.status;
     const notFound = !failed?.isError || status === 404 || status === 400;
     return (
