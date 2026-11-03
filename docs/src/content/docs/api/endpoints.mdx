@@ -533,6 +533,18 @@ Every route in this section requires an administrator.
 | `GET`  | `/api/backup`                                          | Download a backup zip. Requires a password entered in the last 15 minutes      |
 | `POST` | `/api/backup/restore`                                  | Restore a backup zip sent as the request body, then restart                    |
 
+## Logs
+
+Every route in this section requires an administrator, except `POST /api/logs/client`.
+
+| Method | Path                 | Purpose                                                                                                                                                                         |
+| ------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/logs`          | Log entries, newest first. Optional `level` (the lowest level), `cat`, `q` text, `fp`, `req`, `job`, `hours`, `limit` up to 1000, and `before` or `after` an entry `id` to page |
+| `GET`  | `/api/logs/problems` | Warnings and errors from the last `hours` (default 24), grouped by fingerprint with a count and the latest entry                                                                |
+| `GET`  | `/api/logs/export`   | A text file of the last `hours` (default 24) at `level` and above (default `info`), with a header that names the version and enabled integrations                               |
+| `PUT`  | `/api/logs/debug`    | Turn debug logging on or off with `{ "enabled": true }`                                                                                                                         |
+| `POST` | `/api/logs/client`   | Report a browser error. Any signed-in user                                                                                                                                      |
+
 ## Scrobbling and play events
 
 The instance API key has no user identity. Account linking and local play-event

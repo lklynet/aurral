@@ -59,6 +59,21 @@ interface AxiosError extends Error {
   response?: AxiosResponse;
 }
 
+export type RequestFailure = {
+  method: string;
+  url: string;
+  status: number | null;
+  code: string | null;
+  ms: number;
+  message: string;
+};
+
+let reportFailure: ((failure: RequestFailure) => void) | null = null;
+
+export function onRequestFailure(listener: (failure: RequestFailure) => void) {
+  reportFailure = listener;
+}
+
 const usesNativeFetch = () =>
   Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
 
@@ -210,6 +225,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     }, timeoutMs);
   }
 
+  const startedAt = Date.now();
   const publicDispatchers = [];
   const init: FetchInit = {
     method,
@@ -306,6 +322,18 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     }
     if (failure && !failure.response && !failure.request) {
       failure.request = { method, url };
+    }
+    if (timeoutTriggered || !externalSignal?.aborted) {
+      try {
+        reportFailure?.({
+          method,
+          url,
+          status: failure?.response?.status ?? null,
+          code: failure?.code ?? null,
+          ms: Date.now() - startedAt,
+          message: failure?.message || String(error),
+        });
+      } catch {}
     }
     throw error;
   } finally {

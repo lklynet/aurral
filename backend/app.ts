@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { clientAddress } from "./middleware/clientAddress.ts";
 import { authenticate } from "./middleware/guards.ts";
@@ -10,6 +11,7 @@ import frontend from "./routes/frontend.ts";
 import sso from "./routes/sso.ts";
 import subsonic from "./routes/subsonic.ts";
 import { noteDeprecatedUsage } from "./services/deprecatedUsage.ts";
+import { withLogContext } from "./services/logger.ts";
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
 const signInLimit = rateLimit({
@@ -19,6 +21,7 @@ const signInLimit = rateLimit({
 });
 
 export const app = new Hono<AppEnv>({ strict: false })
+  .use((_c, next) => withLogContext({ req: randomUUID().slice(0, 8) }, next))
   .use(async (c, next) => {
     const incoming = c.env.incoming.headers;
     if (incoming["transfer-encoding"]) {

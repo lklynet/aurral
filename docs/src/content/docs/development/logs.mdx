@@ -1,0 +1,29 @@
+---
+title: Reading logs
+description: Follow Aurral's log locally or on a remote install to find problems.
+---
+
+Each Aurral writes `logs/aurral.log` in its data folder, one JSON object per line, with the newest line at the end. A dev worktree writes `backend/data/logs/aurral.log`. Worker lines land in the same file, tagged with `proc` and the `job` that wrote them. Lines from a request share a `req` id.
+
+| Field         | Meaning                                                             |
+| ------------- | ------------------------------------------------------------------- |
+| `id`          | Order in the file. Use it as the paging cursor                      |
+| `level`       | `debug`, `info`, `warn`, or `error`                                 |
+| `cat`         | The area, such as `lidarr`, `jobs`, `http`, or `browser`            |
+| `fp`          | The same value for repeats of one problem, ignoring ids and numbers |
+| `data`, `err` | Details, and an error with its stack frames. Secrets are masked     |
+
+Follow warnings and errors on a local install:
+
+```sh
+tail -F backend/data/logs/aurral.log | jq -c 'select(.level == "warn" or .level == "error")'
+```
+
+On a remote install, use the API key. Start with the repeated problems from the last day, then read one in full:
+
+```sh
+curl -H "X-Api-Key: $KEY" "https://aurral.example.com/api/logs/problems"
+curl -H "X-Api-Key: $KEY" "https://aurral.example.com/api/logs?fp=<fp>&limit=20"
+```
+
+`/api/logs` also filters by `req` and `job`, so you can follow one failure from start to end. Page back with `before=<id>`, and poll for new lines with `after=<id>`. See the [endpoint reference](/api/endpoints/#logs).

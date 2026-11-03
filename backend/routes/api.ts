@@ -17,6 +17,7 @@ import library from "./library/index.ts";
 import libraryStreams from "./library/streams.ts";
 import lidarrFeed from "./lidarrFeed.ts";
 import lidarrWebhook from "./lidarrWebhook.ts";
+import logs from "./logs.ts";
 import news from "./news.ts";
 import onboarding from "./onboarding.ts";
 import playEvents from "./playEvents.ts";
@@ -97,7 +98,8 @@ export const api = new Hono<AppEnv>()
   .route("/", starPrompt)
   .route("/", wrapped)
   .route("/", lidarrWebhook)
-  .route("/", lidarrFeed);
+  .route("/", lidarrFeed)
+  .route("/", logs);
 
 export const handleError: ErrorHandler<AppEnv> = (error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
