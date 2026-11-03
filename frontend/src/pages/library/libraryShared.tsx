@@ -164,7 +164,6 @@ export function EmptyState({ title, message }: { title: string; message: string 
   );
 }
 
-// Library pages and views reload; album track lists only refresh when next opened
 export const invalidateLibraryViews = () => {
   clearLibraryPageCache();
   void queryClient.invalidateQueries({
@@ -181,10 +180,8 @@ const handleLibraryScanMessage = (message: WebSocketChannelMessage) => {
   if (message?.type === "library_scan_completed") void invalidateLibraryViews();
 };
 
-// Library views reload once a library scan finishes
 export const useLibraryScanRefresh = () => useWebSocketChannel("library", handleLibraryScanMessage);
 
-// A library view's data, or the demo library in preview mode
 export function useLibraryViewData(data: LibraryViewData | undefined, forcePreview: boolean) {
   const isPreviewLibrary = forcePreview || data?.isPreview === true;
   const library = data?.library || (forcePreview ? libraryPreviewData : EMPTY_LIBRARY);

@@ -4,8 +4,6 @@ import { getReleaseGroupCover } from "../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.ts";
 import { getCoverImage } from "../ArtistDetails/utils";
 
-// A cover that fails to load is refetched once without the cache, then dropped for the
-// letter fallback.
 export function useReleaseCover({
   releaseGroupMbid,
   seedUrl,

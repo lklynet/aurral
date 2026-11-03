@@ -114,7 +114,6 @@ export function useLibraryAlbumState({
     await loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [libraryAlbum, loadAlbumTracks]);
 
-  // A download request leaves the album monitored by whichever manager took it
   const markAlbumRequested = async (managedBy: string) => {
     if (!libraryAlbum) return;
     patchAlbum(libraryAlbum.id, {
@@ -146,7 +145,6 @@ export function useLibraryAlbumState({
   const libraryAlbumDownloading = isAlbumDownloading(
     libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid,
   );
-  // The page passes whether any track is missing, counting those only MusicBrainz lists
   const canDownloadLibraryAlbum = (hasMissingTracks: boolean) => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingTracks) return false;
     if (!libraryDestination.ready || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid))

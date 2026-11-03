@@ -1006,7 +1006,6 @@ export function useLibraryActions({
     disabled: isPreviewLibrary,
   });
 
-  // An album's own actions, shared by library cards and the album page
   const albumMenuItems = (
     album: LibraryAlbum,
     artist: LibraryArtist | null | undefined,

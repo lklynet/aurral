@@ -12,7 +12,6 @@ export type AlbumRouteState = {
   focusReleaseGroup?: Partial<ReleaseFocusState["focusReleaseGroup"]>;
 };
 
-// Old album URLs (/library/album/:ref, /artist/:mbid/release/:ref) open the album page
 export function LegacyAlbumRedirect() {
   const { ref, mbid } = useParams();
   const location = useLocation();

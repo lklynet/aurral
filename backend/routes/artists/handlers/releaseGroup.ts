@@ -141,10 +141,12 @@ export default new Hono<AppEnv>()
       logger.error("releaseGroup", `Error in release-group details route for ${mbid}:`, {
         message: failure?.message,
       });
-      // Only a real miss is a 404; an outage must not read as "this album doesn't exist"
-      return isMetadataNotFoundError(error)
-        ? c.json({ error: "Release not found", message: failure?.message }, 404)
-        : c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
+      if (isMetadataNotFoundError(error)) {
+        return c.json({ error: "Release not found", message: failure?.message }, 404);
+      }
+      c.header("Cache-Control", "no-store");
+      c.header("Expires", "0");
+      return c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
     }
   })
   .get("/release-group/:mbid/cover", validate("query", coverQuery), async (c) => {

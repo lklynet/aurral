@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-// What a page shows in place of its content when it is empty, still building, or failed
 export default function StatePanel({
   icon,
   heading: Heading = "h2",

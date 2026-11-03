@@ -128,7 +128,6 @@ async function resolveLibraryArtist(params: URLSearchParams, signal: AbortSignal
 async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
-  // The album page finds the library album by its MBID itself
   if (mbid) return { to: albumPath(mbid) };
   let canonicalId = null;
   if (name) {

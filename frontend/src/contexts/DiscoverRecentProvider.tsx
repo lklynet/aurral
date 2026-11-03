@@ -48,7 +48,6 @@ function isDiscoverBrowsePath(pathname: string) {
   return false;
 }
 
-// An album page belongs to whichever section the user opened it from.
 function isSharedSectionPath(pathname: string) {
   return pathname.startsWith("/album/");
 }
