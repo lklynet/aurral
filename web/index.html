@@ -6,7 +6,7 @@
     <title>Aurral: self-hosted music discovery</title>
     <meta
       name="description"
-      content="The best open-source music discovery for your self-hosted library. Recommendations, rotating flows, and playlist downloads. Works alone or alongside Lidarr."
+      content="The best open-source music discovery for your self-hosted library. Recommendations, rotating flows, and playlist downloads."
     />
     <meta name="theme-color" content="#000000" />
     <link rel="canonical" href="https://aurral.org/" />
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Aurral: self-hosted music discovery" />
     <meta
       property="og:description"
-      content="The best open-source music discovery for your self-hosted library. Works alone or alongside Lidarr."
+      content="The best open-source music discovery for your self-hosted library."
     />
     <meta property="og:image" content="https://aurral.org/screenshots/discover.webp" />
     <meta property="og:image:alt" content="The Aurral Discover page" />
@@ -282,6 +282,7 @@
         }
 
         .link:hover,
+        .shot-modes button:hover,
         .stack a:hover,
         .footer a:hover {
           color: var(--text);
@@ -299,7 +300,7 @@
       /* Type */
 
       h1 {
-        font-size: clamp(44px, 8vw, 88px);
+        font-size: clamp(36px, 6vw, 72px);
         font-weight: 600;
         letter-spacing: -0.035em;
         line-height: 1.02;
@@ -358,10 +359,15 @@
         position: absolute;
       }
 
-      .hero-light {
+      .hero-light,
+      .hero-glow {
         filter: brightness(var(--light-power, 1));
         transform: scale(var(--light-power, 1));
         transform-origin: left top;
+        will-change: transform;
+      }
+
+      .hero-light {
         background:
           radial-gradient(
             ellipse 24% 34% at var(--pulled-x, 0%) var(--pulled-y, 0%),
@@ -379,7 +385,6 @@
 
       .hero-glow {
         display: none;
-        filter: brightness(var(--light-power, 1));
         height: 100%;
         opacity: var(--pull-opacity, 0);
         width: 100%;
@@ -426,6 +431,48 @@
 
       .shot.cropped {
         aspect-ratio: 5 / 2;
+      }
+
+      .shot.layered {
+        display: grid;
+      }
+
+      .shot.layered img {
+        grid-area: 1 / 1;
+        transition: opacity 400ms ease;
+      }
+
+      .shot.layered img[aria-hidden="true"] {
+        opacity: 0;
+      }
+
+      .shot-modes {
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        display: flex;
+        gap: 2px;
+        margin: 12px auto 0;
+        padding: 2px;
+        width: fit-content;
+      }
+
+      .shot-modes button {
+        background: none;
+        border: 0;
+        border-radius: 4px;
+        color: var(--text-muted);
+        cursor: pointer;
+        font: 500 13px / 1 var(--font-sans);
+        height: 28px;
+        padding-inline: 10px;
+        transition:
+          color 150ms ease,
+          background-color 150ms ease;
+      }
+
+      .shot-modes button[aria-pressed="true"] {
+        background: var(--pressed);
+        color: var(--text);
       }
 
       @media (max-width: 767px) {
@@ -959,7 +1006,7 @@
             style="mask-type: alpha"
           >
             <g filter="url(#hero-merge)" fill="white">
-              <g data-corner-light transform="translate(5 -10)">
+              <g transform="translate(5 -10)">
                 <ellipse rx="180" ry="155" />
                 <path data-light-neck d="M0 0 Z" />
                 <circle data-light-blob r="0" />
@@ -1006,10 +1053,8 @@
 
     <main id="main">
       <section class="wrap hero" aria-labelledby="hero-title">
-        <h1 id="hero-title">Music discovery,<br /><span class="quiet">self-hosted.</span></h1>
-        <p class="lede">
-          The best open-source discovery for your library. Works alone or alongside Lidarr.
-        </p>
+        <h1 id="hero-title">The best in<br />open-source<br />music discovery.</h1>
+        <p class="lede">Find new music, keep it in your library, and play it anywhere.</p>
         <div class="actions">
           <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
             >Get started</a
@@ -1020,23 +1065,36 @@
       </section>
 
       <div class="wrap">
-        <figure class="shot">
+        <figure class="shot layered">
           <img
             src="screenshots/discover.webp"
             width="3840"
             height="2160"
             fetchpriority="high"
-            alt="The Aurral Discover page with top tags, recently added artists, and playlists"
+            alt="The Aurral Discover page in immersive mode, tinted by artwork"
+            data-shot-mode="immersive"
+          />
+          <img
+            src="screenshots/discover-2.webp"
+            width="3840"
+            height="2160"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
+            alt="The Aurral Discover page with immersive mode off"
+            aria-hidden="true"
+            data-shot-mode="standard"
           />
         </figure>
+        <div class="shot-modes" role="group" aria-label="Discover style">
+          <button type="button" aria-pressed="true" data-shot-mode="immersive">Immersive</button>
+          <button type="button" aria-pressed="false" data-shot-mode="standard">Standard</button>
+        </div>
       </div>
 
       <section class="chapter numbers" aria-labelledby="numbers-title">
         <div class="wrap">
-          <h2 id="numbers-title">
-            People keep installing it.
-            <span class="quiet">Live numbers, no marketing math.</span>
-          </h2>
+          <h2 id="numbers-title">People keep installing it.</h2>
           <dl>
             <div>
               <dt>GitHub stars</dt>
@@ -1061,30 +1119,28 @@
       <section class="chapter" aria-labelledby="discover-title">
         <div class="wrap">
           <h2 id="discover-title">
-            Recommendations with taste.
-            <span class="quiet"
-              >Built from your library and listening history, not someone's ad budget.</span
-            >
+            Recommendations from your own listening.
+            <span class="quiet">Built from your library and listening history.</span>
           </h2>
           <ul class="features">
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
-              <h3>Learns from you</h3>
+              <h3>Your history</h3>
               <p>Your library plus Last.fm, ListenBrainz, or Koito history.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-tune" /></svg>
-              <h3>Goes as deep as you want</h3>
+              <h3>Adjustable depth</h3>
               <p>Safer, balanced, or deeper. More like this, less like that.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-trending" /></svg>
-              <h3>Knows what's moving</h3>
+              <h3>Trends</h3>
               <p>Global trends, tags, and recent releases in one place.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
-              <h3>Finds the show</h3>
+              <h3>Concerts</h3>
               <p>Nearby concerts for the artists you already love.</p>
             </li>
           </ul>
@@ -1150,8 +1206,8 @@
       <section class="chapter" aria-labelledby="inbox-title">
         <div class="wrap">
           <h2 id="inbox-title">
-            Hears it first.
-            <span class="quiet">New releases, shows, and news for your artists, in one Inbox.</span>
+            One Inbox for your artists.
+            <span class="quiet">New releases, shows, and news as they come in.</span>
           </h2>
           <ul class="features">
             <li>
@@ -1192,7 +1248,7 @@
       <section class="chapter" aria-labelledby="themes-title">
         <div class="wrap">
           <h2 id="themes-title">
-            Make it yours.
+            Themes.
             <span class="quiet"
               >Built-in themes, your own themes, and colors that follow the music.</span
             >
@@ -1215,7 +1271,7 @@
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>
-              <h3>Follows you</h3>
+              <h3>Synced to your account</h3>
               <p>Your theme is saved to your account, on every device.</p>
             </li>
           </ul>
@@ -1236,10 +1292,7 @@
 
       <section class="chapter rest" aria-labelledby="rest-title">
         <div class="wrap">
-          <h2 id="rest-title">
-            The rest, done properly.
-            <span class="quiet">Everything a music server should have had already.</span>
-          </h2>
+          <h2 id="rest-title">Everything else.</h2>
           <ul>
             <li>
               <a href="https://docs.aurral.org/using/overview/">
@@ -1252,7 +1305,7 @@
               <a href="https://docs.aurral.org/using/library/">
                 <svg class="icon" aria-hidden="true"><use href="#i-library" /></svg>
                 <h3>Library</h3>
-                <p>One index of everything Aurral and Lidarr manage.</p>
+                <p>One index of everything in your music library.</p>
               </a>
             </li>
             <li>
@@ -1304,7 +1357,7 @@
       <section class="chapter stack" aria-labelledby="stack-title">
         <div class="wrap">
           <h2 id="stack-title">
-            Lidarr optional. Everything else, too.
+            Every integration is optional.
             <span class="quiet"
               >Connect the services you already run and skip the ones you don't.</span
             >
@@ -1393,13 +1446,9 @@
       <section class="chapter install" aria-labelledby="install-title">
         <div class="wrap">
           <div class="copy">
-            <h2 id="install-title">
-              Running in a minute.
-              <span class="quiet">One container, one port.</span>
-            </h2>
+            <h2 id="install-title">Install with Docker Compose.</h2>
             <p class="body">
-              Mount the same media path that Lidarr uses, run <code>docker compose up -d</code>, and
-              open port 3001. Lidarr can come later, or never.
+              Run <code>docker compose up -d</code>, open port 3001, and create your admin account.
             </p>
             <div class="links">
               <a class="link" href="https://docs.aurral.org/getting-started/docker/"
@@ -1429,8 +1478,8 @@
       - PUID=1000
       - PGID=1000
     volumes:
-      - ${MEDIA_ROOT:-/srv/media}:/data
-      - ./config:/config</code></pre>
+      - ./config:/config
+      - ./data:/data</code></pre>
           </div>
         </div>
       </section>
@@ -1438,9 +1487,9 @@
       <section class="closing" aria-labelledby="closing-title">
         <div class="wrap">
           <img src="favicon.svg" alt="" width="65" height="48" />
-          <h2 id="closing-title">Built in public. Better every week.</h2>
+          <h2 id="closing-title">Free and open source.</h2>
           <p class="lede">
-            Free, MIT licensed, and shaped by the people who run it. Sponsors keep it that way.
+            MIT licensed and shaped by the people who run it. Sponsors keep it free.
           </p>
           <div class="actions">
             <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
@@ -1485,7 +1534,7 @@
             <li><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
           </ul>
         </nav>
-        <p class="meta">MIT licensed. Made for people who still listen to whole albums.</p>
+        <p class="meta">MIT licensed.</p>
       </div>
     </footer>
 
@@ -1493,7 +1542,6 @@
       const hero = document.querySelector(".hero");
       const atmosphere = document.querySelector(".hero-atmosphere");
       const nav = document.querySelector("[data-nav]");
-      const cornerLight = atmosphere.querySelector("[data-corner-light]");
       const lightNeck = atmosphere.querySelector("[data-light-neck]");
       const lightBlob = atmosphere.querySelector("[data-light-blob]");
       const warmth = atmosphere.querySelector("#hero-warmth");
@@ -1572,7 +1620,6 @@
         lightBlob.setAttribute("cx", String(tipX));
         lightBlob.setAttribute("cy", String(tipY));
         lightBlob.setAttribute("r", String(radius));
-        cornerLight.setAttribute("transform", `translate(5 -10) scale(${lightPower})`);
       };
       const moveLight = (time) => {
         lightFrame = 0;
@@ -1667,20 +1714,36 @@
       });
 
       const onScroll = () => {
-        const progress = Math.min(1, Math.max(0, scrollY) / fadeDistance);
-        lightPower = 1 - progress;
-        atmosphere.hidden = lightPower === 0;
-        atmosphere.style.setProperty("--light-power", String(lightPower));
-        paintLight();
-        nav.style.setProperty("--nav-opacity", String(0.8 * (1 - lightPower)));
         nav.classList.toggle("is-scrolled", scrollY > 0);
-        if (!lightPower) stopLight();
+        const power = 1 - Math.min(1, Math.max(0, scrollY) / fadeDistance);
+        if (power === lightPower) return;
+        lightPower = power;
+        atmosphere.hidden = !power;
+        atmosphere.style.setProperty("--light-power", String(power));
+        nav.style.setProperty("--nav-opacity", String(0.8 * (1 - power)));
+        if (!power) stopLight();
       };
       const sizeAtmosphere = () => {
         fadeDistance = hero.getBoundingClientRect().bottom + scrollY;
         atmosphere.style.height = `${fadeDistance + 240}px`;
         onScroll();
       };
+      const shotImages = document.querySelectorAll(".shot.layered img");
+      const shotButtons = document.querySelectorAll(".shot-modes button");
+      for (const button of shotButtons) {
+        button.addEventListener("click", () => {
+          for (const image of shotImages) {
+            image.setAttribute(
+              "aria-hidden",
+              String(image.dataset.shotMode !== button.dataset.shotMode),
+            );
+          }
+          for (const other of shotButtons) {
+            other.setAttribute("aria-pressed", String(other === button));
+          }
+        });
+      }
+
       new ResizeObserver(sizeAtmosphere).observe(hero);
       addEventListener("scroll", onScroll, { passive: true });
       sizeAtmosphere();
