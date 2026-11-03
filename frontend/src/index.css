@@ -9180,6 +9180,40 @@ button.native-library-card__artist:focus-visible {
   color: var(--aurral-text-subtle);
 }
 
+.native-library-track.is-missing.is-preview,
+.native-library-track.is-missing.is-preview .native-library-track__title > span,
+.native-library-track.is-missing.is-preview .native-library-track__link {
+  color: var(--aurral-text-muted);
+}
+
+.native-library-track.is-active.is-missing .native-library-track__title > span {
+  color: var(--aurral-accent);
+}
+
+.native-library-track__title > span > .preview-chip {
+  display: none;
+  float: right;
+  margin-left: 0.75rem;
+}
+
+.native-library-track.is-active .native-library-track__title > span > .preview-chip,
+.native-library-track:focus-within .native-library-track__title > span > .preview-chip {
+  display: inline-block;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .native-library-track:hover .native-library-track__title > span > .preview-chip {
+    display: inline-block;
+  }
+}
+
+.native-library-track-list--release
+  .native-library-track.is-missing:not(.is-preview)
+  .native-library-track__title
+  > span {
+  color: color-mix(in srgb, var(--aurral-text-subtle) 80%, transparent);
+}
+
 .native-library-track__status {
   display: inline-flex;
   width: 1.75rem;
@@ -9441,6 +9475,14 @@ button.native-library-card__artist:focus-visible {
 .native-library-track__download svg {
   width: 0.85rem;
   height: 0.85rem;
+}
+
+.native-library-track__owned {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
 }
 
 .native-library-track__favorite {
@@ -13120,6 +13162,48 @@ a.blocklist-page__name:focus-visible {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.preview-chip {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--aurral-border-strong);
+  border-radius: var(--aurral-radius-xs);
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-2xs);
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.global-player__preview-download {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--aurral-text-muted);
+  cursor: pointer;
+}
+
+.global-player__preview-download:focus-visible {
+  color: var(--aurral-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .global-player__preview-download:hover {
+    color: var(--aurral-text);
+  }
+}
+
+.global-player__preview-download svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .global-player__title {

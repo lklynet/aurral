@@ -1,6 +1,7 @@
 import { resolveApiPath } from "./api/core.ts";
 import type { LibraryTrack } from "./libraryPageData.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
+import type { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils.ts";
 
 const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
   mp3: ["mp3"],
@@ -48,7 +49,10 @@ export type QueueTrackInput = {
   quality?: string | NonNullable<LibraryTrack["files"][number]["quality"]> | null;
   finalPath?: string | null;
   durationMs?: number | null;
+  duration_ms?: number | null;
   recordHistory?: boolean;
+  isPreview?: boolean;
+  download?: ReturnType<typeof buildStaticPlaylistTrackPayload> | null;
   trackMbid?: string | null;
   libraryTrackId?: string | number | null;
   libraryAlbumId?: string | number | null;
@@ -122,6 +126,8 @@ export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrac
     finalPath: track?.finalPath ?? overrides.finalPath ?? null,
     durationMs: track?.durationMs ?? overrides.durationMs ?? null,
     recordHistory: track?.recordHistory === true || overrides.recordHistory === true,
+    isPreview: track?.isPreview === true || overrides.isPreview === true,
+    download: track?.download,
     trackMbid: track?.trackMbid ?? overrides.trackMbid ?? null,
     libraryTrackId: track?.libraryTrackId ?? null,
     libraryAlbumId: track?.libraryAlbumId ?? null,
@@ -178,10 +184,13 @@ export function normalizePreviewTrack(
       title: track?.title,
       artist: artistName,
       src: track?.preview_url,
+      isPreview: true,
       artwork: track?.artwork ?? track?.artworkUrl,
       quality: track?.quality,
       artistMbid: track?.artistMbid ?? track?.artistId,
+      album: track?.album ?? track?.albumName,
       albumMbid: track?.albumMbid ?? track?.releaseGroupMbid,
+      durationMs: track?.durationMs ?? track?.duration_ms,
     },
     overrides,
   );
