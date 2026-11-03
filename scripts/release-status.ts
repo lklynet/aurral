@@ -141,31 +141,36 @@ docker pull ghcr.io/${repository}:${version}
 \`\`\``;
 }
 
+function batch(fields: string[], header: string) {
+  return Array.from({ length: Math.ceil(fields.length / MUTATIONS_PER_REQUEST) }, (_, index) => {
+    const chunk = fields.slice(index * MUTATIONS_PER_REQUEST, (index + 1) * MUTATIONS_PER_REQUEST);
+    return `mutation${header} {\n${chunk.join("\n")}\n}`;
+  });
+}
+
 export function statusMutations(
   plan: ReturnType<typeof planStatus>,
   labelIds: Record<StatusLabel, string>,
 ) {
-  const fields = plan.flatMap((step, index) => {
-    const id = JSON.stringify(step.id);
-    const labels = (label: StatusLabel) =>
-      `{labelableId: ${id}, labelIds: [${JSON.stringify(labelIds[label])}]}`;
+  const comments = plan
+    .filter((step) => step.comment)
+    .map(
+      (step, index) =>
+        `c${index}: addComment(input: {subjectId: ${JSON.stringify(step.id)}, body: $body}) { clientMutationId }`,
+    );
+  const labels = plan.flatMap((step, index) => {
+    const input = (label: StatusLabel) =>
+      `{labelableId: ${JSON.stringify(step.id)}, labelIds: [${JSON.stringify(labelIds[label])}]}`;
     return [
-      `a${index}: addLabelsToLabelable(input: ${labels(step.add)}) { clientMutationId }`,
+      `a${index}: addLabelsToLabelable(input: ${input(step.add)}) { clientMutationId }`,
       ...(step.remove
         ? [
-            `r${index}: removeLabelsFromLabelable(input: ${labels(step.remove)}) { clientMutationId }`,
+            `r${index}: removeLabelsFromLabelable(input: ${input(step.remove)}) { clientMutationId }`,
           ]
-        : []),
-      ...(step.comment
-        ? [`c${index}: addComment(input: {subjectId: ${id}, body: $body}) { clientMutationId }`]
         : []),
     ];
   });
-  return Array.from({ length: Math.ceil(fields.length / MUTATIONS_PER_REQUEST) }, (_, index) => {
-    const chunk = fields.slice(index * MUTATIONS_PER_REQUEST, (index + 1) * MUTATIONS_PER_REQUEST);
-    const usesBody = chunk.some((field) => field.includes("$body"));
-    return `mutation${usesBody ? "($body: String!)" : ""} {\n${chunk.join("\n")}\n}`;
-  });
+  return [...batch(comments, "($body: String!)"), ...batch(labels, "")];
 }
 
 if (import.meta.main) {

@@ -27,6 +27,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Require current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "${tip}" != "${GITHUB_SHA}" ]; then
+            echo "${GITHUB_SHA} is no longer the tip of main (${tip}); a newer nightly replaces it."
+            exit 1
+          fi
+
       - id: version
         run: echo "value=nightly.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}" >> "${GITHUB_OUTPUT}"
 

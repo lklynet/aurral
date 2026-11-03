@@ -50,14 +50,15 @@ test("stable labels pull requests, comments on issues, and skips what is already
   );
 });
 
-test("mutations batch into requests and declare the comment body only where a batch comments", () => {
+test("comments go out before any label, so a failed comment is retried instead of skipped", () => {
   const pulls = Array.from({ length: 40 }, (_, index) => item(index, "pull", []));
   const mutations = statusMutations(planStatus([...pulls, item(99, "issue", [])], "stable"), {
     nightly: "nightly-label",
     released: "released-label",
   });
 
-  assert.equal(mutations.length, 2);
-  assert.ok(!mutations[0].includes("$body"));
-  assert.ok(mutations[1].startsWith("mutation($body: String!)"));
+  assert.equal(mutations.length, 3);
+  assert.ok(mutations[0].startsWith("mutation($body: String!)"));
+  assert.ok(!mutations[0].includes("addLabelsToLabelable"));
+  assert.ok(mutations.slice(1).every((mutation) => !mutation.includes("addComment")));
 });
