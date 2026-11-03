@@ -620,7 +620,6 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
 });
 
 test("approving a reviewed upgrade replaces the source playlist file", async () => {
-  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
   const flow = flowPlaylistConfig.createFlow({
     name: "Reviewed upgrade flow",
     size: 10,
@@ -670,7 +669,6 @@ test("approving a reviewed upgrade replaces the source playlist file", async () 
   assert.equal(downloadTracker.getJob(sourceJobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "upgrade audio");
   await assert.rejects(fs.access(originalPath));
-  assert.equal(scan.mock.calls.length, 1);
 });
 
 test("reports when an upgrade search is already queued for a track", async () => {

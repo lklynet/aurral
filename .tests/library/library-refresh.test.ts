@@ -507,6 +507,33 @@ test("library file watcher debounces library changes and ignores generated folde
   watcher.close();
 });
 
+test("library file watcher keeps changed paths and retries when queueing their scan fails", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let onChange: (eventType: string, filename: string | null) => void = () =>
+    assert.fail("Watcher callback not registered");
+  const attempts: string[][] = [];
+  const watcher = createLibraryFileWatcher({
+    roots: [process.cwd()],
+    debounceMs: 5,
+    watchImpl: (_root, _options, callback) => {
+      onChange = (event, filename) => callback(event, filename, process.cwd());
+      return { close() {} };
+    },
+    onChange: (_roots, paths) => {
+      attempts.push(paths);
+      if (attempts.length === 1) throw new Error("database is locked");
+    },
+  });
+
+  onChange("change", "Artist/Album/track.flac");
+  vi.advanceTimersByTime(5);
+  vi.advanceTimersByTime(5);
+  const changed = [path.join(process.cwd(), "Artist/Album/track.flac")];
+  assert.deepEqual(attempts, [changed, changed]);
+
+  watcher.close();
+});
+
 test("library watcher reuses configured roots without querying Lidarr", () => {
   const rootPath = path.resolve("/data/music");
   const pathProbe = vi.spyOn(fs, "existsSync").mockImplementation(() => {

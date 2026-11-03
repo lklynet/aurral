@@ -8,7 +8,7 @@ import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { getPathMappings, type PathMapping } from "./pathMappings.ts";
 import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.ts";
-import type { RuntimeLogger } from "./logger.ts";
+import { logger, safeLogDiagnostic, type RuntimeLogger } from "./logger.ts";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
 
@@ -80,19 +80,32 @@ export function createLibraryFileWatcher({
           ? path.resolve(String(filename))
           : path.resolve(root, String(filename)),
     );
+    armTimer();
+  };
+
+  const armTimer = () => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(
-      () => {
-        timer = null;
-        const roots = [...changedRoots];
-        const paths = [...changedPaths];
-        changedRoots.clear();
-        changedPaths.clear();
-        onChange(roots, paths);
-      },
-      Math.max(0, Number(debounceMs) || 0),
-    );
+    timer = setTimeout(flush, Math.max(0, Number(debounceMs) || 0));
     timer.unref?.();
+  };
+
+  const flush = () => {
+    timer = null;
+    const roots = [...changedRoots];
+    const paths = [...changedPaths];
+    changedRoots.clear();
+    changedPaths.clear();
+    try {
+      onChange(roots, paths);
+    } catch (error) {
+      if (closed) return;
+      logger.warn("library", "Could not queue a scan for changed Library files; retrying", {
+        reason: safeLogDiagnostic(error),
+      });
+      for (const root of roots) changedRoots.add(root);
+      for (const changedPath of paths) changedPaths.add(changedPath);
+      armTimer();
+    }
   };
 
   for (const { root, pathMappings } of watchRoots.values()) {
