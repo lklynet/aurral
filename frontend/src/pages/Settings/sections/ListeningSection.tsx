@@ -16,6 +16,13 @@ import { formatDate } from "../../../utils/dateTime.ts";
 import { readSpotifyExport } from "../../../utils/spotifyExportFiles.ts";
 import { SettingsLink } from "../settingsRoute";
 import {
+  HISTORY_SERVERS,
+  HistoryServerDetail,
+  historyServerLabel,
+  historyServerStatus,
+  useHistoryServers,
+} from "./listening/HistoryServers";
+import {
   SettingsActions,
   SettingsGroup,
   SettingsNote,
@@ -488,9 +495,14 @@ export function ListeningSection() {
   const item = useSettingsItem();
   const provider = PROVIDERS.find((id) => id === item);
   const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
+  const historyServers = useHistoryServers();
+  const historyServer = HISTORY_SERVERS.find((id) => id === item);
+  const showHistoryServers =
+    hasPermission("accessSettings") || Boolean(historyServers.data?.servers.length);
 
   if (provider) return <ServiceDetail provider={provider} />;
   if (item === "spotify") return <SpotifyDetail />;
+  if (historyServer) return <HistoryServerDetail provider={historyServer} />;
 
   return (
     <SettingsPage title="Listening">
@@ -529,6 +541,22 @@ export function ListeningSection() {
                 : { label: "Not set up", tone: "muted" }
           }
         />
+        {showHistoryServers
+          ? HISTORY_SERVERS.map((id) => (
+              <SettingsServiceRow
+                key={id}
+                to={`listening/${id}`}
+                name={historyServerLabel(id)}
+                status={
+                  historyServers.data
+                    ? historyServerStatus(
+                        historyServers.data.servers.find((server) => server.provider === id),
+                      )
+                    : null
+                }
+              />
+            ))
+          : null}
       </SettingsGroup>
       <SettingsGroup title="Discovery tastes">
         <ResetTastesRow />

@@ -200,6 +200,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS history_servers (
+    user_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    url TEXT NOT NULL,
+    username TEXT NOT NULL,
+    secret TEXT NOT NULL,
+    account_id TEXT,
+    synced_until INTEGER,
+    last_synced_at INTEGER,
+    last_error TEXT,
+    connected_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, provider),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS play_album_stats (
     user_id INTEGER NOT NULL,
     album_key TEXT NOT NULL,
@@ -692,6 +707,11 @@ db.exec(`
 tryAddColumn("ALTER TABLE share_links ADD COLUMN manifest TEXT");
 tryAddColumn("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
+tryAddColumn("ALTER TABLE play_events ADD COLUMN external_id TEXT");
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_play_events_external
+    ON play_events(user_id, source, external_id) WHERE external_id IS NOT NULL;
+`);
 
 db.transaction(() => {
   const columns = db

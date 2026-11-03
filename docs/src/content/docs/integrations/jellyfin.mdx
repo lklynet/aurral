@@ -1,39 +1,40 @@
 ---
 title: Jellyfin
-description: Publish Aurral flows and static playlists to Jellyfin.
+description: Point Jellyfin at the Aurral Library folder and its playlist files, and import Jellyfin plays.
 ---
 
-Jellyfin is optional. Aurral publishes its playlists into an existing Jellyfin music library through the Jellyfin API. It does not create a Jellyfin library or start playback.
-
-A Jellyfin playlist can only hold tracks from a Jellyfin library. Aurral downloads playlist and flow tracks into its Library folder, so that folder must be inside a Jellyfin music library. It can be its own library, or an extra folder in your existing music library. You do not need to move your music.
+Jellyfin is optional. Jellyfin scans the Library folder and imports the playlist files that Aurral writes for every flow and static playlist. Aurral does not connect to Jellyfin for this. To bring your Jellyfin plays into Wrapped and recommendations, connect it in **Settings > Listening**.
 
 ## Setup
 
-1. In Jellyfin, add the Aurral Library folder to a music library and scan it.
-2. In Jellyfin, create an API key that can read the music library.
-3. In Aurral, open **Settings > Playback > Jellyfin**.
-4. Enter the **Server URL** and the **API key**.
-5. Enter a **User ID**. Aurral uses this Jellyfin user for older playlists that have no Aurral owner.
-6. If Aurral and Jellyfin see the files at different paths, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **Jellyfin**. A mapping only translates paths. It does not add a folder to a Jellyfin library.
-7. Select **Test connection**.
-8. Open **Settings > Status > Storage** and select **Run checks**. The **Jellyfin playback** section shows whether Jellyfin scans the Library folder.
+1. Mount the same media root in Aurral and Jellyfin, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
+2. In Jellyfin, add the Library folder, for example `/data/downloads/aurral`, to a music library. It can be its own library or an extra folder in your existing one.
+3. If playlists reuse tracks from Lidarr, make sure the Lidarr root folder, such as `/data/music`, is in a Jellyfin music library too.
+4. Turn on **Enable real time monitoring** for the library, so Jellyfin picks up changes without a scheduled scan.
 
-## How Aurral publishes playlists
+## Playlists
 
-Aurral creates or updates a Jellyfin playlist for each enabled flow and static playlist when you save the settings or when the playlist changes. When you delete a playlist or turn off a flow, Aurral deletes the Jellyfin playlist that it created.
+Aurral writes an M3U file for each enabled flow and each static playlist to `aurral-weekly-flow/_playlists` in the Library folder. **Settings > Library > Playlist files** shows the folder.
 
-Aurral looks for a Jellyfin user with the same username as the Aurral owner of the playlist. The match ignores case. Aurral creates the playlist as a private playlist of that Jellyfin user. If no Jellyfin user matches, Aurral does not publish the playlist.
+- Jellyfin imports each file as a playlist that every Jellyfin user can see.
+- Jellyfin applies a change a minute or two after the file changes. Aurral writes each changed file again a few minutes later, so tracks that Jellyfin was still indexing appear too.
+- The files use paths relative to the playlist file. Jellyfin must see the Library folder and the Lidarr root folder with the same layout as Aurral.
+- When a playlist is deleted or its flow is turned off, Aurral removes its file and Jellyfin removes the playlist.
 
-## Edit a playlist in Jellyfin
+Edit these playlists in Aurral, not in Jellyfin.
 
-You can add songs to an Aurral playlist in Jellyfin or in a client such as Feishin. Aurral keeps your additions when it updates the playlist, but they do not appear in Aurral.
+## Listening history
 
-To remove a song that Aurral added, remove it in Aurral. If you remove it only in Jellyfin, Aurral can add it again at the next update.
+Jellyfin keeps no play history that Aurral can read on its own. The **Playback Reporting** plugin records it.
 
-When you delete a flow or static playlist in Aurral, or turn off a flow, Aurral deletes its Jellyfin playlist, including your additions.
+1. In the Jellyfin dashboard, install **Playback Reporting** from the plugin catalog, then restart Jellyfin.
+2. In the dashboard, open **API Keys** and create a key for Aurral.
+3. In Aurral, open **Settings > Listening > Jellyfin**.
+4. Enter the **Server URL**, your Jellyfin **Username**, and the **API key**.
+5. Select **Connect Jellyfin**.
 
-## Matching and scans
+Aurral imports the plays that Playback Reporting recorded for that user, then checks for new plays every hour. Playback Reporting starts recording when it is installed, so plays from before then are not imported. Each Aurral user connects their own Jellyfin username. Only admins can connect a server. **Disconnect** removes the plays that Aurral imported.
 
-Aurral reads the audio library of the matched Jellyfin user. It finds each track by its exact path in Jellyfin first. If the path does not match, it uses the MusicBrainz recording ID, but only when exactly one track has that ID. It never guesses by title or artist. Aurral publishes only the tracks that it finds, so a missing track does not stop the rest of the playlist.
+## Bring a Jellyfin playlist into Aurral
 
-When you change the Jellyfin settings, Aurral updates the playlists and starts a library scan in the background. Other settings changes do not start this update. When files change, Aurral tells Jellyfin which folders changed. It does not scan every Jellyfin library. If a changed folder is outside every Jellyfin music library as Jellyfin sees it, Aurral reports all music libraries instead and logs a warning. A Jellyfin path mapping fixes this. When more than 20 folders change at once, Aurral reports the music libraries that hold them. Changes made close together share one request. Jellyfin picks up the changes after about a minute. If Jellyfin is still indexing files, Aurral retries the incomplete playlists for about 15 minutes.
+Jellyfin cannot export a playlist as M3U on its own. Use a Jellyfin plugin or client that exports M3U files. Then, in Aurral, open **Library > Playlists**, open the create menu, select **Import playlist**, and select **M3U**.

@@ -12,7 +12,13 @@ import {
 import { SettingsServiceRow } from "./Settings/SettingsLayout";
 import { readSettingsPath } from "./Settings/settingsRoute";
 import { normalizeSettings } from "./Settings/utils";
-import { configuredStatus, connectedServices } from "./Settings/utils/serviceStatus";
+import { configuredStatus, lidarrConnected } from "./Settings/utils/serviceStatus";
+import {
+  HISTORY_SERVERS,
+  historyServerLabel,
+  historyServerStatus,
+  useHistoryServers,
+} from "./Settings/sections/listening/HistoryServers";
 import { OnboardingStep, OnboardingStepHeader, ONBOARDING_STEP_COUNT } from "./onboardingUtils.tsx";
 import "./Settings/settings.css";
 
@@ -23,24 +29,29 @@ const HISTORY_SOURCES = [
   { provider: "listenbrainz", name: "ListenBrainz" },
 ] as const;
 
-const SERVICES = [
-  { id: "navidrome", name: "Navidrome", to: "playback/navidrome" },
-  { id: "plex", name: "Plex", to: "playback/plex" },
-  { id: "jellyfin", name: "Jellyfin", to: "playback/jellyfin" },
-  { id: "lidarr", name: "Lidarr", to: "library/lidarr" },
-] as const;
-
-function ServiceRows() {
-  const { data } = useQuery(appSettingsQueryOptions());
-  const connected = data ? connectedServices(normalizeSettings(data).integrations) : null;
-  return SERVICES.map(({ id, name, to }) => (
+function HistoryServerRows() {
+  const { data } = useHistoryServers();
+  return HISTORY_SERVERS.map((id) => (
     <SettingsServiceRow
       key={id}
-      to={to}
-      name={name}
-      status={connected ? configuredStatus(connected[id]) : null}
+      to={`listening/${id}`}
+      name={historyServerLabel(id)}
+      status={
+        data ? historyServerStatus(data.servers.find((server) => server.provider === id)) : null
+      }
     />
   ));
+}
+
+function LidarrRow() {
+  const { data } = useQuery(appSettingsQueryOptions());
+  return (
+    <SettingsServiceRow
+      to="library/lidarr"
+      name="Lidarr"
+      status={data ? configuredStatus(lidarrConnected(normalizeSettings(data).integrations)) : null}
+    />
+  );
 }
 
 export default function Welcome() {
@@ -91,13 +102,14 @@ export default function Welcome() {
                   name="Spotify"
                   status={spotify === undefined ? null : configuredStatus(Boolean(spotify))}
                 />
+                {hasPermission("accessSettings") ? <HistoryServerRows /> : null}
               </div>
             </section>
             {hasPermission("accessSettings") ? (
               <section className="onboarding-section" aria-label="Services">
                 <h3 className="onboarding-section__title">Services</h3>
                 <div className="settings-card">
-                  <ServiceRows />
+                  <LidarrRow />
                 </div>
               </section>
             ) : null}

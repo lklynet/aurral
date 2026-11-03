@@ -221,7 +221,6 @@ export async function importShare(payload: Record<string, unknown>) {
     recordTrackJobQueued(downloadTracker.getJob(jobId), owner);
     downloadTracker.enqueueDownloadPipeline(jobId);
   }
-  playlistManager.updateConfig();
   if (playlist) playlistManager.requestPlaylistSync([playlist.id]);
   if (jobIds.length) await wakeDownloadWorker();
   return { to, downloaded: jobIds.length };

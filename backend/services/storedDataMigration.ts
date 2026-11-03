@@ -69,10 +69,6 @@ function storeCurrentIntegrations() {
     integrations.musicbrainz = musicbrainz;
     changed = true;
   }
-  const navidrome = integrations.navidrome;
-  if (navidrome && ("m3uPathMode" in navidrome || "pathMappings" in navidrome)) {
-    changed = true;
-  }
   const baseUrl = String(integrations.metadata?.baseUrl || "")
     .trim()
     .replace(/\/+$/, "");

@@ -75,7 +75,6 @@ test("stores older settings, flows, worker options, and sign-in in their current
     metadata: { provider: "brainzmash", baseUrl: "https://brainzmash.kell.ly/" },
     coverArtArchive: { enabled: true },
     musicbrainz: { customUrl: "https://musicbrainz.example/ws/2", email: "owner@example.com" },
-    navidrome: { url: "http://navidrome.invalid", m3uPathMode: "absolute", pathMappings: [] },
     lastfm: { discoverFlowArtworkStyle: "aurral", username: "listener" },
     general: { authUser: "owner", authPassword: "correct horse battery" },
   });
@@ -105,9 +104,6 @@ test("stores older settings, flows, worker options, and sign-in in their current
   const integrations = readJson("integrations");
   assert.equal("coverArtArchive" in integrations, false);
   assert.deepEqual(integrations.musicbrainz, { email: "owner@example.com" });
-  assert.equal("m3uPathMode" in integrations.navidrome, false);
-  assert.equal("pathMappings" in integrations.navidrome, false);
-  assert.equal(integrations.navidrome.url, "http://navidrome.invalid");
   assert.deepEqual(integrations.lastfm, { username: "listener" });
   assert.equal(integrations.metadata.baseUrl, "https://lidarrapi.brainzmash.cc");
 

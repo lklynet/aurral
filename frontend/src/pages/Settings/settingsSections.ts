@@ -9,7 +9,6 @@ import {
   Library,
   Link,
   Monitor,
-  Music,
   SlidersHorizontal,
   User,
   Users,
@@ -25,7 +24,6 @@ export const SETTINGS_SECTIONS = [
   { id: "library", label: "Library", icon: Library, group: "server" },
   { id: "monitoring", label: "Monitoring", icon: Eye, group: "server" },
   { id: "downloads", label: "Downloads", icon: Download, group: "server" },
-  { id: "playback", label: "Playback", icon: Music, group: "server" },
   { id: "discovery", label: "Discovery", icon: Compass, group: "server" },
   { id: "notifications", label: "Notifications", icon: Bell, group: "server" },
   { id: "status", label: "Status", icon: Activity, group: "server" },
@@ -66,11 +64,10 @@ type SettingsSearchMetadata = {
 
 const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearchMetadata>> = {
   profile: {
-    sections: ["Password", "Sign-in methods", "Plex account", "Lidarr defaults"],
+    sections: ["Password", "Sign-in methods", "Lidarr defaults"],
     services: {
       Google: "sign in connect account",
       SSO: "single sign-on OIDC identity provider connect",
-      Plex: "link account playback identity",
     },
     fields: {
       "Current password": "change password authentication",
@@ -86,6 +83,9 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
       ListenBrainz: "scrobbling user token listening history username recommendations",
       Koito: "scrobbling API key URL listening history recommendations",
       Spotify: "streaming history data export import zip recommendations",
+      Navidrome: "listening history plays import Subsonic music server",
+      Plex: "listening history plays import Plexamp music server",
+      Jellyfin: "listening history plays import Playback Reporting music server",
     },
     fields: {
       "Reset discovery tastes": "more like this less like this blocklist",
@@ -117,7 +117,6 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
     sections: ["Users", "Sign-in", "Local network auto-login"],
     services: {
       Google: "sign in authentication OAuth login client ID secret redirect",
-      Plex: "sign in with Plex login",
     },
     fields: {
       "Auto-login": "local network bypass authentication login",
@@ -131,6 +130,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
   library: {
     sections: [
       "Library folder",
+      "Playlist files",
       "Read-only folders",
       "Import a folder",
       "Clean up Library",
@@ -143,6 +143,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
     fields: {
       "Library folder": "downloads folder path media library root",
       "Read-only folders": "existing music never changes",
+      "Playlist files": "M3U Navidrome Plex Jellyfin media server playlists owner username",
       "Import folder":
         "ingest existing music library folder move copy hardlink Lidarr root monitor",
       Mode: "move copy hardlink",
@@ -180,18 +181,6 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
       "Remote path mappings": "download client path mapping remote local",
     },
   },
-  playback: {
-    sections: ["Playback servers"],
-    services: {
-      Navidrome: "Subsonic music server playlists",
-      Plex: "Plexamp music server library",
-      Jellyfin: "Jellyfin music server playlists",
-    },
-    fields: {
-      "Server URL": "playback server address host connection",
-      Sync: "Navidrome scan playlists Plex refresh",
-    },
-  },
   discovery: {
     sections: ["Recommendations", "Status", "Sources"],
     services: {
@@ -227,7 +216,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
   status: {
     sections: ["Storage", "Tasks", "About"],
     fields: {
-      "Storage health": "disk space free total paths run checks transfers playback",
+      "Storage health": "disk space free total paths run checks transfers",
       Tasks: "scheduled workers queue jobs running failed retry clear stale",
       Version: "runtime application build uptime environment platform container",
       "Database path": "sqlite data directory app data",

@@ -151,7 +151,6 @@ function itemApplier(operation: LibraryFileOperation) {
 
 async function applyBatch(operation: LibraryFileOperation, deadline: number) {
   const { context, apply } = itemApplier(operation);
-  await context?.prepare();
   const processed = [];
   let cancelled = false;
   while (Date.now() < deadline && !cancelled) {

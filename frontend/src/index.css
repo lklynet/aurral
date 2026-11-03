@@ -12396,7 +12396,7 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-import__segmented .artist-segmented-button {
   min-width: 0;
-  flex: 1 1 6rem;
+  flex: 1 1 auto;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   padding-inline: 0.5rem;

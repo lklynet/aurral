@@ -345,10 +345,6 @@ export const dbOps = {
       },
       onboardingComplete: !!onboardingComplete,
     };
-    if (result.integrations?.navidrome) {
-      delete result.integrations.navidrome.m3uPathMode;
-      delete result.integrations.navidrome.pathMappings;
-    }
     settingsCache = result;
     settingsCacheTime = Date.now();
     return result;
@@ -367,13 +363,6 @@ export const dbOps = {
         const nextIntegrations = { ...settings.integrations };
         if (existingSoulseek && nextIntegrations.soulseek === undefined) {
           nextIntegrations.soulseek = existingSoulseek;
-        }
-        if (nextIntegrations.navidrome) {
-          nextIntegrations.navidrome = {
-            ...nextIntegrations.navidrome,
-          };
-          delete nextIntegrations.navidrome.m3uPathMode;
-          delete nextIntegrations.navidrome.pathMappings;
         }
         const { integrations: savedIntegrations, unreadable } =
           readIntegrationSettings(nextIntegrations);

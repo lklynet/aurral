@@ -23,7 +23,6 @@ import {
 } from "../middleware/auth.ts";
 import { getOidcBootstrapInfo } from "../services/oidcAuth.ts";
 import { isGoogleLoginEnabled } from "../services/googleAuth.ts";
-import { isPlexLoginEnabled } from "./users/plexLinkHandlers.ts";
 import { lidarrClient } from "../services/lidarrClient.ts";
 import { getDiscoveryCache } from "../services/discovery/index.ts";
 import { getDiscoveryStatus } from "../services/discovery/userDiscovery.ts";
@@ -257,7 +256,6 @@ type BootstrapPayload = {
   oidcEnabled: boolean;
   oidcLogoutUrl: string | null;
   googleLoginEnabled: boolean;
-  plexLoginEnabled: boolean;
   ssoOnly: boolean;
   onboardingRequired: boolean;
   dateTimeFormat: string;
@@ -331,7 +329,6 @@ function buildBootstrapPayload(req: CredentialRequest) {
     oidcEnabled: oidcInfo.oidcEnabled,
     oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
     googleLoginEnabled: isGoogleLoginEnabled(),
-    plexLoginEnabled: isPlexLoginEnabled(),
     ssoOnly: settings?.security?.ssoOnly === true,
     onboardingRequired: !onboardingDone,
     dateTimeFormat: settings.dateTimeFormat,

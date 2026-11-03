@@ -118,6 +118,19 @@ export interface DiscoveryCacheRow {
   last_updated: string;
 }
 
+export interface HistoryServersRow {
+  user_id: number;
+  provider: string;
+  url: string;
+  username: string;
+  secret: string;
+  account_id: string | null;
+  synced_until: number | null;
+  last_synced_at: number | null;
+  last_error: string | null;
+  connected_at: number;
+}
+
 export interface HonkerTaskRunsRow {
   id: number;
   job_id: number;
@@ -421,6 +434,7 @@ export interface PlayEventsRow {
   played_at: number;
   source: string;
   created_at: number;
+  external_id: string | null;
 }
 
 export interface PlaylistDownloadJobsRow {

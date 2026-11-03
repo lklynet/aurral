@@ -9,7 +9,6 @@ import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { downloadDestinationForJob } from "../downloadJobs/downloadOwnership.ts";
 import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { joinUnderRoot } from "../downloadUtils.ts";
-import { createPlaybackDeletionGuard } from "../playback/playbackFileRetention.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 
 export type PreparedRetainedPlaylistFile = Awaited<ReturnType<typeof prepareRetainedPlaylistFile>>;
@@ -124,10 +123,6 @@ export async function finalizeRetainedPlaylistRelocations(
     )
     .all();
   const root = path.resolve(downloadRoot);
-  const guard = createPlaybackDeletionGuard({
-    excludeEntityIds: [sourcePlaylistId],
-    playlistRoot: root,
-  });
   for (const row of rows) {
     const intent = dbHelpers.readJSON(playlistMediaIntentSchema, row.value, row.key);
     if (intent?.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed")
@@ -139,7 +134,6 @@ export async function finalizeRetainedPlaylistRelocations(
         .get(intent.from)
     )
       continue;
-    if (!(await guard.canDelete(intent.from))) continue;
     const old = await fs.lstat(intent.from).catch((error) => {
       if (error.code === "ENOENT") return null;
       throw error;

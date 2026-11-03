@@ -202,11 +202,9 @@ function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
 }
 
 function SignInGroup() {
-  const { settings, updateSettings } = useServerSettings();
+  const { settings } = useServerSettings();
   const saveSecurity = useSaveSecurity();
   const google: GoogleSettings = settings.integrations.google ?? {};
-  const plex = settings.integrations.plex;
-  const plexConfigured = Boolean(plex.token && plex.url);
 
   return (
     <SettingsGroup title="Sign-in">
@@ -230,39 +228,6 @@ function SignInGroup() {
           Boolean(google.clientId && google.clientSecret && google.redirectUri),
         )}
       />
-      <SettingsRow
-        label="Sign in with Plex"
-        htmlFor="users-plex-login"
-        help={
-          plexConfigured ? (
-            "Users sign in after linking Plex in their Profile. Plex can't create accounts or change roles."
-          ) : (
-            <>
-              Connect Plex in{" "}
-              <SettingsLink to="playback/plex" className="settings-link">
-                Playback
-              </SettingsLink>{" "}
-              first.
-            </>
-          )
-        }
-      >
-        <PillToggle
-          id="users-plex-login"
-          checked={plex.loginEnabled === true}
-          disabled={!plexConfigured}
-          aria-label="Sign in with Plex"
-          onChange={(event) =>
-            updateSettings({
-              ...settings,
-              integrations: {
-                ...settings.integrations,
-                plex: { ...plex, loginEnabled: event.target.checked },
-              },
-            })
-          }
-        />
-      </SettingsRow>
     </SettingsGroup>
   );
 }

@@ -20,35 +20,11 @@ import { resolveLidarrTestCredentials } from "../../services/lidarrTestSession.t
 import { logger } from "../../services/logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { errorStatus } from "../shared/errorStatus.ts";
-import { validateExternalUrl } from "../../middleware/urlValidator.ts";
-import { NavidromeClient } from "../../services/navidrome.ts";
-import { stripTrailingSlashes } from "../../services/textUtils.ts";
-
-const navidromeTestBody = v.object({
-  url: v.optional(v.string()),
-  username: v.optional(v.string()),
-  password: v.optional(v.string()),
-});
-
-async function navidromeConnectionError(
-  input: v.InferOutput<typeof navidromeTestBody>,
-): Promise<{ error: string; message?: string } | null> {
-  try {
-    const url = stripTrailingSlashes((input.url || "").trim());
-    const username = (input.username || "").trim();
-    const password = input.password ?? "";
-    if (!url || !username || !password) {
-      return { error: "URL, username, and password are required" };
-    }
-    const validation = validateExternalUrl(url);
-    if (!validation.valid) return { error: validation.error };
-
-    await new NavidromeClient(validation.url, username, password).ping();
-    return null;
-  } catch (error) {
-    return { error: "Connection failed", message: asAppError(error)?.message };
-  }
-}
+import { playlistManager } from "../../services/playlists/playlistManager.ts";
+import {
+  getPlaylistFileSettings,
+  savePlaylistFileSettings,
+} from "../../services/playlists/playlistFiles.ts";
 
 const lidarrCredentials = v.object({
   url: v.optional(v.string()),
@@ -84,7 +60,7 @@ export default new Hono<AppEnv>()
   })
   .post("/", requireAuth, requireAdmin, validate("json", appSettingsPatch), async (c) => {
     try {
-      const result = await saveAppSettings(c.req.valid("json"), c.var.user.id);
+      const result = await saveAppSettings(c.req.valid("json"));
       if ("error" in result) return c.json({ error: result.error }, 400);
       return c.json(result.settings, 200);
     } catch (error) {
@@ -92,15 +68,21 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to save settings", message: asAppError(error)?.message }, 500);
     }
   })
-  .post(
-    "/navidrome/test",
+  .get("/playlist-files", requireAuth, requireAdmin, (c) =>
+    c.json({ folder: playlistManager.libraryRoot, ...getPlaylistFileSettings() }, 200),
+  )
+  .put(
+    "/playlist-files",
     requireAuth,
     requireAdmin,
-    validate("json", navidromeTestBody),
-    async (c) => {
-      const failure = await navidromeConnectionError(c.req.valid("json"));
-      if (failure) return c.json(failure, 400);
-      return c.json({ success: true, message: "Connection successful" }, 200);
+    validate("json", v.object({ prefixOwnerUsername: v.boolean() })),
+    (c) => {
+      const settings = c.req.valid("json");
+      if (settings.prefixOwnerUsername !== getPlaylistFileSettings().prefixOwnerUsername) {
+        savePlaylistFileSettings(settings);
+        playlistManager.requestPlaylistSync();
+      }
+      return c.json({ folder: playlistManager.libraryRoot, ...settings }, 200);
     },
   )
   .get(

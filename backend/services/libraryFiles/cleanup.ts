@@ -21,7 +21,6 @@ import {
   moveLibraryMediaFilePath,
   removeLibraryMediaFiles,
 } from "../libraryMediaStore.ts";
-import type { createPlaybackDeletionGuard } from "../playback/playbackFileRetention.ts";
 import { adoptLibraryFileIdentity } from "./fileIdentity.ts";
 import {
   ALBUM_IMAGE_EXTENSIONS,
@@ -67,7 +66,6 @@ type CleanupPlanContext = {
   targets: Map<string, string>;
 };
 type CleanupApplyContext = ReturnType<typeof createCleanupContext>;
-type DeletionGuard = ReturnType<typeof createPlaybackDeletionGuard>;
 type TagFillTags = NonNullable<Awaited<ReturnType<typeof planTagFill>>["tags"]>;
 type TagPlan =
   | { reason: string | null; tags?: never }
@@ -392,7 +390,7 @@ const LINK_FALLBACK = new Set<string | undefined>([
   "EXDEV",
 ]);
 
-async function renameLibraryFile(from: string, to: string, context: CleanupApplyContext) {
+async function renameLibraryFile(from: string, to: string) {
   await fs.mkdir(path.dirname(to), { recursive: true });
   let keptOld = false;
   try {
@@ -408,16 +406,13 @@ async function renameLibraryFile(from: string, to: string, context: CleanupApply
       if (libraryPathKey(from) === libraryPathKey(to)) await fs.rename(from, to);
       else keptOld = true;
     } else if (LINK_FALLBACK.has(String(failure?.code))) {
-      keptOld = !(await context.deletionGuard().canDelete(from));
-      await placeFile(from, to, keptOld ? "copy" : "move");
-      keptOld = false;
+      await placeFile(from, to, "move");
     } else {
       throw error;
     }
   }
   commitRename(from, to);
-  if (keptOld && (await context.deletionGuard().canDelete(from)))
-    await fs.unlink(from).catch(() => {});
+  if (keptOld) await fs.unlink(from).catch(() => {});
   await transferSidecars(from, to, "move").catch(() => {});
 }
 
@@ -436,17 +431,7 @@ function commitRename(from: string, to: string) {
 }
 
 export function createCleanupContext() {
-  let guard: DeletionGuard | null = null;
-  return {
-    rescan: new Set<string>(),
-    deletionGuard() {
-      return guard!;
-    },
-    async prepare() {
-      const { createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.ts");
-      guard ||= createPlaybackDeletionGuard();
-    },
-  };
+  return { rescan: new Set<string>() };
 }
 
 function requireTargetPath(item: LibraryFileItem) {
@@ -461,7 +446,7 @@ const COPY_CHANGED_REASON =
 // Removing a copy the user asked to remove checks the two copies again, since
 // either may have changed. The Library's track, with its favorites, and the
 // download jobs that playlists use stay on the copy Aurral keeps.
-async function removeDuplicate(item: LibraryFileItem, context: CleanupApplyContext) {
+async function removeDuplicate(item: LibraryFileItem) {
   const details = { ...item.details, removable: false };
   const extra = path.resolve(item.sourcePath);
   const kept = path.resolve(requireTargetPath(item));
@@ -487,13 +472,6 @@ async function removeDuplicate(item: LibraryFileItem, context: CleanupApplyConte
     const copy =
       trackId && trackId === libraryTrackAt(kept) ? await compareCopies(extra, kept) : null;
     if (!copy?.keepHolder) return { status: "skipped", reason: COPY_CHANGED_REASON, details };
-    if (!(await context.deletionGuard().canDelete(extra, { retain: false }))) {
-      return {
-        status: "skipped",
-        reason: "Still used by a media server playlist. Retry after the playlist updates.",
-        details,
-      };
-    }
     await transferSidecars(extra, kept, "move").catch(() => {});
     await fs.unlink(extra);
   }
@@ -509,7 +487,7 @@ async function removeDuplicate(item: LibraryFileItem, context: CleanupApplyConte
     };
   }
   try {
-    await renameLibraryFile(kept, extra, context);
+    await renameLibraryFile(kept, extra);
   } catch {
     return {
       status: "duplicate",
@@ -529,7 +507,7 @@ export async function applyCleanupItem(
   item: LibraryFileItem,
   context: CleanupApplyContext,
 ) {
-  if (item.details.action === "remove-source") return removeDuplicate(item, context);
+  if (item.details.action === "remove-source") return removeDuplicate(item);
   const details = { ...item.details, results: { ...(item.details.results || {}) } };
   const actions = details.actions || [];
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
@@ -566,7 +544,7 @@ export async function applyCleanupItem(
   }
   const rename = async (target: string) => {
     try {
-      await renameLibraryFile(current, target, context);
+      await renameLibraryFile(current, target);
       details.results.rename = "done";
       current = target;
       save();

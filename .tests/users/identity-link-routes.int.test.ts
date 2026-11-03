@@ -1,4 +1,3 @@
-import { asAppError } from "../../lib/errors.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -11,19 +10,13 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.ts";
 
-const [
-  isolatedState,
-  { db },
-  { userOps, userIdentityOps, dbOps },
-  { createSession },
-  { plexConnectionStore },
-] = await setupIsolatedBackend(
-  "identity-link-routes",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/config/session-helpers.ts"),
-  () => import("../../backend/services/plex/plexConnectionStore.ts"),
-);
+const [isolatedState, { db }, { userOps, userIdentityOps, dbOps }, { createSession }] =
+  await setupIsolatedBackend(
+    "identity-link-routes",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/config/session-helpers.ts"),
+  );
 
 let server: {
   child: import("node:child_process").ChildProcessByStdio<
@@ -258,102 +251,4 @@ test("lockout protection blocks removing the last usable auth method", async () 
   });
   assert.equal(response.status, 400);
   assert.equal(userIdentityOps.countForUser(oidcOnlyUser.id), 1);
-});
-
-test("removing Plex from connected accounts also clears its saved connection", async () => {
-  const user = userOps.createUser("generic-plex-unlink", bcrypt.hashSync("password123", 4));
-  assert.ok(user != null);
-  const identity = userIdentityOps.link(user.id, {
-    providerType: "plex",
-    providerKey: "plex",
-    subject: "generic-plex-subject",
-  });
-  plexConnectionStore.saveConnection(user.id, {
-    linkType: "self",
-    token: "generic-plex-token",
-    clientId: "generic-plex-client",
-    plexAccountId: "generic-plex-subject",
-  });
-  const token = await login("generic-plex-unlink", "password123");
-
-  const { response } = await apiFetch(token, `/api/users/me/identities/${identity.id}`, {
-    method: "DELETE",
-  });
-
-  assert.equal(response.status, 200);
-  assert.equal(userIdentityOps.getById(identity.id), null);
-  assert.equal(plexConnectionStore.getConnection(user.id), null);
-});
-
-test("replacing a provider identity removes the former Plex subject", () => {
-  const user = userOps.createUser("plex-replacement", bcrypt.hashSync("password123", 4));
-  assert.ok(user != null);
-  userIdentityOps.link(user.id, {
-    providerType: "plex",
-    providerKey: "plex",
-    subject: "former-subject",
-  });
-
-  userIdentityOps.replaceForUser(user.id, {
-    providerType: "plex",
-    providerKey: "plex",
-    subject: "replacement-subject",
-  });
-
-  assert.equal(userIdentityOps.findByProvider("plex", "plex", "former-subject"), null);
-  assert.equal(
-    userIdentityOps.findByProvider("plex", "plex", "replacement-subject")?.userId,
-    user.id,
-  );
-});
-
-test("a conflicting Plex identity rolls back the connection and identity replacement", async () => {
-  const { persistSelfPlexLink } = await import("../../backend/routes/users/plexLinkHandlers.ts");
-  const owner = userOps.createUser("plex-conflict-owner", "unused", "user");
-  assert.ok(owner != null);
-  const contender = userOps.createUser("plex-conflict-contender", "unused", "user");
-  assert.ok(contender != null);
-  userIdentityOps.link(owner.id, {
-    providerType: "plex",
-    providerKey: "plex",
-    subject: "claimed-subject",
-  });
-  const originalIdentity = userIdentityOps.link(contender.id, {
-    providerType: "plex",
-    providerKey: "plex",
-    subject: "original-subject",
-  });
-  plexConnectionStore.saveConnection(contender.id, {
-    linkType: "self",
-    token: "original-token",
-    clientId: "original-client",
-    plexAccountId: "original-subject",
-  });
-
-  assert.throws(
-    () =>
-      persistSelfPlexLink(
-        contender.id,
-        {
-          linkType: "self",
-          token: "replacement-token",
-          clientId: "replacement-client",
-          plexAccountId: "claimed-subject",
-        },
-        {
-          providerType: "plex",
-          providerKey: "plex",
-          subject: "claimed-subject",
-        },
-      ),
-    (error) => String(asAppError(error)?.code || "").startsWith("SQLITE_CONSTRAINT"),
-  );
-
-  const connection = plexConnectionStore.getConnection(contender.id);
-  assert.ok(connection != null);
-  assert.equal(connection.token, "original-token");
-  assert.equal(connection.clientId, "original-client");
-  assert.equal(connection.plexAccountId, "original-subject");
-  assert.equal(userIdentityOps.getById(originalIdentity.id)?.subject, "original-subject");
-  assert.equal(userIdentityOps.findByProvider("plex", "plex", "claimed-subject")?.userId, owner.id);
 });

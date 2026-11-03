@@ -464,12 +464,9 @@ export async function finalizeQualityUpgradeSuccess(
   let upgradedPath = finalPath;
   let replaced = false;
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
-    const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.ts");
-    if (await createPlaybackDeletionGuard().canDelete(oldPath)) {
-      await fs.rm(oldPath, { force: true }).catch(() => {});
-      upgradedPath = await takeReplacedFileName(oldPath, finalPath);
-      replaced = true;
-    }
+    await fs.rm(oldPath, { force: true }).catch(() => {});
+    upgradedPath = await takeReplacedFileName(oldPath, finalPath);
+    replaced = true;
   }
   const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality);
   if (replaced) {

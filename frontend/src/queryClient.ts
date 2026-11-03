@@ -63,7 +63,7 @@ export const queryKeys = {
   trendingGenre: (genreId: MaybeId): QueryKey => ["discovery", "trending", "genre", genreId],
   appHealth: ["app", "health"],
   appSettings: ["settings", "app"],
-  playbackSettings: ["settings", "playback"],
+  playlistFileSettings: ["settings", "playlist-files"],
   downloadClientSettings: ["settings", "download-clients"],
   lidarrRootFolders: (url: MaybeText, credentialsRevision = 0): QueryKey => [
     "settings",
@@ -254,10 +254,9 @@ export const queryKeys = {
   blockedTags: (userId: MaybeId): QueryKey => ["discovery", "blocked-tags", userId],
   spotifyHistory: (userId: MaybeId): QueryKey => ["discovery", "spotify-history", userId],
   scrobbleStatus: ["scrobbling", "status"],
+  historyServers: (userId: MaybeId): QueryKey => ["history-servers", userId || null],
   apiKey: ["auth", "api-key"],
-  myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
-  plexHomeUsers: ["auth", "plex-home-users"],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

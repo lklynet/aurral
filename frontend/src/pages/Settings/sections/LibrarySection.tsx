@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { parseResponse, type InferResponseType } from "hono/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "../../../components/icons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
@@ -15,6 +16,8 @@ import {
   useReadOnlyFolders,
 } from "../../../hooks/useLibraryFileOperation.ts";
 import { libraryFilesClient } from "../../../utils/api/clients/libraryFiles.ts";
+import { settingsClient } from "../../../utils/api/clients/settings.ts";
+import { queryKeys } from "../../../queryClient.ts";
 import { RootOverlapWarning } from "../components/RootOverlapWarning";
 import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
@@ -28,7 +31,7 @@ import {
   SettingsServiceRow,
   useSettingsItem,
 } from "../SettingsLayout";
-import { configuredStatus, connectedServices } from "../utils/serviceStatus";
+import { configuredStatus, lidarrConnected } from "../utils/serviceStatus";
 import { LidarrSection } from "./LidarrSection";
 import "./library.css";
 
@@ -84,6 +87,53 @@ function LibraryFolderGroup() {
           onChange={(downloadFolderPath: string) =>
             updateSettings({ ...settings, downloadFolderPath })
           }
+        />
+      </SettingsRow>
+    </SettingsGroup>
+  );
+}
+
+function PlaylistFilesGroup() {
+  const { showError } = useServerSettings();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: queryKeys.playlistFileSettings,
+    queryFn: ({ signal }) =>
+      parseResponse(settingsClient["playlist-files"].$get({}, { init: { signal } })),
+  });
+  const save = useMutation({
+    mutationFn: (prefixOwnerUsername: boolean) =>
+      parseResponse(settingsClient["playlist-files"].$put({ json: { prefixOwnerUsername } })),
+    onSuccess: (next) => queryClient.setQueryData(queryKeys.playlistFileSettings, next),
+    onError: (error) => showError(errorMessage(error, "Couldn't save playlist files")),
+  });
+  if (query.isError) {
+    return (
+      <SettingsGroup title="Playlist files">
+        <SettingsNote tone="warning">Couldn&apos;t load playlist files.</SettingsNote>
+      </SettingsGroup>
+    );
+  }
+  if (!query.data) return null;
+  return (
+    <SettingsGroup
+      title="Playlist files"
+      note="M3U files for every flow and playlist. Media servers that scan this folder pick them up."
+    >
+      <SettingsRow label="Folder">
+        <span className="settings-row__value">{query.data.folder}</span>
+      </SettingsRow>
+      <SettingsRow
+        label="Owner in file names"
+        htmlFor="playlist-files-owner"
+        help="Adds the owner's username, like test - Road Trip."
+      >
+        <PillToggle
+          id="playlist-files-owner"
+          checked={save.isPending ? save.variables : query.data.prefixOwnerUsername}
+          disabled={save.isPending}
+          aria-label="Owner in file names"
+          onChange={(event) => save.mutate(event.target.checked)}
         />
       </SettingsRow>
     </SettingsGroup>
@@ -449,7 +499,7 @@ function LibraryManagersGroup() {
       <SettingsServiceRow
         to="library/lidarr"
         name="Lidarr"
-        status={configuredStatus(connectedServices(settings.integrations).lidarr)}
+        status={configuredStatus(lidarrConnected(settings.integrations))}
       />
     </SettingsGroup>
   );
@@ -473,6 +523,7 @@ function LibraryOverview() {
   return (
     <SettingsPage title="Library">
       <LibraryFolderGroup />
+      <PlaylistFilesGroup />
       <ReadOnlyFoldersGroup onChanged={refresh} />
       <ImportGroup
         busy={busy}

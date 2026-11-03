@@ -14,19 +14,13 @@ import {
 const previousFileBrowseRoots = process.env.FILE_BROWSE_ROOTS;
 const previousPathMappings = process.env.PATH_MAPPINGS;
 
-const [
-  isolatedState,
-  { db },
-  { dbOps },
-  { runStorageHealthCheck, getStorageHealthSnapshot },
-  { resolveDownloadRoot },
-] = await setupIsolatedBackend(
-  "storage-health",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/storageHealthService.ts"),
-  () => import("../../backend/services/downloadPaths.ts"),
-);
+const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck, getStorageHealthSnapshot }] =
+  await setupIsolatedBackend(
+    "storage-health",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/storageHealthService.ts"),
+  );
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -97,10 +91,8 @@ test("runStorageHealthCheck fails when a path mapping local folder is missing", 
 test("runStorageHealthCheck skips optional integrations when unset", async () => {
   const result = await runStorageHealthCheck();
   const slskd = result.sections.find((section) => section.id === "slskd");
-  const navidrome = result.sections.find((section) => section.id === "navidrome");
   const nativePlayback = result.sections.find((section) => section.id === "native-playback");
   assert.equal(slskd?.status, "skip");
-  assert.equal(navidrome?.status, "skip");
   assert.equal(nativePlayback?.status, "warn");
   assert.ok(nativePlayback?.steps[0]?.fix);
 });
@@ -336,220 +328,4 @@ test("slskd that hides its settings from the API key fails with the key role fix
   assert.equal(slskd?.status, "fail");
   assert.equal(reported?.status, "fail");
   assert.match(reported?.fix || "", /administrator role/);
-});
-
-test("unrelated Navidrome libraries do not fail local storage health", async (t: import("vite-plus/test").TestContext) => {
-  const playlistLibrary = "/music-aurral";
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    if (request.url?.startsWith("/rest/ping")) {
-      response.end(JSON.stringify({ "subsonic-response": { status: "ok" } }));
-      return;
-    }
-    if (request.url === "/auth/login") {
-      response.end(JSON.stringify({ token: "test-token" }));
-      return;
-    }
-    response.end(
-      JSON.stringify([
-        { id: "1", name: "Aurral", path: playlistLibrary },
-        { id: "2", name: "Podcasts", path: "/navidrome-only/podcasts" },
-      ]),
-    );
-  });
-  t.onTestFinished(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      navidrome: {
-        url: server.url,
-        username: "user",
-        password: "password",
-      },
-    },
-    pathMappings: [
-      {
-        source: "lidarr",
-        remote: playlistLibrary,
-        local: path.join(isolatedState.baseDir, "missing-library"),
-      },
-      { source: "navidrome", remote: playlistLibrary, local: resolveDownloadRoot() },
-    ],
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const navidrome = result.sections.find((section) => section.id === "navidrome");
-
-  assert.notEqual(navidrome?.status, "fail");
-  assert.equal(navidrome?.steps.find((step) => step.id === "aurral-library")?.status, "pass");
-  assert.equal(navidrome?.steps.find((step) => step.id === "library-readable")?.status, "pass");
-  assert.equal(
-    navidrome?.steps.some((step) => step.status === "fail" && /podcasts/i.test(step.detail || "")),
-    false,
-  );
-});
-
-test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t: import("vite-plus/test").TestContext) => {
-  const playlistLibrary = path.join(resolveDownloadRoot(), "aurral-weekly-flow");
-  await fs.mkdir(playlistLibrary, { recursive: true });
-  const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
-  await fs.mkdir(lidarrRoot, { recursive: true });
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    if (request.url?.startsWith("/rest/ping")) {
-      response.end(JSON.stringify({ "subsonic-response": { status: "ok" } }));
-      return;
-    }
-    if (request.url === "/auth/login") {
-      response.end(JSON.stringify({ token: "test-token" }));
-      return;
-    }
-    if (request.url === "/api/library") {
-      response.end(
-        JSON.stringify([
-          { id: "1", name: "Aurral", path: playlistLibrary },
-          { id: "2", name: "Music", path: "/navidrome/music" },
-        ]),
-      );
-      return;
-    }
-    if (request.url?.endsWith("/rootFolder")) {
-      response.end(JSON.stringify([{ id: 1, path: "/lidarr/music" }]));
-      return;
-    }
-    response.end(JSON.stringify([]));
-  });
-  t.onTestFinished(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      lidarr: { url: server.url, apiKey: "test-key" },
-      navidrome: { url: server.url, username: "user", password: "password" },
-    },
-    pathMappings: [{ source: "lidarr", remote: "/lidarr/music", local: lidarrRoot }],
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const navidrome = result.sections.find((section) => section.id === "navidrome");
-
-  assert.notEqual(navidrome?.status, "fail");
-  assert.equal(
-    navidrome?.steps.some((step) =>
-      ["lidarr-library", "lidarr-sample", "playlist-tracks"].includes(step.id),
-    ),
-    false,
-  );
-});
-
-test("configured Plex is included and validates its Aurral library path", async (t: import("vite-plus/test").TestContext) => {
-  const expectedPath = resolveDownloadRoot();
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    if (request.url?.startsWith("/identity")) {
-      response.end(JSON.stringify({ MediaContainer: { size: 0, machineIdentifier: "plex-test" } }));
-      return;
-    }
-    response.end(
-      JSON.stringify({
-        MediaContainer: {
-          size: 1,
-          Directory: [
-            { key: "7", type: "artist", title: "Aurral", Location: [{ path: expectedPath }] },
-          ],
-        },
-      }),
-    );
-  });
-  t.onTestFinished(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      plex: { url: server.url, token: "test-token", clientId: "test-client" },
-    },
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const plex = result.sections.find((section) => section.id === "plex");
-
-  assert.equal(plex?.status, "pass");
-  assert.equal(plex?.steps.find((step) => step.id === "aurral-library")?.status, "pass");
-});
-
-test("POSIX library paths remain case-sensitive", async (t: import("vite-plus/test").TestContext) => {
-  const expectedPath = resolveDownloadRoot();
-  const wrongCasePath = expectedPath.toUpperCase();
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    if (request.url?.startsWith("/rest/ping")) {
-      response.end(JSON.stringify({ "subsonic-response": { status: "ok" } }));
-      return;
-    }
-    if (request.url === "/auth/login") {
-      response.end(JSON.stringify({ token: "test-token" }));
-      return;
-    }
-    response.end(JSON.stringify([{ id: "1", name: "Wrong case", path: wrongCasePath }]));
-  });
-  t.onTestFinished(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      navidrome: {
-        url: server.url,
-        username: "user",
-        password: "password",
-      },
-    },
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const navidrome = result.sections.find((section) => section.id === "navidrome");
-
-  assert.equal(navidrome?.steps.find((step) => step.id === "aurral-library")?.status, "warn");
-});
-
-async function checkJellyfinWithLibraries(
-  t: import("vite-plus/test").TestContext,
-  locations: string[],
-) {
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(
-      JSON.stringify(
-        request.url === "/Library/VirtualFolders"
-          ? [{ Name: "Music", CollectionType: "music", Locations: locations }]
-          : {},
-      ),
-    );
-  });
-  t.onTestFinished(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      jellyfin: { url: server.url, apiKey: "test-key", userId: "user-1" },
-    },
-    pathMappings: [
-      { source: "jellyfin", remote: "/downloads/aurral", local: resolveDownloadRoot() },
-    ],
-  });
-  const result = await runStorageHealthCheck({ force: true });
-  return result.sections.find((section) => section.id === "jellyfin");
-}
-
-test("Jellyfin health warns when the mapped Library folder is in no Jellyfin library", async (t: import("vite-plus/test").TestContext) => {
-  const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music"]);
-
-  assert.equal(jellyfin?.status, "warn");
-  assert.match(String(jellyfin?.steps[0]?.detail), /\/downloads\/aurral is outside/);
-});
-
-test("Jellyfin health passes when a library holds the mapped Library folder", async (t: import("vite-plus/test").TestContext) => {
-  const jellyfin = await checkJellyfinWithLibraries(t, ["/media/music", "/downloads"]);
-
-  assert.equal(jellyfin?.status, "pass");
 });

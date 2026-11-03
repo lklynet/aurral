@@ -38,9 +38,6 @@ export function decryptWithKey(text: string | null | undefined, key: Buffer) {
 }
 
 const SENSITIVE_PATHS = [
-  ["navidrome", "password"],
-  ["plex", "token"],
-  ["jellyfin", "apiKey"],
   ["general", "authPassword"],
   ["lidarr", "apiKey"],
   ["slskd", "apiKey"],

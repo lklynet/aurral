@@ -165,13 +165,11 @@ const flowSeedingWorker = () => {
 const removePlaylistLocalTrackFile = async (
   job: Partial<Pick<DownloadJob, "id" | "finalPath">> | null | undefined,
   playlistId: string,
-  { protectPlayback = true }: { protectPlayback?: boolean } = {},
 ) => {
   if (!job || typeof job.finalPath !== "string") return;
   await removePlaylistFileIfUnshared(job.finalPath, playlistId, {
     downloadRoot: downloadWorker.downloadRoot,
     excludeJobIds: job.id ? [job.id] : [],
-    protectPlayback,
   });
 };
 
@@ -210,7 +208,6 @@ const syncStaticPlaylistConfigFromJobs = async (playlistId: string) => {
   const updatedPlaylist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
     tracks: rebuildStaticPlaylistTracksFromJobs(playlist.tracks, jobs),
   });
-  playlistManager.updateConfig();
   return updatedPlaylist;
 };
 
@@ -377,7 +374,6 @@ async function runFlowSeed({
 
         activatePlaylistDownloadGeneration(safeFlowId);
         recordFlowGenerationStarted({ flowId: safeFlowId });
-        playlistManager.updateConfig();
         await playlistManager.weeklyReset([safeFlowId]);
         downloadTracker.clearByPlaylistId(safeFlowId);
 
@@ -472,7 +468,6 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null }: Opera
     if (!isLatestPlaylistOperationToken(tokenScope, token)) {
       return;
     }
-    playlistManager.updateConfig();
     await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistId(safeFlowId);
   });
@@ -496,8 +491,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null }: Operation
       return;
     }
     void downloadWorker.setRetryCyclePaused(safeFlowId, false);
-    playlistManager.updateConfig();
-    await playlistManager.weeklyReset([safeFlowId], { protectPlayback: false });
+    await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistId(safeFlowId);
     didDelete = flowPlaylistConfig.deleteFlow(safeFlowId);
   });
@@ -519,8 +513,7 @@ async function resetPlaylists({ playlistTypes = [] }: OperationPayload = {}) {
     ),
   );
   await withPlaylistMutation(types, async () => {
-    playlistManager.updateConfig();
-    await playlistManager.weeklyReset(types, { protectPlayback: false });
+    await playlistManager.weeklyReset(types);
   });
   rescanLibraryForFlows(types);
   await restartWorkerIfPending();
@@ -1011,7 +1004,6 @@ async function deleteStaticPlaylist({ playlistId }: OperationPayload = {}) {
           { lock: false },
         );
         void downloadWorker.setRetryCyclePaused(safePlaylistId, false);
-        playlistManager.updateConfig();
         const playlistJobs = downloadTracker.getByPlaylistId(safePlaylistId);
         const removedJobIds = playlistJobs.map((job) => job.id);
         for (const job of playlistJobs) {
@@ -1024,7 +1016,7 @@ async function deleteStaticPlaylist({ playlistId }: OperationPayload = {}) {
             deleteIfUnshared: true,
           });
         }
-        await playlistManager.weeklyReset([safePlaylistId], { protectPlayback: true });
+        await playlistManager.weeklyReset([safePlaylistId]);
         downloadTracker.clearByPlaylistId(safePlaylistId);
         deleted = flowPlaylistConfig.deleteStaticPlaylist(safePlaylistId);
       },

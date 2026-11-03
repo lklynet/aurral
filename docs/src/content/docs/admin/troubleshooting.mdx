@@ -81,14 +81,12 @@ To clear the warning, set **Settings > Library > Library folder > Path** to a fo
 
 By default, **Browse folders** opens only `/data`, the app data folder, and the Library folder. If your media mount is at another path, such as `/music`, set `FILE_BROWSE_ROOTS=/music` and recreate the container. See [Environment variables](/admin/environment/#mounts-and-permissions).
 
-## Files do not appear in Navidrome
+## Files or playlists do not appear in a media server
 
 - Make sure that **Settings > Library > Library folder > Path** is under the shared media mount.
-- If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr. See [Filesystem and mounts](/getting-started/storage/).
-- In **Settings > Playback > Navidrome**, test the connection.
-- Make sure that Navidrome scans the Library folder, not only the Lidarr library.
-- The **Aurral Playlists** library stays empty until the first download finishes. Check for a file in the Library folder or under `_flows`, then wait for the Navidrome scan.
-- If the library is missing, make sure that the Navidrome account can manage libraries through the API.
+- Make sure that the media server has the Library folder in a music library, not only the Lidarr library.
+- Check that the playlist file exists in the folder that **Settings > Library > Playlist files** shows.
+- Navidrome and Jellyfin import playlist files. Plex does not. See [Plex](/integrations/plex/#playlists).
 - Read about [removing missing tracks in Navidrome](/integrations/navidrome/#remove-missing-tracks).
 
 ## Library reuse or download import fails on Windows
@@ -113,30 +111,12 @@ The **Lidarr library** storage check can fail on a sample track outside every Li
 - If the failing path is outside the root folder, open that artist in Lidarr, select **Edit**, and move the files to the current root folder.
 - Otherwise, add the old folder as a Lidarr root folder and mount it in Aurral.
 
-## Navidrome playlists appear, but tracks do not play
+## Playlists appear, but some tracks are missing
 
-First, wait for Navidrome to finish its scan. Aurral adds tracks to a Navidrome playlist only after Navidrome indexes them.
-
+- Wait for the media server to finish its scan. Jellyfin can take a few minutes.
+- Make sure that the media server has the Library folder and each Lidarr folder that playlists reuse in its music libraries.
+- Make sure that the server sees the Lidarr root folder in the same place relative to the Library folder as Aurral. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).
 - Make sure that the **Lidarr library** storage check passes.
-- Make sure that Navidrome scans the Library folder and each Lidarr folder that playlists reuse.
-- Make sure that the Library folder has the same absolute path in both containers.
-- Run a flow, or edit and save a static playlist.
-- Run a full Navidrome scan and wait for Aurral's next update.
-
-See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
-
-## Plex playlists are empty or tracks are missing
-
-**Sync to Plex now** can succeed while the playlists have no tracks. The **Aurral** library can also stay empty while Plex scans.
-
-- Make sure that Plex can read the Library folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
-- If Plex and Aurral use different paths, set **Settings > Playback > Plex > Aurral Library path in Plex** to the folder that Plex sees. If they use the same path, leave it blank.
-- Wait for the Plex settings to save, then select **Sync to Plex now** again.
-- Wait for the first scan. It can take several minutes. Aurral syncs a playlist again for about 15 minutes while Plex indexes its tracks.
-- Make sure that the flow finished its downloads.
-- For another user's playlists, make sure that the user linked a Plex account.
-
-See [Plex](/integrations/plex/).
 
 ## A Subsonic client cannot sign in
 
@@ -147,9 +127,9 @@ See [Plex](/integrations/plex/).
 
 See [Navidrome and Subsonic](/integrations/navidrome/#connect-a-subsonic-client).
 
-## Google or Plex sign-in says the account is not linked
+## Google sign-in says the account is not linked
 
-Google and Plex sign-in work only for accounts that already linked them. Sign in another way, then link the account in **Settings > Profile > Sign-in methods** or **Settings > Profile > Plex account**. See [Sign in with Google or Plex](/admin/users/#sign-in-with-google-or-plex).
+Google sign-in works only for accounts that already linked it. Sign in another way, then link the account in **Settings > Profile > Sign-in methods**. See [Sign in with Google](/admin/users/#sign-in-with-google).
 
 ## Sign-in page or blank page behind a reverse proxy
 
@@ -165,11 +145,11 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 - If an Authentik logout returns to Aurral's sign-in page, set `AUTH_PROXY_LOGOUT_URL=https://your-aurral-host/outpost.goauthentik.io/sign_out`. Check the spelling of the variable name.
 - If **Log out** is missing, `AUTH_PROXY_LOGOUT_URL` is not set. Aurral hides **Log out** when it cannot end the proxy session.
 
-## Media server scans wait after downloads
+## Listening history from a media server is missing
 
-Aurral batches scan requests for Navidrome, Plex, and Jellyfin after files change. **Settings > Status > Tasks** shows the queued **Media server scan**. If a server is unavailable, the task retries and records the failure. A full Library scan requests another media server scan.
-
-Playlist changes and deletions reach the servers through the **Media server playlist sync** task, a few seconds after the change. Changes made close together share one sync. Syncs and media server scans run one at a time in the **Media server updates** queue. If a server has not indexed some tracks yet, Aurral syncs that playlist to that server again after 30 seconds, 90 seconds, 3 minutes, and 10 minutes. After Aurral asks a server to scan a folder, it gives the server about 90 seconds to pick up the changes there before it reads the whole library again, so a playlist on that server can leave out new or changed tracks from that folder for a few minutes. If a server does not respond, the other servers still get the change. Aurral tries the unavailable server again on the same schedule, then every 10 minutes until it responds. If it then has not indexed some tracks, those retries start again from 30 seconds. Each retry goes only to the server that missed the change. If a server rejects Aurral's credentials or request, Aurral logs the error and waits for the next change to try that server again. Aurral syncs every playlist at startup and when you change media server settings. That sync also removes playlists you deleted in Aurral from servers that missed the deletion.
+- Open **Settings > Listening** and select the server. The page shows the last sync and any error.
+- For Jellyfin, install the Playback Reporting plugin. It records plays only from the day it is installed.
+- Select **Sync now** to import new plays at once. Aurral also checks every hour.
 
 ## Docker memory rises while tasks run
 

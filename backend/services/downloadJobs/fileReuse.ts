@@ -27,14 +27,8 @@ import {
 } from "../downloadPaths.ts";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
 import { normalizeExistingFileMode } from "./fileReuseMode.ts";
-import {
-  createPlaybackDeletionGuard,
-  forgetPlaybackRetainedFile,
-  isPlaybackRetainedFile,
-} from "../playback/playbackFileRetention.ts";
 export { EXISTING_FILE_MODES, normalizeExistingFileMode } from "./fileReuseMode.ts";
 
-type DeletionGuard = ReturnType<typeof createPlaybackDeletionGuard>;
 type FolderSource = keyof typeof FOLDER_SOURCES;
 type SourceOptions = {
   targetPlaylistType?: string | null;
@@ -410,14 +404,12 @@ export async function adoptFileIntoPlaylist(
   sourcePath: string,
   targetPlaylistType: string,
   downloadRoot: string,
-  options: { track?: DownloadTrackInput; protectPlayback?: boolean } = {},
+  options: { track?: DownloadTrackInput } = {},
 ) {
   const safeTarget = String(targetPlaylistType || "").trim();
   const root = path.resolve(downloadRoot || resolveDownloadRoot());
   const resolvedSource = path.resolve(remapLegacyPath(sourcePath, root));
   if (!safeTarget || !(await fileExists(resolvedSource))) return null;
-  if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource))
-    return resolvedSource;
 
   const knownFlow = isFlowPlaylistType(safeTarget);
   const knownPlaylist = usesLibraryFolders(safeTarget);
@@ -470,11 +462,7 @@ export async function adoptFileIntoPlaylist(
 
 export async function relocateSharedFilesBeforePlaylistRemoval(
   playlistType: string,
-  options: {
-    downloadRoot?: string | null;
-    deletionGuard?: DeletionGuard;
-    protectPlayback?: boolean;
-  } = {},
+  options: { downloadRoot?: string | null } = {},
 ) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistType = String(playlistType || "").trim();
@@ -497,18 +485,10 @@ export async function relocateSharedFilesBeforePlaylistRemoval(
   }
 
   let relocated = 0;
-  const deletionGuard =
-    options.deletionGuard ||
-    createPlaybackDeletionGuard({
-      excludeEntityIds: [safePlaylistType],
-      playlistRoot: downloadRoot,
-    });
   for (const [oldPath, jobs] of byPath) {
-    if (!(await deletionGuard.canDelete(oldPath))) continue;
     const survivor = sortReusableJobs(jobs)[0];
     const nextPath = await adoptFileIntoPlaylist(oldPath, survivor.playlistType, downloadRoot, {
       track: survivor,
-      protectPlayback: options.protectPlayback,
     });
     if (nextPath) relocated += 1;
   }
@@ -523,8 +503,6 @@ export async function removePlaylistFileIfUnshared(
     excludeJobIds?: string[] | null;
     deleteIfUnshared?: boolean;
     shouldDelete?: () => boolean | Promise<boolean>;
-    deletionGuard?: DeletionGuard;
-    protectPlayback?: boolean;
   } = {},
 ) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
@@ -564,24 +542,12 @@ export async function removePlaylistFileIfUnshared(
     return { action: "skipped" };
   }
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
-  const deletionGuard =
-    options.deletionGuard ||
-    (options.protectPlayback === false
-      ? { canDelete: async () => true }
-      : createPlaybackDeletionGuard({
-          excludeEntityIds: [safePlaylistId],
-          playlistRoot: downloadRoot,
-        }));
-  if (!(await deletionGuard.canDelete(resolved))) return { action: "retained" };
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];
-    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot, {
-      protectPlayback: options.protectPlayback,
-    });
+    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot);
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });
-  forgetPlaybackRetainedFile(resolved);
   return { action: "deleted" };
 }
 
@@ -1119,7 +1085,6 @@ export async function moveHandedOverTracksToLidarr(
   options: {
     existingFileMode?: string | null;
     downloadRoot?: string | null;
-    deletionGuard?: DeletionGuard;
   } = {},
 ) {
   if (normalizeExistingFileMode(options.existingFileMode) === "download")
@@ -1159,15 +1124,8 @@ export async function moveHandedOverTracksToLidarr(
 
   const { playlistManager } = await import("../playlists/playlistManager.ts");
   playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
-  const deletionGuard =
-    options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
-  let deleted = 0;
-  for (const oldPath of movedPaths) {
-    if (!(await deletionGuard.canDelete(oldPath).catch(() => false))) continue;
-    await fs.rm(oldPath, { force: true });
-    forgetPlaybackRetainedFile(oldPath);
-    deleted += 1;
-  }
+  for (const oldPath of movedPaths) await fs.rm(oldPath, { force: true });
+  const deleted = movedPaths.length;
   scheduleLibraryScanJob({ includeLidarr: false, changedPaths: movedPaths });
   console.log(
     `[FileReuse] Moved ${moved} tracks onto Lidarr files and removed ${deleted} Aurral copies`,

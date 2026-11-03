@@ -1,13 +1,11 @@
 import { audioMetadata } from "./fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
-import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
+import { test, beforeEach, afterAll, afterEach } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
-import { NavidromeClient } from "../../backend/services/navidrome.ts";
-import { createPlaybackPlaylistSnapshot } from "../../backend/services/playback/playbackDestination.ts";
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 
 import {
@@ -93,35 +91,6 @@ const admin: RequestUser = { id: 1, username: "admin", role: "admin", permission
 let requestUser = admin;
 const server = await listen(signedInAs(() => requestUser).route("/api", api));
 const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}/api/playlists`;
-
-playlistManager.navidromeDestination.client = Object.assign(
-  new NavidromeClient("http://navidrome.test", "user", "password"),
-  {
-    isConfigured: () => true,
-    async ensureAurralLibrary() {
-      return null;
-    },
-    async getPlaylists() {
-      return [];
-    },
-    async getPlaylistTrackPaths() {
-      return [];
-    },
-    async findSong() {
-      return { id: "reviewed-song" };
-    },
-    async createPlaylist(name: string) {
-      return { id: name, name };
-    },
-    async updatePlaylist() {},
-    async deletePlaylist() {
-      return {};
-    },
-    async scanLibrary() {
-      return null;
-    },
-  },
-);
 
 async function waitForApprovalFollowUps() {
   while (hasApprovalFollowUps()) await new Promise<void>((resolve) => setTimeout(resolve, 5));
@@ -294,7 +263,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
-test("approving a reviewed download queues its playlist sync instead of waiting on the media server", async () => {
+test("approving a reviewed download queues its playlist sync", async () => {
   takePlaylistSyncs();
   const playlistId = "reviewed-slow-publish";
   flowPlaylistConfig.createStaticPlaylist({
@@ -312,9 +281,6 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
   );
   assert.ok(jobId != null);
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
-  const serverCalls = vi
-    .spyOn(playlistManager.navidromeDestination.client!, "getPlaylists")
-    .mockImplementation(() => new Promise(() => {}));
 
   const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200);
@@ -327,9 +293,8 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
 
   assert.equal(changed, true);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
-  assert.equal(serverCalls.mock.calls.length, 0);
   assert.deepEqual(takePlaylistSyncs(), [
-    { kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 },
+    { kind: "playback-playlist-sync", entityIds: [playlistId], rewrite: false },
   ]);
 });
 
@@ -421,15 +386,6 @@ test("a track committed after an approved review joins the same pending playlist
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
 
   takePlaylistSyncs();
-  const published: string[][] = [];
-  vi.spyOn(playlistManager.navidromeDestination, "publishPlaylist").mockImplementation(
-    async (snapshot) => {
-      assert.ok(snapshot != null);
-      if (snapshot.entityId === playlistId) assert.ok(snapshot != null);
-      published.push(createPlaybackPlaylistSnapshot(snapshot).tracks.map((track) => track.path));
-      return { ok: true };
-    },
-  );
 
   const response = await fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
@@ -439,15 +395,19 @@ test("a track committed after an approved review joins the same pending playlist
   playlistManager.requestPlaylistSync([playlistId]);
   const syncs = takePlaylistSyncs();
   assert.deepEqual(syncs, [
-    { kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 },
+    { kind: "playback-playlist-sync", entityIds: [playlistId], rewrite: false },
   ]);
   await processSystemTask(syncs[0]);
 
-  assert.equal(published.length, 1);
-  assert.ok(published[0].includes(pipelinePath), JSON.stringify(published));
+  const published = await fs.readFile(
+    path.join(playlistManager.libraryRoot, "Reviewed concurrent commit.m3u"),
+    "utf8",
+  );
   const reviewedPath = trackedJob(downloadTracker, reviewedJobId).finalPath;
   assert.ok(reviewedPath != null);
-  assert.ok(published[0].includes(reviewedPath), JSON.stringify(published));
+  for (const file of [pipelinePath, reviewedPath]) {
+    assert.ok(published.includes(path.relative(playlistManager.libraryRoot, file)), published);
+  }
 });
 
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {

@@ -17,30 +17,28 @@ can change Aurral, Lidarr, files, users, or external services.
 
 ## Health and authentication
 
-| Method | Path                            | Purpose                                                                                          |
-| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `GET`  | `/api/health/live`              | Minimal liveness response                                                                        |
-| `GET`  | `/api/health/bootstrap`         | Startup and authentication state                                                                 |
-| `GET`  | `/api/health`                   | Detailed application health                                                                      |
-| `GET`  | `/api/health/ws`                | WebSocket connection statistics                                                                  |
-| `POST` | `/api/health/stream-token`      | Issue a short-lived token for media streams                                                      |
-| `POST` | `/api/auth/login`               | Create a password-login session                                                                  |
-| `POST` | `/api/auth/logout`              | End a login session                                                                              |
-| `GET`  | `/api/auth/me`                  | Current authenticated identity                                                                   |
-| `GET`  | `/api/auth/api-key`             | Read or create the instance API key. Administrators only                                         |
-| `POST` | `/api/auth/api-key/rotate`      | Replace the instance API key. Administrators only                                                |
-| `POST` | `/api/auth/reauth`              | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
-| `GET`  | `/api/auth/oidc/login`          | Start an OpenID Connect login                                                                    |
-| `POST` | `/api/auth/oidc/exchange`       | Exchange an OpenID Connect code for a session                                                    |
-| `POST` | `/api/auth/oidc/link/start`     | Start linking single sign-on to the current user and return the authorization URL                |
-| `GET`  | `/api/auth/google/login`        | Start a Google sign-in                                                                           |
-| `POST` | `/api/auth/google/exchange`     | Exchange a Google sign-in code for a session                                                     |
-| `GET`  | `/api/auth/google/link`         | Start linking a Google account to the current user                                               |
-| `POST` | `/api/auth/google/link/start`   | Start linking a Google account and return the authorization URL                                  |
-| `POST` | `/api/auth/plex/login/pin`      | Start a Plex sign-in                                                                             |
-| `POST` | `/api/auth/plex/login/complete` | Complete a Plex sign-in                                                                          |
+| Method | Path                          | Purpose                                                                                          |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET`  | `/api/health/live`            | Minimal liveness response                                                                        |
+| `GET`  | `/api/health/bootstrap`       | Startup and authentication state                                                                 |
+| `GET`  | `/api/health`                 | Detailed application health                                                                      |
+| `GET`  | `/api/health/ws`              | WebSocket connection statistics                                                                  |
+| `POST` | `/api/health/stream-token`    | Issue a short-lived token for media streams                                                      |
+| `POST` | `/api/auth/login`             | Create a password-login session                                                                  |
+| `POST` | `/api/auth/logout`            | End a login session                                                                              |
+| `GET`  | `/api/auth/me`                | Current authenticated identity                                                                   |
+| `GET`  | `/api/auth/api-key`           | Read or create the instance API key. Administrators only                                         |
+| `POST` | `/api/auth/api-key/rotate`    | Replace the instance API key. Administrators only                                                |
+| `POST` | `/api/auth/reauth`            | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
+| `GET`  | `/api/auth/oidc/login`        | Start an OpenID Connect login                                                                    |
+| `POST` | `/api/auth/oidc/exchange`     | Exchange an OpenID Connect code for a session                                                    |
+| `POST` | `/api/auth/oidc/link/start`   | Start linking single sign-on to the current user and return the authorization URL                |
+| `GET`  | `/api/auth/google/login`      | Start a Google sign-in                                                                           |
+| `POST` | `/api/auth/google/exchange`   | Exchange a Google sign-in code for a session                                                     |
+| `GET`  | `/api/auth/google/link`       | Start linking a Google account to the current user                                               |
+| `POST` | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL                                  |
 
-The Google and Plex sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity and Plex link changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
+The Google sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
@@ -125,7 +123,6 @@ WebSocket connections.
 | `GET`    | `/api/library/favorites`                                          | Read the current user's library favorites                                                                                                                                                                                                                                                            |
 | `POST`   | `/api/library/favorites`                                          | Add or remove a library favorite. Requires a user session                                                                                                                                                                                                                                            |
 | `GET`    | `/api/library/playback-queue`                                     | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100                                                                                                                                                                                                                    |
-| `GET`    | `/api/library/stream/:songId`                                     | Stream a library song                                                                                                                                                                                                                                                                                |
 | `GET`    | `/api/library/canonical-stream/:albumId/:trackId`                 | Stream a Library track                                                                                                                                                                                                                                                                               |
 | `GET`    | `/api/library/file-stream/:albumId/:trackId`                      | Stream an album track file                                                                                                                                                                                                                                                                           |
 | `GET`    | `/api/library/rootfolder`                                         | List Lidarr root-folder paths                                                                                                                                                                                                                                                                        |
@@ -403,7 +400,7 @@ The routes call a static playlist a shared playlist.
 | `POST`   | `/api/playlists/worker/start`                                        | Start the worker                                                                                      |
 | `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                       |
 | `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                         |
-| `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a sync of every flow and static playlist to connected media servers                             |
+| `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a rewrite of every flow and static playlist file                                                |
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
@@ -463,75 +460,57 @@ These routes retrieve public playlists anonymously. Preview accepts a supported 
 
 ## Users
 
-| Method   | Path                                     | Purpose                                                                                            |
-| -------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/users`                             | List users                                                                                         |
-| `POST`   | `/api/users`                             | Create a user                                                                                      |
-| `PATCH`  | `/api/users/:id`                         | Update a user                                                                                      |
-| `DELETE` | `/api/users/:id`                         | Delete a user                                                                                      |
-| `GET`    | `/api/users/me/listening-history`        | Get the current user's Last.fm, ListenBrainz, and Koito history sources                            |
-| `PATCH`  | `/api/users/me/listening-history`        | Set or clear any of the current user's history sources                                             |
-| `GET`    | `/api/users/me/identities`               | List the sign-in identities linked to the current user                                             |
-| `DELETE` | `/api/users/me/identities/:id`           | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
-| `GET`    | `/api/users/me/lidarr-preferences`       | Current user's Lidarr preferences                                                                  |
-| `PATCH`  | `/api/users/me/lidarr-preferences`       | Update current user's Lidarr preferences                                                           |
-| `GET`    | `/api/users/me/discover-layout`          | Current user's discovery layout                                                                    |
-| `PATCH`  | `/api/users/me/discover-layout`          | Update current user's discovery layout                                                             |
-| `GET`    | `/api/users/me/theme`                    | Current user's theme settings and saved themes, or `null`                                          |
-| `PUT`    | `/api/users/me/theme`                    | Replace the current user's theme settings. Returns `400` when the theme is invalid                 |
-| `POST`   | `/api/users/me/password`                 | Change current user's password                                                                     |
-| `GET`    | `/api/users/me/plex-link/status`         | Read the current user's Plex link                                                                  |
-| `POST`   | `/api/users/me/plex-link/oauth/pin`      | Start Plex linking for the current user                                                            |
-| `POST`   | `/api/users/me/plex-link/oauth/complete` | Complete Plex linking for the current user                                                         |
-| `DELETE` | `/api/users/me/plex-link`                | Remove the current user's Plex link                                                                |
-| `GET`    | `/api/users/plex-link/home-users`        | List Plex home users                                                                               |
-| `POST`   | `/api/users/:id/plex-link/managed`       | Link a managed Plex user                                                                           |
-| `DELETE` | `/api/users/:id/plex-link`               | Remove a managed Plex link                                                                         |
-
-The current-user Plex-link routes require authentication. The Plex home-user
-and managed-link routes require administrator access.
+| Method   | Path                               | Purpose                                                                                            |
+| -------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/users`                       | List users                                                                                         |
+| `POST`   | `/api/users`                       | Create a user                                                                                      |
+| `PATCH`  | `/api/users/:id`                   | Update a user                                                                                      |
+| `DELETE` | `/api/users/:id`                   | Delete a user                                                                                      |
+| `GET`    | `/api/users/me/listening-history`  | Get the current user's Last.fm, ListenBrainz, and Koito history sources                            |
+| `PATCH`  | `/api/users/me/listening-history`  | Set or clear any of the current user's history sources                                             |
+| `GET`    | `/api/users/me/identities`         | List the sign-in identities linked to the current user                                             |
+| `DELETE` | `/api/users/me/identities/:id`     | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
+| `GET`    | `/api/users/me/lidarr-preferences` | Current user's Lidarr preferences                                                                  |
+| `PATCH`  | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences                                                           |
+| `GET`    | `/api/users/me/discover-layout`    | Current user's discovery layout                                                                    |
+| `PATCH`  | `/api/users/me/discover-layout`    | Update current user's discovery layout                                                             |
+| `GET`    | `/api/users/me/theme`              | Current user's theme settings and saved themes, or `null`                                          |
+| `PUT`    | `/api/users/me/theme`              | Replace the current user's theme settings. Returns `400` when the theme is invalid                 |
+| `POST`   | `/api/users/me/password`           | Change current user's password                                                                     |
 
 ## Administration and settings
 
 Every route in this section requires an administrator.
 
-| Method | Path                                                   | Purpose                                                                        |
-| ------ | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `GET`  | `/api/settings`                                        | Read settings                                                                  |
-| `POST` | `/api/settings`                                        | Update settings                                                                |
-| `GET`  | `/api/settings/storage-health`                         | Return the result of the last storage health check. It does not run the checks |
-| `POST` | `/api/settings/storage-health/check`                   | Run the storage health check again                                             |
-| `GET`  | `/api/settings/tasks`                                  | List scheduled maintenance tasks                                               |
-| `POST` | `/api/settings/tasks/clear-stale`                      | Clear stale task runs                                                          |
-| `GET`  | `/api/settings/lidarr/profiles`                        | List Lidarr quality profiles                                                   |
-| `GET`  | `/api/settings/lidarr/metadata-profiles`               | List Lidarr metadata profiles                                                  |
-| `GET`  | `/api/settings/lidarr/root-folders`                    | List Lidarr root folders                                                       |
-| `GET`  | `/api/settings/lidarr/tags`                            | List Lidarr tags                                                               |
-| `GET`  | `/api/settings/lidarr/test-library-access`             | Test Lidarr library access                                                     |
-| `GET`  | `/api/settings/lidarr/test`                            | Test Lidarr configuration                                                      |
-| `POST` | `/api/settings/lidarr/apply-community-guide`           | Apply recommended Lidarr settings                                              |
-| `POST` | `/api/settings/slskd/test`                             | Test slskd                                                                     |
-| `POST` | `/api/settings/prowlarr/test`                          | Test Prowlarr                                                                  |
-| `GET`  | `/api/settings/prowlarr/indexers`                      | List Prowlarr Usenet indexers                                                  |
-| `POST` | `/api/settings/nzbget/test`                            | Test NZBGet                                                                    |
-| `POST` | `/api/settings/sabnzbd/test`                           | Test SABnzbd                                                                   |
-| `POST` | `/api/settings/ytdlp/test`                             | Test yt-dlp                                                                    |
-| `GET`  | `/api/settings/download-clients`                       | Read download client settings metadata                                         |
-| `POST` | `/api/settings/download-clients/:key/test`             | Test a download client                                                         |
-| `POST` | `/api/settings/gotify/test`                            | Test Gotify                                                                    |
-| `POST` | `/api/settings/webhook/test`                           | Test one webhook configuration                                                 |
-| `POST` | `/api/settings/plex/auth/pin`                          | Start Plex authentication                                                      |
-| `POST` | `/api/settings/plex/auth/check`                        | Check Plex authentication                                                      |
-| `POST` | `/api/settings/plex/resources`                         | List Plex resources                                                            |
-| `POST` | `/api/settings/plex/test`                              | Test Plex                                                                      |
-| `GET`  | `/api/settings/plex/libraries`                         | List Plex libraries                                                            |
-| `GET`  | `/api/settings/plex/libraries/:sectionId/access-check` | Check access to a Plex library                                                 |
-| `POST` | `/api/settings/plex/sync`                              | Synchronize Plex                                                               |
-| `POST` | `/api/settings/navidrome/test`                         | Test Navidrome credentials                                                     |
-| `GET`  | `/api/settings/playback`                               | Read playback settings                                                         |
-| `POST` | `/api/settings/playback/:key/test`                     | Test a playback integration                                                    |
-| `GET`  | `/api/backup`                                          | Download a backup zip. Requires a password entered in the last 15 minutes      |
-| `POST` | `/api/backup/restore`                                  | Restore a backup zip sent as the request body, then restart                    |
+| Method | Path                                         | Purpose                                                                        |
+| ------ | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| `GET`  | `/api/settings`                              | Read settings                                                                  |
+| `POST` | `/api/settings`                              | Update settings                                                                |
+| `GET`  | `/api/settings/storage-health`               | Return the result of the last storage health check. It does not run the checks |
+| `POST` | `/api/settings/storage-health/check`         | Run the storage health check again                                             |
+| `GET`  | `/api/settings/tasks`                        | List scheduled maintenance tasks                                               |
+| `POST` | `/api/settings/tasks/clear-stale`            | Clear stale task runs                                                          |
+| `GET`  | `/api/settings/lidarr/profiles`              | List Lidarr quality profiles                                                   |
+| `GET`  | `/api/settings/lidarr/metadata-profiles`     | List Lidarr metadata profiles                                                  |
+| `GET`  | `/api/settings/lidarr/root-folders`          | List Lidarr root folders                                                       |
+| `GET`  | `/api/settings/lidarr/tags`                  | List Lidarr tags                                                               |
+| `GET`  | `/api/settings/lidarr/test-library-access`   | Test Lidarr library access                                                     |
+| `GET`  | `/api/settings/lidarr/test`                  | Test Lidarr configuration                                                      |
+| `POST` | `/api/settings/lidarr/apply-community-guide` | Apply recommended Lidarr settings                                              |
+| `POST` | `/api/settings/slskd/test`                   | Test slskd                                                                     |
+| `POST` | `/api/settings/prowlarr/test`                | Test Prowlarr                                                                  |
+| `GET`  | `/api/settings/prowlarr/indexers`            | List Prowlarr Usenet indexers                                                  |
+| `POST` | `/api/settings/nzbget/test`                  | Test NZBGet                                                                    |
+| `POST` | `/api/settings/sabnzbd/test`                 | Test SABnzbd                                                                   |
+| `POST` | `/api/settings/ytdlp/test`                   | Test yt-dlp                                                                    |
+| `GET`  | `/api/settings/download-clients`             | Read download client settings metadata                                         |
+| `POST` | `/api/settings/download-clients/:key/test`   | Test a download client                                                         |
+| `POST` | `/api/settings/gotify/test`                  | Test Gotify                                                                    |
+| `POST` | `/api/settings/webhook/test`                 | Test one webhook configuration                                                 |
+| `GET`  | `/api/settings/playlist-files`               | Read the playlist file folder and naming setting                               |
+| `PUT`  | `/api/settings/playlist-files`               | Change the owner prefix in playlist file names                                 |
+| `GET`  | `/api/backup`                                | Download a backup zip. Requires a password entered in the last 15 minutes      |
+| `POST` | `/api/backup/restore`                        | Restore a backup zip sent as the request body, then restart                    |
 
 ## Logs
 
@@ -563,6 +542,12 @@ recording require a user's login session.
 | `DELETE` | `/api/scrobbling/koito/link`           | Unlink Koito                                           |
 | `GET`    | `/api/play-events`                     | Read local play history                                |
 | `POST`   | `/api/play-events`                     | Record a local play event. Requires a user session     |
+| `GET`    | `/api/history-servers`                 | List the current user's media server history imports   |
+| `PUT`    | `/api/history-servers/:provider`       | Connect Navidrome, Plex, or Jellyfin. Admins only      |
+| `POST`   | `/api/history-servers/:provider/sync`  | Import new plays now                                   |
+| `DELETE` | `/api/history-servers/:provider`       | Disconnect and remove the imported plays               |
+
+`GET /api/play-events` lists plays recorded in Aurral. Plays imported from a media server are not included.
 
 ## Onboarding
 
@@ -574,7 +559,6 @@ setup, Aurral does not require a credential for these routes.
 | `POST` | `/api/onboarding/lidarr/profiles`          | List Lidarr quality profiles  |
 | `POST` | `/api/onboarding/lidarr/metadata-profiles` | List Lidarr metadata profiles |
 | `POST` | `/api/onboarding/lidarr/test`              | Test Lidarr credentials       |
-| `POST` | `/api/onboarding/navidrome/test`           | Test Navidrome credentials    |
 | `POST` | `/api/onboarding/complete`                 | Complete onboarding           |
 
 ## Files and images

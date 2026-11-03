@@ -5,7 +5,7 @@ import { dbOps } from "../db/helpers/index.ts";
 const PLAYS_BEFORE_PROMPT = 50;
 
 const countPlaysStmt = db.prepare<[number, number], { plays: number }>(
-  "SELECT COUNT(*) AS plays FROM (SELECT 1 FROM play_events WHERE user_id = ? LIMIT ?)",
+  "SELECT COUNT(*) AS plays FROM (SELECT 1 FROM play_events WHERE user_id = ? AND external_id IS NULL LIMIT ?)",
 );
 
 export const claimStarPrompt = (userId: number) => {

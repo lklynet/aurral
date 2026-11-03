@@ -46,8 +46,6 @@ export const appSettingsPatch = v.object({
 
 const INTEGRATION_KEYS = [
   "lidarr",
-  "navidrome",
-  "jellyfin",
   "slskd",
   "prowlarr",
   "nzbget",
@@ -64,18 +62,6 @@ const INTEGRATION_KEYS = [
   "webhookEvents",
   "google",
 ];
-
-function mergePlexIntegration(
-  existing: StoredIntegrations["plex"] = {},
-  input: StoredIntegrations["plex"] = {},
-) {
-  return {
-    ...existing,
-    ...input,
-    token: input.token ?? existing.token ?? "",
-    clientId: input.clientId ?? existing.clientId ?? "",
-  };
-}
 
 function mergeIntegrations(existing: StoredIntegrations, input: StoredIntegrations) {
   const merged = { ...existing, ...input };
@@ -426,10 +412,7 @@ function normalizeIntegrationPatch(
   return null;
 }
 
-export async function saveAppSettings(
-  input: v.InferOutput<typeof appSettingsPatch>,
-  userId: number,
-) {
+export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPatch>) {
   const {
     quality,
     qualityProfile,
@@ -486,20 +469,6 @@ export async function saveAppSettings(
     currentSettings.integrations || defaultData.settings.integrations || {};
   if (integrations) {
     mergedIntegrations = mergeIntegrations(mergedIntegrations, integrations);
-    // mergeIntegrations()'s top-level spread already clobbered .plex down to
-    // whatever partial fields the client sent (it isn't in INTEGRATION_KEYS,
-    // which is why "plex" gets its own encryption-aware merge) - merge
-    // against the true pre-request value, not that already-corrupted one.
-    const plex = asObject(integrations.plex);
-    mergedIntegrations.plex = plex
-      ? mergePlexIntegration(currentSettings.integrations?.plex, plex)
-      : mergedIntegrations.plex;
-    if (plex?.token && plex.token !== currentSettings.integrations?.plex?.token) {
-      mergedIntegrations.plex = {
-        ...mergedIntegrations.plex,
-        configuredByUserId: userId,
-      };
-    }
   }
 
   if (mergedIntegrations?.coverArtArchive) {
@@ -658,28 +627,6 @@ export async function saveAppSettings(
   if (!isDeepStrictEqual(newsBefore, getNewsSettings())) {
     const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
     enqueueSystemTaskJob({ kind: "news-refresh" });
-  }
-  const playbackSettingsChanged = ["navidrome", "jellyfin"].some(
-    (key) =>
-      !isDeepStrictEqual(currentSettings.integrations?.[key], updatedSettings.integrations?.[key]),
-  );
-  if (playbackSettingsChanged) {
-    const { playlistManager } = await import("./playlists/playlistManager.ts");
-    playlistManager.updateConfig();
-    try {
-      playlistManager.scheduleScanLibrary(true);
-    } catch (error) {
-      logger.warn("settings", "Failed to queue Library scan:", {
-        message: asAppError(error)?.message,
-      });
-    }
-    try {
-      playlistManager.requestPlaylistSync();
-    } catch (error) {
-      logger.warn("settings", "Failed to queue playback playlist sync:", {
-        message: asAppError(error)?.message,
-      });
-    }
   }
   const reconciled = reconcileLocalNetworkBypassSetting().settings;
   if (localBypassWasEnabled && reconciled?.security?.localNetworkBypass?.enabled !== true) {

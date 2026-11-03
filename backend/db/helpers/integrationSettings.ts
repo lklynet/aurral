@@ -39,19 +39,6 @@ export const webhookSettingsSchema = v.looseObject(webhookSettings);
 
 export const integrationSettingsSchema = v.looseObject({
   ...webhookSettings,
-  navidrome: service({ url: text, username: text, password: text, prefixOwnerUsername: flag }),
-  plex: service({
-    url: text,
-    token: text,
-    clientId: text,
-    machineIdentifier: text,
-    downloadsPath: text,
-    plexUsername: nullableText,
-    mainLibrarySectionId: text,
-    loginEnabled: flag,
-    configuredByUserId: count,
-  }),
-  jellyfin: service({ url: text, apiKey: text, userId: text }),
   lastfm: service({
     apiKey: text,
     apiSecret: text,

@@ -30,26 +30,6 @@ export const defaultData = {
       favoriteAutoKeep: true,
     },
     integrations: {
-      navidrome: {
-        url: "",
-        username: "",
-        password: "",
-        prefixOwnerUsername: true,
-      },
-      plex: {
-        url: "",
-        token: "",
-        clientId: "",
-        machineIdentifier: "",
-        downloadsPath: "",
-        plexUsername: "",
-        mainLibrarySectionId: "",
-      },
-      jellyfin: {
-        url: "",
-        apiKey: "",
-        userId: "",
-      },
       lastfm: {
         apiKey: "",
         apiSecret: "",

@@ -31,7 +31,7 @@ const resolveAlbumKeyStmt = db.prepare<[string, string, string, string], { ident
   LIMIT 2
 `);
 const getHistoryStmt = db.prepare<[number, number, number], PlayEventsRow>(
-  "SELECT * FROM play_events WHERE user_id = ? ORDER BY played_at DESC, id DESC LIMIT ? OFFSET ?",
+  "SELECT * FROM play_events WHERE user_id = ? AND external_id IS NULL ORDER BY played_at DESC, id DESC LIMIT ? OFFSET ?",
 );
 const getArtistsStmt = db.prepare<
   [number, number],

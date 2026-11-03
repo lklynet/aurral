@@ -576,7 +576,6 @@ test("a Subsonic playlist reuses the album owner's Library job for a featured so
   const { downloadTracker } =
     await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const { playlistManager } = await import("../../backend/services/playlists/playlistManager.ts");
-  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {});
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
   const root = await mkdtemp(path.join(tmpdir(), "aurral-subsonic-featured-job-"));

@@ -45,7 +45,7 @@ The manager in charge can also monitor an artist and download its releases. See 
 
 **Library > Playlists** holds your static playlists and their download status. **Flows** in the sidebar holds your scheduled discovery mixes.
 
-A flow builds a new tracklist on a schedule. A static playlist keeps a fixed tracklist, or follows a Spotify, YouTube Music, Deezer, Last.fm, or ListenBrainz playlist. You can play both in Aurral. Navidrome, Plex, Jellyfin, and other Subsonic clients are optional. See [Playlists overview](/using/playlists/).
+A flow builds a new tracklist on a schedule. A static playlist keeps a fixed tracklist, or follows a Spotify, YouTube Music, Deezer, Last.fm, or ListenBrainz playlist. You can play both in Aurral, in Subsonic clients, or in a media server that reads Aurral's playlist files. See [Playlists overview](/using/playlists/).
 
 ### News
 
@@ -79,12 +79,12 @@ Open Settings from the gear in the sidebar, or select **Profile** in the user me
 
 Everyone sees the **Account** sections:
 
-| Section          | What it covers                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Profile**      | Username, password, sign-in methods, your Plex account, and your Lidarr defaults while Lidarr is connected |
-| **Listening**    | Listening history source, scrobbling to Last.fm or ListenBrainz, and resetting your discovery tastes       |
-| **Appearance**   | Mode, theme, immersive mode, and environment art                                                           |
-| **Shared links** | The links you created                                                                                      |
+| Section          | What it covers                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------- |
+| **Profile**      | Username, password, sign-in methods, and your Lidarr defaults while Lidarr is connected                   |
+| **Listening**    | Listening history sources, plays from Navidrome, Plex, or Jellyfin, scrobbling, and your discovery tastes |
+| **Appearance**   | Mode, theme, immersive mode, and environment art                                                          |
+| **Shared links** | The links you created                                                                                     |
 
 **Appearance** follows your account to other devices:
 
@@ -98,11 +98,10 @@ Admins also see the **Server** sections:
 | Section           | What it covers                                                                              |
 | ----------------- | ------------------------------------------------------------------------------------------- |
 | **General**       | Date format, Subsonic behavior, and the API key                                             |
-| **Users**         | Accounts, permissions, sign-in mode, Google and Plex sign-in, and local-network auto-login  |
-| **Library**       | The Library folder, read-only folders, importing a folder, and cleaning up the Library      |
+| **Users**         | Accounts, permissions, sign-in mode, Google sign-in, and local-network auto-login           |
+| **Library**       | The Library folder, playlist files, read-only folders, importing, and cleaning up           |
 | **Monitoring**    | Default monitoring rules, searches for missing tracks, and what you removed from monitoring |
 | **Downloads**     | Download clients, Prowlarr, the quality profile, the review queue, and remote path mappings |
-| **Playback**      | Navidrome, Plex, and Jellyfin                                                               |
 | **Discovery**     | Recommendations, Last.fm, Ticketmaster, and news feeds                                      |
 | **Notifications** | Inbox, Gotify, and webhooks                                                                 |
 | **Lidarr**        | Connection, the **Enabled** switch, defaults, and the community guide                       |
