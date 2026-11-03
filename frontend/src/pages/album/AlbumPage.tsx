@@ -416,6 +416,7 @@ function AlbumPage() {
       total +
       (Number(entry.libraryTrack && firstAvailableFile(entry.libraryTrack)?.durationMs) ||
         Number(entry.releaseTrack?.length) ||
+        Number(entry.libraryTrack && trackDurationMs(entry.libraryTrack)) ||
         0),
     0,
   );
