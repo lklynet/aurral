@@ -20,11 +20,14 @@ import { FlowFormFields } from "./components/flowFormComponents.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { buildFlowFromForm, flowToForm, isFlowDirty, newBlankFlow } from "./flowPageUtils.ts";
 import type { FlowDraft } from "./flowPageUtils.ts";
+import type { Flow } from "./playlistStats.ts";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
 import { formatTrackTotal, usePlaylistTracks } from "./playlistPageUtils.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus.ts";
 
 const flowParam = (flowId: string) => ({ flowId: encodeURIComponent(flowId) });
+
+type SaveJob = { flow: Flow; draft: FlowDraft; savedCount: number };
 
 export default function FlowEditor({ flowId, onClose }: { flowId: string; onClose: () => void }) {
   const { showSuccess, showError } = useToast();
@@ -39,7 +42,8 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
   const [busy, setBusy] = useState<"create" | "download" | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const queuedRef = useRef(false);
+  const queuedRef = useRef(new Map<string, SaveJob>());
+  const selectedIdRef = useRef(selection.id);
   const saveRef = useRef(() => {});
   const flush = useCallback(() => saveRef.current(), []);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
@@ -93,47 +97,53 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
       }
     });
 
-  const save = async () => {
-    if (!flow || !isFlowDirty(flow, draft)) return;
+  const runSave = async (job: SaveJob) => {
     if (savingRef.current) {
-      queuedRef.current = true;
+      queuedRef.current.set(job.flow.id, job);
       return;
     }
+    const { flow: target, draft: submitted, savedCount: count } = job;
     savingRef.current = true;
     setSaving(true);
     try {
       const { flow: saved } = await parseResponse(
         flowsClient.flows[":flowId"].$put({
-          param: flowParam(flow.id),
+          param: flowParam(target.id),
           json: {
-            ...buildFlowFromForm(draft),
-            autoDownload: draft.autoDownload !== false,
-            showInLibrary: draft.showInLibrary === true,
+            ...buildFlowFromForm(submitted),
+            autoDownload: submitted.autoDownload !== false,
+            showInLibrary: submitted.showInLibrary === true,
           },
         }),
       );
       setSelection((current) =>
-        current.draft === draft ? { id: flow.id, draft: flowToForm(saved) } : current,
+        current.draft === submitted ? { id: target.id, draft: flowToForm(saved) } : current,
       );
-      setError("");
+      if (selectedIdRef.current === target.id) setError("");
       await fetchStatus();
-      if (flow.autoDownload === false && saved.autoDownload !== false && savedCount > 0) {
-        setPendingDownload({ id: flow.id, name: flow.name, count: savedCount });
+      if (target.autoDownload === false && saved.autoDownload !== false && count > 0) {
+        setPendingDownload({ id: target.id, name: target.name, count });
       }
     } catch (err) {
-      setError(getApiErrorMessage(err, "Failed to save flow"));
+      const message = getApiErrorMessage(err, `Failed to save ${target.name}`);
+      if (selectedIdRef.current === target.id) setError(message);
+      else showError(message);
     } finally {
       savingRef.current = false;
       setSaving(false);
-      if (queuedRef.current) {
-        queuedRef.current = false;
-        saveRef.current();
+      const [next] = queuedRef.current.values();
+      if (next) {
+        queuedRef.current.delete(next.flow.id);
+        void runSave(next);
       }
     }
   };
 
   useEffect(() => {
-    saveRef.current = () => void save();
+    selectedIdRef.current = selection.id;
+    saveRef.current = () => {
+      if (flow && isFlowDirty(flow, draft)) void runSave({ flow, draft, savedCount });
+    };
   });
   useEffect(() => afterTextEntry(flush), [draft, flush]);
   useEffect(() => flush, [flush]);
