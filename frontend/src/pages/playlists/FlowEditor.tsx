@@ -90,7 +90,9 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
           },
         }),
       );
-      setSelection({ id: flow.id, draft: flowToForm(saved) });
+      setSelection((current) =>
+        current.draft === draft ? { id: flow.id, draft: flowToForm(saved) } : current,
+      );
       showSuccess(`Saved ${flow.name}`);
       await fetchStatus();
       if (flow.autoDownload === false && saved.autoDownload !== false && savedCount > 0) {
