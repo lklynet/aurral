@@ -177,6 +177,23 @@ test("Plex imports only the connected account's tracks", async () => {
   );
 });
 
+test("a Plex reply without history fails the sync instead of skipping it", async () => {
+  globalThis.fetch = async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/accounts") {
+      return Response.json({ MediaContainer: { Account: [{ id: 1, name: "Owner" }] } });
+    }
+    return Response.json({});
+  };
+  await servers.connectHistoryServer(userId, "plex", {
+    url: "http://plex.test",
+    username: "owner",
+    secret: "token",
+  });
+
+  await assert.rejects(servers.syncHistoryServer(userId, "plex"));
+});
+
 test("connecting another account replaces the previous account's plays", async () => {
   const now = Math.floor(Date.now() / 1000);
   const navidrome = createFakeNavidrome({

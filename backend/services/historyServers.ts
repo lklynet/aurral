@@ -145,7 +145,7 @@ const plex: Provider = {
         timeout: TIMEOUT_MS,
       });
       const container = object(object(data).MediaContainer);
-      if (!Array.isArray(container.Metadata) && number(container.size) !== 0)
+      if (!Array.isArray(container.Metadata) && container.size !== 0)
         throw new HistoryServerError("Plex history is unavailable");
       const rows = list(container.Metadata).map(object);
       yield rows

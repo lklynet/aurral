@@ -37,6 +37,7 @@ const pointerSchema = v.looseObject({
   playlistId: v.optional(v.nullable(v.union([v.string(), v.number()]))),
   ratingKey: v.optional(v.nullable(v.union([v.string(), v.number()]))),
   location: v.optional(v.string()),
+  serverUrl: v.optional(v.string()),
 });
 const plexConnectionSchema = v.looseObject({ token: v.string(), clientId: v.optional(v.string()) });
 const attemptsSchema = v.looseObject({ attempts: v.number() });
@@ -177,6 +178,7 @@ function jellyfinDeletes(pointers: Pointer[]) {
   const token = decrypt(config.apiKey);
   return pointers.flatMap((pointer) => {
     if (pointer.playlistId == null) return [];
+    if (pointer.serverUrl && baseUrl(pointer.serverUrl) !== baseUrl(config.url)) return [];
     const url = `${baseUrl(config.url)}/Items/${encodeURIComponent(String(pointer.playlistId))}`;
     return [
       () =>

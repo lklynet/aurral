@@ -74,7 +74,10 @@ test("removes old server playlists and retained files, retrying a server that is
     flow: { global: { playlistId: "nd-1" } },
     gone: { global: { playlistId: "nd-already-gone" } },
   });
-  dbOps.setJSONSetting("jellyfinPlaylistPointers", { flow: { global: { playlistId: "jf-1" } } });
+  dbOps.setJSONSetting("jellyfinPlaylistPointers", {
+    flow: { global: { playlistId: "jf-1", serverUrl: "http://jellyfin.test/" } },
+    moved: { global: { playlistId: "jf-old", serverUrl: "http://old-jellyfin.test" } },
+  });
   const root = resolveDownloadRoot();
   const unowned = await writeFile(path.join(root, "Old", "Unowned.flac"));
   const owned = await writeFile(path.join(root, "Old", "Owned.flac"));
