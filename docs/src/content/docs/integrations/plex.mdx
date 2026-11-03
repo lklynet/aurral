@@ -16,7 +16,21 @@ Plex is optional. Plex scans the Library folder like any other music folder. To 
 
 Aurral writes an M3U file for each enabled flow and each static playlist to `aurral-weekly-flow/_playlists` in the Library folder. **Settings > Library > Playlist files** shows the folder.
 
-Plex does not read playlist files from its libraries. To see Aurral playlists in Plex and Plexamp, use a tool that uploads M3U files to Plex. The files use paths relative to the playlist file, so Plex must see the Library folder and the Lidarr root folder with the same layout as Aurral.
+Plex does not read playlist files from its libraries. [ListPorter](https://github.com/mrsilver76/listporter) uploads them to Plex. It needs the .NET 8 runtime.
+
+1. Add the Library folder and the Lidarr root folder to the same Plex music library. ListPorter matches tracks within one library.
+2. Run ListPorter on the playlist folder, for example every hour with cron:
+
+   ```bash
+   ListPorter -s 192.168.1.10:32400 -t <server owner token> -l <library ID> \
+     -i /data/downloads/aurral/aurral-weekly-flow/_playlists
+   ```
+
+   The library ID is the `source=` value in the Plex web address of the library. Leave out `-l` when the server has one music library.
+
+- ListPorter matches each entry by its artist folder, album folder, and file name, so Plex can see the files at a different path than Aurral.
+- A changed file replaces the tracks of its Plex playlist. The playlists belong to the account of the token.
+- When a playlist is deleted, renamed, or its flow is turned off, its Plex playlist stays. Delete it in Plex. ListPorter's `--mirror` option deletes it too, but it also deletes every other playlist in that Plex library that you made in Plex.
 
 ## Listening history
 
@@ -29,4 +43,4 @@ The owner token can read the history of every account on the server, so each Aur
 
 ## Bring a Plex playlist into Aurral
 
-Plex cannot export a playlist as M3U on its own. Use a tool that exports Plex playlists as M3U files. Then, in Aurral, open **Library > Playlists**, open the create menu, select **Import playlist**, and select **M3U**.
+Plex cannot export a playlist as M3U on its own. [plex2pl](https://github.com/tx3stn/plex2pl) with `"outputFormat": "m3u"` writes an M3U file for each Plex music playlist. Then, in Aurral, open **Library > Playlists**, open the create menu, select **Import playlist**, and select **M3U**.
