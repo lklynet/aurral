@@ -65,7 +65,16 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
     setError("");
     setView("pane");
   };
-  const blocked = dirty && error !== "";
+  const draftError = (() => {
+    try {
+      buildFlowFromForm(draft);
+      return "";
+    } catch (err) {
+      return err instanceof Error ? err.message : "This flow can't be saved.";
+    }
+  })();
+  const leaveError = dirty ? error || draftError : "";
+  const blocked = leaveError !== "";
   const leave = (next: () => void) => (blocked ? setPendingLeave(() => next) : next());
   const close = () =>
     blocked
@@ -287,7 +296,7 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
           <ConfirmModal
             open={pendingLeave !== null}
             title="Discard unsaved changes?"
-            body={error}
+            body={leaveError}
             confirmLabel="Discard"
             busyLabel="Discarding"
             onCancel={() => setPendingLeave(null)}
