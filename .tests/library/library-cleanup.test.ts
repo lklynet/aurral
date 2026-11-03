@@ -236,7 +236,7 @@ test("a second-disc file takes the disc in its name once, and first-disc and und
   assert.deepEqual(renames((await cleanUp()).items), []);
 });
 
-test("a rename a restart interrupted still refreshes the playlists that use the file", async () => {
+test("a rename a restart interrupted still rewrites every playlist file", async () => {
   const oldPath = await makeTrack(path.join(root, "loose", "track.flac"), {
     artist: "Resume Artist",
     album: "Resume Album",
@@ -252,7 +252,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   downloadTracker.setDone(jobId, oldPath, "Resume Album");
   const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...(playlistIds ?? []));
+    refreshed.push(playlistIds ?? "every playlist");
   });
 
   const operation = await operations.startCleanup();
@@ -269,7 +269,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   assert.equal(finished.status, "complete");
   assert.equal(operations.describeLibraryFileOperationItems(finished, {})[0].status, "done");
   assert.ok(mediaAt(newPath));
-  assert.deepEqual(refreshed, ["static-mix"]);
+  assert.deepEqual(refreshed, ["every playlist"]);
 });
 
 test("rename never takes a name another file has", async () => {
@@ -351,7 +351,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   downloadTracker.setDone(jobId, second, "Album");
   const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...(playlistIds ?? []));
+    refreshed.push(playlistIds ?? "every playlist");
   });
 
   const { id, items } = await cleanUp();
@@ -394,7 +394,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
     requireValue(track).identity_key,
   );
   assert.equal(requireValue(downloadTracker.getJob(jobId)).finalPath, named);
-  assert.ok(refreshed.includes("static-mix"));
+  assert.ok(refreshed.includes("every playlist"));
   assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 1 });
 });
 
@@ -519,7 +519,7 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   downloadTracker.setDone(stuckJob, stuck.better, "Album");
   const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...(playlistIds ?? []));
+    refreshed.push(playlistIds ?? "every playlist");
   });
 
   const { id } = await cleanUp();
@@ -547,7 +547,7 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
     [stuck.better],
   );
   assert.equal(requireValue(downloadTracker.getJob(stuckJob)).finalPath, stuck.better);
-  assert.ok(refreshed.includes("stuck-mix"));
+  assert.ok(refreshed.includes("every playlist"));
 });
 
 test("a duplicate stays when its name is behind a linked folder", async () => {

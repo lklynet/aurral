@@ -458,7 +458,7 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
   const planned = preview.find((item) => item.source.endsWith("01 - Song One.flac"));
   assert.ok(planned != null);
   assert.equal(planned.hardlinked, true);
-  assert.deepEqual(items.map((item) => item.status).sort(), ["done", "skipped"]);
+  assert.deepEqual(items.map((item) => item.status).sort(), ["done", "unmatched"]);
   const { common } = await parseFile(matched);
   assert.equal(common.musicbrainz_recordingid, recording(1));
   assert.deepEqual(common.genre, ["dream pop", "shoegaze"]);
@@ -609,9 +609,9 @@ test("a file's track number picks the edition that fills its tags, and a positio
   const { common } = await parseFile(deluxeTrack);
   assert.equal(common.musicbrainz_albumid, deluxe);
   assert.equal(common.musicbrainz_recordingid, recording(2));
-  assert.equal(statusOf(misplaced), "skipped");
+  assert.equal(statusOf(misplaced), "unmatched");
   assert.deepEqual(await readFile(misplaced), misplacedBytes);
-  assert.equal(statusOf(otherEdition), "skipped");
+  assert.equal(statusOf(otherEdition), "unmatched");
   assert.deepEqual(await readFile(otherEdition), otherEditionBytes);
 });
 

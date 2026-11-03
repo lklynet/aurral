@@ -1,0 +1,127 @@
+.library-file-op__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.library-file-op__bar {
+  display: block;
+  height: 0.25rem;
+  margin-top: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--aurral-radius-xs);
+  background: var(--aurral-surface-hover);
+}
+
+.library-file-op__fill {
+  display: block;
+  height: 100%;
+  background: var(--aurral-control-on);
+  transition: width var(--aurral-duration-base) var(--aurral-ease-standard);
+}
+
+.library-file-op__count {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.library-file-op__dialog.artist-modal {
+  display: flex;
+  flex-direction: column;
+  max-width: 40rem;
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+}
+
+.library-file-op__dialog .artist-modal__header {
+  align-items: flex-start;
+  margin: 0;
+  padding: 1.25rem 1.5rem 1rem;
+}
+
+.library-file-op__dialog .artist-modal__subcopy {
+  margin: 0.25rem 0 0;
+  font-size: var(--aurral-font-sm);
+}
+
+.library-file-op__dialog .artist-modal__subcopy a,
+.library-file-op__notes a {
+  color: var(--aurral-text);
+  text-decoration: underline;
+}
+
+.library-file-op__body {
+  min-height: 0;
+  padding: 0 1.5rem 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.library-file-op__notice {
+  margin: 0;
+  color: var(--aurral-warning);
+  font-size: var(--aurral-font-sm);
+}
+
+.library-file-op__items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library-file-op__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.library-file-op__paths {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+  color: var(--aurral-text-muted);
+}
+
+.library-file-op__paths code {
+  min-width: 0;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-xs);
+  overflow-wrap: anywhere;
+}
+
+.library-file-op__notes {
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-xs);
+  line-height: 1.4;
+}
+
+.library-file-op__pages {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--aurral-border);
+}
+
+.library-file-op__range {
+  margin-right: auto;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-file-op__fill {
+    transition: none;
+  }
+}

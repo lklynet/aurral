@@ -26,6 +26,7 @@ const summarySchema = v.looseObject({
   removingSources: v.optional(v.nullable(v.number())),
   cursor: v.optional(v.looseObject({ next: v.number(), albumIds: v.array(v.number()) })),
   unchanged: v.optional(v.number()),
+  dismissed: v.optional(v.boolean()),
 });
 
 const itemDetailsSchema = v.looseObject({
@@ -131,7 +132,7 @@ export function getActiveLibraryFileOperation() {
 }
 
 export function getLatestLibraryFileOperation() {
-  return toStatus(
+  const latest = toStatus(
     activeOperationRow() ||
       db
         .prepare<[], LibraryFileOperationsRow>(
@@ -139,6 +140,8 @@ export function getLatestLibraryFileOperation() {
         )
         .get(),
   );
+  const finished = latest && !ACTIVE_OPERATION_STATUSES.includes(latest.status);
+  return finished && latest.summary.dismissed ? undefined : latest;
 }
 
 export class OperationConflictError extends Error {
@@ -393,4 +396,12 @@ export function countRemovableDuplicates(id: string | number) {
      FROM library_file_operation_items WHERE operation_id = ? AND status = 'duplicate'`,
     )
     .get(Number(id));
+}
+
+export function dismissLibraryFileOperation(id: string | number) {
+  db.prepare(
+    `UPDATE library_file_operations
+     SET summary_json = json_set(summary_json, '$.dismissed', json('true')), updated_at = ?
+     WHERE id = ? AND status NOT IN (${ACTIVE_OPERATION_STATUSES.map(() => "?").join(",")})`,
+  ).run(Date.now(), Number(id), ...ACTIVE_OPERATION_STATUSES);
 }

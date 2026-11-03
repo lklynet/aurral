@@ -68,7 +68,7 @@ let tone = 200;
 async function makeTrack(
   filePath: string,
   tags: {} | undefined = {},
-  { seconds = 0.2 }: { seconds?: number | undefined } = {},
+  { seconds = 0.2, bitrate }: { seconds?: number | undefined; bitrate?: string } = {},
 ) {
   if (filePath.endsWith(".flac")) return writeFlacFixture(filePath, tags, { seconds });
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -84,6 +84,7 @@ async function makeTrack(
     `sine=frequency=${(tone += 7)}:duration=${seconds}`,
   ];
   for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
+  if (bitrate) args.push("-b:a", bitrate);
   await execFileAsync("ffmpeg", [...args, filePath]);
   return filePath;
 }
@@ -855,9 +856,30 @@ test("a lossless source of a track the Library has only in a lossy format is lis
   const [item] = await apply(id);
 
   assert.equal(item.status, "skipped");
-  assert.match(requireValue(requireValue(item).reason), /lossless/);
+  assert.match(requireValue(requireValue(item).reason), /better than the Library's/);
   assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
   assert.equal(await exists(flac), true);
+});
+
+test("a source at a higher bitrate than the Library's copy is listed, never offered for removal", async () => {
+  const tags = { artist: "Bitrate", album: "Album", title: "Song", track: "1" };
+  const library = await libraryTrack(path.join("Bitrate", "Album", "01 - Song.mp3"), tags, {
+    seconds: 2,
+    bitrate: "96k",
+  });
+  const source = newSource();
+  const better = await makeTrack(path.join(source, "song.mp3"), tags, {
+    seconds: 2,
+    bitrate: "320k",
+  });
+
+  const id = await ingest(source, "move");
+  const [item] = await apply(id);
+
+  assert.equal(item.status, "skipped");
+  assert.equal(item.target, path.relative(root, library));
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
+  assert.equal(await exists(better), true);
 });
 
 test("removing kept sources checks each against the Library again, removes emptied folders, and is safe to repeat", async () => {
