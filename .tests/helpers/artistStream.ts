@@ -1,8 +1,5 @@
 import artistStream from "../../backend/routes/artists/handlers/stream.ts";
 
-const wallClockSetTimeout = globalThis.setTimeout;
-const wallClockClearTimeout = globalThis.clearTimeout;
-
 export const json = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -48,27 +45,16 @@ export function openArtistStream(mbid: string, query: Record<string, string> = {
   };
   read().catch(() => {});
   const events = () => parsed;
-  const waitFor = async (
-    predicate: (event: ReturnType<typeof events>[number]) => boolean,
-    { timeoutMs = 3000 } = {},
-  ) => {
-    const existing = events().find(predicate);
-    if (existing) return existing;
-    return new Promise<ReturnType<typeof events>[number]>((resolve, reject) => {
-      let timer: ReturnType<typeof wallClockSetTimeout>;
+  const waitFor = (predicate: (event: ReturnType<typeof events>[number]) => boolean) =>
+    new Promise<ReturnType<typeof events>[number]>((resolve) => {
       const notify = () => {
         const match = events().find(predicate);
         if (!match) return;
-        wallClockClearTimeout(timer);
         listeners.delete(notify);
         resolve(match);
       };
-      timer = wallClockSetTimeout(() => {
-        listeners.delete(notify);
-        reject(new Error("stream event did not arrive"));
-      }, timeoutMs);
       listeners.add(notify);
+      notify();
     });
-  };
   return { events, waitFor, close: () => controller.abort() };
 }

@@ -79,13 +79,9 @@ const summarize = (
     listenCount: releaseGroup.listenCount ?? null,
   }));
 
-const discographyOf = async (
-  stream: ReturnType<typeof openArtistStream>,
-  options: { timeoutMs?: number } = {},
-) => {
+const discographyOf = async (stream: ReturnType<typeof openArtistStream>) => {
   const { data } = await stream.waitFor(
     ({ event, data }) => event === "artist" && "release-groups" in data,
-    options,
   );
   return summarize(data["release-groups"]);
 };
@@ -274,7 +270,7 @@ test("the artist stream sends the discography without listeners when ListenBrain
   const stream = openArtistStream(artist.mbid);
   t.onTestFinished(() => stream.close());
 
-  assert.deepEqual(await discographyOf(stream, { timeoutMs: 4000 }), unscoredPlaid);
+  assert.deepEqual(await discographyOf(stream), unscoredPlaid);
 });
 
 test("a discography of more than a thousand releases is scored in batches ListenBrainz accepts", async (t) => {

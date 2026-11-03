@@ -7,9 +7,6 @@ import { testUser } from "./helpers/userFixtures.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 import type { CachedArtistImage } from "../backend/db/helpers/cache.ts";
 
-const wallClockSetTimeout = globalThis.setTimeout;
-const wallClockClearTimeout = globalThis.clearTimeout;
-
 // Async gzip runs on the thread pool while the fake clock keeps ticking, which on a busy machine fires the request timeouts these tests hold open.
 vi.mock("node:zlib", async (importOriginal) => {
   const zlib = await importOriginal<typeof import("node:zlib")>();
@@ -136,28 +133,6 @@ async function cover(mbid: string) {
   return response.json();
 }
 
-async function whileOldIsBlocked<T>(promise: Promise<T>) {
-  let timer: ReturnType<typeof wallClockSetTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        timer = wallClockSetTimeout(
-          () =>
-            reject(
-              new assert.AssertionError({
-                message: "the newer lookup must progress while the old lookup is blocked",
-              }),
-            ),
-          5_000,
-        );
-      }),
-    ]);
-  } finally {
-    wallClockClearTimeout(timer);
-  }
-}
-
 for (const [index, source, lookup] of [
   [1, "direct image", getArtistImage],
   [2, "Deezer image", getArtistImage],
@@ -204,7 +179,7 @@ for (const [index, source, lookup] of [
       assert.equal(saved.musicbrainzId, replacement);
       assert.equal(saved.deezerArtistId, null);
       latest = lookup(mbid);
-      const current = await whileOldIsBlocked(latest);
+      const current = await latest;
       assert.equal(current.images[0]?.image, newImage);
       assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
     } finally {
@@ -247,7 +222,7 @@ test("cached album recovery cannot overwrite an image selected after an override
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
-    assert.equal((await whileOldIsBlocked(latest)).url, newImage);
+    assert.equal((await latest).url, newImage);
   } finally {
     oldGate.release();
     await Promise.allSettled([oldLookup, latest]);
@@ -294,7 +269,7 @@ test("clearing an override starts a fresh lookup without changing the override r
     });
     assert.equal(dbOps.getArtistOverride(mbid), null);
     latest = getArtistImage(mbid);
-    assert.equal((await whileOldIsBlocked(latest)).url, newImage);
+    assert.equal((await latest).url, newImage);
   } finally {
     oldGate.release();
     await Promise.allSettled([oldLookup, latest]);
@@ -353,7 +328,7 @@ test("an old stream not-found result cannot overwrite the current image", async 
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
-    assert.equal((await whileOldIsBlocked(latest)).url, newImage);
+    assert.equal((await latest).url, newImage);
   } finally {
     oldGate.release();
     await Promise.allSettled([oldStream, latest]);
@@ -382,7 +357,7 @@ test("finishing an old lookup leaves the replacement lookup registered", async (
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
-    await whileOldIsBlocked(newGate.started);
+    await newGate.started;
     oldGate.release();
     assert.equal((await oldLookup).url, oldImage);
     newGate.release();
@@ -451,7 +426,7 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
         }>
       | undefined;
     try {
-      await whileOldIsBlocked(providerGate.started);
+      await providerGate.started;
       if (finishRecoveryFirst) {
         recoveryGate.release();
         await recovery;

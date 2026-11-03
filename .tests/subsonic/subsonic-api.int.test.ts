@@ -2061,15 +2061,21 @@ test("returns missing files and stale IDs without exposing filesystem paths", as
   const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
   const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
   const song = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
-  await rm(fixturePath);
+  const missingPath = fixturePath.replace(/\.[^.]+$/, ".missing$&");
+  const movePath = db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?");
+  movePath.run(missingPath, fixturePath);
+  try {
+    const missing = await request("stream", { id: song.id });
+    assert.equal(missing.response.status, 404);
+    assert.match(missing.contentType, /^text\/plain/);
+    assert.equal(missing.body.includes(missingPath), false);
 
-  const missing = await request("stream", { id: song.id });
-  assert.equal(missing.response.status, 404);
-  assert.match(missing.contentType, /^text\/plain/);
-
-  const stale = await request("getSong", { id: "song:missing-identity" });
-  assert.equal(responseJson(stale).error.code, 70);
-  assert.equal(stale.body.includes(fixturePath), false);
+    const stale = await request("getSong", { id: "song:missing-identity" });
+    assert.equal(responseJson(stale).error.code, 70);
+    assert.equal(stale.body.includes(fixturePath), false);
+  } finally {
+    movePath.run(fixturePath, missingPath);
+  }
 });
 
 test("keeps library protocol IDs and flow entries after restart", async () => {
