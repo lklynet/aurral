@@ -1218,6 +1218,13 @@ db.exec(`
 if (!userColumns.includes("subsonic_password")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN subsonic_password TEXT");
 }
+if (!userColumns.includes("api_key")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN api_key TEXT");
+}
+if (!userColumns.includes("api_key_hash")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN api_key_hash TEXT");
+}
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)");
 
 const hasListenHistorySources = db
   .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'listen_history_sources'")

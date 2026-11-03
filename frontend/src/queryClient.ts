@@ -256,6 +256,7 @@ export const queryKeys = {
   scrobbleStatus: ["scrobbling", "status"],
   historyServers: (userId: MaybeId): QueryKey => ["history-servers", userId || null],
   apiKey: ["auth", "api-key"],
+  myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",

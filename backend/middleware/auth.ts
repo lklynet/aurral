@@ -114,6 +114,14 @@ export const getApiKey = () => {
   return key;
 };
 
+export const getUserApiKey = (userId: number) =>
+  userOps.getApiKeyById(userId) ?? rotateUserApiKey(userId);
+
+export const rotateUserApiKey = (userId: number) => {
+  const key = crypto.randomBytes(32).toString("hex");
+  return userOps.setApiKey(userId, key) ? key : null;
+};
+
 export const rotateApiKey = () => {
   const settings = dbOps.getSettings();
   const key = crypto.randomBytes(32).toString("hex");
@@ -315,7 +323,8 @@ function resolveApiKeyUser(req: CredentialRequest) {
   } catch {
     return null;
   }
-  return null;
+  const user = userOps.getUserAuthByApiKey(incoming);
+  return user?.status === "active" ? toResolvedUser(user) : null;
 }
 
 export const isOidcAuthEnabled = () => process.env.OIDC_ENABLED === "true";
