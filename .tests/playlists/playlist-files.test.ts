@@ -136,6 +136,21 @@ test("renaming, disabling, or deleting removes the old file", async () => {
   assert.deepEqual(await playlistFiles(), []);
 });
 
+test("a rename that takes another playlist's file name moves that playlist's file too", async () => {
+  dbOps.setJSONSetting("playlistFiles", { prefixOwnerUsername: false });
+  const renamed = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
+  const other = flowPlaylistConfig.createStaticPlaylist({ name: "Mix?" });
+  await addDownloadedTrack(other.id, "Song B");
+  await playlistManager.syncPlaylists();
+
+  flowPlaylistConfig.updateStaticPlaylist(renamed.id, { name: "Mix:" });
+  await playlistManager.syncPlaylists({ entityIds: [renamed.id] });
+
+  assert.deepEqual(await playlistFiles(), ["Mix_ (2).m3u", "Mix_.m3u"]);
+  assert.match(await fs.readFile(path.join(libraryRoot, "Mix_ (2).m3u"), "utf8"), /Song B/);
+  assert.doesNotMatch(await fs.readFile(path.join(libraryRoot, "Mix_.m3u"), "utf8"), /Song B/);
+});
+
 test("names stay unique when the owner prefix is off", () => {
   const ana = userOps.createUser("ana", "hash")!.id;
   const bo = userOps.createUser("bo", "hash")!.id;
@@ -144,14 +159,15 @@ test("names stay unique when the owner prefix is off", () => {
     { id: "2", name: "mix", ownerUserId: bo },
     { id: "3", name: "Solo", ownerUserId: ana },
     { id: "4", name: "Solo", ownerUserId: ana },
+    { id: "5", name: "Solo (2)", ownerUserId: ana },
   ];
 
   assert.deepEqual(
     [...playlistDisplayNames(entities, { prefixOwnerUsername: false }).values()],
-    ["ana - Mix", "bo - mix", "Solo", "Solo (2)"],
+    ["ana - Mix", "bo - mix", "Solo", "Solo (2)", "Solo (2) (2)"],
   );
   assert.deepEqual(
     [...playlistDisplayNames(entities, { prefixOwnerUsername: true }).values()],
-    ["ana - Mix", "bo - mix", "ana - Solo", "ana - Solo (2)"],
+    ["ana - Mix", "bo - mix", "ana - Solo", "ana - Solo (2)", "ana - Solo (2) (2)"],
   );
 });

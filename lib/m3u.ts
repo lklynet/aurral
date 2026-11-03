@@ -71,8 +71,11 @@ export function parseM3u(content: string) {
     const path = fromPath(line);
     const display = info.display ? splitDisplay(info.display) : null;
     const artistName = info.artist || display?.artistName || path?.artistName;
-    const trackName =
-      display?.trackName || (info.artist ? info.display : undefined) || path?.trackName;
+    const displayTitle =
+      info.artist && display?.artistName.toLowerCase() !== info.artist.toLowerCase()
+        ? info.display
+        : display?.trackName;
+    const trackName = displayTitle || path?.trackName;
     const entry = { durationMs: info.durationMs ?? null, album: info.album };
     info = {};
     if (!artistName || !trackName) {

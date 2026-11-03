@@ -75,7 +75,7 @@ test("Navidrome plays import once, stay out of the app's play list, and leave on
   assert.deepEqual(getPlayHistory(userId), []);
   assert.equal(servers.listHistoryServers(userId)[0].plays, 2);
 
-  servers.disconnectHistoryServer(userId, "navidrome");
+  await servers.disconnectHistoryServer(userId, "navidrome");
   assert.deepEqual(importedPlays(), []);
   assert.deepEqual(servers.listHistoryServers(userId), []);
 });
@@ -200,7 +200,7 @@ test("a disconnect during an import keeps the imported plays removed", async () 
   });
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.pathname === "/api/song") servers.disconnectHistoryServer(userId, "navidrome");
+    if (url.pathname === "/api/song") await servers.disconnectHistoryServer(userId, "navidrome");
     return navidrome.fetch(input, init);
   };
   await servers.connectHistoryServer(userId, "navidrome", {

@@ -82,7 +82,13 @@ export default new Hono<AppEnv>()
       return c.body(null, 202);
     },
   )
-  .delete("/:provider", requireAuth, requireUserAccount, validate("param", providerParam), (c) => {
-    disconnectHistoryServer(c.var.user.id, c.req.valid("param").provider);
-    return c.body(null, 204);
-  });
+  .delete(
+    "/:provider",
+    requireAuth,
+    requireUserAccount,
+    validate("param", providerParam),
+    async (c) => {
+      await disconnectHistoryServer(c.var.user.id, c.req.valid("param").provider);
+      return c.body(null, 204);
+    },
+  );

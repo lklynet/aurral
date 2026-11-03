@@ -112,21 +112,26 @@ export class PlaylistManager {
     const written = readWrittenPlaylistFiles();
     const entities = this._playlistEntities();
     const names = playlistDisplayNames(entities);
-    const ids = entityIds ?? [
-      ...new Set([...entities.map((entity) => entity.id), ...Object.keys(written)]),
-    ];
-    const changed: string[] = [];
-    for (const id of ids) {
-      await this._relocateArtwork(id);
+    const fileNameOf = (id: string) => {
       const flow = flowPlaylistConfig.getFlow(id);
       const entity = flow?.enabled ? flow : flowPlaylistConfig.getStaticPlaylist(id);
-      const fileName = entity
+      return entity
         ? `${sanitizePlaylistFileName(names.get(id) ?? entity.name)}${PLAYLIST_FILE_EXTENSION}`
         : null;
-      if (written[id] && written[id] !== fileName) {
-        await fs.rm(path.join(this.libraryRoot, written[id]), { force: true });
-        delete written[id];
-      }
+    };
+    const renamed = Object.keys(written).filter((id) => written[id] !== fileNameOf(id));
+    const ids = [...new Set([...(entityIds ?? entities.map((entity) => entity.id)), ...renamed])];
+    for (const id of ids) {
+      await this._relocateArtwork(id);
+      if (!renamed.includes(id)) continue;
+      await fs.rm(path.join(this.libraryRoot, written[id]), { force: true });
+      delete written[id];
+    }
+    const changed: string[] = [];
+    for (const id of ids) {
+      const flow = flowPlaylistConfig.getFlow(id);
+      const entity = flow?.enabled ? flow : flowPlaylistConfig.getStaticPlaylist(id);
+      const fileName = fileNameOf(id);
       if (flow && !flow.enabled)
         await this._ensureFlowArtwork(flow.id, names.get(id) ?? flow.name, "Flow");
       if (!entity || !fileName) continue;

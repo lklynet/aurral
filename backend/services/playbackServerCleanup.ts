@@ -196,16 +196,16 @@ async function removeRetainedFiles() {
   const retained = readSetting("playbackRetainedFiles", recordSchema) ?? {};
   const root = path.resolve(resolveDownloadRoot());
   const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
-  const owned = new Set(
-    downloadTracker.getAll().flatMap((job) => (job.finalPath ? [path.resolve(job.finalPath)] : [])),
-  );
+  const owned = (file: string) =>
+    downloadTracker.getAll().some((job) => job.finalPath && path.resolve(job.finalPath) === file);
   const removed: string[] = [];
   for (const file of Object.keys(retained)) {
     const resolved = path.resolve(file);
-    if (owned.has(resolved) || !isPathInsideRoot(resolved, root)) continue;
+    if (!isPathInsideRoot(resolved, root)) continue;
     const stat = await fs.lstat(resolved).catch(() => null);
     if (!stat?.isFile()) continue;
     if (!isPathInsideRoot(await fs.realpath(resolved), await fs.realpath(root))) continue;
+    if (owned(resolved)) continue;
     await fs.rm(resolved, { force: true });
     removed.push(resolved);
   }

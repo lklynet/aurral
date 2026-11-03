@@ -368,12 +368,13 @@ export async function connectHistoryServer(
   if (!secret) throw new HistoryServerError("Enter the password, token, or API key");
   const connection = { url: input.url, username: input.username, secret, accountId: null };
   const { accountId } = await PROVIDERS[provider].connect(connection);
-  const sameAccount =
-    existing?.url === input.url &&
-    existing.username === input.username &&
-    existing.account_id === accountId;
-  db.transaction(() => {
-    if (existing && !sameAccount) disconnectHistoryServer(userId, provider);
+  const removed = db.transaction(() => {
+    const current = selectServer.get(userId, provider);
+    const sameAccount =
+      current?.url === input.url &&
+      current.username === input.username &&
+      current.account_id === accountId;
+    const removedPlays = current && !sameAccount ? removeConnection(userId, provider) : 0;
     upsertServer.run(
       userId,
       provider,
@@ -381,17 +382,27 @@ export async function connectHistoryServer(
       input.username,
       encryptWithKey(secret, secretKey()) || "",
       accountId,
-      sameAccount ? existing.connected_at : Date.now(),
+      sameAccount ? current.connected_at : Date.now(),
     );
+    return removedPlays;
   })();
+  if (removed > 0) await refreshDiscovery(userId);
   return publicStatus(selectServer.get(userId, provider)!);
 }
 
-export function disconnectHistoryServer(userId: number, provider: HistoryServerProvider) {
-  db.transaction(() => {
-    deleteImportedPlays.run(userId, provider);
-    deleteServer.run(userId, provider);
-  })();
+const removeConnection = db.transaction((userId: number, provider: HistoryServerProvider) => {
+  const { changes } = deleteImportedPlays.run(userId, provider);
+  deleteServer.run(userId, provider);
+  return changes;
+});
+
+async function refreshDiscovery(userId: number) {
+  const { requestUserDiscoveryRefresh } = await import("./discovery/index.ts");
+  requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
+}
+
+export async function disconnectHistoryServer(userId: number, provider: HistoryServerProvider) {
+  if (removeConnection(userId, provider) > 0) await refreshDiscovery(userId);
 }
 
 export async function syncHistoryServer(userId: number, provider: HistoryServerProvider) {
@@ -412,10 +423,7 @@ export async function syncHistoryServer(userId: number, provider: HistoryServerP
     recordSync.run(null, Date.now(), message, userId, provider, row.connected_at);
     throw error;
   }
-  if (imported > 0) {
-    const { requestUserDiscoveryRefresh } = await import("./discovery/index.ts");
-    requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
-  }
+  if (imported > 0) await refreshDiscovery(userId);
   return { imported };
 }
 

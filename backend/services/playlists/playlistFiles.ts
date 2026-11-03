@@ -53,13 +53,14 @@ export function playlistDisplayNames(
     owners.set(key, (owners.get(key) ?? new Set()).add(entity.ownerUserId ?? null));
   }
   const names = new Map<string, string>();
-  const taken = new Map<string, number>();
+  const taken = new Set<string>();
   for (const entity of entities) {
     const shared = owners.get(fileKey(entity.name))!.size > 1;
     const name = prefixOwnerUsername || shared ? prefixedName(entity) : entity.name;
-    const count = (taken.get(fileKey(name)) ?? 0) + 1;
-    taken.set(fileKey(name), count);
-    names.set(entity.id, count > 1 ? `${name} (${count})` : name);
+    let candidate = name;
+    for (let count = 2; taken.has(fileKey(candidate)); count += 1) candidate = `${name} (${count})`;
+    taken.add(fileKey(candidate));
+    names.set(entity.id, candidate);
   }
   return names;
 }

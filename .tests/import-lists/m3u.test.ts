@@ -64,3 +64,23 @@ test("uses EXTART and EXTALB and skips entries it cannot name", () => {
   ]);
   assert.equal(skipped, 2);
 });
+
+test("keeps a title with a dash when EXTART names the artist", () => {
+  const { tracks } = parseM3u(
+    [
+      "#EXTART:Wilco",
+      "#EXTINF:200,Love - Part II",
+      "a.mp3",
+      "#EXTART:Wilco",
+      "#EXTINF:200,wilco - Jesus, Etc.",
+      "b.mp3",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    tracks.map((track) => [track.artistName, track.trackName]),
+    [
+      ["Wilco", "Love - Part II"],
+      ["Wilco", "Jesus, Etc."],
+    ],
+  );
+});
