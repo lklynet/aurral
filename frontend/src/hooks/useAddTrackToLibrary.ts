@@ -7,7 +7,6 @@ import {
   type buildStaticPlaylistTrackPayload,
 } from "../pages/ArtistDetails/utils";
 
-// Queues one track for the library and reports the outcome; savingKeys marks rows in flight
 export function useAddTrackToLibrary() {
   const { showError, showSuccess } = useToast();
   const [savingKeys, setSavingKeys] = useState(() => new Set<string>());

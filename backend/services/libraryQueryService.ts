@@ -3235,7 +3235,6 @@ export function getLibraryPage({
   artistId = null,
   albumId: albumReference = null,
 }: LibraryPageOptions = {}): LibraryPage {
-  // An album page can be opened by its release-group MBID; resolving it is local only.
   const albumId =
     text(albumReference) && !/^\d+$/.test(text(albumReference))
       ? (resolveLibraryReferenceIds(

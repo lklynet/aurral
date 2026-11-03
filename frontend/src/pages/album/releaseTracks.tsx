@@ -84,7 +84,6 @@ export function useReleasePreviewQueue({
     },
     [currentTrack?.id, getQueueTracks, normalizeTrack, playTrack, playbackSource, togglePlayPause],
   );
-  // A release row's play state; it plays the track's preview
   const previewPlayback = (track: ReleaseGroupTrack, index: number) => {
     const isCurrent = currentTrack?.id === releaseTrackId(track, trackKey, index);
     return {

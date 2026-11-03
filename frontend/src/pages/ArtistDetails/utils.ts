@@ -417,8 +417,6 @@ export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
 
 export type AlbumHeaderMetaSegment = { text: string; partial?: boolean };
 
-// The track count reads "available/total" when part of the album is missing, like the
-// library album cards. Library details fill in what MusicBrainz hasn't sent.
 export function buildAlbumHeaderMeta({
   release,
   libraryAlbum,

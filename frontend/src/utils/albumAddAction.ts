@@ -3,7 +3,6 @@ import { Download } from "../components/icons";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { formatCalendarDate } from "./dateTime.ts";
 
-// An album download in progress
 export const ALBUM_DOWNLOADING_STATUSES = new Set([
   "adding",
   "searching",

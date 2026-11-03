@@ -7,8 +7,6 @@ import type { DownloadStatusEntry } from "../../../backend/services/websocketSer
 export type DownloadStatus = Partial<DownloadStatusEntry> & Pick<DownloadStatusEntry, "status">;
 export type DownloadStatuses = Record<string, DownloadStatus>;
 
-// Download statuses of library albums. The downloads socket pushes changes; while it is
-// down, the query polls every 15 s as long as a status still matches `pollWhile`.
 export function useDownloadStatuses(
   ids: string[],
   {

@@ -108,7 +108,6 @@ const ROUTES = [
     queries: async ({ ref }: Params<string>, { search }: RouteContext) => {
       const album = parseAlbumRef(ref);
       if (!album) return [];
-      // The page renders from the library first; MusicBrainz details only enrich it
       const library = await libraryView({ albumId: ref }, search);
       if (album.kind === "library") return library;
       return [...library, prefetchable(releaseGroupDetailsQueryOptions(album.releaseGroupMbid))];

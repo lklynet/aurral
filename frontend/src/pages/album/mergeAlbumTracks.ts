@@ -54,7 +54,6 @@ const libraryPosition = (track: MergeableLibraryTrack, libraryAlbumId: string | 
   };
 };
 
-// A release track's id in rows and the play queue
 export const releaseTrackId = (
   track: MergeableReleaseTrack | null | undefined,
   releaseKey: string | undefined,
@@ -116,7 +115,6 @@ export function mergeAlbumTracks<
     });
   });
 
-  // A library-only track goes after the last row at or before its disc and number
   for (const entry of library) {
     if (!unmatched.has(entry)) continue;
     const after = rows.findLastIndex(

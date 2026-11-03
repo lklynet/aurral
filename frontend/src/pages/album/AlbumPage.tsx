@@ -92,8 +92,6 @@ function AlbumPage() {
   const albumRef = parseAlbumRef(routeRef);
   const routeReleaseGroupMbid = albumRef?.kind === "release" ? albumRef.releaseGroupMbid : null;
 
-  // The library resolves both URL forms (library id or release-group MBID) from its own
-  // database, so an owned album never waits on MusicBrainz or Lidarr.
   const libraryQueryOptions = useMemo(
     () => libraryViewQueryOptions({ preview: forcePreview, albumId: routeRef || "none" }),
     [forcePreview, routeRef],
@@ -112,7 +110,6 @@ function AlbumPage() {
         : album.releaseGroupMbid === routeReleaseGroupMbid || album.mbid === routeReleaseGroupMbid,
     ) || null;
 
-  // Only an album missing from the library asks Lidarr whether it has it or is fetching it
   const albumLookupQuery = useQuery({
     ...libraryAlbumLookupQueryOptions(routeReleaseGroupMbid),
     enabled: Boolean(routeReleaseGroupMbid) && !libraryLoading && !libraryAlbum,
@@ -142,8 +139,6 @@ function AlbumPage() {
   const albumState = useLibraryAlbumState({ libraryAlbum, actions, isPreviewLibrary });
   const albumTracks = albumState.albumTracks;
 
-  // MusicBrainz only adds to the page: missing tracks, previews, type and rating
-  // An owned album uses its own release group: the URL may carry a release MBID instead
   const releaseGroupMbid = libraryAlbum
     ? libraryAlbum.releaseGroupMbid || null
     : routeReleaseGroupMbid;
@@ -152,7 +147,6 @@ function AlbumPage() {
   const baseRelease = useMemo<ReleaseGroup>(
     () => ({
       id: releaseGroupMbid || undefined,
-      // The library already knows these for an owned album, before or without MusicBrainz
       title: String(focusRelease?.title || libraryAlbum?.title || "").trim(),
       "first-release-date": focusRelease?.firstReleaseDate || libraryAlbum?.releaseDate || "",
       "primary-type": focusRelease ? focusRelease.primaryType || "Album" : undefined,
@@ -187,14 +181,11 @@ function AlbumPage() {
   const title = libraryAlbum?.title || release.title || routeSeed?.title || "";
   const headerPending = !title && (libraryLoading || releaseDetailsQuery.isPending);
 
-  // An owned album fetches its tracks with the library's details right away; any other
-  // album waits for MusicBrainz details. Either way the key never changes mid-load.
   const trackContext = useMemo(
     () =>
       libraryAlbum
         ? {
             artistMbid: libraryArtist?.mbid || locationState?.artistMbid || undefined,
-            // Library names only, so MusicBrainz details arriving never change the key
             artistName: libraryArtist?.name || libraryAlbum.albumArtist || "",
             albumTitle: libraryAlbum.title,
             releaseDate: libraryAlbum.releaseDate || "",
@@ -235,7 +226,6 @@ function AlbumPage() {
   const tracksLoading = Boolean(releaseGroupMbid) && tracksQuery.isPending;
 
   useEffect(() => {
-    // A release MusicBrainz can't describe already shows its own error
     if (tracksQuery.error && !albumTracks.length && !releaseDetailsQuery.isError) {
       showError("Failed to load tracks");
     }
@@ -267,8 +257,6 @@ function AlbumPage() {
     !libraryDisplay.isComplete &&
     (actions.isAlbumDownloading(releaseGroupMbid) ||
       ALBUM_DOWNLOADING_STATUSES.has(String(downloadStatus?.status)));
-  // A monitored Aurral album with no files and a future release date downloads on that
-  // date, so nothing on the page offers to download it before then.
   const availability = libraryAlbum ? actions.albumAvailability(libraryAlbum) : null;
   const libraryFileCount = Math.max(
     albumTracks.filter((track) => firstAvailableFile(track)).length,
@@ -365,7 +353,6 @@ function AlbumPage() {
       !hasFile && entry.releaseTrack
         ? preview.previewPlayback(entry.releaseTrack, releaseIndex)
         : null;
-    // A missing track that plays its preview queues the preview too, like release-only rows
     const previewQueueItems =
       previewPlayback?.onPlay && entry.releaseTrack
         ? getQueueItems(preview.normalizeTrack(entry.releaseTrack, releaseIndex), {
@@ -382,8 +369,6 @@ function AlbumPage() {
         : formatDuration(trackDurationMs(track)) ||
           formatDuration(entry.releaseTrack?.length) ||
           "—",
-      // The small "missing" time style is for the library's "Unavailable" label; here
-      // the cell always holds a real duration.
       timeMissing: false,
       ...(previewPlayback?.onPlay ? previewPlayback : {}),
       ...(previewQueueItems.length && row.menu
@@ -463,8 +448,6 @@ function AlbumPage() {
     Boolean(libraryDisplay.label) &&
     libraryDisplay.kind !== "incomplete" &&
     !(libraryAlbum && libraryDisplay.isComplete);
-  // Until we know whether the album is in the library, the release-only actions would
-  // flash in and could request an album the library already has.
   const libraryResolving = libraryLoading || (!libraryAlbum && albumLookupQuery.isLoading);
   const showDownload =
     !libraryResolving &&
@@ -549,15 +532,12 @@ function AlbumPage() {
         },
       ];
 
-  // The library answers first. Without a library album, a library id is simply gone, and a
-  // release-group MBID needs MusicBrainz for anything to show.
   const failed =
     !albumRef || libraryLoading || libraryAlbum
       ? null
       : albumRef.kind === "library"
         ? libraryQuery
         : releaseDetailsQuery;
-  // A title from navigation can stand in for MusicBrainz details, unless the tracks failed too
   if (
     !albumRef ||
     (failed && (albumRef.kind === "library" || (failed.isError && (!title || tracksQuery.isError))))
@@ -615,9 +595,6 @@ function AlbumPage() {
             <SkeletonText width="11em" />
           ) : (
             <>
-              {/* Items never break inside, and each "·" sticks to the item before it,
-                  so lines only wrap after a separator. The unmonitored icon rides
-                  with the last item instead of wrapping alone. */}
               {meta.map((segment, index) => (
                 <Fragment key={segment.text}>
                   {index ? " · " : null}
@@ -664,7 +641,6 @@ function AlbumPage() {
         }
         actions={
           <>
-            {/* Owned files play in full; otherwise the album plays its previews */}
             <CollectionPlayButtons
               {...(albumPlayable
                 ? {

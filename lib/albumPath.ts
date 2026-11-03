@@ -12,7 +12,6 @@ export function parseAlbumRef(ref: string | number | null | undefined): AlbumRef
     : { kind: "release", releaseGroupMbid: value };
 }
 
-// Links to an album by its release-group MBID when known, else by its library id
 export const libraryAlbumPath = (album: {
   id?: string | number | null;
   canonicalId?: string | number | null;
