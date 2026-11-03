@@ -346,6 +346,9 @@ function AlbumPage() {
       }),
     [albumTracks, libraryAlbum?.id, releaseGroupMbid, releaseTracks],
   );
+  const hasMissingTracks = merged.some(
+    (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
+  );
   const rows: TrackListRow[] = merged.map((entry) => {
     const { releaseIndex } = entry;
     if (!entry.libraryTrack) {
@@ -361,6 +364,13 @@ function AlbumPage() {
       !hasFile && entry.releaseTrack
         ? preview.previewPlayback(entry.releaseTrack, releaseIndex)
         : null;
+    // A missing track that plays its preview queues the preview too, like release-only rows
+    const previewQueueItems =
+      previewPlayback?.onPlay && entry.releaseTrack
+        ? getQueueItems(preview.normalizeTrack(entry.releaseTrack, releaseIndex), {
+            source: playbackSource,
+          })
+        : [];
     return {
       ...row,
       key: entry.key,
@@ -375,6 +385,18 @@ function AlbumPage() {
       // the cell always holds a real duration.
       timeMissing: false,
       ...(previewPlayback?.onPlay ? previewPlayback : {}),
+      ...(previewQueueItems.length && row.menu
+        ? {
+            menu: {
+              ...row.menu,
+              items: [
+                ...previewQueueItems,
+                ...(row.menu.items || []).filter((item) => item.id !== "play"),
+              ],
+              additionalItemsAfter: previewQueueItems.at(-1)?.id,
+            },
+          }
+        : {}),
     };
   });
   const trackParam = searchParams.get("track") || "";
@@ -445,7 +467,7 @@ function AlbumPage() {
   const showDownload =
     !libraryResolving &&
     (libraryAlbum
-      ? albumState.canDownloadLibraryAlbum
+      ? albumState.canDownloadLibraryAlbum(hasMissingTracks)
       : canAddAlbum && Boolean(releaseGroupMbid) && !libraryDisplay.isComplete);
   const searchInsteadOfDownload = Boolean(
     libraryAlbum && albumState.albumManager === "lidarr" && albumState.albumMonitored,

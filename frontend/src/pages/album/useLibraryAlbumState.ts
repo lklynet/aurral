@@ -146,15 +146,16 @@ export function useLibraryAlbumState({
   const libraryAlbumDownloading = isAlbumDownloading(
     libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid,
   );
-  const canDownloadLibraryAlbum = (() => {
-    if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return false;
+  // The page passes whether any track is missing, counting those only MusicBrainz lists
+  const canDownloadLibraryAlbum = (hasMissingTracks: boolean) => {
+    if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingTracks) return false;
     if (!libraryDestination.ready || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid))
       return false;
     if (activeManager === "lidarr") return true;
     if (albumManager === "aurral")
       return canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
     return albumManager !== "lidarr";
-  })();
+  };
 
   const setLidarrAlbumMonitored = useCallback(
     async (monitored: boolean) => {
