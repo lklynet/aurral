@@ -43,6 +43,7 @@ import { AlertCircle, Music } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { ActivityRequest } from "./activity/activityListUtils.ts";
+import StatePanel from "../components/StatePanel";
 
 const loadRequests = (refresh: boolean, signal: AbortSignal): Promise<ActivityRequest[]> =>
   parseResponse(
@@ -438,42 +439,30 @@ function ActivityPage() {
       />
 
       {error && (
-        <div className="search-empty-panel" role="alert">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <AlertCircle />
-          </div>
-          <h2 className="search-empty-panel__title">Couldn’t load activity</h2>
-          {error !== "Failed to load activity." ? (
-            <p className="search-empty-panel__message">{error}</p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setLocalError(null);
-              void activityQuery.refetch();
-            }}
-            className="btn btn-secondary"
-          >
-            Try again
-          </button>
-        </div>
+        <StatePanel
+          role="alert"
+          icon={<AlertCircle />}
+          title="Couldn’t load activity"
+          message={error !== "Failed to load activity." ? error : null}
+          onRetry={() => {
+            setLocalError(null);
+            void activityQuery.refetch();
+          }}
+        />
       )}
 
       {filteredRequests.length === 0 ? (
         !error && (
-          <div className="search-empty-panel">
-            <div className="search-empty-panel__icon" aria-hidden="true">
-              <Music className="artist-icon-lg" />
-            </div>
-            <h2 className="search-empty-panel__title">
-              {activeStatus ? "No matches" : emptyState.title}
-            </h2>
+          <StatePanel
+            icon={<Music className="artist-icon-lg" />}
+            title={activeStatus ? "No matches" : emptyState.title}
+          >
             {isQueueView && !activeStatus && (
               <RouteLink to="/" className="btn btn-primary">
                 Start discovering
               </RouteLink>
             )}
-          </div>
+          </StatePanel>
         )
       ) : (
         <div className="activity-list">

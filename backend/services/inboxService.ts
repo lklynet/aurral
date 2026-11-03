@@ -14,6 +14,7 @@ import {
   getSystemTaskQueueName,
   withHonkerLock,
 } from "./honkerDb.ts";
+import { albumPath } from "../../lib/albumPath.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RELEASE_PAST_DAYS = 30;
@@ -186,7 +187,7 @@ async function buildReleaseItems(userId: number, now: number) {
         sourceKey,
         title: String(album?.title || "Upcoming release"),
         subtitle: `${artistName} · ${releaseDate}`,
-        href: `/artist/${encode(artistMbid)}/release/${encode(releaseMbid)}`,
+        href: albumPath(releaseMbid),
         metadata: {
           albumMbid: releaseMbid,
           albumName: String(album?.title || "Upcoming release"),

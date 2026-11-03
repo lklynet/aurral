@@ -28,6 +28,7 @@ import { useEditorialShelf } from "./useEditorialShelf";
 import { useTrackSaveActions } from "./useTrackSaveActions";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import "./TrendingPage.css";
+import StatePanel from "../components/StatePanel";
 
 type TrendingCharts = InferResponseType<typeof discoveryClient.trending.$get, 200>;
 type Songs = NonNullable<TrendingCharts["songs"]>;
@@ -235,24 +236,17 @@ export default function TrendingPage() {
     if (isPending) return <TrendingSkeleton />;
     if (error || !hasCharts) {
       return (
-        <div className="search-empty-panel" role={error ? "alert" : "status"}>
-          <h2 className="search-empty-panel__title">
-            {error ? "Charts didn’t load" : "Charts are on the way"}
-          </h2>
-          <p className="search-empty-panel__message">
-            {error
+        <StatePanel
+          role={error ? "alert" : "status"}
+          title={error ? "Charts didn’t load" : "Charts are on the way"}
+          message={
+            error
               ? getApiErrorMessage(error, "Aurral couldn't load the charts. Try again.")
-              : "Aurral fetches the charts from Deezer and Apple Music a few minutes after it starts."}
-          </p>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={isFetching}
-            onClick={() => refetch()}
-          >
-            Try again
-          </button>
-        </div>
+              : "Aurral fetches the charts from Deezer and Apple Music a few minutes after it starts."
+          }
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
       );
     }
     const leadTrack = tracks[0];

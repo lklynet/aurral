@@ -7,7 +7,6 @@ import {
   getLibraryAlbums,
   getLibraryArtist,
   triggerAlbumSearch,
-  getDownloadStatus,
   addArtistToLibrary,
   lookupArtistInLibrary,
   requestAlbumFromSearch,
@@ -23,7 +22,10 @@ import {
   resolveAlbumManager,
 } from "../../../utils/libraryDestination.ts";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.ts";
-import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
+import {
+  ALBUM_DOWNLOADING_STATUSES,
+  describeAlbumRequestResult,
+} from "../../../utils/albumAddAction.ts";
 import {
   buildAurralAlbumRetryPayload,
   formatReleaseWait,
@@ -36,10 +38,9 @@ import {
   getApiErrorText,
   getDownloadStatusLabel,
 } from "../utils";
-import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 import { asApiError } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
-import type { DownloadStatusEntry } from "../../../../../backend/services/websocketService.ts";
+import { useDownloadStatuses, type DownloadStatuses } from "../../../hooks/useDownloadStatuses";
 import type { LibraryArtistRecord, useArtistDetailsStream } from "./useArtistDetailsStream.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
 import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
@@ -50,8 +51,6 @@ type ArtistDetailsStream = ReturnType<typeof useArtistDetailsStream>;
 export type ArtistDetailsLibrary = ReturnType<typeof useArtistDetailsLibrary>;
 type ToastFn = ReturnType<typeof useToast>["showSuccess"];
 type OwnerConflict = NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
-export type DownloadStatus = Partial<DownloadStatusEntry> & Pick<DownloadStatusEntry, "status">;
-export type DownloadStatuses = Record<string, DownloadStatus>;
 type DeleteAlbumTarget = {
   id: string | null | undefined;
   title: string | null | undefined;
@@ -164,33 +163,7 @@ export function useArtistDetailsLibrary({
   const previousDownloadStatusesRef = useRef<DownloadStatuses>({});
   const unmonitoredAtRef = useRef<Record<string, number>>({});
   const deletedAlbumAtRef = useRef<Record<string, number>>({});
-  const libraryAlbumIdsRef = useRef<string[]>([]);
   const libraryAlbumsRef = useRef(libraryAlbums);
-  const { isConnected: downloadStatusWsConnected } = useWebSocketChannel("downloads", (msg) => {
-    if (msg?.type !== "download_statuses") return;
-    const albumIds = libraryAlbumIdsRef.current;
-    if (!albumIds.length) return;
-    const incoming = msg.statuses || {};
-    const next: DownloadStatuses = {};
-    for (const id of albumIds) {
-      if (incoming[id]) next[id] = incoming[id];
-    }
-    if (requestingAlbum) {
-      const album = libraryAlbumsRef.current.find(
-        (a) => a.mbid === requestingAlbum || a.foreignAlbumId === requestingAlbum,
-      );
-      if (album && incoming[String(album.id)]) {
-        setRequestingAlbum(null);
-      }
-    }
-    queryClient.setQueryData(
-      queryKeys.downloadStatus(albumIds),
-      (previous: DownloadStatuses = {}) => ({
-        ...previous,
-        ...next,
-      }),
-    );
-  });
   const lidarrPreferencesQuery = useQuery({
     queryKey: queryKeys.lidarrPreferences("current"),
     queryFn: ({ signal }) =>
@@ -202,20 +175,15 @@ export function useArtistDetailsLibrary({
     () => libraryAlbums.map((album) => String(album.id)).filter(Boolean),
     [libraryAlbums],
   );
-  const downloadStatusesQuery = useQuery<DownloadStatuses>({
-    queryKey: queryKeys.downloadStatus(downloadStatusIds),
-    queryFn: ({ signal }) => getDownloadStatus(downloadStatusIds, { signal, bypassCache: true }),
-    enabled: Boolean(libraryArtist && downloadStatusIds.length),
-    staleTime: 4_000,
-    refetchInterval: (currentQuery) => {
-      if (downloadStatusWsConnected || (typeof document !== "undefined" && document.hidden)) {
-        return false;
-      }
-      const statuses: DownloadStatuses = currentQuery.state.data || {};
-      const hasActiveDownloads = Object.values(statuses).some(
-        (status) => status && ["downloading", "processing", "adding"].includes(status.status),
+  const downloadStatusesQuery = useDownloadStatuses(downloadStatusIds, {
+    enabled: Boolean(libraryArtist),
+    pollWhile: (status) => ["downloading", "processing", "adding"].includes(status),
+    onPush: (pushed) => {
+      if (!requestingAlbum) return;
+      const requested = libraryAlbums.find(
+        (album) => album.mbid === requestingAlbum || album.foreignAlbumId === requestingAlbum,
       );
-      return hasActiveDownloads ? 15_000 : false;
+      if (requested && pushed[String(requested.id)]) setRequestingAlbum(null);
     },
   });
   const downloadStatusSnapshotRef = useRef<{ key: string; statuses: DownloadStatuses }>({
@@ -347,7 +315,6 @@ export function useArtistDetailsLibrary({
 
   useEffect(() => {
     libraryAlbumsRef.current = libraryAlbums;
-    libraryAlbumIdsRef.current = libraryAlbums.map((album) => String(album.id)).filter(Boolean);
   }, [libraryAlbums]);
 
   useEffect(() => {
@@ -767,10 +734,7 @@ export function useArtistDetailsLibrary({
         }
         const downloadStatus = downloadStatuses[album.id];
         const isActiveSearch =
-          downloadStatus &&
-          ["adding", "searching", "downloading", "moving", "processing"].includes(
-            downloadStatus.status,
-          );
+          downloadStatus && ALBUM_DOWNLOADING_STATUSES.has(downloadStatus.status);
         if (isActiveSearch) return false;
         return downloadStatus?.status === "failed" || album.monitored;
       });

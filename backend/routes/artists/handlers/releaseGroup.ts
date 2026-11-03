@@ -14,6 +14,7 @@ import {
   getArtistByMbid,
   getAlbumByMbid,
   getAlbumTracksByAlbumMbid,
+  isMetadataNotFoundError,
 } from "../../../services/providers/brainzmashProvider.ts";
 import {
   getLinkedDeezerArtistId,
@@ -140,7 +141,10 @@ export default new Hono<AppEnv>()
       logger.error("releaseGroup", `Error in release-group details route for ${mbid}:`, {
         message: failure?.message,
       });
-      return c.json({ error: "Release not found", message: failure?.message }, 404);
+      // Only a real miss is a 404; an outage must not read as "this album doesn't exist"
+      return isMetadataNotFoundError(error)
+        ? c.json({ error: "Release not found", message: failure?.message }, 404)
+        : c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
     }
   })
   .get("/release-group/:mbid/cover", validate("query", coverQuery), async (c) => {

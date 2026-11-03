@@ -7,6 +7,7 @@ import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import { settingsClient } from "./utils/api/clients/settings.ts";
 import { usersClient } from "./utils/api/clients/users.ts";
+import { lookupAlbumsInLibraryBatch } from "./utils/api/endpoints/library.ts";
 import {
   getPlaylistTrackStreamUrl,
   withAuthenticatedTrackArtwork,
@@ -91,6 +92,15 @@ export const trendingGenreQueryOptions = (genreId: string) =>
         ),
       ),
     staleTime: 30 * 60 * 1000,
+  });
+
+export const libraryAlbumLookupQueryOptions = (releaseGroupMbid: MaybeText) =>
+  queryOptions({
+    queryKey: queryKeys.libraryAlbumLookup(releaseGroupMbid ? [releaseGroupMbid] : []),
+    queryFn: ({ signal }) =>
+      lookupAlbumsInLibraryBatch([releaseGroupMbid], { signal, bypassCache: true }),
+    enabled: Boolean(releaseGroupMbid),
+    staleTime: 15_000,
   });
 
 export const releaseGroupDetailsQueryOptions = (releaseMbid: MaybeText) =>

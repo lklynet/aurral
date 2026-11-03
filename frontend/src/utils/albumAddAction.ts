@@ -3,14 +3,15 @@ import { Download } from "../components/icons";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { formatCalendarDate } from "./dateTime.ts";
 
-const ACTIVE_ALBUM_STATUSES = new Set([
+// An album download in progress
+export const ALBUM_DOWNLOADING_STATUSES = new Set([
   "adding",
   "searching",
   "downloading",
   "moving",
   "processing",
-  "failed",
 ]);
+const ACTIVE_ALBUM_STATUSES = new Set([...ALBUM_DOWNLOADING_STATUSES, "failed"]);
 
 export const shouldTriggerAlbumSearch = ({
   inLibrary = false,

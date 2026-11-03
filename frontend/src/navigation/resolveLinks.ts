@@ -4,11 +4,8 @@ import { parseResponse } from "hono/client";
 type MaybeId = string | number | null | undefined;
 type MaybeText = string | null | undefined;
 import { discoveryClient } from "../utils/api/clients/discovery.ts";
-import {
-  getLibraryPage,
-  lookupAlbumsInLibraryBatch,
-  lookupArtistInLibrary,
-} from "../utils/api/endpoints/library.ts";
+import { getLibraryPage, lookupArtistInLibrary } from "../utils/api/endpoints/library.ts";
+import { albumPath } from "../../../lib/albumPath.ts";
 import {
   findLibraryAlbumByName,
   findLibraryArtistByName,
@@ -63,10 +60,10 @@ const releaseTarget = (
   artistName: string,
   albumName: string,
 ) => ({
-  to: `/artist/${artistMbid}/release/${albumMbid}`,
+  to: albumPath(albumMbid),
   state: {
+    artistMbid,
     artistName,
-    focusReleaseGroupMbid: albumMbid,
     focusReleaseGroup: { id: albumMbid, title: albumName || "" },
   },
 });
@@ -131,13 +128,10 @@ async function resolveLibraryArtist(params: URLSearchParams, signal: AbortSignal
 async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
+  // The album page finds the library album by its MBID itself
+  if (mbid) return { to: albumPath(mbid) };
   let canonicalId = null;
-  if (mbid) {
-    const lookup = await lookupAlbumsInLibraryBatch([mbid], { signal }).catch(() => null);
-    const found = lookup?.[mbid];
-    canonicalId = (found && "canonicalAlbumId" in found ? found.canonicalAlbumId : null) || null;
-  }
-  if (!canonicalId && name) {
+  if (name) {
     const page = await getLibraryPage(
       { kind: "albums", page: 1, pageSize: 100, query: name, availableOnly: false },
       { signal },
@@ -147,7 +141,7 @@ async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal 
     );
   }
   if (!canonicalId) throw notFound(`Couldn't find ${name || "this album"} in your library`);
-  return { to: `/library/album/${encodeURIComponent(canonicalId)}` };
+  return { to: albumPath(canonicalId) };
 }
 
 export function resolveLinkTarget(

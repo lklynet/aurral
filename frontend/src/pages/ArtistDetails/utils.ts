@@ -2,6 +2,10 @@ import { RELEASE_LIST_VIEW_MODE_KEY } from "./constants.ts";
 import { TAG_COLORS } from "../discoverUtils.ts";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
+import {
+  releaseTypeOf,
+  type LibraryAlbum as LibraryPageAlbum,
+} from "../../utils/libraryPageData.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
@@ -411,22 +415,48 @@ export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
   };
 };
 
-export const buildReleaseHeaderMeta = (
-  release: ReleaseGroup,
-  tracks: ReleaseTrack[] | null | undefined = [],
-) => {
-  const trackCount = Array.isArray(tracks) ? tracks.length : 0;
+export type AlbumHeaderMetaSegment = { text: string; partial?: boolean };
+
+// The track count reads "available/total" when part of the album is missing, like the
+// library album cards. Library details fill in what MusicBrainz hasn't sent.
+export function buildAlbumHeaderMeta({
+  release,
+  libraryAlbum,
+  trackCount,
+  availableCount = null,
+  durationMs,
+}: {
+  release: ReleaseGroup | null | undefined;
+  libraryAlbum?: LibraryPageAlbum | null;
+  trackCount: number;
+  availableCount?: number | null;
+  durationMs: number;
+}): AlbumHeaderMetaSegment[] {
   const metric = getReleaseMetric(release);
+  const unit = trackCount === 1 ? "track" : "tracks";
+  const partial = availableCount != null && availableCount < trackCount;
   return [
-    formatReleaseDate(release),
-    getReleaseTypeLabel(release),
-    trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
-    formatAlbumDuration(sumTrackDurationMs(tracks)),
-    metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-};
+    {
+      text:
+        formatReleaseDate(release) || formatReleaseDate({ releaseDate: libraryAlbum?.releaseDate }),
+    },
+    { text: getReleaseTypeLabel(release) || releaseTypeOf(libraryAlbum) || "" },
+    {
+      text: !trackCount
+        ? ""
+        : partial
+          ? `${availableCount}/${trackCount} ${unit}`
+          : `${trackCount} ${unit}`,
+      partial,
+    },
+    { text: formatAlbumDuration(durationMs) },
+    {
+      text: metric.label
+        ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}`
+        : "",
+    },
+  ].filter((segment) => segment.text);
+}
 
 export const resolveReleaseLibraryDisplay = (
   libraryInfo: ReleaseLibraryInfo | null | undefined,
@@ -484,7 +514,10 @@ export const resolveReleaseLibraryDisplay = (
   if (libraryInfo.trackListComplete === false || percent > 0) {
     return withAction({
       kind: "incomplete",
-      label: libraryInfo.trackListComplete === false ? "Incomplete" : `Incomplete · ${percent}%`,
+      label:
+        libraryInfo.trackListComplete === false
+          ? "Incomplete"
+          : `Incomplete · ${Math.max(1, Math.floor(percent))}%`,
       isComplete: false,
       isInLibrary: true,
     });

@@ -14,6 +14,7 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import { libraryAlbumPath } from "../../lib/albumPath.ts";
 
 type HistoryRequester = { userId: number; username?: string };
 type RequesterUser = Pick<RequestUser, "id" | "username" | "role">;
@@ -92,7 +93,7 @@ const buildTrackJobHref = (
       source: "all",
       references: [job.albumMbid],
     }).albums[0];
-    if (album?.id != null) return `/library/album/${album.id}`;
+    if (album?.id != null) return libraryAlbumPath(album);
   }
   return buildPlaylistHref(playlistId);
 };

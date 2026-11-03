@@ -59,8 +59,8 @@ test("opening a share finds recipient Library IDs without importing or acquiring
   });
   assert.deepEqual(destinations, [
     `/library/artist/${artist.id}`,
-    `/library/album/${album.id}`,
-    `/library/album/${album.id}?track=${track.id}`,
+    `/album/${albumMbid}`,
+    `/album/${albumMbid}?track=${track.id}`,
   ]);
   assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM library_tracks").get(), before);
   assert.equal(db.prepare("SELECT 1 FROM playlist_download_jobs LIMIT 1").get(), undefined);
@@ -69,8 +69,8 @@ test("opening a share finds recipient Library IDs without importing or acquiring
 test("name-only shares open the matching local artist, album and track", () => {
   for (const [kind, title, expected] of [
     ["artist", "Tycho", `/library/artist/${artist.id}`],
-    ["album", "Dive", `/library/album/${album.id}`],
-    ["track", "A Walk", `/library/album/${album.id}?track=${track.id}`],
+    ["album", "Dive", `/album/${albumMbid}`],
+    ["track", "A Walk", `/album/${albumMbid}?track=${track.id}`],
   ]) {
     const manifest = parseShareManifest({ kind, title, artistName: "Tycho", albumTitle: "Dive" });
     assert.ok(manifest);
@@ -98,9 +98,7 @@ test("a missing performer uses the album artist without overriding an explicit c
     assert.ok(manifest);
     assert.equal(
       shareDestination(manifest),
-      artistName
-        ? "/search?q=Guest%20credit%20Tycho"
-        : `/library/album/${album.id}?track=${local.id}`,
+      artistName ? "/search?q=Guest%20credit%20Tycho" : `/album/${albumMbid}?track=${local.id}`,
     );
   }
 });
@@ -125,7 +123,7 @@ test("unowned items open discovery or search without creating Library entries", 
         artistMbid: unknownArtist,
         albumMbid: "55555555-5555-4555-8555-555555555555",
       },
-      `/artist/${unknownArtist}/release/55555555-5555-4555-8555-555555555555`,
+      `/album/55555555-5555-4555-8555-555555555555`,
     ],
     [
       { kind: "track", title: "Unknown song", artistName: "Another artist" },
@@ -149,7 +147,7 @@ test("conflicting MusicBrainz IDs never resolve by artist or album name", () => 
     ],
     [
       { kind: "album", title: "Dive", artistName: "Tycho", artistMbid, albumMbid: differentAlbum },
-      `/artist/${artistMbid}/release/${differentAlbum}`,
+      `/album/${differentAlbum}`,
     ],
     [
       {
@@ -159,7 +157,7 @@ test("conflicting MusicBrainz IDs never resolve by artist or album name", () => 
         artistMbid,
         albumMbid: differentAlbum,
       },
-      `/library/album/${compilation.id}`,
+      `/album/${compilation.id}`,
     ],
   ] as const;
   for (const [input, expected] of cases) {

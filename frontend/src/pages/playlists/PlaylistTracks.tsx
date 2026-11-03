@@ -38,6 +38,7 @@ import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from
 import type { Flow, StaticPlaylist } from "./playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
+import { albumPath } from "../../../../lib/albumPath.ts";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 
 const sharedPlaylists = staticPlaylistsClient["shared-playlists"];
@@ -349,10 +350,10 @@ export function PlaylistTracks({
   const getFlowAlbumLink = (track: PlaylistTrackRow) =>
     track?.albumMbid && track.artistMbid
       ? {
-          to: `/artist/${track.artistMbid}/release/${track.albumMbid}`,
+          to: albumPath(track.albumMbid),
           state: {
+            artistMbid: track.artistMbid,
             artistName: track.artistName,
-            focusReleaseGroupMbid: track.albumMbid,
             focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
           },
         }

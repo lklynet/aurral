@@ -104,3 +104,22 @@ test("release display keeps albums with an incomplete track list incomplete", ()
   assert.equal(complete.isComplete, true);
   assert.equal(complete.label, "In library");
 });
+
+test("release display shows an incomplete album's share as a whole percent", () => {
+  const lookup = {
+    inLibrary: true,
+    managedBy: "aurral",
+    monitored: false,
+    trackCount: 1,
+    trackFileCount: 1,
+  };
+  const label = (releaseTrackCount: number) =>
+    resolveReleaseLibraryDisplay(countReleaseTracks(lookup, releaseTrackCount), undefined).label;
+  assert.equal(label(15), "Incomplete · 6%");
+  assert.equal(label(300), "Incomplete · 1%");
+  assert.equal(
+    resolveReleaseLibraryDisplay({ ...lookup, trackCount: 1000, percentOfTracks: 99.9 }, undefined)
+      .label,
+    "Incomplete · 99%",
+  );
+});

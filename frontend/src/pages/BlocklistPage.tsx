@@ -12,6 +12,7 @@ import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
 import { buildBlocklistArtistSuggestions } from "../utils/blocklistSearch.ts";
 import { formatDate } from "../utils/dateTime.ts";
+import StatePanel from "../components/StatePanel";
 
 type BlocklistTab = "artists" | "genres";
 type ArtistSuggestion = ReturnType<typeof buildBlocklistArtistSuggestions>[number];
@@ -257,13 +258,7 @@ export default function BlocklistPage() {
 
       <div>
         {loading ? null : counts[tab] === 0 ? (
-          <div className="search-empty-panel">
-            <div className="search-empty-panel__icon" aria-hidden="true">
-              <Ban />
-            </div>
-            <h2 className="search-empty-panel__title">Nothing blocked</h2>
-            <p className="search-empty-panel__message">{EMPTY_MESSAGES[tab]}</p>
-          </div>
+          <StatePanel icon={<Ban />} title="Nothing blocked" message={EMPTY_MESSAGES[tab]} />
         ) : tab === "artists" ? (
           <ul className="blocklist-page__list">
             {blockedArtists.map((entry) => {

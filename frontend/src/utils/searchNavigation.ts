@@ -1,4 +1,5 @@
 import { flowPath, playlistPath } from "../navigation/playlistPaths.ts";
+import { albumPath } from "../../../lib/albumPath.ts";
 import type { toNormalizedAlbum } from "../../../backend/services/providers/brainzmashMappers.ts";
 
 type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
@@ -100,10 +101,7 @@ export function buildArtistFocusState<Overrides extends object = Record<never, n
 }
 
 export type ReleaseFocusState = {
-  focusReleaseGroupMbid: string | number;
   focusReleaseGroup: ReturnType<typeof buildReleaseFocusState>;
-  focusTrackMbid?: string | number;
-  focusTrackTitle?: string;
 };
 
 function buildReleaseFocusState(
@@ -221,17 +219,14 @@ export function getReleaseNavigationTarget(item: SearchItem | null | undefined) 
   if (!item?.artistMbid) return null;
   const releaseGroupMbid = item.type === "album" ? item.id : item.albumMbid;
   if (!releaseGroupMbid) return null;
-  const state: ArtistFocusState & ReleaseFocusState = buildArtistFocusState(item, {
-    focusReleaseGroupMbid: releaseGroupMbid,
-    focusReleaseGroup: buildReleaseFocusState(item, releaseGroupMbid),
-  });
-  if (item.type === "track") {
-    const trackMbid = item.id || item.trackMbid;
-    if (trackMbid) state.focusTrackMbid = trackMbid;
-    if (item.title) state.focusTrackTitle = item.title;
-  }
+  const state: ArtistFocusState & ReleaseFocusState & { artistMbid: string } =
+    buildArtistFocusState(item, {
+      artistMbid: item.artistMbid,
+      focusReleaseGroup: buildReleaseFocusState(item, releaseGroupMbid),
+    });
+  const trackMbid = item.type === "track" ? item.id || item.trackMbid : null;
   return {
-    pathname: `/artist/${item.artistMbid}/release/${releaseGroupMbid}`,
+    pathname: albumPath(releaseGroupMbid, { track: trackMbid }),
     state,
   };
 }
@@ -242,10 +237,10 @@ function getLibraryResultPath(item: SearchItem) {
     return `/library/artist/${encodeURIComponent(item.canonicalId)}`;
   }
   if (item.type === "album" && item.canonicalId) {
-    return `/library/album/${encodeURIComponent(item.canonicalId)}`;
+    return albumPath(item.id || item.canonicalId);
   }
   if (item.type === "track" && item.albumCanonicalId) {
-    return `/library/album/${encodeURIComponent(item.albumCanonicalId)}`;
+    return albumPath(item.albumMbid || item.albumCanonicalId);
   }
   return null;
 }
