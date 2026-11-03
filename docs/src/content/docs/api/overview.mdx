@@ -15,9 +15,14 @@ capabilities are additive, so clients ignore unknown fields and check the
 feature list before using a capability. `appVersion` identifies the build,
 not API compatibility.
 
-## Authenticate with the API key
+## Authenticate with an API key
 
-Open **Settings > General > API access** and copy the API key. Send it in the `X-Api-Key` header:
+Aurral has two kinds of API key:
+
+- **Your API key** in **Settings > Profile > API access** acts as you, with your permissions. Every user has one.
+- **The admin API key** in **Settings > General > API access** gives administrator access. It belongs to the Aurral installation, not to a user.
+
+Send a key in the `X-Api-Key` header:
 
 ```bash
 curl --fail \
@@ -34,11 +39,11 @@ curl --fail \
 
 Use the header when you can. Browsers keep URLs in their history, and reverse proxies write them to access logs.
 
-With the API key, you do not need to sign in first. The key gives administrator access. It has **no** read-only mode.
+With an API key, you do not need to sign in first. Neither key has a read-only mode.
 
-The key belongs to the Aurral installation, not to a user. For actions on user data, use a user's sign-in session instead. These actions include linking Last.fm, ListenBrainz, or Koito, recording plays, and changing favorites. When the API key calls one of them, Aurral returns `403`.
+Actions on user data need your API key or a sign-in session. These actions include linking Last.fm, ListenBrainz, or Koito, recording plays, and changing favorites. When the admin API key calls one of them, Aurral returns `403`. A disabled user's API key stops working.
 
-Keep the key in a secret store. If an integration only needs to read, send only `GET` requests. To replace the key, select **Rotate API key** in **Settings > General**. The old key stops working at once. If you set the key with the `AURRAL_API_KEY` [environment variable](/admin/environment/#authentication), change the variable and restart Aurral instead.
+Keep keys in a secret store. If an integration only needs to read, send only `GET` requests. To replace a key, rotate it where you copied it. The old key stops working at once. If you set the admin API key with the `AURRAL_API_KEY` [environment variable](/admin/environment/#authentication), change the variable and restart Aurral instead.
 
 Do not put the key in public browser JavaScript. Call Aurral from a server-side widget or a same-origin proxy instead.
 
@@ -92,13 +97,13 @@ Browser Subsonic clients such as Feishin can use `/rest` without `CORS_ORIGIN`.
 - An error returns JSON with an `error` field. Some errors also have a `message` or `code` field.
 - Missing or invalid authentication returns `401`.
 - A valid account without the needed permission returns `403`.
-- The API key calling a user-only action returns `403`.
+- The admin API key calling a user-only action returns `403`.
 - Each client can send 5,000 API requests in each 15-minute period.
 - Sign-in routes accept 10 attempts in each 15-minute period.
 
 ## Subsonic authentication
 
-The Subsonic API at `/rest` uses Aurral user accounts, not the API key. It supports both Subsonic sign-in methods:
+The Subsonic API at `/rest` uses Aurral user accounts, not API keys. It supports both Subsonic sign-in methods:
 
 - **Password authentication** sends the username and password. Clients often call it legacy authentication.
 - **Token authentication** sends a salted token made from the password.

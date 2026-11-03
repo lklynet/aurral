@@ -12,9 +12,11 @@ import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { normalizeUserThemeDocument, ThemeValidationError } from "../services/userTheme.ts";
 import {
+  getUserApiKey,
   isRecentlyAuthenticated,
   reconcileLocalNetworkBypassSetting,
   requirePasswordStrength,
+  rotateUserApiKey,
 } from "../middleware/auth.ts";
 import { deleteSessionsByUserId } from "../config/session-helpers.ts";
 import { websocketService } from "../services/websocketService.ts";
@@ -285,6 +287,14 @@ export default new Hono<AppEnv>()
       const failure = asAppError(e);
       return c.json({ error: "Failed to update user", message: failure?.message }, 500);
     }
+  })
+  .get("/me/api-key", requireAuth, requireUserAccount, (c) => {
+    const apiKey = getUserApiKey(c.var.user.id);
+    return apiKey ? c.json({ apiKey }, 200) : c.json({ error: "Failed to load API key" }, 500);
+  })
+  .post("/me/api-key/rotate", requireAuth, requireUserAccount, (c) => {
+    const apiKey = rotateUserApiKey(c.var.user.id);
+    return apiKey ? c.json({ apiKey }, 200) : c.json({ error: "Failed to rotate API key" }, 500);
   })
   .get("/me/listening-history", requireAuth, requireUserAccount, (c) =>
     c.json(getListenHistory(c.var.user.id), 200),

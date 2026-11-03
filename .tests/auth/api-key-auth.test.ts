@@ -5,15 +5,16 @@ import assert from "node:assert/strict";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, authModule, { default: health }, { default: authRoutes }] =
+const [isolatedState, authModule, { default: health }, { default: authRoutes }, { userOps }] =
   await setupIsolatedBackend(
     "api-key-auth",
     () => import("../../backend/middleware/auth.ts"),
     () => import("../../backend/routes/health.ts"),
     () => import("../../backend/routes/auth.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
   );
 
-const { getApiKey, getEnvApiKey, resolveRequestUser } = authModule;
+const { getApiKey, getEnvApiKey, getUserApiKey, resolveRequestUser, rotateUserApiKey } = authModule;
 
 const envApiKey = "e".repeat(64);
 
@@ -91,4 +92,29 @@ test("the rotate API key route errors when AURRAL_API_KEY is set", async () => {
   const rotate = await app.request("/auth/api-key/rotate", { method: "POST" });
   assert.equal(rotate.status, 409);
   assert.equal(getApiKey(), envApiKey);
+});
+
+test("a user's API key authenticates as that user until rotated", () => {
+  const user = userOps.createUser("key-owner", "password-hash")!;
+  const key = getUserApiKey(user.id)!;
+
+  assert.equal(getUserApiKey(user.id), key);
+  assert.equal(resolveRequestUser(apiKeyRequest(key))?.id, user.id);
+  assert.equal(
+    resolveRequestUser({ headers: { "x-api-key": key }, ip: remoteAddress })?.username,
+    "key-owner",
+  );
+
+  const rotated = rotateUserApiKey(user.id)!;
+  assert.notEqual(rotated, key);
+  assert.equal(resolveRequestUser(apiKeyRequest(key)), null);
+  assert.equal(resolveRequestUser(apiKeyRequest(rotated))?.id, user.id);
+});
+
+test("a disabled user's API key stops working", () => {
+  const user = userOps.createUser("disabled-key-owner", "password-hash")!;
+  const key = getUserApiKey(user.id)!;
+
+  userOps.updateUser(user.id, { status: "disabled" });
+  assert.equal(resolveRequestUser(apiKeyRequest(key)), null);
 });

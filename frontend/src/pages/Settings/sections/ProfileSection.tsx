@@ -10,6 +10,7 @@ import { setStoredAuth } from "../../../utils/api/core.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
+import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
@@ -182,6 +183,24 @@ function PasswordGroup() {
   );
 }
 
+function ApiAccessGroup({ userId }: { userId: number }) {
+  return (
+    <SettingsGroup title="API access">
+      <ApiKeyRow
+        queryKey={queryKeys.myApiKey(userId)}
+        load={(signal) => parseResponse(usersClient.me["api-key"].$get({}, { init: { signal } }))}
+        rotate={() => parseResponse(usersClient.me["api-key"].rotate.$post())}
+        help={
+          <>
+            Acts as you. Send it as an <code>X-Api-Key</code> header or <code>api_key</code> query
+            parameter.
+          </>
+        }
+      />
+    </SettingsGroup>
+  );
+}
+
 function LidarrDefaultsGroup() {
   const account = useAccountSettingsContext();
   return (
@@ -239,6 +258,7 @@ export function ProfileSection() {
         <>
           <PasswordGroup />
           <ConnectedAccountsSection />
+          <ApiAccessGroup userId={user.id} />
         </>
       ) : null}
       {account.lidarrConfigured ? <LidarrDefaultsGroup /> : null}
