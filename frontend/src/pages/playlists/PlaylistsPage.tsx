@@ -245,7 +245,6 @@ export default function PlaylistsPage() {
         <Suspense fallback={null}>
           <PlaylistImportModal
             {...importRequest}
-            open
             onClose={() => setImportRequest(null)}
             onImported={fetchStatus}
             showError={showError}

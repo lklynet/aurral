@@ -21,6 +21,8 @@ export interface FlowDraft {
   recentListening?: boolean;
   deepDive?: boolean;
   recordHistory?: boolean;
+  autoDownload?: boolean;
+  showInLibrary?: boolean;
   yearFrom?: string;
   yearTo?: string;
   scheduleDays?: number[];
@@ -203,6 +205,8 @@ export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
     recentListening: flow?.recentListening === true,
     deepDive: flow?.deepDive === true,
     recordHistory: flow?.recordHistory !== false,
+    autoDownload: flow?.autoDownload !== false,
+    showInLibrary: flow?.showInLibrary === true,
     yearFrom: yearFrom == null ? "" : String(yearFrom),
     yearTo: yearTo == null ? "" : String(yearTo),
     includeTags: tagsList.join(", "),
@@ -274,6 +278,8 @@ const normalizeDraftForCompare = (draft: FlowDraft) => {
     recentListening: draft.recentListening === true,
     deepDive: draft.deepDive === true,
     recordHistory: draft.recordHistory !== false,
+    autoDownload: draft.autoDownload !== false,
+    showInLibrary: draft.showInLibrary === true,
     yearFrom,
     yearTo,
     scheduleDays: normalizeScheduleDays(draft.scheduleDays),
@@ -324,3 +330,8 @@ export const normalizePlaylistTrackEntry = (track: ImportedValue) => {
     ...albumPlacement(track),
   };
 };
+
+export const newBlankFlow = (flows: Partial<Flow>[]) =>
+  buildFlowFromForm(
+    flowToForm({ ...NEW_FLOW_TEMPLATE, name: getNextFlowName(flows, NEW_FLOW_TEMPLATE.name) }),
+  );

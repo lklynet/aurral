@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { createPortal } from "react-dom";
-import { Search, X } from "../../components/icons";
-import TooltipButton from "../../components/TooltipButton";
+import { Search } from "../../components/icons";
 import { useAuth } from "../../contexts/AuthContext";
-import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { useStorageHealth } from "../../hooks/useStorageHealth";
 import {
   SETTINGS_GROUPS,
@@ -31,7 +28,7 @@ import { DiscoverySection } from "./sections/DiscoverySection";
 import { NotificationsSection } from "./sections/NotificationsSection";
 import { StatusSection } from "./sections/StatusSection";
 import { MetadataSection } from "./sections/MetadataSection";
-import "./settings.css";
+import { SettingsShell } from "./SettingsLayout";
 
 const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   profile: ProfileSection,
@@ -66,7 +63,6 @@ export default function SettingsModal() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const results = useMemo(() => searchSettings(query, isAdmin), [query, isAdmin]);
-  const { dialogRef, handleBackdropClick } = useModalDialog({ open: true, onClose: route.close });
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -89,28 +85,13 @@ export default function SettingsModal() {
       <Section />
     );
 
-  return createPortal(
-    <div className="settings-dialog-backdrop" onClick={handleBackdropClick}>
-      <div
-        ref={dialogRef}
-        className="settings-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        tabIndex={-1}
-        data-view={route.path === "" ? "nav" : "pane"}
-      >
-        <div className="settings-dialog__nav">
-          <div className="settings-dialog__phone-head">
-            <span className="settings-dialog__phone-title">Settings</span>
-            <TooltipButton
-              label="Close settings"
-              className="btn btn-ghost btn-icon"
-              onClick={route.close}
-            >
-              <X aria-hidden="true" />
-            </TooltipButton>
-          </div>
+  return (
+    <SettingsShell
+      label="Settings"
+      view={route.path === "" ? "nav" : "pane"}
+      onClose={route.close}
+      nav={
+        <>
           <label className="settings-dialog__search">
             <Search aria-hidden="true" />
             <input
@@ -190,18 +171,16 @@ export default function SettingsModal() {
               ))}
             </nav>
           )}
-        </div>
-        <div className="settings-dialog__pane">
-          <AccountSettingsProvider>
-            {isAdmin ? (
-              <ServerSettingsProvider section={section.id}>{pane}</ServerSettingsProvider>
-            ) : (
-              pane
-            )}
-          </AccountSettingsProvider>
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      }
+    >
+      <AccountSettingsProvider>
+        {isAdmin ? (
+          <ServerSettingsProvider section={section.id}>{pane}</ServerSettingsProvider>
+        ) : (
+          pane
+        )}
+      </AccountSettingsProvider>
+    </SettingsShell>
   );
 }

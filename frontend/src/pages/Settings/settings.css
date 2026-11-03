@@ -118,6 +118,11 @@
   color: var(--aurral-text-muted);
 }
 
+button:is(.settings-dialog__link, .settings-service) {
+  width: 100%;
+  text-align: left;
+}
+
 .settings-dialog__link svg {
   width: var(--aurral-icon-sm);
   height: var(--aurral-icon-sm);
@@ -251,13 +256,9 @@
   align-items: center;
   gap: 0.375rem;
   flex-shrink: 0;
+  margin-left: auto;
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-sm);
-}
-
-.settings-bar__close {
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 .settings-page__scroll {
@@ -304,6 +305,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.settings-group__meta {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-sm);
 }
 
 .settings-card {

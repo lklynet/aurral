@@ -20,6 +20,7 @@ import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { appSettingsQueryOptions } from "../../../queryOptions.ts";
 import { readApiError } from "../utils/apiError.ts";
 import { useSettingsItem } from "../SettingsLayout";
+import { afterTextEntry } from "../../../utils/afterTextEntry.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };
@@ -204,7 +205,6 @@ const defaultSettings = {
   },
 };
 
-const AUTOSAVE_DELAY_MS = 450;
 const SETTINGS_SAVE_KEY = ["settings", "save"];
 
 const settingsSaveSettled = () =>
@@ -517,25 +517,27 @@ export function useSettingsData(
 
   persistSettingsRef.current = persistSettings;
 
-  const updateSettings = useCallback((newSettings: SettingsState) => {
-    settingsRef.current = newSettings;
-    setSettingsState(newSettings);
-    if (!comparisonEnabledRef.current || !originalSettingsRef.current) return;
-
-    const changed = checkForChanges(newSettings, originalSettingsRef.current);
-    hasUnsavedChangesRef.current = changed;
-    setHasUnsavedChanges(changed);
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (!changed) return;
-
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      persistSettingsRef.current?.(settingsRef.current);
-    }, AUTOSAVE_DELAY_MS);
+  const flushSettings = useCallback(() => {
+    if (hasUnsavedChangesRef.current) void persistSettingsRef.current?.(settingsRef.current);
   }, []);
+
+  const updateSettings = useCallback(
+    (newSettings: SettingsState) => {
+      settingsRef.current = newSettings;
+      setSettingsState(newSettings);
+      if (!comparisonEnabledRef.current || !originalSettingsRef.current) return;
+
+      const changed = checkForChanges(newSettings, originalSettingsRef.current);
+      hasUnsavedChangesRef.current = changed;
+      setHasUnsavedChanges(changed);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (changed) afterTextEntry(flushSettings);
+    },
+    [flushSettings],
+  );
 
   const handleSaveSettings = useCallback(
     (e?: FormEvent<HTMLFormElement> | null, settingsOverride?: SettingsState) => {

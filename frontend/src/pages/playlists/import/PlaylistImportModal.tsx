@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Music2 } from "../../../components/icons";
+import { ChevronRight } from "../../../components/icons";
 import { SettingsLink } from "../../Settings/settingsRoute";
-import { ModalShell } from "../../../components/PlaylistModals";
+import {
+  SettingsGroup,
+  SettingsNote,
+  SettingsPane,
+  SettingsRow,
+  SettingsShell,
+} from "../../Settings/SettingsLayout.tsx";
 import { DotLoader } from "../../../components/DotLoader";
+import PillToggle from "../../../components/PillToggle";
 import { Select } from "../../../components/Select";
 import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
 import { playlistImportsClient } from "../../../utils/api/clients/playlistImports.ts";
@@ -26,7 +33,16 @@ declare global {
   }
 }
 
-type ImportSource = "spotify" | "listenbrainz" | "lastfm" | "youtube" | "aurral" | "file";
+const IMPORT_SOURCES = [
+  { id: "spotify", label: "Spotify" },
+  { id: "lastfm", label: "Last.fm" },
+  { id: "listenbrainz", label: "ListenBrainz" },
+  { id: "youtube", label: "YouTube Music" },
+  { id: "aurral", label: "Aurral share" },
+  { id: "file", label: "M3U file" },
+] as const;
+type ImportSource = (typeof IMPORT_SOURCES)[number]["id"];
+type ImportTrack = { artistName: string; title: string };
 type FilePlaylist = { name: string; tracks: M3uTrack[]; skipped: number };
 type ImportPlaylist = {
   id: string;
@@ -37,10 +53,6 @@ type ImportPlaylist = {
 const importApi = playlistImportsClient.import;
 const youtubeFetch = apiFetchWithin(5 * 60 * 1000);
 
-type ImportPreviewTrack = InferResponseType<
-  typeof importApi.spotify.preview.$post,
-  200
->["previewTracks"][number];
 type YoutubePreview = InferResponseType<
   (typeof importApi)["youtube-music"]["preview"]["$post"],
   200
@@ -69,126 +81,67 @@ function getPlaylistMeta(playlist: ImportPlaylist) {
   return parts.join(" · ");
 }
 
-interface PlaylistImportConfigProps {
-  externalSource: string;
-  importing: boolean;
-  keepRemovedTracks: boolean;
-  playlistName: string;
-  previewLoading: boolean;
-  previewSkipped: number;
-  previewTrackCount: number;
-  previewTracks: ImportPreviewTrack[];
-  setKeepRemovedTracks: (value: boolean) => void;
-  setPlaylistName: (value: string) => void;
-  setSyncIntervalHours: (value: number) => void;
-  syncIntervalHours: number;
-}
+const SKIPPED_REASONS: Partial<Record<ImportSource, string>> = {
+  spotify: "Skipped unavailable tracks, podcasts, and duplicates.",
+  youtube: "Skipped unavailable entries, podcasts, incomplete videos, and duplicates.",
+};
 
-function PlaylistImportConfig({
-  externalSource,
-  importing,
-  keepRemovedTracks,
-  playlistName,
-  previewLoading,
-  previewSkipped,
-  previewTrackCount,
-  previewTracks,
-  setKeepRemovedTracks,
-  setPlaylistName,
-  setSyncIntervalHours,
-  syncIntervalHours,
-}: PlaylistImportConfigProps) {
+function ImportTracks({
+  tracks,
+  total,
+  skipped = 0,
+  skippedReason,
+  loading = false,
+  meta,
+}: {
+  tracks: ImportTrack[];
+  total: number;
+  skipped?: number;
+  skippedReason?: string;
+  loading?: boolean;
+  meta?: string;
+}) {
+  const shown = tracks.slice(0, 5);
   return (
-    <div className="playlist-import__config">
-      <div className="playlist-import__config-fields">
-        <div className="playlist-modal__fields">
-          <label className="playlist-import__field-label" htmlFor="playlist-import-name">
-            Name in Aurral
-          </label>
-          <input
-            id="playlist-import-name"
-            type="text"
-            className="input"
-            value={playlistName}
-            onChange={(event) => setPlaylistName(event.target.value)}
-            disabled={importing}
-          />
-        </div>
-        <div className="playlist-modal__fields">
-          <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
-            Sync
-          </label>
-          <Select
-            id="playlist-import-interval"
-            value={syncIntervalHours}
-            onChange={setSyncIntervalHours}
-            disabled={importing}
-            options={SYNC_INTERVAL_OPTIONS}
-          />
-        </div>
-      </div>
-
-      <label className="playlist-import__retention">
-        <input
-          type="checkbox"
-          checked={keepRemovedTracks}
-          onChange={(event) => setKeepRemovedTracks(event.target.checked)}
-          className="artist-checkbox"
-          disabled={importing}
-        />
-        <span className="playlist-import__retention-copy">
-          <span className="playlist-import__retention-title">
-            Keep tracks {externalSource} removes
+    <SettingsGroup
+      title="Tracks"
+      actions={
+        loading ? null : (
+          <span className="settings-group__meta" aria-live="polite">
+            {meta ??
+              [`${total} importable`, skipped > 0 ? `${skipped} skipped` : null]
+                .filter(Boolean)
+                .join(" · ")}
           </span>
-        </span>
-      </label>
-
-      <div className="playlist-import__summary" aria-live="polite">
-        {previewLoading ? (
-          <div className="playlist-import__list-status playlist-import__list-status--inline">
-            <DotLoader size="sm" label={null} />
-            <span>Counting importable tracks…</span>
-          </div>
-        ) : (
-          <>
-            <div className="playlist-import__summary-top">
-              <span className="flow-page__badge flow-page__badge--count">
-                {previewTrackCount} importable
-              </span>
-              {previewSkipped > 0 ? (
-                <span className="playlist-import__summary-note">{previewSkipped} skipped</span>
-              ) : null}
+        )
+      }
+    >
+      {loading ? (
+        <p className="settings-loading">
+          <DotLoader size="sm" label={null} />
+          Counting importable tracks…
+        </p>
+      ) : total === 0 ? (
+        <SettingsNote tone="warning">
+          No downloadable tracks. Check the source playlist.
+        </SettingsNote>
+      ) : (
+        <>
+          {shown.map((track, index) => (
+            <div key={index} className="playlist-import__track">
+              <span className="playlist-import__track-title">{track.title}</span>
+              <span className="playlist-import__track-artist">{track.artistName}</span>
             </div>
-            {previewTrackCount === 0 ? (
-              <p className="playlist-import__summary-copy">
-                No downloadable tracks. Check the source playlist.
-              </p>
-            ) : null}
-            {previewSkipped > 0 ? (
-              <p className="playlist-import__summary-copy">
-                {externalSource === "Spotify"
-                  ? "Skipped unavailable tracks, podcasts, and duplicates."
-                  : externalSource === "Last.fm"
-                    ? "Skipped entries with missing artist or track details."
-                    : externalSource === "YouTube Music"
-                      ? "Skipped unavailable entries, podcasts, incomplete videos, and duplicates."
-                      : "Skipped entries with missing artist or track details."}
-              </p>
-            ) : null}
-            {previewTracks.length > 0 ? (
-              <p className="playlist-import__summary-sample">
-                {previewTracks
-                  .map((track) => `${track.artistName} — ${track.trackName}`)
-                  .join(" · ")}
-                {previewTrackCount > previewTracks.length
-                  ? ` · +${previewTrackCount - previewTracks.length} more`
-                  : ""}
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
+          ))}
+          {total > shown.length ? (
+            <p className="playlist-import__track-more">
+              {formatTrackTotal(total - shown.length)} more
+            </p>
+          ) : null}
+          {skipped > 0 && skippedReason ? <SettingsNote>{skippedReason}</SettingsNote> : null}
+        </>
+      )}
+    </SettingsGroup>
   );
 }
 
@@ -312,7 +265,6 @@ function useErrorToast(
 }
 
 interface PlaylistImportModalProps {
-  open: boolean;
   onClose: () => void;
   onImported?: () => void;
   showError?: (message: string) => void;
@@ -322,7 +274,6 @@ interface PlaylistImportModalProps {
 }
 
 export function PlaylistImportModal({
-  open,
   onClose,
   onImported,
   showError,
@@ -334,6 +285,7 @@ export function PlaylistImportModal({
   const [source, setSource] = useState<ImportSource>(initialShareUrl ? "aurral" : "spotify");
   const [shareUrl, setShareUrl] = useState(initialShareUrl);
   const [requestedShareUrl, setRequestedShareUrl] = useState(initialShareUrl);
+  const [view, setView] = useState<"nav" | "pane">(initialShareUrl ? "pane" : "nav");
   const [shareSync, setShareSync] = useState(true);
   const [shareFiles, setShareFiles] = useState(false);
   const [lastfmUsernameDraft, setLastfmUsernameDraft] = useState<string | null>(null);
@@ -392,14 +344,13 @@ export function PlaylistImportModal({
   const spotifyStatusQuery = useQuery({
     queryKey: queryKeys.spotifyImportStatus,
     queryFn: () => parseResponse(importApi.spotify.status.$get()),
-    enabled: open,
     staleTime: 0,
   });
   const spotifyConnected = Boolean(spotifyStatusQuery.data?.connected);
   const spotifyPlaylistsQuery = useQuery({
     queryKey: queryKeys.playlistImportList("spotify"),
     queryFn: () => parseResponse(importApi.spotify.playlists.$get()),
-    enabled: open && source === "spotify" && spotifyConnected,
+    enabled: source === "spotify" && spotifyConnected,
   });
   const spotifyStatus = {
     connected: spotifyConnected,
@@ -409,14 +360,14 @@ export function PlaylistImportModal({
   const scrobbleStatusQuery = useQuery({
     queryKey: queryKeys.scrobbleStatus,
     queryFn: () => parseResponse(scrobblingClient.status.$get()),
-    enabled: open && source === "listenbrainz",
+    enabled: source === "listenbrainz",
     staleTime: 0,
   });
   const listenBrainzAccount = scrobbleStatusQuery.data?.listenbrainz;
   const listenBrainzPlaylistsQuery = useQuery({
     queryKey: queryKeys.playlistImportList("listenbrainz"),
     queryFn: () => parseResponse(importApi.listenbrainz.playlists.$get()),
-    enabled: open && source === "listenbrainz" && Boolean(listenBrainzAccount?.connected),
+    enabled: source === "listenbrainz" && Boolean(listenBrainzAccount?.connected),
   });
   const listenBrainzStatus = {
     connected: Boolean(listenBrainzAccount?.connected) && !listenBrainzPlaylistsQuery.isError,
@@ -425,7 +376,7 @@ export function PlaylistImportModal({
 
   const lastfmProfileQuery = useQuery({
     ...listeningHistoryQueryOptions(user?.id),
-    enabled: user?.id != null && open && source === "lastfm" && lastfmRequestedUsername === null,
+    enabled: user?.id != null && source === "lastfm" && lastfmRequestedUsername === null,
   });
   const profileLastfmUsername = lastfmProfileQuery.data?.lastfm ?? "";
   const lastfmUsernameRequest = lastfmRequestedUsername ?? profileLastfmUsername;
@@ -438,7 +389,7 @@ export function PlaylistImportModal({
           query: lastfmUsernameRequest ? { username: lastfmUsernameRequest } : {},
         }),
       ),
-    enabled: open && source === "lastfm" && Boolean(lastfmUsernameRequest),
+    enabled: source === "lastfm" && Boolean(lastfmUsernameRequest),
   });
   const lastfmUsername = lastfmPlaylistsQuery.isSuccess ? lastfmUsernameRequest : "";
   const lastfmProfileLoading = lastfmRequestedUsername === null && lastfmProfileQuery.isLoading;
@@ -466,8 +417,7 @@ export function PlaylistImportModal({
                 json: { playlistId: pickedPlaylist!.id, username: lastfmUsername },
               }),
       ),
-    enabled:
-      open && ["spotify", "listenbrainz", "lastfm"].includes(source) && Boolean(pickedPlaylist?.id),
+    enabled: ["spotify", "listenbrainz", "lastfm"].includes(source) && Boolean(pickedPlaylist?.id),
   });
 
   useErrorToast(
@@ -531,7 +481,7 @@ export function PlaylistImportModal({
     queryKey: ["share-import", requestedShareUrl],
     queryFn: () =>
       parseResponse(shareLinksClient.import.preview.$post({ json: { url: requestedShareUrl } })),
-    enabled: open && source === "aurral" && Boolean(requestedShareUrl),
+    enabled: source === "aurral" && Boolean(requestedShareUrl),
     retry: false,
     staleTime: 60_000,
   });
@@ -801,584 +751,503 @@ export function PlaylistImportModal({
     );
   };
 
-  const canImportExternal = selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading;
-  const externalSource =
-    source === "listenbrainz"
-      ? "ListenBrainz"
-      : source === "lastfm"
-        ? "Last.fm"
-        : source === "youtube"
-          ? "YouTube Music"
-          : "Spotify";
+  const sourceLabel = IMPORT_SOURCES.find((entry) => entry.id === source)?.label ?? "";
+  const canImport = Boolean(
+    source === "aurral"
+      ? sharedPlaylist
+      : source === "file"
+        ? filePlaylist
+        : selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading,
+  );
+  const importCount =
+    source === "aurral"
+      ? (sharedPlaylist?.tracks.length ?? 0)
+      : source === "file"
+        ? (filePlaylist?.tracks.length ?? 0)
+        : previewTrackCount;
+
+  const clearSelection = () => {
+    setPlaylistNameDraft(null);
+    if (source === "youtube") youtubePreview.reset();
+    else if (source === "aurral") handleChangeShare();
+    else if (source === "file") setFilePlaylist(null);
+    else setPickedPlaylist(null);
+  };
+
+  const nameRow = (
+    <SettingsRow label="Name" htmlFor="playlist-import-name">
+      <input
+        id="playlist-import-name"
+        type="text"
+        className="input"
+        value={playlistName}
+        onChange={(event) => setPlaylistNameDraft(event.target.value)}
+        disabled={importing}
+      />
+    </SettingsRow>
+  );
+
+  const loadRow = ({
+    id,
+    label,
+    help,
+    error,
+    value,
+    placeholder,
+    loading,
+    onChange,
+    onLoad,
+  }: {
+    id: string;
+    label: string;
+    help: string;
+    error: string;
+    value: string;
+    placeholder: string;
+    loading: boolean;
+    onChange: (value: string) => void;
+    onLoad: () => void;
+  }) => (
+    <SettingsGroup>
+      <SettingsRow
+        label={label}
+        htmlFor={id}
+        help={error || help}
+        tone={error ? "error" : "default"}
+        stack
+      >
+        <div className="playlist-import__load">
+          <input
+            id={id}
+            type="text"
+            className="input"
+            placeholder={placeholder}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onLoad();
+              }
+            }}
+            autoComplete="off"
+            disabled={loading || importing}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onLoad}
+            disabled={loading || importing || !value.trim()}
+          >
+            {loading ? <DotLoader size="sm" label={null} /> : null}
+            Load
+          </button>
+        </div>
+      </SettingsRow>
+    </SettingsGroup>
+  );
+
+  const renderSelected = () => {
+    if (source === "aurral" && sharedPlaylist) {
+      return (
+        <>
+          <SettingsGroup>
+            {nameRow}
+            <SettingsRow
+              label="Keep synced"
+              htmlFor="playlist-import-share-sync"
+              help="Checks daily. New tracks download with your sources."
+            >
+              <input
+                id="playlist-import-share-sync"
+                type="radio"
+                name="playlist-import-share-mode"
+                className="artist-checkbox"
+                checked={shareSync}
+                onChange={() => setShareSync(true)}
+                disabled={importing}
+              />
+            </SettingsRow>
+            <SettingsRow
+              label="Import once"
+              htmlFor="playlist-import-share-once"
+              help={
+                shareFiles && sharedPlaylist.canDownload
+                  ? "Saves today's tracklist with the sender's files."
+                  : "Saves today's tracklist without downloading."
+              }
+            >
+              <input
+                id="playlist-import-share-once"
+                type="radio"
+                name="playlist-import-share-mode"
+                className="artist-checkbox"
+                checked={!shareSync}
+                onChange={() => setShareSync(false)}
+                disabled={importing}
+              />
+            </SettingsRow>
+            {!shareSync && sharedPlaylist.canDownload && sharedPlaylist.downloads > 0 ? (
+              <SettingsRow
+                label="Use the sender's files"
+                help={[
+                  formatTrackTotal(sharedPlaylist.downloads),
+                  sharedPlaylist.downloadBytes
+                    ? `${Math.max(1, Math.round(sharedPlaylist.downloadBytes / 1024 / 1024)).toLocaleString()} MB`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              >
+                <PillToggle
+                  checked={shareFiles}
+                  aria-label="Use the sender's files"
+                  onChange={(event) => setShareFiles(event.target.checked)}
+                  disabled={importing}
+                />
+              </SettingsRow>
+            ) : null}
+          </SettingsGroup>
+          <ImportTracks
+            tracks={sharedPlaylist.tracks}
+            total={sharedPlaylist.tracks.length}
+            meta={[
+              formatTrackTotal(sharedPlaylist.tracks.length),
+              sharedPlaylist.ready ? `${sharedPlaylist.ready} in your Library` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          />
+        </>
+      );
+    }
+    if (source === "file" && filePlaylist) {
+      return (
+        <>
+          <SettingsGroup>{nameRow}</SettingsGroup>
+          <ImportTracks
+            tracks={filePlaylist.tracks.map((track) => ({
+              artistName: track.artistName,
+              title: track.trackName,
+            }))}
+            total={filePlaylist.tracks.length}
+            skipped={filePlaylist.skipped}
+            skippedReason="Skipped entries with missing artist or track details."
+          />
+        </>
+      );
+    }
+    return (
+      <>
+        <SettingsGroup>
+          {nameRow}
+          <SettingsRow label="Sync" htmlFor="playlist-import-interval">
+            <Select
+              id="playlist-import-interval"
+              value={syncIntervalHours}
+              onChange={setSyncIntervalHours}
+              disabled={importing}
+              options={SYNC_INTERVAL_OPTIONS}
+            />
+          </SettingsRow>
+          <SettingsRow label={`Keep tracks ${sourceLabel} removes`}>
+            <PillToggle
+              checked={keepRemovedTracks}
+              aria-label={`Keep tracks ${sourceLabel} removes`}
+              onChange={(event) => setKeepRemovedTracks(event.target.checked)}
+              disabled={importing}
+            />
+          </SettingsRow>
+        </SettingsGroup>
+        <ImportTracks
+          tracks={previewTracks.map((track) => ({
+            artistName: track.artistName,
+            title: track.trackName,
+          }))}
+          total={previewTrackCount}
+          skipped={previewSkipped}
+          skippedReason={
+            SKIPPED_REASONS[source] ?? "Skipped entries with missing artist or track details."
+          }
+          loading={previewLoading}
+        />
+      </>
+    );
+  };
+
+  const renderSource = () => {
+    if (source === "file") {
+      return (
+        <SettingsGroup>
+          <SettingsRow
+            label="Playlist file"
+            htmlFor="playlist-import-file"
+            help={fileError || "Choose an M3U playlist exported from any player."}
+            tone={fileError ? "error" : "default"}
+            stack
+          >
+            <input
+              id="playlist-import-file"
+              type="file"
+              className="input"
+              accept=".m3u,.m3u8,audio/x-mpegurl,audio/mpegurl"
+              onChange={(event) => void handleChooseFile(event.target.files?.[0])}
+              disabled={importing}
+            />
+          </SettingsRow>
+        </SettingsGroup>
+      );
+    }
+    if (source === "aurral") {
+      return loadRow({
+        id: "playlist-import-share-url",
+        label: "Share link or code",
+        help: "Paste a share link or code from aurral.org.",
+        error: shareError,
+        value: shareUrl,
+        placeholder: "https://aurral.org/s/… or code",
+        loading: sharePreview.isFetching,
+        onChange: setShareUrl,
+        onLoad: handleLoadShare,
+      });
+    }
+    if (source === "youtube") {
+      return loadRow({
+        id: "playlist-import-youtube-url",
+        label: "Playlist URL",
+        help: "Use a public YouTube or YouTube Music playlist.",
+        error: youtubeError,
+        value: youtubeUrl,
+        placeholder: "https://music.youtube.com/playlist?list=…",
+        loading: previewLoading,
+        onChange: handleYoutubeUrlChange,
+        onLoad: handlePreviewYoutube,
+      });
+    }
+    if (source === "spotify" && !spotifyStatus.connected) {
+      return (
+        <SettingsGroup>
+          <SettingsRow label="Spotify account" help="Connect to see your playlists.">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => connectSpotify.mutate()}
+              disabled={spotifyLoading || importing}
+            >
+              {spotifyLoading ? <DotLoader size="sm" label={null} /> : null}
+              Connect Spotify
+            </button>
+          </SettingsRow>
+        </SettingsGroup>
+      );
+    }
+    if (source === "listenbrainz" && !listenBrainzStatus.connected) {
+      return (
+        <SettingsGroup>
+          <SettingsRow
+            label="ListenBrainz account"
+            help={listenBrainzLoading ? "Checking…" : "Connect ListenBrainz in Settings first."}
+          >
+            <SettingsLink
+              to="listening/listenbrainz"
+              className="btn btn-secondary btn-sm"
+              onClick={onClose}
+            >
+              Open Settings
+            </SettingsLink>
+          </SettingsRow>
+        </SettingsGroup>
+      );
+    }
+    if (source === "lastfm" && !lastfmUsername) {
+      return (
+        <SettingsGroup>
+          <SettingsRow
+            label="Last.fm username"
+            htmlFor="playlist-import-lastfm-username"
+            help="Loads your Library, Mix, and Recommended stations. Saved for future syncs."
+            stack
+          >
+            <div className="playlist-import__load">
+              <input
+                id="playlist-import-lastfm-username"
+                type="text"
+                className="input"
+                value={lastfmUsernameInput}
+                onChange={(event) => setLastfmUsernameDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameInput);
+                }}
+                autoComplete="off"
+                disabled={lastfmProfileLoading || lastfmLoading || importing}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => loadLastfmPlaylists(lastfmUsernameInput)}
+                disabled={
+                  lastfmProfileLoading || lastfmLoading || !lastfmUsernameInput.trim() || importing
+                }
+              >
+                {lastfmProfileLoading || lastfmLoading ? (
+                  <DotLoader size="sm" label={null} />
+                ) : null}
+                Load
+              </button>
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
+      );
+    }
+    const listLoading =
+      source === "spotify"
+        ? spotifyLoading
+        : source === "listenbrainz"
+          ? listenBrainzLoading
+          : lastfmLoading;
+    return (
+      <>
+        <SettingsGroup>
+          <SettingsRow
+            label={`Signed in as ${
+              (source === "spotify"
+                ? spotifyStatus
+                : source === "listenbrainz"
+                  ? listenBrainzStatus
+                  : { displayName: lastfmUsername }
+              ).displayName || sourceLabel
+            }`}
+          >
+            {source === "spotify" ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => disconnectSpotifyAccount.mutate()}
+                disabled={spotifyLoading || importing}
+              >
+                Disconnect
+              </button>
+            ) : source === "lastfm" ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={changeLastfmUsername}
+                disabled={lastfmLoading || importing}
+              >
+                Change
+              </button>
+            ) : null}
+          </SettingsRow>
+        </SettingsGroup>
+        <SettingsGroup
+          title={source === "lastfm" ? "Stations" : "Playlists"}
+          note={source === "listenbrainz" ? "Weekly playlists use the latest week." : undefined}
+        >
+          {playlists.length > 0 ? (
+            <div>
+              <input
+                type="search"
+                className="input"
+                placeholder="Search playlists"
+                aria-label="Search playlists"
+                value={playlistQuery}
+                onChange={(event) => setPlaylistQuery(event.target.value)}
+                disabled={importing}
+              />
+            </div>
+          ) : null}
+          {listLoading && playlists.length === 0 ? (
+            <p className="settings-loading">
+              <DotLoader size="sm" label={null} />
+              Loading playlists…
+            </p>
+          ) : filteredPlaylists.length === 0 ? (
+            <SettingsNote>No playlists found</SettingsNote>
+          ) : (
+            filteredPlaylists.map((playlist) => (
+              <button
+                key={playlist.id}
+                type="button"
+                className="settings-service"
+                onClick={() => handleSelectPlaylist(playlist)}
+                disabled={importing}
+              >
+                <span className="settings-service__name">{playlist.name}</span>
+                <span className="settings-service__status settings-service__status--muted">
+                  {getPlaylistMeta(playlist)}
+                </span>
+                <ChevronRight className="settings-service__chevron" aria-hidden="true" />
+              </button>
+            ))
+          )}
+        </SettingsGroup>
+      </>
+    );
+  };
 
   return (
-    <ModalShell
-      open={open}
-      title="Import playlist"
-      description={
-        source === "listenbrainz"
-          ? "Weekly playlists use the latest week."
-          : source === "youtube"
-            ? "Use a public YouTube or YouTube Music playlist URL."
-            : source === "aurral"
-              ? "Paste a share link or code from aurral.org."
-              : source === "file"
-                ? "Choose an M3U playlist exported from any player."
-                : undefined
-      }
+    <SettingsShell
+      label="Import"
+      view={view}
       onClose={onClose}
-      disableClose={importing}
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-secondary"
-            disabled={importing}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={
-              source === "aurral"
-                ? handleImportShare
-                : source === "file"
-                  ? handleImportFile
-                  : handleImportExternal
-            }
-            className="btn btn-primary"
-            disabled={
-              importing ||
-              !(source === "aurral"
-                ? sharedPlaylist
-                : source === "file"
-                  ? filePlaylist
-                  : canImportExternal)
-            }
-          >
-            {importing ? (
-              <DotLoader size="sm" label={null} />
-            ) : (
-              <Music2 className="artist-icon-sm" />
-            )}
-            Import playlist
-          </button>
-        </>
+      closeDisabled={importing}
+      nav={
+        <nav className="settings-dialog__group" aria-label="Import from">
+          {IMPORT_SOURCES.map((entry) => {
+            const active = entry.id === source;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                className={`settings-dialog__link${active ? " is-active" : ""}`}
+                aria-current={active ? "page" : undefined}
+                onClick={() => {
+                  if (!active) selectSource(entry.id);
+                  setView("pane");
+                }}
+                disabled={importing}
+              >
+                {entry.label}
+              </button>
+            );
+          })}
+        </nav>
       }
     >
-      <div className="playlist-import">
-        <div
-          className="artist-segmented playlist-import__segmented"
-          role="group"
-          aria-label="Import source"
-        >
-          {(
-            [
-              { id: "spotify", label: "Spotify" },
-              { id: "lastfm", label: "Last.fm" },
-              { id: "listenbrainz", label: "ListenBrainz" },
-              { id: "youtube", label: "YouTube Music" },
-              { id: "aurral", label: "Aurral share" },
-              { id: "file", label: "M3U" },
-            ] as const
-          ).map((option) => (
+      <SettingsPane
+        crumbs={
+          selectedPlaylist
+            ? [{ label: "Import" }, { label: sourceLabel, onClick: clearSelection }]
+            : [{ label: "Import" }]
+        }
+        title={selectedPlaylist ? selectedPlaylist.name : sourceLabel}
+        backLabel={selectedPlaylist ? `Back to ${sourceLabel}` : "Back to import"}
+        onBack={selectedPlaylist ? clearSelection : () => setView("nav")}
+        closeLabel="Close import"
+        onClose={onClose}
+        closeDisabled={importing}
+        actions={
+          selectedPlaylist ? (
             <button
-              key={option.id}
               type="button"
-              className={`artist-segmented-button${source === option.id ? " is-active" : ""}`}
-              onClick={() => selectSource(option.id)}
-              disabled={importing}
+              className="btn btn-primary btn-sm"
+              onClick={
+                source === "aurral"
+                  ? handleImportShare
+                  : source === "file"
+                    ? handleImportFile
+                    : handleImportExternal
+              }
+              disabled={importing || !canImport}
             >
-              {option.label}
+              {importing ? <DotLoader size="sm" label={null} /> : null}
+              {importCount > 0 ? `Import ${formatTrackTotal(importCount)}` : "Import"}
             </button>
-          ))}
-        </div>
-
-        {source === "file" ? (
-          <div className="playlist-import__share">
-            <div className="playlist-modal__fields">
-              <label className="playlist-import__field-label" htmlFor="playlist-import-file">
-                Playlist file
-              </label>
-              <input
-                id="playlist-import-file"
-                type="file"
-                className="input"
-                accept=".m3u,.m3u8,audio/x-mpegurl,audio/mpegurl"
-                onChange={(event) => void handleChooseFile(event.target.files?.[0])}
-                disabled={importing}
-                aria-describedby={fileError ? "playlist-import-file-error" : undefined}
-              />
-              {fileError ? (
-                <p id="playlist-import-file-error" className="settings-page__error" role="alert">
-                  {fileError}
-                </p>
-              ) : null}
-            </div>
-            {filePlaylist ? (
-              <>
-                <div className="playlist-modal__fields">
-                  <label
-                    className="playlist-import__field-label"
-                    htmlFor="playlist-import-file-name"
-                  >
-                    Name in Aurral
-                  </label>
-                  <input
-                    id="playlist-import-file-name"
-                    type="text"
-                    className="input"
-                    value={playlistName}
-                    onChange={(event) => setPlaylistNameDraft(event.target.value)}
-                    disabled={importing}
-                  />
-                </div>
-                <div className="playlist-import__summary" aria-live="polite">
-                  <div className="playlist-import__summary-top">
-                    <span className="flow-page__badge flow-page__badge--count">
-                      {filePlaylist.tracks.length} importable
-                    </span>
-                    {filePlaylist.skipped > 0 ? (
-                      <span className="playlist-import__summary-note">
-                        {filePlaylist.skipped} skipped
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="playlist-import__summary-sample">
-                    {filePlaylist.tracks
-                      .slice(0, 3)
-                      .map((track) => `${track.artistName} · ${track.trackName}`)
-                      .join(", ")}
-                    {filePlaylist.tracks.length > 3
-                      ? `, +${filePlaylist.tracks.length - 3} more`
-                      : ""}
-                  </p>
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : source === "aurral" ? (
-          <div className="playlist-import__share">
-            {sharedPlaylist ? (
-              <>
-                <div className="playlist-import__selected">
-                  <div className="playlist-import__selected-copy">
-                    <span className="playlist-import__selected-name">
-                      {sharedPlaylist.manifest.title}
-                    </span>
-                    <span className="playlist-import__selected-meta">
-                      {formatTrackTotal(sharedPlaylist.tracks.length)}
-                      {sharedPlaylist.ready ? ` · ${sharedPlaylist.ready} in your Library` : ""}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={handleChangeShare}
-                    disabled={importing}
-                  >
-                    Change
-                  </button>
-                </div>
-                <div className="playlist-import__choices" role="radiogroup" aria-label="Import">
-                  <label className="playlist-import__choice">
-                    <input
-                      type="radio"
-                      name="playlist-import-share-mode"
-                      className="artist-checkbox"
-                      checked={shareSync}
-                      onChange={() => setShareSync(true)}
-                      disabled={importing}
-                    />
-                    <span className="playlist-import__retention-copy">
-                      <span className="playlist-import__retention-title">Keep synced</span>
-                      <span className="playlist-import__choice-hint">
-                        Checks daily. New tracks download with your sources.
-                      </span>
-                    </span>
-                  </label>
-                  <label className="playlist-import__choice">
-                    <input
-                      type="radio"
-                      name="playlist-import-share-mode"
-                      className="artist-checkbox"
-                      checked={!shareSync}
-                      onChange={() => setShareSync(false)}
-                      disabled={importing}
-                    />
-                    <span className="playlist-import__retention-copy">
-                      <span className="playlist-import__retention-title">Import once</span>
-                      <span className="playlist-import__choice-hint">
-                        {shareFiles && sharedPlaylist.canDownload
-                          ? "Saves today's tracklist with the sender's files."
-                          : "Saves today's tracklist without downloading."}
-                      </span>
-                    </span>
-                  </label>
-                  {!shareSync && sharedPlaylist.canDownload && sharedPlaylist.downloads > 0 ? (
-                    <label className="playlist-import__choice-option">
-                      <input
-                        type="checkbox"
-                        className="artist-checkbox"
-                        checked={shareFiles}
-                        onChange={(event) => setShareFiles(event.target.checked)}
-                        disabled={importing}
-                      />
-                      Use the sender&apos;s files ({formatTrackTotal(sharedPlaylist.downloads)}
-                      {sharedPlaylist.downloadBytes
-                        ? `, ${Math.max(1, Math.round(sharedPlaylist.downloadBytes / 1024 / 1024)).toLocaleString()} MB`
-                        : ""}
-                      )
-                    </label>
-                  ) : null}
-                </div>
-                <div className="playlist-modal__fields">
-                  <label
-                    className="playlist-import__field-label"
-                    htmlFor="playlist-import-share-name"
-                  >
-                    Name in Aurral
-                  </label>
-                  <input
-                    id="playlist-import-share-name"
-                    type="text"
-                    className="input"
-                    value={playlistName}
-                    onChange={(event) => setPlaylistNameDraft(event.target.value)}
-                    disabled={importing}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="playlist-modal__fields">
-                  <label
-                    className="playlist-import__field-label"
-                    htmlFor="playlist-import-share-url"
-                  >
-                    Share link or code
-                  </label>
-                  <input
-                    id="playlist-import-share-url"
-                    type="text"
-                    className="input"
-                    placeholder="https://aurral.org/s/… or code"
-                    value={shareUrl}
-                    onChange={(event) => setShareUrl(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleLoadShare();
-                      }
-                    }}
-                    autoComplete="off"
-                    disabled={sharePreview.isFetching || importing}
-                    aria-describedby={shareError ? "playlist-import-share-error" : undefined}
-                  />
-                  {shareError ? (
-                    <p
-                      id="playlist-import-share-error"
-                      className="settings-page__error"
-                      role="alert"
-                    >
-                      {shareError}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleLoadShare}
-                  disabled={sharePreview.isFetching || importing || !shareUrl.trim()}
-                >
-                  {sharePreview.isFetching ? <DotLoader size="sm" label={null} /> : null}
-                  {sharePreview.isFetching ? "Loading share…" : "Load share"}
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="playlist-import__spotify">
-            {source === "youtube" ? (
-              <div className="playlist-import__youtube">
-                <div className="playlist-modal__fields">
-                  <label
-                    className="playlist-import__field-label"
-                    htmlFor="playlist-import-youtube-url"
-                  >
-                    Playlist URL
-                  </label>
-                  <input
-                    id="playlist-import-youtube-url"
-                    type="url"
-                    className="input"
-                    placeholder="https://music.youtube.com/playlist?list=…"
-                    value={youtubeUrl}
-                    onChange={(event) => handleYoutubeUrlChange(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handlePreviewYoutube();
-                      }
-                    }}
-                    autoComplete="url"
-                    disabled={previewLoading || importing}
-                    aria-describedby={youtubeError ? "playlist-import-youtube-error" : undefined}
-                  />
-                  {youtubeError ? (
-                    <p
-                      id="playlist-import-youtube-error"
-                      className="settings-page__error"
-                      role="alert"
-                    >
-                      {youtubeError}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handlePreviewYoutube}
-                  disabled={previewLoading || importing || !youtubeUrl.trim()}
-                >
-                  {previewLoading ? <DotLoader size="sm" label={null} /> : null}
-                  {previewLoading ? "Loading preview…" : "Load playlist"}
-                </button>
-
-                {selectedPlaylist ? (
-                  <>
-                    <div className="playlist-import__selected">
-                      <div className="playlist-import__selected-copy">
-                        <span className="playlist-import__selected-name">
-                          {selectedPlaylist.name}
-                        </span>
-                        <span className="playlist-import__selected-meta">
-                          {getPlaylistMeta(selectedPlaylist)}
-                        </span>
-                      </div>
-                    </div>
-                    <PlaylistImportConfig
-                      externalSource={externalSource}
-                      importing={importing}
-                      keepRemovedTracks={keepRemovedTracks}
-                      playlistName={playlistName}
-                      previewLoading={previewLoading}
-                      previewSkipped={previewSkipped}
-                      previewTrackCount={previewTrackCount}
-                      previewTracks={previewTracks}
-                      setKeepRemovedTracks={setKeepRemovedTracks}
-                      setPlaylistName={setPlaylistNameDraft}
-                      setSyncIntervalHours={setSyncIntervalHours}
-                      syncIntervalHours={syncIntervalHours}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : source === "spotify" && !spotifyStatus.connected ? (
-              <div className="playlist-import__empty">
-                <div className="playlist-import__empty-icon" aria-hidden="true">
-                  <Music2 />
-                </div>
-                <p className="playlist-import__empty-title">Connect your Spotify account</p>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => connectSpotify.mutate()}
-                  disabled={spotifyLoading || importing}
-                >
-                  {spotifyLoading ? <DotLoader size="sm" label={null} /> : null}
-                  Connect Spotify
-                </button>
-              </div>
-            ) : source === "listenbrainz" && !listenBrainzStatus.connected ? (
-              <div className="playlist-import__empty">
-                <div className="playlist-import__empty-icon" aria-hidden="true">
-                  <Music2 />
-                </div>
-                <p className="playlist-import__empty-title">Connect ListenBrainz first</p>
-                <p className="playlist-import__empty-copy">
-                  Connect ListenBrainz in Settings → Listening to import playlists.
-                </p>
-                <SettingsLink
-                  to="listening/listenbrainz"
-                  className="btn btn-primary btn-sm"
-                  onClick={onClose}
-                >
-                  Open ListenBrainz settings
-                </SettingsLink>
-              </div>
-            ) : source === "lastfm" && !lastfmUsername ? (
-              <div className="playlist-import__lastfm-setup">
-                <div>
-                  <p className="playlist-import__empty-title">Enter your Last.fm username</p>
-                  <p className="playlist-import__empty-copy">
-                    Loads your Library, Mix, and Recommended stations.
-                  </p>
-                </div>
-                <div className="playlist-modal__fields">
-                  <label
-                    className="playlist-import__field-label"
-                    htmlFor="playlist-import-lastfm-username"
-                  >
-                    Last.fm username
-                  </label>
-                  <input
-                    id="playlist-import-lastfm-username"
-                    type="text"
-                    className="input"
-                    value={lastfmUsernameInput}
-                    onChange={(event) => setLastfmUsernameDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameInput);
-                    }}
-                    autoComplete="off"
-                    disabled={lastfmProfileLoading || lastfmLoading || importing}
-                  />
-                  <p className="settings-page__hint">Saved for future syncs.</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => loadLastfmPlaylists(lastfmUsernameInput)}
-                  disabled={
-                    lastfmProfileLoading ||
-                    lastfmLoading ||
-                    !lastfmUsernameInput.trim() ||
-                    importing
-                  }
-                >
-                  {lastfmProfileLoading || lastfmLoading ? (
-                    <DotLoader size="sm" label={null} />
-                  ) : null}
-                  Load stations
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="playlist-import__account">
-                  <span className="playlist-import__account-status" aria-hidden="true" />
-                  <span className="playlist-import__account-label">
-                    Signed in as{" "}
-                    <strong>
-                      {(source === "spotify"
-                        ? spotifyStatus
-                        : source === "listenbrainz"
-                          ? listenBrainzStatus
-                          : { displayName: lastfmUsername }
-                      ).displayName || externalSource}
-                    </strong>
-                  </span>
-                  {source === "spotify" ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => disconnectSpotifyAccount.mutate()}
-                      disabled={spotifyLoading || importing}
-                    >
-                      Disconnect
-                    </button>
-                  ) : source === "lastfm" ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={changeLastfmUsername}
-                      disabled={lastfmLoading || importing}
-                    >
-                      Change
-                    </button>
-                  ) : null}
-                </div>
-
-                {selectedPlaylist ? (
-                  <div className="playlist-import__selected">
-                    <div className="playlist-import__selected-copy">
-                      <span className="playlist-import__selected-name">
-                        {selectedPlaylist.name}
-                      </span>
-                      <span className="playlist-import__selected-meta">
-                        {getPlaylistMeta(selectedPlaylist)}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setPickedPlaylist(null)}
-                      disabled={importing}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
-                  <div className="playlist-import__list-panel">
-                    <input
-                      id="playlist-import-search"
-                      type="search"
-                      className="input playlist-import__search"
-                      placeholder="Search playlists"
-                      value={playlistQuery}
-                      onChange={(event) => setPlaylistQuery(event.target.value)}
-                      disabled={importing || spotifyLoading || listenBrainzLoading || lastfmLoading}
-                    />
-                    <div
-                      className="playlist-import__playlist-list"
-                      role="listbox"
-                      aria-label={`${externalSource} playlists`}
-                    >
-                      {(source === "spotify"
-                        ? spotifyLoading
-                        : source === "listenbrainz"
-                          ? listenBrainzLoading
-                          : lastfmLoading) && playlists.length === 0 ? (
-                        <div className="playlist-import__list-status">
-                          <DotLoader size="sm" label={null} />
-                          <span>Loading playlists…</span>
-                        </div>
-                      ) : filteredPlaylists.length === 0 ? (
-                        <div className="playlist-import__list-status">No playlists found</div>
-                      ) : (
-                        filteredPlaylists.map((playlist) => (
-                          <button
-                            key={playlist.id}
-                            type="button"
-                            role="option"
-                            aria-selected={false}
-                            className="playlist-import__playlist-option"
-                            onClick={() => handleSelectPlaylist(playlist)}
-                            disabled={importing}
-                          >
-                            <span className="playlist-import__playlist-name">{playlist.name}</span>
-                            <span className="playlist-import__playlist-meta">
-                              {getPlaylistMeta(playlist)}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {selectedPlaylist ? (
-                  <PlaylistImportConfig
-                    externalSource={externalSource}
-                    importing={importing}
-                    keepRemovedTracks={keepRemovedTracks}
-                    playlistName={playlistName}
-                    previewLoading={previewLoading}
-                    previewSkipped={previewSkipped}
-                    previewTrackCount={previewTrackCount}
-                    previewTracks={previewTracks}
-                    setKeepRemovedTracks={setKeepRemovedTracks}
-                    setPlaylistName={setPlaylistNameDraft}
-                    setSyncIntervalHours={setSyncIntervalHours}
-                    syncIntervalHours={syncIntervalHours}
-                  />
-                ) : null}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </ModalShell>
+          ) : null
+        }
+      >
+        {selectedPlaylist ? renderSelected() : renderSource()}
+      </SettingsPane>
+    </SettingsShell>
   );
 }
