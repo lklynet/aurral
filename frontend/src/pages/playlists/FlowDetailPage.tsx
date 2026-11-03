@@ -2,7 +2,6 @@ import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
-  Check,
   ClipboardCopy,
   Download,
   FilePlus2,
@@ -27,21 +26,14 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import { parseResponse, type InferRequestType } from "hono/client";
+import { parseResponse } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
 import { formatFlowLastRun, getFlowDisplayTrackCount } from "./playlistStats";
-import {
-  buildFlowFromForm,
-  flowToForm,
-  isFlowDirty,
-  normalizeNameKey,
-  reserveUniqueName,
-} from "./flowPageUtils";
-import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
+import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import {
@@ -49,22 +41,13 @@ import {
   formatFlowTrackLabel,
   formatTrackTotal,
   getFlowActivityMessage,
-  optionMenuItem,
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import type { Flow } from "./playlistStats.ts";
-import type { FlowDraft } from "./flowPageUtils.ts";
 import { asApiError } from "../../utils/api/core.ts";
 
-const FlowFormFields = lazy(() =>
-  import("./components/flowFormComponents.tsx").then((m) => ({ default: m.FlowFormFields })),
-);
-
-const DETAIL_TABS = [
-  { id: "tracks", label: "Tracks" },
-  { id: "recipe", label: "Recipe" },
-];
+const FlowEditor = lazy(() => import("./FlowEditor.tsx"));
 
 export default function FlowDetailPage() {
   const { flowId } = useParams();
@@ -79,15 +62,7 @@ export default function FlowDetailPage() {
           {loading && !status ? (
             <SkeletonStatus label="Loading flow" className="native-library-detail">
               <SkeletonCollectionHeader icons={3} />
-              <div>
-                <div className="artist-segmented playlist-detail__tabs">
-                  <span className="artist-segmented-button is-active">Tracks</span>
-                  <span className="artist-segmented-button">Recipe</span>
-                </div>
-                <div className="playlist-detail__panel">
-                  <SkeletonCollectionTracks toolbar={false} />
-                </div>
-              </div>
+              <SkeletonCollectionTracks toolbar={false} />
             </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
@@ -124,10 +99,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
-  const [tab, setTab] = useState(location.state?.tab === "recipe" ? "recipe" : "tracks");
-  const [draft, setDraft] = useState<FlowDraft>(() => flowToForm(flow));
-  const [recipeError, setRecipeError] = useState("");
-  const [savingRecipe, setSavingRecipe] = useState(false);
   const playback = usePlaylistTrackPlayback({
     tracks,
     playbackSource: {
@@ -137,17 +108,14 @@ function FlowDetail({ flow }: { flow: Flow }) {
       recordHistory: flow.recordHistory !== false,
     },
   });
-  const [editOpen, setEditOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(location.state?.edit === true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);
-  const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
-  const [downloadingSaved, setDownloadingSaved] = useState(false);
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
   const savedCount = tracks.filter((track) => track.status === "saved").length;
-  const recipeDirty = isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
   const canRunNow = enabled && !running && !activity;
@@ -157,13 +125,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     lastRun ? `Updated ${lastRun}` : null,
     describeFlowSchedule(flow, countdownNow),
   ];
-
-  const updateFlow = (
-    json: InferRequestType<(typeof flowsClient.flows)[":flowId"]["$put"]>["json"],
-  ) =>
-    parseResponse(
-      flowsClient.flows[":flowId"].$put({ param: { flowId: encodeURIComponent(flow.id) }, json }),
-    );
 
   const handleRunNow = async () => {
     setRunning(true);
@@ -182,30 +143,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     } finally {
       setRunning(false);
     }
-  };
-
-  const handleSaveRecipe = async () => {
-    setSavingRecipe(true);
-    setRecipeError("");
-    try {
-      const payload = buildFlowFromForm(draft);
-      const response = await updateFlow(payload);
-      setDraft(flowToForm(response?.flow || { ...flow, ...payload }));
-      showSuccess("Recipe saved");
-      await fetchStatus();
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to save recipe");
-      setRecipeError(message);
-      showError(message);
-    } finally {
-      setSavingRecipe(false);
-    }
-  };
-
-  const handleRename = async (name: string) => {
-    await updateFlow({ name });
-    setDraft((current) => ({ ...current, name }));
-    await fetchStatus();
   };
 
   const handleDelete = async () => {
@@ -278,43 +215,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     }
   };
 
-  const updateSetting = async (
-    changes: { recordHistory?: boolean; showInLibrary?: boolean; autoDownload?: boolean },
-    successMessage: string,
-  ) => {
-    try {
-      await updateFlow(changes);
-      setDraft((current) => ({ ...current, ...changes }));
-      showSuccess(successMessage);
-      await fetchStatus();
-      return true;
-    } catch (err) {
-      showError(getApiErrorMessage(err, "Failed to update flow setting"));
-      return false;
-    }
-  };
-
-  const enableAutoDownload = async () => {
-    if (await updateSetting({ autoDownload: true }, "New tracks will download automatically"))
-      setConfirmDownloadSaved(savedCount > 0);
-  };
-
-  const downloadSavedNow = async () => {
-    setDownloadingSaved(true);
-    await handleDownloadSaved();
-    setDownloadingSaved(false);
-    setConfirmDownloadSaved(false);
-  };
-
-  const recipeFieldProps = {
-    draft,
-    inputClassName: "flow-page__field-control",
-    errorMessage: recipeError,
-    onDraftChange: (updater: (prev: FlowDraft) => FlowDraft) =>
-      setDraft((current) => updater(current)),
-    onClearError: () => setRecipeError(""),
-  };
-
   return (
     <CollectionPage tintSrc={artworkUrlFor(flow.id)} className="playlist-page">
       <CollectionHeader
@@ -323,7 +223,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
             type="button"
             className="playlist-detail__cover"
             onClick={() => setEditOpen(true)}
-            aria-label={`Edit ${flow.name} details`}
+            aria-label={`Edit ${flow.name}`}
           >
             <PlaylistArtworkThumb artworkUrl={artworkUrlFor(flow.id)} name={flow.name} />
           </button>
@@ -368,13 +268,20 @@ function FlowDetail({ flow }: { flow: Flow }) {
               <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
               <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
             </span>
+            <TooltipButton
+              className="native-library-icon-button"
+              label="Edit flow"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil aria-hidden="true" />
+            </TooltipButton>
             <LibraryItemMenu
               label={flow.name}
               contextMenu={false}
               items={[
                 {
                   id: "edit",
-                  label: "Edit details",
+                  label: "Edit flow",
                   icon: Pencil,
                   onSelect: () => setEditOpen(true),
                 },
@@ -395,41 +302,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   disabled: Number(stats?.done || 0) === 0,
                   onSelect: handleConvertToStatic,
                 },
-                optionMenuItem({
-                  id: "auto-download",
-                  label: "Download automatically",
-                  checked: flow.autoDownload !== false,
-                  separatorBefore: true,
-                  onSelect: () =>
-                    flow.autoDownload === false
-                      ? enableAutoDownload()
-                      : updateSetting(
-                          { autoDownload: false },
-                          "New tracks will wait for you to download them",
-                        ),
-                }),
-                optionMenuItem({
-                  id: "scrobble",
-                  label: "Scrobble tracks",
-                  checked: flow.recordHistory !== false,
-                  onSelect: () =>
-                    updateSetting(
-                      { recordHistory: flow.recordHistory === false },
-                      flow.recordHistory === false
-                        ? "Scrobbling turned on"
-                        : "Scrobbling turned off",
-                    ),
-                }),
-                optionMenuItem({
-                  id: "show-in-library",
-                  label: "Show in library",
-                  checked: flow.showInLibrary === true,
-                  onSelect: () =>
-                    updateSetting(
-                      { showInLibrary: flow.showInLibrary !== true },
-                      flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
-                    ),
-                }),
                 ...(lidarrConnected
                   ? [
                       {
@@ -455,99 +327,26 @@ function FlowDetail({ flow }: { flow: Flow }) {
         }
       />
 
-      <div>
-        <div
-          className="artist-segmented playlist-detail__tabs"
-          role="tablist"
-          aria-label="Flow views"
-        >
-          {DETAIL_TABS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              id={`flow-tab-${entry.id}`}
-              aria-selected={tab === entry.id}
-              aria-controls={`flow-panel-${entry.id}`}
-              className={`artist-segmented-button${tab === entry.id ? " is-active" : ""}`}
-              onClick={() => setTab(entry.id)}
-            >
-              {entry.label}
-              {entry.id === "recipe" && recipeDirty ? (
-                <span className="playlist-detail__dirty" aria-label="Unsaved changes" />
-              ) : null}
-            </button>
-          ))}
-        </div>
-        <div
-          role="tabpanel"
-          id={`flow-panel-${tab}`}
-          aria-labelledby={`flow-tab-${tab}`}
-          className="playlist-detail__panel"
-        >
-          {tab === "tracks" ? (
-            <PlaylistTracks
-              entry={flow}
-              kind="flow"
-              tracks={tracks}
-              loading={loading}
-              error={error}
-              refresh={refresh}
-              staticPlaylists={staticPlaylists}
-              fetchStatus={fetchStatus}
-              activityHint={activity}
-              emptyMessage={enabled ? "No tracks yet." : "Turn this flow on to generate tracks."}
-              recordHistory={flow.recordHistory !== false}
-            />
-          ) : null}
-          {tab === "recipe" ? (
-            <div className="flow-page__form flow-page__detail-recipe">
-              <Suspense fallback={null}>
-                <FlowFormFields {...recipeFieldProps} />
-              </Suspense>
-              <div className="flow-page__recipe-actions">
-                {recipeDirty ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={savingRecipe}
-                      onClick={() => {
-                        setDraft(flowToForm(flow));
-                        setRecipeError("");
-                      }}
-                    >
-                      Discard changes
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={savingRecipe || Boolean(recipeError)}
-                      onClick={handleSaveRecipe}
-                    >
-                      {savingRecipe ? <DotLoader size="sm" label={null} /> : null}
-                      Save recipe
-                    </button>
-                  </>
-                ) : (
-                  <span className="flow-page__recipe-status" role="status">
-                    <Check className="artist-icon-sm" aria-hidden="true" />
-                    Saved
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </div>
+      <div className="playlist-detail__panel">
+        <PlaylistTracks
+          entry={flow}
+          kind="flow"
+          tracks={tracks}
+          loading={loading}
+          error={error}
+          refresh={refresh}
+          staticPlaylists={staticPlaylists}
+          fetchStatus={fetchStatus}
+          activityHint={activity}
+          emptyMessage={enabled ? "No tracks yet." : "Turn this flow on to generate tracks."}
+          recordHistory={flow.recordHistory !== false}
+        />
       </div>
 
       {editOpen ? (
-        <PlaylistEditModal
-          entry={flow}
-          title="Edit flow"
-          onClose={() => setEditOpen(false)}
-          onRename={handleRename}
-        />
+        <Suspense fallback={null}>
+          <FlowEditor flowId={flow.id} onClose={() => setEditOpen(false)} />
+        </Suspense>
       ) : null}
       <ConfirmModal
         open={confirmDelete}
@@ -558,18 +357,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
         busy={deleting}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-      />
-      <ConfirmModal
-        open={confirmDownloadSaved}
-        title={`Download ${formatTrackTotal(savedCount)} already in this flow?`}
-        body="New tracks will download automatically from now on."
-        confirmLabel="Download now"
-        cancelLabel="Not now"
-        tone="primary"
-        busyLabel="Downloading"
-        busy={downloadingSaved}
-        onCancel={() => setConfirmDownloadSaved(false)}
-        onConfirm={downloadSavedNow}
       />
     </CollectionPage>
   );

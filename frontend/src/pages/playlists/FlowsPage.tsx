@@ -16,7 +16,7 @@ import { queryKeys } from "../../queryClient.ts";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
 import { getFlowDisplayTrackCount } from "./playlistStats";
-import { NEW_FLOW_TEMPLATE, buildFlowFromForm, flowToForm, getNextFlowName } from "./flowPageUtils";
+import { getNextFlowName, newBlankFlow } from "./flowPageUtils";
 import {
   describeFlowSchedule,
   formatFlowTrackLabel,
@@ -57,17 +57,12 @@ export default function FlowsPage() {
     try {
       const payload = template
         ? { templateId: template.id, name: getNextFlowName(flows, template.name) }
-        : buildFlowFromForm(
-            flowToForm({
-              ...NEW_FLOW_TEMPLATE,
-              name: getNextFlowName(flows, NEW_FLOW_TEMPLATE.name),
-            }),
-          );
+        : newBlankFlow(flows);
       const response = await parseResponse(flowsClient.flows.$post({ json: payload }));
       showSuccess(`Created ${response?.flow?.name || payload.name}`);
       await fetchStatus();
       if (response?.flow?.id) {
-        navigate(flowPath(response.flow.id), template ? undefined : { state: { tab: "recipe" } });
+        navigate(flowPath(response.flow.id), template ? undefined : { state: { edit: true } });
       }
     } catch (err) {
       showError(

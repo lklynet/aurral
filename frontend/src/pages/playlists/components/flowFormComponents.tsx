@@ -1,4 +1,5 @@
 import { Fragment, useId } from "react";
+import { SettingsGroup, SettingsNote, SettingsRow } from "../../Settings/SettingsLayout.tsx";
 import {
   CommaTokenInput,
   fetchFlowArtistSuggestions,
@@ -14,6 +15,7 @@ import {
   focusNeedsSeeds,
   type FlowDraft,
 } from "../flowPageUtils.ts";
+import { formatTrackTotal } from "../playlistPageUtils.ts";
 
 type FlowDraftUpdater = (updater: (prev: FlowDraft) => FlowDraft) => void;
 
@@ -47,23 +49,23 @@ const toTrackCount = (value: string) =>
 
 export function FlowFormFields({
   draft,
-  inputClassName = "flow-page__field-control",
-  errorMessage,
   onDraftChange,
-  onClearError,
 }: {
   draft: FlowDraft;
-  inputClassName?: string;
-  errorMessage?: string | null;
   onDraftChange: FlowDraftUpdater;
-  onClearError?: () => void;
 }) {
-  const updateDraft: FlowDraftUpdater = (updater) => {
-    onDraftChange(updater);
-    onClearError?.();
-  };
   const setCount = (source: FlowSource, count: number) =>
-    updateDraft((prev) => ({ ...prev, counts: { ...prev.counts, [source]: count } }));
+    onDraftChange((prev) => ({ ...prev, counts: { ...prev.counts, [source]: count } }));
+  const toggle = (
+    key: "recentListening" | "deepDive" | "autoDownload" | "recordHistory" | "showInLibrary",
+    label: string,
+  ) => (
+    <PillToggle
+      checked={draft[key] === true}
+      aria-label={label}
+      onChange={(event) => onDraftChange((prev) => ({ ...prev, [key]: event.target.checked }))}
+    />
+  );
   const scheduleDays = normalizeScheduleDays(draft.scheduleDays);
   const idPrefix = useId();
   const yearInput = (key: "yearFrom" | "yearTo", label: string) => (
@@ -75,20 +77,19 @@ export function FlowFormFields({
       inputMode="numeric"
       placeholder="Any"
       aria-label={label}
-      className={`${inputClassName} flow-page__field-input--size`}
+      className="input"
       value={draft[key] ?? ""}
       onChange={(event) => {
         const value = event.target.value;
-        updateDraft((prev) => ({ ...prev, [key]: value }));
+        onDraftChange((prev) => ({ ...prev, [key]: value }));
       }}
     />
   );
 
   return (
-    <div className="flow-page__form">
-      <div className="flow-page__form-section">
-        <div className="flow-page__schedule-line">
-          <span className="flow-page__schedule-word">Updates</span>
+    <>
+      <SettingsGroup title="Schedule">
+        <SettingsRow label="Days">
           <div className="flow-page__weekday-grid" role="group" aria-label="Update days">
             {WEEKDAY_OPTIONS.map((day) => {
               const checked = scheduleDays.includes(day.id);
@@ -103,7 +104,7 @@ export function FlowFormFields({
                     aria-disabled={isLastDay}
                     onClick={() => {
                       if (isLastDay) return;
-                      updateDraft((prev) => {
+                      onDraftChange((prev) => {
                         const current = normalizeScheduleDays(prev.scheduleDays);
                         return {
                           ...prev,
@@ -120,124 +121,107 @@ export function FlowFormFields({
               );
             })}
           </div>
-          <span className="flow-page__schedule-word">at</span>
+        </SettingsRow>
+        <SettingsRow label="Time" htmlFor={`${idPrefix}-time`}>
           <Select
-            className={`${inputClassName} flow-page__field-select`}
-            aria-label="Update hour"
+            id={`${idPrefix}-time`}
             value={String(draft.scheduleTime || "00:00")}
-            onChange={(time) => updateDraft((prev) => ({ ...prev, scheduleTime: time || "00:00" }))}
+            onChange={(time) =>
+              onDraftChange((prev) => ({ ...prev, scheduleTime: time || "00:00" }))
+            }
             options={SCHEDULE_HOUR_OPTIONS}
           />
-        </div>
-      </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <div className="flow-page__form-section">
-        <div className="flow-page__section-head">
-          <span className="flow-page__section-title">Tracks</span>
-          <span className="flow-page__section-total">{flowDraftTotal(draft)}</span>
-        </div>
-        <div className="flow-page__sources" role="group" aria-label="Sources">
-          {FLOW_SOURCES.map((source) => {
-            const { label, description } = SOURCES[source];
-            const count = draft.counts[source];
-            const countId = `${idPrefix}-${source}`;
-            const showFocusOptions = source === "focus" && count > 0;
-            return (
-              <Fragment key={source}>
-                <div className={`flow-page__source${count > 0 ? "" : " is-off"}`}>
-                  <label className="flow-page__source-name" htmlFor={countId}>
-                    {label}
-                  </label>
-                  {showFocusOptions ? (
-                    <div className="flow-page__source-detail">
-                      <CommaTokenInput
-                        value={draft.includeRelatedArtists}
-                        placeholder="Similar to these artists"
-                        fetchSuggestions={fetchFlowArtistSuggestions}
-                        suggestionLabel="Similar artist suggestions"
-                        onChange={(includeRelatedArtists) =>
-                          updateDraft((prev) => ({ ...prev, includeRelatedArtists }))
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <span className="flow-page__source-detail">{description}</span>
-                  )}
+      <SettingsGroup
+        title="Tracks"
+        actions={
+          <span className="settings-group__meta">{formatTrackTotal(flowDraftTotal(draft))}</span>
+        }
+      >
+        {FLOW_SOURCES.map((source) => {
+          const { label, description } = SOURCES[source];
+          const countId = `${idPrefix}-${source}`;
+          return (
+            <Fragment key={source}>
+              <SettingsRow label={label} htmlFor={countId} help={description}>
+                <span className="flow-editor__count">
                   <input
                     id={countId}
                     type="number"
                     min="0"
                     max={MAX_SOURCE_TRACKS}
                     inputMode="numeric"
-                    aria-label={`${label} tracks`}
-                    className={`${inputClassName} flow-page__source-count`}
-                    value={count}
+                    className="input"
+                    value={draft.counts[source]}
                     onChange={(event) => setCount(source, toTrackCount(event.target.value))}
                   />
-                </div>
-                {showFocusOptions ? (
-                  <label className="flow-page__switch flow-page__source-option">
-                    <PillToggle
-                      checked={draft.recentListening === true}
-                      aria-label="Also use my recent listening"
-                      onChange={(event) =>
-                        updateDraft((prev) => ({ ...prev, recentListening: event.target.checked }))
+                </span>
+              </SettingsRow>
+              {source === "focus" && draft.counts.focus > 0 ? (
+                <>
+                  <SettingsRow label="Similar to" stack>
+                    <CommaTokenInput
+                      value={draft.includeRelatedArtists}
+                      placeholder="Artists"
+                      fetchSuggestions={fetchFlowArtistSuggestions}
+                      suggestionLabel="Similar artist suggestions"
+                      onChange={(includeRelatedArtists) =>
+                        onDraftChange((prev) => ({ ...prev, includeRelatedArtists }))
                       }
                     />
-                    Also use my recent listening
-                  </label>
-                ) : null}
-              </Fragment>
-            );
-          })}
-        </div>
-        {focusNeedsSeeds(draft) ? (
-          <div className="flow-page__warning-text">{FOCUS_NEEDS_SEEDS}</div>
-        ) : null}
-        <div className="flow-page__toggle-row">
-          <label className="flow-page__switch">
-            <PillToggle
-              checked={draft.deepDive === true}
-              aria-label="Deeper cuts"
-              onChange={(event) =>
-                updateDraft((prev) => ({ ...prev, deepDive: event.target.checked }))
-              }
-            />
-            Deeper cuts
-          </label>
-          <span className="flow-page__hint">
-            {"Tracks ranked 10 to 25 instead of each artist's top 10"}
+                  </SettingsRow>
+                  <SettingsRow label="Also use my recent listening">
+                    {toggle("recentListening", "Also use my recent listening")}
+                  </SettingsRow>
+                  {focusNeedsSeeds(draft) ? (
+                    <SettingsNote tone="warning">{FOCUS_NEEDS_SEEDS}</SettingsNote>
+                  ) : null}
+                </>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        <SettingsRow
+          label="Deeper cuts"
+          help="Tracks ranked 10 to 25 instead of each artist's top 10"
+        >
+          {toggle("deepDive", "Deeper cuts")}
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Filters">
+        <SettingsRow label="Tags" help="Start a tag with - to leave it out." stack>
+          <CommaTokenInput
+            value={draft.includeTags}
+            placeholder="hip hop, 80s, happy"
+            fetchSuggestions={fetchFlowTagSuggestions}
+            suggestionLabel="Tag suggestions"
+            excludable
+            onChange={(includeTags) => onDraftChange((prev) => ({ ...prev, includeTags }))}
+          />
+        </SettingsRow>
+        <SettingsRow label="Released">
+          <span className="flow-editor__years">
+            {yearInput("yearFrom", "Release year from")}
+            to
+            {yearInput("yearTo", "Release year to")}
           </span>
-        </div>
-      </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <div className="flow-page__form-section">
-        <div className="flow-page__section-title">Filters</div>
-        <div className="flow-page__filter-row">
-          <div className="flow-page__field flow-page__field--grow">
-            <label className="flow-page__field-label">Tags</label>
-            <CommaTokenInput
-              value={draft.includeTags}
-              placeholder="hip hop, 80s, happy"
-              fetchSuggestions={fetchFlowTagSuggestions}
-              suggestionLabel="Tag suggestions"
-              excludable
-              onChange={(includeTags) => updateDraft((prev) => ({ ...prev, includeTags }))}
-            />
-            <div className="flow-page__hint">Start a tag with - to leave it out.</div>
-          </div>
-          <div className="flow-page__field">
-            <label className="flow-page__field-label">Released</label>
-            <div className="flow-page__year-range">
-              {yearInput("yearFrom", "Release year from")}
-              <span className="flow-page__year-range-sep">to</span>
-              {yearInput("yearTo", "Release year to")}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {errorMessage ? <div className="flow-page__error-text">{errorMessage}</div> : null}
-    </div>
+      <SettingsGroup title="Playlist">
+        <SettingsRow label="Download automatically">
+          {toggle("autoDownload", "Download automatically")}
+        </SettingsRow>
+        <SettingsRow label="Scrobble tracks">
+          {toggle("recordHistory", "Scrobble tracks")}
+        </SettingsRow>
+        <SettingsRow label="Show in library">
+          {toggle("showInLibrary", "Show in library")}
+        </SettingsRow>
+      </SettingsGroup>
+    </>
   );
 }

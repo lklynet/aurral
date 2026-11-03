@@ -1,10 +1,137 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
+import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { SettingsLink, useSettingsRoute } from "./settingsRoute";
+import "./settings.css";
 
 export const SettingsSavingContext = createContext(false);
+
+export function SettingsShell({
+  label,
+  view,
+  onClose,
+  closeDisabled = false,
+  nav,
+  children,
+}: {
+  label: string;
+  view: "nav" | "pane";
+  onClose: () => void;
+  closeDisabled?: boolean;
+  nav: ReactNode;
+  children: ReactNode;
+}) {
+  const { dialogRef, handleBackdropClick } = useModalDialog({
+    open: true,
+    onClose,
+    closeDisabled,
+  });
+  return createPortal(
+    <div className="settings-dialog-backdrop" onClick={handleBackdropClick}>
+      <div
+        ref={dialogRef}
+        className="settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+        data-view={view}
+      >
+        <div className="settings-dialog__nav">
+          <div className="settings-dialog__phone-head">
+            <span className="settings-dialog__phone-title">{label}</span>
+            <TooltipButton
+              label={`Close ${label.toLowerCase()}`}
+              className="btn btn-ghost btn-icon"
+              onClick={onClose}
+              disabled={closeDisabled}
+            >
+              <X aria-hidden="true" />
+            </TooltipButton>
+          </div>
+          {nav}
+        </div>
+        <div className="settings-dialog__pane">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function SettingsPane({
+  crumbs,
+  title,
+  backLabel,
+  onBack,
+  closeLabel,
+  onClose,
+  closeDisabled = false,
+  status,
+  actions,
+  children,
+}: {
+  crumbs: { label: ReactNode; onClick?: () => void }[];
+  title: ReactNode;
+  backLabel: string;
+  onBack: () => void;
+  closeLabel: string;
+  onClose: () => void;
+  closeDisabled?: boolean;
+  status?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-page">
+      <header className="settings-bar">
+        <TooltipButton
+          label={backLabel}
+          className="btn btn-ghost btn-icon settings-bar__back"
+          onClick={onBack}
+        >
+          <ChevronLeft aria-hidden="true" />
+        </TooltipButton>
+        <div className="settings-bar__crumbs">
+          {crumbs.map((crumb, index) =>
+            crumb.onClick ? (
+              <button
+                key={index}
+                type="button"
+                className="settings-bar__crumb"
+                onClick={crumb.onClick}
+              >
+                {crumb.label}
+              </button>
+            ) : (
+              <span key={index} className="settings-bar__root">
+                {crumb.label}
+              </span>
+            ),
+          )}
+          <h2 className="settings-bar__title">{title}</h2>
+        </div>
+        <span className="settings-bar__saving" role="status" aria-live="polite">
+          {status}
+        </span>
+        {actions}
+        <TooltipButton
+          label={closeLabel}
+          className="btn btn-ghost btn-icon"
+          onClick={onClose}
+          disabled={closeDisabled}
+        >
+          <X aria-hidden="true" />
+        </TooltipButton>
+      </header>
+      <div className="settings-page__scroll">
+        <div className="settings-page__content">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage({
   title,
@@ -18,43 +145,23 @@ export function SettingsPage({
   const saving = useContext(SettingsSavingContext);
   const route = useSettingsRoute();
   return (
-    <div className="settings-page">
-      <header className="settings-bar">
-        <TooltipButton
-          label={`Back to ${back ?? "Settings"}`}
-          className="btn btn-ghost btn-icon settings-bar__back"
-          onClick={route.back}
-        >
-          <ChevronLeft aria-hidden="true" />
-        </TooltipButton>
-        <div className="settings-bar__crumbs">
-          <span className="settings-bar__root">Settings</span>
-          {back ? (
-            <button type="button" className="settings-bar__crumb" onClick={route.back}>
-              {back}
-            </button>
-          ) : null}
-          <h2 className="settings-bar__title">{title}</h2>
-        </div>
-        <span className="settings-bar__saving" role="status" aria-live="polite">
-          {saving ? (
-            <>
-              <DotLoader size="xs" label={null} /> Saving…
-            </>
-          ) : null}
-        </span>
-        <TooltipButton
-          label="Close settings"
-          className="btn btn-ghost btn-icon settings-bar__close"
-          onClick={route.close}
-        >
-          <X aria-hidden="true" />
-        </TooltipButton>
-      </header>
-      <div className="settings-page__scroll">
-        <div className="settings-page__content">{children}</div>
-      </div>
-    </div>
+    <SettingsPane
+      crumbs={[{ label: "Settings" }, ...(back ? [{ label: back, onClick: route.back }] : [])]}
+      title={title}
+      backLabel={`Back to ${back ?? "Settings"}`}
+      onBack={route.back}
+      closeLabel="Close settings"
+      onClose={route.close}
+      status={
+        saving ? (
+          <>
+            <DotLoader size="xs" label={null} /> Saving…
+          </>
+        ) : null
+      }
+    >
+      {children}
+    </SettingsPane>
   );
 }
 
