@@ -485,7 +485,8 @@ export async function finalizeQualityUpgradeSuccess(
   const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
   const { playlistManager } = await import("./playlists/playlistManager.ts");
   playlistManager.requestPlaylistSync(playlistIds);
-  playlistManager.scheduleScanLibrary();
+  const { scheduleLibraryScan } = await import("./libraryScanWorker.ts");
+  scheduleLibraryScan({ includeLidarr: false, changedPaths: [oldPath, upgradedPath] });
   const { recordTrackJobActivity } = await import("./aurralHistoryService.ts");
   recordTrackJobActivity({
     jobId: upgradeJob.id,
