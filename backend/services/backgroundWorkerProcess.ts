@@ -7,6 +7,8 @@ if (!group || !ISOLATED_WORKER_GROUPS.includes(group) || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
 
+(await import("./logs.ts")).startWorkerLogging();
+
 const { startWorkerSupervisor, wakeQueuedBackgroundWork, hasQueuedBackgroundWork } =
   await import("./appRuntime.ts");
 const { getHonkerWorkerStatuses, getWorkerIdleStopMs, shutdownHonkerInfrastructure } =

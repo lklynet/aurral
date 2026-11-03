@@ -10,7 +10,7 @@ import {
 import { getWorkerId, requeueInterruptedHonkerJob, adjustHonkerClaimAttempts } from "./honkerDb.ts";
 import { shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { logger } from "./logger.ts";
+import { logger, withLogContext } from "./logger.ts";
 import * as v from "valibot";
 import type { Job, Queue } from "@russellthehippo/honker-node";
 
@@ -111,6 +111,7 @@ export default function createHonkerWorker<Payload>({
           kind: typeof kind === "string" ? kind : null,
           attempt: job.attempts,
           reason: message,
+          ...(error instanceof Error ? { error } : {}),
         },
       );
     };
@@ -216,32 +217,34 @@ export default function createHonkerWorker<Payload>({
         let prepared: PreparedJob | null | undefined;
         let announced = false;
         try {
-          await withJobHeartbeat(job, queue, async () => {
-            if (activeInterruptible && typeof prepareJob === "function") {
-              if (!adjustHonkerClaimAttempts(job, queue, -1))
-                throw honkerJobInterruption("Background job claim lost");
-              waitingAttempt = true;
-            }
-            prepared =
-              typeof prepareJob === "function"
-                ? await prepareJob(job.payload, job, { signal: jobController!.signal })
-                : null;
-            if (waitingAttempt) {
-              if (!adjustHonkerClaimAttempts(job, queue, 1))
-                throw honkerJobInterruption("Background job claim lost");
-              waitingAttempt = false;
-            }
-            if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
-              process.send({
-                type: "job-started",
-                queue: name,
-                jobId: job.id,
-                payload: payloadSummary(job.payload),
-              });
-              announced = true;
-            }
-            return processJob(job.payload, job, { signal: jobController!.signal, ...prepared });
-          });
+          await withLogContext({ job: `${name}:${job.id}` }, () =>
+            withJobHeartbeat(job, queue, async () => {
+              if (activeInterruptible && typeof prepareJob === "function") {
+                if (!adjustHonkerClaimAttempts(job, queue, -1))
+                  throw honkerJobInterruption("Background job claim lost");
+                waitingAttempt = true;
+              }
+              prepared =
+                typeof prepareJob === "function"
+                  ? await prepareJob(job.payload, job, { signal: jobController!.signal })
+                  : null;
+              if (waitingAttempt) {
+                if (!adjustHonkerClaimAttempts(job, queue, 1))
+                  throw honkerJobInterruption("Background job claim lost");
+                waitingAttempt = false;
+              }
+              if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
+                process.send({
+                  type: "job-started",
+                  queue: name,
+                  jobId: job.id,
+                  payload: payloadSummary(job.payload),
+                });
+                announced = true;
+              }
+              return processJob(job.payload, job, { signal: jobController!.signal, ...prepared });
+            }),
+          );
           job.ack();
           if (typeof onJobSuccess === "function") {
             onJobSuccess(job.payload, job);
@@ -251,7 +254,9 @@ export default function createHonkerWorker<Payload>({
             requeueInterruptedHonkerJob(job, queue, { refundAttempt: !waitingAttempt });
           } else {
             if (waitingAttempt) adjustHonkerClaimAttempts(job, queue, 1);
-            await handleJobFailure(error, job, queue);
+            await withLogContext({ job: `${name}:${job.id}` }, () =>
+              handleJobFailure(error, job, queue),
+            );
           }
         } finally {
           prepared?.release?.();

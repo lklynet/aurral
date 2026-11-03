@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
 import type { getHonkerWorkerStatuses } from "./honkerWorkerRuntime.ts";
+import type { LogEntry } from "./logger.ts";
 import type { WebSocketChannelPayload } from "./websocketService.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
@@ -23,6 +24,7 @@ export type WorkerMessage =
   | { type: "job-started"; queue: string; jobId: number; payload: string | null }
   | { type: "job-finished"; queue: string; jobId: number }
   | { type: "queue-wake"; queue: string }
+  | { type: "log"; entry: LogEntry }
   | { type: "cache-invalidate"; cache: "playlists" | "lidarr-artists" | "news" }
   | {
       type: "websocket-broadcast";

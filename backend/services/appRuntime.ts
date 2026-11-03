@@ -22,7 +22,7 @@ import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient
 import { getDatabaseRevision } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { WorkerMessage } from "./backgroundProcessSupervisor.ts";
-import type { RuntimeLogger } from "./logger.ts";
+import { writeLogEntry, type RuntimeLogger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 let backgroundWorkersStarted = false;
@@ -321,6 +321,10 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
     getNextWorkAt: getNextBackgroundWorkAt,
     findGroupsWithWork: (now) => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork(now)),
     onMessage(message, _group, child) {
+      if (message?.type === "log") {
+        writeLogEntry(message.entry);
+        return;
+      }
       if (message?.type === "queue-wake") {
         const owner = getIsolatedQueueGroup(message.queue);
         if (owner) backgroundProcessSupervisor!.wake(owner);

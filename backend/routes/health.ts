@@ -45,24 +45,12 @@ import { getDownloadSourceStatus } from "../services/downloadSourceService.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isRunningInDocker } from "../services/runtimeInfo.ts";
 
 const STARTED_AT = Date.now();
 
 function formatRuntimeMode() {
   return process.env.NODE_ENV || "production";
-}
-
-async function isRunningInDocker() {
-  try {
-    await fs.access("/.dockerenv");
-    return true;
-  } catch {}
-  try {
-    const cgroup = await fs.readFile("/proc/1/cgroup", "utf8");
-    return /docker|kubepods|containerd|podman/i.test(cgroup);
-  } catch {
-    return false;
-  }
 }
 
 async function resolveExistingFilesystemPath(targetPath: string) {

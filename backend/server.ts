@@ -25,6 +25,9 @@ import {
 } from "./services/honkerWorkerRuntime.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError } from "../lib/errors.ts";
+import { startMainLogging } from "./services/logs.ts";
+
+startMainLogging();
 
 process.on("uncaughtException", (error) => {
   logger.error("system", "Uncaught Exception:", error);
@@ -138,7 +141,7 @@ httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
   warnAboutConfigDeprecations();
   bootstrapHonkerSchedules();
-  initializeAppRuntime({ logger });
+  initializeAppRuntime();
   void syncShareListener();
 });
 
