@@ -34,6 +34,7 @@ const [
   { getLibraryFileOperation },
   { resolveDownloadRoot },
   { downloadTracker },
+  { downloadWorker },
   qualityProfileService,
   { playlistManager },
   { findUniqueLibrarySong },
@@ -51,6 +52,7 @@ const [
   () => import("../../backend/services/libraryFiles/operationStore.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/qualityProfileService.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
@@ -727,6 +729,7 @@ test("automatic upgrades reach monitored Library tracks that Aurral did not down
       false,
     );
   } finally {
+    await downloadWorker.stopAndDrain();
     downloadTracker.enqueueDownloadPipeline = originalEnqueue;
   }
 });
