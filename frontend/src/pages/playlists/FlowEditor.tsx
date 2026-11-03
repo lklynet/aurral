@@ -9,6 +9,7 @@ import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { afterTextEntry } from "../../utils/afterTextEntry.ts";
+import { queryClient, queryKeys } from "../../queryClient.ts";
 import {
   SettingsGroup,
   SettingsNote,
@@ -43,8 +44,12 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
   const flush = useCallback(() => saveRef.current(), []);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
-  const { tracks, refresh } = usePlaylistTracks(selection.id);
+  const [pendingDownload, setPendingDownload] = useState<{
+    id: string;
+    name: string;
+    count: number;
+  } | null>(null);
+  const { tracks } = usePlaylistTracks(selection.id);
 
   const flow = flows.find((entry) => entry.id === selection.id) ?? null;
   const { draft } = selection;
@@ -110,9 +115,10 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
       setSelection((current) =>
         current.draft === draft ? { id: flow.id, draft: flowToForm(saved) } : current,
       );
+      setError("");
       await fetchStatus();
       if (flow.autoDownload === false && saved.autoDownload !== false && savedCount > 0) {
-        setConfirmDownloadSaved(true);
+        setPendingDownload({ id: flow.id, name: flow.name, count: savedCount });
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save flow"));
@@ -133,20 +139,19 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
   useEffect(() => flush, [flush]);
 
   const downloadSaved = async () => {
-    if (!flow) return;
+    if (!pendingDownload) return;
+    const { id, count } = pendingDownload;
     setBusy("download");
     try {
-      await parseResponse(
-        flowsClient.flows[":flowId"].download.$post({ param: flowParam(flow.id) }),
-      );
-      showSuccess(`Downloading ${formatTrackTotal(savedCount)}`);
+      await parseResponse(flowsClient.flows[":flowId"].download.$post({ param: flowParam(id) }));
+      showSuccess(`Downloading ${formatTrackTotal(count)}`);
       await fetchStatus();
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.playlistJobs(id) });
     } catch (err) {
       showError(getApiErrorMessage(err, "Failed to download flow tracks"));
     } finally {
       setBusy(null);
-      setConfirmDownloadSaved(false);
+      setPendingDownload(null);
     }
   };
 
@@ -282,15 +287,15 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
             }}
           />
           <ConfirmModal
-            open={confirmDownloadSaved}
-            title={`Download ${formatTrackTotal(savedCount)} already in this flow?`}
+            open={pendingDownload !== null}
+            title={`Download ${formatTrackTotal(pendingDownload?.count ?? 0)} already in ${pendingDownload?.name ?? "this flow"}?`}
             body="New tracks will download automatically from now on."
             confirmLabel="Download now"
             cancelLabel="Not now"
             tone="primary"
             busyLabel="Downloading"
             busy={busy === "download"}
-            onCancel={() => setConfirmDownloadSaved(false)}
+            onCancel={() => setPendingDownload(null)}
             onConfirm={downloadSaved}
           />
         </>,
