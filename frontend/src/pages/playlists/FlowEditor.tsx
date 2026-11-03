@@ -73,7 +73,7 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
       return err instanceof Error ? err.message : "This flow can't be saved.";
     }
   })();
-  const leaveError = dirty ? error || draftError : "";
+  const leaveError = draftError || (dirty ? error : "");
   const blocked = leaveError !== "";
   const leave = (next: () => void) => (blocked ? setPendingLeave(() => next) : next());
   const close = () =>
