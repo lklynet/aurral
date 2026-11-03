@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/src/assets/screenshots/discover.webp" width="900" alt="Aurral Discover page" />
+  <img src="web/screenshots/discover.webp" width="900" alt="Aurral Discover page" />
 </p>
 
 - **Discover** artists you'll love, with the reason for every pick. Start from your Spotify history.
