@@ -1076,10 +1076,12 @@ export function mergeIntoPendingHonkerJob(
     payloadKind,
     matches = () => true,
     merge,
+    delaySeconds = 0,
   }: {
     payloadKind: string;
     matches?: (payload: HonkerPayload) => boolean;
     merge: (payload: HonkerPayload) => HonkerPayload;
+    delaySeconds?: number;
   },
 ) {
   const tx = getHonkerDb().transaction();
@@ -1094,8 +1096,9 @@ export function mergeIntoPendingHonkerJob(
       .map((row) => ({ id: row.id, payload: parseHonkerPayload(row.payload) }))
       .find(({ payload }) => payload && matches(payload));
     if (target) {
-      tx.execute("UPDATE _honker_live SET payload = ? WHERE id = ?", [
+      tx.execute("UPDATE _honker_live SET payload = ?, run_at = MAX(run_at, ?) WHERE id = ?", [
         JSON.stringify(merge(target.payload!)),
+        Math.floor(Date.now() / 1000) + delaySeconds,
         target.id,
       ]);
     }

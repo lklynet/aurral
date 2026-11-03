@@ -86,6 +86,7 @@ export class PlaylistManager {
             ),
           ];
     if (ids?.length === 0) return null;
+    const delaySeconds = rewrite ? PLAYLIST_REWRITE_DELAY_SECONDS : PLAYLIST_SYNC_DELAY_SECONDS;
     return (
       mergeIntoPendingHonkerJob(getSystemTaskQueueName(PLAYLIST_SYNC_KIND), {
         payloadKind: PLAYLIST_SYNC_KIND,
@@ -94,11 +95,9 @@ export class PlaylistManager {
           ...payload,
           entityIds: mergeEntityIds(stringList(payload.entityIds), ids),
         }),
+        delaySeconds: rewrite ? delaySeconds : 0,
       }) ??
-      enqueueSystemTaskJob(
-        { kind: PLAYLIST_SYNC_KIND, entityIds: ids, rewrite },
-        { delaySeconds: rewrite ? PLAYLIST_REWRITE_DELAY_SECONDS : PLAYLIST_SYNC_DELAY_SECONDS },
-      )
+      enqueueSystemTaskJob({ kind: PLAYLIST_SYNC_KIND, entityIds: ids, rewrite }, { delaySeconds })
     );
   }
 

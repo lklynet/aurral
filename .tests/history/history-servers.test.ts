@@ -175,3 +175,41 @@ test("Plex imports only the connected account's tracks", async () => {
     [["Song", "plex:42", 1_767_268_800_000]],
   );
 });
+
+test("connecting another account replaces the previous account's plays", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const navidrome = createFakeNavidrome({
+    songs: [{ id: "song-1", title: "Roygbiv", artist: "Boards of Canada" }],
+    scrobbles: [{ id: 1, mediaFileId: "song-1", submissionTime: now - 30 * DAY }],
+  });
+  globalThis.fetch = navidrome.fetch;
+  const connection = { url: "http://navidrome.test", username: "first", secret: "password" };
+  await servers.connectHistoryServer(userId, "navidrome", connection);
+  await servers.syncHistoryServer(userId, "navidrome");
+
+  await servers.connectHistoryServer(userId, "navidrome", { ...connection, username: "second" });
+  assert.deepEqual(importedPlays(), []);
+  assert.deepEqual(await servers.syncHistoryServer(userId, "navidrome"), { imported: 1 });
+});
+
+test("a disconnect during an import keeps the imported plays removed", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const navidrome = createFakeNavidrome({
+    songs: [{ id: "song-1", title: "Roygbiv", artist: "Boards of Canada" }],
+    scrobbles: [{ id: 1, mediaFileId: "song-1", submissionTime: now - DAY }],
+  });
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/api/song") servers.disconnectHistoryServer(userId, "navidrome");
+    return navidrome.fetch(input, init);
+  };
+  await servers.connectHistoryServer(userId, "navidrome", {
+    url: "http://navidrome.test",
+    username: "listener",
+    secret: "password",
+  });
+
+  assert.deepEqual(await servers.syncHistoryServer(userId, "navidrome"), { imported: 0 });
+  assert.deepEqual(importedPlays(), []);
+  assert.deepEqual(servers.listHistoryServers(userId), []);
+});

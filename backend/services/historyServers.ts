@@ -270,10 +270,10 @@ const upsertServer = db.prepare<[number, string, string, string, string, string 
     account_id = excluded.account_id,
     last_error = NULL
 `);
-const recordSync = db.prepare<[number | null, number, string | null, number, string]>(`
+const recordSync = db.prepare<[number | null, number, string | null, number, string, number]>(`
   UPDATE history_servers
   SET synced_until = COALESCE(?, synced_until), last_synced_at = ?, last_error = ?
-  WHERE user_id = ? AND provider = ?
+  WHERE user_id = ? AND provider = ? AND connected_at = ?
 `);
 const deleteServer = db.prepare<[number, string]>(
   "DELETE FROM history_servers WHERE user_id = ? AND provider = ?",
@@ -306,8 +306,10 @@ const insertPlay = db.prepare<
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
+// A disconnect or account change during an import makes the rest of it stale.
 const insertPlays = db.transaction(
-  (userId: number, provider: HistoryServerProvider, plays: ImportedPlay[]) => {
+  (userId: number, provider: HistoryServerProvider, connectedAt: number, plays: ImportedPlay[]) => {
+    if (selectServer.get(userId, provider)?.connected_at !== connectedAt) return null;
     const now = Date.now();
     let inserted = 0;
     for (const play of plays) {
@@ -366,15 +368,22 @@ export async function connectHistoryServer(
   if (!secret) throw new HistoryServerError("Enter the password, token, or API key");
   const connection = { url: input.url, username: input.username, secret, accountId: null };
   const { accountId } = await PROVIDERS[provider].connect(connection);
-  upsertServer.run(
-    userId,
-    provider,
-    input.url,
-    input.username,
-    encryptWithKey(secret, secretKey()) || "",
-    accountId,
-    existing?.connected_at ?? Date.now(),
-  );
+  const sameAccount =
+    existing?.url === input.url &&
+    existing.username === input.username &&
+    existing.account_id === accountId;
+  db.transaction(() => {
+    if (existing && !sameAccount) disconnectHistoryServer(userId, provider);
+    upsertServer.run(
+      userId,
+      provider,
+      input.url,
+      input.username,
+      encryptWithKey(secret, secretKey()) || "",
+      accountId,
+      sameAccount ? existing.connected_at : Date.now(),
+    );
+  })();
   return publicStatus(selectServer.get(userId, provider)!);
 }
 
@@ -392,11 +401,15 @@ export async function syncHistoryServer(userId: number, provider: HistoryServerP
   const since = Math.max(0, (row.synced_until ?? 0) - OVERLAP_MS);
   let imported = 0;
   try {
-    for await (const plays of PROVIDERS[provider].read(connectionOf(row), since, until))
-      imported += insertPlays(userId, provider, plays);
-    recordSync.run(until, Date.now(), null, userId, provider);
+    for await (const plays of PROVIDERS[provider].read(connectionOf(row), since, until)) {
+      const inserted = insertPlays(userId, provider, row.connected_at, plays);
+      if (inserted === null) return { imported };
+      imported += inserted;
+    }
+    recordSync.run(until, Date.now(), null, userId, provider, row.connected_at);
   } catch (error) {
-    recordSync.run(null, Date.now(), asAppError(error)?.message || "Sync failed", userId, provider);
+    const message = asAppError(error)?.message || "Sync failed";
+    recordSync.run(null, Date.now(), message, userId, provider, row.connected_at);
     throw error;
   }
   if (imported > 0) {

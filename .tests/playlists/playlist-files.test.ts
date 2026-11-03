@@ -98,6 +98,24 @@ test("writes a playlist file with relative paths and rewrites it once later", as
   assert.deepEqual(pendingSyncs(), []);
 });
 
+test("a later change pushes the pending rewrite out again", async () => {
+  const first = flowPlaylistConfig.createStaticPlaylist({ name: "First" });
+  const second = flowPlaylistConfig.createStaticPlaylist({ name: "Second" });
+  await addDownloadedTrack(first.id, "Song A");
+  await playlistManager.syncPlaylists({ entityIds: [first.id] });
+  const tx = honker.getHonkerDb().transaction();
+  tx.execute("UPDATE _honker_live SET run_at = ?", [Math.floor(Date.now() / 1000) + 5]);
+  tx.commit();
+
+  await addDownloadedTrack(second.id, "Song B");
+  await playlistManager.syncPlaylists({ entityIds: [second.id] });
+
+  const [rewrite, ...rest] = pendingSyncs();
+  assert.deepEqual(rest, []);
+  assert.deepEqual(rewrite.entityIds, [first.id, second.id]);
+  assert.ok(rewrite.delaySeconds >= 170);
+});
+
 test("renaming, disabling, or deleting removes the old file", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Morning", size: 10 });
   flowPlaylistConfig.setEnabled(flow.id, true);
