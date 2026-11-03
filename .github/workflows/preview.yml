@@ -27,7 +27,8 @@ jobs:
           package="${GITHUB_REPOSITORY#*/}"
           for scope in users orgs; do
             id="$(gh api --paginate "/${scope}/${owner}/packages/container/${package}/versions?per_page=100" \
-              --jq ".[] | select(.metadata.container.tags | index(\"${IMAGE_TAG}\")) | .id" 2>/dev/null | head -n1 || true)"
+              --jq ".[] | select(.metadata.container.tags | index(\"${IMAGE_TAG}\")) | .id" 2>/dev/null)" || id=""
+            id="${id%%$'\n'*}"
             if [ -n "${id}" ]; then
               gh api -X DELETE "/${scope}/${owner}/packages/container/${package}/versions/${id}"
               echo "Deleted ${IMAGE_TAG}."
