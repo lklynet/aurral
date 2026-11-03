@@ -41,6 +41,15 @@
   --aurral-surface-mid: var(--aurral-surface-raised);
   --aurral-overlay: var(--aurral-surface-popover);
   --aurral-overlay-hover: var(--aurral-surface-hover);
+  --aurral-overlay-selected: var(--aurral-surface-selected);
+  --aurral-wash-hover: light-dark(
+    color-mix(in srgb, var(--aurral-text) 20%, transparent),
+    color-mix(in srgb, var(--aurral-text) 10.5%, transparent)
+  );
+  --aurral-wash-selected: light-dark(
+    color-mix(in srgb, var(--aurral-text) 12.5%, transparent),
+    color-mix(in srgb, var(--aurral-text) 12%, transparent)
+  );
   --aurral-overlay-base: #000;
   --aurral-overlay-foreground: #fff;
   --aurral-overlay-foreground-soft: #f5f5f5;
@@ -9633,6 +9642,15 @@ button.native-library-genre-row:focus-visible {
 .collection-page,
 .artist-discover-page,
 .recommended-page,
+.trending-page,
+.artist-details-page {
+  --aurral-surface-hover: var(--aurral-wash-hover);
+  --aurral-surface-selected: var(--aurral-wash-selected);
+}
+
+.collection-page,
+.artist-discover-page,
+.recommended-page,
 .trending-page {
   --collection-tint-bleed: 1rem;
 
@@ -14134,6 +14152,9 @@ a.blocklist-page__name:focus-visible {
 .flow-page__token-suggestions,
 .blocklist-page__suggestions,
 .reload-prompt {
+  --aurral-surface-hover: var(--aurral-overlay-hover);
+  --aurral-surface-selected: var(--aurral-overlay-selected);
+
   border: 1px solid var(--aurral-border-overlay);
   border-radius: var(--aurral-radius-popover);
   background: var(--aurral-surface-popover);
@@ -14148,6 +14169,9 @@ a.blocklist-page__name:focus-visible {
 .playlist-modal,
 .login-card,
 .onboarding-card {
+  --aurral-surface-hover: var(--aurral-overlay-hover);
+  --aurral-surface-selected: var(--aurral-overlay-selected);
+
   border: 1px solid var(--aurral-border-overlay);
   border-radius: var(--aurral-radius-modal);
   background: var(--aurral-surface-popover);
