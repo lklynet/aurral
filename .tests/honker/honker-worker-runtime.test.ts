@@ -248,7 +248,7 @@ test("task status groups scheduled discovery jobs without cancelling them", asyn
   );
 
   assert.equal(grouped.length, 1);
-  assert.equal(grouped[0].duplicateCount, 2);
+  assert.equal(grouped[0]?.duplicateCount, 2);
   const worker = status.workers.find((entry) => entry.queue === "discovery-refresh");
   assert.equal(worker?.scheduled, 1);
   assert.equal(honkerDb.listHonkerJobs("discovery-refresh").length, 2);

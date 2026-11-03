@@ -38,7 +38,7 @@ for (const [address, prefix] of [
 }
 
 export const isPrivateAddress = (address: string) => {
-  const normalized = String(address || "").split("%")[0];
+  const [normalized = ""] = String(address || "").split("%");
   const family = net.isIP(normalized);
   if (family === 0) return true;
   if (family === 6) {
@@ -85,10 +85,12 @@ export async function resolvePublicUrl(value: string) {
   const addresses = net.isIP(hostname)
     ? [{ address: hostname, family: net.isIP(hostname) }]
     : await dns.lookup(hostname, { all: true });
-  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+  const [first, ...rest] = addresses;
+  if (!first || addresses.some(({ address }) => isPrivateAddress(address))) {
     throw new Error("Only public HTTP and HTTPS URLs are allowed");
   }
-  return { url: value, addresses };
+  const pinned: [typeof first, ...(typeof first)[]] = [first, ...rest];
+  return { url: value, addresses: pinned };
 }
 
 export const assertPublicUrl = async (value: string) => {

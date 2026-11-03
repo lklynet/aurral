@@ -161,8 +161,8 @@ function albumClaims(label: string | null | undefined, performers: string[], pol
     .map((words) => {
       let start = 0;
       let end = words.length;
-      while (start < end && isReleaseNoiseWord(words[start])) start += 1;
-      while (end > start && isReleaseNoiseWord(words[end - 1])) end -= 1;
+      while (start < end && isReleaseNoiseWord(words[start] ?? "")) start += 1;
+      while (end > start && isReleaseNoiseWord(words[end - 1] ?? "")) end -= 1;
       return words.slice(start, end).join(" ");
     })
     .filter(Boolean);
@@ -323,12 +323,12 @@ function judgePair(
     sameSong: false,
     score: 0,
   });
-  const titled = readsAsTitle(entry.title, fileTitles[fileIndex]);
+  const fileTitle = fileTitles[fileIndex] ?? titleFacts(file.title);
+  const titled = readsAsTitle(entry.title, fileTitle);
   const recordingId = readRecordingMbid(file.recordingMbid);
   const sameRecording = Boolean(recordingId) && entry.recordingIds.includes(recordingId);
   const similarTitle =
-    titled &&
-    keySimilarity(entry.title.key, fileTitles[fileIndex].key) >= policy.minTitleSimilarity;
+    titled && keySimilarity(entry.title.key, fileTitle.key) >= policy.minTitleSimilarity;
   if (titled && !similarTitle && !sameRecording) return blocked(["title"], false, null);
   const position = comparePosition(track, file, ordered ? trackIndex + 1 : null);
   if (position === "different")
@@ -376,9 +376,9 @@ function judgePair(
 // A file that names a track at its place but missed the selection window, or
 // has no length to check, is that track unverified rather than a song the
 // release does not hold.
-function failedPairing(edge: PairEdge, policy: Policy) {
+function failedPairing(edge: PairEdge | undefined, policy: Policy) {
   return (
-    Boolean(edge?.named) &&
+    edge?.named === true &&
     edge.position !== "different" &&
     edge.blockers.every((blocker) => blocker === "duration") &&
     (edge.durationGapMs == null || edge.durationGapMs <= policy.maxDurationGapMs)
@@ -467,13 +467,15 @@ export function judgeRelease(
       .flatMap((trackEdges) => trackEdges)
       .filter((edge) => edge.fileIndex === fileIndex && edge.sameSong)
       .map((edge) => edge.trackIndex);
-    if (copyOf.length === 1) copiesForTrack[copyOf[0]].push(fileIndex);
+    const [onlyCopyOf] = copyOf;
+    if (copyOf.length === 1 && onlyCopyOf !== undefined)
+      copiesForTrack[onlyCopyOf]?.push(fileIndex);
     // A paired track's song whose length misses the window, such as a VBR
     // MP3 beside its FLAC, is another copy, though not one to download.
     const unverified = judged.some(
       (trackEdges, trackIndex) =>
         failedPairing(trackEdges[fileIndex], policy) &&
-        (missing.includes(trackIndex) || trackEdges[fileIndex].sameSong),
+        (missing.includes(trackIndex) || trackEdges[fileIndex]?.sameSong === true),
     );
     if (copyOf.length === 0 && !unverified) extras.push(fileIndex);
   }

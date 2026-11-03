@@ -101,9 +101,9 @@ export function resolveShareManifest(
   });
   const albumMbid =
     target.kind === "album" && library?.albums.length
-      ? library.albums[0].releaseGroupMbid
+      ? library.albums[0]?.releaseGroupMbid
       : target.kind === "track" && files.length
-        ? files[0].albumMbid
+        ? files[0]?.albumMbid
         : supplied.albumMbid;
   return parseShareManifest({ ...supplied, ...resolved, albumMbid, tracks });
 }

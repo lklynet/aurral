@@ -145,7 +145,10 @@ function soulseekFile(
     }
   }
   const credited = manifest.compilation && !artist ? /^(.+?)\s+[-–—]\s+(.+)$/u.exec(title) : null;
-  if (credited) [, artist, title] = credited;
+  if (credited) {
+    artist = credited[1] ?? null;
+    title = credited[2] ?? title;
+  }
   const seconds = Number(item.length);
   return {
     title,
@@ -245,8 +248,8 @@ export function selectSoulseekAlbumFolder(
       if (assessment.kind !== "exact") return [];
       const files: FolderOption["files"] = [];
       for (const [trackIndex, jobId] of wanted) {
-        const copies: SoulseekSearchItem[] = assessment.copiesForTrack[trackIndex]
-          .map((index: number) => listing.files[index].raw)
+        const copies: SoulseekSearchItem[] = (assessment.copiesForTrack[trackIndex] ?? [])
+          .flatMap((index: number) => listing.files[index]?.raw ?? [])
           .filter(qualityAllowed);
         copies.sort((left, right) =>
           profile

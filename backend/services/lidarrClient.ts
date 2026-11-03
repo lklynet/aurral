@@ -1374,8 +1374,8 @@ export class LidarrClient {
     if (!metadataProfileId) {
       try {
         const metadataProfiles = await this.getMetadataProfiles();
-        if (Array.isArray(metadataProfiles) && metadataProfiles.length > 0) {
-          metadataProfileId = metadataProfiles[0].id;
+        if (Array.isArray(metadataProfiles)) {
+          metadataProfileId = metadataProfiles[0]?.id ?? null;
         }
       } catch {}
     }

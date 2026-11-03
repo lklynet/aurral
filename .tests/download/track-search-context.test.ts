@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.ts";
@@ -693,7 +694,10 @@ test("a download takes the album of its title that lists the song, over the albu
   ]);
   assert.ok(albums.teal.releases != null);
   assert.ok(deluxe.releases != null);
-  albums.teal.releases.push({ ...albums.teal.releases[0], id: "teal-vinyl" }, deluxe.releases[0]);
+  albums.teal.releases.push(
+    { ...requireFixture(albums.teal.releases[0]), id: "teal-vinyl" },
+    requireFixture(deluxe.releases[0]),
+  );
   stubMetadata(t, (path: string, params) => {
     if (path === "/search/album") {
       return Object.values(albums)

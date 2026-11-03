@@ -31,6 +31,7 @@ import { getLibraryScanQueue } from "../../backend/services/honkerDb.ts";
 import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.ts";
 import { api } from "../../backend/routes/api.ts";
 import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const app = signedInAs(undefined).route("/", api);
 
@@ -126,13 +127,14 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
     ]);
     assert.equal(requireValue(byMbid).canonicalId, String(artist.id));
     assert.equal(requireValue(byId).canonicalId, String(artist.id));
-    assert.equal(albums[0].canonicalId, String(album.id));
-    assert.equal(albums[0].providerId, 9922);
+    assert.equal(albums[0]?.canonicalId, String(album.id));
+    assert.equal(albums[0]?.providerId, 9922);
     assert.equal(requireValue(byAlbumId).canonicalId, String(album.id));
     assert.equal(requireValue(byAlbumId).providerId, 9922);
-    assert.ok("canonicalId" in tracks[0]);
-    assert.equal(tracks[0].canonicalId, String(track.id));
-    assert.equal(tracks[0].providerId, 9933);
+    const [firstTrack] = tracks;
+    assert.ok(firstTrack && "canonicalId" in firstTrack);
+    assert.equal(firstTrack.canonicalId, String(track.id));
+    assert.equal(firstTrack.providerId, 9933);
     assert.equal(
       queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
       `/library/canonical-stream/${album.id}/${track.id}`,
@@ -386,7 +388,7 @@ test("library artist compatibility reads apply SQL pagination", async () => {
       typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
     >["artists"][number] & { added: string | null })[] = await response.json();
     assert.deepEqual(requireValue(body.map((artist) => artist.name)), [`${key} B`]);
-    assert.equal(requireValue(body[0]).canonicalId, artists[1].id);
+    assert.equal(requireValue(body[0]).canonicalId, requireFixture(artists[1]).id);
     assert.equal(requireValue(body[0]).statistics.trackCount, 1);
     assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
   } finally {
@@ -468,7 +470,7 @@ test("library paginated reads keep tied rows stable", () => {
             OR (name COLLATE NOCASE = ? AND id < ?)
           ))`,
         )
-        .get(artistName, artistName, artistName, artistName, artists[0].id),
+        .get(artistName, artistName, artistName, artistName, requireFixture(artists[0]).id),
     ).count;
     assert.deepEqual(
       getLibraryArtistProjection({ pageSize: 2, offset: projectionOffset }).map(
@@ -648,7 +650,9 @@ test("legacy artist list bounds the projection before materialization", async ()
     })[] = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(requireValue(body.map((artist) => artist.id)), [String(artists[100].id)]);
+    assert.deepEqual(requireValue(body.map((artist) => artist.id)), [
+      String(requireFixture(artists[100]).id),
+    ]);
     assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
   } finally {
     db.prepare(`DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`).run(

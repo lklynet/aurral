@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 const VORBIS_COMMENT = 4;
@@ -19,10 +20,10 @@ function readFlacBlocks(data: NonSharedBuffer) {
   const blocks: { type: number; body: Buffer<ArrayBuffer> }[] = [];
   let offset = 4;
   for (let last = false; !last;) {
-    last = (data[offset] & 0x80) !== 0;
+    last = (requireFixture(data[offset]) & 0x80) !== 0;
     const length = data.readUIntBE(offset + 1, 3);
     blocks.push({
-      type: data[offset] & 0x7f,
+      type: requireFixture(data[offset]) & 0x7f,
       body: data.subarray(offset + 4, offset + 4 + length),
     });
     offset += 4 + length;

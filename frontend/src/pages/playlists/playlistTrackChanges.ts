@@ -107,8 +107,9 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     let error = null;
     if (result?.state === "failed") {
       error = `Could not ${phrase(change.label)}. ${result.message || "Review the playlist before retrying."}`;
-    } else if (failed.length) {
-      const reason = failed[0].message ? `: ${failed[0].message.replace(/\.$/, "")}` : "";
+    } else if (failed[0]) {
+      const { message } = failed[0];
+      const reason = message ? `: ${message.replace(/\.$/, "")}` : "";
       error = `Could not ${phrase(trackCountLabel(failed.length))}${reason}. ${stayLabel(failed.length)} in ${change.sourceName}.`;
     }
     const success =
@@ -164,7 +165,7 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     }
     if (response?.rejected?.length) {
       toast.showError(
-        `Could not ${change.action === "move" ? "move" : "remove"} ${trackCountLabel(response.rejected.length)}. ${response.rejected[0].message}`,
+        `Could not ${change.action === "move" ? "move" : "remove"} ${trackCountLabel(response.rejected.length)}. ${response.rejected[0]?.message}`,
         8000,
       );
     }

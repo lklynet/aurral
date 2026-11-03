@@ -20,12 +20,12 @@ export const splitFlowTotal = (
   weights: Partial<Record<FlowSource, unknown>> | null | undefined,
   total: number,
 ): FlowMix | null => {
-  const shares = FLOW_SOURCES.map((source) => shareOf(weights?.[source]));
-  const sum = shares.reduce((acc, share) => acc + share, 0);
+  const shares = FLOW_SOURCES.map((source) => ({ source, share: shareOf(weights?.[source]) }));
+  const sum = shares.reduce((acc, { share }) => acc + share, 0);
   if (sum <= 0) return null;
-  const parts = shares.map((share, index) => {
+  const parts = shares.map(({ source, share }) => {
     const exact = (share / sum) * total;
-    return { index, count: Math.floor(exact), remainder: exact - Math.floor(exact) };
+    return { source, count: Math.floor(exact), remainder: exact - Math.floor(exact) };
   });
   let left = total - parts.reduce((acc, part) => acc + part.count, 0);
   for (const part of [...parts].sort((a, b) => b.remainder - a.remainder)) {
@@ -34,9 +34,7 @@ export const splitFlowTotal = (
     left -= 1;
   }
   const counts = { ...DEFAULT_FLOW_MIX };
-  FLOW_SOURCES.forEach((source, index) => {
-    counts[source] = parts[index].count;
-  });
+  for (const { source, count } of parts) counts[source] = count;
   return counts;
 };
 

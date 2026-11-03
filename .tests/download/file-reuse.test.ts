@@ -643,7 +643,7 @@ async function seedHandoverAlbum({ handedOver = true }: { handedOver?: boolean }
   for (const [filePath, content] of [
     [aurralPath, "aurral"],
     [lidarrPath, "lidarr"],
-  ]) {
+  ] as const) {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, content);
   }
@@ -675,7 +675,7 @@ async function seedHandoverAlbum({ handedOver = true }: { handedOver?: boolean }
   for (const [source, filePath] of [
     ["aurral", aurralPath],
     ["lidarr", lidarrPath],
-  ]) {
+  ] as const) {
     libraryStore.upsertLibraryMediaFile({
       trackId: track.id,
       albumId: album.id,

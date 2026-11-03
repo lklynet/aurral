@@ -238,8 +238,9 @@ function parseFilenameArtistTitle(
       .split(/\s+(?:-|–|—)\s+/)
       .map((segment) => segment.trim())
       .filter(Boolean);
-    if (segments.length < 2) return null;
-    return { artist: segments[0], title: segments.slice(1).join(" - ") };
+    const [artist, ...rest] = segments;
+    if (!artist || !rest.length) return null;
+    return { artist, title: rest.join(" - ") };
   };
 
   const withoutNumberParse = withoutNumber !== raw ? tryParse(withoutNumber) : null;

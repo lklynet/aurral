@@ -1,4 +1,3 @@
-import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
@@ -54,7 +53,8 @@ beforeAll(async () => {
     };
     let body: { id: string; artistname: string } | { id: string; artistname: string }[] | null =
       null;
-    if (url.pathname.startsWith("/artist/")) body = artists[url.pathname.split("/")[2]] || null;
+    if (url.pathname.startsWith("/artist/"))
+      body = artists[url.pathname.split("/")[2] ?? ""] || null;
     if (url.pathname === "/search/artist") {
       body =
         url.searchParams.get("query") === "Wrongly Matched"
@@ -177,7 +177,7 @@ test("linking to an MBID already in the library merges the albums into that arti
   assert.equal(response.body.merged, true);
   assert.equal(artistRow(duplicate.artist.id), undefined);
   assert.equal(
-    requireFixture(db)
+    db
       .prepare<unknown[], { artist_id: number }>(
         "SELECT artist_id FROM library_albums WHERE id = ?",
       )!
@@ -205,7 +205,7 @@ test("removing an MBID never merges two artists that share a name", async () => 
   assert.equal(artistRow(tagged.artist.id).mbid, null);
   assert.ok(artistRow(unmatched.artist.id));
   assert.equal(
-    requireFixture(db)
+    db
       .prepare<unknown[], { artist_id: number }>(
         "SELECT artist_id FROM library_albums WHERE id = ?",
       )!

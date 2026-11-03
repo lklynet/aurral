@@ -11,6 +11,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -95,21 +96,31 @@ test("playlist songs expose their custom artwork through an accessible versioned
 
   const playlist = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user);
   assert.ok(playlist != null);
-  assert.ok(playlist.entry[0].coverArt != null);
-  assert.match(playlist.entry[0].coverArt, /^art-playlist-track:/);
-  assert.ok(playlist.entry[0].coverArt != null);
+  assert.ok(requireFixture(playlist.entry[0]).coverArt != null);
+  assert.match(requireFixture(requireFixture(playlist.entry[0]).coverArt), /^art-playlist-track:/);
+  assert.ok(requireFixture(playlist.entry[0]).coverArt != null);
   assert.equal(
-    subsonic.resolveCustomArtwork(playlist.entry[0].coverArt, user)?.filePath,
+    subsonic.resolveCustomArtwork(requireFixture(requireFixture(playlist.entry[0]).coverArt), user)
+      ?.filePath,
     saved.filePath,
   );
-  assert.ok(playlist.entry[0].coverArt != null);
-  assert.equal(subsonic.resolveCustomArtwork(playlist.entry[0].coverArt, testUser(75)), null);
+  assert.ok(requireFixture(playlist.entry[0]).coverArt != null);
+  assert.equal(
+    subsonic.resolveCustomArtwork(
+      requireFixture(requireFixture(playlist.entry[0]).coverArt),
+      testUser(75),
+    ),
+    null,
+  );
   assert.ok(Date.parse(playlist.changed) >= saved.updatedAt);
 
   await artworkService.removeCustomArtwork("playlist-track", jobId);
   const resetPlaylist = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user);
   assert.ok(resetPlaylist != null);
-  assert.doesNotMatch(resetPlaylist.entry[0].coverArt || "", /^art-playlist-track:/);
+  assert.doesNotMatch(
+    requireFixture(resetPlaylist.entry[0]).coverArt || "",
+    /^art-playlist-track:/,
+  );
   assert.ok(Date.parse(resetPlaylist.changed) > Date.parse(playlist.changed));
 });
 

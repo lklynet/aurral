@@ -11,15 +11,15 @@ export const MAX_THEME_FILE_BYTES = 64 * 1024;
 
 function readYamlScalar(raw: string) {
   const quoted = raw.match(/^(["'])(.*?)\1/);
-  if (quoted) return quoted[2];
+  if (quoted) return quoted[2] ?? "";
   return raw.replace(/\s+#.*$/, "").trim();
 }
 
 function parseBase16Scheme(text: string) {
   const values: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*?)\s*$/);
-    if (match) values[match[1]] = readYamlScalar(match[2]);
+    const [, key, value = ""] = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*?)\s*$/) ?? [];
+    if (key) values[key] = readYamlScalar(value);
   }
   const color = (key: string) =>
     normalizeHexColor(

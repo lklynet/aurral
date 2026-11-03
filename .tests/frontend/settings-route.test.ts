@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -14,7 +15,7 @@ type Step = number | { to: Omit<Entry, "state">; replace: boolean; state: unknow
 function browserHistory(search = "") {
   const entries: Entry[] = [{ pathname: "/library", search, hash: "", state: null }];
   let index = 0;
-  const current = () => entries[index];
+  const current = () => requireFixture(entries[index]);
   const go = (step: Step) => {
     if (typeof step === "number") index += step;
     else if (step?.replace) entries[index] = { ...step.to, state: step.state };

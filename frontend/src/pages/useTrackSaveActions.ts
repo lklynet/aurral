@@ -66,9 +66,10 @@ export function useTrackSaveActions() {
           name =
             staticPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
         }
+        const [only] = payloads;
         showSuccess(
-          payloads.length === 1
-            ? `Added ${payloads[0].trackName} to ${name}`
+          payloads.length === 1 && only
+            ? `Added ${only.trackName} to ${name}`
             : `Added ${payloads.length} tracks to ${name}`,
         );
         const nextPlaylists = await loadStaticPlaylists();

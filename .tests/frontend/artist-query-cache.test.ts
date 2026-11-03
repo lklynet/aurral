@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 test("artist REST details coalesce identical requests through Query", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
@@ -60,11 +61,11 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
 
   resolveNormal();
   const [normalResult, refreshedResult] = await Promise.all([normal, refresh]);
-  assert.equal(normalResult.images[0].image, "https://images.example/normal.jpg");
-  assert.equal(refreshedResult.images[0].image, "https://images.example/refreshed.jpg");
+  assert.equal(normalResult.images[0]?.image, "https://images.example/normal.jpg");
+  assert.equal(refreshedResult.images[0]?.image, "https://images.example/refreshed.jpg");
   assert.equal(requestCount, 2);
   const cached = await getArtistCover("artist-1", "Artist");
-  assert.equal(cached.images[0].image, "https://images.example/refreshed.jpg");
+  assert.equal(cached.images[0]?.image, "https://images.example/refreshed.jpg");
 });
 
 test("normal cover requests wait for active artist and release-group refreshes", async (t: import("vite-plus/test").TestContext) => {
@@ -103,7 +104,8 @@ test("normal cover requests wait for active artist and release-group refreshes",
     },
   ];
 
-  const imageOf = (result: { images: { image: string | null }[] }) => result.images[0].image;
+  const imageOf = (result: { images: { image: string | null }[] }) =>
+    requireFixture(result.images[0]).image;
   for (const { key, getCover } of cases) {
     const stale = await getCover();
     assert.equal(imageOf(stale), `https://images.example/${key}-stale.jpg`);

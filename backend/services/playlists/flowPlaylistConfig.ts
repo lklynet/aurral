@@ -482,8 +482,8 @@ export const flowPlaylistConfig = {
   ensureLidarrFeedToken(flowId: string) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
-    if (index === -1) return null;
     const current = flows[index];
+    if (!current) return null;
     if (current.lidarrFeedToken) return current;
     const next = normalizeFlow({
       ...current,
@@ -558,8 +558,8 @@ export const flowPlaylistConfig = {
   updateFlow(flowId: string, updates?: FlowUpdates | null) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
-    if (index === -1) return null;
     const current = flows[index];
+    if (!current) return null;
     const nextName = updates?.name ?? current.name;
     assertUniqueFlowName(
       entitiesRelevantForNameCheck(flows, { ownerUserId: current.ownerUserId }),
@@ -630,8 +630,9 @@ export const flowPlaylistConfig = {
   setEnabled(flowId: string, enabled: boolean) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
-    if (index === -1) return null;
-    const flow = { ...flows[index], enabled: enabled === true };
+    const stored = flows[index];
+    if (!stored) return null;
+    const flow = { ...stored, enabled: enabled === true };
     if (!flow.enabled) {
       flow.nextRunAt = null;
     }
@@ -643,8 +644,9 @@ export const flowPlaylistConfig = {
   markLastRunAt(flowId: string, lastRunAt = Date.now()) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
-    if (index === -1) return null;
-    const flow = { ...flows[index] };
+    const stored = flows[index];
+    if (!stored) return null;
+    const flow = { ...stored };
     flow.lastRunAt = Math.max(
       lastRunAt != null && Number.isFinite(Number(lastRunAt)) ? Number(lastRunAt) : Date.now(),
       (flow.lastRunAt ?? 0) + 1,
@@ -657,9 +659,10 @@ export const flowPlaylistConfig = {
   scheduleNextRun(flowId: string) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
-    if (index === -1) return null;
+    const stored = flows[index];
+    if (!stored) return null;
     const now = Date.now();
-    const flow = { ...flows[index] };
+    const flow = { ...stored };
     const normalizedSchedule = normalizeScheduleDays(flow.scheduleDays);
     flow.scheduleDays =
       normalizedSchedule.length > 0 ? normalizedSchedule : [getDefaultScheduleDay(now)];
@@ -756,8 +759,8 @@ export const flowPlaylistConfig = {
   appendStaticPlaylistTracks(playlistId: string, tracks: PlaylistTrackInput[]) {
     const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
-    if (index === -1) return null;
     const current = playlists[index];
+    if (!current) return null;
     const appendedTracks = filterMissingPlaylistTracks(current.tracks, tracks).map((track) => ({
       ...track,
       membershipId: randomUUID(),
@@ -776,8 +779,8 @@ export const flowPlaylistConfig = {
   updateStaticPlaylist(playlistId: string, updates?: StaticPlaylistUpdates) {
     const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
-    if (index === -1) return null;
     const current = playlists[index];
+    if (!current) return null;
     const nextName = updates?.name ?? current.name;
     assertUniqueStaticPlaylistName(
       entitiesRelevantForNameCheck(playlists, { ownerUserId: current.ownerUserId }),

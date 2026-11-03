@@ -8,6 +8,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -60,13 +61,13 @@ test("manual search exposes opaque result ids and binds the selection to its use
   });
 
   assert.equal(response.results.length, 1);
-  assert.notEqual(response.results[0].id, raw.id);
+  assert.notEqual(requireFixture(response.results[0]).id, raw.id);
   assert.equal(JSON.stringify(response).includes(raw.url), false);
   assert.throws(
     () =>
       searchService.getManualMissingSelection({
         sessionId: response.sessionId,
-        resultId: response.results[0].id,
+        resultId: requireFixture(response.results[0]).id,
         jobId: "job-1",
         actorId: "different-user",
       }),
@@ -75,7 +76,7 @@ test("manual search exposes opaque result ids and binds the selection to its use
 
   const selection = searchService.getManualMissingSelection({
     sessionId: response.sessionId,
-    resultId: response.results[0].id,
+    resultId: requireFixture(response.results[0]).id,
     jobId: "job-1",
     actorId: "user-1",
   });
@@ -86,7 +87,7 @@ test("manual search exposes opaque result ids and binds the selection to its use
   assert.deepEqual(
     searchService.getManualMissingSelection({
       sessionId: response.sessionId,
-      resultId: response.results[0].id,
+      resultId: requireFixture(response.results[0]).id,
       jobId: "job-1",
       actorId: "user-1",
     }),
@@ -97,7 +98,7 @@ test("manual search exposes opaque result ids and binds the selection to its use
     () =>
       searchService.getManualMissingSelection({
         sessionId: response.sessionId,
-        resultId: response.results[0].id,
+        resultId: requireFixture(response.results[0]).id,
         jobId: "job-1",
         actorId: "user-1",
       }),
@@ -264,7 +265,7 @@ test("unexpected manual download errors fail once instead of entering worker ret
     },
   });
   assert.equal(failures.length, 1);
-  assert.equal(failures[0].failedPayload, payload);
+  assert.equal(failures[0]?.failedPayload, payload);
   assert.match(failures[0].message, /selected result failed/);
 
   await assert.rejects(

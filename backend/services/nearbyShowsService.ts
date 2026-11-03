@@ -98,7 +98,7 @@ const isLikelyUsZip = (value: unknown) => /^\d{5}(-\d{4})?$/.test(String(value |
 const normalizeUsZip = (value: unknown) =>
   String(value || "")
     .trim()
-    .split("-")[0];
+    .split("-")[0] ?? "";
 
 const sanitizeCountryCode = (value: unknown) => {
   const country = String(value || "")

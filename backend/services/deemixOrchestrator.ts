@@ -236,8 +236,8 @@ function wantedTracks(
 ) {
   const picked = [];
   for (const [trackIndex, jobId] of wanted) {
-    const track = verdict.copiesForTrack[trackIndex]
-      .map((index) => tracks[index])
+    const track = (verdict.copiesForTrack[trackIndex] ?? [])
+      .flatMap((index) => tracks[index] ?? [])
       .find((entry) => entry.readable !== false);
     if (!track) return null;
     picked.push({ ...track, jobId });
@@ -542,6 +542,9 @@ async function handleDeemixDownload(payload: DeemixPayload, helpers: DeemixHelpe
     payload.albumGrab === true && Array.isArray(listed?.raw?.tracks)
       ? stillWanted(payload, listed)
       : listed;
+  if (!candidate) {
+    return helpers.failOrTryNextSource(payload, job, "No deemix track URL available");
+  }
   const albumQueue = queuesAlbum(payload, candidate);
   if (queuesTracks(payload, candidate)) return queueReleaseTracks(payload, helpers, job, candidate);
   const url = albumQueue ? candidate?.raw?.albumUrl : candidate?.raw?.url;

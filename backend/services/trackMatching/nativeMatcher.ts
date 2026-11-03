@@ -128,7 +128,7 @@ export function parseListingTitle(
   for (const [index, pattern] of patterns.entries()) {
     const match = pattern.exec(base);
     if (!match) continue;
-    const title = index === 5 ? match[1] : match.at(-1)!;
+    const title = (index === 5 ? match[1] : match.at(-1)) ?? "";
     const trackNumber = Number(index < 3 ? match[2] : index === 5 ? match[2] : match[1]);
     return {
       title: title.trim(),
@@ -463,12 +463,13 @@ function maximumWeightColumns(weights: number[][]) {
     do {
       visited[column] = true;
       const currentRow = rowForColumn[column];
+      const currentWeights = weights[currentRow - 1] ?? [];
       let nextColumn = 0;
       let smallest = Infinity;
       for (let candidate = 1; candidate <= columnCount; candidate += 1) {
         if (visited[candidate]) continue;
         const reducedCost =
-          -weights[currentRow - 1][candidate - 1] -
+          -(currentWeights[candidate - 1] ?? 0) -
           rowPotential[currentRow] -
           columnPotential[candidate];
         if (reducedCost < distance[candidate]) {
@@ -551,7 +552,9 @@ export function pairTracksWithFiles<Edge extends { fileIndex: number; score: num
   const trackForFile = new Array(fileCount).fill(-1);
   const pairs = assignedColumns.flatMap((fileIndex, trackIndex) => {
     const edge =
-      fileIndex < fileCount ? edges[trackIndex].find((item) => item.fileIndex === fileIndex) : null;
+      fileIndex < fileCount
+        ? edges[trackIndex]?.find((item) => item.fileIndex === fileIndex)
+        : null;
     if (!edge) return [];
     trackForFile[fileIndex] = trackIndex;
     return [{ ...edge, trackIndex, fileIndex }];
@@ -697,9 +700,10 @@ export function isSameSongAtPlace(
   if (isOtherVersion(left, right)) return false;
   const [a, b] = [songWords(left), songWords(right)];
   if (!a.length || !b.length) return false;
-  const [allA, allB] = [left, right].map((title) =>
-    normalizeMatchText(spelledOut(title)).split(" "),
-  );
+  const allWords = (title: string | null | undefined) =>
+    normalizeMatchText(spelledOut(title)).split(" ");
+  const allA = allWords(left);
+  const allB = allWords(right);
   return (
     a.join("") === b.join("") ||
     holdsWords(allB, a) ||

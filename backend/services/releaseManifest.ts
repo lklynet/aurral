@@ -198,10 +198,10 @@ export function toReleaseManifest(
   const lengths = pressingLengths(group?.releases || [], release, aliases);
   const tracks = listed.map((track, index) => ({
     ...track,
-    durationMs: track.durationMs ?? median(lengths[index]),
+    durationMs: track.durationMs ?? median(lengths[index] ?? []),
   }));
   const otherLengths = lengths.map((found, index) => [
-    ...new Set(found.filter((length) => length !== tracks[index].durationMs)),
+    ...new Set(found.filter((length) => length !== tracks[index]?.durationMs)),
   ]);
 
   const artists = groupArtists(group);
@@ -350,7 +350,7 @@ export function manifestIndexFor(
   job: ManifestJobInput,
 ) {
   const { wanted } = mapRequest(manifest, [{ ...job, id: job?.id ?? "request" }]);
-  return wanted.size ? [...wanted.keys()][0] : null;
+  return [...wanted.keys()][0] ?? null;
 }
 
 // The validation request for one job at its place on the edition: the

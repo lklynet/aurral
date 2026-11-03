@@ -184,11 +184,11 @@ export function resolveSafeBrowsePath(
   const allowedRoots = (Array.isArray(roots) ? roots : [])
     .map((entry) => resolvePathValue(entry))
     .filter(Boolean) as string[];
-  if (!allowedRoots.length) {
+  const [fallback] = allowedRoots;
+  if (!fallback) {
     return null;
   }
 
-  const fallback = allowedRoots[0];
   const target = resolvePathValue(requestedPath) || fallback;
 
   for (const root of allowedRoots) {

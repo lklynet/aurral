@@ -14,8 +14,9 @@ export function verifyPassword(password: string, stored: string) {
   if (value.startsWith("scrypt$")) {
     const parts = value.split("$");
     if (parts.length !== 3) return false;
-    const salt = Buffer.from(parts[1], "hex");
-    const expected = Buffer.from(parts[2], "hex");
+    const [, saltHex = "", expectedHex = ""] = parts;
+    const salt = Buffer.from(saltHex, "hex");
+    const expected = Buffer.from(expectedHex, "hex");
     if (!salt.length || !expected.length) return false;
     const actual = scryptSync(password, salt, expected.length);
     return actual.length === expected.length && timingSafeEqual(actual, expected);

@@ -1,5 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 test("per-user refresh: user-specific feedback is isolated from global feedback", async () => {
   const { addDiscoveryFeedback, getDiscoveryFeedback, resetDiscoveryFeedback } =
@@ -108,6 +109,6 @@ test("per-user refresh: feedback boost affects reranking for per-user pool", asy
   });
 
   assert.equal(rankedWithFeedback.length, 2);
-  assert.equal(rankedWithFeedback[0].name, "MLR Target");
-  assert.ok(rankedWithFeedback[0].scoreTotal > rankedWithFeedback[1].scoreTotal);
+  assert.equal(rankedWithFeedback[0]?.name, "MLR Target");
+  assert.ok(rankedWithFeedback[0].scoreTotal > requireFixture(rankedWithFeedback[1]).scoreTotal);
 });

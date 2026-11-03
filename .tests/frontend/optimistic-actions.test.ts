@@ -6,6 +6,7 @@ import {
   previewArtistDiscoveryFeedback,
   revertDiscoveryFeedback,
 } from "../../frontend/src/utils/discoveryFeedback.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const json = (value: unknown, status: number = 200) =>
   new Response(JSON.stringify(value), {
@@ -54,7 +55,7 @@ test("an album request shows as downloading at once and stops if the server refu
   await waitForRequests(1);
   assert.deepEqual(activeAlbums(), ["album-1"]);
 
-  requests[0].resolve(json({ error: "Lidarr is unreachable" }, 502));
+  requireFixture(requests[0]).resolve(json({ error: "Lidarr is unreachable" }, 502));
   await assert.rejects(request);
   assert.deepEqual(activeAlbums(), []);
 });
@@ -97,13 +98,13 @@ test("undoing an unfavorite sends the removed stars back and reverts if the rest
       starred = false;
     },
   });
-  assert.equal(toasts[0].message, "Removed Favorite Track from favorites");
+  assert.equal(toasts[0]?.message, "Removed Favorite Track from favorites");
 
-  assert.ok(toasts[0].action);
+  assert.ok(toasts[0]?.action);
   const undone = toasts[0].action.onClick();
   assert.equal(starred, true);
   await waitForRequests(1);
-  assert.deepEqual(requests[0].body, { favorites: removed });
+  assert.deepEqual(requests[0]?.body, { favorites: removed });
   requests[0].resolve(json({ error: "Database is locked" }, 500));
   await undone;
 

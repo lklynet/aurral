@@ -580,9 +580,11 @@ function GlobalSearch() {
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
-    } else if (event.key === "Enter" && suggestionIndex >= 0) {
+    } else if (event.key === "Enter") {
+      const row = suggestionKeyboardRows[suggestionIndex];
+      if (!row) return;
       event.preventDefault();
-      handleSuggestionSelect(suggestionKeyboardRows[suggestionIndex]);
+      handleSuggestionSelect(row);
     }
   };
 

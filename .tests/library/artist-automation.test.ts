@@ -622,7 +622,7 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   lidarr.albums = [lidarrAlbum(album.id, otherAlbumMbid, false)];
   const libraryAlbums = await libraryManager.getAlbums(artist.id, null, { managedBy: "aurral" });
-  assert.equal(libraryAlbums[0].id, String(album.id));
+  assert.equal(libraryAlbums[0]?.id, String(album.id));
 
   await libraryManager.applyArtistMonitoringDefaults(
     { id: "41", monitored: true, monitorOption: "all" },
@@ -630,7 +630,7 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
   );
 
   assert.equal(libraryAlbums.length, 1);
-  assert.equal(lidarr.albums[0].monitored, false);
+  assert.equal(lidarr.albums[0]?.monitored, false);
 });
 
 type RouteBody = { mbid: string }[];

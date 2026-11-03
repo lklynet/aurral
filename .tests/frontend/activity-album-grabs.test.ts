@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { groupAlbumGrabRequests } from "../../frontend/src/pages/activity/activityListUtils.ts";
 import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type ActivityRequest = Parameters<typeof groupAlbumGrabRequests>[0][number];
 
@@ -50,6 +51,7 @@ function albumTracks({
 test("an album grab keeps completed tracks inside its queue row until every track is terminal", () => {
   const tracks = albumTracks();
   const [row] = groupAlbumGrabRequests(tracks.toReversed());
+  assert.ok(row !== undefined);
   assert.equal(row.albumName, "Everything Now");
   assert.equal(row.statusLabel, "Downloading album");
   assert.equal(row.progressLabel, "1 of 3 tracks ready");
@@ -62,6 +64,7 @@ test("an album grab keeps completed tracks inside its queue row until every trac
   const [done] = groupAlbumGrabRequests(
     tracks.map((track) => ({ ...track, status: "completed", completedAt: "2026-09-29T15:08:00Z" })),
   );
+  assert.ok(done !== undefined);
   assert.equal(done.id, row.id);
   assert.equal(done.statusLabel, "Completed");
   assert.equal(matchesActivityView(done, "history"), true);
@@ -72,9 +75,14 @@ test("an album grab keeps completed tracks inside its queue row until every trac
 test("track-only requests and distinct album grabs are never combined by album title", () => {
   const first = albumTracks();
   const second = albumTracks({ id: "another-request" });
-  const trackOnly = { ...first[0], id: "track-only", jobId: "track-only", albumGrab: undefined };
+  const trackOnly = {
+    ...requireFixture(first[0]),
+    id: "track-only",
+    jobId: "track-only",
+    albumGrab: undefined,
+  };
   const playlist = {
-    ...first[0],
+    ...requireFixture(first[0]),
     id: "playlist-track",
     jobId: "playlist-track",
     playlistId: "my-playlist",
@@ -92,14 +100,17 @@ test("track-only requests and distinct album grabs are never combined by album t
 test("partial fallback, blocked review, and unavailable evidence never report a completed album", () => {
   const fallback = albumTracks({ statuses: ["completed", "pending", "failed"], phase: "tracks" });
   const [row] = groupAlbumGrabRequests(fallback);
+  assert.ok(row !== undefined);
   assert.equal(row.statusLabel, "Searching for tracks");
   assert.equal(row.downloadMethodLabel, "Album download with track fallback");
   const [blocked] = groupAlbumGrabRequests(
     fallback.map((track, index) => (index === 1 ? { ...track, status: "blocked" } : track)),
   );
+  assert.ok(blocked !== undefined);
   assert.equal(blocked.statusLabel, "Needs review");
   assert.equal(matchesActivityView(blocked, "queue"), true);
   const [partial] = groupAlbumGrabRequests(fallback.filter((_, index) => index !== 1));
+  assert.ok(partial !== undefined);
   assert.equal(partial.statusLabel, "Incomplete");
   assert.equal(partial.progressLabel, "1 of 3 tracks ready · 1 track detail unavailable");
 });
@@ -113,6 +124,7 @@ test("album rows follow disc order and distinguish failed and cancelled terminal
       trackNumber: index === 2 ? 1 : 2,
     })),
   );
+  assert.ok(cancelled !== undefined);
   assert.deepEqual(
     cancelled.children?.map((child) => child.trackName),
     ["Song 3", "Song 2", "Song 1"],
@@ -121,6 +133,7 @@ test("album rows follow disc order and distinguish failed and cancelled terminal
   const [failed] = groupAlbumGrabRequests(
     tracks.map((track, index) => (index === 1 ? { ...track, status: "failed" } : track)),
   );
+  assert.ok(failed !== undefined);
   assert.equal(failed.statusLabel, "Failed");
   assert.equal(matchesActivityView(failed, "history"), true);
 });

@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { planStatus, statusMutations, type StatusItem } from "../../scripts/release-status.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const item = (number: number, kind: StatusItem["kind"], labels: string[]): StatusItem => ({
   id: `node-${number}`,
@@ -58,7 +59,7 @@ test("comments go out before any label, so a failed comment is retried instead o
   });
 
   assert.equal(mutations.length, 3);
-  assert.ok(mutations[0].startsWith("mutation($body: String!)"));
-  assert.ok(!mutations[0].includes("addLabelsToLabelable"));
+  assert.ok(mutations[0]?.startsWith("mutation($body: String!)"));
+  assert.ok(!requireFixture(mutations[0]).includes("addLabelsToLabelable"));
   assert.ok(mutations.slice(1).every((mutation) => !mutation.includes("addComment")));
 });

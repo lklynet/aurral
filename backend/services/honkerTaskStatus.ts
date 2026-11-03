@@ -705,7 +705,8 @@ function formatSchedule(expr: string): string {
   const value = String(expr || "").trim();
   const every = value.match(/^@every\s+(\d+)\s*(ms|s|m|h|d|w)$/i);
   if (every) {
-    return normalizeIntervalUnit(every[2], Number(every[1]));
+    const [, amount, unit = ""] = every;
+    return normalizeIntervalUnit(unit, Number(amount));
   }
   return value || "Manual";
 }

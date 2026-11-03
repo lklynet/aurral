@@ -160,6 +160,7 @@ test("playlists publish from the startup task, not when a process loads the play
   const [sync] = honkerDb
     .listHonkerJobs("playback")
     .filter((job) => job.payload?.kind === "playback-playlist-sync");
+  assert.ok(sync);
   assert.deepEqual(sync.payload, {
     kind: "playback-playlist-sync",
     entityIds: null,

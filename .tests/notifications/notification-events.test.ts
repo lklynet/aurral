@@ -139,9 +139,9 @@ test("deliverQueuedNotification interpolates request webhook bodies", async () =
       },
     });
     const requests = await waitFor(1);
-    assert.equal(requests[0].method, "POST");
-    assert.equal(requests[0].url, "/hook");
-    assert.deepEqual(requests[0].body, {
+    assert.equal(requests[0]?.method, "POST");
+    assert.equal(requests[0]?.url, "/hook");
+    assert.deepEqual(requests[0]?.body, {
       album: "Blue Train",
       by: "alice",
       event: "notifyRequestAvailable",
@@ -213,7 +213,7 @@ test("queued webhooks carry only webhook settings, and a notification Aurral can
 
     const queued = honker.listHonkerJobs("_outbox:notifications");
     assert.equal(queued.length, 1);
-    const { integrations } = requireFixture(queued[0].payload);
+    const { integrations } = requireFixture(requireFixture(queued[0]).payload);
     assert.deepEqual(Object.keys(requireFixture(integrations)).sort(), [
       "webhookEvents",
       "webhooks",
@@ -248,7 +248,7 @@ test("notifyRequestAvailable omits actor text when username is missing", async (
     });
 
     const requests = await waitFor(1);
-    assert.equal(requests[0].body.message, "Album available: Blue Train by John Coltrane");
+    assert.equal(requests[0]?.body.message, "Album available: Blue Train by John Coltrane");
   });
 });
 
@@ -308,7 +308,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
   const nextFailedLog = () =>
     new Promise<Record<string, unknown>[]>((resolve) => {
       const seen = failedLogs.length;
-      logged = () => failedLogs.length > seen && resolve(failedLogs[seen]);
+      logged = () => failedLogs.length > seen && resolve(requireFixture(failedLogs[seen]));
     });
   process.on("unhandledRejection", onUnhandledRejection);
 
@@ -357,7 +357,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
     const secondFailure = nextFailedLog();
     await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
     const secondArgs = await secondFailure;
-    const secondLog = secondArgs[secondArgs.length - 1];
+    const secondLog = requireFixture(secondArgs[secondArgs.length - 1]);
     assert.deepEqual(
       {
         kind: secondLog.kind,

@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { evaluateTrackCandidates } from "../../backend/services/trackMatching/decisionEngine.ts";
 import { buildTrackRequest } from "../../backend/services/trackMatching/trackIdentity.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const request = {
   artistName: "Daft Punk",
@@ -20,7 +21,9 @@ test("structured results select the recording and reject wrong variants and arti
       { id: "other", title: "Get Lucky", artist: "Lounge Covers Inc", durationSec: 248 },
     ],
   });
-  const byId = new Map(evaluation.evaluations.map((entry) => [entry.candidate.provider.id, entry]));
+  const byId = new Map(
+    evaluation.evaluations.map((entry) => [requireFixture(entry.candidate).provider.id, entry]),
+  );
   assert.equal(byId.get("exact")?.decision, "accept");
   assert.equal(byId.get("karaoke")?.decision, "reject");
   assert.equal(byId.get("other")?.decision, "reject");

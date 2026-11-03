@@ -39,6 +39,17 @@ const LINK_HOSTS = new Map<string, Source>([
 
 const KINDS = { album: "album", track: "track", song: "track", artist: "artist" } as const;
 
+function linkKind(value: string | undefined) {
+  const key = value?.toLowerCase();
+  return key && isOwnKey(KINDS, key) ? KINDS[key] : null;
+}
+
+function kindLink(match: RegExpMatchArray | null) {
+  const kind = linkKind(match?.[1]);
+  const id = match?.[2];
+  return kind && id ? { kind, id } : null;
+}
+
 type Source = keyof typeof SERVICE_NAMES;
 type LinkKind = (typeof KINDS)[keyof typeof KINDS];
 
@@ -114,22 +125,25 @@ const unavailable = (source: Source, detail = "could not be reached") =>
 
 const parsers: Record<Source, (url: URL) => ParsedLink | null> = {
   spotify(url) {
-    const match = url.pathname.match(
-      /^\/(?:intl-[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/([A-Za-z0-9]{22})\/?$/i,
+    return kindLink(
+      url.pathname.match(
+        /^\/(?:intl-[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/([A-Za-z0-9]{22})\/?$/i,
+      ),
     );
-    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
   },
   appleMusic(url) {
     const match = url.pathname.match(
       /^\/(?:([a-z]{2})\/)?(album|song|artist)\/(?:[^/]+\/)?(\d+)\/?$/i,
     );
     if (!match) return null;
-    const country = (match[1] || "us").toLowerCase();
+    const [, countryCode, type, id] = match;
+    const country = (countryCode || "us").toLowerCase();
     const trackId = url.searchParams.get("i");
-    if (match[2].toLowerCase() === "album" && trackId) {
+    if (type?.toLowerCase() === "album" && trackId) {
       return /^\d+$/.test(trackId) ? { kind: "track", id: trackId, country } : null;
     }
-    return { kind: KINDS[match[2].toLowerCase() as keyof typeof KINDS], id: match[3], country };
+    const kind = linkKind(type);
+    return kind && id ? { kind, id, country } : null;
   },
   youtubeMusic(url) {
     const path = url.pathname.replace(/\/$/, "");
@@ -141,18 +155,16 @@ const parsers: Record<Source, (url: URL) => ParsedLink | null> = {
     if (path === "/playlist" && /^OLAK5uy_[A-Za-z0-9_-]{1,100}$/.test(listId || "")) {
       return { kind: "album", id: listId!, path: `/playlist?list=${listId}` };
     }
-    const channel = path.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})$/);
-    return channel && { kind: "artist", id: channel[1], path: `/channel/${channel[1]}` };
+    const channelId = path.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})$/)?.[1];
+    return channelId ? { kind: "artist", id: channelId, path: `/channel/${channelId}` } : null;
   },
   tidal(url) {
-    const match = url.pathname.match(/^\/(?:browse\/)?(album|track|artist)\/(\d+)(?:\/u)?\/?$/i);
-    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
+    return kindLink(url.pathname.match(/^\/(?:browse\/)?(album|track|artist)\/(\d+)(?:\/u)?\/?$/i));
   },
   deezer(url) {
-    const match = url.pathname.match(
-      /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/(\d+)\/?$/i,
+    return kindLink(
+      url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/(\d+)\/?$/i),
     );
-    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
   },
   songlink(url) {
     const match = url.pathname.match(/^\/([A-Za-z0-9_-]{1,64})(?:\/([A-Za-z0-9_-]{1,64}))?\/?$/);
@@ -242,7 +254,7 @@ function readMetaTags(html: string) {
   const tags: Record<string, string | null> = {};
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = Object.fromEntries(
-      [...tag.matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)].map(([, name, value]) => [
+      [...tag.matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)].map(([, name = "", value]) => [
         name.toLowerCase(),
         value,
       ]),
@@ -255,7 +267,7 @@ function readMetaTags(html: string) {
 
 function readJsonLd(html: string): JsonLdItem[] {
   const items: JsonLdItem[] = [];
-  for (const [, body] of html.matchAll(
+  for (const [, body = ""] of html.matchAll(
     /<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi,
   )) {
     try {
@@ -268,10 +280,10 @@ function readJsonLd(html: string): JsonLdItem[] {
 }
 
 function readNextData(html: string): NextData | null {
-  const match = html.match(/<script\b[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-  if (!match) return null;
+  const json = html.match(/<script\b[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (!json) return null;
   try {
-    return JSON.parse(match[1]);
+    return JSON.parse(json);
   } catch {
     return null;
   }

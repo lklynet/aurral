@@ -13,6 +13,7 @@ import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { parseFile } from "music-metadata";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -171,7 +172,7 @@ function addAlbumJobs(
     ),
   );
   assert.ok(ids.every((value) => value != null));
-  const downloadAttemptId = beginDownloadAttempt(ids[0]);
+  const downloadAttemptId = beginDownloadAttempt(requireFixture(ids[0]));
   for (const id of ids) setActiveDownloadAttemptId(id, downloadAttemptId);
   for (const id of ids.slice(1)) downloadTracker.setDownloading(id);
   return ids;
@@ -183,6 +184,7 @@ async function makeAlbum(t: TestContext, group: string) {
   const files = await writeTracks(folder, titles);
   const ids = addAlbumJobs(group, titles);
   assert.ok(ids.every((value) => value != null));
+  const jobId = requireFixture(ids[0]);
   return {
     folder,
     files,
@@ -190,8 +192,8 @@ async function makeAlbum(t: TestContext, group: string) {
     payload: {
       source: "usenet",
       phase: "download",
-      jobId: ids[0],
-      downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
+      jobId,
+      downloadAttemptId: getActiveDownloadAttemptId(jobId),
       playlistId: "library",
       playlistGeneration: 0,
       releaseMbid: await serveRelease(t, group, titles),
@@ -293,10 +295,10 @@ test("a Usenet NZB short of the pinned release imports nothing, blocks it for ev
     {
       source: "usenet",
       phase: "finalize",
-      jobId: ids[0],
+      jobId: requireFixture(ids[0]),
       playlistId: "library",
       playlistGeneration: 0,
-      downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
+      downloadAttemptId: getActiveDownloadAttemptId(requireFixture(ids[0])),
       destination: `The Band/${group}`,
       albumGrab: true,
       albumGroupJobIds: ids,
@@ -481,6 +483,7 @@ test("upgrades for two tracks of one album share a single Usenet download", asyn
   const [first, second] = await Promise.all(
     upgradeIds.map((id) => start(id!, failOnSourceFallback)),
   );
+  assert.ok(first !== undefined && second !== undefined);
   assert.equal(append.mock.calls.length, 1);
   assert.deepEqual([first!.nzbId, second!.nzbId], [77, 77]);
 
@@ -623,9 +626,9 @@ test("upgrades for two copies of one track share the release without moving its 
     started.map((payload) => payload!.nzbId),
     [81, 81],
   );
-  await runToEnd(started[0]);
+  await runToEnd(requireFixture(started[0]));
   assert.equal(removed.mock.calls.length, 0);
-  await runToEnd(started[1]);
+  await runToEnd(requireFixture(started[1]));
   assert.equal(removed.mock.calls.length, 1);
   const upgraded = downloadTracker
     .getAll()
@@ -681,7 +684,7 @@ test("overlapping static playlists share one Usenet release across their track j
           source: "usenet",
           phase: "download",
           jobId,
-          playlistId: requests[index].playlistId,
+          playlistId: requireFixture(requests[index]).playlistId,
           playlistGeneration: 0,
           destination: `The Band/${group}-${index}`,
           candidates: [candidate],
@@ -712,6 +715,7 @@ test("overlapping static playlists share one Usenet release across their track j
 test("a pending review keeps a shared Usenet file until its final consumer releases it", async (t) => {
   const folder = join(state.baseDir, "shared-review-release");
   const [sourcePath] = await writeTracks(folder, ["First"]);
+  assert.ok(sourcePath);
   const { removed } = mockNzbget(t, folder);
   const downloadMetadata = {
     downloadSource: "usenet",
@@ -877,6 +881,7 @@ async function pinnedUpgrade(
   assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, sourceId)), "queued");
   await runWorker();
   const [attempt] = queued;
+  assert.ok(attempt !== undefined);
   assert.deepEqual(
     [attempt.albumGrab, attempt.releaseMbid, attempt.albumGroupJobIds],
     [true, releaseMbid, [attempt.jobId]],
@@ -1069,7 +1074,7 @@ async function releaseUpgrades(
         releaseMbid: pins[index],
         requestGroupId: requestGroupIds[index],
       },
-      owners[index],
+      requireFixture(owners[index]),
     );
     assert.ok(id != null);
     downloadTracker.setDone(id, original, group);
@@ -1168,6 +1173,7 @@ test("an upgrade started while another upgrade downloads the same release waits 
     ],
   );
   let [first, second]: (PipelinePayload | null)[] = upgrades.queued;
+  assert.ok(first !== undefined && second !== undefined);
   first = await stepUntil(first, (payload) => payload.phase === "poll");
   assert.equal(append.mock.calls.length, 1);
   second = await processPipelinePayload(second);
@@ -1210,6 +1216,7 @@ test("an upgrade pinned to another pressing of the album waits for the upgrade d
     ],
   );
   let [first, second]: (PipelinePayload | null)[] = upgrades.queued;
+  assert.ok(first !== undefined && second !== undefined);
   first = await stepUntil(first, (payload) => payload.phase === "poll");
   second = await processPipelinePayload(second);
   assert.equal(second!.phase, "waiting");
@@ -1228,6 +1235,7 @@ test("an upgrade stops waiting once the upgrade ahead of it gives up on the rele
   const upgrades = await releaseUpgrades(t, "upgrade-ahead-falls-back");
   await upgrades.queueEach();
   let [first, second]: (PipelinePayload | null)[] = upgrades.queued;
+  assert.ok(first !== undefined && second !== undefined);
   second = await processPipelinePayload(second);
   assert.equal(second!.phase, "waiting");
 
@@ -1243,7 +1251,7 @@ test("an upgrade stops waiting once the upgrade ahead of it gives up on the rele
 test("an upgrade waiting for the upgrade ahead of it on the same album stops waiting after 30 minutes and searches anyway", async (t) => {
   const upgrades = await releaseUpgrades(t, "upgrade-wait-ends");
   await upgrades.queueEach();
-  let second: PipelinePayload | null = upgrades.queued[1];
+  let second: PipelinePayload | null = requireFixture(upgrades.queued[1]);
   let waitedSeconds = 0;
   let steps = 0;
   do {
@@ -1278,7 +1286,7 @@ test("the upgrade check skips the tracks of a user who is not active, and the Li
     ),
     [[upgrades.sourceIds[1]]],
   );
-  await processPipelinePayload(upgrades.queued[0]);
+  await processPipelinePayload(requireFixture(upgrades.queued[0]));
   assert.ok(upgrades.trackSearch.mock.calls.length > 0);
 });
 
@@ -1300,7 +1308,7 @@ test("an upgrade of a user who is not active waits in the download worker's queu
     upgrades.queued.map((attempt) => trackedJob(downloadTracker, attempt.jobId).upgradeForJobId),
     [upgrades.sourceIds[1]],
   );
-  assert.equal(upgrades.queued[0].albumGrab, true);
+  assert.equal(upgrades.queued[0]?.albumGrab, true);
   const waiting = downloadTracker.findActiveUpgradeJob(
     trackedJob(downloadTracker, upgrades.sourceIds[0]),
   );
@@ -1334,7 +1342,7 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
   assert.equal(await runQualityUpgradeCheck({ force: true }), 2);
   await runWorker();
   assert.deepEqual(
-    upgrades.queued[0].albumGroupJobIds!.map(
+    requireFixture(upgrades.queued[0]).albumGroupJobIds!.map(
       (id) => trackedJob(downloadTracker, id).upgradeForJobId,
     )!,
     [upgrades.sourceIds[0]],
@@ -1361,6 +1369,7 @@ test("Search all starts the upgrades of one release's tracks from different requ
   await runWorker();
   assert.equal(upgrades.queued.length, 1);
   const [attempt] = upgrades.queued;
+  assert.ok(attempt !== undefined);
   assert.deepEqual(
     attempt.albumGroupJobIds!.map((id) => trackedJob(downloadTracker, id).upgradeForJobId),
     upgrades.sourceIds,
@@ -2180,7 +2189,7 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   });
   assert.ok(queued != null);
   assert.equal(enqueue.mock.calls.length, 1);
-  assert.equal(enqueue.mock.calls[0][0].files.length, 2);
+  assert.equal(enqueue.mock.calls[0]?.[0].files.length, 2);
   const polled = await processPipelinePayload(queued);
   assert.ok(polled != null);
   assert.equal(polled.phase, "finalize");
@@ -2193,8 +2202,8 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   }
   assert.equal(await stat(album.folder).catch(() => null), null);
   const names = album.ids.map((id) => basename(trackedJob(downloadTracker, id).finalPath!));
-  assert.match(names[0], /^01 - First\b/);
-  assert.match(names[1], /^02 - Second\b/);
+  assert.match(requireFixture(names[0]), /^01 - First\b/);
+  assert.match(requireFixture(names[1]), /^02 - Second\b/);
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
   const activity = (await getAurralHistoryRequests()).filter((item) =>
@@ -2249,7 +2258,7 @@ test("a Soulseek album left untouched in the uploader's queue moves on after 10 
   assert.equal(movedOn.phase, "finalize");
   assert.equal(removed.mock.calls.length, 2);
 
-  transfers[0].placeInQueue = 3;
+  requireFixture(transfers[0]).placeInQueue = 3;
   assert.equal(
     (await processPipelinePayload({ ...waiting, lastProgressAt: elevenMinutesAgo }))!.phase,
     "poll",
@@ -2258,7 +2267,7 @@ test("a Soulseek album left untouched in the uploader's queue moves on after 10 
 
 test("a Soulseek album removes the downloaded files it did not import", async (t) => {
   const album = await makeAlbum(t, "soulseek-unused");
-  await rm(album.files[1]);
+  await rm(requireFixture(album.files[1]));
   const unused = join(album.folder, "02 Somebody Else.flac");
   await execFileAsync("ffmpeg", [
     "-hide_banner",
@@ -2358,7 +2367,7 @@ test("a Soulseek album queued before candidates said a listing proved their rele
   );
 
   const short = await makeAlbum(t, "soulseek-legacy-short");
-  await rm(short.files[1]);
+  await rm(requireFixture(short.files[1]));
   const fallback = await legacyFinalize(short);
   assert.ok(fallback != null);
   assert.deepEqual([fallback.albumGrab, fallback.jobId], [false, short.ids[0]]);
@@ -2418,9 +2427,9 @@ test("a Usenet album needs every track of the pinned release, imports only the w
   let payload: UsenetPayload | PipelinePayload | null = {
     source: "usenet",
     phase: "download",
-    jobId: ids[0],
+    jobId: requireFixture(ids[0]),
     playlistId: "library",
-    downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
+    downloadAttemptId: getActiveDownloadAttemptId(requireFixture(ids[0])),
     playlistGeneration: 0,
     destination: `The Band/${group}`,
     albumGrab: true,
@@ -2464,6 +2473,7 @@ test("one playlist track outside any album request tries the next Usenet release
     requestGroupId: null,
     playlist: "static",
   });
+  assert.ok(jobId !== undefined);
   const client = getDownloadClient("nzbget");
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async (url) =>
     Buffer.from(String(url)),
@@ -2524,16 +2534,20 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
   const album = await makeAlbum(t, "soulseek-stalled");
   useSlskd();
   const client = getDownloadClient("slskd");
-  const transfers = [
-    { id: "done", username: "peer", filename: album.files[0], state: "Completed, Succeeded" },
-    {
-      id: "stuck",
-      username: "peer",
-      filename: album.files[1],
-      state: "Queued, Remotely",
-      placeInQueue: 9,
-    },
-  ];
+  const done = {
+    id: "done",
+    username: "peer",
+    filename: album.files[0],
+    state: "Completed, Succeeded",
+  };
+  const stuck = {
+    id: "stuck",
+    username: "peer",
+    filename: album.files[1],
+    state: "Queued, Remotely",
+    placeInQueue: 9,
+  };
+  const transfers = [done, stuck];
   vi.spyOn(client, "getTransfer").mockImplementation(
     async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
@@ -2556,11 +2570,11 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
   const waiting = await processPipelinePayload(polling);
   assert.ok(waiting != null);
   assert.equal(waiting.phase, "poll");
-  transfers[1].placeInQueue = 8;
+  stuck.placeInQueue = 8;
   const moving = await processPipelinePayload(waiting);
   assert.ok(moving != null);
   assert.equal(moving.phase, "poll");
-  transfers[1].placeInQueue = 7;
+  stuck.placeInQueue = 7;
   const stalled = await processPipelinePayload({
     ...moving,
     tailSince: Date.now() - 11 * 60 * 1000,
@@ -2572,13 +2586,13 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
     ["stuck"],
   );
   const crawling = {
-    ...transfers[1],
+    ...stuck,
     state: "InProgress",
     bytesTransferred: 4096,
     placeInQueue: null,
   };
   vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
-    id === "stuck" ? crawling : transfers[0],
+    id === "stuck" ? crawling : done,
   );
   crawling.bytesTransferred = 8192;
   assert.equal(
@@ -2630,7 +2644,7 @@ test("a track that takes the lead of a Soulseek album after the leading track la
     reason: "Shorter",
     metadata: {},
   };
-  assert.equal(downloadTracker.keepHeldForReview(album.ids[1], held), true);
+  assert.equal(downloadTracker.keepHeldForReview(requireFixture(album.ids[1]), held), true);
 
   const polling = {
     ...album.payload,

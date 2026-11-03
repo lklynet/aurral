@@ -470,7 +470,10 @@ test("expired, stopped, and disabled-owner links stop serving", async () => {
 });
 
 test("the tunnel runs while links are live and only reaches share links", async () => {
-  const first = await createLink({ kind: "track", libraryTrackId: secondAlbum.tracks[0].trackId });
+  const first = await createLink({
+    kind: "track",
+    libraryTrackId: requireFixture(secondAlbum.tracks[0]).trackId,
+  });
   const second = await createLink({ kind: "album", albumMbid: SECOND_ALBUM_MBID });
   const target = await tunnelTarget();
   const started = await launches();
@@ -602,7 +605,7 @@ test("details-only shares publish permanent links without starting a tunnel", as
   assert.equal(created.body.link.expiresAt, null);
   assert.match(created.body.link.url, /\/s\/s[A-Za-z0-9_-]{15}$/);
   assert.equal(lookupRequests.length, 1);
-  assert.match(lookupRequests[0].url || "", /^\/api\/shares\//);
+  assert.match(requireFixture(lookupRequests[0]).url || "", /^\/api\/shares\//);
   assert.deepEqual(await launches(), []);
   assert.equal(created.body.link.id, undefined);
   assert.equal((await callApi("GET", "")).body.links.length, 0);
@@ -676,8 +679,8 @@ test("a release-only album never publishes its release ID as a release-group ID"
   );
   assert.ok(snapshot);
   assert.equal(snapshot.albumMbid, null);
-  assert.equal(snapshot.tracks[0].albumMbid, null);
-  assert.equal(snapshot.tracks[0].releaseMbid, releaseMbid);
+  assert.equal(requireFixture(snapshot.tracks[0]).albumMbid, null);
+  assert.equal(snapshot.tracks[0]?.releaseMbid, releaseMbid);
 });
 
 test("shared recordings keep the requested album, metadata and file", async () => {
@@ -724,9 +727,9 @@ test("shared recordings keep the requested album, metadata and file", async () =
     { kind: "playlist", title: playlist.name },
   );
   assert.ok(snapshot);
-  assert.equal(snapshot.tracks[0].albumTitle, secondAlbum.album.title);
-  assert.equal(snapshot.tracks[0].trackNumber, 9);
-  assert.equal(snapshot.tracks[0].path, `tracks/${secondAlbum.album.id}/${track.id}`);
+  assert.equal(snapshot.tracks[0]?.albumTitle, secondAlbum.album.title);
+  assert.equal(snapshot.tracks[0]?.trackNumber, 9);
+  assert.equal(snapshot.tracks[0]?.path, `tracks/${secondAlbum.album.id}/${track.id}`);
   const artistShare = resolveShareManifest(
     { kind: "artist", targetRef: String(artist.id), albumRef: null },
     { kind: "artist", title: artist.name, artistName: artist.name },
@@ -800,13 +803,13 @@ test("local access without an account creates short metadata links without grant
   assert.match(created.body.link.url, /\/s\/s[A-Za-z0-9_-]{15}$/);
   assert.equal(created.body.link.shareFiles, false);
   assert.equal((await callApi("GET", "", { user: localUser })).status, 403);
-  const published = lookupRequests[0].body;
+  const published = requireFixture(lookupRequests[0]).body;
   assert.ok(published && "manifest" in published && "shareFiles" in published);
   const { parseShareManifest } = await import("../../lib/shareManifest.ts");
   const snapshot = parseShareManifest(published.manifest);
   assert.ok(snapshot);
-  assert.equal(snapshot.tracks[0].path, null);
-  assert.equal(snapshot.tracks[0].size, null);
+  assert.equal(requireFixture(snapshot.tracks[0]).path, null);
+  assert.equal(requireFixture(snapshot.tracks[0]).size, null);
   assert.equal(published.shareFiles, false);
   assert.equal(
     (
@@ -859,7 +862,7 @@ test("playlist shares play the library file an entry downloaded to", async () =>
   assert.deepEqual(
     snapshot?.tracks.map((track) => [track.title, track.path]),
     seeded.tracks.map((track, index) => [
-      playlist.tracks[index].trackName,
+      requireFixture(playlist.tracks[index]).trackName,
       `tracks/${track.albumId}/${track.trackId}`,
     ]),
   );
@@ -913,7 +916,7 @@ test("playlist shares keep missing entries and never expose tracks added after c
     snapshot.tracks.map((track) => track.title),
     ["Opening Song", "Not downloaded"],
   );
-  assert.equal(snapshot.tracks[1].path, null);
+  assert.equal(requireFixture(snapshot.tracks[1]).path, null);
   assert.ok(!row.manifest.includes(paths.baseDir));
   flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
     tracks: [
@@ -930,7 +933,7 @@ test("playlist shares keep missing entries and never expose tracks added after c
   assert.equal(
     (
       await fetch(
-        `${base}/tracks/${secondAlbum.album.id}/${secondAlbum.tracks[0].trackId}/download`,
+        `${base}/tracks/${secondAlbum.album.id}/${requireFixture(secondAlbum.tracks[0]).trackId}/download`,
       )
     ).status,
     404,
@@ -1002,7 +1005,7 @@ test("playlist shares republish changes daily without exposing files for added t
   assert.equal(
     (
       await fetch(
-        `${base}/tracks/${secondAlbum.album.id}/${secondAlbum.tracks[0].trackId}/download`,
+        `${base}/tracks/${secondAlbum.album.id}/${requireFixture(secondAlbum.tracks[0]).trackId}/download`,
       )
     ).status,
     404,
@@ -1021,7 +1024,7 @@ test("playlist shares republish changes daily without exposing files for added t
   const offline = lookupRequests.find((entry) => entry.method === "PUT")?.body;
   assert.ok(offline && "manifest" in offline);
   assert.equal(
-    parseShareManifest(offline.manifest)?.tracks[0].path,
+    parseShareManifest(offline.manifest)?.tracks[0]?.path,
     `tracks/${opening.albumId}/${opening.trackId}`,
   );
 

@@ -94,9 +94,9 @@ function matchMusicBrainzTrack(
   const own = releaseMbid && mbAlbum.releases?.find((release) => release.id === releaseMbid);
   const chosen = own || selectAlbumRelease(mbAlbum);
   const releases = [
-    chosen,
+    ...(chosen ? [chosen] : []),
     ...(mbAlbum.releases || []).filter((release) => release !== chosen),
-  ].filter(Boolean);
+  ];
   if (recordingMbid) {
     for (const release of releases) {
       let tracks = (release.tracks || []).filter(
@@ -104,7 +104,8 @@ function matchMusicBrainzTrack(
           entry.recordingId === recordingMbid || entry.oldRecordingIds?.includes(recordingMbid),
       );
       if (tracks.length > 1) tracks = file.trackNumber ? tracks.filter(atFilePosition(file)) : [];
-      if (tracks.length === 1) return { release, track: tracks[0] };
+      const [first] = tracks;
+      if (tracks.length === 1 && first) return { release, track: first };
       if (tracks.length > 1) return null;
     }
     return null;
@@ -115,8 +116,8 @@ function matchMusicBrainzTrack(
     );
     if (file.trackNumber) candidates = candidates.filter(atFilePosition(file));
     if (candidates.length > 1) return null;
-    if (candidates.length !== 1) continue;
     const [track] = candidates;
+    if (!track) continue;
     const lengthsAgree =
       !file.durationMs ||
       !track.durationMs ||

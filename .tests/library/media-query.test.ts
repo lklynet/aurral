@@ -33,6 +33,7 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const metadata = {
   common: {
@@ -251,7 +252,7 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
       [album.id],
     );
     assert.deepEqual(
-      focused.tracks[0].files.map((file) => file.path),
+      focused.tracks[0]?.files.map((file) => file.path),
       [ownedPath],
     );
 
@@ -264,7 +265,7 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
       stale.tracks.map((track) => track.id),
       [unavailableTrack.id],
     );
-    assert.equal(stale.tracks[0].files[0].available, false);
+    assert.equal(stale.tracks[0]?.files[0]?.available, false);
 
     assert.equal(getLibraryTrackOwnership({ trackMbid: ownedTrack.mbid }), true);
     assert.equal(
@@ -313,15 +314,15 @@ test("getLibrary merges sources and preserves normalized hierarchy", async () =>
     assert.equal(all.artists.length, 1);
     assert.equal(all.albums.length, 1);
     assert.equal(all.tracks.length, 1);
-    assert.deepEqual(all.tracks[0].sources, ["lidarr", source]);
-    assert.equal(all.tracks[0].files.length, 2);
-    assert.equal(all.albums[0].trackIds[0], all.tracks[0].id);
-    assert.equal(all.artists[0].albumIds[0], all.albums[0].id);
-    assert.equal(all.tracks[0].available, true);
+    assert.deepEqual(all.tracks[0]?.sources, ["lidarr", source]);
+    assert.equal(all.tracks[0]?.files.length, 2);
+    assert.equal(all.albums[0]?.trackIds[0], all.tracks[0].id);
+    assert.equal(all.artists[0]?.albumIds[0], all.albums[0].id);
+    assert.equal(all.tracks[0]?.available, true);
 
     const lidarr = getLibrary({ source: "lidarr" });
     assert.equal(lidarr.tracks.length, 1);
-    assert.deepEqual(lidarr.tracks[0].sources, ["lidarr"]);
+    assert.deepEqual(lidarr.tracks[0]?.sources, ["lidarr"]);
 
     db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(
       "lidarr",
@@ -329,8 +330,8 @@ test("getLibrary merges sources and preserves normalized hierarchy", async () =>
     );
     const available = getLibrary({ availableOnly: true });
     assert.equal(available.tracks.length, 1);
-    assert.deepEqual(available.tracks[0].sources, [source]);
-    assert.equal(available.tracks[0].files.length, 1);
+    assert.deepEqual(available.tracks[0]?.sources, [source]);
+    assert.equal(available.tracks[0]?.files.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
     db.prepare("DELETE FROM library_media_files WHERE source IN (?, ?) AND path = ?").run(
@@ -705,7 +706,7 @@ test("album reads prefer an album-specific file over an earlier unscoped file", 
     ],
   });
 
-  assert.equal(readModel.tracks[0].path, "/music/01-album.flac");
+  assert.equal(readModel.tracks[0]?.path, "/music/01-album.flac");
 });
 
 test("library newest ordering follows library arrival time", () => {
@@ -834,7 +835,7 @@ test("library album track pages keep the selected album relationship", () => {
       pageSize: 10,
     });
     assert.deepEqual(
-      page.items[0].albums.map((entry) => entry.albumId),
+      page.items[0]?.albums.map((entry) => entry.albumId),
       [selectedAlbum.id],
     );
     assert.deepEqual(
@@ -899,10 +900,10 @@ test("library album track pages include indexed tracks without media", () => {
       page.items.map((track) => track.title),
       ["Owned Track", "Missing Track"],
     );
-    assert.equal(page.items[0].files.length, 1);
-    assert.deepEqual([...page.items[1].files], []);
-    assert.equal(page.albums[0].trackCount, 2);
-    assert.equal(page.albums[0].availableTrackCount, 1);
+    assert.equal(page.items[0]?.files.length, 1);
+    assert.deepEqual([...requireFixture(page.items[1]).files], []);
+    assert.equal(page.albums[0]?.trackCount, 2);
+    assert.equal(page.albums[0]?.availableTrackCount, 1);
 
     const filtered = getLibraryPage({
       kind: "tracks",
@@ -975,10 +976,10 @@ test("library responses do not expose filesystem paths", () => {
     ],
   });
 
-  assert.deepEqual(response.artists[0].metadata, { tags: { genre: "rock" } });
-  assert.deepEqual(response.albums[0].metadata, {});
-  assert.deepEqual(response.tracks[0].metadata, { nested: {} });
-  assert.deepEqual(response.tracks[0].files, [
+  assert.deepEqual(response.artists[0]?.metadata, { tags: { genre: "rock" } });
+  assert.deepEqual(response.albums[0]?.metadata, {});
+  assert.deepEqual(response.tracks[0]?.metadata, { nested: {} });
+  assert.deepEqual(response.tracks[0]?.files, [
     {
       id: 2,
       albumId: null,

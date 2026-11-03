@@ -338,7 +338,7 @@ test("library album lookup counts the tracks of the release a scanned album list
         artistId: null,
         trackNumber: index + 1,
         recordingId,
-        title: ["Owned", "Missing"][index],
+        title: ["Owned", "Missing"][index] ?? "",
         trackPosition: index + 1,
       })),
     },
@@ -349,7 +349,7 @@ test("library album lookup counts the tracks of the release a scanned album list
     const { body } = await lookupAlbums([albumMbid]);
     assert.ok(body != null);
     const { status, trackListComplete, trackCount, trackFileCount, percentOfTracks } =
-      body[albumMbid];
+      requireFixture(body[albumMbid]);
     assert.deepEqual(
       { status, trackListComplete, trackCount, trackFileCount, percentOfTracks },
       {
@@ -441,9 +441,9 @@ test("library album lookup reports partial ownership, its manager, and the compl
     });
     invalidateLibraryQueryCache();
     const owned = (await lookupAlbums([albumMbid])).body;
-    assert.equal(owned[albumMbid].status, "available");
-    assert.equal(owned[albumMbid].percentOfTracks, 100);
-    assert.equal(owned[albumMbid].trackListComplete, true);
+    assert.equal(owned[albumMbid]?.status, "available");
+    assert.equal(owned[albumMbid]?.percentOfTracks, 100);
+    assert.equal(owned[albumMbid]?.trackListComplete, true);
   } finally {
     db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(
       album.id,

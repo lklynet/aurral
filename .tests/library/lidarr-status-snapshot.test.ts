@@ -81,18 +81,18 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
   const activeSnapshot = await getLidarrStatusSnapshot();
   assert.equal(activeSnapshot.active, true);
   assert.equal(hasActiveLidarrStatusSnapshot(), true);
-  assert.equal(activeSnapshot.statuses[10].status, "downloading");
+  assert.equal(activeSnapshot.statuses[10]?.status, "downloading");
   assert.deepEqual(calls, { queue: 2, history: 2, command: 2 });
 
   const requests = await buildLidarrRequests(lidarrClient, activeSnapshot.provider);
-  assert.equal(requests[0].albumId, "10");
+  assert.equal(requests[0]?.albumId, "10");
   assert.deepEqual(calls, { queue: 2, history: 2, command: 2 });
 
   fail = true;
   invalidateAllDownloadStatusesCache();
   const stale = await getLidarrStatusSnapshot();
   assert.equal(stale.stale, true);
-  assert.equal(stale.statuses[10].status, "downloading");
+  assert.equal(stale.statuses[10]?.status, "downloading");
   assert.match(requireFixture(stale.error), /provider unavailable/);
   assert.equal((await getLidarrStatusSnapshot()).stale, true);
   assert.deepEqual(calls, { queue: 3, history: 3, command: 3 });
@@ -196,9 +196,9 @@ test("forced Lidarr status reads bypass the client cache", async (t: import("vit
     client._httpsInsecureAgent.destroy();
   });
 
-  assert.equal((await client.getQueue())[0].id, 1);
-  assert.equal((await client.getQueue())[0].id, 1);
-  assert.equal((await client.getQueue({ forceRefresh: true }))[0].id, 2);
+  assert.equal((await client.getQueue())[0]?.id, 1);
+  assert.equal((await client.getQueue())[0]?.id, 1);
+  assert.equal((await client.getQueue({ forceRefresh: true }))[0]?.id, 2);
   assert.equal(calls, 2);
 });
 
@@ -227,7 +227,7 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     },
     commands: [],
   });
-  assert.equal(normal[100].status, "processing");
+  assert.equal(normal[100]?.status, "processing");
   assert.deepEqual(calls, { bulk: 0, detail: 0 });
 
   const verified = await getDownloadStatusesForAlbumIds(["101", "102"], {
@@ -250,8 +250,8 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     },
     commands: [],
   });
-  assert.equal(verified[101].status, "added");
-  assert.equal(verified[102].status, "failed");
+  assert.equal(verified[101]?.status, "added");
+  assert.equal(verified[102]?.status, "failed");
   assert.deepEqual(calls, { bulk: 1, detail: 0 });
 
   bulkFailure = true;
@@ -270,8 +270,8 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     },
     commands: [],
   });
-  assert.equal(failedVerification[101].status, "failed");
-  assert.equal(failedVerification[102].status, "failed");
+  assert.equal(failedVerification[101]?.status, "failed");
+  assert.equal(failedVerification[102]?.status, "failed");
   assert.deepEqual(calls, { bulk: 2, detail: 0 });
 });
 
@@ -318,10 +318,10 @@ test("album status reads Lidarr event types rather than words in the history", a
     },
     commands: [],
   });
-  assert.equal(statuses[200].status, "added");
-  assert.equal(statuses[201].status, "processing");
-  assert.equal(statuses[202].status, "failed");
-  assert.equal(statuses[203].status, "downloading");
+  assert.equal(statuses[200]?.status, "added");
+  assert.equal(statuses[201]?.status, "processing");
+  assert.equal(statuses[202]?.status, "failed");
+  assert.equal(statuses[203]?.status, "downloading");
   assert.equal("progress" in statuses[203] ? statuses[203].progress : undefined, 50);
   assert.equal(statuses[204], undefined);
 });

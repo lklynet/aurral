@@ -109,9 +109,9 @@ test("webhook test route sends GET directly with disabled event toggles and does
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.payload, { success: true, message: "Test webhook sent" });
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].method, "GET");
-    assert.equal(requests[0].url, "/hook");
-    assert.equal(requests[0].headers["x-test-webhook"], "get");
+    assert.equal(requests[0]?.method, "GET");
+    assert.equal(requests[0]?.url, "/hook");
+    assert.equal(requests[0]?.headers["x-test-webhook"], "get");
     assert.equal(requests[0].body, null);
   });
 
@@ -138,11 +138,11 @@ test("direct webhook test sends POST headers and fixed placeholder values withou
     });
 
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].method, "POST");
-    assert.equal(requests[0].url, "/hook");
-    assert.equal(requests[0].headers["x-test-webhook"], "post");
-    assert.equal(requests[0].headers["content-type"], "application/json");
-    assert.deepEqual(requests[0].body, {
+    assert.equal(requests[0]?.method, "POST");
+    assert.equal(requests[0]?.url, "/hook");
+    assert.equal(requests[0]?.headers["x-test-webhook"], "post");
+    assert.equal(requests[0]?.headers["content-type"], "application/json");
+    assert.deepEqual(requests[0]?.body, {
       event: "webhookTest",
       flow: "Aurral webhook test",
       path: "/aurral/test-webhook",

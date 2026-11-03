@@ -10,6 +10,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [state, { db }, { downloadTracker }, { processYtdlpPipelinePayload }] =
   await setupIsolatedBackend(
@@ -295,7 +296,7 @@ for (const { name, track, unreadable = [], after = {}, chosen } of [
     await useFixtures((fixtures) => {
       unreadable.forEach((id) => delete fixtures.songs[id]);
       Object.entries(after).forEach(([id, song]) =>
-        Object.assign(fixtures.songs[id], { after: song }),
+        Object.assign(requireFixture(fixtures.songs[id]), { after: song }),
       );
     });
     const { next } = await search(track);
@@ -314,7 +315,7 @@ test(
   { timeout: 20000 },
   async () => {
     await useFixtures((fixtures) => {
-      fixtures.songs["4D7u5KF7SP8"].held = true;
+      requireFixture(fixtures.songs["4D7u5KF7SP8"]).held = true;
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
     const searching = search({
@@ -338,7 +339,7 @@ test(
   async () => {
     const warned = warnings();
     await useFixtures((fixtures) => {
-      fixtures.songs["5oWyMakvQew"].delay = 600000;
+      requireFixture(fixtures.songs["5oWyMakvQew"]).delay = 600000;
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
     const searching = search({
@@ -348,6 +349,7 @@ test(
       durationMs: 257000,
     });
     const [read, readToo] = await Promise.all(["swJOIjjW69U", "m8i5WiWCN-c"].map(startedPid));
+    assert.ok(read !== undefined && readToo !== undefined);
     await startedPid("5oWyMakvQew");
     waitForExit([read, readToo]);
     vi.advanceTimersByTime(60000);
@@ -372,7 +374,7 @@ test(
   { timeout: 20000 },
   async () => {
     await useFixtures((fixtures) => {
-      fixtures.songs.BGMfbFzONp8.delay = 600000;
+      requireFixture(fixtures.songs.BGMfbFzONp8).delay = 600000;
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
     const searching = search({
@@ -385,7 +387,7 @@ test(
     const stalled = await startedPid("BGMfbFzONp8");
     vi.advanceTimersByTime(60000);
     const { next } = await searching;
-    assert.equal(next.candidates[0].raw.id, "o1sUaVJUeB0");
+    assert.equal(next.candidates[0]?.raw.id, "o1sUaVJUeB0");
     assert.ok((await calls()).includes("video search 宇多田ヒカル First Love"));
     assertNoYtdlpLeft([stalled]);
   },
@@ -426,7 +428,7 @@ test("yt-dlp searches the artist's own upload when YouTube Music lists it on ano
     albumName: "Requested Album",
     durationMs: 200000,
   });
-  assert.equal(next.candidates[0].raw.id, "OFFICIALAUD");
+  assert.equal(next.candidates[0]?.raw.id, "OFFICIALAUD");
   assert.equal("song" in next.candidates[0].raw, false);
   assert.deepEqual(await calls(), [
     "song search Stub Artist Stub Title",
@@ -610,7 +612,7 @@ for (const { name, albumName = "1", fileAlbum, imported } of [
 ]) {
   test(`yt-dlp ${name}`, async () => {
     await useHelpSongs(["N4KvafPbauw"], (fixtures) => {
-      Object.assign(fixtures.songs.N4KvafPbauw, { fileDuration: 143, fileAlbum });
+      Object.assign(requireFixture(fixtures.songs.N4KvafPbauw), { fileDuration: 143, fileAlbum });
     });
     const { jobId, next: download } = await search({
       artistName: "The Beatles",
@@ -645,7 +647,7 @@ test("yt-dlp searches videos when no YouTube Music song is the requested recordi
     "read t21dyImwINM",
     "video search 宇多田ヒカル First Love",
   ]);
-  assert.equal(next.candidates[0].raw.id, "o1sUaVJUeB0");
+  assert.equal(next.candidates[0]?.raw.id, "o1sUaVJUeB0");
   assert.equal(
     next.candidates.some((entry) => "song" in entry.raw && entry.raw.song),
     false,
@@ -692,7 +694,7 @@ for (const track of [
     const job = downloadTracker.getJob(jobId);
     assert.ok(job != null);
     assert.equal(job.status, "done", job.error || "");
-    assert.equal(job.releaseGuid, download.candidates[0].raw.id);
+    assert.equal(job.releaseGuid, requireFixture(download.candidates[0]).raw.id);
     assert.ok(job.finalPath);
     await access(job.finalPath);
     const { common } = await parseFile(job.finalPath);

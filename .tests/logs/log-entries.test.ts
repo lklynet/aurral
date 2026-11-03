@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vite-plus/test";
 import type { LogEntry } from "../../backend/services/logger.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const quiet = { log: console.log, warn: console.warn, error: console.error };
 
@@ -36,6 +37,7 @@ test("entries carry their request, keep the stack, and mask secrets", async () =
   });
 
   const [saved] = entries;
+  assert.ok(saved);
   assert.equal(saved.req, "r1");
   assert.equal(saved.proc, "main");
   assert.deepEqual(saved.data, { endpoint: "/api/v1/album", headers: { authorization: "***" } });
@@ -50,8 +52,8 @@ test("repeats that differ only by ids and counts share a fingerprint", async () 
   logger.warn("jobs", "Job 9001 failed", { reason: 'No files for "Amnesiac"' });
   logger.warn("jobs", "Job 9001 failed", { reason: "Lidarr unreachable" });
 
-  assert.equal(entries[0].fp, entries[1].fp);
-  assert.notEqual(entries[1].fp, entries[2].fp);
+  assert.equal(entries[0]?.fp, requireFixture(entries[1]).fp);
+  assert.notEqual(requireFixture(entries[1]).fp, requireFixture(entries[2]).fp);
 });
 
 test("console output is saved under the category from its tag", async () => {

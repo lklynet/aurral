@@ -165,7 +165,10 @@ export function createShareApp() {
       const share = loadShare(c.req.param("token"));
       if (!share?.link.allowDownload) return notFound(c);
       const { link, target } = share;
-      if (link.kind === "track") return sendDownload(c, target.tracks[0]);
+      if (link.kind === "track") {
+        const [track] = target.tracks;
+        return track ? sendDownload(c, track) : notFound(c);
+      }
       const plan = await planZip(zipEntries(link, target));
       const zipName =
         link.kind === "artist" ? target.title : `${target.artistName} - ${target.title}`;

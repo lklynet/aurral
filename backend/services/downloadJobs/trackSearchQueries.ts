@@ -172,12 +172,11 @@ const ROMAN_NUMERALS = [
 function volumeVariant(value: string | null | undefined) {
   const match = VOLUME_PATTERN.exec(String(value || ""));
   if (!match) return "";
-  const number = match[2].toLowerCase();
+  const number = (match[2] ?? "").toLowerCase();
   const arabic = /^\d+$/.test(number) ? Number(number) : ROMAN_NUMERALS.indexOf(number) + 1;
-  if (!(arabic >= 1 && arabic <= ROMAN_NUMERALS.length)) return "";
-  const replacement = /^\d+$/.test(number)
-    ? `Volume ${ROMAN_NUMERALS[arabic - 1].toUpperCase()}`
-    : `Vol ${arabic}`;
+  const roman = ROMAN_NUMERALS[arabic - 1];
+  if (!roman) return "";
+  const replacement = /^\d+$/.test(number) ? `Volume ${roman.toUpperCase()}` : `Vol ${arabic}`;
   return String(value).replace(match[0], replacement);
 }
 

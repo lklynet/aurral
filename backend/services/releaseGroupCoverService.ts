@@ -372,7 +372,7 @@ export const resolveReleaseGroupCoversBatch = async (
     );
     batch.forEach((item, batchIndex) => {
       const entry = results[batchIndex];
-      if (entry.status !== "fulfilled") {
+      if (entry?.status !== "fulfilled") {
         covers[item.mbid] = { image: null, notFound: false, transientError: true };
         return;
       }

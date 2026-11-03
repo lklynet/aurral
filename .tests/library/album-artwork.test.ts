@@ -219,6 +219,7 @@ test("album cover URLs carry a version that changes when the album's files chang
     tracks: [],
     albums: [libraryAlbum({ id: album.id })],
   }).albums;
+  assert.ok(publicAlbum);
   assert.equal(publicAlbum.coverUrl, `/api/library/albums/${album.id}/cover?v=${version}`);
 
   await replaceFirstFile(album, blue);
@@ -245,6 +246,7 @@ test("custom album artwork keeps the underlying embedded cover available as a fa
       albums: [libraryAlbum({ id: albumId })],
       tracks: [],
     }).albums;
+    assert.ok(album);
 
     assert.equal(album.coverUrl, `/api/library/artwork/album/${albumId}?v=1234`);
     assert.equal(album.customArtworkUrl, album.coverUrl);
@@ -531,7 +533,7 @@ describe("with sign-in required", () => {
       vi.unstubAllGlobals();
     });
     const reply = (index: number, body: Buffer) =>
-      replies[index](
+      requireFixture(replies[index])(
         new Response(new Uint8Array(body), { headers: { "content-type": "image/png" } }),
       );
     const album = await albumFixture("overlapping", [null], {

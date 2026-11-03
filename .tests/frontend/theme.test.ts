@@ -9,6 +9,7 @@ type ThemeDocument = ReturnType<
 >;
 import { pickVividColor } from "../../frontend/src/utils/themeColor.ts";
 import { parseThemeText, serializeThemeFile } from "../../frontend/src/utils/themeImport.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,6 +25,7 @@ function luminance(hex: string) {
 
 function contrast(first: string, second: string) {
   const [a, b] = [luminance(first), luminance(second)].sort((x, y) => y - x);
+  assert.ok(a !== undefined && b !== undefined);
   return (a + 0.05) / (b + 0.05);
 }
 
@@ -340,7 +342,7 @@ test("undo does not restore a theme past the limit", async () => {
       { select: false },
     );
   }
-  const removed = theme.removeCustomTheme(theme.getThemeDocument().themes[0].id);
+  const removed = theme.removeCustomTheme(requireFixture(theme.getThemeDocument().themes[0]).id);
   assert.ok(removed != null);
   theme.saveCustomTheme(
     { name: "Replacement", dark: { background: "#101820", accent: "#f2aa4c" } },
@@ -579,6 +581,7 @@ test("album art matching picks the vivid color, not the average", () => {
   const color = pickVividColor(pixels);
   assert.ok(color != null);
   const [r, g, b] = [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
+  assert.ok(r !== undefined && g !== undefined && b !== undefined);
   assert.ok(b > r && b > g, `${color} is blue`);
 
   assert.equal(

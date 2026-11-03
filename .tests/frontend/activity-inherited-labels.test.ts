@@ -52,6 +52,7 @@ test("an album grab with a source named constructor shows the name as written", 
     },
   };
   const [grouped] = groupAlbumGrabRequests([row]);
+  assert.ok(grouped !== undefined);
   assert.equal(grouped.sourceSummary, "constructor");
   assert.equal(grouped.statusLabel, "Queued");
 });

@@ -1,7 +1,7 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { playlistTrack } from "../playlists/fixtures.ts";
+import { playlistTrack, requireFixture } from "../playlists/fixtures.ts";
 import type { hc, InferResponseType } from "hono/client";
 import type discoveryApp from "../../backend/routes/discovery/index.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
@@ -148,7 +148,7 @@ test("undoing less like this restores the taste it replaced exactly", async () =
   assert.equal(rejected.status, 400);
   assert.deepEqual(
     (await listFeedback()).map((entry) => entry.id),
-    [less.id, before[1].id],
+    [less.id, requireFixture(before[1]).id],
   );
 
   const restored = await send("POST", "/restore", { removeIds: [less.id], entries: [more] });

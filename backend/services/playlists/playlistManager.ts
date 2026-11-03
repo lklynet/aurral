@@ -123,8 +123,9 @@ export class PlaylistManager {
     const ids = [...new Set([...(entityIds ?? entities.map((entity) => entity.id)), ...renamed])];
     for (const id of ids) {
       await this._relocateArtwork(id);
-      if (!renamed.includes(id)) continue;
-      await fs.rm(path.join(this.libraryRoot, written[id]), { force: true });
+      const file = written[id];
+      if (!renamed.includes(id) || file === undefined) continue;
+      await fs.rm(path.join(this.libraryRoot, file), { force: true });
       delete written[id];
     }
     const changed: string[] = [];

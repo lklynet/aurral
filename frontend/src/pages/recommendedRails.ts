@@ -96,7 +96,10 @@ export function buildRecommendedRails<T extends Recommendation>(
       seed,
       artists: direct.filter((artist) => strongestSeed(artist) === seed),
     })),
-    closeToHome: direct.filter((artist) => !railSeeds.includes(strongestSeed(artist))),
+    closeToHome: direct.filter((artist) => {
+      const seed = strongestSeed(artist);
+      return !seed || !railSeeds.includes(seed);
+    }),
     furtherOut,
   };
 }

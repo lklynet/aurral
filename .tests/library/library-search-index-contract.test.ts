@@ -3,6 +3,7 @@ import { test, afterAll } from "vite-plus/test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, libraryStore, searchIndex] = await setupIsolatedBackend(
   "library-search-index-contract",
@@ -93,7 +94,7 @@ test("targeted configured rescans update related searches and preserve failed or
     header[0] = 0x84;
     header.writeUIntBE(comment.length, 1, 3);
     await writeFile(
-      files[index],
+      requireFixture(files[index]),
       Buffer.concat([Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), streamInfo, header, comment]),
     );
   };
@@ -109,7 +110,7 @@ test("targeted configured rescans update related searches and preserve failed or
     .sort();
   assert.equal(ids.length, 2);
   await writeAudio(0, "Renamed Album", "Updated First", "Jazz");
-  await scan([files[0]]);
+  await scan([requireFixture(files[0])]);
   assert.deepEqual(
     read("Renamed Album")
       .items.map((track) => track.id)
@@ -125,17 +126,17 @@ test("targeted configured rescans update related searches and preserve failed or
     ["Jazz", "Rock"],
   );
 
-  await writeFile(files[0], "unreadable");
-  const failed = await scan([files[0]]);
+  await writeFile(requireFixture(files[0]), "unreadable");
+  const failed = await scan([requireFixture(files[0])]);
   assert.equal(failed.local.filesFailed, 1);
   assert.equal(read("Updated First").total, 1);
-  await rm(files[0]);
-  await scan([files[0]]);
+  await rm(requireFixture(files[0]));
+  await scan([requireFixture(files[0])]);
   assert.equal(read("Updated First").total, 0);
   assert.equal(read("Updated First", false).total, 0);
   assert.equal(read("Second Song").total, 1);
   await writeAudio(0, "Renamed Album", "Restored First", "Folk");
-  await scan([files[0]]);
+  await scan([requireFixture(files[0])]);
   assert.equal(read("Restored First").total, 1);
   assert.equal(read("Updated First").total, 0);
   assert.equal(read("Second Song").total, 1);

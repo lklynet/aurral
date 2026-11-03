@@ -132,13 +132,13 @@ test("recent artists combines both owners with artwork and library identities wh
     recent.map((artist) => artist.managedBy),
     ["aurral", "lidarr"],
   );
-  assert.equal(recent[0].mbid, mbid);
-  assert.equal(recent[0].canonicalId, String(aurral.id));
-  assert.deepEqual(recent[0].images, images);
-  assert.equal(recent[1].mbid, null);
-  assert.equal(recent[1].foreignArtistId, "123@deezer");
-  assert.equal(recent[1].canonicalId, String(lidarr.id));
-  assert.deepEqual(recent[1].images, lidarrImages);
+  assert.equal(recent[0]?.mbid, mbid);
+  assert.equal(recent[0]?.canonicalId, String(aurral.id));
+  assert.deepEqual(recent[0]?.images, images);
+  assert.equal(requireFixture(recent[1]).mbid, null);
+  assert.equal(recent[1]?.foreignArtistId, "123@deezer");
+  assert.equal(recent[1]?.canonicalId, String(lidarr.id));
+  assert.deepEqual(recent[1]?.images, lidarrImages);
 });
 
 test("recent artists follow the artist addition instead of newer tracks or provider dates", async () => {
@@ -227,8 +227,8 @@ test("recent artists collapse duplicate canonical artist rows", async () => {
   const recent = await getRecent();
 
   assert.equal(recent.length, 1);
-  assert.equal(recent[0].mbid, canonicalMbid);
-  assert.equal(recent[0].added, "2026-10-01T12:00:00.000Z");
+  assert.equal(recent[0]?.mbid, canonicalMbid);
+  assert.equal(recent[0]?.added, "2026-10-01T12:00:00.000Z");
 });
 
 test("recent artists keep unidentified artists with the same name separate", async () => {
@@ -302,13 +302,14 @@ test("file scans retain artist identity, artwork and added date while updating f
     });
     assert.equal(scan.filesIndexed, 1);
     const [recent] = await getRecent();
+    assert.ok(recent !== undefined);
     assert.equal(recent.canonicalId, String(artist.id));
     assert.equal(recent.mbid, mbid);
     assert.equal(recent.added, new Date(added).toISOString());
     assert.deepEqual(recent.images, images);
     const stored = JSON.parse(
       requireFixture(
-        requireFixture(db)
+        db
           .prepare<unknown[], { metadata_json: string | null }>(
             "SELECT metadata_json FROM library_artists WHERE id = ?",
           )!
@@ -324,5 +325,5 @@ test("file scans retain artist identity, artwork and added date while updating f
     name: "Aurral Artist",
     metadata: { images: [] },
   });
-  assert.deepEqual([...(await getRecent())[0].images], []);
+  assert.deepEqual([...requireFixture((await getRecent())[0]).images], []);
 });

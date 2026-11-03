@@ -198,7 +198,7 @@ export function useReleaseTracks({
             <MoreVertical className="btn-add-action__more" aria-hidden="true" />
           </>
         ),
-        ...(items.length ? { additionalItemsAfter: items[items.length - 1].id } : {}),
+        ...(items.at(-1) ? { additionalItemsAfter: items.at(-1)?.id } : {}),
         onMenuOpen: playlists.loadStaticPlaylists,
         renderAdditionalItems: ({ closeMenu }) => (
           <>

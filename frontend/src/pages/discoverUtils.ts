@@ -7,6 +7,7 @@ import {
   type DiscoverLayoutEntry,
   type DiscoverSectionId,
 } from "../../../lib/discoverLayout.ts";
+import { shuffle } from "../../../lib/shuffle.ts";
 
 export type DiscoverResponse = InferResponseType<typeof discoveryClient.$get, 200>;
 export type DiscoverArtist = DiscoverResponse["recommendations"][number];
@@ -70,7 +71,10 @@ export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
 export const DISCOVER_NEARBY_COUNTRY_KEY = "discoverNearbyCountry";
 export const DISCOVER_PREVIEW_ITEM_LIMIT = 12;
 
-export const shuffleWithSeed = <T>(items: T[], seed: string | null | undefined) => {
+export const shuffleWithSeed = <T extends {} | null>(
+  items: T[],
+  seed: string | null | undefined,
+) => {
   let state = 2166136261;
   for (const char of String(seed || "")) {
     state = Math.imul(state ^ char.charCodeAt(0), 16777619);
@@ -80,12 +84,7 @@ export const shuffleWithSeed = <T>(items: T[], seed: string | null | undefined) 
     state = Math.imul(state ^ (state >>> 13), 3266489909);
     return ((state ^= state >>> 16) >>> 0) / 4294967296;
   };
-  const shuffled = [...items];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  return shuffled;
+  return shuffle(items, (bound) => Math.floor(random() * bound));
 };
 
 export const artistMatchesGenre = (

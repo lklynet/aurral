@@ -81,12 +81,12 @@ test("library track reads remove nested filesystem paths", async () => {
     ).json();
 
     assert.equal(body.length, 1);
-    assert.equal("path" in requireFixture(body)[0], false);
-    assert.deepEqual(requireFixture(body)[0].quality, { audioFormat: "FLAC", nested: {} });
-    assert.match(requireFixture(body)[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
-    assert.equal(requireFixture(body)[0].streamFormat, "flac");
+    assert.equal("path" in requireFixture(body[0]), false);
+    assert.deepEqual(body[0]?.quality, { audioFormat: "FLAC", nested: {} });
+    assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
+    assert.equal(body[0]?.streamFormat, "flac");
 
-    const filesPath = `/library/tracks/${requireFixture(body)[0].id}/files`;
+    const filesPath = `/library/tracks/${body[0].id}/files`;
     const userFiles = await asUser.request(filesPath);
     assert.equal(userFiles.status, 403);
     assert.equal((await userFiles.text()).includes(filePath), false);
@@ -105,7 +105,7 @@ test("library track reads remove nested filesystem paths", async () => {
       )
     ).json();
     assert.deepEqual(
-      requireFixture(body).map((track) => track.title),
+      body.map((track) => track.title),
       ["Route Track"],
     );
 
@@ -126,7 +126,7 @@ test("library track reads remove nested filesystem paths", async () => {
       ).json();
       assert.ok(Array.isArray(body), JSON.stringify(body));
       assert.deepEqual(
-        requireFixture(body).map((album) => album.title),
+        body.map((album) => album.title),
         ["Route Album"],
       );
     }

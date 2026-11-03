@@ -68,7 +68,7 @@ function fixture(_t: import("vite-plus/test").TestContext, count: number = 3) {
   );
   const selections = jobs.map((job, index) => ({
     jobId: job.id,
-    membershipId: source.tracks[index].membershipId,
+    membershipId: requireFixture(source.tracks[index]).membershipId,
     jobPlaylistId: source.id,
     jobGeneration: job.playlistGeneration,
     jobCreatedAt: job.createdAt,
@@ -148,7 +148,7 @@ test("a removed and readded membership cannot be removed by a stale batch select
   const f = fixture(t, 1);
   config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, { tracks: [] });
   config.flowPlaylistConfig.appendStaticPlaylistTracks(f.source.id, [
-    { ...f.source.tracks[0], canonicalJobId: f.jobs[0].id },
+    { ...f.source.tracks[0], canonicalJobId: requireFixture(f.jobs[0]).id },
   ]);
   const result = await execute({
     ownerUserId: f.user.id,
@@ -158,12 +158,12 @@ test("a removed and readded membership cannot be removed by a stale batch select
     selections: f.selections,
   });
   assert.ok(result != null);
-  assert.equal(result.outcomes[0].status, "failed");
+  assert.equal(result.outcomes[0]?.status, "failed");
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     1,
   );
-  assert.ok(downloadTracker.getJob(f.jobs[0].id));
+  assert.ok(downloadTracker.getJob(requireFixture(f.jobs[0]).id));
   assert.equal(f.scans(), 0);
 });
 
@@ -196,7 +196,10 @@ test("failed destination persistence keeps source membership and owner", async (
       requireFixture(config.flowPlaylistConfig.getStaticPlaylist(target.id)).tracks.length,
       0,
     );
-    assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).playlistType, f.source.id);
+    assert.equal(
+      requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).playlistType,
+      f.source.id,
+    );
   } finally {
     db.exec("DROP TRIGGER reject_membership");
   }
@@ -218,10 +221,12 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
   const malformed = await send(f.user, "POST", removals, { jobIds: [] });
   assert.equal(malformed.status, 400);
   const accepted = await (
-    await send(f.user, "POST", removals, { jobIds: [f.jobs[0].id, f.jobs[0].id, "missing"] })
+    await send(f.user, "POST", removals, {
+      jobIds: [requireFixture(f.jobs[0]).id, requireFixture(f.jobs[0]).id, "missing"],
+    })
   ).json();
   assert.equal(accepted.queued, true);
-  assert.deepEqual(accepted.acceptedJobIds, [f.jobs[0].id]);
+  assert.deepEqual(accepted.acceptedJobIds, [requireFixture(f.jobs[0]).id]);
   assert.equal(accepted.rejected[0].jobId, "missing");
   assert.equal(honker.getHonkerQueueDepth("weekly-flow-operation"), 1);
   const operation = `/shared-playlists/${f.source.id}/operations/${accepted.operationId}`;
@@ -248,23 +253,14 @@ test("synchronization failure preserves applied outcomes and retries only unfini
     operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }),
     /fixture queue unavailable/,
   );
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(operationId)).outcomes.length,
-    2,
-  );
+  assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 2);
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     0,
   );
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(operationId)).state,
-    "completed",
-  );
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(operationId)).outcomes.length,
-    2,
-  );
+  assert.equal(requireFixture(store.getBulkOperation(operationId)).state, "completed");
+  assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 2);
   assert.equal(f.scans(), 1);
 });
 
@@ -278,7 +274,7 @@ test("failed source commit leaves completed source media intact", async (t) => {
   );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
-  downloadTracker.setDone(f.jobs[0].id, file);
+  downloadTracker.setDone(requireFixture(f.jobs[0]).id, file);
   const { operationId } = store.enqueueBulkOperation({
     ownerUserId: f.user.id,
     sourcePlaylistId: f.source.id,
@@ -295,15 +291,15 @@ test("failed source commit leaves completed source media intact", async (t) => {
       /fixture source failure/,
     );
     assert.equal(await fs.readFile(file, "utf8"), "disposable audio");
-    assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).finalPath, file);
+    assert.equal(
+      requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).finalPath,
+      file,
+    );
     assert.equal(
       requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
       1,
     );
-    assert.equal(
-      requireFixture(requireFixture(store).getBulkOperation(operationId)).outcomes.length,
-      0,
-    );
+    assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 0);
   } finally {
     db.exec("DROP TRIGGER reject_source_commit");
   }
@@ -341,10 +337,7 @@ test("a restarted process resumes a destination already saved before source deta
   dbOps.invalidateSettingsCache();
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.reconcileCommittedJobs();
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(operationId)).state,
-    "completed",
-  );
+  assert.equal(requireFixture(store.getBulkOperation(operationId)).state, "completed");
   assert.equal(config.flowPlaylistConfig.getStaticPlaylists().length, 2);
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(target.id)).tracks.length,
@@ -369,7 +362,7 @@ test("partial provider failure preserves the failed membership and completes the
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
   honker.getPipelineQueue().enqueue({
-    jobId: f.jobs[0].id,
+    jobId: requireFixture(f.jobs[0]).id,
     playlistId: f.source.id,
     playlistGeneration: 0,
     phase: "poll",
@@ -392,8 +385,11 @@ test("partial provider failure preserves the failed membership and completes the
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     1,
   );
-  assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).status, "failed");
-  assert.ok(!downloadTracker.getJob(f.jobs[1].id));
+  assert.equal(
+    requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).status,
+    "failed",
+  );
+  assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[1]).id));
   assert.equal(f.scans(), 1);
 });
 
@@ -403,10 +399,10 @@ test("bulk leader removal hands its album download to an unselected held peer", 
     "UPDATE playlist_download_jobs SET request_group_id = ?, album_mbid = ? WHERE playlist_id = ?",
   ).run("disposable-album-group", "disposable-album", f.source.id);
   downloadTracker.reconcileCommittedJobs();
-  downloadTracker.setDownloading(f.jobs[1].id);
-  downloadTracker.markSlskdDispatched(f.jobs[0].id);
+  downloadTracker.setDownloading(requireFixture(f.jobs[1]).id);
+  downloadTracker.markSlskdDispatched(requireFixture(f.jobs[0]).id);
   honker.getPipelineQueue().enqueue({
-    jobId: f.jobs[0].id,
+    jobId: requireFixture(f.jobs[0]).id,
     playlistId: f.source.id,
     playlistGeneration: 0,
     phase: "poll",
@@ -420,15 +416,18 @@ test("bulk leader removal hands its album download to an unselected held peer", 
     sourcePlaylistId: f.source.id,
     action: "remove",
     target: null,
-    selections: [f.selections[0]],
+    selections: [requireFixture(f.selections[0])],
   });
   assert.ok(result != null);
-  assert.equal(result.outcomes[0].status, "removed");
-  assert.ok(!downloadTracker.getJob(f.jobs[0].id));
-  assert.equal(requireFixture(downloadTracker.getJob(f.jobs[1].id)).status, "downloading");
-  const payload = honker.listHonkerJobs("slskd-pipeline")[0].payload;
+  assert.equal(result.outcomes[0]?.status, "removed");
+  assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[0]).id));
+  assert.equal(
+    requireFixture(downloadTracker.getJob(requireFixture(f.jobs[1]).id)).status,
+    "downloading",
+  );
+  const payload = requireFixture(honker.listHonkerJobs("slskd-pipeline")[0]).payload;
   assert.ok(payload != null);
-  assert.equal(payload.jobId, f.jobs[1].id);
+  assert.equal(payload.jobId, requireFixture(f.jobs[1]).id);
   assert.equal(payload.queueUuid, "album-work-needed-by-peer");
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
@@ -459,21 +458,18 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
       requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
       1,
     );
-    assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).status, "failed");
-    assert.equal(isDownloadJobCancelled(f.jobs[0].id), false);
     assert.equal(
-      requireFixture(requireFixture(store).getBulkOperation(operationId)).outcomes.length,
-      0,
+      requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).status,
+      "failed",
     );
+    assert.equal(isDownloadJobCancelled(requireFixture(f.jobs[0]).id), false);
+    assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 0);
   } finally {
     db.exec("DROP TRIGGER reject_pending_commit");
   }
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
-  assert.equal(
-    requireFixture(requireFixture(store).getBulkOperation(operationId)).state,
-    "completed",
-  );
-  assert.ok(!downloadTracker.getJob(f.jobs[0].id));
+  assert.equal(requireFixture(store.getBulkOperation(operationId)).state, "completed");
+  assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[0]).id));
 });
 
 test("failed provider cleanup leaves a retained quality upgrade recoverable", async (t) => {
@@ -481,8 +477,10 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
   const file = path.join(requireFixture(process.env.WEEKLY_FLOW_FOLDER), "original.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "original audio");
-  downloadTracker.setDone(f.jobs[0].id, file);
-  const upgradeId = downloadTracker.addReplacementSearchJob(downloadTracker.getJob(f.jobs[0].id));
+  downloadTracker.setDone(requireFixture(f.jobs[0]).id, file);
+  const upgradeId = downloadTracker.addReplacementSearchJob(
+    downloadTracker.getJob(requireFixture(f.jobs[0]).id),
+  );
   assert.ok(upgradeId != null);
   downloadTracker.setDownloading(upgradeId);
   const { getDownloadClient } =
@@ -506,12 +504,12 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
     selections: f.selections,
   });
   assert.ok(result != null);
-  assert.equal(result.outcomes[0].status, "failed");
+  assert.equal(result.outcomes[0]?.status, "failed");
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     1,
   );
-  assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).status, "done");
+  assert.equal(requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).status, "done");
   assert.equal(await fs.readFile(file, "utf8"), "original audio");
   assert.equal(requireFixture(downloadTracker.getJob(upgradeId)).status, "failed");
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
@@ -523,7 +521,7 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
     selections: f.selections,
   });
   assert.ok(retry != null);
-  assert.equal(retry.outcomes[0].status, "removed");
+  assert.equal(retry.outcomes[0]?.status, "removed");
   assert.ok(!downloadTracker.getJob(upgradeId));
 });
 
@@ -536,7 +534,10 @@ test("duplicate supplied membership IDs cannot detach an unselected track", asyn
     ownerUserId: f.user.id,
     tracks: f.source.tracks.map((track) => ({ ...track, membershipId: "duplicated-membership" })),
   });
-  const selection = { ...f.selections[0], membershipId: source.tracks[0].membershipId };
+  const selection = {
+    ...requireFixture(f.selections[0]),
+    membershipId: requireFixture(source.tracks[0]).membershipId,
+  };
   await execute({
     ownerUserId: f.user.id,
     sourcePlaylistId: source.id,
@@ -549,10 +550,10 @@ test("duplicate supplied membership IDs cannot detach an unselected track", asyn
     1,
   );
   assert.equal(
-    requireFixture(config.flowPlaylistConfig.getStaticPlaylist(source.id)).tracks[0].trackName,
-    f.jobs[1].trackName,
+    requireFixture(config.flowPlaylistConfig.getStaticPlaylist(source.id)).tracks[0]?.trackName,
+    requireFixture(f.jobs[1]).trackName,
   );
-  assert.ok(downloadTracker.getJob(f.jobs[1].id));
+  assert.ok(downloadTracker.getJob(requireFixture(f.jobs[1]).id));
 });
 
 test("a bulk move finalizes retained media under the configured playlist root", async (t: import("vite-plus/test").TestContext) => {
@@ -567,7 +568,7 @@ test("a bulk move finalizes retained media under the configured playlist root", 
   const file = path.join(root, "_flows", f.source.id, "Original.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "retained custom-root audio");
-  downloadTracker.setDone(f.jobs[0].id, file);
+  downloadTracker.setDone(requireFixture(f.jobs[0]).id, file);
   const target = config.flowPlaylistConfig.createStaticPlaylist({
     name: "Custom target",
     ownerUserId: f.user.id,
@@ -582,7 +583,10 @@ test("a bulk move finalizes retained media under the configured playlist root", 
   assert.ok(result != null);
   assert.equal(result.state, "completed");
   assert.equal(
-    await fs.readFile(requireFixture(downloadTracker.getJob(f.jobs[0].id)).finalPath!, "utf8"),
+    await fs.readFile(
+      requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).finalPath!,
+      "utf8",
+    ),
     "retained custom-root audio",
   );
   await assert.rejects(fs.access(file), { code: "ENOENT" });
@@ -603,7 +607,7 @@ test("a conflicting destination membership keeps the source job while other trac
   const target = config.flowPlaylistConfig.createStaticPlaylist({
     name: "Existing target",
     ownerUserId: f.user.id,
-    tracks: [f.source.tracks[0]],
+    tracks: [requireFixture(f.source.tracks[0])],
   });
   const result = await execute({
     ownerUserId: f.user.id,
@@ -620,13 +624,19 @@ test("a conflicting destination membership keeps the source job while other trac
   const source = config.flowPlaylistConfig.getStaticPlaylist(f.source.id);
   assert.ok(source != null);
   assert.equal(source.tracks.length, 1);
-  assert.equal(requireFixture(downloadTracker.getJob(f.jobs[0].id)).playlistType, source.id);
-  assert.equal(requireFixture(downloadTracker.getJob(f.jobs[1].id)).playlistType, target.id);
+  assert.equal(
+    requireFixture(downloadTracker.getJob(requireFixture(f.jobs[0]).id)).playlistType,
+    source.id,
+  );
+  assert.equal(
+    requireFixture(downloadTracker.getJob(requireFixture(f.jobs[1]).id)).playlistType,
+    target.id,
+  );
   const destination = config.flowPlaylistConfig.getStaticPlaylist(target.id);
   assert.ok(destination != null);
   assert.equal(destination.tracks.length, 2);
-  assert.equal(destination.tracks[0].canonicalJobId, undefined);
-  assert.equal(destination.tracks[1].canonicalJobId, f.jobs[1].id);
+  assert.equal(requireFixture(destination.tracks[0]).canonicalJobId, undefined);
+  assert.equal(destination.tracks[1]?.canonicalJobId, requireFixture(f.jobs[1]).id);
 });
 
 test("a new-target move with only stale selections creates no empty playlist", async (t) => {
@@ -642,19 +652,20 @@ test("a new-target move with only stale selections creates no empty playlist", a
     selections: f.selections,
   });
   assert.ok(result != null);
-  assert.equal(result.outcomes[0].status, "failed");
+  assert.equal(result.outcomes[0]?.status, "failed");
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(targetId), null);
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     1,
   );
-  assert.ok(downloadTracker.getJob(f.jobs[0].id));
+  assert.ok(downloadTracker.getJob(requireFixture(f.jobs[0]).id));
   const currentSelection = {
-    ...f.selections[0],
-    membershipId: requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks[0]
-      .membershipId,
+    ...requireFixture(f.selections[0]),
+    membershipId: requireFixture(
+      requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks[0],
+    ).membershipId,
   };
-  downloadTracker.removeJob(f.jobs[0].id);
+  downloadTracker.removeJob(requireFixture(f.jobs[0]).id);
   const missing = await execute({
     ownerUserId: f.user.id,
     sourcePlaylistId: f.source.id,
@@ -663,7 +674,7 @@ test("a new-target move with only stale selections creates no empty playlist", a
     selections: [currentSelection],
   });
   assert.ok(missing != null);
-  assert.equal(missing.outcomes[0].status, "alreadyAbsent");
+  assert.equal(missing.outcomes[0]?.status, "alreadyAbsent");
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(targetId), null);
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,

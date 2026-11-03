@@ -78,7 +78,7 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
     const response = await app.request(`/settings/lidarr/root-folders${search}`);
     assert.equal(response.status, 200);
     const body: { path: string }[] = await response.json();
-    assert.equal(body[0].path, "/test/music");
+    assert.equal(body[0]?.path, "/test/music");
     assert.equal(request.mock.calls.length, 1);
     assert.equal(lidarrClient.config.url, originalUrl);
     assert.equal(lidarrClient.config.apiKey, originalKey);

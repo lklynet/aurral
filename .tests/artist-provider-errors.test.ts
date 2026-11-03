@@ -80,18 +80,16 @@ function responses(
   respond: (url: string, options?: Parameters<typeof axios.get>[1]) => unknown,
 ) {
   const realGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(
-    requireFixture(async (url, options) => {
-      if (String(url).startsWith(provider.url)) return realGet(url, options);
-      assert.equal(new URL(url).hostname, "api.deezer.com");
-      return {
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        data: await respond(String(url), options),
-      };
-    }),
-  );
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+    if (String(url).startsWith(provider.url)) return realGet(url, options);
+    assert.equal(new URL(url).hostname, "api.deezer.com");
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: await respond(String(url), options),
+    };
+  });
 }
 
 test("an artist name search accepts only the same name, not the first result", async (t) => {

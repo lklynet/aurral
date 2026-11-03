@@ -7,6 +7,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, { scrobbleConnectionStore }, { listenbrainzPlaylistClient }] =
   await setupIsolatedBackend(
@@ -157,7 +158,7 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     ["/1/user/playlist-user/playlists", "/1/user/playlist-user/playlists/createdfor"],
   );
   assert.equal(calls.filter(({ url }) => url.includes("/1/playlist/")).length, 3);
-  assert.equal(calls[0].options!.headers!.Authorization, "Token test-token");
+  assert.equal(requireFixture(calls[0]).options!.headers!.Authorization, "Token test-token");
 });
 
 test("ListenBrainz playlist imports retain JSPF cover artwork", async () => {

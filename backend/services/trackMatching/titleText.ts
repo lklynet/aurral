@@ -76,7 +76,7 @@ export function withoutRemasterLabel(value: string | null | undefined) {
   const match =
     title.match(/^(.+?)\s*[([]([^)\]]*)[)\]]$/u) || title.match(/^(.+)\s(?:-|–|—)\s+(.+)$/u);
   if (!match) return title;
-  const words = match[2]
+  const words = (match[2] ?? "")
     .toLowerCase()
     .split(/[^\p{L}\p{N}-]+/u)
     .filter(Boolean);
@@ -146,9 +146,8 @@ export function discFolderNumber(
   const text = String(name || "").trim();
   const match = DISC_FOLDER.exec(text);
   if (!match || (album && namesAlbum(text, album))) return null;
-  const disc = NUMBER_WORDS.includes(match[1].toLowerCase())
-    ? NUMBER_WORDS.indexOf(match[1].toLowerCase()) + 1
-    : Number(match[1]);
+  const label = (match[1] ?? "").toLowerCase();
+  const disc = NUMBER_WORDS.includes(label) ? NUMBER_WORDS.indexOf(label) + 1 : Number(label);
   return disc > 0 ? disc : null;
 }
 

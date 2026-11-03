@@ -99,7 +99,7 @@ test(
     }
     const files = client.flattenSearchResults(await pending);
     assert.equal(files.length, 1);
-    assert.equal(files[0].locked, false);
+    assert.equal(files[0]?.locked, false);
   },
 );
 

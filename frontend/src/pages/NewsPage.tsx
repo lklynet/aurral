@@ -27,7 +27,7 @@ export default function NewsPage() {
     if (!hasMore || !loadMoreRef.current) return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) void loadMore();
+        if (entry?.isIntersecting) void loadMore();
       },
       { rootMargin: "600px" },
     );

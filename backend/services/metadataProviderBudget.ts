@@ -37,7 +37,7 @@ interface MetadataRequestStateRow {
   updated_at: number;
 }
 
-const TRANSIENT_BACKOFF_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000];
+const TRANSIENT_BACKOFF_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
 const REQUEST_STATE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const REQUEST_STATE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 let nextRequestStateCleanupAt = 0;
@@ -75,7 +75,8 @@ const finishFailedRequest = db.prepare<[number, number, number, string, string]>
 
 function retryAfterFailure(failureCount: number, now: number) {
   const backoffMs =
-    TRANSIENT_BACKOFF_MS[Math.min(failureCount - 1, TRANSIENT_BACKOFF_MS.length - 1)];
+    TRANSIENT_BACKOFF_MS[Math.min(failureCount - 1, TRANSIENT_BACKOFF_MS.length - 1)] ??
+    TRANSIENT_BACKOFF_MS[0];
   return now + backoffMs;
 }
 

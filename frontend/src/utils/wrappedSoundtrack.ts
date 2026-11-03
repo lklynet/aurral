@@ -70,6 +70,6 @@ export function wrappedSoundtrack(summary: WrappedRecap, kinds: readonly string[
   });
   return kinds.map((kind, index): WrappedCue | null => {
     const song = picks[group(index)];
-    return song && { song, named: namedSong(summary, kind) === song };
+    return song ? { song, named: namedSong(summary, kind) === song } : null;
   });
 }

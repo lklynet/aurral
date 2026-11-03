@@ -29,7 +29,7 @@ test("discovery worker progress and completed data reach the API without shared 
   });
   assert.equal(getDiscoveryStatus(null).isUpdating, false);
   assert.equal(getDiscoveryStatus(null).lastUpdated, dbOps.getDiscoveryCache().lastUpdated);
-  assert.equal(getDiscoveryCache().recommendations[0].name, "Worker Artist");
+  assert.equal(getDiscoveryCache().recommendations[0]?.name, "Worker Artist");
   assert.equal(getDiscoveryCache().provider, "listenbrainz");
 });
 
@@ -48,7 +48,7 @@ test("a personal refresh in a worker shows as updating only for its user", async
   clients.forEach((entry) => websocketService.clients.add(entry));
   const { db } = await import("../../backend/config/db-sqlite.ts");
   dbOps.updateDiscoveryCache({ recommendations: [{ name: "Stale" }] }, "user:7");
-  assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0].name, "Stale");
+  assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0]?.name, "Stale");
   db.prepare("UPDATE discovery_cache SET value = ? WHERE key = ?").run(
     JSON.stringify([{ name: "Fresh" }]),
     "user:7:recommendations",
@@ -73,7 +73,7 @@ test("a personal refresh in a worker shows as updating only for its user", async
     assert.equal(getDiscoveryStatus(8).isUpdating, false);
     assert.equal(sent.alice.length, 1);
     assert.equal(sent.bob.length, 0);
-    assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0].name, "Fresh");
+    assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0]?.name, "Fresh");
   } finally {
     clients.forEach((entry) => websocketService.clients.delete(entry));
   }

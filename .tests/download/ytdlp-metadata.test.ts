@@ -11,6 +11,7 @@ import {
   repairYtdlpMetadata,
   writeAudioMetadata,
 } from "../../backend/services/downloadUtils.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-metadata-"));
 
@@ -121,12 +122,12 @@ test("startup repair merges partial grouping and legacy comment identities", asy
     },
   ];
   await writeM4aTags(filePath, {
-    title: jobs[0].trackName,
-    artist: jobs[0].artistName,
-    album_artist: jobs[0].artistName,
-    album: jobs[0].albumName,
-    grouping: `AURRAL_IDS={"trackMbid":"${jobs[0].trackMbid}"}`,
-    comment: `AURRAL_IDS={"artistMbid":"${jobs[0].artistMbid}","albumMbid":"${jobs[0].albumMbid}"}`,
+    title: requireFixture(jobs[0]).trackName,
+    artist: requireFixture(jobs[0]).artistName,
+    album_artist: requireFixture(jobs[0]).artistName,
+    album: requireFixture(jobs[0]).albumName,
+    grouping: `AURRAL_IDS={"trackMbid":"${requireFixture(jobs[0]).trackMbid}"}`,
+    comment: `AURRAL_IDS={"artistMbid":"${requireFixture(jobs[0]).artistMbid}","albumMbid":"${requireFixture(jobs[0]).albumMbid}"}`,
   });
 
   assert.deepEqual(await repairYtdlpMetadata(jobs), {

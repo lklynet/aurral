@@ -384,8 +384,8 @@ test("retains partial and ambiguous files instead of guessing", async () => {
   const state = requireFixture(
     dbOps.getJSONSetting("aurralDownloadFolderMigration", migrationStateSchema),
   );
-  assert.equal(state.items[partial].reason, "partial file");
-  assert.equal(state.items[ambiguous].reason, "ambiguous media identity");
+  assert.equal(state.items[partial]?.reason, "partial file");
+  assert.equal(state.items[ambiguous]?.reason, "ambiguous media identity");
   await assert.doesNotReject(() => fs.access(partial));
   await assert.doesNotReject(() => fs.access(ambiguous));
 
@@ -397,7 +397,7 @@ test("retains partial and ambiguous files instead of guessing", async () => {
     dbOps.getJSONSetting("aurralDownloadFolderMigration", migrationStateSchema),
   );
   assert.equal(resolved.status, "complete");
-  assert.equal(resolved.items[partial].status, "removed");
+  assert.equal(resolved.items[partial]?.status, "removed");
 });
 
 test("blocks migration when DL_FOLDER overlaps the Lidarr root", async () => {

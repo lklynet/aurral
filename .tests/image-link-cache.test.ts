@@ -5,6 +5,7 @@ import {
   createMockHttpServer,
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
+import { requireFixture } from "./playlists/fixtures.ts";
 
 const mbid = "11111111-1111-4111-8111-111111111111";
 const coldMbid = "22222222-2222-4222-8222-222222222222";
@@ -145,7 +146,7 @@ test("cached artist image links survive byte-cache eviction without metadata req
   const result = await getArtistImage(mbid);
 
   assert.equal(providerRequests, 0);
-  assert.equal(result.url, imageLinks[0].image);
+  assert.equal(result.url, requireFixture(imageLinks[0]).image);
   assert.deepEqual(result.images, imageLinks);
   assert.deepEqual(dbOps.getImages([mbid])[mbid]?.images, imageLinks);
 });

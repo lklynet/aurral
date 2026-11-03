@@ -31,6 +31,6 @@ test("fills in missing and drops unknown or duplicate sections", () => {
     layout?.map((entry) => entry.id),
     ["globalTop", ...DISCOVER_SECTION_IDS.filter((id) => id !== "globalTop")],
   );
-  assert.equal(layout?.[0].enabled, false);
+  assert.equal(layout?.[0]?.enabled, false);
   assert.equal(normalizeDiscoverLayout({ sections: [] }), null);
 });

@@ -212,16 +212,13 @@ export async function runLidarrLibraryAccessTest(lidarrClient: LidarrClient) {
 
   steps.push(
     step("mount", "pass", "Aurral can see that folder in the container", {
-      detail:
-        rootPaths.length === 1
-          ? formatPathAccessDetail(rootPaths[0], await pathIsReadable(rootPaths[0]))
-          : (
-              await Promise.all(
-                rootPaths.map(async (rootPath) =>
-                  formatPathAccessDetail(rootPath, await pathIsReadable(rootPath)),
-                ),
-              )
-            ).join(", "),
+      detail: (
+        await Promise.all(
+          rootPaths.map(async (rootPath) =>
+            formatPathAccessDetail(rootPath, await pathIsReadable(rootPath)),
+          ),
+        )
+      ).join(", "),
     }),
   );
 

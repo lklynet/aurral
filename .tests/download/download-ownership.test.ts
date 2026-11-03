@@ -305,6 +305,13 @@ test("recording a transfer prunes transfer history for settled downloads only", 
     "Active",
     "Next",
   ].map(add);
+  assert.ok(
+    doneId !== undefined &&
+      failedId !== undefined &&
+      removedId !== undefined &&
+      activeId !== undefined &&
+      nextId !== undefined,
+  );
   const move = (jobId: string) => {
     db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
     downloadTracker.reconcileCommittedJobs();

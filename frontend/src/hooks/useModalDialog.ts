@@ -164,14 +164,14 @@ export function useModalDialog({
 
       if (event.key !== "Tab") return;
       const focusable = getFocusableElements(dialog);
-      if (focusable.length === 0) {
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) {
         event.preventDefault();
         dialog.focus({ preventScroll: true });
         return;
       }
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
       const activeElement = document.activeElement;
       if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
         event.preventDefault();

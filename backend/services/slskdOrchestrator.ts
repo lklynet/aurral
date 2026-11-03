@@ -450,13 +450,7 @@ export function parseSlskdRemoteFile(remoteFile: unknown) {
     .replace(/\\/g, "/")
     .trim();
   const parts = normalized.split("/").filter(Boolean);
-  if (parts.length === 0) {
-    return { fileName: "", parentDir: "" };
-  }
-  return {
-    fileName: parts[parts.length - 1],
-    parentDir: parts.length > 1 ? parts[parts.length - 2] : "",
-  };
+  return { fileName: parts.at(-1) ?? "", parentDir: parts.at(-2) ?? "" };
 }
 
 export function predictSlskdLocalPathCandidates(
@@ -558,16 +552,11 @@ async function findFileRecursive(
 function pickBestFileMatch(matches: FileMatch[], expectedSizeBytes: number | null | undefined) {
   if (!Array.isArray(matches) || matches.length === 0) return null;
   const expected = Number(expectedSizeBytes || 0);
-  if (expected > 0) {
-    const sizeMatches = matches.filter((entry) => entry.size === expected);
-    if (sizeMatches.length === 1) return sizeMatches[0].path;
-    if (sizeMatches.length > 1) {
-      return sizeMatches.sort((left, right) => right.mtimeMs - left.mtimeMs)[0].path;
-    }
-    return null;
-  }
-  if (matches.length === 1) return matches[0].path;
-  return matches.sort((left, right) => right.mtimeMs - left.mtimeMs)[0].path;
+  const newest = (entries: FileMatch[]) =>
+    entries.toSorted((left, right) => right.mtimeMs - left.mtimeMs)[0]?.path ?? null;
+  return expected > 0
+    ? newest(matches.filter((entry) => entry.size === expected))
+    : newest(matches);
 }
 
 export async function locateCompletedDownload(
@@ -979,7 +968,9 @@ async function advanceSlskdSearch(
   }
   const searchIds = [...(payload.searchIds || [])];
   while (index < queries.length && !enough(aggregated)) {
-    const cached = getCachedSearchResults("slskd", queries[index]);
+    const query = queries[index];
+    if (query === undefined) break;
+    const cached = getCachedSearchResults("slskd", query);
     if (cached) {
       mergeSearchResults(aggregated, seen, cached, searchResultKey);
       index += 1;
@@ -987,7 +978,7 @@ async function advanceSlskdSearch(
     }
     let created;
     try {
-      created = await slskdClient.createSearch(queries[index], {
+      created = await slskdClient.createSearch(query, {
         shouldCancel: isCancelled,
         ...trackSearchWork(payload),
       });
@@ -1013,7 +1004,7 @@ async function advanceSlskdSearch(
         searchQueryIndex: index,
         searchIds,
         searchId: payload.searchId || created.id,
-        activeSearch: { id: created.id, query: queries[index], startedAt: Date.now() },
+        activeSearch: { id: created.id, query, startedAt: Date.now() },
         delaySeconds: 1,
       },
     };
@@ -1234,7 +1225,7 @@ async function handleDownload(payload: SlskdPayload, helpers: SlskdHelpers) {
           downloadClient: "slskd",
           downloadClientId: readTransferId(transfers[0]),
           remoteUsername: username,
-          remoteFilename: files[0].file,
+          remoteFilename: files[0]?.file,
         });
         return transfers;
       });
@@ -1385,8 +1376,9 @@ async function handlePoll(payload: SlskdPayload, helpers: SlskdHelpers) {
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (payload.albumGrab === true) {
     const username = payload.candidate?.raw?.user;
+    const previous = payload.albumTransfers || [];
     const transfers: (SlskdTransfer | null)[] = await Promise.all(
-      (payload.albumTransfers || []).map(async (transfer) =>
+      previous.map(async (transfer) =>
         slskdClient.getTransfer(username, readTransferId(transfer)).catch(() => null),
       ),
     );
@@ -1421,7 +1413,7 @@ async function handlePoll(payload: SlskdPayload, helpers: SlskdHelpers) {
       };
     }
     // Keep the files that finished. The album attempt continues for the rest.
-    const settled = transfers.map((transfer, index) => transfer || payload.albumTransfers![index]);
+    const settled = transfers.map((transfer, index) => transfer || previous[index] || null);
     for (const transfer of settled) {
       if (classifyTransferState(readTransferState(transfer)) !== "pending") continue;
       const id = readTransferId(transfer);

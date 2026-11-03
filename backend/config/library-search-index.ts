@@ -61,7 +61,7 @@ export function computeLibraryGenreStats(
       "album.id",
     ],
     ["tracks", "library_tracks AS track", "track.id"],
-  ];
+  ] as const;
   const parameters: string[] = [];
   const rows = entities.map(([kind, from, id]) => {
     const media = genreMediaExists(kind, sourceFilter, availableOnly);

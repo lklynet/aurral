@@ -23,6 +23,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
   const { default: createRateLimiter } =
@@ -180,6 +181,7 @@ test("copy files music under Aurral's names, keeps the source, and starts unmoni
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   await settleIngestedMusic();
   const [album] = libraryAlbums();
+  assert.ok(album);
   assert.equal(album.title, "Copy Album");
   assert.equal(JSON.parse(requireValue(requireValue(album).metadata_json)).monitored, false);
   assert.deepEqual(
@@ -347,10 +349,11 @@ test("never overwrites: a different file in the way stays, and the source is ski
     requireValue(getLibraryFileOperation(id)),
     {},
   );
+  assert.ok(planned);
   assert.equal(planned.status, "skipped");
   const items = await apply(id);
 
-  assert.equal(items[0].status, "skipped");
+  assert.equal(items[0]?.status, "skipped");
   assert.deepEqual(await readFile(occupant), before);
   assert.equal(await exists(incoming), true);
 });
@@ -372,10 +375,10 @@ test("an identical file already in the Library is kept once", async () => {
   await mkdir(path.dirname(moved), { recursive: true });
   await copyFile(library, moved);
 
-  assert.equal((await apply(await ingest(copySource, "copy")))[0].status, "duplicate");
+  assert.equal((await apply(await ingest(copySource, "copy")))[0]?.status, "duplicate");
   assert.equal(await exists(copied), true);
 
-  assert.equal((await apply(await ingest(moveSource, "move")))[0].status, "duplicate");
+  assert.equal((await apply(await ingest(moveSource, "move")))[0]?.status, "duplicate");
   assert.equal(await exists(moved), false);
   assert.equal(await exists(library), true);
   assert.equal(await exists(path.join(moveSource, "Twin")), false);
@@ -416,6 +419,7 @@ test("a track the Library has in a different file is skipped as already in the L
 
   const copyId = await ingest(copySource, "copy");
   const [copiedItem] = await apply(copyId);
+  assert.ok(copiedItem);
   const moveId = await ingest(moveSource, "move");
   const keptItem = (await apply(moveId)).find((item) => item.source.endsWith("song.mp3"));
   assert.ok(keptItem != null);
@@ -499,6 +503,7 @@ test("an untagged source of a song on one of an artist's same-titled releases is
   });
 
   const [item] = await apply(await ingest(source, "copy"));
+  assert.ok(item);
 
   assert.deepEqual([item.status, item.target], ["duplicate", path.relative(root, kept)]);
   assert.equal(await exists(path.join(root, "Twice", "Album", "01 - Song.mp3")), false);
@@ -558,6 +563,7 @@ test("a copy the Library scan files with a track the Library already had is take
   const keptLyrics = kept.replace(/\.flac$/, ".lrc");
   await writeFile(keptLyrics, "[00:00.00]kept");
   const [placed] = await apply(id);
+  assert.ok(placed);
   assert.equal(placed.status, "done");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(filesOfTrack("Song"), [kept, filed]);
@@ -568,6 +574,7 @@ test("a copy the Library scan files with a track the Library already had is take
     requireValue(getLibraryFileOperation(id)),
     {},
   );
+  assert.ok(item);
   assert.deepEqual([item.status, item.target], ["duplicate", path.relative(root, kept)]);
   assert.equal(await exists(filed), false);
   assert.equal(await exists(file), true);
@@ -602,6 +609,7 @@ test("a filed track that shares its recording with another track of the album st
   await makeTrack(path.join(source, "Silent", "Album", "silence.flac"), { ...silence, track: "2" });
   const id = await ingest(source, "copy", "tracks");
   const [placed] = await apply(id);
+  assert.ok(placed);
   assert.equal(placed.status, "done");
   const filed = path.resolve(root, requireValue(requireValue(placed).target));
   await scanMusicRoot({ rootPath: root, source: "aurral" });
@@ -709,6 +717,7 @@ test("a source whose MusicBrainz tags miss the Library's album is still the trac
   });
 
   const [item] = await apply(await ingest(source, "copy"));
+  assert.ok(item);
 
   assert.equal(item.status, "duplicate");
   assert.equal(item.target, path.relative(root, library));
@@ -827,6 +836,7 @@ test("a source much longer or shorter than the Library's track is a different re
 
   const id = await ingest(source, "move");
   const [item] = await apply(id);
+  assert.ok(item);
 
   assert.equal(item.status, "skipped");
   assert.match(requireValue(requireValue(item).reason), /Wasted & Ready.*differs by 0:0[45]/);
@@ -854,6 +864,7 @@ test("a lossless source of a track the Library has only in a lossy format is lis
 
   const id = await ingest(source, "move");
   const [item] = await apply(id);
+  assert.ok(item);
 
   assert.equal(item.status, "skipped");
   assert.match(requireValue(requireValue(item).reason), /better than the Library's/);
@@ -875,6 +886,7 @@ test("a source at a higher bitrate than the Library's copy is listed, never offe
 
   const id = await ingest(source, "move");
   const [item] = await apply(id);
+  assert.ok(item);
 
   assert.equal(item.status, "skipped");
   assert.equal(item.target, path.relative(root, library));
@@ -1024,6 +1036,7 @@ test("move never removes a source file that a link in the Library folder leads b
   await symlink(path.join(source, "Alias"), path.join(root, "Alias"));
 
   const [item] = await apply(await ingest(source, "move"));
+  assert.ok(item);
 
   assert.notEqual(item.status, "done");
   assert.deepEqual(await readFile(only), bytes);
@@ -1044,6 +1057,7 @@ test("never files music through a linked folder in the Library folder, which the
   await symlink(elsewhere, path.join(root, "Linked"));
 
   const [item] = await apply(await ingest(source, "move"));
+  assert.ok(item);
 
   assert.equal(item.status, "skipped");
   assert.deepEqual(await readFile(only), bytes);
@@ -1067,6 +1081,7 @@ test("an artist named in another script is filed under its own name, not a diffe
   });
 
   const [item] = await apply(await ingest(source, "copy"));
+  assert.ok(item);
 
   assert.equal(item.target, path.join("椎名林檎", "無罪モラトリアム", "01 - 正しい街.flac"));
 });
@@ -1168,6 +1183,7 @@ test("files Aurral cannot place are skipped with a reason and left alone", async
   assert.ok(finished != null);
   assert.equal(finished.status, "complete");
   const [item] = operations.describeLibraryFileOperationItems(finished, {});
+  assert.ok(item);
   assert.equal(item.status, "skipped");
   assert.match(requireValue(requireValue(item).reason), /artist and album/i);
   assert.equal(await exists(loose), true);
@@ -1193,7 +1209,7 @@ test("a file whose saved plan Aurral can't read is left where it is, and the res
     items.map((item) => item.status),
     ["failed", "done"],
   );
-  assert.match(requireValue(items[0].reason), /can't read/);
+  assert.match(requireValue(requireFixture(items[0]).reason), /can't read/);
   assert.equal(await exists(first), true);
   assert.equal(
     await exists(path.join(root, "Saved Artist", "Saved Album", "01 - First.flac")),
@@ -1360,6 +1376,7 @@ test("cancelling between slices still tidies what was already filed", async () =
     requireValue(getLibraryFileOperation(id)),
     {},
   );
+  assert.ok(first);
   const target = path.join(root, requireValue(requireValue(first).target));
   await mkdir(path.dirname(target), { recursive: true });
   await link(filed, target);

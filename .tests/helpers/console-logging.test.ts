@@ -66,7 +66,7 @@ test("logger sink masks nested credentials and keeps file paths", async () => {
       headers: { authorization: "Bearer bearer-secret", clientSecret: "client-secret" },
       endpoint: "/album",
     });
-    assert.partialDeepStrictEqual(output[0][2], {
+    assert.partialDeepStrictEqual(output[0]?.[2], {
       reason: "Failed at /config/private/provider.json: https://example.test/?token=***",
       headers: { authorization: "***", clientSecret: "***" },
       endpoint: "/album",

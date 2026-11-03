@@ -288,10 +288,7 @@ test("library cache reflects ownership changed by another connection", async () 
     managedBy: "aurral",
     monitorMode: "all",
   });
-  assert.equal(
-    requireFixture(getLibrary()!).artists.find((entry) => entry.id === artist.id)!.monitorMode,
-    "all",
-  );
+  assert.equal(getLibrary()!.artists.find((entry) => entry.id === artist.id)!.monitorMode, "all");
 
   const otherConnection = new Database(db.name);
   try {
@@ -301,7 +298,7 @@ test("library cache reflects ownership changed by another connection", async () 
       )
       .run(artist.id);
     assert.equal(
-      requireFixture(getLibrary()!).artists.find((entry) => entry.id === artist.id)!.monitorMode,
+      getLibrary()!.artists.find((entry) => entry.id === artist.id)!.monitorMode,
       "none",
     );
   } finally {
@@ -324,21 +321,21 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
     lidarrRoots: ["/data/media"],
   });
   assert.equal(equal.length, 1);
-  assert.equal(equal[0].type, "equal");
+  assert.equal(equal[0]?.type, "equal");
 
   const nestedLidarr = computeLibraryRootOverlaps({
     aurralRoot: "/data/media",
     lidarrRoots: ["/data/media/music"],
   });
   assert.equal(nestedLidarr.length, 1);
-  assert.equal(nestedLidarr[0].type, "nested-b-in-a");
+  assert.equal(nestedLidarr[0]?.type, "nested-b-in-a");
 
   const nestedAurral = computeLibraryRootOverlaps({
     aurralRoot: "/data/media/music",
     lidarrRoots: ["/data/media"],
   });
   assert.equal(nestedAurral.length, 1);
-  assert.equal(nestedAurral[0].type, "nested-a-in-b");
+  assert.equal(nestedAurral[0]?.type, "nested-a-in-b");
 
   const deduped = computeLibraryRootOverlaps({
     aurralRoot: "/data/media",
@@ -351,25 +348,25 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
     lidarrRoots: ["/music"],
   });
   assert.equal(filesystemRoot.length, 1);
-  assert.equal(filesystemRoot[0].type, "nested-b-in-a");
+  assert.equal(filesystemRoot[0]?.type, "nested-b-in-a");
 
   const driveRoot = computeLibraryRootOverlaps({
     aurralRoot: "C:/",
     lidarrRoots: ["C:/Music"],
   });
   assert.equal(driveRoot.length, 1);
-  assert.equal(driveRoot[0].type, "nested-b-in-a");
+  assert.equal(driveRoot[0]?.type, "nested-b-in-a");
 
   const driveRootEqual = computeLibraryRootOverlaps({
     aurralRoot: "C:/",
     lidarrRoots: ["C:/"],
   });
-  assert.equal(driveRootEqual[0].type, "equal");
+  assert.equal(driveRootEqual[0]?.type, "equal");
 
   const backslashRoot = computeLibraryRootOverlaps({
     aurralRoot: "C:\\music\\aurral",
     lidarrRoots: ["C:/music"],
   });
   assert.equal(backslashRoot.length, 1);
-  assert.equal(backslashRoot[0].type, "nested-a-in-b");
+  assert.equal(backslashRoot[0]?.type, "nested-a-in-b");
 });

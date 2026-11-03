@@ -85,9 +85,11 @@ async function withFakeLidarr(
       const id = pathname.split("/").pop();
       const payload = await readJsonBody(req);
       const index = state.albums.findIndex((entry) => String(entry.id) === id);
-      if (index === -1) return json(res, 404, { message: "Not Found" });
-      state.albums[index] = { ...state.albums[index], ...payload, id: Number(id) };
-      return json(res, 200, state.albums[index]);
+      const album = state.albums[index];
+      if (!album) return json(res, 404, { message: "Not Found" });
+      const updated = { ...album, ...payload, id: Number(id) };
+      state.albums[index] = updated;
+      return json(res, 200, updated);
     }
     if (req.method === "POST" && pathname === "/api/v1/album") {
       const payload = await readJsonBody(req);

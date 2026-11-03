@@ -7,6 +7,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, { db }, { userOps }, { lastfmStationClient }, { updateListenHistory }] =
   await setupIsolatedBackend(
@@ -43,8 +44,8 @@ test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
   });
 
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].durationMs, 185000);
-  assert.equal(tracks[0].artistName, "Artist A");
+  assert.equal(tracks[0]?.durationMs, 185000);
+  assert.equal(tracks[0]?.artistName, "Artist A");
   assert.equal(tracks[0].trackMbid, null);
   assert.deepEqual(stats, { incomplete: 1, duplicate: 1 });
 });
@@ -81,7 +82,10 @@ test("lastfmStationClient lists the three stations in a stable order", async () 
       "/player/station/user/user%2Bname/recommended",
     ],
   );
-  assert.equal(new Headers(calls[0].options?.headers).get("Accept"), "application/json");
+  assert.equal(
+    new Headers(requireFixture(calls[0]).options?.headers).get("Accept"),
+    "application/json",
+  );
 });
 
 test("lastfmStationClient reuses a Last.fm username from the profile", async () => {

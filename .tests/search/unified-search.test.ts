@@ -65,11 +65,11 @@ test("searchLocalFromData returns library artist and track matches", () => {
   );
 
   assert.equal(result.artists.length, 1);
-  assert.equal(result.artists[0].name, "Radiohead");
+  assert.equal(result.artists[0]?.name, "Radiohead");
   assert.equal(result.tracks.length, 1);
-  assert.equal(result.tracks[0].title, "Creep");
-  assert.equal(result.artists[0].inLibrary, true);
-  assert.equal(result.tracks[0].inLibrary, true);
+  assert.equal(result.tracks[0]?.title, "Creep");
+  assert.equal(result.artists[0]?.inLibrary, true);
+  assert.equal(result.tracks[0]?.inLibrary, true);
 });
 
 test("searchLocalFromData does not let duplicate artist projections consume result slots", () => {
@@ -105,7 +105,7 @@ test("searchLocalFromData ignores library artists that only share article words"
   );
 
   assert.equal(result.artists.length, 1);
-  assert.equal(result.artists[0].name, "The Used");
+  assert.equal(result.artists[0]?.name, "The Used");
 });
 
 test("normalizeRelevanceScore preserves catalog popularity score ordering", () => {
@@ -224,11 +224,11 @@ test("catalog ranking uses library artists and playlist tracks as context", () =
     5,
   );
 
-  assert.equal(catalog.tracks[0].inPlaylist, true);
-  assert.equal(catalog.tracks[0].artistInLibrary, true);
+  assert.equal(catalog.tracks[0]?.inPlaylist, true);
+  assert.equal(catalog.tracks[0]?.artistInLibrary, true);
   assert.ok(catalog.tracks[0].contextBoost! > 0);
-  assert.equal(catalog.artists[0].id, "paranoid-android-artist");
-  assert.equal(catalog.artists[0].name, "Paranoid Android");
+  assert.equal(catalog.artists[0]?.id, "paranoid-android-artist");
+  assert.equal(catalog.artists[0]?.name, "Paranoid Android");
 });
 
 test("catalog context marks full-mode library track matches", () => {
@@ -265,7 +265,7 @@ test("catalog context marks full-mode library track matches", () => {
     5,
   );
 
-  assert.equal(catalog.tracks[0].inLibrary, true);
+  assert.equal(catalog.tracks[0]?.inLibrary, true);
   assert.ok(getSearchRankScore(catalog.tracks[0]) > 1);
 });
 
@@ -310,6 +310,6 @@ test("applyCatalogSearchContext preserves artist bucket order", () => {
   );
 
   assert.equal(catalog.artists.length, 1);
-  assert.equal(catalog.artists[0].name, "The Used");
-  assert.equal(catalog.tracks[0].title, "The Band the Used");
+  assert.equal(catalog.artists[0]?.name, "The Used");
+  assert.equal(catalog.tracks[0]?.title, "The Band the Used");
 });

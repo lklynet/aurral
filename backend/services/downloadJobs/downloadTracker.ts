@@ -1568,9 +1568,8 @@ export class DownloadTracker {
   }
 
   _pickPendingFromQueue(queue: string[], lastPlaylistType: string | null = null) {
-    let fallbackIndex = -1;
-    for (let index = 0; index < queue.length; index += 1) {
-      const nextId = queue[index];
+    let fallback: DownloadJob | null = null;
+    for (const nextId of queue) {
       if (!this.pendingSet.has(nextId)) {
         continue;
       }
@@ -1579,19 +1578,12 @@ export class DownloadTracker {
         continue;
       }
       if (lastPlaylistType && String(job.playlistType || "") === String(lastPlaylistType || "")) {
-        if (fallbackIndex === -1) fallbackIndex = index;
+        fallback ??= job;
         continue;
       }
       return job;
     }
-    if (fallbackIndex >= 0) {
-      const fallbackId = queue[fallbackIndex];
-      const fallbackJob = this.jobs.get(fallbackId);
-      if (fallbackJob && fallbackJob.status === "pending") {
-        return fallbackJob;
-      }
-    }
-    return null;
+    return fallback;
   }
 
   _compactPendingQueue(queue: string[]) {

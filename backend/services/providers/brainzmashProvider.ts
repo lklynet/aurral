@@ -638,10 +638,11 @@ export function selectAlbumRelease(
     (release) => String(release?.status || "").toLowerCase() === "official",
   );
   const pool = official.length > 0 ? official : withTracks;
-  if (pool.length === 0) return releases[0] || null;
-  const [trackCount] = [...tally(pool, (release) => release.tracks.length)].sort(
+  const [mostCommon] = [...tally(pool, (release) => release.tracks.length)].sort(
     ([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount,
-  )[0];
+  );
+  if (!mostCommon) return releases[0] || null;
+  const [trackCount] = mostCommon;
   const standard = chooseTracklist(pool, trackCount);
   if (edition !== "expanded") return standard;
   const keepsStandardTracks = (release: NormalizedRelease) => {

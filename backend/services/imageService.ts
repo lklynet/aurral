@@ -384,10 +384,11 @@ export const getArtistImage = async (
       ];
       let photo: string | null = null;
       for (const source of photoSources) {
-        photo = await source().catch(() => {
-          sawTransientError = true;
-          return null;
-        });
+        photo =
+          (await source().catch(() => {
+            sawTransientError = true;
+            return null;
+          })) ?? null;
         if (photo) break;
       }
       if (photo) {
@@ -428,6 +429,7 @@ export const getArtistImage = async (
         async () => {
           while (nextIndex < ordered.length && !foundCover) {
             const rg = ordered[nextIndex++];
+            if (!rg) break;
             const cover = await fetchReleaseGroupCoverUrl(rg.id, {
               artistName: resolvedArtistName || "",
               albumTitle: rg.title || "",

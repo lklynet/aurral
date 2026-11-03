@@ -17,7 +17,7 @@ import { asAppError } from "../../../../lib/errors.ts";
 
 const rankTagSuggestions = (names: unknown[], prefix: string) => {
   const seen = new Set();
-  const groups: string[][] = [[], [], []];
+  const groups: [string[], string[], string[]] = [[], [], []];
   for (const rawName of names) {
     const name = String(rawName ?? "").trim();
     const key = name.toLowerCase();

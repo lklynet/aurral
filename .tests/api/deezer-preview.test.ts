@@ -80,6 +80,7 @@ test("a preview link from popular tracks still plays after Deezer's signed link 
   });
 
   const [track] = await deezerGetArtistTopTracksById("101");
+  assert.ok(track);
   assert.equal(track.preview_url, "/api/deezer/preview/7.mp3");
 
   const first = await requestPreview(track.preview_url);

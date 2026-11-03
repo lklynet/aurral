@@ -35,7 +35,7 @@ export async function getArtistTagPayload(
       genres: metadataGenres,
     };
   }
-  const [sourceTags]: { name: string; count: number }[][] = await getArtistTagLists([
+  const [sourceTags = []]: { name: string; count: number }[][] = await getArtistTagLists([
     { mbid, name: artistName },
   ]);
   const tags = sourceTags.filter((tag) => isKnownGenre(tag.name));

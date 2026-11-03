@@ -90,21 +90,21 @@ export const scrobbleConnectionStore = {
 
   getPublicStatus(userId: number) {
     const connections = this.getConnections(userId);
-    return Object.fromEntries(
-      [...PROVIDERS].map((provider): [ScrobbleProvider, PublicConnectionStatus] => {
-        const connection = connections[provider];
-        return [
-          provider,
-          connection
-            ? {
-                connected: true,
-                displayName: connection.displayName,
-                connectedAt: connection.connectedAt,
-              }
-            : { connected: false, displayName: null, connectedAt: null },
-        ];
-      }),
-    );
+    const status = (provider: ScrobbleProvider): PublicConnectionStatus => {
+      const connection = connections[provider];
+      return connection
+        ? {
+            connected: true,
+            displayName: connection.displayName,
+            connectedAt: connection.connectedAt,
+          }
+        : { connected: false, displayName: null, connectedAt: null };
+    };
+    return {
+      lastfm: status("lastfm"),
+      listenbrainz: status("listenbrainz"),
+      koito: status("koito"),
+    };
   },
 
   saveConnection(

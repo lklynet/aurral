@@ -380,9 +380,9 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
       forceRefresh: true,
     });
 
-    assert.equal(first[0].title, "Cached Release");
-    assert.equal(cached[0].title, "Cached Release");
-    assert.equal(refreshed[0].title, "Current Release");
+    assert.equal(first[0]?.title, "Cached Release");
+    assert.equal(cached[0]?.title, "Cached Release");
+    assert.equal(refreshed[0]?.title, "Current Release");
     assert.equal(requests, 2);
   } finally {
     clearMetadataProviderCaches();
@@ -796,8 +796,8 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     const secondRequest = searchArtists("artist", { limit: 10 });
     releaseResponse();
     const [first, second] = await Promise.all([firstRequest, secondRequest]);
-    assert.equal(first.items[0].id, "artist-1");
-    assert.equal(second.items[0].id, "artist-1");
+    assert.equal(first.items[0]?.id, "artist-1");
+    assert.equal(second.items[0]?.id, "artist-1");
     assert.equal(requests, 1);
   } finally {
     clearMetadataProviderCaches();
@@ -867,7 +867,7 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
       getArtistByMbid(`saturation-${index}`, { signal: controller.signal }),
     );
     const boundary = await Promise.race([
-      requests[80].then(
+      requireFixture(requests[80]).then(
         () => "resolved",
         (error) => error.code || error.name,
       ),
@@ -1045,7 +1045,7 @@ test("clearing caches preserves provider spacing for another process", async () 
     assert.equal((await done).ok, true);
     assert.equal(arrivals.length, 2);
     assert.ok(
-      arrivals[1] - beforeFirstRequest >= 95,
+      requireFixture(arrivals[1]) - beforeFirstRequest >= 95,
       "cache clearing allowed an aggregate request burst",
     );
   } finally {

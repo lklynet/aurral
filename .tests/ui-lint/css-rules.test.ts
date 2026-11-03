@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { lintCss } from "../../frontend/scripts/lint-ui-css.mts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const tokenNames = new Set([
   "--aurral-surface",
@@ -74,8 +75,8 @@ test("reports hard-coded theme colors with property-matched token suggestions", 
       { line: 8, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-shadow-popover" },
     ],
   );
-  assert.match(findings[0].message, /card\.css:3/);
-  assert.match(findings[0].message, /var\(--aurral-text\)/);
+  assert.match(requireFixture(findings[0]).message, /card\.css:3/);
+  assert.match(requireFixture(findings[0]).message, /var\(--aurral-text\)/);
 });
 
 test("reports undefined Aurral variables at the reference line", () => {
@@ -127,8 +128,8 @@ test("catches hard-coded colors hidden behind local custom properties", () => {
   );
 
   assert.equal(findings.length, 1);
-  assert.equal(findings[0].line, 3);
-  assert.equal(findings[0].suggestion, "--aurral-text");
+  assert.equal(findings[0]?.line, 3);
+  assert.equal(findings[0]?.suggestion, "--aurral-text");
 });
 
 test("reports malformed stylesheets as source-located findings", () => {
@@ -138,7 +139,7 @@ test("reports malformed stylesheets as source-located findings", () => {
   });
 
   assert.equal(findings.length, 1);
-  assert.equal(findings[0].ruleId, "aurral/css-parse-error");
+  assert.equal(findings[0]?.ruleId, "aurral/css-parse-error");
   assert.match(findings[0].message, /broken\.css:1/);
 });
 

@@ -135,7 +135,7 @@ function regroupAlbumGrab<Payload extends AlbumGrabPayload>(
 ) {
   const leaderId = remaining.some((job) => job.id === payload.jobId)
     ? payload.jobId
-    : remaining[0].id;
+    : (remaining[0]?.id ?? payload.jobId);
   downloadTracker.markSlskdDispatched(leaderId);
   return {
     ...payload,

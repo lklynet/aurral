@@ -180,7 +180,7 @@ test("a flow track already in the music library appears once", async () => {
 
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Twice"]);
-  assert.deepEqual(getLibrary({ availableOnly: true }).tracks[0].sources, ["aurral", "flow"]);
+  assert.deepEqual(getLibrary({ availableOnly: true }).tracks[0]?.sources, ["aurral", "flow"]);
 });
 
 test("a missing flow file leaves the library once its flow stops including it", async () => {

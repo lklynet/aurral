@@ -379,7 +379,9 @@ export async function planCleanup(operation: LibraryFileOperation, deadline: num
   let unchanged = Number(operation.summary.unchanged || 0);
   while (cursor.next < cursor.albumIds.length) {
     if (Date.now() >= deadline) return false;
-    const planned = await planAlbum(cursor.albumIds[cursor.next], context);
+    const albumId = cursor.albumIds[cursor.next];
+    if (albumId === undefined) break;
+    const planned = await planAlbum(albumId, context);
     cursor = { ...cursor, next: cursor.next + 1 };
     unchanged += planned.unchanged;
     db.transaction(() => {

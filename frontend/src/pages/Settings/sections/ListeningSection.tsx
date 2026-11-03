@@ -34,7 +34,7 @@ import {
 } from "../SettingsLayout";
 
 type ScrobbleStatus = InferResponseType<typeof scrobblingClient.status.$get, 200>;
-type ConnectionStatus = ScrobbleStatus[string] | undefined;
+type ConnectionStatus = ScrobbleStatus[keyof ScrobbleStatus] | undefined;
 type ListenHistoryUpdate = InferRequestType<
   (typeof usersClient.me)["listening-history"]["$patch"]
 >["json"];
@@ -83,7 +83,7 @@ function serviceStatus(history: string | null, scrobbling: ConnectionStatus): Se
     .filter((part) => part !== null)
     .join(", ");
   if (!on) return { label: "Not set up", tone: "muted" };
-  return { label: on[0].toUpperCase() + on.slice(1) };
+  return { label: on.charAt(0).toUpperCase() + on.slice(1) };
 }
 
 function useScrobbleActions(provider: ScrobbleProvider) {

@@ -951,8 +951,7 @@ export const rerankRecommendations = (
     let bestIndex = -1;
     let bestScore = 0;
     let bestPenalty = 0;
-    for (let index = 0; index < pool.length; index += 1) {
-      const candidate = pool[index];
+    for (const [index, candidate] of pool.entries()) {
       const penalty = diversityPenaltyFor(candidate);
       const score = Math.round(
         candidate.baseScore - penalty * multipliers.diversityPenalty + candidate.feedbackAdjustment,
@@ -965,6 +964,7 @@ export const rerankRecommendations = (
     }
 
     const [best] = pool.splice(bestIndex, 1);
+    if (!best) break;
     for (const tag of best.tags) selectedTagCounts.set(tag, (selectedTagCounts.get(tag) || 0) + 1);
     for (const seed of best.seeds)
       selectedSeedCounts.set(seed, (selectedSeedCounts.get(seed) || 0) + 1);
@@ -1164,12 +1164,9 @@ export const mergeResolvedRecommendations = (
     const recommendationMbid =
       normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
 
-    const identityKeys = [recommendationMbid, `name:${normalizeText(recommendation?.name)}`].filter(
-      Boolean,
-    );
-    if (identityKeys.length === 0) continue;
-    const existingIdentity = identityKeys.find((key) => aliases.has(key));
-    const identity = existingIdentity || identityKeys[0];
+    const nameKey = `name:${normalizeText(recommendation?.name)}`;
+    const identityKeys = recommendationMbid ? [recommendationMbid, nameKey] : [nameKey];
+    const identity = identityKeys.find((key) => aliases.has(key)) || recommendationMbid || nameKey;
 
     const existing = merged.get(identity);
     if (!existing) {

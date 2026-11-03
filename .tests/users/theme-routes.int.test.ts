@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -135,7 +136,10 @@ test("an invalid theme is rejected and the saved theme is kept", async () => {
       themes: [{ id: "custom-x", name: "X", dark: { background: "red", accent: "#fff" } }],
     },
     { ...duskDocument, themes: [{ id: "custom-x", name: "X" }] },
-    { ...duskDocument, themes: [duskDocument.themes[0], duskDocument.themes[0]] },
+    {
+      ...duskDocument,
+      themes: [requireFixture(duskDocument.themes[0]), requireFixture(duskDocument.themes[0])],
+    },
   ]) {
     const { response } = await putTheme(token, theme);
     assert.equal(response.status, 400);

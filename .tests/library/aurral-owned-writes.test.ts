@@ -239,14 +239,14 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     });
     libraryStore.upsertLibraryMediaFile({
       scanId: undefined,
-      trackId: partialRecords[0].id,
+      trackId: requireFixture(partialRecords[0]).id,
       albumId: partialAlbum.id,
       source: "lidarr",
       path: "/lidarr-root/Aurral Artist/Partial Album/01 Partial Track 1.flac",
     });
     libraryStore.upsertLibraryMediaFile({
       scanId: undefined,
-      trackId: partialRecords[1].id,
+      trackId: requireFixture(partialRecords[1]).id,
       albumId: partialAlbum.id,
       source: "aurral",
       path: path.join(isolatedState.dataDir, "Aurral Artist/Partial Album/02 Partial Track 2.flac"),

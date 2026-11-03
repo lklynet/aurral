@@ -179,7 +179,7 @@ const normalizeTracks = (rows: v.InferOutput<typeof deezerTrackSchema>[]) => {
     if (seen.has(identity)) {
       stats.duplicate += 1;
       excluded.push({
-        position: positions[index],
+        position: positions[index] ?? 0,
         reason: "duplicate",
         artistName: track.artistName,
         trackName: track.trackName,
@@ -232,11 +232,12 @@ async function loadShelf() {
       }),
     ),
   );
-  if (results.every((result) => result.status === "rejected")) throw results[0].reason;
+  if (results.every((result) => result.status === "rejected")) throw results[0]?.reason;
   const seen = new Set();
   const genres = [];
   for (const [index, result] of results.entries()) {
-    if (result.status !== "fulfilled") continue;
+    const genre = EDITORIAL_GENRES[index];
+    if (!genre || result.status !== "fulfilled") continue;
     const playlists = [];
     for (const entry of result.value.items) {
       const playlist = normalizePlaylistSummary(entry);
@@ -245,7 +246,7 @@ async function loadShelf() {
       playlists.push(playlist);
       if (playlists.length >= SHELF_PLAYLISTS_PER_GENRE) break;
     }
-    if (playlists.length > 0) genres.push({ ...EDITORIAL_GENRES[index], playlists });
+    if (playlists.length > 0) genres.push({ ...genre, playlists });
   }
   const complete = results.every((result) => result.status === "fulfilled");
   return { genres, ttlMs: complete ? SHELF_TTL_MS : PARTIAL_SHELF_TTL_MS };

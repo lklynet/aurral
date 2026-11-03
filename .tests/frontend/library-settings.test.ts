@@ -5,6 +5,7 @@ import {
   describeLidarrConnectionState,
   describeRootOverlapWarning,
 } from "../../frontend/src/pages/Settings/utils/librarySettings.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const connectedLidarr = { enabled: true, url: "http://lidarr:8686", apiKey: "key" };
 const reachableHealth = { lidarr: { circuitOpen: false } };
@@ -69,9 +70,9 @@ test("equal and nested roots produce one overlap warning naming each Lidarr root
 
   assert.ok(warning.summary);
   assert.equal(warning.details.length, 3);
-  assert.match(warning.details[0], /\/music/);
-  assert.match(warning.details[1], /\/downloads\/lidarr/);
-  assert.match(warning.details[2], /\/data/);
+  assert.match(requireFixture(warning.details[0]), /\/music/);
+  assert.match(requireFixture(warning.details[1]), /\/downloads\/lidarr/);
+  assert.match(requireFixture(warning.details[2]), /\/data/);
   assert.equal(
     new Set(warning.details.map((detail: string) => detail.replace(/\/\S*/, ""))).size,
     3,

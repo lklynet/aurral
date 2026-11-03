@@ -87,6 +87,7 @@ test("writes a playlist file with relative paths and rewrites it once later", as
     "#EXTM3U\n#EXTINF:61,Artist - Song A\n../../Artist/Album/Song A.flac\n",
   );
   const [rewrite] = pendingSyncs();
+  assert.ok(rewrite);
   assert.deepEqual([rewrite.entityIds, rewrite.rewrite], [[playlist.id], true]);
   assert.ok(rewrite.delaySeconds >= 170);
 
@@ -111,6 +112,7 @@ test("a later change pushes the pending rewrite out again", async () => {
   await playlistManager.syncPlaylists({ entityIds: [second.id] });
 
   const [rewrite, ...rest] = pendingSyncs();
+  assert.ok(rewrite);
   assert.deepEqual(rest, []);
   assert.deepEqual(rewrite.entityIds, [first.id, second.id]);
   assert.ok(rewrite.delaySeconds >= 170);

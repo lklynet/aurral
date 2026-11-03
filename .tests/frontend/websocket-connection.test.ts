@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const createStorage = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
@@ -60,12 +61,12 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   const unsubscribeStatus = webSocketConnection.subscribeToStatus(() => {});
   assert.equal(sockets.length, 1);
 
-  const first = sockets[0];
+  const first = requireFixture(sockets[0]);
   first.readyState = FakeWebSocket.CLOSING;
   const unsubscribeFirstChannel = webSocketConnection.subscribeToChannel("first", () => {});
   assert.equal(sockets.length, 2);
 
-  const replacement = sockets[1];
+  const replacement = requireFixture(sockets[1]);
   first.readyState = FakeWebSocket.CLOSED;
   first.onclose?.({ code: 1006 });
   replacement.readyState = FakeWebSocket.OPEN;
@@ -126,7 +127,7 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
 
   const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.ts");
   const unsubscribe = webSocketConnection.subscribeToStatus(() => {});
-  const current = sockets[0];
+  const current = requireFixture(sockets[0]);
   current.readyState = DeadWebSocket.OPEN;
 
   vi.stubGlobal(

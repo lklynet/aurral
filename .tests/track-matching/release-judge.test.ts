@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { judgeRelease, releaseHolds } from "../../backend/services/trackMatching/releaseJudge.ts";
 import { parseListingTitle } from "../../backend/services/trackMatching/nativeMatcher.ts";
 import { OTHER_VERSION_LABELS } from "./version-labels.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const RECORDING = "352f7829-a238-4b00-8cc1-2b0c2613c756";
 const OTHER_RECORDING = "e0996a37-c13d-44c3-8060-74939d43fa37";
@@ -22,7 +23,10 @@ function release(
     artist = "The Band",
     discs = null,
     ...rest
-  }: Partial<Omit<Manifest, "tracks">> & { artist?: string; discs?: number[][] | null } = {},
+  }: Partial<Omit<Manifest, "tracks">> & {
+    artist?: string;
+    discs?: [number, number][] | null;
+  } = {},
 ): Omit<Manifest, "tracks"> & {
   tracks: (Manifest["tracks"][number] & { durationMs: number; trackNumber: number })[];
 } {
@@ -38,8 +42,8 @@ function release(
       artists: [artist],
       artistAliases: [],
       durationMs: 180000 + index * 10000,
-      trackNumber: discs ? discs[index][1] : index + 1,
-      discNumber: discs ? discs[index][0] : 1,
+      trackNumber: discs ? requireFixture(discs[index])[1] : index + 1,
+      discNumber: discs ? requireFixture(discs[index])[0] : 1,
       recordingMbid: null,
       recordingMbidAliases: [],
       pressingDurationsMs: [],
@@ -55,7 +59,7 @@ function fileFor(
   index: number,
   overrides: Partial<ListingFile> = {},
 ): ListingFile {
-  const track = manifest.tracks[index];
+  const track = requireFixture(manifest.tracks[index]);
   return {
     title: track.title,
     artists: [],
@@ -104,7 +108,7 @@ test("a complete listing pairs every track with its own file in any file order",
 
 test("repeated titles pair by place, then by the closest lengths", () => {
   const interludes = release(["Interlude", "Interlude"]);
-  interludes.tracks[1].durationMs = interludes.tracks[0].durationMs;
+  requireFixture(interludes.tracks[1]).durationMs = requireFixture(interludes.tracks[0]).durationMs;
   const atPlaces = (...places: number[]) =>
     places.map((trackNumber) => fileFor(interludes, 0, { trackNumber }));
   assert.deepEqual(
@@ -119,8 +123,8 @@ test("repeated titles pair by place, then by the closest lengths", () => {
   );
 
   const timed = release(["Interlude", "Interlude"]);
-  timed.tracks[0].durationMs = 100000;
-  timed.tracks[1].durationMs = 101000;
+  requireFixture(timed.tracks[0]).durationMs = 100000;
+  requireFixture(timed.tracks[1]).durationMs = 101000;
   const unplaced = [100000, 102000].map((durationMs) =>
     fileFor(timed, 0, { durationMs, trackNumber: null }),
   );
@@ -194,8 +198,8 @@ test("another encoding of every track is a copy, not an extra", () => {
 test("a copy whose length misses the window beside its verified copy is not an extra song", () => {
   const mp3 = (index: number, shift: number) =>
     fileFor(album, index, {
-      durationMs: album.tracks[index].durationMs + shift,
-      path: `The Band/Album/${pad(index + 1)} ${album.tracks[index].title}.mp3`,
+      durationMs: requireFixture(album.tracks[index]).durationMs + shift,
+      path: `The Band/Album/${pad(index + 1)} ${requireFixture(album.tracks[index]).title}.mp3`,
     });
   const flacs = album.tracks.map((_, index) => fileFor(album, index));
   const withFlac = listing(album, [...flacs, mp3(3, 4000)]);
@@ -233,7 +237,10 @@ test("a second file is a copy only when it is the same song at a compatible plac
     ],
     [
       "copy eleven seconds longer",
-      fileFor(parts, 0, { durationMs: parts.tracks[0].durationMs + 11000, trackNumber: null }),
+      fileFor(parts, 0, {
+        durationMs: requireFixture(parts.tracks[0]).durationMs + 11000,
+        trackNumber: null,
+      }),
       "extra-tracks",
     ],
     ["copy at another place", fileFor(parts, 0, { trackNumber: 3 }), "extra-tracks"],
@@ -266,8 +273,8 @@ test("Various Artists labels and artists or albums named with version words are 
     }),
     compilation: true,
   };
-  compilation.tracks[0].artists = ["Blue Swede"];
-  compilation.tracks[1].artists = ["Raspberries"];
+  requireFixture(compilation.tracks[0]).artists = ["Blue Swede"];
+  requireFixture(compilation.tracks[1]).artists = ["Raspberries"];
   const credited = compilation.tracks.map((track, index) =>
     fileFor(compilation, index, { artists: track.artists }),
   );
@@ -304,9 +311,9 @@ test("a multi-disc listing pairs each track with its own disc", () => {
       [2, 2],
     ],
   });
-  twoDiscs.tracks[2].durationMs = twoDiscs.tracks[0].durationMs;
+  requireFixture(twoDiscs.tracks[2]).durationMs = requireFixture(twoDiscs.tracks[0]).durationMs;
   const discFile = (index: number, disc: number) => {
-    const track = twoDiscs.tracks[index];
+    const track = requireFixture(twoDiscs.tracks[index]);
     const path = `The Band/Album/CD${disc}/${pad(track.trackNumber)} ${track.title}.flac`;
     return {
       ...parseListingTitle(path),
@@ -381,13 +388,14 @@ test("a numbered file without a title fits only beside the release's artist with
 
 test("a recording ID names its track, tells repeated recordings apart by place, and rejects another recording", () => {
   const repeated = release(["Theme", "Middle", "Other", "Theme"]);
-  repeated.tracks[0].recordingMbid = RECORDING;
-  repeated.tracks[3].recordingMbid = RECORDING;
+  requireFixture(repeated.tracks[0]).recordingMbid = RECORDING;
+  requireFixture(repeated.tracks[3]).recordingMbid = RECORDING;
   const files = [3, 1, 2, 0].map((index) =>
     fileFor(repeated, index, {
-      title: index === 0 || index === 3 ? "Track" : repeated.tracks[index].title,
+      title: index === 0 || index === 3 ? "Track" : requireFixture(repeated.tracks[index]).title,
       recordingMbid: index === 0 || index === 3 ? RECORDING : null,
-      durationMs: index === 0 || index === 3 ? null : repeated.tracks[index].durationMs,
+      durationMs:
+        index === 0 || index === 3 ? null : requireFixture(repeated.tracks[index]).durationMs,
     }),
   );
   const verdict = judgeRelease(repeated, listing(repeated, files));
@@ -395,7 +403,7 @@ test("a recording ID names its track, tells repeated recordings apart by place, 
   assert.deepEqual(verdict.fileForTrack, [3, 1, 2, 0]);
 
   const named = release(["First Song", "Second Song"]);
-  named.tracks[0].recordingMbid = RECORDING;
+  requireFixture(named.tracks[0]).recordingMbid = RECORDING;
   const wrong = named.tracks.map((_, index) =>
     fileFor(named, index, { recordingMbid: index === 0 ? OTHER_RECORDING : null }),
   );
@@ -592,8 +600,8 @@ test("a release's own versions excuse a label only where they make up half of a 
   const bonusDisc = (extra: string[]) =>
     release([...studio, ...extra], {
       discs: [
-        ...studio.map((_, index) => [1, index + 1]),
-        ...extra.map((_, index) => [2, index + 1]),
+        ...studio.map((_, index): [number, number] => [1, index + 1]),
+        ...extra.map((_, index): [number, number] => [2, index + 1]),
       ],
     });
   for (const albumLabel of ["The Band - Album (Live at Wembley)", "The Band - Album [Live]"]) {

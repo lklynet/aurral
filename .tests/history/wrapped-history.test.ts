@@ -56,6 +56,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: LAUNCHED });
   for (const name of ["one", "two"]) userOps.createUser(name, "hash");
   const [first, second] = ["one", "two"].map((name) => userOps.getUserByUsername(name)!);
+  assert.ok(first && second);
   one = { id: first.id, username: "one", role: "user", permissions: { accessFlow: true } };
   two = { id: second.id, username: "two", role: "user", permissions: {} };
 });
@@ -380,8 +381,8 @@ test("custom artwork set in the Library replaces the covers and colors in a reca
 
   const before = await history.buildWrappedSummary(one.id, period);
   const albumUrl = artwork.buildCustomArtworkUrl("album", album.id, albumArt.updatedAt);
-  assert.equal(before.topSongs[0].artwork, albumUrl);
-  assert.equal(before.topAlbums[0].artwork, albumUrl);
+  assert.equal(before.topSongs[0]?.artwork, albumUrl);
+  assert.equal(before.topAlbums[0]?.artwork, albumUrl);
   assert.match(before.topAlbums[0].color ?? "", /^#f028/);
 
   const trackArt = await artwork.saveCustomArtworkUpload(
@@ -392,8 +393,8 @@ test("custom artwork set in the Library replaces the covers and colors in a reca
   );
   const after = await history.buildWrappedSummary(one.id, period);
   assert.equal(
-    after.topSongs[0].artwork,
+    after.topSongs[0]?.artwork,
     artwork.buildCustomArtworkUrl("track", track.id, trackArt.updatedAt),
   );
-  assert.equal(after.topAlbums[0].artwork, albumUrl);
+  assert.equal(after.topAlbums[0]?.artwork, albumUrl);
 });

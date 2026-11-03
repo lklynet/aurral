@@ -105,7 +105,7 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
   succeeds = true;
   await cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]);
   assert.equal(remove.mock.calls.length, 2);
-  assert.equal(remove.mock.calls[1][0], "provider-id-only-in-payload");
+  assert.equal(remove.mock.calls[1]?.[0], "provider-id-only-in-payload");
 });
 
 test("provider cancellation keeps saved queue IDs when a saved job can't be read", async () => {

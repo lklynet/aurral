@@ -65,17 +65,17 @@ afterAll(async () => {
 test("removing and readding a library membership renews its incarnation", () => {
   const track = { artistName: "Artist", trackName: "Track", canonicalJobId: "canonical-job" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Membership", tracks: [track] });
-  const first = playlist.tracks[0].membershipId;
+  const first = requireFixture(playlist.tracks[0]).membershipId;
   assert.ok(first);
   const renamed = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Renamed" });
   assert.ok(renamed != null);
-  assert.equal(renamed.tracks[0].membershipId, first);
+  assert.equal(renamed.tracks[0]?.membershipId, first);
   flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks: [] });
   const readded = flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
     { ...track, membershipId: first },
   ]);
   assert.ok(readded != null);
-  assert.notEqual(readded.tracks[0].membershipId, first);
+  assert.notEqual(requireFixture(readded.tracks[0]).membershipId, first);
 });
 
 test("playlist changes wait for another process's write instead of failing as locked", async () => {
@@ -328,6 +328,7 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
   assert.equal(response.status, 200);
   const playlistId = (await response.json()).playlist.id;
   const [track] = requireFixture(flowPlaylistConfig.getStaticPlaylist(playlistId)).tracks;
+  assert.ok(track);
   assert.deepEqual(
     [track.trackName, track.releaseMbid, track.discNumber, track.trackNumber],
     ["Keep", releaseMbid, 2, 4],
@@ -475,9 +476,9 @@ test("stores full static playlists but exposes trackless summaries for hot paths
 
   assert.equal(stored?.tracks?.length, 2);
   assert.equal(summaries.length, 1);
-  assert.equal(summaries[0].trackCount, 2);
+  assert.equal(summaries[0]?.trackCount, 2);
   assert.equal("tracks" in summaries[0], false);
-  assert.equal(summaries[0].sourceName, "Discover Weekly");
+  assert.equal(summaries[0]?.sourceName, "Discover Weekly");
 });
 
 test("updates static playlists and keeps summaries in sync", () => {
@@ -607,7 +608,7 @@ test("preserves rich track metadata when static playlists are updated", () => {
   });
   assert.ok(updated != null);
 
-  const { membershipId, ...metadata } = updated.tracks[0];
+  const { membershipId, ...metadata } = requireFixture(updated.tracks[0]);
   assert.ok(membershipId);
   assert.deepEqual(metadata, {
     artistName: "Artist B",

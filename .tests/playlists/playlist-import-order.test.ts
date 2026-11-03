@@ -895,8 +895,8 @@ test("deleting a track keeps remaining import order in config", async () => {
       { artistName: "C", trackName: "Three", albumName: "Album" },
       { artistName: "D", trackName: "Four", albumName: "Album" },
     ];
-    await writeReusableTrack(tracks[0]);
-    await writeReusableTrack(tracks[2]);
+    await writeReusableTrack(requireFixture(tracks[0]));
+    await writeReusableTrack(requireFixture(tracks[2]));
 
     const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Delete Order",
@@ -911,7 +911,7 @@ test("deleting a track keeps remaining import order in config", async () => {
       downloadTracker.getByPlaylistType(playlist.id),
       requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks,
     );
-    const removedJobId = jobsBefore[1].id;
+    const removedJobId = requireFixture(jobsBefore[1]).id;
 
     const deleted = await processPlaylistOperation({
       kind: "shared-playlist-delete-track",
@@ -1178,8 +1178,8 @@ test("ListenBrainz sync uses the shared import update path", async () => {
     });
 
     const syncedTracks = requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks;
-    assert.ok(syncedTracks[0].membershipId);
-    assert.notEqual(syncedTracks[0].membershipId, playlist.tracks[0].membershipId);
+    assert.ok(syncedTracks[0]?.membershipId);
+    assert.notEqual(syncedTracks[0].membershipId, requireFixture(playlist.tracks[0]).membershipId);
     assert.deepEqual(
       syncedTracks.map(({ membershipId: _membershipId, ...track }) => track),
       [
@@ -1270,7 +1270,7 @@ test("YouTube Music sync uses the shared import path without logging its externa
     assert.deepEqual(getPlaylist.mock.calls[0], ["PLsecretUnlisted_123", { forceRefresh: true }]);
     assert.equal(result.trackCount, 1);
     assert.equal(
-      requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks[0].trackName,
+      requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks[0]?.trackName,
       "New Song",
     );
     assert.equal(JSON.stringify(info.mock.calls).includes("PLsecretUnlisted_123"), false);

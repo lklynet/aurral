@@ -9,6 +9,7 @@ import {
   cleanupIsolatedState,
   createIsolatedStateDir,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const state = await createIsolatedStateDir("retired-flows");
 applyIsolatedBackendEnv(state);
@@ -127,13 +128,14 @@ test("retired editorial flows stop running and become playlists that keep their 
     playlists.map((entry) => entry.name),
     ["Half Deleted", "Metal Mayhem"],
   );
-  const playlist = playlists[1];
+  const playlist = requireFixture(playlists[1]);
   assert.notEqual(playlist.id, interrupted.id);
   assert.deepEqual(
     [playlist.name, playlist.ownerUserId, playlist.tracks.map((track) => track.trackName)],
     ["Metal Mayhem", 7, ["Old Song"]],
   );
   const [job] = downloadTracker.getByPlaylistId(playlist.id);
+  assert.ok(job !== undefined);
   assert.equal(
     job.finalPath,
     path.join(playlistManager.downloadRoot, "Old Artist", "Album", "Old Song.flac"),

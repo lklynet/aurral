@@ -11,6 +11,7 @@ import {
   createMockHttpServer,
 } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -189,9 +190,9 @@ test("one deemix album queue fills verified siblings and retries only a missing 
       ),
     );
     assert.ok(ids.every((value) => value != null));
-    downloadTracker.setDownloading(ids[1]);
-    const downloadAttemptId = beginDownloadAttempt(ids[0]);
-    setActiveDownloadAttemptId(ids[1], downloadAttemptId);
+    downloadTracker.setDownloading(requireFixture(ids[1]));
+    const downloadAttemptId = beginDownloadAttempt(requireFixture(ids[0]));
+    setActiveDownloadAttemptId(requireFixture(ids[1]), downloadAttemptId);
     const helpers = {
       failOrTryNextSource: (_: unknown, __: unknown, reason: string) => {
         throw new Error(`unexpected source fallback: ${reason}`);
@@ -200,7 +201,7 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     const initial = {
       phase: "search" as const,
       source: "deemix",
-      jobId: ids[0],
+      jobId: requireFixture(ids[0]),
       downloadAttemptId,
       playlistId: "library",
       playlistGeneration: 0,
@@ -247,8 +248,8 @@ test("one deemix album queue fills verified siblings and retries only a missing 
 
     const retryPayload = {
       ...initial,
-      jobId: ids[1],
-      downloadAttemptId: beginDownloadAttempt(ids[1]),
+      jobId: requireFixture(ids[1]),
+      downloadAttemptId: beginDownloadAttempt(requireFixture(ids[1])),
       albumGrab: false,
       albumGroupJobIds: undefined,
       releaseMbid: null,
@@ -305,7 +306,7 @@ async function searchWith(ids: string[], releaseMbid: string) {
   const payload = {
     phase: "search" as const,
     source: "deemix",
-    jobId: ids[0],
+    jobId: requireFixture(ids[0]),
     albumGrab: true,
     albumGroupJobIds: ids,
     releaseMbid,
@@ -394,7 +395,7 @@ test("deemix album grab tries the plain album query when the advanced one finds 
   const result = await searchWith(albumJobs("deemix-plain"), await serveStandard(t));
   assert.ok(result != null);
   assert.equal(search.mock.calls.length, 2);
-  assert.equal(deemixCandidates(result)[0].raw.albumId, "42");
+  assert.equal(deemixCandidates(result)[0]?.raw.albumId, "42");
 });
 
 test("deemix searches a compilation by its album title alone", async (t) => {
@@ -444,6 +445,6 @@ test("deemix searches a compilation by its album title alone", async (t) => {
     ),
   );
   assert.ok(result != null);
-  assert.equal(deemixCandidates(result)[0].raw.albumId, "mix");
+  assert.equal(deemixCandidates(result)[0]?.raw.albumId, "mix");
   assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call[0])));
 });

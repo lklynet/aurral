@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -170,30 +171,32 @@ afterAll(async () => {
 test("unmonitoring a track cancels its unfinished download and keeps finished files", async () => {
   const { tracks, jobIds, filePaths } = await createAlbum({ tracks: ["available", "pending"] });
 
-  const downloading = await libraryManager.setAurralTrackMonitoring(tracks[1].id, {
+  const downloading = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[1]).id, {
     monitored: false,
   });
-  const finished = await libraryManager.setAurralTrackMonitoring(tracks[0].id, {
+  const finished = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
     monitored: false,
   });
 
   assert.equal(downloading.monitored, false);
-  assert.equal(trackMonitored(tracks[1].id), 0);
+  assert.equal(trackMonitored(requireFixture(tracks[1]).id), 0);
   assert.equal(getJob(jobIds[1]).status, "cancelled");
   assert.equal(finished.monitored, false);
-  assert.equal(await fs.readFile(filePaths[0], "utf8"), "audio");
+  assert.equal(await fs.readFile(requireFixture(filePaths[0]), "utf8"), "audio");
 });
 
 test("monitoring a track again fetches only that track when its album is monitored", async () => {
   const { albumMbid, tracks } = await createAlbum({ tracks: ["missing", "missing"] });
-  await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: false });
+  await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, { monitored: false });
 
-  const result = await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: true });
+  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+    monitored: true,
+  });
 
   assert.equal(result.monitored, true);
   assert.deepEqual(
     albumJobs(albumMbid).map((job) => [job.trackMbid, job.status]),
-    [[tracks[0].mbid, "pending"]],
+    [[requireFixture(tracks[0]).mbid, "pending"]],
   );
 });
 
@@ -201,7 +204,9 @@ test("monitoring a track in an unmonitored album queues only that track", async 
   const { album, albumMbid, tracks } = await createAlbum({ tracks: ["missing", "missing"] });
   await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: false });
 
-  const result = await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: true });
+  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+    monitored: true,
+  });
 
   assert.equal(result.monitored, true);
   assert.deepEqual(
@@ -210,7 +215,7 @@ test("monitoring a track in an unmonitored album queues only that track", async 
   );
   assert.deepEqual(
     albumJobs(albumMbid).map((job) => [job.trackMbid, job.status]),
-    [[tracks[0].mbid, "pending"]],
+    [[requireFixture(tracks[0]).mbid, "pending"]],
   );
 });
 
@@ -222,10 +227,10 @@ test("a track unmonitored while its album is turned back on is not queued", asyn
   const missingFileJob = downloadTracker.addJob(
     {
       artistName: "Monitoring Artist",
-      trackName: tracks[0].title,
+      trackName: requireFixture(tracks[0]).title,
       albumName: album.title,
       albumMbid,
-      trackMbid: tracks[0].mbid,
+      trackMbid: requireFixture(tracks[0]).mbid,
       managedBy: "aurral",
     },
     "library",
@@ -239,11 +244,13 @@ test("a track unmonitored while its album is turned back on is not queued", asyn
 
   const monitoring = libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
   for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
-  db.prepare("UPDATE library_tracks SET monitored = 0 WHERE id = ?").run(tracks[1].id);
+  db.prepare("UPDATE library_tracks SET monitored = 0 WHERE id = ?").run(
+    requireFixture(tracks[1]).id,
+  );
   await monitoring;
 
   assert.equal(
-    albumJobs(albumMbid).some((job) => job.trackMbid === tracks[1].mbid),
+    albumJobs(albumMbid).some((job) => job.trackMbid === requireFixture(tracks[1]).mbid),
     false,
   );
 });
@@ -260,7 +267,9 @@ test("one track asked for is a track request, asking for the album's missing tra
         .map((row) => [row.track_mbid.slice(-2), row.request_kind]),
     );
 
-  const single = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[0].id });
+  const single = await libraryManager.monitorAurralTrack({
+    canonicalTrackId: requireFixture(tracks[0]).id,
+  });
   assert.ok(single != null);
   assert.equal(single.queuedJobIds.length, 1);
   assert.deepEqual(requestKinds(), { "00": "track" });
@@ -268,10 +277,14 @@ test("one track asked for is a track request, asking for the album's missing tra
   await libraryManager.searchAurralAlbumMissingTracks(album.id);
   assert.deepEqual(requestKinds(), { "00": "album", "01": "album", "02": "album" });
 
-  const second = downloadTracker.getAll().find((job) => job.trackMbid === tracks[1].mbid);
+  const second = downloadTracker
+    .getAll()
+    .find((job) => job.trackMbid === requireFixture(tracks[1]).mbid);
   assert.ok(second != null);
   downloadTracker.setFailed(second.id, "No source had the track");
-  const retried = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[1].id });
+  const retried = await libraryManager.monitorAurralTrack({
+    canonicalTrackId: requireFixture(tracks[1]).id,
+  });
   assert.ok(retried != null);
   assert.deepEqual(retried.queuedJobIds, [second.id]);
   assert.deepEqual(requestKinds(), { "00": "album", "01": "track", "02": "album" });
@@ -283,7 +296,7 @@ test("unmonitoring a track without an MBID leaves a same-titled track's download
   });
   const untagged = libraryStore.upsertLibraryTrack({
     identityKey: `track:untagged-${album.id}`,
-    title: tracks[1].title,
+    title: requireFixture(tracks[1]).title,
     artistName: "Monitoring Artist",
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: untagged.id, trackNumber: 3 });
@@ -300,24 +313,26 @@ test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr"
     tracks: ["pending"],
   });
   libraryStore.upsertLibraryTrack({
-    identityKey: tracks[0].identity_key,
-    mbid: tracks[0].mbid,
-    title: tracks[0].title,
+    identityKey: requireFixture(tracks[0]).identity_key,
+    mbid: requireFixture(tracks[0]).mbid,
+    title: requireFixture(tracks[0]).title,
     artistName: `${artist.name} feat. Guest`,
   });
   const ownerJob = downloadTracker.addJob(
-    { artistName: artist.name, trackName: tracks[0].title },
+    { artistName: artist.name, trackName: requireFixture(tracks[0]).title },
     "library",
   );
   const otherArtistJob = downloadTracker.addJob(
-    { artistName: "Another Artist", trackName: tracks[0].title },
+    { artistName: "Another Artist", trackName: requireFixture(tracks[0]).title },
     "library",
   );
 
-  const result = await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: false });
+  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+    monitored: false,
+  });
 
   assert.equal(result.error, undefined);
-  assert.equal(trackMonitored(tracks[0].id), 0);
+  assert.equal(trackMonitored(requireFixture(tracks[0]).id), 0);
   assert.equal(getJob(jobIds[0]).status, "cancelled");
   assert.equal(getJob(ownerJob).status, "cancelled");
   assert.equal(getJob(otherArtistJob).status, "pending");
@@ -327,16 +342,18 @@ test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr"
 test("downloading a missing track in a Lidarr album leaves the download to the track route", async () => {
   const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["missing"] });
 
-  const result = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[0].id });
+  const result = await libraryManager.monitorAurralTrack({
+    canonicalTrackId: requireFixture(tracks[0]).id,
+  });
 
   assert.equal(result, null);
-  assert.equal(trackMonitored(tracks[0].id), 1);
+  assert.equal(trackMonitored(requireFixture(tracks[0]).id), 1);
   assert.deepEqual([...lidarrCalls], []);
 });
 
 test("requesting a guest track retains canonical album ownership for acquisition", async () => {
   const { artist, album, albumMbid, tracks } = await createAlbum();
-  const track = tracks[0];
+  const track = requireFixture(tracks[0]);
   libraryStore.upsertLibraryTrack({
     identityKey: track.identity_key,
     mbid: track.mbid,
@@ -367,7 +384,7 @@ test("requesting a guest track retains canonical album ownership for acquisition
 
 test("a Lidarr track request keeps the album owner's identity on its fallback job", async () => {
   const { artist, album, albumMbid, tracks } = await createAlbum({ managedBy: "lidarr" });
-  const track = tracks[0];
+  const track = requireFixture(tracks[0]);
   libraryStore.upsertLibraryTrack({
     identityKey: track.identity_key,
     mbid: track.mbid,

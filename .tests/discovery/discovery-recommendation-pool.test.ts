@@ -2,6 +2,7 @@ import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { createDiscoveryArtistBatcher } from "../helpers/discoveryFixtures.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [isolatedState, recommendationPipeline, discoveryIndex] = await setupIsolatedBackend(
   "discovery-recommendation-pool",
@@ -155,7 +156,7 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
 
 test("serveRecommendations ranks less-like artists lower and hides only exact blocks", () => {
   const storedPool = artists.makeBatch(5, 180, "stored");
-  const hidden = storedPool[2];
+  const hidden = requireFixture(storedPool[2]);
   const unchanged = serveRecommendations(storedPool);
   const lessLike = serveRecommendations(storedPool, {
     feedback: [{ artistId: hidden.id, action: "less_like_this" }],
@@ -208,7 +209,7 @@ test("enrichment marks returning artists as fresh while preserving firstDiscover
     prefix: "seed",
     runStartedAt,
   });
-  const returningArtist = initialPool[0];
+  const returningArtist = requireFixture(initialPool[0]);
   const enrichedCandidate = {
     ...returningArtist,
     scoreTotal: returningArtist.scoreTotal + 25,

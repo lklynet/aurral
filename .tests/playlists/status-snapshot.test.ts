@@ -10,6 +10,7 @@ import {
   getStaticPlaylistTrackCount,
   hasReviewActivity,
 } from "../../frontend/src/pages/playlists/playlistStats.ts";
+import { requireFixture } from "./fixtures.ts";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(
@@ -105,7 +106,7 @@ test("status snapshot trackIdentities includes pending download jobs", async () 
   assert.equal(job?.status, "pending");
   assert.equal(shared.trackIdentities.length, 1);
   assert.ok(
-    shared.trackIdentities[0].includes("radiohead"),
+    shared.trackIdentities[0]?.includes("radiohead"),
     "expected pending job identity in snapshot",
   );
 });
@@ -157,12 +158,12 @@ test("review count includes Library jobs and respects playlist ownership", async
     4,
   );
   assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), true);
-  for (const id of [held[1], held[3]]) downloadTracker.setFailed(id, "Dismissed");
+  for (const id of [held[1], held[3]]) downloadTracker.setFailed(requireFixture(id), "Dismissed");
   const libraryOnly = getPlaylistStatusSnapshot({ user });
   assert.equal(libraryOnly.stats.blocked + libraryOnly.sharedStats.blocked, 0);
   assert.equal(libraryOnly.reviewCount, 1);
   assert.equal(hasReviewActivity(libraryOnly), true);
-  downloadTracker.setFailed(held[0], "Dismissed");
+  downloadTracker.setFailed(requireFixture(held[0]), "Dismissed");
   assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 0);
   assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), false);
 });

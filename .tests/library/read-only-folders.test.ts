@@ -150,7 +150,7 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   const added = await callLibrary("POST", "/files/read-only-folders", { path: folder });
   assert.equal(added.status, 201);
   assert.deepEqual(
-    requireFixture(added.body).folders.map((entry) => entry.path),
+    added.body.folders.map((entry) => entry.path),
     [folder],
   );
 
@@ -159,16 +159,19 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   assert.deepEqual(fileRow(filePath), [
     {
       source: "readonly",
-      track_id: fileRow(filePath)[0].track_id,
+      track_id: requireFixture(fileRow(filePath)[0]).track_id,
       monitored: 0,
       managed_by: "aurral",
     },
   ]);
   const listed = await callLibrary("GET", "/files/read-only-folders");
-  assert.equal(requireFixture(listed.body).folders[0].tracks, 1);
-  assert.equal(requireFixture(listed.body).folders[0].readable, true);
+  assert.equal(listed.body.folders[0]?.tracks, 1);
+  assert.equal(listed.body.folders[0]?.readable, true);
 
-  const deleted = await callLibrary("DELETE", `/tracks/${fileRow(filePath)[0].track_id}`);
+  const deleted = await callLibrary(
+    "DELETE",
+    `/tracks/${requireFixture(fileRow(filePath)[0]).track_id}`,
+  );
   assert.equal(deleted.status, 409);
   assert.deepEqual(await fingerprint(filePath), before);
   assert.equal(fileRow(filePath).length, 1);
@@ -194,7 +197,7 @@ test("a read-only folder cannot overlap the Library folder or another read-only 
   ]) {
     const response = await callLibrary("POST", "/files/read-only-folders", { path: rejected });
     assert.equal(response.status, 400, rejected);
-    assert.ok(requireFixture(response.body).message, rejected);
+    assert.ok(response.body.message, rejected);
   }
   assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders", v.unknown()), [folder]);
 });
@@ -205,7 +208,7 @@ test("an unreadable saved read-only folder entry keeps the other folders", async
 
   const listed = await callLibrary("GET", "/files/read-only-folders");
   assert.deepEqual(
-    requireFixture(listed.body).folders.map((entry) => entry.path),
+    listed.body.folders.map((entry) => entry.path),
     [folder],
   );
 });
@@ -219,7 +222,7 @@ test("removing a read-only folder takes its music out of the Library and keeps t
 
   const removed = await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
   assert.equal(removed.status, 200);
-  assert.deepEqual([...requireFixture(removed.body).folders], []);
+  assert.deepEqual([...removed.body.folders], []);
   await scanConfiguredLibrary({ lidarrClient: lidarrOff });
 
   assert.deepEqual(fileRow(filePath), []);

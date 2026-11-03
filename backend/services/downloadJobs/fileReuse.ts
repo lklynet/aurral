@@ -486,7 +486,8 @@ export async function relocateSharedFilesBeforePlaylistRemoval(
 
   let relocated = 0;
   for (const [oldPath, jobs] of byPath) {
-    const survivor = sortReusableJobs(jobs)[0];
+    const [survivor] = sortReusableJobs(jobs);
+    if (!survivor) continue;
     const nextPath = await adoptFileIntoPlaylist(oldPath, survivor.playlistType, downloadRoot, {
       track: survivor,
     });
@@ -542,8 +543,8 @@ export async function removePlaylistFileIfUnshared(
     return { action: "skipped" };
   }
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
-  if (others.length > 0) {
-    const survivor = sortReusableJobs(others)[0];
+  const [survivor] = sortReusableJobs(others);
+  if (survivor) {
     const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot);
     return { action: nextPath ? "relocated" : "skipped" };
   }
@@ -998,7 +999,8 @@ export async function repairReusableTrackLinks(
   const batch = [];
   if (sortedJobs.length > 0) {
     for (let index = 0; index < batchSize; index += 1) {
-      batch.push(sortedJobs[(cursor + index) % sortedJobs.length]);
+      const job = sortedJobs[(cursor + index) % sortedJobs.length];
+      if (job) batch.push(job);
     }
   }
 

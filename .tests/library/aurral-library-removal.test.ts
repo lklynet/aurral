@@ -9,6 +9,7 @@ import {
   createMockHttpServer,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   isolatedState,
@@ -135,10 +136,10 @@ async function createAurralAlbum({
     downloadTracker.addJob(
       {
         artistName: artist.name,
-        trackName: tracks[index].title,
+        trackName: requireFixture(tracks[index]).title,
         albumName: album.title,
         albumMbid,
-        trackMbid: tracks[index].trackMbid,
+        trackMbid: requireFixture(tracks[index]).trackMbid,
         managedBy: "aurral",
       },
       "library",
@@ -225,8 +226,8 @@ test("removing an Aurral album without files keeps them on disk and clears its s
   assert.equal(response.statusCode, 200);
   assert.equal(albumRow(album.id), undefined);
   for (const track of tracks) assert.equal(trackRow(track.id), undefined);
-  assert.equal(await exists(tracks[0].filePath!), true);
-  assert.equal(await exists(tracks[1].filePath!), true);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), true);
   assert.equal(downloadTracker.getJob(pendingJob), null);
   assert.equal(managementStore.getLibraryManagementEntry("album", album.id), null);
 });
@@ -236,21 +237,25 @@ test("removing an Aurral album with files deletes its files, including ones a pl
   const other = await createAurralAlbum({ trackCount: 1, filesFor: [0] });
   const libraryJob = jobFor(0);
   assert.ok(libraryJob != null);
-  downloadTracker.setDone(libraryJob, tracks[0].filePath!, album.title);
+  downloadTracker.setDone(libraryJob, requireFixture(tracks[0]).filePath!, album.title);
   const playlistJob = downloadTracker.addJob(
-    { artistName: artist.name, trackName: tracks[1].title, trackMbid: tracks[1].trackMbid },
+    {
+      artistName: artist.name,
+      trackName: requireFixture(tracks[1]).title,
+      trackMbid: requireFixture(tracks[1]).trackMbid,
+    },
     "shared-playlist",
   );
   assert.ok(playlistJob != null);
-  downloadTracker.setDone(playlistJob, tracks[1].filePath!, album.title);
+  downloadTracker.setDone(playlistJob, requireFixture(tracks[1]).filePath!, album.title);
 
   const response = await removeAlbum(album, true);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(await exists(tracks[0].filePath!), false);
-  assert.equal(await exists(tracks[1].filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), false);
   assert.equal(downloadTracker.getJob(playlistJob), null);
-  assert.equal(await exists(other.tracks[0].filePath!), true);
+  assert.equal(await exists(requireFixture(other.tracks[0]).filePath!), true);
   assert.notEqual(albumRow(other.album.id), undefined);
   assert.equal(albumRow(album.id), undefined);
 });
@@ -259,7 +264,7 @@ test("removing a mixed album keeps the Lidarr file, its track, and the album", a
   const { album, tracks } = await createAurralAlbum();
   const lidarrPath = path.join(isolatedState.dataDir, "lidarr-root", `mixed-${album.id}.flac`);
   libraryStore.upsertLibraryMediaFile({
-    trackId: tracks[1].id,
+    trackId: requireFixture(tracks[1]).id,
     albumId: album.id,
     source: "lidarr",
     path: lidarrPath,
@@ -269,10 +274,10 @@ test("removing a mixed album keeps the Lidarr file, its track, and the album", a
   const response = await removeAlbum(album, true);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(await exists(tracks[0].filePath!), false);
-  assert.equal(await exists(tracks[1].filePath!), false);
-  assert.equal(trackRow(tracks[0].id), undefined);
-  assert.notEqual(trackRow(tracks[1].id), undefined);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), false);
+  assert.equal(trackRow(requireFixture(tracks[0]).id), undefined);
+  assert.notEqual(trackRow(requireFixture(tracks[1]).id), undefined);
   assert.notEqual(albumRow(album.id), undefined);
   assert.equal(
     db
@@ -297,7 +302,7 @@ test("album removal stops before changing anything when downloads cannot be canc
     assert.equal(failed.statusCode, 409);
     assert.equal(failed.body.code, "download_cancellation_failed");
     assert.notEqual(albumRow(album.id), undefined);
-    assert.equal(await exists(tracks[0].filePath!), true);
+    assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
     assert.notEqual(getJob(jobId), null);
     assert.equal(managementStore.getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
 
@@ -305,7 +310,7 @@ test("album removal stops before changing anything when downloads cannot be canc
     const retried = await removeAlbum(album, true);
     assert.equal(retried.statusCode, 200);
     assert.equal(albumRow(album.id), undefined);
-    assert.equal(await exists(tracks[0].filePath!), false);
+    assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
   } finally {
     clearSearch();
     await provider.close();
@@ -320,7 +325,7 @@ test("removing an album of a monitored artist records an exclusion, and Lidarr a
   assert.equal(removed.statusCode, 200);
   assert.equal(removed.body.excluded, true);
   assert.equal(albumRow(album.id), undefined);
-  assert.equal(await exists(tracks[0].filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
   assert.deepEqual(
     libraryManager
       .listMonitoringExclusions({ artistMbid: artist.mbid })
@@ -338,7 +343,7 @@ test("removing an album of a monitored artist records an exclusion, and Lidarr a
   const conflict = await removeAlbum(lidarr.album, true);
   assert.equal(conflict.statusCode, 409);
   assert.equal(conflict.body.code, "album_owner_conflict");
-  assert.equal(await exists(lidarr.tracks[0].filePath!), true);
+  assert.equal(await exists(requireFixture(lidarr.tracks[0]).filePath!), true);
   assert.notEqual(albumRow(lidarr.album.id), undefined);
 });
 
@@ -397,8 +402,8 @@ test("removing an Aurral artist without files keeps them on disk", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(artistRow(artist.id), undefined);
   assert.equal(albumRow(album.id), undefined);
-  assert.equal(await exists(tracks[0].filePath!), true);
-  assert.equal(await exists(tracks[1].filePath!), true);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), true);
 });
 
 function withoutMusicBrainzId(artist: import("../../backend/db/rows.ts").LibraryArtistsRow) {
@@ -412,7 +417,7 @@ function withoutMusicBrainzId(artist: import("../../backend/db/rows.ts").Library
 test("an ingested artist without a MusicBrainz ID is deleted with its files", async () => {
   const created = await createAurralAlbum();
   const artist = withoutMusicBrainzId(created.artist);
-  const albumDir = path.dirname(created.tracks[0].filePath!);
+  const albumDir = path.dirname(requireFixture(created.tracks[0]).filePath!);
   await fs.writeFile(path.join(albumDir, "1.lrc"), "[00:00.00]la");
   await fs.writeFile(path.join(albumDir, "cover.jpg"), "art");
   const other = libraryStore.upsertLibraryArtist({
@@ -473,7 +478,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
     assert.equal(failed.body.code, "download_cancellation_failed");
     assert.notEqual(artistRow(first.artist.id), undefined);
     assert.notEqual(albumRow(second.album.id), undefined);
-    assert.equal(await exists(second.tracks[0].filePath!), true);
+    assert.equal(await exists(requireFixture(second.tracks[0]).filePath!), true);
     const artistState = managementStore.getLibraryManagementEntry("artist", first.artist.id);
     assert.equal(artistState?.managedBy, "aurral");
     assert.equal(artistState?.monitorMode, "none");
@@ -485,7 +490,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
     assert.equal(artistRow(first.artist.id), undefined);
     assert.equal(albumRow(first.album.id), undefined);
     assert.equal(albumRow(second.album.id), undefined);
-    assert.equal(await exists(second.tracks[0].filePath!), false);
+    assert.equal(await exists(requireFixture(second.tracks[0]).filePath!), false);
   } finally {
     clearSearch();
     await provider.close();
@@ -515,7 +520,7 @@ test("deleting a Lidarr artist also deletes its Aurral albums and their files", 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(deleted, [{ id: 41, deleteFiles: true }]);
   assert.equal(managementStore.getLibraryManagementEntry("album", album.id), null);
-  assert.equal(await exists(tracks[0].filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
 });
 
 test("album removal keeps downloads that belong to Lidarr or to another album", async () => {
@@ -524,10 +529,10 @@ test("album removal keeps downloads that belong to Lidarr or to another album", 
   const otherAlbumJob = downloadTracker.addJob(
     {
       artistName: artist.name,
-      trackName: tracks[0].title,
+      trackName: requireFixture(tracks[0]).title,
       albumName: "Compilation",
       albumMbid: "12121212-1212-4212-8212-121212121212",
-      trackMbid: tracks[0].trackMbid,
+      trackMbid: requireFixture(tracks[0]).trackMbid,
       managedBy: "aurral",
     },
     "library",
@@ -535,8 +540,8 @@ test("album removal keeps downloads that belong to Lidarr or to another album", 
   const lidarrJob = downloadTracker.addJob(
     {
       artistName: artist.name,
-      trackName: tracks[1].title,
-      trackMbid: tracks[1].trackMbid,
+      trackName: requireFixture(tracks[1]).title,
+      trackMbid: requireFixture(tracks[1]).trackMbid,
       managedBy: "lidarr",
     },
     "library",
@@ -553,25 +558,25 @@ test("album removal keeps downloads that belong to Lidarr or to another album", 
 test("album removal never deletes a file Lidarr also lists as available", async () => {
   const { album, tracks } = await createAurralAlbum();
   libraryStore.upsertLibraryMediaFile({
-    trackId: tracks[0].id,
+    trackId: requireFixture(tracks[0]).id,
     albumId: album.id,
     source: "lidarr",
-    path: tracks[0].filePath!,
+    path: requireFixture(tracks[0]).filePath!,
     available: true,
   });
 
   const response = await removeAlbum(album, true);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(await exists(tracks[0].filePath!), true);
-  assert.equal(await exists(tracks[1].filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), false);
   assert.equal(
     db
       .prepare<
         unknown[],
         { available: import("../../backend/db/rows.ts").LibraryMediaFilesRow["available"] }
       >("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
-      .get("lidarr", tracks[0].filePath!)?.available,
+      .get("lidarr", requireFixture(tracks[0]).filePath!)?.available,
     1,
   );
 });
@@ -589,7 +594,7 @@ test("album removal never deletes a reused file outside the Library folder", asy
 
   assert.equal(response.statusCode, 200);
   assert.equal(await exists(lidarrPath), true);
-  assert.equal(await exists(tracks[1].filePath!), false);
+  assert.equal(await exists(requireFixture(tracks[1]).filePath!), false);
   assert.equal(albumRow(album.id), undefined);
 });
 
@@ -599,7 +604,7 @@ test("album removal deletes files in a Library folder subfolder whose name start
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "audio");
   libraryStore.upsertLibraryMediaFile({
-    trackId: tracks[0].id,
+    trackId: requireFixture(tracks[0]).id,
     albumId: album.id,
     source: "aurral",
     path: filePath,

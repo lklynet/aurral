@@ -4,6 +4,7 @@ import {
   cleanupIsolatedState,
   startServerProcess,
 } from "./backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 export async function createAlbumActivityFixture() {
   const [
@@ -59,7 +60,7 @@ export async function createAlbumActivityFixture() {
   assert.ok(ids.every((id) => id !== null));
   const payload = {
     albumGrab: true,
-    jobId: ids[0],
+    jobId: requireFixture(ids[0]),
     albumGroupJobIds: ids,
     phase: "poll",
     source: "slskd",
@@ -86,7 +87,7 @@ export async function createAlbumActivityFixture() {
   assert.ok(blockedIds.every((id) => id !== null));
   const partialPayload = {
     albumGrab: true,
-    jobId: blockedIds[0],
+    jobId: requireFixture(blockedIds[0]),
     albumGroupJobIds: blockedIds,
     phase: "finalize",
     source: "deemix",
@@ -94,12 +95,12 @@ export async function createAlbumActivityFixture() {
   const blockedJobs = blockedIds.map((id) => downloadTracker.getJob(id));
   assert.ok(blockedJobs.every((job) => job !== null));
   recordAlbumGrabQueued(partialPayload, blockedJobs);
-  downloadTracker.setDone(blockedIds[0], `${state.baseDir}/ready.flac`);
+  downloadTracker.setDone(requireFixture(blockedIds[0]), `${state.baseDir}/ready.flac`);
   const readyJob = downloadTracker.getJob(blockedIds[0]);
   assert.ok(readyJob);
   recordAlbumTrackState(readyJob, "deemix");
   downloadTracker.setBlocked(
-    blockedIds[1],
+    requireFixture(blockedIds[1]),
     "Identity needs review",
     `${state.baseDir}/review.flac`,
   );

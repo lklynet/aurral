@@ -32,8 +32,8 @@ function textLyrics(text: string | undefined) {
   const line = lines
     .filter((value) => !/^\s*\[[a-z]+:.*\]\s*$/i.test(value))
     .map((value) => ({ value: value.trim() }));
-  while (line.length && !line[0].value) line.shift();
-  while (line.length && !line.at(-1)!.value) line.pop();
+  while (line.length && !line[0]?.value) line.shift();
+  while (line.length && !line.at(-1)?.value) line.pop();
   return line.length ? { synced: false, line } : null;
 }
 

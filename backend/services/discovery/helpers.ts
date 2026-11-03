@@ -170,12 +170,13 @@ export const createDiscoveryRunId = () => randomUUID();
 
 export const getDiscoveryNetworkConcurrency = () => DISCOVERY_NETWORK_CONCURRENCY;
 
-export const interleaveLists = <T>(...lists: T[][]): T[] => {
-  const result = [];
+export const interleaveLists = <T extends {} | null>(...lists: T[][]) => {
+  const result: T[] = [];
   const longest = Math.max(0, ...lists.map((list) => list.length));
   for (let index = 0; index < longest; index += 1) {
     for (const list of lists) {
-      if (index < list.length) result.push(list[index]);
+      const item = list[index];
+      if (item !== undefined) result.push(item);
     }
   }
   return result;

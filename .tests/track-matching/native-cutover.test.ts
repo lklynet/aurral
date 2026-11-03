@@ -21,7 +21,7 @@ test("source search can accept a matching track without a Python runtime", async
       },
     ],
   });
-  assert.equal(result.evaluations[0].decision, "accept");
+  assert.equal(result.evaluations[0]?.decision, "accept");
 });
 
 test("a Soulseek filename naming another artist stays rejected despite matching title", async () => {
@@ -36,7 +36,7 @@ test("a Soulseek filename naming another artist stays rejected despite matching 
     candidates: built.candidates,
     providerEvidence: built.providerEvidence,
   });
-  assert.equal(result.evaluations[0].decision, "reject");
+  assert.equal(result.evaluations[0]?.decision, "reject");
 });
 
 test("all source adapters reject a visible wrong recording before download", async () => {
@@ -59,7 +59,7 @@ test("all source adapters reject a visible wrong recording before download", asy
         },
       ],
     });
-    assert.equal(result.evaluations[0].decision, "reject", source);
+    assert.equal(result.evaluations[0]?.decision, "reject", source);
   }
 });
 
@@ -76,7 +76,7 @@ test("a matching video channel and official-audio title remain a plausible track
       },
     ],
   });
-  assert.equal(result.evaluations[0].decision, "verify");
+  assert.equal(result.evaluations[0]?.decision, "verify");
 });
 
 test("a provider artist claim cannot fill a missing original file tag", async () => {

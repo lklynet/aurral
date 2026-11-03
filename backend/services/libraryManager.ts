@@ -556,7 +556,7 @@ function mapLibraryAlbum(
   const files = albumTracks.map((track) =>
     selectCanonicalFile(track.files, album.id, album.managedBy),
   );
-  const availableFiles = files.filter((file) => file?.available);
+  const availableFiles = files.flatMap((file) => (file?.available ? [file] : []));
   const trackCount = albumTracks.length;
   return {
     id: String(album.id),
@@ -1229,7 +1229,12 @@ export class LibraryManager {
       monitorMode: "none",
     });
     scheduleReleaseMetadataRefresh();
-    return libraryArtistFallback(artist.id) || artist;
+    return (
+      libraryArtistFallback(artist.id) ?? {
+        error: "Artist was added but could not be read back",
+        statusCode: 500,
+      }
+    );
   }
 
   async addArtist(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
@@ -1488,11 +1493,13 @@ export class LibraryManager {
       case "all":
         albumsToMonitor.push(...eligibleAlbums.filter((album) => !album.monitored));
         break;
-      case "latest":
-        if (sortedAlbums.length > 0 && !sortedAlbums[0].monitored) {
-          albumsToMonitor.push(sortedAlbums[0]);
+      case "latest": {
+        const latestAlbum = sortedAlbums[0];
+        if (latestAlbum && !latestAlbum.monitored) {
+          albumsToMonitor.push(latestAlbum);
         }
         break;
+      }
       case "first": {
         const oldestAlbum = sortedAlbums[sortedAlbums.length - 1];
         if (oldestAlbum && !oldestAlbum.monitored) {
@@ -2697,6 +2704,7 @@ export class LibraryManager {
     }
     return serializeMonitoringUpdate(_artistMonitoringUpdates, Number(artist.id), async () => {
       const currentArtist = libraryArtistFallback(artist.id);
+      if (!currentArtist) return { error: "Artist not found in the library", statusCode: 404 };
       const artistId = Number(currentArtist.id);
       const defaults = getMonitoringDefaults();
       const previous =
@@ -3094,7 +3102,8 @@ export class LibraryManager {
   }
 
   getAurralAlbumStatus(canonicalId: string | number) {
-    return this.getAurralAlbumStatuses([canonicalId])[0];
+    const [status] = this.getAurralAlbumStatuses([canonicalId]);
+    return status ?? { error: "Album was not found in the library", statusCode: 404 };
   }
 
   getAurralAlbumStatuses(canonicalIds: (string | number)[]) {
@@ -3143,12 +3152,13 @@ export class LibraryManager {
         } as const;
       }
       const aurralAlbums = library.albums.filter((album) => album.managedBy === "aurral");
+      const [firstAurralAlbum] = aurralAlbums;
       setTrackMonitoredStmt.run(monitored ? 1 : 0, trackId);
       invalidateLibraryQueryCache({ persistedGenres: false });
       const cancelledJobIds = [];
       const queuedJobIds: string[] = [];
       let cleanupFailed = false;
-      if (aurralAlbums.length === 0) {
+      if (!firstAurralAlbum) {
         if (!monitored) {
           const cancellation = await cancelLibraryTrackJobs(
             track,
@@ -3176,7 +3186,7 @@ export class LibraryManager {
               albumJobKeys(entry).some((key) => String(key || "").toLowerCase() === group),
             )) ||
           aurralAlbums.find((entry) => isMonitoredAurralAlbum(entry.id)) ||
-          aurralAlbums[0];
+          firstAurralAlbum;
         const result: MethodResult<"_finishAurralAlbum"> = await serializeMonitoringUpdate(
           _albumMonitoringUpdates,
           album.id,
@@ -3912,6 +3922,7 @@ export class LibraryManager {
     const existing = albumMbid ? libraryAlbumForReference(albumMbid) : null;
     if (existing?.managedBy !== "aurral") return;
     const album = libraryForAlbum(existing.id).albums[0];
+    if (!album) return;
     db.transaction(() => {
       setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "lidarr" });
       setAlbumTracksMonitoredStmt.run(0, album.id);

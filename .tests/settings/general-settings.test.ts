@@ -251,7 +251,7 @@ test("saves overlapping roots with an equal overlap warning", async () => {
   assert.ok(response.body != null);
   const warnings = response.body.rootWarnings;
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0].type, "equal");
+  assert.equal(warnings[0]?.type, "equal");
 });
 
 test("does not warn about lidarr roots while lidarr is disabled", async () => {

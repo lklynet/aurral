@@ -14,6 +14,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 type YtdlpPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
@@ -127,7 +128,7 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
   ]);
   assert.equal(next.phase, "download");
   assert.ok(next.candidates != null);
-  assert.deepEqual(next.candidates[0].raw, song);
+  assert.deepEqual(next.candidates[0]?.raw, song);
 });
 
 test("Usenet file collection only scans the current history directory", async () => {
@@ -392,7 +393,7 @@ test("yt-dlp auto-rejects weak title matches instead of reviewing them", async (
   assert.equal(result, null);
   await assert.rejects(() => access(filePath), undefined!, "the wrong-track file must be removed");
   assert.equal(sourceFailures.length, 1);
-  assert.match(sourceFailures[0], /filename-title/);
+  assert.match(requireFixture(sourceFailures[0]), /filename-title/);
 });
 
 test("yt-dlp holds partially-matching identity for review", async (t) => {
@@ -519,9 +520,9 @@ test("Usenet tries its other releases before sending a file to review", async ()
       helpers,
     );
     assert.equal(sourceFailures.length, 1);
-    assert.equal(sourceFailures[0].payload.heldForReview?.sourcePath, heldPath);
+    assert.equal(sourceFailures[0]?.payload.heldForReview?.sourcePath, heldPath);
     assert.equal(
-      sourceFailures[0].reason,
+      sourceFailures[0]?.reason,
       "downloaded file is 14.0s shorter than the requested track",
     );
     await access(heldPath);
@@ -601,7 +602,7 @@ test("an automatic Usenet upgrade drops a file it cannot verify and keeps the Li
 
     assert.notEqual(downloadTracker.getJob(upgradeJobId)?.status, "blocked");
     assert.equal(failures.length, 1);
-    assert.equal(failures[0].payload.heldForReview, undefined);
+    assert.equal(requireFixture(failures[0]).payload.heldForReview, undefined);
     assert.equal(trackedJob(downloadTracker, sourceJobId).finalPath, originalPath);
     await access(originalPath);
   } finally {

@@ -274,9 +274,9 @@ test("ingest fills in only the tags a file is missing and keeps it with the albu
   });
   const { preview, items } = await checkAndRun(operation);
 
-  assert.deepEqual(preview[0].actions, ["file", "tags"]);
-  assert.equal(preview[0].tagFields.includes("Genre"), false);
-  assert.equal(items[0].status, "done");
+  assert.deepEqual(preview[0]?.actions, ["file", "tags"]);
+  assert.equal(preview[0]?.tagFields.includes("Genre"), false);
+  assert.equal(items[0]?.status, "done");
   const target = path.join(root, "Fill Artist", "Fill Album", "02 - Song Two.flac");
   const { common } = await parseFile(target);
   assert.equal(common.musicbrainz_releasegroupid, releaseGroup);
@@ -293,7 +293,7 @@ test("ingest fills in only the tags a file is missing and keeps it with the albu
     )
     .all();
   assert.equal(albums.length, 1);
-  assert.equal(albums[0].identity_key, `release-group:${releaseGroup}`);
+  assert.equal(albums[0]?.identity_key, `release-group:${releaseGroup}`);
   assert.equal(
     db
       .prepare<unknown[], number>("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?")
@@ -371,7 +371,10 @@ test("a source whose disc number differs from the Library's is matched by the Mu
     const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags });
     const { items } = await checkAndRun(operation);
 
-    assert.deepEqual([items[0].status, items[0].target], ["duplicate", path.relative(root, kept)]);
+    assert.deepEqual(
+      [requireFixture(items[0]).status, requireFixture(items[0]).target],
+      ["duplicate", path.relative(root, kept)],
+    );
     assert.equal(await stat(sourceFile).then(() => true), true);
   }
   assert.equal(
@@ -406,6 +409,7 @@ test("an ingest a restart stopped after filling in tags finishes on resume", asy
   assert.ok(operation != null);
   await runUntilChecked(operation.id);
   const [planned] = listLibraryFileOperationItems(operation.id, { statuses: ["pending"] });
+  assert.ok(planned);
   await mkdir(path.dirname(requireValue(requireValue(planned).targetPath)), { recursive: true });
   await copyFile(sourceFile, requireValue(requireValue(planned).targetPath));
   await writeAudioTags(requireValue(requireValue(planned).targetPath), planned.details.tags, {
@@ -415,7 +419,7 @@ test("an ingest a restart stopped after filling in tags finishes on resume", asy
 
   const { items } = await checkAndRun(operation);
 
-  assert.equal(items[0].status, "done");
+  assert.equal(items[0]?.status, "done");
   assert.deepEqual(await readFile(requireValue(requireValue(planned).targetPath)), filledBytes);
   assert.deepEqual(await readFile(sourceFile), sourceBytes);
 });
@@ -490,7 +494,7 @@ test("clean up fills in a file's tags and gives it Aurral's name in one pass, an
     preview.map((item) => [item.actions, item.target]),
     [[["tags", "rename"], path.relative(root, named)]],
   );
-  assert.equal(items[0].status, "done");
+  assert.equal(items[0]?.status, "done");
   assert.equal(
     await stat(loose).then(
       () => true,
@@ -528,7 +532,7 @@ test("clean up fills in tags for a file whose Aurral name already links to it", 
 
   const { items } = await checkAndRun(await operations.startCleanup());
 
-  assert.equal(items[0].status, "done");
+  assert.equal(items[0]?.status, "done");
   assert.equal(
     await stat(loose).then(
       () => true,
@@ -560,7 +564,7 @@ test("a file tagged with one edition gets that edition's track number", async ()
   const operation = await operations.startCleanup();
   const { items } = await checkAndRun(operation);
 
-  assert.equal(items[0].status, "done");
+  assert.equal(items[0]?.status, "done");
   const { common } = await parseFile(filePath);
   assert.equal(common.track.no, 3);
   assert.equal(common.musicbrainz_albumid, deluxe);
@@ -701,9 +705,7 @@ test("clean up says the metadata provider was unreachable instead of calling an 
   const retried = await checkAndRun(await operations.startCleanup());
 
   assert.equal(
-    requireFixture(requireValue(retried)!).items.find(
-      (item) => path.resolve(root, item.source) === tagged,
-    )!.status,
+    requireValue(retried)!.items.find((item) => path.resolve(root, item.source) === tagged)!.status,
     "done",
   );
   assert.equal((await parseFile(tagged)).common.musicbrainz_releasegroupid, outageReleaseGroup);

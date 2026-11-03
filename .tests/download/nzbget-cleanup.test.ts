@@ -19,6 +19,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   state,
@@ -520,7 +521,7 @@ test("an album grab removes the download after importing its songs", async (t) =
   await processUsenetPipelinePayload(
     {
       ...payload,
-      jobId: ids[0],
+      jobId: requireFixture(ids[0]),
       albumGrab: true,
       albumGroupJobIds: ids,
       releaseMbid: `${group}-release`,

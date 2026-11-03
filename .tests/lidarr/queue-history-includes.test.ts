@@ -2,6 +2,7 @@ import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 function createClient(t: import("vite-plus/test").TestContext) {
   const client = new LidarrClient();
@@ -33,7 +34,7 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
     assert.equal(params.get("includeAlbum"), "true", endpoint);
     assert.equal(params.get("includeArtist"), "true", endpoint);
   }
-  const queueParams = new URL(endpoints[0], "http://lidarr").searchParams;
+  const queueParams = new URL(requireFixture(endpoints[0]), "http://lidarr").searchParams;
   assert.ok(
     Number(queueParams.get("pageSize")) > 10,
     "queue must not stop at Lidarr's default page of 10",
@@ -54,8 +55,8 @@ test("activity rows use the embedded album and artist names", async (t) => {
     ],
     history: { records: [] },
   });
-  assert.equal(requests[0].albumName, "Good Girl Gone Bad");
-  assert.equal(requests[0].artistName, "Rihanna");
+  assert.equal(requests[0]?.albumName, "Good Girl Gone Bad");
+  assert.equal(requests[0]?.artistName, "Rihanna");
 });
 
 test("a queue item whose status messages report a failure shows as Failed", async (t) => {
@@ -74,7 +75,7 @@ test("a queue item whose status messages report a failure shows as Failed", asyn
     ],
     history: { records: [] },
   });
-  assert.equal(requests[0].statusLabel, "Failed");
+  assert.equal(requests[0]?.statusLabel, "Failed");
 });
 
 test("history rows follow Lidarr event types, not words in the record", async (t) => {

@@ -157,14 +157,15 @@ export async function readLogEntries(dir: string, query: LogQuery) {
   for await (const line of linesNewestFirst(dir)) {
     const header = HEADER.exec(line);
     if (!header) continue;
-    const id = Number(header[1]);
+    const [, rawId, time = "", level = ""] = header;
+    const id = Number(rawId);
     if (query.after != null && id <= query.after) break;
-    if (query.since != null && Date.parse(header[2]) < query.since) {
-      if (Date.parse(header[2]) < query.since - CLOCK_SKEW_MS) break;
+    if (query.since != null && Date.parse(time) < query.since) {
+      if (Date.parse(time) < query.since - CLOCK_SKEW_MS) break;
       continue;
     }
     if (query.before != null && id >= query.before) continue;
-    if (levelRank(header[3]) < minRank) continue;
+    if (levelRank(level) < minRank) continue;
     if (text && !line.toLowerCase().includes(text)) continue;
     const entry = parseEntry(line);
     if (!entry) continue;
@@ -184,11 +185,12 @@ export async function readLogProblems(dir: string, { since }: { since: number })
   for await (const line of linesNewestFirst(dir)) {
     const header = HEADER.exec(line);
     if (!header) continue;
-    if (Date.parse(header[2]) < since) {
-      if (Date.parse(header[2]) < since - CLOCK_SKEW_MS) break;
+    const [, , time = "", level = ""] = header;
+    if (Date.parse(time) < since) {
+      if (Date.parse(time) < since - CLOCK_SKEW_MS) break;
       continue;
     }
-    if (levelRank(header[3]) < warnRank) continue;
+    if (levelRank(level) < warnRank) continue;
     const entry = parseEntry(line);
     if (!entry) continue;
     const known = problems.get(entry.fp);

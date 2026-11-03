@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 const [paths, honker, { db }, { scheduleReleaseMetadataRefresh }] = await setupIsolatedBackend(
   "metadata-routing",
   () => import("../../backend/services/honkerDb.ts"),
@@ -63,7 +64,7 @@ test("manual metadata refresh coalesces pending legacy work and advances its dea
       ...honker.listHonkerJobs("release-metadata-refresh"),
     ].filter((job) => job.payload?.kind === "release-metadata-refresh" && job.state === "pending");
     assert.equal(jobs.length, 1);
-    assert.ok(jobs[0].run_at <= Math.floor(Date.now() / 1000));
+    assert.ok(requireFixture(jobs[0]).run_at <= Math.floor(Date.now() / 1000));
     assert.equal(
       honker.getHonkerQueueByName("release-metadata-refresh")?.getJob(earlier)?.id,
       earlier,

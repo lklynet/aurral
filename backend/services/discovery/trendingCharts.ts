@@ -323,10 +323,10 @@ export function summarizeChartHistory(days: ChartDay[]) {
     const before = previousPositions.get(key);
     return before === undefined ? ("new" as const) : before - index;
   };
-  if (!latest || days.length < 2 || latest.keys.length === 0) {
+  const lead = latest?.keys[0];
+  if (!latest || days.length < 2 || lead === undefined) {
     return { movementOf, spotlight: null };
   }
-  const lead = latest.keys[0];
   const keysByDay = new Map(days.map((entry) => [entry.day, entry.keys]));
   const ranks = Array.from({ length: SPOTLIGHT_DAYS }, (_, index) => {
     const keys = keysByDay.get(shiftDay(latest.day, index - (SPOTLIGHT_DAYS - 1)));
@@ -334,11 +334,8 @@ export function summarizeChartHistory(days: ChartDay[]) {
     return position === -1 ? null : position + 1;
   });
   let daysAtTop = 0;
-  while (
-    daysAtTop < days.length &&
-    days[daysAtTop].day === shiftDay(latest.day, -daysAtTop) &&
-    days[daysAtTop].keys[0] === lead
-  ) {
+  for (const [index, entry] of days.entries()) {
+    if (entry.day !== shiftDay(latest.day, -index) || entry.keys[0] !== lead) break;
     daysAtTop += 1;
   }
   return { movementOf, spotlight: { ranks, daysAtTop } };
@@ -404,10 +401,16 @@ export async function refreshTrendingCharts({
     },
   };
   const entries = Object.entries(sections);
-  const results = await Promise.allSettled(entries.map(([, run]) => run()));
-  const failed = results.flatMap((result, index) =>
-    result.status === "rejected" ? [{ name: entries[index][0], reason: result.reason }] : [],
-  );
+  const failed = (
+    await Promise.all(
+      entries.map(([name, run]) =>
+        run().then(
+          () => [],
+          (reason: unknown) => [{ name, reason }],
+        ),
+      ),
+    )
+  ).flat();
   for (const { name, reason } of failed) {
     logger.warn("discovery", `Could not refresh the trending ${name} chart`, {
       reason: safeLogDiagnostic(reason),

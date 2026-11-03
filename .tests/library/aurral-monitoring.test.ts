@@ -253,7 +253,10 @@ async function callRoute<Body = RouteBody>(
   } = {},
 ) {
   const [method, route] = key.split(" ");
-  const pathname = route.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(params[name]));
+  assert.ok(method !== undefined && route !== undefined);
+  const pathname = route.replace(/:(\w+)/g, (_, name: string) =>
+    encodeURIComponent(requireFixture(params[name])),
+  );
   const search = new URLSearchParams(query).toString();
   const response = await app.request(
     `/library${pathname}${search && `?${search}`}`,
@@ -440,8 +443,9 @@ test("monitoring an artist downloads the songs missing from an album the Library
     )
     .get(artistMbid);
   assert.ok(artist);
-  const release = albumPayload(releases.firstAlbum).releases[0];
+  const release = requireFixture(albumPayload(releases.firstAlbum).releases[0]);
   const [have, missing] = release.tracks;
+  assert.ok(have && missing);
   const album = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${releases.firstAlbum.id}`,
     mbid: release.id,
@@ -806,6 +810,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   const albumJobs = () =>
     downloadTracker.getAll().filter((job) => job.albumMbid === releases.latestEp.id);
   const [finishedJob, activeJob] = albumJobs();
+  assert.ok(finishedJob !== undefined && activeJob !== undefined);
   downloadTracker.setDone(finishedJob.id, "/aurral/Monitor Artist/Latest EP/01.flac", "Latest EP");
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
@@ -823,7 +828,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   assert.equal(
     JSON.parse(
       requireFixture(
-        requireFixture(db)
+        db
           .prepare<
             unknown[],
             { metadata_json: import("../../backend/db/rows.ts").LibraryAlbumsRow["metadata_json"] }
@@ -1108,6 +1113,7 @@ test("allowing an excluded album again lets monitoring take it back", async () =
       import("../../backend/services/aurralMonitoringStore.ts").MonitoringExclusion[]
     >("GET /monitoring/exclusions", { query: { artistMbid } })
   ).body;
+  assert.ok(exclusion !== undefined);
   const allowed = await callRoute("DELETE /monitoring/exclusions/:id", {
     params: { id: String(exclusion.id) },
   });

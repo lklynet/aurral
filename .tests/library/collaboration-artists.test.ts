@@ -12,6 +12,7 @@ import { scanMusicRoot } from "../../backend/services/libraryFileScanner.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { getLibraryPage } from "../../backend/services/libraryQueryService.ts";
 import { getArtist, idFor } from "../../backend/services/subsonicLibraryService.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const credit = "Carpenter Brut, Danger, The Toxic Avenger, LORN, Scattle, Waveshaper & Kn1ght";
 
@@ -157,14 +158,18 @@ test("a release credited to several artists shows under each credited artist in 
     "Trilogy",
   ]);
   assert.equal(
-    (await getArtistLibraryLookup(danger.common.musicbrainz_albumartistid[0])).exists,
+    (await getArtistLibraryLookup(requireFixture(danger.common.musicbrainz_albumartistid[0])))
+      .exists,
     false,
   );
 
   await scan([danger]);
 
   assert.deepEqual(
-    titles((await getArtistLibraryLookup(danger.common.musicbrainz_albumartistid[0])).albums),
+    titles(
+      (await getArtistLibraryLookup(requireFixture(danger.common.musicbrainz_albumartistid[0])))
+        .albums,
+    ),
     ["09/14 - 18/14", "Furi"],
   );
 });

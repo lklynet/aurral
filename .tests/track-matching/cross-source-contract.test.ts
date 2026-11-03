@@ -13,6 +13,7 @@ import {
   validateDownloadedTrackFile,
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 type SearchInput = NonNullable<Parameters<typeof buildSourceCandidates>[0]>;
 
@@ -59,7 +60,7 @@ test("non-Latin title identity is enforced through every source's candidate entr
         if (offered === trackName) assert.equal(usable.length, 1, `${source}: ${trackName}`);
         else
           assert.equal(
-            evaluation.evaluations[0].decision,
+            evaluation.evaluations[0]?.decision,
             "reject",
             `${source}: ${trackName}/${offered}`,
           );
@@ -147,10 +148,10 @@ test("live variant truth: live requests accept live files and reject studio ever
     ],
     liveRequest,
   );
-  assert.equal(deemix.best.candidate.provider.id, "live");
-  assert.equal(deemix.best.decision, "accept");
+  assert.equal(deemix.best?.candidate?.provider.id, "live");
+  assert.equal(deemix.best?.decision, "accept");
   const studioEvaluation = deemix.evaluation.evaluations.find(
-    (entry) => entry.candidate.provider?.id === "studio",
+    (entry) => requireFixture(entry.candidate).provider?.id === "studio",
   );
   assert.ok(studioEvaluation != null);
   assert.equal(studioEvaluation.decision, "reject");
@@ -183,7 +184,7 @@ test("remaster of the same recording stays acceptable (same-recording policy)", 
   ]);
   assert.ok(best, "an ordinary remaster must remain usable");
   assert.equal((best.contradictions ?? []).length, 0);
-  assert.equal((evaluation.evaluations[0].contradictions ?? []).length, 0);
+  assert.equal((requireFixture(evaluation.evaluations[0]).contradictions ?? []).length, 0);
 });
 
 test("compilation appearance of the same recording stays acceptable", async () => {
@@ -366,7 +367,7 @@ test("YouTube results are read by artist and title, not by upload wording", asyn
     breed,
   );
   assert.deepEqual(
-    usable.map((entry) => entry.candidate.provider.id),
+    usable.map((entry) => requireFixture(entry.candidate).provider.id),
     ["audio", "reversed"],
   );
 
@@ -391,7 +392,7 @@ test("YouTube results are read by artist and title, not by upload wording", asyn
     ],
   ] satisfies [unknown, unknown][]) {
     const { best } = await decisionFor("ytdlp", [result], request);
-    assert.equal(best?.candidate.provider.id, result.id, result.title);
+    assert.equal(best?.candidate?.provider.id, result.id, result.title);
   }
 });
 
@@ -410,5 +411,5 @@ test("the artist's own audio upload is tried before a lyric channel's copy", asy
     ],
     request,
   );
-  assert.equal(best?.candidate.provider.id, "topic");
+  assert.equal(best?.candidate?.provider.id, "topic");
 });

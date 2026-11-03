@@ -7,6 +7,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const [
   state,
@@ -354,7 +355,7 @@ test("an NZBGet download that failed is removed from the client", async () => {
     failSource,
   );
   assert.equal(result, null);
-  assert.match(failures[0], /Usenet download failed/);
+  assert.match(requireFixture(failures[0]), /Usenet download failed/);
   assert.deepEqual(
     fromQueue.mock.calls.map((call) => call[0]),
     [7],

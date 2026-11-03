@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -47,7 +48,10 @@ const exchangeRequest = ({
 async function startLogin(options?: Parameters<typeof startOidcLogin>[0]) {
   const login = await startOidcLogin(options);
   assert.ok(login, "OIDC must be enabled");
-  return { redirect: new URL(login.authUrl), cookie: login.cookie.split(";", 1)[0] };
+  return {
+    redirect: new URL(login.authUrl),
+    cookie: requireFixture(login.cookie.split(";", 1)[0]),
+  };
 }
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -710,7 +714,7 @@ test("OIDC login adopts a legacy account only once an admin has approved that sp
   assert.equal(userOps.getAllUsers().length, 1, "no duplicate account should be created");
   const identities = userIdentityOps.getForUser(legacy.id);
   assert.equal(identities.length, 1);
-  assert.equal(identities[0].providerType, "oidc");
+  assert.equal(identities[0]?.providerType, "oidc");
   const adopted = userOps.getUserById(legacy.id);
   assert.ok(adopted != null);
   assert.equal(adopted.needsIdentityMigration, false);

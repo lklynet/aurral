@@ -47,9 +47,11 @@ test("a seed source named like an object member weighs the same as any unknown s
   const [odd] = buildDiscoverySeedList({
     historyArtists: [{ artistName: "A", source: "constructor", playcount: 10 }],
   });
+  assert.ok(odd);
   const [unknown] = buildDiscoverySeedList({
     historyArtists: [{ artistName: "A", source: "unlisted", playcount: 10 }],
   });
+  assert.ok(unknown);
   assert.ok(Number.isFinite(odd.weight));
   assert.equal(odd.weight, unknown.weight);
 });

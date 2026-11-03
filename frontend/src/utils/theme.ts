@@ -123,7 +123,7 @@ export const AURRAL_THEME = {
   dark: { background: "#000000", text: "#ffffff", accent: "#b3b3b3" },
 } satisfies Theme;
 
-export const BUILT_IN_THEMES: Theme[] = [AURRAL_THEME, ...THEME_PRESETS];
+export const BUILT_IN_THEMES: [Theme, ...Theme[]] = [AURRAL_THEME, ...THEME_PRESETS];
 const BUILT_IN_THEME_IDS = new Set<string>(BUILT_IN_THEMES.map((theme) => theme.id));
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -514,9 +514,10 @@ export function saveCustomTheme(value: StoredTheme, { select = true }: { select?
 export function removeCustomTheme(themeId: string) {
   const document = getThemeDocument();
   const index = document.themes.findIndex((theme) => theme.id === themeId);
-  if (index < 0) return null;
+  const theme = document.themes[index];
+  if (!theme) return null;
   const removed = {
-    theme: document.themes[index],
+    theme,
     index,
     wasSelected: document.themeId === themeId,
   };

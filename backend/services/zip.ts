@@ -221,7 +221,7 @@ export async function readZipEntries(file: string) {
       const nameEnd = at + 46 + central.readUInt16LE(at + 28);
       const extraEnd = nameEnd + central.readUInt16LE(at + 30);
       if (extraEnd > central.length) throw new ZipFormatError("The zip file is damaged.");
-      const values = [
+      const values: [number, number, number] = [
         central.readUInt32LE(at + 24),
         central.readUInt32LE(at + 20),
         central.readUInt32LE(at + 42),

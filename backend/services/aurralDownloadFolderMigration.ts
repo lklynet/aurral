@@ -199,10 +199,10 @@ function safePathPart(value: string) {
 }
 
 function legacyPlaylistId(sourcePath: string, rootPath: string, knownIds: Set<string>) {
-  const relative = path.relative(rootPath, sourcePath).split(path.sep).filter(Boolean);
-  if (!relative.length) return null;
-  if (LEGACY_PLAYLIST_ROOTS.includes(relative[0])) return relative[1] || null;
-  return knownIds.has(relative[0]) ? relative[0] : null;
+  const [first, second] = path.relative(rootPath, sourcePath).split(path.sep).filter(Boolean);
+  if (!first) return null;
+  if (LEGACY_PLAYLIST_ROOTS.includes(first)) return second || null;
+  return knownIds.has(first) ? first : null;
 }
 
 function pathIdentity(
@@ -229,8 +229,8 @@ function pathIdentity(
 }
 
 function isLegacyRootPath(sourcePath: string, rootPath: string) {
-  const relative = path.relative(rootPath, sourcePath).split(path.sep).filter(Boolean);
-  return LEGACY_PLAYLIST_ROOTS.includes(relative[0]);
+  const [first] = path.relative(rootPath, sourcePath).split(path.sep).filter(Boolean);
+  return first !== undefined && LEGACY_PLAYLIST_ROOTS.includes(first);
 }
 
 async function resolveJobSourcePath(finalPath: string | null | undefined, rootPath: string) {

@@ -154,11 +154,11 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
     launches.map((child) => child.group),
     ["library"],
   );
-  launches[0].emit("message", { type: "websocket-broadcast", channel: "library" });
+  requireFixture(launches[0]).emit("message", { type: "websocket-broadcast", channel: "library" });
   assert.deepEqual(messages, [
     { message: { type: "websocket-broadcast", channel: "library" }, group: "library" },
   ]);
-  launches[0].emit("message", {
+  requireFixture(launches[0]).emit("message", {
     type: "heartbeat",
     workers: [{ name: "library-scan", running: true }],
   });
@@ -171,9 +171,9 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
     ["library", "discovery"],
   );
   assert.equal(supervisor.wake("discovery"), false);
-  launches[1].emit("message", { type: "ready" });
+  requireFixture(launches[1]).emit("message", { type: "ready" });
   assert.equal(supervisor.wake("discovery"), true);
-  assert.deepEqual(launches[1].sent, [{ type: "queue-wake" }]);
+  assert.deepEqual(launches[1]?.sent, [{ type: "queue-wake" }]);
   assert.equal(supervisor.wake("missing"), false);
 
   await supervisor.stop();
@@ -205,10 +205,10 @@ test("an idle worker exits without a restart and returns when work arrives", asy
   });
   try {
     supervisor.start();
-    launches[0].emit("message", { type: "ready" });
+    requireFixture(launches[0]).emit("message", { type: "ready" });
     withWork = [];
-    launches[0].emit("message", { type: "idle" });
-    assert.deepEqual(launches[0].sent, [{ type: "retire" }]);
+    requireFixture(launches[0]).emit("message", { type: "idle" });
+    assert.deepEqual(launches[0]?.sent, [{ type: "retire" }]);
     exitIdle(launches[0]);
     await flush();
     vi.advanceTimersByTime(60000);
@@ -234,17 +234,17 @@ test("a flow request starts its worker and holds off retirement until answered",
     assert.equal(launches.length, 0);
     const pending = supervisor.request("downloads", "waitForIdle");
     assert.equal(launches.length, 1);
-    assert.deepEqual([...launches[0].sent], []);
-    launches[0].emit("message", { type: "ready" });
-    launches[0].emit("message", { type: "idle" });
+    assert.deepEqual([...requireFixture(launches[0]).sent], []);
+    requireFixture(launches[0]).emit("message", { type: "ready" });
+    requireFixture(launches[0]).emit("message", { type: "idle" });
     assert.equal(
-      launches[0].sent.some((message) => message.type === "retire"),
+      launches[0]?.sent.some((message) => message.type === "retire"),
       false,
     );
     assert.equal(reply(launches[0], true), "waitForIdle");
     assert.equal(await pending, true);
     launches[0].emit("message", { type: "idle" });
-    assert.deepEqual(launches[0].sent.at(-1), { type: "retire" });
+    assert.deepEqual(launches[0]?.sent.at(-1), { type: "retire" });
   } finally {
     await supervisor.stop();
   }
@@ -256,17 +256,17 @@ test("a flow request made while its worker retires reaches the next worker", asy
   try {
     supervisor.start();
     const first = supervisor.request("downloads", "start");
-    launches[0].emit("message", { type: "ready" });
-    reply(launches[0], true);
+    requireFixture(launches[0]).emit("message", { type: "ready" });
+    reply(requireFixture(launches[0]), true);
     await first;
-    launches[0].emit("message", { type: "idle" });
+    requireFixture(launches[0]).emit("message", { type: "idle" });
     const second = supervisor.request("downloads", "wakeOrStart");
-    assert.deepEqual(launches[0].sent.at(-1), { type: "retire" });
+    assert.deepEqual(launches[0]?.sent.at(-1), { type: "retire" });
     exitIdle(launches[0]);
     await flush();
     assert.equal(launches.length, 2);
-    launches[1].emit("message", { type: "ready" });
-    assert.equal(reply(launches[1], "woken"), "wakeOrStart");
+    requireFixture(launches[1]).emit("message", { type: "ready" });
+    assert.equal(reply(requireFixture(launches[1]), "woken"), "wakeOrStart");
     assert.equal(await second, "woken");
   } finally {
     await supervisor.stop();
@@ -279,13 +279,13 @@ test("a worker that is busy again keeps running and receives waiting requests", 
   try {
     supervisor.start();
     const first = supervisor.request("downloads", "start");
-    launches[0].emit("message", { type: "ready" });
-    reply(launches[0], true);
+    requireFixture(launches[0]).emit("message", { type: "ready" });
+    reply(requireFixture(launches[0]), true);
     await first;
-    launches[0].emit("message", { type: "idle" });
+    requireFixture(launches[0]).emit("message", { type: "idle" });
     const second = supervisor.request("downloads", "blockPlaylist", ["disposable"]);
-    launches[0].emit("message", { type: "busy" });
-    assert.equal(reply(launches[0], true), "blockPlaylist");
+    requireFixture(launches[0]).emit("message", { type: "busy" });
+    assert.equal(reply(requireFixture(launches[0]), true), "blockPlaylist");
     assert.equal(await second, true);
     assert.equal(launches.length, 1);
   } finally {
@@ -318,8 +318,8 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
   });
   try {
     supervisor.start();
-    children[0].exitCode = 1;
-    children[0].emit("close", 1, null);
+    requireFixture(children[0]).exitCode = 1;
+    requireFixture(children[0]).emit("close", 1, null);
     await flush();
     await vi.advanceTimersByTimeAsync(999);
     assert.equal(children.length, 1);
@@ -341,21 +341,21 @@ test("flow requests return replies and reject when their owner exits", async () 
   try {
     supervisor.start();
     const first = supervisor.request("downloads", "start");
-    launches[0].emit("message", { type: "ready" });
-    const request = launches[0].sent.at(-1);
+    requireFixture(launches[0]).emit("message", { type: "ready" });
+    const request = requireFixture(launches[0]).sent.at(-1);
     assert.equal(requireFixture(request).type, "download-owner-command");
     assert.equal(requireFixture(request).method, "start");
-    reply(launches[0], true);
+    reply(requireFixture(launches[0]), true);
     assert.equal(await first, true);
 
-    launches[0].emit("message", {
+    requireFixture(launches[0]).emit("message", {
       type: "heartbeat",
       workers: [],
       downloadOwnerStatus: { running: true },
     });
     assert.deepEqual(supervisor.getDownloadOwnerStatus(), { running: true });
     const pending = supervisor.request("downloads", "waitForIdle");
-    launches[0].emit("exit", 1, null);
+    requireFixture(launches[0]).emit("exit", 1, null);
     await assert.rejects(pending, /exited before responding/);
     assert.equal(supervisor.getDownloadOwnerStatus(), null);
   } finally {
@@ -401,7 +401,7 @@ test("flow restart waits for job recovery", async () => {
   });
   try {
     supervisor.start();
-    children[0].emit("exit", 1, null);
+    requireFixture(children[0]).emit("exit", 1, null);
     await vi.advanceTimersByTimeAsync(60000);
     assert.equal(children.length, 1);
     finishRecovery();
@@ -610,10 +610,10 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       ["maintenance"],
       "unchanged delayed work must wake at its deadline",
     );
-    launches[0].emit("message", { type: "ready" });
-    launches[0].emit("message", { type: "idle" });
+    requireFixture(launches[0]).emit("message", { type: "ready" });
+    requireFixture(launches[0]).emit("message", { type: "idle" });
     queue.cancel(delayedId);
-    exitIdle(launches[0]);
+    exitIdle(requireFixture(launches[0]));
     await flush();
     vi.advanceTimersByTime(2000);
     assert.deepEqual(supervisor.getGroups(), []);
@@ -621,9 +621,9 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
     vi.advanceTimersByTime(2000);
     assert.deepEqual(supervisor.getGroups(), ["maintenance"]);
     queue.cancel(immediateId);
-    launches[1].emit("message", { type: "ready" });
-    launches[1].emit("message", { type: "idle" });
-    exitIdle(launches[1]);
+    requireFixture(launches[1]).emit("message", { type: "ready" });
+    requireFixture(launches[1]).emit("message", { type: "idle" });
+    exitIdle(requireFixture(launches[1]));
     await flush();
     vi.advanceTimersByTime(2000);
     for (const kind of ["pending", "processing", "schedule"]) {

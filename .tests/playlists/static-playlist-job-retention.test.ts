@@ -85,8 +85,9 @@ test("single-track removal retains the job and provider work needed by another l
     0,
   );
   assert.equal(
-    requireFixture(config.flowPlaylistConfig.getStaticPlaylist(survivor.id)).tracks[0]
-      .canonicalJobId,
+    requireFixture(
+      requireFixture(config.flowPlaylistConfig.getStaticPlaylist(survivor.id)).tracks[0],
+    ).canonicalJobId,
     jobId,
   );
   assert.equal(
@@ -460,7 +461,7 @@ async function finishDownload(
 ) {
   const file = path.join(
     requireFixture(process.env.WEEKLY_FLOW_FOLDER),
-    requireFixture(requireFixture(job).artistName),
+    requireFixture(job).artistName,
     requireFixture(job).albumName!,
     `${requireFixture(job).trackName}.flac`,
   );

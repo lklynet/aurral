@@ -305,11 +305,15 @@ function enrichFromLibrary(plays: WrappedPlay[]) {
 export function vividColor(pixels: Uint8Array) {
   const bins = new Map<number, { score: number; rgb: [number, number, number]; count: number }>();
   for (let index = 0; index + 2 < pixels.length; index += 3) {
-    const rgb = [pixels[index], pixels[index + 1], pixels[index + 2]] as const;
-    const key = (rgb[0] >> 5) * 64 + (rgb[1] >> 5) * 8 + (rgb[2] >> 5);
+    const r = pixels[index] ?? 0;
+    const g = pixels[index + 1] ?? 0;
+    const b = pixels[index + 2] ?? 0;
+    const key = (r >> 5) * 64 + (g >> 5) * 8 + (b >> 5);
     const bin = bins.get(key) ?? { score: 0, rgb: [0, 0, 0], count: 0 };
-    bin.score += 0.15 + (Math.max(...rgb) - Math.min(...rgb)) / 255;
-    rgb.forEach((value, channel) => (bin.rgb[channel] += value));
+    bin.score += 0.15 + (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+    bin.rgb[0] += r;
+    bin.rgb[1] += g;
+    bin.rgb[2] += b;
     bin.count++;
     bins.set(key, bin);
   }

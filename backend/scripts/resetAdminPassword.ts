@@ -41,7 +41,7 @@ function parseArgs(argv: string[]) {
       continue;
     }
     if (token === "--length" || token === "-l") {
-      const parsed = parseInt(argv[i + 1], 10);
+      const parsed = parseInt(argv[i + 1] ?? "", 10);
       if (Number.isFinite(parsed)) args.length = parsed;
       i += 1;
       continue;

@@ -9,6 +9,7 @@ import {
   mergeResolvedRecommendations,
   rerankRecommendations,
 } from "../../backend/services/discovery/recommendationPipeline.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 test("buildDiscoverySeedList prefers listening-history weight when the same artist exists in library and history", () => {
   const seeds = buildDiscoverySeedList({
@@ -36,10 +37,10 @@ test("buildDiscoverySeedList prefers listening-history weight when the same arti
   });
 
   assert.equal(seeds.length, 2);
-  assert.equal(seeds[0].mbid, "11111111-1111-1111-1111-111111111111");
-  assert.equal(seeds[0].source, "listenbrainz");
+  assert.equal(seeds[0]?.mbid, "11111111-1111-1111-1111-111111111111");
+  assert.equal(seeds[0]?.source, "listenbrainz");
   assert.ok(seeds[0].weight > 1.3);
-  assert.equal(seeds[1].source, "lastfm");
+  assert.equal(seeds[1]?.source, "lastfm");
 });
 
 test("recommendation candidates aggregate across multiple seeds", () => {
@@ -83,6 +84,7 @@ test("recommendation candidates aggregate across multiple seeds", () => {
   });
 
   const [recommendation] = finalizeRecommendationAccumulator(accumulator, 10);
+  assert.ok(recommendation);
   assert.equal(recommendation.name, "Candidate Artist");
   assert.equal(recommendation.seedCount, 2);
   assert.equal(recommendation.sourceType, "blended");
@@ -116,9 +118,9 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
   ]);
 
   assert.equal(merged.length, 1);
-  assert.equal(merged[0].id, "44444444-4444-4444-4444-444444444444");
-  assert.equal(merged[0].sourceType, "blended");
-  assert.deepEqual(merged[0].tags.sort(), ["dream-pop", "shoegaze"]);
+  assert.equal(merged[0]?.id, "44444444-4444-4444-4444-444444444444");
+  assert.equal(merged[0]?.sourceType, "blended");
+  assert.deepEqual(merged[0]?.tags.sort(), ["dream-pop", "shoegaze"]);
 });
 
 test("mergeResolvedRecommendations does not expose provider IDs as artist routes", () => {
@@ -127,6 +129,7 @@ test("mergeResolvedRecommendations does not expose provider IDs as artist routes
       Parameters<typeof mergeResolvedRecommendations>[0]
     >[number],
   ]);
+  assert.ok(recommendation);
 
   assert.equal(recommendation.id, null);
   assert.equal(recommendation.navigateTo, null);
@@ -136,6 +139,7 @@ test("mergeResolvedRecommendations does not expose provider IDs as artist routes
       Parameters<typeof serveRecommendations>[0]
     >[number],
   ]);
+  assert.ok(cachedRecommendation);
   assert.equal(cachedRecommendation.id, null);
   assert.equal(cachedRecommendation.navigateTo, null);
 });
@@ -182,7 +186,7 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
     ],
   });
   assert.equal(deprioritized.length, 2);
-  assert.equal(deprioritized[0].name, "Deeper Pick");
+  assert.equal(deprioritized[0]?.name, "Deeper Pick");
   assert.equal(
     deprioritized.some((item) => item.name === "Safe Pick"),
     true,
@@ -198,12 +202,12 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
     ],
   });
   assert.equal(blocked.length, 1);
-  assert.equal(blocked[0].name, "Deeper Pick");
+  assert.equal(blocked[0]?.name, "Deeper Pick");
 
   const deeper = rerankRecommendations(recommendations, 2, {
     discoveryMode: "deeper",
   });
-  assert.equal(deeper[0].name, "Deeper Pick");
+  assert.equal(deeper[0]?.name, "Deeper Pick");
 });
 
 test("unknown discovery modes and seed sources that name object properties use the defaults", () => {
@@ -229,8 +233,10 @@ test("unknown discovery modes and seed sources that name object properties use t
   );
 
   const seedWeight = (source: string) =>
-    buildDiscoverySeedList({
-      historyArtists: [{ artistName: "History Artist", source, playcount: 12 }],
-    })[0].weight;
+    requireFixture(
+      buildDiscoverySeedList({
+        historyArtists: [{ artistName: "History Artist", source, playcount: 12 }],
+      })[0],
+    ).weight;
   assert.equal(seedWeight("constructor"), seedWeight("unknown-source"));
 });

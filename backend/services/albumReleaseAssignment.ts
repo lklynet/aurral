@@ -60,6 +60,8 @@ export async function assignDownloadedAlbumFiles({
     const job = jobs.find((entry) => entry.id === wanted.get(pair.trackIndex));
     if (!job) continue;
     const entry = readable[pair.fileIndex];
+    const track = manifest.tracks[pair.trackIndex];
+    if (!entry || !track) continue;
     const validation = await validateDownloadedTrackFile({
       request: {
         ...trackRequestFor(job, manifest, pair.trackIndex),
@@ -70,12 +72,11 @@ export async function assignDownloadedAlbumFiles({
       options: { parseFile: parseAudio, strict: true, release: manifest, albumImport: true },
     });
     if (validation.valid) {
-      const { trackNumber, discNumber } = manifest.tracks[pair.trackIndex];
       accepted.push({
         jobId: job.id,
         filePath: entry.filePath,
-        trackNumber,
-        discNumber,
+        trackNumber: track.trackNumber,
+        discNumber: track.discNumber,
         validation,
       });
     } else {

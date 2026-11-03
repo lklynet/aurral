@@ -270,7 +270,7 @@ test("Subsonic genre counts deduplicate files and preserve inherited genres acro
     [first.id, shared.id],
     [second.id, shared.id],
     [first.id, missing.id],
-  ]) {
+  ] as const) {
     store.linkLibraryAlbumTrack({ albumId, trackId });
   }
   for (const file of [

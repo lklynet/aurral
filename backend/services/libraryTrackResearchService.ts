@@ -54,6 +54,7 @@ export function resolveAurralOwnedTrackJob({
     (left, right) =>
       Number(right.mtimeMs || right.createdAt || 0) - Number(left.mtimeMs || left.createdAt || 0),
   )[0];
+  if (!sourceFile) return null;
   const album = library.albums.find((entry) => String(entry.id) === String(sourceFile.albumId));
   const artist = library.artists.find((entry) => String(entry.id) === String(album?.artistId));
   const albumTrack = track?.albums?.find(
