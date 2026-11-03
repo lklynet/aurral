@@ -143,6 +143,7 @@ test("Plex imports only the connected account's tracks", async () => {
       });
     }
     seen.push(url.searchParams.get("accountID"));
+    if (url.searchParams.has("type")) return Response.json({ MediaContainer: { size: 0 } });
     return Response.json({
       MediaContainer: {
         size: 2,

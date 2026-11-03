@@ -134,7 +134,6 @@ const plex: Provider = {
     for (let start = 0; ; start += PAGE_SIZE) {
       const { data } = await axios.get(`${url}/status/sessions/history/all`, {
         params: {
-          type: 10,
           "viewedAt>": Math.floor(since / 1000) - 1,
           "viewedAt<": Math.ceil(until / 1000),
           accountID: accountId,
