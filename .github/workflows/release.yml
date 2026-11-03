@@ -16,11 +16,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compute-release:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
+    timeout-minutes: 5
+    environment: release
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
@@ -30,18 +29,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
 
-      - name: Verify main is the release source
+      - name: Require current main
         run: |
-          if [ "${GITHUB_REF_NAME}" != "main" ]; then
-            echo "Releases must be run from main, not ${GITHUB_REF_NAME}."
-            exit 1
-          fi
-
-          git fetch origin "+main:refs/remotes/origin/main"
-          REMOTE_SHA="$(git rev-parse origin/main)"
-          if [ "${REMOTE_SHA}" != "${GITHUB_SHA}" ]; then
-            echo "Workflow commit ${GITHUB_SHA} is not current origin/main ${REMOTE_SHA}."
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] || [ "$(git rev-parse origin/main)" != "${GITHUB_SHA}" ]; then
+            echo "Releases must run from the current tip of main."
             exit 1
           fi
 
@@ -49,39 +43,14 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Compute release version
-        id: release
+      - id: release
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
-        run: |
-          git fetch --force --tags
-          node scripts/resolve-next-release.ts
+        run: node scripts/resolve-next-release.ts
 
-  check-release-readiness:
-    needs: compute-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      existing_release: ${{ steps.readiness.outputs.existing_release }}
-    permissions:
-      contents: read
-      issues: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Require approved release-readiness record
-        id: readiness
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-        run: bash scripts/update-release-readiness.sh check
-
-  build-image:
+  build:
     name: Build image (${{ matrix.arch }})
-    needs: [compute-release, check-release-readiness]
-    if: needs.check-release-readiness.outputs.existing_release != 'true'
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
@@ -101,31 +70,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - name: Log into ghcr.io
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate Docker metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=${{ needs.compute-release.outputs.version }}
-            type=raw,value=${{ needs.compute-release.outputs.minor }}
-            type=raw,value=${{ needs.compute-release.outputs.major }}
-            type=raw,value=latest
+          tags: type=raw,value=${{ needs.prepare.outputs.version }}
 
-      - name: Build and push stable image by digest
-        id: build
+      - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -136,13 +97,13 @@ jobs:
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            APP_VERSION=${{ needs.compute-release.outputs.version }}
+            APP_VERSION=${{ needs.prepare.outputs.version }}
             GITHUB_REPO=${{ github.repository }}
             RELEASE_CHANNEL=stable
           cache-from: type=gha,scope=${{ matrix.cache-scope }}
           cache-to: type=gha,mode=max,scope=${{ matrix.cache-scope }}
 
-      - name: Record image digest
+      - name: Record digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
@@ -151,137 +112,77 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: image-digest-${{ matrix.arch }}
+          name: digest-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  publish-image:
-    needs: [compute-release, build-image]
+  publish:
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
       packages: write
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: image-digest-*
-          merge-multiple: true
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-
-      - name: Log into ghcr.io
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate Docker metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=${{ needs.compute-release.outputs.version }}
-            type=raw,value=${{ needs.compute-release.outputs.minor }}
-            type=raw,value=${{ needs.compute-release.outputs.major }}
-            type=raw,value=latest
-
-      - name: Publish multi-platform stable image
-        working-directory: ${{ runner.temp }}/digests
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}
-          METADATA_JSON: ${{ steps.meta.outputs.json }}
-        run: |
-          mapfile -t tag_args < <(jq -r '.tags[] | "--tag=" + .' <<< "${METADATA_JSON}")
-          mapfile -t sources < <(printf "${IMAGE}@sha256:%s\n" *)
-          if [ "${#sources[@]}" -ne 2 ]; then
-            echo "Expected 2 platform digests, found ${#sources[@]}."
-            exit 1
-          fi
-          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
-          docker buildx imagetools inspect "$(jq -r '.tags[0]' <<< "${METADATA_JSON}")"
-
-  scan-image:
-    needs: publish-image
-    permissions:
-      contents: read
-      security-events: write
-    uses: ./.github/workflows/container-image-scan.yml
-
-  create-tag:
-    needs: [compute-release, check-release-readiness, publish-image]
-    if: ${{ always() && (needs.publish-image.result == 'success' || needs.check-release-readiness.outputs.existing_release == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Create or confirm annotated release tag
-        env:
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-        run: |
-          git fetch --force --tags
-          if git rev-parse "${RELEASE_TAG}^{commit}" >/dev/null 2>&1; then
-            TAG_SHA="$(git rev-parse "${RELEASE_TAG}^{commit}")"
-            if [ "${TAG_SHA}" != "${GITHUB_SHA}" ]; then
-              echo "Tag ${RELEASE_TAG} already points to ${TAG_SHA}, not ${GITHUB_SHA}."
-              exit 1
-            fi
-            echo "Tag ${RELEASE_TAG} already exists at this commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${RELEASE_TAG}" "${GITHUB_SHA}" -m "Aurral ${RELEASE_TAG}"
-          git push origin "refs/tags/${RELEASE_TAG}"
-
-  publish-github-release:
-    needs: [compute-release, create-tag]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      MINOR: ${{ needs.prepare.outputs.minor }}
+      MAJOR: ${{ needs.prepare.outputs.major }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-platform image
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" --tag "${IMAGE}:${MINOR}" --tag "${IMAGE}:${MAJOR}" --tag "${IMAGE}:latest" \
+            $(printf "${IMAGE}@sha256:%s " *)
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
       - name: Publish GitHub release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "GitHub release ${RELEASE_TAG} already exists."
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists."
             exit 0
           fi
-
-          NOTES_FILE="release-notes/${RELEASE_VERSION}.md"
-          if [ -f "${NOTES_FILE}" ]; then
-            gh release create "${RELEASE_TAG}" \
-              --verify-tag \
-              --title "Aurral ${RELEASE_TAG}" \
-              --notes-file "${NOTES_FILE}" \
-              --latest
-          else
-            gh release create "${RELEASE_TAG}" \
-              --verify-tag \
-              --title "Aurral ${RELEASE_TAG}" \
-              --generate-notes \
-              --latest
+          notes=(--generate-notes)
+          if [ -f "release-notes/${VERSION}.md" ]; then
+            notes=(--notes-file "release-notes/${VERSION}.md")
           fi
+          gh release create "${TAG}" --target "${GITHUB_SHA}" --title "Aurral ${TAG}" --latest "${notes[@]}"
 
-  notify-github-release:
-    needs: [compute-release, publish-github-release]
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Announce on Discord
+        env:
+          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: node scripts/announce-release.ts
+
+  status:
+    needs: [prepare, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -291,25 +192,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: tree:0
           persist-credentials: false
 
-      - name: Close release-readiness record
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
-        run: bash scripts/update-release-readiness.sh stable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
 
-      - name: Notify merged pull requests and linked issues
+      - name: Label released pull requests and linked issues
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
-        run: bash scripts/notify-github-status.sh stable
-
-      - name: Notify Discord announcements channel
-        env:
-          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
-          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
-        run: bash scripts/notify-discord.sh releases
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: node scripts/release-status.ts stable

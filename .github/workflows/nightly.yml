@@ -13,91 +13,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-validation:
+  publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
-      checks: read
       contents: read
-      pull-requests: read
+      packages: write
     outputs:
-      validated: ${{ steps.check.outputs.validated }}
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Reuse the pull request validation for this tree
-        id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/check-nightly-validation.sh
-
-  validate:
-    needs: check-validation
-    if: needs.check-validation.outputs.validated != 'true'
-    uses: ./.github/workflows/validate.yml
-    permissions:
-      contents: read
-      issues: write
-      packages: write
-      pull-requests: write
-
-  publish-image:
-    needs: [check-validation, validate]
-    if: >-
-      !cancelled() &&
-      needs.check-validation.result == 'success' &&
-      (needs.validate.result == 'success' || needs.validate.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-      packages: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-
-      - name: Verify manual run uses main
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          if [ "${GITHUB_REF_NAME}" != "main" ]; then
-            echo "Manual nightly reconciliation must run from main, not ${GITHUB_REF_NAME}."
-            exit 1
-          fi
-
-      - name: Check candidate does not replace a newer nightly
-        id: candidate
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/check-nightly-image.ts
-
-      - name: Resolve build version
-        if: steps.candidate.outputs.publish == 'true'
-        id: version
+      - id: version
         run: echo "value=nightly.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}" >> "${GITHUB_OUTPUT}"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-        if: steps.candidate.outputs.publish == 'true'
 
-      - name: Log into ghcr.io
-        if: steps.candidate.outputs.publish == 'true'
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push nightly image
-        if: steps.candidate.outputs.publish == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           push: true
@@ -112,16 +53,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Update release readiness record
-        if: steps.candidate.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
-        run: bash scripts/update-release-readiness.sh nightly
+  status:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
 
-      - name: Notify merged pull requests and linked issues
-        if: steps.candidate.outputs.publish == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Label and comment on linked issues
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
-        run: bash scripts/notify-github-status.sh nightly
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_VERSION: ${{ needs.publish.outputs.version }}
+        run: node scripts/release-status.ts nightly

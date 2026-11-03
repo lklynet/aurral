@@ -7,14 +7,205 @@ permissions:
   contents: read
 
 concurrency:
-  group: pull-request-${{ github.event.number }}
+  group: ci-${{ github.event.number }}
   cancel-in-progress: true
 
 jobs:
-  validate:
-    uses: ./.github/workflows/validate.yml
+  checks:
+    name: Check and build docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+
+      - run: vp run check
+
+      - run: vp run docs:build
+
+  unit-tests:
+    name: Unit tests (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-ffmpeg
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+
+      - run: vp run test --shard=${{ matrix.shard }}/2
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-ffmpeg
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+
+      - run: vp run test:integration
+
+  container:
+    name: Production container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      issues: write
       packages: write
       pull-requests: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:pr-${{ github.event.number }}
+      PREVIEW: >-
+        ${{
+          github.base_ref == 'main' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.user.login != 'dependabot[bot]'
+        }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: docker build --check .
+
+      - id: version
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: echo "value=pr.${PR_NUMBER}+${HEAD_SHA:0:7}" >> "${GITHUB_OUTPUT}"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.value }}
+            GITHUB_REPO=${{ github.repository }}
+            RELEASE_CHANNEL=preview
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test image
+        run: |
+          container="aurral-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          docker run --detach --name "$container" --env PUID=3007 --env PGID=3001 "$IMAGE"
+
+          for _ in {1..30}; do
+            if docker exec "$container" node -e \
+              'fetch("http://127.0.0.1:3001/api/health").then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))'; then
+              break
+            fi
+            sleep 2
+          done
+
+          docker exec "$container" node --input-type=module -e '
+            import fs from "node:fs/promises";
+            const status = await fs.readFile("/proc/1/status", "utf8");
+            const groups = status.match(/^Groups:\s*(.*)$/m)?.[1].trim().split(/\s+/) ?? [];
+            if (!groups.includes("3001")) throw new Error(`PGID 3001 missing from process groups:\n${status}`);
+            const health = await (await fetch("http://127.0.0.1:3001/api/health")).json();
+            if (health.matcher?.available !== true || !health.matcher?.policyVersion) {
+              throw new Error(`Native matcher unavailable: ${JSON.stringify(health.matcher)}`);
+            }
+          '
+
+      - name: Log into ghcr.io
+        if: env.PREVIEW == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push preview image
+        if: env.PREVIEW == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ env.IMAGE }}
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.value }}
+            GITHUB_REPO=${{ github.repository }}
+            RELEASE_CHANNEL=preview
+          cache-from: type=gha
+
+      - name: Comment preview image
+        if: env.PREVIEW == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --edit-last --create-if-none --body "$(cat <<EOF
+          ## Preview image
+
+          Built from \`${VERSION}\`. Each push replaces it.
+
+          \`\`\`bash
+          docker pull ${IMAGE}
+          \`\`\`
+
+          Back up your Aurral config, point your compose service at this image, then \`docker compose pull aurral && docker compose up -d aurral\`. Switch back to your usual tag when you're done.
+          EOF
+          )"
+
+  validate:
+    if: ${{ !cancelled() }}
+    needs: [checks, unit-tests, integration-tests, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "Not every job succeeded: $RESULTS"
+              exit 1
+            fi
+          done

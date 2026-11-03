@@ -8,106 +8,30 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pull-request-${{ github.event.number }}
-  cancel-in-progress: true
-
 jobs:
   delete-image:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
-      contents: read
-      issues: write
-      pull-requests: read
       packages: write
     steps:
       - name: Delete preview image
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: pr-${{ github.event.number }}
         run: |
-          OWNER="${GITHUB_REPOSITORY%/*}"
-          PACKAGE="${GITHUB_REPOSITORY#*/}"
+          owner="${GITHUB_REPOSITORY%/*}"
+          package="${GITHUB_REPOSITORY#*/}"
           for scope in users orgs; do
-            VERSION_ID="$(gh api --paginate "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100" \
-              -q ".[] | select(.metadata.container.tags[]? == \"${IMAGE_TAG}\") | .id" 2>/dev/null | head -n1 || true)"
-            if [[ "${VERSION_ID}" =~ ^[0-9]+$ ]]; then
-              gh api -X DELETE "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions/${VERSION_ID}"
+            id="$(gh api --paginate "/${scope}/${owner}/packages/container/${package}/versions?per_page=100" \
+              --jq ".[] | select(.metadata.container.tags | index(\"${IMAGE_TAG}\")) | .id" 2>/dev/null | head -n1 || true)"
+            if [ -n "${id}" ]; then
+              gh api -X DELETE "/${scope}/${owner}/packages/container/${package}/versions/${id}"
               echo "Deleted ${IMAGE_TAG}."
               exit 0
             fi
           done
-          echo "No preview image tagged ${IMAGE_TAG}."
-
-      - name: Invalidate linked issue preview comments
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_MERGED: ${{ github.event.pull_request.merged }}
-          PR_NUMBER: ${{ github.event.number }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          OWNER="${REPOSITORY%%/*}"
-          REPO="${REPOSITORY#*/}"
-          ISSUE_MARKER="aurral-preview-issue-${PR_NUMBER}"
-          if [ "${PR_MERGED}" = "true" ]; then
-            COMMENT_BODY="$(cat <<EOF
-          <!-- ${ISSUE_MARKER} -->
-          ## Aurral preview image retired
-
-          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was merged into \`main\`. The preview image was retired. The change will appear on \`nightly\` after that build succeeds.
-          EOF
-            )"
-          else
-            COMMENT_BODY="$(cat <<EOF
-          <!-- ${ISSUE_MARKER} -->
-          ## Aurral preview image no longer available
-
-          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed without merging. It is no longer available for testing.
-          EOF
-            )"
-          fi
-          CLOSING_ISSUES="$(gh api graphql \
-            -f query='query($owner: String!, $repo: String!, $number: Int!) {
-              repository(owner: $owner, name: $repo) {
-                pullRequest(number: $number) {
-                  closingIssuesReferences(first: 100) {
-                    nodes { number }
-                  }
-                }
-              }
-            }' \
-            -f "owner=${OWNER}" \
-            -f "repo=${REPO}" \
-            -F "number=${PR_NUMBER}" \
-            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-
-          while IFS= read -r issue_number; do
-            [ -z "${issue_number}" ] && continue
-
-            COMMENT_ID="$(gh api --paginate \
-              "repos/${REPOSITORY}/issues/${issue_number}/comments" \
-              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"<!-- ${ISSUE_MARKER} -->\"))) | .id" | head -n1)"
-
-            if [ -n "${COMMENT_ID}" ]; then
-              gh api \
-                --method PATCH \
-                "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
-                -f "body=${COMMENT_BODY}" >/dev/null
-            fi
-
-            if ! DELETE_OUTPUT="$(gh api \
-                --method DELETE \
-                "repos/${REPOSITORY}/issues/${issue_number}/labels/in-progress" \
-                --include \
-                --silent 2>&1)"; then
-              DELETE_STATUS="$(printf '%s\n' "${DELETE_OUTPUT}" | awk 'NR == 1 { print $2; exit }')"
-              if [ "${DELETE_STATUS}" != "404" ]; then
-                printf '%s\n' "${DELETE_OUTPUT}" >&2
-                exit 1
-              fi
-            fi
-          done <<< "${CLOSING_ISSUES}"
+          echo "No image tagged ${IMAGE_TAG}."

@@ -1,0 +1,87 @@
+name: Labels
+
+on:
+  pull_request_target:
+    branches: ["main"]
+    types: [opened, edited, reopened, synchronize]
+  issues:
+    types: [opened]
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/release.yml"
+      - ".github/workflows/labels.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pull-request:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.action != 'edited' || github.event.changes.title != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: labels-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Label from title and size
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/label-pr.ts
+
+  triage:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue edit "${ISSUE_NUMBER}" --repo "${GITHUB_REPOSITORY}" --add-label needs-triage
+
+  sync:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Sync managed labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS='|' read -r name color description; do
+            gh label create "$name" --repo "$GITHUB_REPOSITORY" --color "$color" --description "$description" --force
+          done <<'LABELS'
+          bug|d73a4a|Something is broken or behaving incorrectly.
+          enhancement|a2eeef|Requested improvement or new capability.
+          documentation|0075ca|Documentation needs correction or improvement.
+          needs-triage|fbca04|Issue needs maintainer review and initial categorization.
+          dependencies|0366d6|Dependency update or maintenance work.
+          skip-changelog|ededed|Do not include this change in release notes.
+          nightly|0e8a16|The change is available in nightly but not in a stable release.
+          released|5319e7|The change is included in a stable release.
+          size:XS|0e8a16|0-9 changed lines.
+          size:S|5ebd3e|10-29 changed lines.
+          size:M|fbca04|30-99 changed lines.
+          size:L|fe7d37|100-499 changed lines.
+          size:XL|d93f0b|500-999 changed lines.
+          size:XXL|b60205|1,000 or more changed lines.
+          LABELS
