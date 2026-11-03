@@ -42,6 +42,11 @@
   --aurral-overlay: var(--aurral-surface-popover);
   --aurral-overlay-hover: var(--aurral-surface-hover);
   --aurral-overlay-selected: var(--aurral-surface-selected);
+  --aurral-overlay-raised: var(--aurral-surface-raised);
+  --aurral-wash-raised: light-dark(
+    color-mix(in srgb, var(--aurral-text) 6%, transparent),
+    color-mix(in srgb, var(--aurral-text) 5.5%, transparent)
+  );
   --aurral-wash-hover: light-dark(
     color-mix(in srgb, var(--aurral-text) 20%, transparent),
     color-mix(in srgb, var(--aurral-text) 10.5%, transparent)
@@ -5849,18 +5854,18 @@ textarea:disabled {
 .artist-discover-card__action .btn-add-action,
 .artist-release-card__action .btn-add-action {
   border-color: var(--aurral-border-strong);
-  background-color: var(--aurral-surface-raised);
+  background-color: var(--aurral-overlay-raised);
 }
 
 .artist-discover-card__action .btn-add-action:focus-visible,
 .artist-release-card__action .btn-add-action:focus-visible {
-  background-color: var(--aurral-surface-hover);
+  background-color: var(--aurral-overlay-hover);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .artist-discover-card__action .btn-add-action:hover:not(:disabled),
   .artist-release-card__action .btn-add-action:hover:not(:disabled) {
-    background-color: var(--aurral-surface-hover);
+    background-color: var(--aurral-overlay-hover);
   }
 }
 
@@ -9644,6 +9649,7 @@ button.native-library-genre-row:focus-visible {
 .recommended-page,
 .trending-page,
 .artist-details-page {
+  --aurral-surface-raised: var(--aurral-wash-raised);
   --aurral-surface-hover: var(--aurral-wash-hover);
   --aurral-surface-selected: var(--aurral-wash-selected);
 }
@@ -14152,6 +14158,7 @@ a.blocklist-page__name:focus-visible {
 .flow-page__token-suggestions,
 .blocklist-page__suggestions,
 .reload-prompt {
+  --aurral-surface-raised: var(--aurral-overlay-raised);
   --aurral-surface-hover: var(--aurral-overlay-hover);
   --aurral-surface-selected: var(--aurral-overlay-selected);
 
@@ -14169,6 +14176,7 @@ a.blocklist-page__name:focus-visible {
 .playlist-modal,
 .login-card,
 .onboarding-card {
+  --aurral-surface-raised: var(--aurral-overlay-raised);
   --aurral-surface-hover: var(--aurral-overlay-hover);
   --aurral-surface-selected: var(--aurral-overlay-selected);
 
