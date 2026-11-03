@@ -39,6 +39,7 @@ import { findLibraryTrackAtPath, matchLibraryRecord } from "./libraryMatch.ts";
 import {
   SAME_LENGTH_MS,
   type Recording,
+  compareQuality,
   differentTracks,
   formatGap,
   readRecording,
@@ -242,14 +243,15 @@ async function compareWithLibrary(source: Recording, candidates: string[], title
       reason: `Matches ${title}, but differs by ${formatGap(nearest.gap)}. Check its tags.`,
     };
   }
-  if (source.lossless && !same.some((copy) => copy.lossless)) {
+  const asGood = same.filter((copy) => compareQuality(copy, source) >= 0);
+  if (!asGood.length) {
     return {
       targetPath: same[0].targetPath,
-      reason: `A lossless copy of ${title} is available. To replace the Library's lossy copy, remove it and import again.`,
+      reason: `This copy of ${title} is better than the Library's. To replace the Library's copy, remove it and import again.`,
     };
   }
   return {
-    targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath,
+    targetPath: (asGood.find((copy) => copy.lossless === source.lossless) || asGood[0]).targetPath,
   };
 }
 

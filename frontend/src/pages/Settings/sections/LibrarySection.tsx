@@ -5,7 +5,6 @@ import { Trash2 } from "../../../components/icons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";
-import LibraryFileOperation from "../../../components/LibraryFileOperation";
 import PillToggle from "../../../components/PillToggle";
 import TooltipButton from "../../../components/TooltipButton";
 import {
@@ -18,12 +17,12 @@ import {
 import { libraryFilesClient } from "../../../utils/api/clients/libraryFiles.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { queryKeys } from "../../../queryClient.ts";
+import LibraryFileOperation from "../components/LibraryFileOperation";
 import { RootOverlapWarning } from "../components/RootOverlapWarning";
 import { Select } from "../../../components/Select";
 import { readApiError } from "../utils/apiError.ts";
 import { useServerSettings } from "../SettingsProviders";
 import {
-  SettingsActions,
   SettingsGroup,
   SettingsNote,
   SettingsPage,
@@ -431,18 +430,22 @@ function ImportGroup({
           its files.
         </SettingsNote>
       ) : null}
-      <SettingsActions>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          disabled={!result?.audioFiles || busy || starting}
-          onClick={start}
-        >
-          {starting ? <DotLoader size="xs" label={null} /> : null}
-          Import folder
-        </button>
-      </SettingsActions>
-      <LibraryFileOperation operation={operation} onChanged={onChanged} showError={showError} />
+      <LibraryFileOperation
+        operation={operation}
+        onChanged={onChanged}
+        showError={showError}
+        action={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!result?.audioFiles || busy || starting}
+            onClick={start}
+          >
+            {starting ? <DotLoader size="xs" label={null} /> : null}
+            Import folder
+          </button>
+        }
+      />
     </SettingsGroup>
   );
 }
@@ -474,20 +477,24 @@ function CleanUpGroup({
   return (
     <SettingsGroup
       title="Clean up Library"
-      note="Organizes files in the Library folder and fills missing tags. Playlists, favorites, and media servers follow the files. Lidarr files stay untouched. When names clash, Aurral keeps the better copy and offers to delete the other."
+      note="Renames Library files to Aurral's naming and fills missing tags. Lidarr's files stay untouched. Duplicates are removed only when you ask."
     >
-      <SettingsActions>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={busy || starting}
-          onClick={cleanUp}
-        >
-          {starting ? <DotLoader size="xs" label={null} /> : null}
-          Clean up Library
-        </button>
-      </SettingsActions>
-      <LibraryFileOperation operation={operation} onChanged={onChanged} showError={showError} />
+      <LibraryFileOperation
+        operation={operation}
+        onChanged={onChanged}
+        showError={showError}
+        action={
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || starting}
+            onClick={cleanUp}
+          >
+            {starting ? <DotLoader size="xs" label={null} /> : null}
+            Clean up Library
+          </button>
+        }
+      />
     </SettingsGroup>
   );
 }

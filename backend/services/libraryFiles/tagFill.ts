@@ -208,11 +208,13 @@ export async function planTagFill(
   if (!mbAlbum)
     return {
       reason: `No confident album match in MusicBrainz. Tags unchanged. ${TAG_IT_YOURSELF}`,
+      unmatched: true,
     };
   const match = matchMusicBrainzTrack(mbAlbum, file, current);
   if (!match)
     return {
       reason: `No confident track match in MusicBrainz. Tags unchanged. ${TAG_IT_YOURSELF}`,
+      unmatched: true,
     };
   const tags = Object.fromEntries(
     Object.entries(musicBrainzTags(mbAlbum, match)).filter(

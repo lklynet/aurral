@@ -20,6 +20,7 @@ import {
   removeReadOnlyFolder,
 } from "../../../services/libraryFiles/readOnlyFolders.ts";
 import {
+  dismissLibraryFileOperation,
   getLatestLibraryFileOperation,
   getLibraryFileOperation,
   getLibraryFileOperationStatus,
@@ -34,6 +35,7 @@ const ITEM_STATUSES = new Set([
   "duplicate",
   "conflict",
   "skipped",
+  "unmatched",
   "failed",
 ]);
 
@@ -189,6 +191,15 @@ export default new Hono<AppEnv>()
     const operation = getLibraryFileOperationStatus(c.req.param("id"));
     if (!operation) return operationNotFound(c);
     cancelLibraryFileOperation(operation.id);
+    return c.json(
+      { operation: describeLibraryFileOperation(getLibraryFileOperationStatus(operation.id)) },
+      200,
+    );
+  })
+  .post("/files/operations/:id/dismiss", requireAuth, requireAdmin, (c) => {
+    const operation = getLibraryFileOperationStatus(c.req.param("id"));
+    if (!operation) return operationNotFound(c);
+    dismissLibraryFileOperation(operation.id);
     return c.json(
       { operation: describeLibraryFileOperation(getLibraryFileOperationStatus(operation.id)) },
       200,
