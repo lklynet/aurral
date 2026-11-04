@@ -303,6 +303,21 @@ export async function cancelTrackDownload(jobId: string) {
   });
 }
 
+export async function cancelTrackDownloads(jobIds: string[]) {
+  const { withPlaylistMutationLock } = await import("./downloadJobs/mutationGuards.ts");
+  const activeJobs = () =>
+    jobIds
+      .map((jobId) => downloadTracker.getJob(jobId))
+      .filter((job): job is DownloadJob => !!job && ACTIVE_JOB_STATUSES.has(job.status));
+  const owners = activeJobs().map((job) => job.playlistId || job.playlistType);
+  return withPlaylistMutationLock(owners, async () => {
+    const { cancelledJobIds, cleanupFailed } = await cancelActiveAurralJobs(activeJobs(), null, {
+      lock: false,
+    });
+    return { cancelled: cancelledJobIds.length, cleanupFailed };
+  });
+}
+
 export async function retryTrackDownload(jobId: string) {
   let job = downloadTracker.getJob(jobId);
   if (!job) return { statusCode: 404, error: "Track not found" };

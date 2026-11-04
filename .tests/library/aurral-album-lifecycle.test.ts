@@ -274,6 +274,34 @@ test("a Library requester can cancel without flow permission and cannot cancel a
   assert.equal(getJob(other).status, "pending");
 });
 
+test("cancelling all downloads stops only the active jobs the user controls", async () => {
+  const fixture = createLibraryAlbum({ trackCount: 4 });
+  const own = fixture.jobFor(0);
+  const ownDownloading = fixture.jobFor(1);
+  const other = fixture.jobFor(2);
+  const finished = fixture.jobFor(3);
+  downloadTracker.setDownloading(ownDownloading);
+  downloadTracker.setDone(finished, "/disposable/finished.flac");
+  for (const id of [own, ownDownloading]) {
+    history.recordTrackJobQueued(getJob(id), { id: 3, username: "owner", role: "user" });
+  }
+  history.recordTrackJobQueued(getJob(other), { id: 4, username: "other", role: "user" });
+  requestUser = testUser(3, "user");
+
+  const response = await apiRequest("/api/playlists/jobs/cancel", "POST");
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, { cancelled: 2, cleanupFailed: false });
+  assert.equal(getJob(own).status, "cancelled");
+  assert.equal(getJob(ownDownloading).status, "cancelled");
+  assert.equal(getJob(other).status, "pending");
+  assert.equal(getJob(finished).status, "done");
+
+  requestUser = testUser(1, "admin");
+  const admin = await apiRequest("/api/playlists/jobs/cancel", "POST");
+  assert.deepEqual(admin.body, { cancelled: 1, cleanupFailed: false });
+  assert.equal(getJob(other).status, "cancelled");
+});
+
 test("a Library requester can retry failed and stalled downloads without duplicating active work", async () => {
   await downloadWorker.stopAndDrain();
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});

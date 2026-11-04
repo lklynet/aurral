@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ActivityStatus } from "../../navigation/activityNavConfig";
 
 type StatusTab = { id: ActivityStatus; label: string; count: number };
@@ -7,6 +8,7 @@ interface ActivityStatusTabsProps {
   filters: StatusTab[];
   active: ActivityStatus | null;
   onChange: (status: ActivityStatus | null) => void;
+  action?: ReactNode;
 }
 
 export default function ActivityStatusTabs({
@@ -14,6 +16,7 @@ export default function ActivityStatusTabs({
   filters,
   active,
   onChange,
+  action = null,
 }: ActivityStatusTabsProps) {
   const tabs = [{ id: null, label: "All", count: total }, ...filters];
   return (
@@ -34,6 +37,7 @@ export default function ActivityStatusTabs({
           </button>
         ))}
       </div>
+      {action}
     </div>
   );
 }

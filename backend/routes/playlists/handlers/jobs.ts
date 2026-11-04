@@ -14,6 +14,7 @@ import {
   ACTIVE_JOB_STATUSES,
   RETRYABLE_JOB_STATUSES,
   cancelTrackDownload,
+  cancelTrackDownloads,
   retryTrackDownload,
 } from "../../../services/aurralAlbumJobs.ts";
 import { getTrackJobRequesterId } from "../../../services/aurralHistoryService.ts";
@@ -150,19 +151,20 @@ const reviewBlockedJob = async <E extends AppEnv>(
   }
 };
 
+const canControlJob = (user: RequestUser, job: DownloadJob) =>
+  hasPermission(user, "accessFlow")
+    ? canAccessJobType(user, job.playlistId || job.playlistType)
+    : job.playlistType === LIBRARY_JOB_TYPE &&
+      user.id != null &&
+      String(getTrackJobRequesterId(job.id)) === String(user.id);
+
 const getControllableJob = <E extends AppEnv>(c: Context<E>, user: RequestUser, jobId: string) => {
   const job = downloadTracker.getJob(jobId);
   if (!job) return { failure: c.json({ error: "Track not found" }, 404) };
-  if (hasPermission(user, "accessFlow")) {
-    if (!canAccessJobType(user, job.playlistId || job.playlistType)) {
-      return { failure: c.json({ error: "Track not found" }, 404) };
-    }
-  } else {
-    const ownsLibraryJob =
-      job.playlistType === LIBRARY_JOB_TYPE &&
-      user.id != null &&
-      String(getTrackJobRequesterId(job.id)) === String(user.id);
-    if (!ownsLibraryJob) return { failure: c.json({ error: "Forbidden" }, 403) };
+  if (!canControlJob(user, job)) {
+    return hasPermission(user, "accessFlow")
+      ? { failure: c.json({ error: "Track not found" }, 404) }
+      : { failure: c.json({ error: "Forbidden" }, 403) };
   }
   return { job };
 };
@@ -472,6 +474,29 @@ export default new Hono<AppEnv>()
   .post("/jobs/:jobId/deny", requireFlowAccess, (c) =>
     reviewBlockedJob(c, "denyBlockedJob", c.req.param("jobId")),
   )
+  .post("/jobs/cancel", requireAuth, async (c) => {
+    const user = c.var.user;
+    const jobIds = downloadTracker
+      .getAll()
+      .filter((job) => ACTIVE_JOB_STATUSES.has(job.status) && canControlJob(user, job))
+      .map((job) => job.id);
+    try {
+      const result = isDownloadOwnerProcess()
+        ? await cancelTrackDownloads(jobIds)
+        : await requestDownloadOwner<Awaited<ReturnType<typeof cancelTrackDownloads>>>(
+            "cancelTrackDownloads",
+            [jobIds],
+            { timeoutMs: 2 * 60 * 1000 },
+          );
+      invalidateRequestsCache();
+      return c.json(result, 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to cancel downloads", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
   .post("/jobs/:jobId/cancel", requireAuth, async (c) => {
     const access = getControllableJob(c, c.var.user, c.req.param("jobId"));
     if (access.failure) return access.failure;

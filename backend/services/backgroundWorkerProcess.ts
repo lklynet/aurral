@@ -60,6 +60,7 @@ const DOWNLOAD_OWNER_COMMAND_NAMES = [
   "approveBlockedJob",
   "denyBlockedJob",
   "cancelTrackDownload",
+  "cancelTrackDownloads",
   "retryTrackDownload",
 ] as const;
 
@@ -92,6 +93,13 @@ async function handleDownloadOwnerCommand(
     if (method === "cancelTrackDownload" || method === "retryTrackDownload") {
       const albumJobs = await import("./aurralAlbumJobs.ts");
       result = await albumJobs[method](args[0]);
+    } else if (method === "cancelTrackDownloads") {
+      const { cancelTrackDownloads } = await import("./aurralAlbumJobs.ts");
+      const [jobIds] = args;
+      if (!Array.isArray(jobIds) || !jobIds.every((id) => typeof id === "string")) {
+        throw new Error("Unsupported download worker command");
+      }
+      result = await cancelTrackDownloads(jobIds);
     } else if (method === "enqueueManualMissingSelection") {
       const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
       result = downloadTracker.enqueueManualSelection(args[0], args[1]);

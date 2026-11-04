@@ -50,6 +50,11 @@ export type AlbumActivityRequest = ActivityRequest & {
   albumGrab: AurralAlbumGrab;
 };
 
+export const isCancelableDownload = (request: ActivityRequest) =>
+  request.kind === "track_download" &&
+  !!request.jobId &&
+  (request.status === "pending" || request.status === "processing");
+
 export const isAlbumActivityRequest = (request: ActivityRequest): request is AlbumActivityRequest =>
   request.kind === "album_download" && Boolean(request.children && request.albumGrab);
 
