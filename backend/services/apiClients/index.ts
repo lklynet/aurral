@@ -3,6 +3,7 @@ export {
   getLastfmApiSecret,
   getTicketmasterApiKey,
   getNewsSettings,
+  isNewsConfigured,
   normalizeNewsFeeds,
   normalizeNewsGroups,
   DEFAULT_NEWS_FEEDS,

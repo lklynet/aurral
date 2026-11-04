@@ -152,6 +152,12 @@ export const SCHEDULED_SYSTEM_TASKS: ScheduledSystemTask[] = [
     payload: { kind: "update-check" },
   },
   {
+    name: "telemetry-report",
+    queue: "system-task-maintenance",
+    schedule: "@every 1h",
+    payload: { kind: "telemetry-report" },
+  },
+  {
     name: "trending-charts-refresh",
     queue: "system-task-maintenance",
     schedule: "@every 6h",
@@ -470,6 +476,7 @@ export function getSystemTaskQueueName(kind: string) {
     kind === "session-cleanup" ||
     kind === "news-refresh" ||
     kind === "update-check" ||
+    kind === "telemetry-report" ||
     kind === "trending-charts-refresh" ||
     kind === "weekly-flow-refresh" ||
     kind === "wrapped-build"

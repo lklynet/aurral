@@ -36,6 +36,7 @@ import search from "./search.ts";
 import settings from "./settings/index.ts";
 import shareLinks from "./shareLinks.ts";
 import starPrompt from "./starPrompt.ts";
+import telemetry from "./telemetry.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
 import updates from "./updates.ts";
 import users from "./users.ts";
@@ -96,6 +97,7 @@ export const api = new Hono<AppEnv>()
   .route("/", playEvents)
   .route("/", shareLinks)
   .route("/", starPrompt)
+  .route("/", telemetry)
   .route("/", wrapped)
   .route("/", lidarrWebhook)
   .route("/", lidarrFeed)
