@@ -11,6 +11,7 @@ interface SortableTrack {
   trackName?: string | null;
   artistName?: string | null;
   albumName?: string | null;
+  releaseYear?: string | null;
   status?: string | null;
 }
 
@@ -47,6 +48,9 @@ export function sortPlaylistTracks<T extends SortableTrack>(
       case "album":
         diff = compareText(left.albumName || "Unknown Album", right.albumName || "Unknown Album");
         break;
+      case "year":
+        diff = compareText(left.releaseYear, right.releaseYear);
+        break;
       case "status":
         diff = statusRank(left.status) - statusRank(right.status);
         break;
@@ -64,31 +68,9 @@ export function sortPlaylistTracks<T extends SortableTrack>(
   });
 }
 
-export function getPlaylistTrackDisplayNumber(
-  track: { id: string },
-  {
-    tracks,
-    sortedTracks,
-    sortedIndex,
-    sortKey,
-    sortDirection,
-  }: {
-    tracks: { id: string }[];
-    sortedTracks: readonly unknown[];
-    sortedIndex: number;
-    sortKey: string;
-    sortDirection: string;
-  },
-) {
-  const originalNumber = tracks.findIndex((item) => item.id === track.id) + 1;
-
-  if (sortKey !== "index") {
-    return originalNumber;
-  }
-
-  if (sortDirection === "desc") {
-    return sortedTracks.length - sortedIndex;
-  }
-
-  return sortedIndex + 1;
-}
+export const matchesPlaylistTrackQuery = (track: SortableTrack, normalizedQuery: string) =>
+  [track.trackName, track.artistName, track.albumName].some((value) =>
+    String(value || "")
+      .toLocaleLowerCase()
+      .includes(normalizedQuery),
+  );

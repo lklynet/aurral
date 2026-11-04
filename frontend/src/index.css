@@ -9127,7 +9127,7 @@ button.native-library-card__artist:focus-visible {
 
 .native-library-track {
   --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
-    minmax(8rem, 1fr) 4.5rem 1.7rem 1.7rem 1.7rem;
+    minmax(8rem, 1fr) var(--native-library-track-year-column,) 4.5rem 1.7rem 1.7rem 1.7rem;
 
   display: grid;
   min-width: 44rem;
@@ -9427,7 +9427,12 @@ button.native-library-card__artist:focus-visible {
   }
 }
 
-.native-library-track__time {
+.native-library-track-list--year {
+  --native-library-track-year-column: 3.5rem;
+}
+
+.native-library-track__time,
+.native-library-track__year {
   color: var(--aurral-text-subtle);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -9846,10 +9851,18 @@ button.native-library-genre-row:focus-visible {
 .collection-tracks__toolbar {
   display: flex;
   min-height: 2.25rem;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.collection-tracks__count {
+  margin-right: auto;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .native-library-track__sort {
@@ -10256,7 +10269,7 @@ button.native-library-genre-row:focus-visible {
 
   .native-library-track {
     --native-library-track-columns: 2.75rem 2.2rem 2.75rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
-      minmax(8rem, 1fr) 4.5rem 2.75rem 2.75rem 2.75rem;
+      minmax(8rem, 1fr) var(--native-library-track-year-column,) 4.5rem 2.75rem 2.75rem 2.75rem;
   }
 
   .native-library-track-list--release .native-library-track {
@@ -10294,7 +10307,8 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track__artist,
-  .native-library-track__album {
+  .native-library-track__album,
+  .native-library-track__year {
     display: none;
   }
 
@@ -12910,6 +12924,23 @@ a.blocklist-page__name:focus-visible {
 .artist-image-preview-button__icon {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+@media not ((hover: hover) and (pointer: fine)) {
+  .artist-image-preview-button {
+    left: 70%;
+    top: 70%;
+    width: min(2.25rem, 40%);
+    height: min(2.25rem, 40%);
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+  }
+
+  .artist-image-preview-button__icon {
+    width: 50%;
+    height: 50%;
+  }
 }
 
 .artist-discover-card__cover.is-disabled {
