@@ -791,3 +791,56 @@ test("playlists reuse a Lidarr file only while Lidarr is on", async (t: import("
   assert.equal(on.reused, true);
   assert.equal(on.sourceType, "lidarr");
 });
+
+test("playlists use an indexed Library file whose folder and name Aurral did not choose", async () => {
+  const filePath = path.join(downloadRoot, "Hellyeah", "Unden!Able", "01 - Hellyeah - !.mp3");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:hellyeah",
+    mbid: "hellyeah",
+    name: "Hellyeah",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "release-group:undeniable",
+    releaseGroupMbid: "undeniable",
+    artistId: artist.id,
+    title: "Unden!able",
+  });
+  const libraryTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "recording:bang",
+    mbid: "bang",
+    title: "!",
+    artistName: "Hellyeah",
+  });
+  libraryStore.linkLibraryAlbumTrack({
+    albumId: album.id,
+    trackId: libraryTrack.id,
+    trackNumber: 1,
+  });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+  });
+
+  const result = await reuseTrackForPlaylist(
+    {
+      artistName: "Hellyeah",
+      trackName: "!",
+      albumName: "Unden!able",
+      artistMbid: "hellyeah",
+      albumMbid: "undeniable",
+      trackMbid: "bang",
+    },
+    "static-playlist",
+    { downloadRoot, skipHistory: true },
+  );
+
+  assert.equal(result.reused, true);
+  assert.equal(result.finalPath, filePath);
+  const job = trackedJob(downloadTracker, result.jobId);
+  assert.equal(job.externalPath ?? null, null);
+  assert.equal(job.reusedLibraryFile, true);
+});
