@@ -199,28 +199,64 @@ test("playlist fetch rejects a response that stops before Spotify's declared tot
   );
 });
 
-test("playlist listing reads the current Spotify items total", async () => {
+test("playlist listing puts Liked Songs first and reads the current Spotify totals", async () => {
   spotifyConnectionStore.saveConnection(7, {
     accessToken: "valid-access-token",
     refreshToken: "valid-refresh-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        items: [{ id: "playlist", name: "Large Playlist", items: { total: 1001 } }],
-        next: null,
-      }),
-      {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      },
-    );
+  let likedResponse = () => jsonResponse(200, { items: [], total: 2400, next: null });
+  globalThis.fetch = async (url) =>
+    new URL(String(url)).pathname === "/v1/me/tracks"
+      ? likedResponse()
+      : jsonResponse(200, {
+          items: [{ id: "playlist", name: "Large Playlist", items: { total: 1001 } }],
+          next: null,
+        });
 
-  const result = await spotifyClient.listPlaylists(7);
-  assert.deepEqual(result.playlists, [
+  assert.deepEqual((await spotifyClient.listPlaylists(7)).playlists, [
+    { id: "liked", name: "Liked Songs", trackCount: 2400 },
     { id: "playlist", name: "Large Playlist", trackCount: 1001 },
   ]);
+
+  likedResponse = () =>
+    jsonResponse(403, { error: { status: 403, message: "Insufficient client scope" } });
+  assert.deepEqual((await spotifyClient.listPlaylists(7)).playlists, [
+    { id: "liked", name: "Liked Songs", trackCount: undefined },
+    { id: "playlist", name: "Large Playlist", trackCount: 1001 },
+  ]);
+});
+
+test("Liked Songs reads saved tracks and asks a connection without access to reconnect", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  const urls: string[] = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return jsonResponse(200, {
+      items: [{ added_at: "2026-01-01T00:00:00Z", track: { type: "track", name: "Song" } }],
+      total: 1,
+      offset: 0,
+      next: null,
+    });
+  };
+
+  const items = await spotifyClient.listPlaylistTracks(7, "liked", { forceRefresh: true });
+  assert.equal(requireFixture(items[0]?.track).name, "Song");
+  assert.equal(new URL(requireFixture(urls[0])).pathname, "/v1/me/tracks");
+  assert.equal(await spotifyClient.getPlaylistArtworkUrl(7, "liked"), null);
+  assert.equal(urls.length, 1);
+
+  globalThis.fetch = async () =>
+    jsonResponse(403, { error: { status: 403, message: "Insufficient client scope" } });
+  await assert.rejects(
+    spotifyClient.listPlaylistTracks(7, "liked", { forceRefresh: true }),
+    (error: Error) => isAuthRequired(error) && /Liked Songs/.test(error.message),
+  );
+  assert.equal(spotifyConnectionStore.getPublicStatus(7).connected, true);
 });
 
 test("stale refresh failures cannot clear a newly connected account", async () => {

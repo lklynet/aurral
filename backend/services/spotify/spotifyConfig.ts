@@ -6,7 +6,7 @@ export const SPOTIFY_REDIRECT_URI =
   process.env.SPOTIFY_OAUTH_REDIRECT_URI || "https://spotify.lidarr.audio/auth";
 export const SPOTIFY_RENEW_URI =
   process.env.SPOTIFY_OAUTH_RENEW_URI || "https://spotify.lidarr.audio/renew";
-export const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative";
+export const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative user-library-read";
 
 export function buildSpotifyOAuthUrl(callbackUrl: string) {
   const params = new URLSearchParams({
