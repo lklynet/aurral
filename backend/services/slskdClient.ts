@@ -377,6 +377,12 @@ function createSearchCancellation(shouldCancel?: () => boolean, externalSignal?:
   };
 }
 
+function untilDeadline(deadline: number, signal?: AbortSignal) {
+  if (!Number.isFinite(deadline)) return signal;
+  const timeout = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 function waitSearchDelay(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve) => {
     let timer: NodeJS.Timeout | undefined;
@@ -537,8 +543,7 @@ class SearchMonitor {
       let data: SlskdSearch;
       try {
         data = await this.client.getSearch(this.searchId, {
-          timeout: Math.max(1, Math.min(60000, cutoff - Date.now())),
-          signal,
+          signal: untilDeadline(cutoff, signal),
         });
       } catch (error) {
         if (cancelled()) {
@@ -907,10 +912,10 @@ export class SlskdClient {
     );
     const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
     while (Date.now() < hydrationDeadline && !signal?.aborted && !shouldCancel?.()) {
-      const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
+      const requestSignal = untilDeadline(hydrationDeadline, signal);
       const [status, payload] = await Promise.allSettled([
-        this.getSearch(searchId, { timeout, signal }),
-        this.getSearchResponses(searchId, { timeout, signal }),
+        this.getSearch(searchId, { signal: requestSignal }),
+        this.getSearchResponses(searchId, { signal: requestSignal }),
       ]);
       const refreshed = status.status === "fulfilled" ? status.value : data;
       for (const file of this.flattenSearchResults(refreshed))
