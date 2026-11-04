@@ -8,7 +8,7 @@ import {
   lastfmGetSession,
   listenbrainzValidateToken,
 } from "../services/apiClients/index.ts";
-import { requireAuth, requirePermission, requireUserAccount } from "../middleware/guards.ts";
+import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
@@ -300,55 +300,49 @@ export default new Hono<AppEnv>()
     scrobbleConnectionStore.deleteConnection(c.var.user.id, "listenbrainz");
     return c.body(null, 204);
   })
-  .put(
-    "/koito/link",
-    requirePermission("accessSettings"),
-    requireUserAccount,
-    validate("json", koitoBody),
-    async (c) => {
-      const body = c.req.valid("json");
-      const rawUrl = (body.url || getListenHistory(c.var.user.id).koito || "").trim();
-      const validation = validateExternalUrl(rawUrl);
-      const token = (body.token || "").trim();
-      if (!validation.valid || !token) {
-        return c.json({ error: validation.error || "Token is required" }, 400);
-      }
-      const baseUrl = normalizeKoitoBaseUrl(validation.url);
-      try {
-        const tokenValidation = await listenbrainzValidateToken(
-          token,
-          getKoitoListenBrainzBaseUrl(baseUrl),
-        );
-        if (!tokenValidation?.valid) return c.json({ error: "Invalid Koito API key" }, 400);
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.warn("scrobbling", "Koito token validation failed", {
-          message: failure?.message || String(error),
-          status: failure?.response?.status || null,
-        });
-        const status = providerErrorStatus(error);
-        return c.json(
-          { error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" },
-          status,
-        );
-      }
-      try {
-        const connection = scrobbleConnectionStore.saveConnection(c.var.user.id, "koito", {
-          token,
-          baseUrl,
-          displayName: new URL(baseUrl).host,
-        });
-        useForHistory(c.var.user.id, "koito", baseUrl);
-        return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.error("scrobbling", "Koito connection could not be saved", {
-          message: failure?.message || String(error),
-        });
-        return c.json({ error: "Koito connection could not be saved" }, 500);
-      }
-    },
-  )
+  .put("/koito/link", requireAuth, requireUserAccount, validate("json", koitoBody), async (c) => {
+    const body = c.req.valid("json");
+    const rawUrl = (body.url || getListenHistory(c.var.user.id).koito || "").trim();
+    const validation = validateExternalUrl(rawUrl);
+    const token = (body.token || "").trim();
+    if (!validation.valid || !token) {
+      return c.json({ error: validation.error || "Token is required" }, 400);
+    }
+    const baseUrl = normalizeKoitoBaseUrl(validation.url);
+    try {
+      const tokenValidation = await listenbrainzValidateToken(
+        token,
+        getKoitoListenBrainzBaseUrl(baseUrl),
+      );
+      if (!tokenValidation?.valid) return c.json({ error: "Invalid Koito API key" }, 400);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.warn("scrobbling", "Koito token validation failed", {
+        message: failure?.message || String(error),
+        status: failure?.response?.status || null,
+      });
+      const status = providerErrorStatus(error);
+      return c.json(
+        { error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" },
+        status,
+      );
+    }
+    try {
+      const connection = scrobbleConnectionStore.saveConnection(c.var.user.id, "koito", {
+        token,
+        baseUrl,
+        displayName: new URL(baseUrl).host,
+      });
+      useForHistory(c.var.user.id, "koito", baseUrl);
+      return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("scrobbling", "Koito connection could not be saved", {
+        message: failure?.message || String(error),
+      });
+      return c.json({ error: "Koito connection could not be saved" }, 500);
+    }
+  })
   .delete("/koito/link", requireAuth, (c) => {
     scrobbleConnectionStore.deleteConnection(c.var.user.id, "koito");
     return c.body(null, 204);
