@@ -321,6 +321,7 @@ export async function writeAudioMetadata(filePath: string, metadata: DownloadTra
       artistMbid: performer ? undefined : metadata.artistMbid,
       albumArtistMbid: metadata.artistMbid,
       releaseGroupMbid: metadata.albumMbid,
+      releaseMbid: metadata.releaseMbid,
       recordingMbid: metadata.trackMbid,
       year: metadata.releaseYear,
       trackNumber: metadata.trackNumber,

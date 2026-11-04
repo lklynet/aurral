@@ -301,7 +301,10 @@ function hasLegacyIdentity(file: TagLib.File) {
 }
 
 // Changes only the tags Aurral has a value for. Every other tag, including
-// ratings, lyrics, ReplayGain, and cover art, stays as it was.
+// ratings, lyrics, ReplayGain, and cover art, stays as it was. The one
+// exception is the release ID: tracks from different uploaders name different
+// releases, and media servers split an album by it, so a file Aurral files
+// under an album carries that album's release or none.
 function planChanges(
   current: Record<string, TagFieldValue>,
   values: Record<string, TagFieldValue>,
@@ -315,13 +318,7 @@ function planChanges(
     if (fillOnly && !isEmpty(current[field])) continue;
     changes[field] = wanted;
   }
-  if (
-    !fillOnly &&
-    changes.releaseGroupMbid &&
-    current.releaseGroupMbid &&
-    current.releaseMbid &&
-    !changes.releaseMbid
-  ) {
+  if (!fillOnly && values.releaseGroupMbid && current.releaseMbid && !values.releaseMbid) {
     changes.releaseMbid = null;
   }
   return changes;
