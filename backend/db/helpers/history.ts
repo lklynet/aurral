@@ -84,6 +84,7 @@ export interface AurralHistoryOps {
   insertAurralHistory: (entry: AurralHistoryInput) => AurralHistoryInput | null;
   deleteAurralHistoryById: (id: string | null) => boolean;
   getAurralHistoryById: (id: string) => (AurralHistoryEntry & { id: string }) | null;
+  getAlbumRequestByGroup: (requestGroupId: string) => (AurralHistoryEntry & { id: string }) | null;
   getAurralHistory: (options?: { since?: number; limit?: number }) => AurralHistoryEntry[];
   pruneAurralHistory: (options?: { maxAgeMs?: number; maxEntries?: number }) => void;
 }
@@ -123,6 +124,16 @@ const getAurralHistoryByIdStmt = db.prepare<
   FROM aurral_history
   WHERE id = ?
 `);
+const getAlbumRequestByGroupStmt = db.prepare<
+  [string],
+  Omit<AurralHistoryRow, "id"> & { id: string }
+>(`
+  SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
+  FROM aurral_history
+  WHERE kind = 'album_requested' AND json_extract(metadata, '$.requestGroupId') = ?
+  ORDER BY created_at DESC
+  LIMIT 1
+`);
 const deleteAurralHistoryByIdStmt = db.prepare<[string]>("DELETE FROM aurral_history WHERE id = ?");
 const deleteAurralHistoryOlderThanStmt = db.prepare<[number]>(
   "DELETE FROM aurral_history WHERE created_at < ?",
@@ -138,6 +149,18 @@ const deleteOldestAurralHistoryStmt = db.prepare<[number]>(`
     LIMIT ?
   )
 `);
+
+const toEntry = (row: Omit<AurralHistoryRow, "id"> & { id: string }) => ({
+  id: row.id,
+  kind: row.kind,
+  title: row.title,
+  subtitle: row.subtitle || null,
+  status: row.status || "completed",
+  statusLabel: row.status_label || null,
+  href: row.href || null,
+  metadata: dbHelpers.readJSON(historyMetadataSchema, row.metadata, "history"),
+  createdAt: row.created_at,
+});
 
 export default function register(dbOps: AurralHistoryOps) {
   dbOps.insertAurralHistory = function (entry) {
@@ -164,34 +187,18 @@ export default function register(dbOps: AurralHistoryOps) {
   dbOps.getAurralHistoryById = function (id) {
     if (!id) return null;
     const row = getAurralHistoryByIdStmt.get(String(id));
-    if (!row) return null;
-    return {
-      id: row.id,
-      kind: row.kind,
-      title: row.title,
-      subtitle: row.subtitle || null,
-      status: row.status || "completed",
-      statusLabel: row.status_label || null,
-      href: row.href || null,
-      metadata: dbHelpers.readJSON(historyMetadataSchema, row.metadata, "history"),
-      createdAt: row.created_at,
-    };
+    return row ? toEntry(row) : null;
+  };
+
+  dbOps.getAlbumRequestByGroup = function (requestGroupId) {
+    const row = getAlbumRequestByGroupStmt.get(requestGroupId);
+    return row ? toEntry(row) : null;
   };
 
   dbOps.getAurralHistory = function ({ since = 0, limit = 200 } = {}) {
     const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
     const safeSince = Number(since) || 0;
-    return getAurralHistoryStmt.all(safeSince, safeLimit).map((row) => ({
-      id: row.id,
-      kind: row.kind,
-      title: row.title,
-      subtitle: row.subtitle || null,
-      status: row.status || "completed",
-      statusLabel: row.status_label || null,
-      href: row.href || null,
-      metadata: dbHelpers.readJSON(historyMetadataSchema, row.metadata, "history"),
-      createdAt: row.created_at,
-    }));
+    return getAurralHistoryStmt.all(safeSince, safeLimit).map(toEntry);
   };
 
   dbOps.pruneAurralHistory = function ({

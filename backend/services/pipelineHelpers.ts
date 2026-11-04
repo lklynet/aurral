@@ -145,7 +145,12 @@ export async function finalizePipelineJobSuccess(options: PipelineJobSuccessOpti
 
 export type PipelineSuccessJob = Parameters<typeof finalizeQualityUpgradeSuccess>[0] &
   Pick<DownloadJob, "albumName" | "managedBy"> &
-  Partial<Pick<DownloadJob, "trackName" | "artistName" | "trackMbid" | "downloadSource">>;
+  Partial<
+    Pick<
+      DownloadJob,
+      "trackName" | "artistName" | "trackMbid" | "downloadSource" | "requestGroupId"
+    >
+  >;
 
 type PipelineJobSuccessOptions = {
   downloadTracker: DownloadTracker;
@@ -194,14 +199,27 @@ export async function recordPipelineJobSuccess({
     source: job.downloadSource ?? null,
   });
 
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobCompleted }) => recordTrackJobCompleted(job))
-    .catch((error) => {
-      logger.warn("history", "Could not record completed download job", {
-        jobId: job.id,
-        reason: error?.message || String(error),
-      });
+  if (committedFinalPath) {
+    const { notifyTrackAdded } = await import("./notificationService.ts");
+    notifyTrackAdded({
+      trackName: job.trackName,
+      artistName: job.artistName,
+      albumName: job.albumName || album,
+      filePath: committedFinalPath,
     });
+  }
+
+  try {
+    const history = await import("./aurralHistoryService.ts");
+    history.recordTrackJobCompleted(job);
+    if (job.requestGroupId && committedFinalPath)
+      await history.recordRequestGroupDownloaded(job.requestGroupId, committedFinalPath);
+  } catch (error) {
+    logger.warn("history", "Could not record completed download job", {
+      jobId: job.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
   return true;
 }
 

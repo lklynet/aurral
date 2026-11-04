@@ -135,7 +135,7 @@ List events in the manifest and export a function for each under `events`. Aurra
 | `playlist.removed`  | A playlist or flow's M3U file was removed | `playlist.title`                                                                                                                                                     |
 | `track.played`      | Someone played a track                    | `user` (`id`, `username`), `track` (`id`, `title`, `artist`, `album`, `durationMs`, `artistMbid`, `albumMbid`, `trackMbid`), `playedAt` (milliseconds), and `source` |
 | `download.finished` | A download was filed in the Library       | `track` (`title`, `artist`, `album`, `mbid`, `path`) and `source`                                                                                                    |
-| `notification`      | Aurral sent a notification                | `kind` (`discovery.updated`, `flow.done`, `request.made`, or `request.available`), `title`, `message`, and details like `album` or `flow`                            |
+| `notification`      | Aurral sent a notification                | `kind` (`discovery.updated`, `flow.done`, `request.made`, `request.available`, or `artist.added`), `title`, `message`, and details like `album`, `artist`, or `flow` |
 
 Every event also receives `event`, its name.
 

@@ -213,16 +213,11 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         notifyWeeklyFlowDone: false,
         notifyRequestMade: false,
         notifyRequestAvailable: false,
+        notifyArtistAdded: false,
+        notifyTrackAdded: false,
         ...(savedSettings.integrations?.gotify || {}),
       },
       webhooks: savedSettings.integrations?.webhooks || [],
-      webhookEvents: {
-        notifyDiscoveryUpdated: false,
-        notifyWeeklyFlowDone: false,
-        notifyRequestMade: false,
-        notifyRequestAvailable: false,
-        ...(savedSettings.integrations?.webhookEvents || {}),
-      },
     },
   };
 };

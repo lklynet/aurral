@@ -59,7 +59,6 @@ const INTEGRATION_KEYS = [
   "metadata",
   "general",
   "gotify",
-  "webhookEvents",
   "google",
 ];
 

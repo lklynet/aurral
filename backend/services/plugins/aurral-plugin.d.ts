@@ -95,7 +95,7 @@ export interface Events {
     source: string | null;
   };
   notification: {
-    kind: "discovery.updated" | "flow.done" | "request.made" | "request.available";
+    kind: "discovery.updated" | "flow.done" | "request.made" | "request.available" | "artist.added";
     title: string;
     message: string;
     [detail: string]: unknown;

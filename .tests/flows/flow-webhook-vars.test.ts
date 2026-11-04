@@ -75,12 +75,12 @@ test("flow completion sends display name and track library path", async () => {
     ...settings,
     integrations: {
       ...settings.integrations,
-      webhookEvents: { notifyWeeklyFlowDone: true },
       webhooks: [
         {
           url: `http://127.0.0.1:${port}/hook`,
           body: '{"name":"$flowName","path":"$flowPath"}',
           headers: [],
+          events: ["notifyWeeklyFlowDone"],
         },
       ],
     },
