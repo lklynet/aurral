@@ -609,21 +609,22 @@ function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, stric
 }
 
 const FOLDER_SOURCES = {
+  aurral: { label: "Library", external: false, mapPath: (filePath: string) => filePath },
   lidarr: {
     label: "Lidarr",
+    external: true,
     mapPath: (filePath: string) => resolveLocalPath(filePath, getPathMappings("lidarr")),
   },
-  readonly: { label: "Read-only folder", mapPath: (filePath: string) => filePath },
+  readonly: { label: "Read-only folder", external: true, mapPath: (filePath: string) => filePath },
 };
 
-// Lidarr's files and read-only folders stay where they are, so a playlist
-// uses the file in place.
+// Indexed files stay where they are, so a playlist uses the file in place.
 async function findLibraryFolderSource(
   track: DownloadTrackInput,
   options: SourceOptions = {},
   source: FolderSource = "lidarr",
 ): Promise<ReuseSource | null> {
-  const { label, mapPath } = FOLDER_SOURCES[source];
+  const { label, external, mapPath } = FOLDER_SOURCES[source];
   const strictAlbum = options.targetPlaylistType === "library";
   const { artists, albums, tracks } = buildLibraryReadModel(
     getLibraryForArtistReferences({
@@ -687,7 +688,7 @@ async function findLibraryFolderSource(
     return {
       sourceType: source,
       sourcePath,
-      externalPath: matchedTrack.path,
+      ...(external ? { externalPath: matchedTrack.path } : {}),
       albumName: album.albumName || track.albumName || null,
     };
   }
@@ -706,9 +707,11 @@ async function findFolderSource(
   if (options.allowLidarr === false) return null;
   const { lidarrClient } = await import("../lidarrClient.ts");
   return (
+    (await findLibraryFolderSource(track, options, "aurral")) ||
     (lidarrClient.isConfigured()
       ? await findLibraryFolderSource(track, options, "lidarr")
-      : null) || findLibraryFolderSource(track, options, "readonly")
+      : null) ||
+    findLibraryFolderSource(track, options, "readonly")
   );
 }
 
