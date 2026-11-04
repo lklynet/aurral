@@ -46,8 +46,14 @@ const updateError = db.prepare<[string | null, string]>(
   "UPDATE plugins SET last_error = ? WHERE id = ?",
 );
 const disableRow = db.prepare<[string, number, string]>(
-  "UPDATE plugins SET enabled = 0, last_error = ?, updated_at = ? WHERE id = ?",
+  "UPDATE plugins SET enabled = 0, last_error = ?, broken_in_a_row = 0, updated_at = ? WHERE id = ?",
 );
+const countBroken = db
+  .prepare<[string], number>(
+    "UPDATE plugins SET broken_in_a_row = broken_in_a_row + 1 WHERE id = ? RETURNING broken_in_a_row",
+  )
+  .pluck();
+const clearBroken = db.prepare<[string]>("UPDATE plugins SET broken_in_a_row = 0 WHERE id = ?");
 
 function readSettings(stored: string) {
   if (!stored) return {};
@@ -69,6 +75,7 @@ function readRow(row: PluginsRow) {
     disabled: dbHelpers.readJSON(capabilityKeys, row.disabled, "plugin capabilities") ?? [],
     sourceUrl: row.source_url,
     scheduledAt: row.scheduled_at,
+    brokenInARow: row.broken_in_a_row,
   };
 }
 
@@ -161,15 +168,17 @@ export async function whilePluginTests<Result>(id: string, run: () => Promise<Re
 }
 
 export function pluginForApiKey(key: string) {
-  const id = key.slice(API_KEY_PREFIX.length).split("_")[0] ?? "";
-  const plugin = readPlugin(id);
-  if (!plugin?.manifest || isSafeMode()) return null;
-  const installed = { ...plugin, manifest: plugin.manifest };
-  const expected = Buffer.from(apiKeyFor(id));
+  if (isSafeMode()) return null;
   const given = Buffer.from(key);
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-  const running = (installed.enabled && isPluginReady(installed)) || testing.has(id);
-  return running && hasApiAccess(installed) ? id : null;
+  const plugin = readPlugins()
+    .filter(isInstalled)
+    .find((candidate) => {
+      const expected = Buffer.from(apiKeyFor(candidate.id));
+      return expected.length === given.length && timingSafeEqual(expected, given);
+    });
+  if (!plugin) return null;
+  const running = (plugin.enabled && isPluginReady(plugin)) || testing.has(plugin.id);
+  return running && hasApiAccess(plugin) ? plugin.id : null;
 }
 
 export function activePluginWith(id: string, capability: string) {
@@ -225,7 +234,15 @@ export function savePlugin(
     Date.now(),
     plugin.id,
   );
-  if (patch.enabled !== undefined) updateError.run(null, plugin.id);
+  if (patch.enabled === undefined) return;
+  updateError.run(null, plugin.id);
+  clearBroken.run(plugin.id);
+}
+
+export const countBrokenCall = (id: string) => countBroken.get(id) ?? 0;
+
+export function clearBrokenCalls(id: string) {
+  clearBroken.run(id);
 }
 
 export function recordPluginError(id: string, message: string | null) {

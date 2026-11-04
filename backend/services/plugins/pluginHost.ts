@@ -7,7 +7,13 @@ import { fileURLToPath } from "node:url";
 import * as v from "valibot";
 import { logger } from "../logger.ts";
 import { PLUGIN_MAIN, pluginDataFolder, pluginFolder } from "./pluginManifest.ts";
-import { disablePlugin, recordPluginError, type InstalledPlugin } from "./pluginStore.ts";
+import {
+  clearBrokenCalls,
+  countBrokenCall,
+  disablePlugin,
+  recordPluginError,
+  type InstalledPlugin,
+} from "./pluginStore.ts";
 
 const RUNNER = fileURLToPath(new URL("./pluginRunner.ts", import.meta.url));
 const START_TIMEOUT_MS = 30_000;
@@ -46,7 +52,6 @@ const childMessage = v.variant("type", [
 ]);
 
 const running = new Map<string, Running>();
-const brokenInARow = new Map<string, number>();
 let nextCallId = 1;
 
 const logCategory = (id: string) => `plugin:${id}`;
@@ -180,11 +185,11 @@ async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: 
   const state = running.get(plugin.id) ?? start(plugin);
   running.set(plugin.id, state);
   if (state.idle) clearTimeout(state.idle);
-  const exports = await state.ready;
-  if (!exports.includes(request.path))
-    throw new BrokenPlugin(`${PLUGIN_MAIN} doesn't export ${request.path}`);
   const id = nextCallId++;
   try {
+    const exports = await state.ready;
+    if (!exports.includes(request.path))
+      throw new BrokenPlugin(`${PLUGIN_MAIN} doesn't export ${request.path}`);
     return await new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         state.pending.delete(id);
@@ -213,10 +218,8 @@ function recordFailure(plugin: InstalledPlugin, error: unknown, countFailures: b
   });
   recordPluginError(plugin.id, message);
   if (!broken || !countFailures) return new PluginError(message);
-  const count = (brokenInARow.get(plugin.id) ?? 0) + 1;
-  brokenInARow.set(plugin.id, count);
+  const count = countBrokenCall(plugin.id);
   if (count >= MAX_BROKEN_IN_A_ROW) {
-    brokenInARow.delete(plugin.id);
     stopPlugin(plugin.id);
     disablePlugin(plugin.id, `${message}. Turned off after ${count} failures in a row.`);
     logger.error(logCategory(plugin.id), `${plugin.manifest.name} was turned off`, {
@@ -245,7 +248,7 @@ export async function callPlugin<Schema extends v.GenericSchema>(
         `returned something Aurral can't read${at ? ` at ${at}` : ""}: ${issue.message}`,
       );
     }
-    brokenInARow.delete(plugin.id);
+    if (plugin.brokenInARow) clearBrokenCalls(plugin.id);
     if (plugin.lastError) recordPluginError(plugin.id, null);
     return parsed.output;
   } catch (error) {

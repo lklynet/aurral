@@ -520,6 +520,7 @@ export interface PluginsRow {
   disabled: string;
   source_url: string | null;
   scheduled_at: number | null;
+  broken_in_a_row: number;
   updated_at: number;
 }
 
