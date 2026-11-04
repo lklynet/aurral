@@ -120,7 +120,8 @@ export const PLUGIN_MCP_TOOLS: { name: ToolName; description: string; inputSchem
         path: { type: "string", description: "The exported function, like actions.send." },
         input: {
           type: "object",
-          description: "The rest of the input, like { playlist } from sample_data.",
+          description:
+            "The rest of the input, like { playlist } from sample_data. A settings object here replaces the saved settings for this call, so you can test values the admin hasn't saved.",
         },
       },
       ["id", "path"],
