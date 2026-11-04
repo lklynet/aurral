@@ -20,6 +20,7 @@ test("reads artist and title from EXTINF and skips duplicates", () => {
       trackName: "Roygbiv",
       albumName: "Music Has the Right to Children",
       durationMs: 215_000,
+      path: null,
     },
   ]);
   assert.equal(skipped, 1);
@@ -60,6 +61,7 @@ test("uses EXTART and EXTALB and skips entries it cannot name", () => {
       trackName: "Windowlicker",
       albumName: "Windowlicker",
       durationMs: 180_000,
+      path: null,
     },
   ]);
   assert.equal(skipped, 2);
@@ -81,6 +83,23 @@ test("keeps a title with a dash when EXTART names the artist", () => {
     [
       ["Wilco", "Love - Part II"],
       ["Wilco", "Jesus, Etc."],
+    ],
+  );
+});
+
+test("keeps absolute file paths so Library files can be matched exactly", () => {
+  const { tracks } = parseM3u(
+    [
+      "#EXTINF:172,N.E.R.D. - Thrasher",
+      '"/data/downloads/aurral/N.E.R.D/Fly or Die [Clean]/09 Thrasher.mp3"',
+      "file:///music/Burial/Untrue/1-02%20Archangel.mp3",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    tracks.map((track) => [track.artistName, track.trackName, track.path]),
+    [
+      ["N.E.R.D.", "Thrasher", "/data/downloads/aurral/N.E.R.D/Fly or Die [Clean]/09 Thrasher.mp3"],
+      ["Burial", "Archangel", "/music/Burial/Untrue/1-02 Archangel.mp3"],
     ],
   );
 });
