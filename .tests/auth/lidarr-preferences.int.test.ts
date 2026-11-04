@@ -479,6 +479,21 @@ test("PATCH /users/me/lidarr-preferences accepts valid selections and clears the
   });
 });
 
+test("PATCH /users/me/lidarr-preferences clears defaults without Lidarr and returns what GET returns", async () => {
+  await saveLidarrSettings({ apiKey: "" });
+  try {
+    const cleared = await apiFetch("/api/users/me/lidarr-preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ rootFolderPath: null, qualityProfileId: null }),
+    });
+    assert.equal(cleared.response.status, 200);
+    const loaded = await apiFetch("/api/users/me/lidarr-preferences");
+    assert.deepEqual(cleared.payload, loaded.payload);
+  } finally {
+    await saveLidarrSettings();
+  }
+});
+
 test("PATCH /users/me/lidarr-preferences rejects invalid root folders and quality profiles", async () => {
   const cases = [
     [{ rootFolderPath: "/music/missing" }, 400, "rootFolderPath"],

@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
@@ -8,6 +8,10 @@ import { SettingsLink, useSettingsRoute } from "./settingsRoute";
 import "./settings.css";
 
 export const SettingsSavingContext = createContext(false);
+export const SettingsScrollContext = createContext<{
+  group: string | null;
+  scrolled: () => void;
+}>({ group: null, scrolled: () => {} });
 
 export function SettingsShell({
   label,
@@ -177,8 +181,16 @@ export function SettingsGroup({
   children: ReactNode;
 }) {
   const headingId = useId();
+  const ref = useRef<HTMLElement>(null);
+  const { group, scrolled } = useContext(SettingsScrollContext);
+  const targeted = group !== null && title === group;
+  useEffect(() => {
+    if (!targeted) return;
+    ref.current?.scrollIntoView({ block: "start" });
+    scrolled();
+  }, [targeted, scrolled]);
   return (
-    <section className="settings-group" aria-labelledby={title ? headingId : undefined}>
+    <section ref={ref} className="settings-group" aria-labelledby={title ? headingId : undefined}>
       {title || actions ? (
         <div className="settings-group__head">
           {title ? (
