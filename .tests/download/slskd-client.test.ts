@@ -849,3 +849,26 @@ test("getEvents names the field that made slskd's download event unreadable", as
     await mock.close();
   }
 });
+
+test("a search that reaches its deadline mid-request does not report slskd as failing", async () => {
+  const { onRequestFailure } = await import("../../lib/axiosFetch.ts");
+  const failures: string[] = [];
+  onRequestFailure(({ url }) => failures.push(url));
+  const server = await createMockHttpServer((req, res) => {
+    if (req.method === "GET") return;
+    res.writeHead(204);
+    res.end();
+  });
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const client = new SlskdClient({ enabled: true, url: server.url });
+  try {
+    assert.equal(
+      await client.waitForSearch("deadline", 50, { queued: false, deadline: Date.now() + 50 }),
+      null,
+    );
+    assert.deepEqual(failures, []);
+  } finally {
+    onRequestFailure(() => {});
+    await server.close();
+  }
+});

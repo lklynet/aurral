@@ -166,10 +166,7 @@ test("a Soulseek search that starts running just before its monitor is rebuilt k
   const responses = folderResponses("Late Band", "Late Album", ["Song"]);
   const createdAt = Date.now();
   const { created } = mockSearch(t, []);
-  vi.spyOn(client, "getSearch").mockImplementation(async (id, options) => {
-    assert.ok(options != null);
-    assert.ok(options.timeout != null);
-    if (options.timeout < 50) throw new Error("This operation was aborted");
+  vi.spyOn(client, "getSearch").mockImplementation(async () => {
     const elapsed = Date.now() - createdAt;
     if (elapsed < 9 * 60 * 1000 + 50000) return { state: "Queued", responses: [] };
     if (elapsed < 10 * 60 * 1000 + 30000)
