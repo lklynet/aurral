@@ -41,7 +41,6 @@ import PreviewChip from "./PreviewChip";
 import { DotLoader } from "./DotLoader";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
-import { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils";
 import { trackDownloadActionLabel } from "../pages/library/libraryShared.tsx";
 
 const SHEET_EXIT_MS = 260;
@@ -60,18 +59,7 @@ function PreviewDownloadButton({
 }) {
   const { savingKeys, addTrackToLibrary } = useAddTrackToLibrary();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
-  const payload =
-    track.download === undefined
-      ? buildStaticPlaylistTrackPayload({
-          artistName: track.artist || "",
-          trackName: track.title || "",
-          albumName: track.album || "",
-          artistMbid: track.artistMbid || "",
-          albumMbid: track.albumMbid || "",
-          trackMbid: track.trackMbid || "",
-          durationMs: track.durationMs,
-        })
-      : track.download;
+  const payload = track.download;
   if (!payload?.artistName || !payload.trackName) return null;
   const key = String(track.id);
   const sending = savingKeys.has(key);

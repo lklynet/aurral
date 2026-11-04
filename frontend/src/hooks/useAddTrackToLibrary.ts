@@ -22,12 +22,12 @@ export function useAddTrackToLibrary() {
   });
   const pendingKeys = useMutationState({
     filters: { mutationKey: ADD_TRACK_MUTATION, status: "pending" },
-    select: (mutation) => (mutation.state.variables as AddTrackRequest | undefined)?.savingKey,
+    select: ({ state: { variables } }) =>
+      typeof variables === "object" && variables !== null && "savingKey" in variables
+        ? String(variables.savingKey)
+        : "",
   });
-  const savingKeys = useMemo(
-    () => new Set(pendingKeys.filter((key): key is string => Boolean(key))),
-    [pendingKeys],
-  );
+  const savingKeys = useMemo(() => new Set(pendingKeys.filter(Boolean)), [pendingKeys]);
 
   const addTrackToLibrary = async (payload: AddTrackRequest["payload"], savingKey: string) => {
     if (!payload.artistName || !payload.trackName) {

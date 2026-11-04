@@ -294,7 +294,7 @@ export function TrackList({
           const playLabel = row.playing
             ? `Pause ${row.title}`
             : row.previewOnly
-              ? `Preview ${row.title} · 30 s`
+              ? `Preview ${row.title}`
               : `Play ${row.title}`;
           return (
             <div
