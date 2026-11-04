@@ -7,14 +7,16 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { createFakeNavidrome } from "../helpers/fakeNavidrome.ts";
 
-const [state, { db }, { userOps }, servers, { getPlayHistory }, plex] = await setupIsolatedBackend(
-  "history-servers",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/historyServers.ts"),
-  () => import("../../backend/services/playEventService.ts"),
-  () => import("../../backend/services/plex.ts"),
-);
+const [state, { db }, { userOps }, servers, { getPlayHistory }, plex, libraryStore] =
+  await setupIsolatedBackend(
+    "history-servers",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/historyServers.ts"),
+    () => import("../../backend/services/playEventService.ts"),
+    () => import("../../backend/services/plex.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+  );
 
 const originalFetch = globalThis.fetch;
 const DAY = 24 * 60 * 60;
@@ -79,6 +81,125 @@ test("Navidrome plays import once, stay out of the app's play list, and leave on
   await servers.disconnectHistoryServer(userId, "navidrome");
   assert.deepEqual(importedPlays(), []);
   assert.deepEqual(servers.listHistoryServers(userId), []);
+});
+
+test("Navidrome favorites become the user's stars by MusicBrainz ID or name, and missing ones are counted", async () => {
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "boc",
+    mbid: "69158f97-4c07-4c4e-baf8-4e4ab1ed666e",
+    name: "Boards of Canada",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "mhtrtc",
+    artistId: artist.id,
+    title: "Music Has the Right to Children",
+    albumArtist: artist.name,
+  });
+  ["Roygbiv", "Aquarius"].forEach((title, index) => {
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: title.toLowerCase(),
+      mbid: index === 0 ? "a1b2c3d4-0000-4000-8000-000000000001" : null,
+      title,
+      artistName: artist.name,
+    });
+    libraryStore.linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: track.id,
+      trackNumber: index + 1,
+    });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: track.id,
+      source: "aurral",
+      path: `/library/Boards of Canada/MHTRTC/${title}.flac`,
+      format: "flac",
+      available: true,
+    });
+  });
+  const navidrome = createFakeNavidrome({
+    starred: {
+      artist: [
+        {
+          name: "BoC",
+          musicBrainzId: "69158F97-4C07-4C4E-BAF8-4E4AB1ED666E",
+          starred: "2024-01-01T00:00:00Z",
+        },
+      ],
+      album: [
+        {
+          name: "Music Has The Right To Children",
+          artist: "Boards Of Canada",
+          starred: "2024-01-02T00:00:00Z",
+        },
+      ],
+      song: [
+        {
+          title: "Roygbiv (single edit)",
+          artist: "Boards of Canada",
+          album: "Music Has the Right to Children",
+          musicBrainzId: "a1b2c3d4-0000-4000-8000-000000000001",
+          starred: "2024-01-03T00:00:00Z",
+        },
+        {
+          title: "Aquarius",
+          artist: "Boards of Canada",
+          album: "Music Has the Right to Children",
+          duration: 359,
+          starred: "2024-01-04T00:00:00Z",
+        },
+        { title: "Not Here", artist: "Nobody", album: "Nowhere", starred: "2024-01-05T00:00:00Z" },
+      ],
+    },
+  });
+  globalThis.fetch = navidrome.fetch;
+  await servers.connectHistoryServer(userId, "navidrome", {
+    url: "http://navidrome.test",
+    username: "listener",
+    secret: "password",
+  });
+
+  assert.deepEqual(await servers.importHistoryServerFavorites(userId, "navidrome"), {
+    added: 4,
+    missing: 1,
+  });
+  assert.deepEqual(await servers.importHistoryServerFavorites(userId, "navidrome"), {
+    added: 0,
+    missing: 1,
+  });
+  assert.deepEqual(
+    db
+      .prepare<[number], { entity_kind: string; entity_key: string; created_at: number }>(
+        "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at",
+      )
+      .all(userId),
+    [
+      { entity_kind: "artist", entity_key: "boc", created_at: Date.parse("2024-01-01T00:00:00Z") },
+      {
+        entity_kind: "album",
+        entity_key: "mhtrtc",
+        created_at: Date.parse("2024-01-02T00:00:00Z"),
+      },
+      {
+        entity_kind: "song",
+        entity_key: "roygbiv",
+        created_at: Date.parse("2024-01-03T00:00:00Z"),
+      },
+      {
+        entity_kind: "song",
+        entity_key: "aquarius",
+        created_at: Date.parse("2024-01-04T00:00:00Z"),
+      },
+    ],
+  );
+
+  await servers.disconnectHistoryServer(userId, "navidrome");
+  assert.equal(
+    db
+      .prepare<[number], { stars: number }>(
+        "SELECT COUNT(*) AS stars FROM subsonic_stars WHERE user_id = ?",
+      )
+      .get(userId)?.stars,
+    4,
+  );
 });
 
 test("Jellyfin play times convert from the server's local clock on their own date", async () => {

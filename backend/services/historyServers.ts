@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import * as v from "valibot";
 import axios from "../../lib/axiosFetch.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -6,11 +7,14 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import type { HistoryServersRow } from "../db/rows.ts";
 import { getPlexServer } from "./plex.ts";
+import type { ImportedFavorite } from "./subsonicLibraryService.ts";
 
 export const HISTORY_SERVER_PROVIDERS = ["navidrome", "plex", "jellyfin"] as const;
 export type HistoryServerProvider = (typeof HISTORY_SERVER_PROVIDERS)[number];
 export const LOGIN_HISTORY_SERVERS = ["navidrome", "jellyfin"] as const;
 type LoginHistoryServer = (typeof LOGIN_HISTORY_SERVERS)[number];
+export const FAVORITE_HISTORY_SERVERS = ["navidrome"] as const;
+type FavoriteHistoryServer = (typeof FAVORITE_HISTORY_SERVERS)[number];
 
 type Connection = { url: string; username: string; secret: string; accountId: string | null };
 export type ImportedPlay = {
@@ -118,6 +122,61 @@ const navidrome: Provider = {
     }
   },
 };
+
+async function navidromeFavorites({
+  url,
+  username,
+  secret,
+}: Connection): Promise<ImportedFavorite[]> {
+  const salt = randomBytes(8).toString("hex");
+  const { data } = await axios.get(`${url}/rest/getStarred2`, {
+    params: {
+      u: username,
+      t: createHash("md5").update(`${secret}${salt}`).digest("hex"),
+      s: salt,
+      v: "1.16.1",
+      c: "aurral",
+      f: "json",
+    },
+    timeout: TIMEOUT_MS,
+  });
+  const response = object(object(data)["subsonic-response"]);
+  if (response.status !== "ok") {
+    throw new HistoryServerError(
+      text(object(response.error).message) || "Navidrome favorites are unavailable",
+    );
+  }
+  const starred = object(response.starred2);
+  const rows = (key: string) =>
+    list(starred[key])
+      .map(object)
+      .map((row) => ({
+        row,
+        mbid: text(row.musicBrainzId).toLowerCase(),
+        starredAt: Date.parse(text(row.starred)) || Date.now(),
+      }));
+  return [
+    ...rows("artist").map(({ row, ...rest }) => ({
+      ...rest,
+      kind: "artist" as const,
+      artist: text(row.name),
+    })),
+    ...rows("album").map(({ row, ...rest }) => ({
+      ...rest,
+      kind: "album" as const,
+      album: text(row.name),
+      artist: text(row.artist),
+    })),
+    ...rows("song").map(({ row, ...rest }) => ({
+      ...rest,
+      kind: "song" as const,
+      title: text(row.title),
+      artist: text(row.artist),
+      album: text(row.album),
+      durationMs: number(row.duration) * 1000 || undefined,
+    })),
+  ];
+}
 
 const plexHeaders = (token: string) => ({
   Accept: "application/json",
@@ -246,6 +305,10 @@ const jellyfin: Provider = {
 };
 
 const PROVIDERS: Record<LoginHistoryServer, Provider> = { navidrome, jellyfin };
+const FAVORITE_READERS: Record<
+  FavoriteHistoryServer,
+  (connection: Connection) => Promise<ImportedFavorite[]>
+> = { navidrome: navidromeFavorites };
 const READERS: Record<HistoryServerProvider, Reader> = {
   navidrome: navidrome.read,
   plex: readPlex,
@@ -462,6 +525,19 @@ export async function syncHistoryServer(userId: number, provider: HistoryServerP
   }
   if (imported > 0) await refreshDiscovery(userId);
   return { imported };
+}
+
+export async function importHistoryServerFavorites(
+  userId: number,
+  provider: FavoriteHistoryServer,
+) {
+  const row = selectServer.get(userId, provider);
+  if (!row) throw new HistoryServerError("Connect the server first");
+  const favorites = await FAVORITE_READERS[provider](connectionOf(row));
+  const { importFavorites } = await import("./subsonicLibraryService.ts");
+  const result = importFavorites(userId, favorites);
+  if (result.added > 0) await refreshDiscovery(userId);
+  return result;
 }
 
 export async function syncAllHistoryServers() {

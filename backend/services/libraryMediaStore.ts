@@ -898,7 +898,7 @@ export function findLibraryAlbumByReleaseMbid(mbid: string | null | undefined) {
 
 // Names with letters ASCII cannot spell, such as Japanese titles, compare as
 // written, since their ASCII keys would drop those letters and match each other.
-const libraryNameKey = (value: string | null | undefined) => {
+export const libraryNameKey = (value: string | null | undefined) => {
   const ascii = asciiKeyPart(spellLetters(value));
   return ascii && !hasNonLatinLetters(value)
     ? ascii

@@ -8,8 +8,10 @@ import { enqueueSystemTaskJob } from "../services/honkerDb.ts";
 import {
   connectHistoryServer,
   disconnectHistoryServer,
+  FAVORITE_HISTORY_SERVERS,
   HISTORY_SERVER_PROVIDERS,
   HistoryServerError,
+  importHistoryServerFavorites,
   listHistoryServers,
   LOGIN_HISTORY_SERVERS,
 } from "../services/historyServers.ts";
@@ -18,6 +20,7 @@ import { asAppError } from "../../lib/errors.ts";
 
 const providerParam = v.object({ provider: v.picklist(HISTORY_SERVER_PROVIDERS) });
 const loginProviderParam = v.object({ provider: v.picklist(LOGIN_HISTORY_SERVERS) });
+const favoriteProviderParam = v.object({ provider: v.picklist(FAVORITE_HISTORY_SERVERS) });
 const connectBody = v.object({
   url: v.string(),
   username: v.string(),
@@ -26,6 +29,19 @@ const connectBody = v.object({
 
 const queueSync = (userId: number, provider: string) =>
   enqueueSystemTaskJob({ kind: "history-server-sync", userId, provider });
+
+const serverFailure = (provider: string, action: string, error: unknown) => {
+  const failure = asAppError(error);
+  logger.warn("listening", `Could not ${action}`, {
+    provider,
+    message: failure?.message,
+    status: failure?.response?.status ?? null,
+  });
+  const status = Number(failure?.response?.status);
+  return status === 401 || status === 403
+    ? "The server rejected that login"
+    : "Couldn't reach the server";
+};
 
 export default new Hono<AppEnv>()
   .basePath("/history-servers")
@@ -55,20 +71,8 @@ export default new Hono<AppEnv>()
         return c.json({ server }, 200);
       } catch (error) {
         if (error instanceof HistoryServerError) return c.json({ error: error.message }, 400);
-        const failure = asAppError(error);
-        logger.warn("listening", "Could not connect a listening history server", {
-          provider,
-          message: failure?.message,
-          status: failure?.response?.status ?? null,
-        });
-        const status = Number(failure?.response?.status);
         return c.json(
-          {
-            error:
-              status === 401 || status === 403
-                ? "The server rejected that login"
-                : "Couldn't reach the server",
-          },
+          { error: serverFailure(provider, "connect a listening history server", error) },
           400,
         );
       }
@@ -82,6 +86,21 @@ export default new Hono<AppEnv>()
     (c) => {
       queueSync(c.var.user.id, c.req.valid("param").provider);
       return c.body(null, 202);
+    },
+  )
+  .post(
+    "/:provider/favorites",
+    requireAuth,
+    requireUserAccount,
+    validate("param", favoriteProviderParam),
+    async (c) => {
+      const { provider } = c.req.valid("param");
+      try {
+        return c.json(await importHistoryServerFavorites(c.var.user.id, provider), 200);
+      } catch (error) {
+        if (error instanceof HistoryServerError) return c.json({ error: error.message }, 400);
+        return c.json({ error: serverFailure(provider, "import favorites", error) }, 400);
+      }
     },
   )
   .delete(

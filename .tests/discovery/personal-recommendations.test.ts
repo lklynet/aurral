@@ -407,3 +407,65 @@ test("library seeds sample recent additions and the whole library, not the alpha
     samples.some(({ random }) => random.some((artist) => !alphabeticalHead.has(artist.artistName))),
   );
 });
+
+test("a starred song seeds its performer as a favorite, even on a compilation", async () => {
+  const carol = userOps.createUser("carol", "hash");
+  assert.ok(carol);
+  const artistId = db
+    .prepare(
+      `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
+       VALUES ('starred-artist', ?, 'Starred Artist', 1, 1)`,
+    )
+    .run(mbid(31)).lastInsertRowid;
+  const albumId = db
+    .prepare(
+      `INSERT INTO library_albums (identity_key, artist_id, title, created_at, updated_at)
+       VALUES ('starred-album', ?, 'Starred Album', 1, 1)`,
+    )
+    .run(artistId).lastInsertRowid;
+  const trackId = db
+    .prepare(
+      `INSERT INTO library_tracks (identity_key, title, artist_name, created_at, updated_at)
+       VALUES ('starred-track', 'Starred Song', 'Starred Artist', 1, 1)`,
+    )
+    .run().lastInsertRowid;
+  db.prepare(
+    `INSERT INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
+     VALUES (?, ?, 1, 1, 1)`,
+  ).run(albumId, trackId);
+  const variousId = db
+    .prepare(
+      `INSERT INTO library_artists (identity_key, name, created_at, updated_at)
+       VALUES ('various-artists', 'Various Artists', 1, 1)`,
+    )
+    .run().lastInsertRowid;
+  const compilationId = db
+    .prepare(
+      `INSERT INTO library_albums (identity_key, artist_id, title, created_at, updated_at)
+       VALUES ('compilation', ?, 'Compilation', 1, 1)`,
+    )
+    .run(variousId).lastInsertRowid;
+  const compilationTrackId = db
+    .prepare(
+      `INSERT INTO library_tracks (identity_key, title, artist_name, created_at, updated_at)
+       VALUES ('compilation-track', 'Guest Spot', 'Compilation Performer feat. Guest', 1, 1)`,
+    )
+    .run().lastInsertRowid;
+  db.prepare(
+    `INSERT INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
+     VALUES (?, ?, 1, 1, 1)`,
+  ).run(compilationId, compilationTrackId);
+  const star = db.prepare(
+    `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, 'song', ?, 1)`,
+  );
+  star.run(carol.id, "starred-track");
+  star.run(carol.id, "compilation-track");
+
+  await discovery.updateUserDiscoveryCache(carol.id);
+
+  const { body } = await getUserDiscovery(carol.id, 0);
+  const sourceOf = (name: string) => body.basedOn.find((artist) => artist.name === name)?.source;
+  assert.equal(sourceOf("Starred Artist"), "favorites");
+  assert.equal(sourceOf("Compilation Performer"), "favorites");
+  assert.notEqual(sourceOf("Various Artists"), "favorites");
+});
