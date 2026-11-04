@@ -256,35 +256,6 @@ test("duplicate Deezer tracks keep the preview and artwork of the first entry", 
   assert.equal(tracks[0].deezerAlbumId, "1");
 });
 
-test("a delisted Deezer track previews the live copy of the same recording", async (t: import("vite-plus/test").TestContext) => {
-  const delisted = (title: string, isrc: string) => ({
-    ...deezerTrack(title, "A Day To Remember"),
-    preview: "",
-    isrc,
-  });
-  const requests = stubDeezer(t, {
-    ...rockEssentials([
-      delisted("All Signs Point to Lauderdale", "USVI21000001"),
-      delisted("Gone Everywhere", "USVI21000002"),
-    ]),
-    "/track/isrc:USVI21000001": {
-      body: {
-        id: 1286025092,
-        title: "All Signs Point to Lauderdale",
-        preview: "https://p/live.mp3",
-      },
-    },
-    "/track/isrc:USVI21000002": { body: { id: 7, title: "Gone Everywhere", preview: "" } },
-  });
-
-  const preview = async () =>
-    (await getEditorialPlaylist(OWNER, "1306931615")).tracks.map((track) => track.preview_url);
-
-  assert.deepEqual(await preview(), ["/api/deezer/preview/1286025092.mp3", null]);
-  assert.deepEqual(await preview(), ["/api/deezer/preview/1286025092.mp3", null]);
-  assert.equal(requests.filter((request) => request.startsWith("/track/isrc:")).length, 2);
-});
-
 test("a Deezer playlist whose name is taken gets a distinct library name", async (t: import("vite-plus/test").TestContext) => {
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));

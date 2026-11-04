@@ -87,7 +87,6 @@ const deezerAlbumTrackCache = createCache(3600);
 const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
 const deezerPreviewLinkCache = createCache(5 * 60);
-const deezerIsrcTrackCache = createCache(24 * 3600, 5000);
 const deezerInflightRequests = new Map();
 const deezerLimiter = createRateLimiter(110);
 
@@ -143,23 +142,48 @@ export async function getDeezerPreviewLink(trackId: string): Promise<string | nu
   const cacheKey = `dz-preview:${trackId}`;
   return cachedOrInflight(deezerPreviewLinkCache, cacheKey, deezerInflightRequests, async () => {
     const track = await deezerGet(deezerTrackSchema, `/track/${trackId}`, { timeout: 3000 });
-    const link = track?.preview || null;
+    const link = track?.preview || (track && (await findPlayableCopy(track))?.preview) || null;
     deezerPreviewLinkCache.set(cacheKey, link);
     return link;
   });
 }
 
-export async function deezerGetPlayableTrackByIsrc(isrc: string) {
-  if (!/^[A-Z0-9]{12}$/i.test(isrc)) return null;
-  const cacheKey = `dz-isrc:${isrc}`;
-  return cachedOrInflight(deezerIsrcTrackCache, cacheKey, deezerInflightRequests, async () => {
-    const track = await deezerLimiter.schedule(() =>
+type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
+
+const nameKey = (value: unknown) =>
+  normalizeTitle(value) ||
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const isSameRelease = (candidate: DeezerTrack, track: DeezerTrack) =>
+  candidate.title.toLowerCase() === track.title.toLowerCase() &&
+  [
+    [candidate.artist?.name, track.artist?.name],
+    [candidate.album?.title, track.album?.title],
+  ].every(([left, right]) => nameKey(left) && nameKey(left) === nameKey(right));
+
+async function findPlayableCopy(track: DeezerTrack) {
+  const isrc = track.isrc && /^[A-Z0-9]{12}$/i.test(track.isrc) ? track.isrc : null;
+  if (isrc) {
+    const byIsrc = await deezerLimiter.schedule(() =>
       deezerGet(deezerTrackSchema, `/track/isrc:${isrc}`, { timeout: 3000 }),
     );
-    const playable = track?.preview ? track : null;
-    deezerIsrcTrackCache.set(cacheKey, playable);
-    return playable;
-  });
+    if (byIsrc?.preview) return byIsrc;
+  }
+  if (!track.artist?.name) return null;
+  const candidates = await deezerLimiter.schedule(() =>
+    deezerList(deezerTrackSchema, "/search", {
+      params: { q: `${track.artist?.name} ${track.title}`, limit: 10 },
+      timeout: 3000,
+    }),
+  );
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate.preview && ((isrc && candidate.isrc === isrc) || isSameRelease(candidate, track)),
+    ) ?? null
+  );
 }
 
 const artistNameKey = (value: unknown) => {
