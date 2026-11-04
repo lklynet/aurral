@@ -121,6 +121,44 @@ test("problems count every warning, not just the first 200 kinds", async () => {
   });
 });
 
+test("plugins are counted without their names", async () => {
+  const insertPlugin = db.prepare(
+    "INSERT INTO plugins (id, manifest, enabled, updated_at) VALUES (?, ?, ?, 0)",
+  );
+  for (const [id, enabled] of [
+    ["secret-box", 1],
+    ["hidden-crate", 0],
+  ] as const)
+    insertPlugin.run(
+      id,
+      JSON.stringify({ id, name: `Plugin ${id}`, version: "1.0.0", api: 1 }),
+      enabled,
+    );
+  db.prepare(
+    `INSERT INTO playlist_download_jobs
+       (id, artist_name, track_name, playlist_id, status, created_at, completed_at, download_source)
+     VALUES ('c', 'Burial', 'Archangel', 'p', 'done', ?, ?, 'plugin:secret-box')`,
+  ).run(Date.now(), Date.now());
+  const writer = createLogWriter(join(isolatedState.dataDir, "logs"));
+  writer.append({
+    ts: new Date().toISOString(),
+    level: "warn",
+    cat: "plugin:secret-box",
+    msg: "Secret Box timed out",
+    proc: "main",
+    fp: "Secret Box timed out",
+  });
+  writer.flush();
+
+  const report = await buildTelemetryReport();
+  assert.ok(isTelemetryReport(report));
+  assert.equal(report.scale.plugins, "2-9");
+  assert.equal(report.scale.activePlugins, "1");
+  assert.deepEqual(report.downloads.plugin, { done: "1", failed: "0" });
+  assert.deepEqual(report.problems.plugins, { warn: "1", error: "0" });
+  assert.doesNotMatch(JSON.stringify(report), /secret|hidden|crate/i);
+});
+
 test("admins are asked once, and choosing in Settings counts as asked", async () => {
   assert.equal(telemetry.claimTelemetryAsk(), true);
   assert.equal(telemetry.claimTelemetryAsk(), false);

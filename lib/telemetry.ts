@@ -34,6 +34,8 @@ export const SCALE_KEYS = [
   "flows",
   "playlists",
   "shareLinks",
+  "plugins",
+  "activePlugins",
 ] as const;
 
 export const INTEGRATIONS = [
@@ -68,7 +70,7 @@ export const DISCOVERY_SOURCES = ["lastfm", "listenbrainz"] as const;
 export const LISTEN_SOURCES = ["lastfm", "listenbrainz", "koito"] as const;
 export const PLAYBACK_SERVERS = ["navidrome", "plex", "jellyfin"] as const;
 export const PLAY_SOURCES = ["aurral", "subsonic", "other"] as const;
-export const DOWNLOAD_SOURCES = ["slskd", "usenet", "deemix", "ytdlp", "share"] as const;
+export const DOWNLOAD_SOURCES = ["slskd", "usenet", "deemix", "ytdlp", "share", "plugin"] as const;
 export const IMPORT_SOURCES = [
   "spotify-playlist",
   "listenbrainz-playlist",
@@ -77,6 +79,7 @@ export const IMPORT_SOURCES = [
   "youtube-music-playlist",
   "deezer-playlist",
   "aurral-share",
+  "plugin",
 ] as const;
 export const APPEARANCES = ["system", "light", "dark"] as const;
 export const THEME_KINDS = ["aurral", "preset", "custom"] as const;
@@ -110,6 +113,7 @@ export const LOG_CATEGORIES = [
   "playlist-import",
   "playlists",
   "plex",
+  "plugins",
   "scrobbling",
   "search",
   "settings",

@@ -35,6 +35,7 @@ import { getMusicDataSourceName } from "./musicDataSource/index.ts";
 import { isOidcEnabled } from "./oidcAuth.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { getPlexServer } from "./plex.ts";
+import { activePlugins, PLUGIN_SOURCE_PREFIX, readPlugins } from "./plugins/pluginStore.ts";
 import { createDefaultQualityProfile } from "./qualityProfileModel.ts";
 import { getQualityProfile } from "./qualityProfileService.ts";
 import { isRunningInDocker } from "./runtimeInfo.ts";
@@ -146,7 +147,9 @@ async function problems(since: number) {
   const totals = new Map<(typeof LOG_CATEGORIES)[number], { warn: number; error: number }>();
   for (const problem of await listAllLogProblems(since)) {
     if (problem.level !== "warn" && problem.level !== "error") continue;
-    const category = LOG_CATEGORIES.find((known) => known === problem.cat) ?? "other";
+    const category = problem.cat.startsWith(PLUGIN_SOURCE_PREFIX)
+      ? "plugins"
+      : (LOG_CATEGORIES.find((known) => known === problem.cat) ?? "other");
     const total = totals.get(category) ?? { warn: 0, error: 0 };
     total[problem.level] += problem.count;
     totals.set(category, total);
@@ -170,7 +173,9 @@ export async function buildTelemetryReport(now = Date.now()): Promise<TelemetryR
 
   const downloads: TelemetryReport["downloads"] = {};
   for (const row of downloadsStmt.all(since)) {
-    const source = DOWNLOAD_SOURCES.find((known) => known === row.key);
+    const source = String(row.key ?? "").startsWith(PLUGIN_SOURCE_PREFIX)
+      ? "plugin"
+      : DOWNLOAD_SOURCES.find((known) => known === row.key);
     if (!source || (row.status !== "done" && row.status !== "failed")) continue;
     downloads[source] = {
       done: "0",
@@ -225,6 +230,8 @@ export async function buildTelemetryReport(now = Date.now()): Promise<TelemetryR
       flows: countBucket(flows.length),
       playlists: countBucket(playlists.length),
       shareLinks: countBucket(total(scaleStmts.shareLinks)),
+      plugins: countBucket(readPlugins().filter((plugin) => plugin.manifest).length),
+      activePlugins: countBucket(activePlugins().length),
     },
     integrations: integrations(),
     auth: AUTH_MODES.filter((mode) => auth[mode]),
@@ -241,6 +248,10 @@ export async function buildTelemetryReport(now = Date.now()): Promise<TelemetryR
     imports: bucketsFor(
       IMPORT_SOURCES,
       playlists.map((playlist) => ({ key: playlist.importSource?.provider ?? null, total: 1 })),
+      (key) =>
+        key.startsWith(PLUGIN_SOURCE_PREFIX)
+          ? "plugin"
+          : IMPORT_SOURCES.find((known) => known === key),
     ),
     ...appearance(),
     seen: seenSince(since),

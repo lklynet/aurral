@@ -139,6 +139,8 @@
         customMetadata: "Custom metadata",
         usenet: "Usenet",
         share: "Aurral share",
+        plugin: "Plugins",
+        plugins: "Plugins",
         "spotify-playlist": "Spotify",
         "listenbrainz-playlist": "ListenBrainz playlist",
         "listenbrainz-createdfor": "ListenBrainz for you",
@@ -259,6 +261,8 @@
         ["Tracks in the Library", (r) => r.picked("$.scale", "tracks"), true],
         ["Library size in GB", (r) => r.picked("$.scale", "libraryGb"), true],
         ["Users", (r) => r.picked("$.scale", "users"), true],
+        ["Plugins installed", (r) => r.picked("$.scale", "plugins"), true],
+        ["Plugins turned on", (r) => r.picked("$.scale", "activePlugins"), true],
       ];
 
       const percent = (n, total) => (total > 0 ? (n / total) * 100 : 0);
