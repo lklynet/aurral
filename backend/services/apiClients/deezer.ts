@@ -87,7 +87,6 @@ const deezerAlbumTrackCache = createCache(3600);
 const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
 const deezerPreviewLinkCache = createCache(5 * 60);
-const deezerPlayableCopyCache = createCache(24 * 3600, 5000);
 const deezerInflightRequests = new Map();
 const deezerLimiter = createRateLimiter(110);
 
@@ -143,13 +142,13 @@ export async function getDeezerPreviewLink(trackId: string): Promise<string | nu
   const cacheKey = `dz-preview:${trackId}`;
   return cachedOrInflight(deezerPreviewLinkCache, cacheKey, deezerInflightRequests, async () => {
     const track = await deezerGet(deezerTrackSchema, `/track/${trackId}`, { timeout: 3000 });
-    const link = track?.preview || null;
+    const link = track?.preview || (track && (await findPlayableCopy(track))?.preview) || null;
     deezerPreviewLinkCache.set(cacheKey, link);
     return link;
   });
 }
 
-export type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
+type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
 const isSameRelease = (candidate: DeezerTrack, track: DeezerTrack) =>
   candidate.title.toLowerCase() === track.title.toLowerCase() &&
@@ -181,15 +180,6 @@ async function findPlayableCopy(track: DeezerTrack) {
         candidate.preview && ((isrc && candidate.isrc === isrc) || isSameRelease(candidate, track)),
     ) ?? null
   );
-}
-
-export async function deezerGetPlayableCopy(track: DeezerTrack) {
-  const cacheKey = `dz-copy:${track.id}`;
-  return cachedOrInflight(deezerPlayableCopyCache, cacheKey, deezerInflightRequests, async () => {
-    const copy = await findPlayableCopy(track);
-    deezerPlayableCopyCache.set(cacheKey, copy);
-    return copy;
-  });
 }
 
 const artistNameKey = (value: unknown) => {

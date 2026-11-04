@@ -256,50 +256,6 @@ test("duplicate Deezer tracks keep the preview and artwork of the first entry", 
   assert.equal(tracks[0].deezerAlbumId, "1");
 });
 
-test("a delisted Deezer track previews a live copy of the same release", async (t: import("vite-plus/test").TestContext) => {
-  const delisted = (title: string, isrc: string, album: string) => ({
-    ...deezerTrack(title, "Brand New", album),
-    preview: "",
-    isrc,
-  });
-  const requests = stubDeezer(t, {
-    ...rockEssentials([
-      delisted("Sic Transit Gloria", "USRZR0300001", "Deja Entendu"),
-      delisted("The Shower Scene", "USRZR0389001", "Your Favorite Weapon"),
-      delisted("Jude Law", "USRZR0389002", "Your Favorite Weapon"),
-    ]),
-    "/track/isrc:USRZR0300001": {
-      body: { id: 501, title: "Sic Transit Gloria", preview: "https://p/live.mp3" },
-    },
-    "/track/isrc:USRZR0389001": { body: { id: 6259811, title: "The Shower Scene", preview: "" } },
-    "/search": (url) => ({
-      body: {
-        data: url.searchParams.get("q")?.includes("Shower")
-          ? [
-              {
-                ...deezerTrack("The Shower Scene (2000 Demo)", "Brand New", "Your Favorite Weapon"),
-                id: 502,
-              },
-              {
-                ...deezerTrack("The Shower Scene", "Brand New", "Your Favorite Weapon"),
-                id: 1758884077,
-                isrc: "USRZR1132601",
-              },
-            ]
-          : [{ ...deezerTrack("Jude Law (Live)", "Brand New", "Live at Leeds"), id: 503 }],
-      },
-    }),
-  });
-
-  const previews = async () =>
-    (await getEditorialPlaylist(OWNER, "1306931615")).tracks.map((track) => track.preview_url);
-
-  const expected = ["/api/deezer/preview/501.mp3", "/api/deezer/preview/1758884077.mp3", null];
-  assert.deepEqual(await previews(), expected);
-  assert.deepEqual(await previews(), expected);
-  assert.equal(requests.filter((request) => /^\/(track\/isrc|search)/.test(request)).length, 5);
-});
-
 test("a Deezer playlist whose name is taken gets a distinct library name", async (t: import("vite-plus/test").TestContext) => {
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
