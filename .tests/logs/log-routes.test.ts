@@ -153,3 +153,18 @@ test("failed integration calls are saved without their query string or path toke
   });
   assert.doesNotMatch(JSON.stringify(saved), /hunter2/);
 });
+
+test("a failed connection is saved with the network error behind it", async () => {
+  logOutgoingFailures();
+  const closed = await createMockHttpServer(() => {});
+  await closed.close();
+
+  await assert.rejects(axios.get(`${closed.url}/feed`));
+
+  assert.partialDeepStrictEqual(reported.at(-1), {
+    level: "warn",
+    msg: `GET ${new URL(closed.url).host} failed`,
+    data: { code: "ECONNREFUSED" },
+  });
+  assert.match(JSON.stringify(reported.at(-1)), /fetch failed: connect ECONNREFUSED/);
+});
