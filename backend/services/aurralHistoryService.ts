@@ -167,7 +167,11 @@ const resolveHistorySource = (
 
 const serializeHistoryMetadata = (value: unknown) => {
   if (!value || typeof value !== "object") return null;
-  return JSON.stringify(value);
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(Object.entries(nested).sort(([a], [b]) => a.localeCompare(b)))
+      : nested,
+  );
 };
 
 type HistoryFields = Pick<
@@ -232,15 +236,8 @@ export const upsertAurralHistory = (entry: HistoryEntryInput = {}) => {
         ? entry.metadata
         : null,
   };
-  const changed = hasHistoryRecordChanged(existing, nextRecord);
-  const record = {
-    ...nextRecord,
-    createdAt: existing
-      ? changed
-        ? Number(entry.createdAt) || Date.now()
-        : existing.createdAt
-      : Number(entry.createdAt) || Date.now(),
-  };
+  if (existing && !hasHistoryRecordChanged(existing, nextRecord)) return existing;
+  const record = { ...nextRecord, createdAt: Number(entry.createdAt) || Date.now() };
   dbOps.insertAurralHistory(record);
   dbOps.pruneAurralHistory({ maxAgeMs: MAX_AGE_MS });
   return record;
@@ -741,12 +738,6 @@ export const syncTrackDownloadHistory = async (
       entry.kind === "track_download" &&
       (entry.status === "processing" || entry.status === "pending" || entry.status === "blocked"),
   );
-
-  const historyJobIds = new Set(trackEntries.map((entry) => entry.metadata?.jobId).filter(Boolean));
-  for (const job of downloadTracker.getByStatus("blocked")) {
-    if (historyJobIds.has(job.id)) continue;
-    recordTrackJobBlocked(job, job.error || "Blocked for review");
-  }
 
   for (const entry of trackEntries) {
     const jobId = String(entry.metadata?.jobId || "").trim();
@@ -1390,7 +1381,10 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
     id: stableId("track_download", job?.id),
     kind: "track_download",
     title,
-    subtitle: `${job?.artistName || "Artist"} · ${resolvePlaylistName(playlistId)}`,
+    subtitle:
+      status === "blocked"
+        ? job?.error || "Blocked for review"
+        : `${job?.artistName || "Artist"} · ${resolvePlaylistName(playlistId)}`,
     status,
     statusLabel,
     href: buildTrackJobHref(job),
