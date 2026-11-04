@@ -100,12 +100,8 @@ export async function requestLibraryTrack(
 
   const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
   try {
-    const { normalizeExistingFileMode, reuseTrackForPlaylist } =
-      await import("./downloadJobs/fileReuse.ts");
+    const { reuseTrackForPlaylist } = await import("./downloadJobs/fileReuse.ts");
     const reuse = await reuseTrackForPlaylist(track, "library", {
-      existingFileMode: normalizeExistingFileMode(
-        downloadWorker.getWorkerSettings().existingFileMode,
-      ),
       downloadRoot: downloadWorker.downloadRoot,
       existingJobId: jobId,
       targetPlaylistType: "library",

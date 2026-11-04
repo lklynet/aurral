@@ -102,7 +102,6 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
   const result = await reuseTrackForPlaylist(track, "target-playlist", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
 
@@ -136,7 +135,6 @@ test("reusing an existing track for a flow does not schedule a full library scan
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   const result = await reuseTrackForPlaylist(track, flow.id, {
-    existingFileMode: "reuse",
     downloadRoot,
   });
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -156,7 +154,6 @@ test("reuseTrackForPlaylist detects and reuses local audio file from disk withou
   await fs.writeFile(localFilePath, "audio");
 
   const result = await reuseTrackForPlaylist(track, "library", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
 
@@ -180,7 +177,6 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   await fs.writeFile(localFilePath, "audio");
 
   const result = await reuseTrackForPlaylist(track, "library", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
 
@@ -196,7 +192,7 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   const repeatedDir = path.join(downloadRoot, "Numbered Artist", "Repeated Album");
   await fs.mkdir(repeatedDir, { recursive: true });
   await fs.writeFile(path.join(repeatedDir, "01 - Theme.flac"), "audio");
-  const options = { existingFileMode: "reuse", downloadRoot };
+  const options = { downloadRoot };
   assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).reused, false);
   const reprisePath = path.join(repeatedDir, "09 - Theme.flac");
   await fs.writeFile(reprisePath, "audio");
@@ -279,48 +275,10 @@ test("library reuse does not cross album boundaries for the same track title", a
       trackMbid: "volume-1-track",
     },
     "library",
-    { existingFileMode: "reuse", downloadRoot },
+    { downloadRoot },
   );
 
   assert.equal(result.reused, false);
-});
-
-test("reuseTrackForPlaylist does not inspect sources when reuse is disabled", async () => {
-  const result = await reuseTrackForPlaylist(
-    { artistName: "Artist", trackName: "Song", albumName: "Album" },
-    "target-playlist",
-    {
-      existingFileMode: "download",
-      downloadRoot,
-    },
-  );
-
-  assert.equal(result.reused, false);
-  assert.equal(downloadTracker.getAll().length, 0);
-});
-
-test("repairReusableTrackLinks does nothing when reuse is disabled", async () => {
-  const track = {
-    artistName: "Artist",
-    trackName: "Song",
-    albumName: "Album",
-  };
-  const playlistPath = path.join(downloadRoot, "aurral-weekly-flow", "flow-playlist", "Song.flac");
-  await fs.mkdir(path.dirname(playlistPath), { recursive: true });
-  await fs.writeFile(playlistPath, "audio");
-  const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
-  assert.ok(jobId != null);
-  downloadTracker.setDone(jobId, playlistPath, track.albumName);
-
-  const result = await repairReusableTrackLinks({
-    existingFileMode: "download",
-    downloadRoot,
-  });
-
-  assert.equal(result.scanned, 0);
-  assert.equal(result.repaired, 0);
-  assert.equal(result.requeued, 0);
-  assert.equal(await fs.readFile(playlistPath, "utf8"), "audio");
 });
 
 test("restoreCompletedTrack requeues done jobs when the file and reuse source are missing", async () => {
@@ -335,7 +293,6 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
   downloadTracker.setDone(jobId, missingPath, track.albumName);
 
   const result = await restoreCompletedTrack(trackedJob(downloadTracker, jobId), {
-    existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({ source: null, reason: "No source" }),
   });
@@ -368,7 +325,6 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
     .mockImplementation(() => 1);
 
   const result = await repairJobsUnderRemovedPlaylistDir(deletedFlowId, {
-    existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({ source: null, reason: "No source" }),
   });
@@ -399,7 +355,6 @@ test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing f
   downloadTracker.setDone(jobId, reusedPath, track.albumName);
 
   const result = await repairOrphanedPlaylistTrackPaths({
-    existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({ source: null, reason: "No source" }),
   });
@@ -429,7 +384,6 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
     .mockImplementation(() => 1);
 
   const result = await repairReusableTrackLinks({
-    existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({ source: null, reason: "No source" }),
   });
@@ -456,7 +410,6 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
     .mockImplementation(() => 1);
 
   const result = await repairReusableTrackLinks({
-    existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({
       source: { sourceType: "aurral", sourcePath, albumName: track.albumName },
@@ -491,7 +444,6 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
   const result = await reuseTrackForPlaylist(track, "keepers", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
 
@@ -710,7 +662,7 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
 
-  const result = await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });
+  const result = await moveHandedOverTracksToLidarr({ downloadRoot });
 
   assert.deepEqual(result, { moved: 1, deleted: 1 });
   assert.equal(
@@ -725,7 +677,7 @@ test("Aurral copies stay when the album was not handed over", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
-  await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });
+  await moveHandedOverTracksToLidarr({ downloadRoot });
   assert.equal(
     trackedJob(downloadTracker, notHandedOver.jobId).finalPath,
     notHandedOver.aurralPath,
@@ -828,12 +780,10 @@ test("playlists reuse a Lidarr file only while Lidarr is on", async (t: import("
 
   setLidarr(false);
   const off = await reuseTrackForPlaylist(track, "off-playlist", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
   setLidarr(true);
   const on = await reuseTrackForPlaylist(track, "on-playlist", {
-    existingFileMode: "reuse",
     downloadRoot,
   });
 

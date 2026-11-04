@@ -7,7 +7,6 @@ import {
   syncDownloadFolderPath,
   validateDownloadFolderPath,
 } from "../../services/downloadFolderConfig.ts";
-import { normalizeExistingFileMode } from "../../services/downloadJobs/fileReuseMode.ts";
 import { normalizeDateTimeFormat } from "../../config/constants.ts";
 import type { defaultData } from "../../config/constants.ts";
 import {
@@ -48,7 +47,6 @@ type StoredSecurity = v.InferOutput<typeof securitySchema>;
 export interface StoredPlaylistWorker {
   concurrency?: unknown;
   retryPausedPlaylistIds?: unknown;
-  existingFileMode?: unknown;
 }
 
 interface StoredMissingTrackSearch {
@@ -181,7 +179,6 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
   return {
     concurrency,
     retryPausedPlaylistIds,
-    existingFileMode: normalizeExistingFileMode(worker.existingFileMode),
   };
 }
 

@@ -293,6 +293,7 @@ export function PlaylistImportModal({
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [filePlaylist, setFilePlaylist] = useState<FilePlaylist | null>(null);
   const [fileError, setFileError] = useState("");
+  const [fileDownloadMissing, setFileDownloadMissing] = useState(true);
   const [playlistQuery, setPlaylistQuery] = useState("");
   const [pickedPlaylist, setPickedPlaylist] = useState<ImportPlaylist | null>(null);
   const [playlistNameDraft, setPlaylistNameDraft] = useState<string | null>(null);
@@ -695,7 +696,12 @@ export function PlaylistImportModal({
     }
     const name = reserveUniqueName(new Set(reservedNameKeys), baseName);
     fileImport.mutate(
-      { name, sourceName: "M3U file", tracks: filePlaylist.tracks },
+      {
+        name,
+        sourceName: "M3U file",
+        tracks: filePlaylist.tracks,
+        downloadMissing: fileDownloadMissing,
+      },
       {
         onSuccess: () => {
           showSuccess?.(`Queued import of ${name}`);
@@ -924,7 +930,24 @@ export function PlaylistImportModal({
     if (source === "file" && filePlaylist) {
       return (
         <>
-          <SettingsGroup>{nameRow}</SettingsGroup>
+          <SettingsGroup>
+            {nameRow}
+            <SettingsRow
+              label="Download missing tracks"
+              help={
+                fileDownloadMissing
+                  ? "Tracks not in your Library download with your sources."
+                  : "Tracks not in your Library are saved without downloading."
+              }
+            >
+              <PillToggle
+                checked={fileDownloadMissing}
+                aria-label="Download missing tracks"
+                onChange={(event) => setFileDownloadMissing(event.target.checked)}
+                disabled={importing}
+              />
+            </SettingsRow>
+          </SettingsGroup>
           <ImportTracks
             tracks={filePlaylist.tracks.map((track) => ({
               artistName: track.artistName,

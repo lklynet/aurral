@@ -26,8 +26,6 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.ts";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
-import { normalizeExistingFileMode } from "./fileReuseMode.ts";
-export { EXISTING_FILE_MODES, normalizeExistingFileMode } from "./fileReuseMode.ts";
 
 type FolderSource = keyof typeof FOLDER_SOURCES;
 type SourceOptions = {
@@ -36,13 +34,12 @@ type SourceOptions = {
   excludeJobIds?: string[] | null;
   allowLidarr?: boolean;
 };
-type ReuseOptions = SourceOptions & { existingFileMode?: string | null };
-type ReuseTrackOptions = ReuseOptions & {
+type ReuseTrackOptions = SourceOptions & {
   existingJobId?: string | null;
   skipHistory?: boolean;
   libraryScanChangedPaths?: string[] | null;
 };
-type RestoreOptions = ReuseOptions & {
+type RestoreOptions = SourceOptions & {
   requeueOnMissing?: boolean;
   resolveSource?: typeof resolveRepairTrackSource;
 };
@@ -719,18 +716,13 @@ async function findFolderSource(
  * Resolves a reusable track source from local storage, Aurral library, or Lidarr library.
  *
  * @param {object} track - Track metadata to locate.
- * @param {object} [options={}] - Reuse options including targetPlaylistType and existingFileMode.
+ * @param {object} [options={}] - Reuse options including targetPlaylistType.
  * @returns {Promise<{source: object|null, reason: string|null}>}
  */
 export async function resolveReusableTrackSource(
   track: DownloadTrackInput,
-  options: ReuseOptions = {},
+  options: SourceOptions = {},
 ) {
-  const mode = normalizeExistingFileMode(options.existingFileMode);
-  if (mode === "download") {
-    return { source: null, reason: "Existing file reuse is disabled" };
-  }
-
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
@@ -745,18 +737,13 @@ export async function resolveReusableTrackSource(
  * Resolves a repair source for a track, checking local storage, Lidarr, and Aurral library.
  *
  * @param {object} track - Track metadata to locate for repair.
- * @param {object} [options={}] - Repair options including targetPlaylistType and existingFileMode.
+ * @param {object} [options={}] - Repair options including targetPlaylistType.
  * @returns {Promise<{source: object|null, reason: string|null}>}
  */
 export async function resolveRepairTrackSource(
   track: DownloadTrackInput,
-  options: ReuseOptions = {},
+  options: SourceOptions = {},
 ) {
-  const mode = normalizeExistingFileMode(options.existingFileMode);
-  if (mode === "download") {
-    return { source: null, reason: "Existing file reuse is disabled" };
-  }
-
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
@@ -768,10 +755,6 @@ export async function resolveRepairTrackSource(
 }
 
 export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOptions = {}) {
-  const mode = normalizeExistingFileMode(options.existingFileMode);
-  if (mode === "download") {
-    return { action: "skipped", reason: "Existing file reuse is disabled" };
-  }
   if (!job || job.status !== "done" || !job.finalPath) {
     return { action: "skipped", reason: "Track is not completed" };
   }
@@ -785,7 +768,6 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
   const resolveSource = options.resolveSource || resolveRepairTrackSource;
   const { source, reason } = await resolveSource(job, {
     ...options,
-    existingFileMode: mode,
     targetPlaylistType: job.playlistType,
     excludeJobIds: [job.id],
     allowLidarr: options.allowLidarr ?? !job.requestGroupId,
@@ -975,18 +957,6 @@ const REUSE_REPAIR_BATCH_SIZE = 50;
 export async function repairReusableTrackLinks(
   options: RestoreOptions & { batchSize?: number; cursor?: number } = {},
 ) {
-  const mode = normalizeExistingFileMode(options.existingFileMode);
-  if (mode === "download") {
-    return {
-      scanned: 0,
-      repaired: 0,
-      requeued: 0,
-      skipped: 0,
-      failures: 0,
-      nextCursor: 0,
-    };
-  }
-
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const jobs = downloadTracker
     .getAll()
@@ -1013,7 +983,6 @@ export async function repairReusableTrackLinks(
     try {
       const result = await restoreCompletedTrack(job, {
         ...options,
-        existingFileMode: mode,
         downloadRoot,
         requeueOnMissing: true,
       });
@@ -1083,14 +1052,7 @@ const handedOverAurralPathsStmt = db
 `)
   .pluck();
 
-export async function moveHandedOverTracksToLidarr(
-  options: {
-    existingFileMode?: string | null;
-    downloadRoot?: string | null;
-  } = {},
-) {
-  if (normalizeExistingFileMode(options.existingFileMode) === "download")
-    return { moved: 0, deleted: 0 };
+export async function moveHandedOverTracksToLidarr(options: { downloadRoot?: string | null } = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const handedOver = new Set(
     handedOverAurralPathsStmt.all().map((filePath) => path.resolve(filePath)),
@@ -1155,10 +1117,6 @@ export async function reuseTrackForPlaylist(
   playlistType: string,
   options: ReuseTrackOptions = {},
 ) {
-  const mode = normalizeExistingFileMode(options.existingFileMode);
-  if (mode === "download") {
-    return { reused: false, reason: "Existing file reuse is disabled" };
-  }
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const targetPlaylistType = String(options.targetPlaylistType || playlistType || "").trim();
   if (targetPlaylistType === "library") {
@@ -1188,7 +1146,6 @@ export async function reuseTrackForPlaylist(
   }
   const { source, reason } = await resolveReusableTrackSource(track, {
     ...options,
-    existingFileMode: mode,
     downloadRoot,
     targetPlaylistType,
   });
