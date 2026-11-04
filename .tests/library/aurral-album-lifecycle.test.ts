@@ -1047,7 +1047,11 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
     if (endpoint.startsWith("/history")) return [];
     if (endpoint.startsWith("/command")) return [];
     if (endpoint === "/album/7") {
-      return { id: 7, foreignAlbumId: "lidarr-album", artist: { foreignArtistId: "lidarr-artist" } };
+      return {
+        id: 7,
+        foreignAlbumId: "lidarr-album",
+        artist: { foreignArtistId: "lidarr-artist" },
+      };
     }
     return [];
   });
