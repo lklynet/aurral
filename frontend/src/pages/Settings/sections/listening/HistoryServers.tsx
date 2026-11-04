@@ -19,10 +19,20 @@ import {
 
 export const HISTORY_SERVERS = ["navidrome", "plex", "jellyfin"] as const;
 export type HistoryServerProvider = (typeof HISTORY_SERVERS)[number];
-type HistoryServer = InferResponseType<typeof historyServersClient.$get, 200>["servers"][number];
+type LoginHistoryServer = Exclude<HistoryServerProvider, "plex">;
+export type HistoryServer = InferResponseType<
+  typeof historyServersClient.$get,
+  200
+>["servers"][number];
+
+const LABELS: Record<HistoryServerProvider, string> = {
+  navidrome: "Navidrome",
+  plex: "Plex",
+  jellyfin: "Jellyfin",
+};
 
 const FIELDS: Record<
-  HistoryServerProvider,
+  LoginHistoryServer,
   { label: string; url: string; username: string; secret: string; help: string }
 > = {
   navidrome: {
@@ -31,13 +41,6 @@ const FIELDS: Record<
     username: "Username",
     secret: "Password",
     help: "Imports the plays Navidrome records for this user.",
-  },
-  plex: {
-    label: "Plex",
-    url: "http://plex:32400",
-    username: "Plex account",
-    secret: "Server owner token",
-    help: "Imports the plays Plex records for this account.",
   },
   jellyfin: {
     label: "Jellyfin",
@@ -48,7 +51,7 @@ const FIELDS: Record<
   },
 };
 
-export const historyServerLabel = (provider: HistoryServerProvider) => FIELDS[provider].label;
+export const historyServerLabel = (provider: HistoryServerProvider) => LABELS[provider];
 
 export function useHistoryServers() {
   const { user } = useAuth();
@@ -66,7 +69,15 @@ export function historyServerStatus(server: HistoryServer | undefined): ServiceS
   return { label: "History" };
 }
 
-export function HistoryServerDetail({ provider }: { provider: HistoryServerProvider }) {
+export const historyNote = (server: HistoryServer) =>
+  [
+    `${server.plays.toLocaleString()} ${server.plays === 1 ? "play" : "plays"} imported`,
+    server.lastSyncedAt
+      ? `Last synced ${formatDateTime(new Date(server.lastSyncedAt))}`
+      : "Importing",
+  ].join(". ");
+
+export function HistoryServerDetail({ provider }: { provider: LoginHistoryServer }) {
   const { user, hasPermission } = useAuth();
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -124,19 +135,7 @@ export function HistoryServerDetail({ provider }: { provider: HistoryServerProvi
         <SettingsNote tone="warning">Couldn&apos;t load {fields.label}.</SettingsNote>
       ) : null}
       {server?.lastError ? <SettingsNote tone="warning">{server.lastError}</SettingsNote> : null}
-      <SettingsGroup
-        title="History"
-        note={
-          server
-            ? [
-                `${server.plays.toLocaleString()} ${server.plays === 1 ? "play" : "plays"} imported`,
-                server.lastSyncedAt
-                  ? `Last synced ${formatDateTime(new Date(server.lastSyncedAt))}`
-                  : "Importing",
-              ].join(". ")
-            : fields.help
-        }
-      >
+      <SettingsGroup title="History" note={server ? historyNote(server) : fields.help}>
         {canConnect ? (
           <form
             onSubmit={(event) => {
@@ -208,7 +207,7 @@ export function HistoryServerDetail({ provider }: { provider: HistoryServerProvi
   );
 }
 
-function HistoryServerActions({
+export function HistoryServerActions({
   busy,
   label,
   onSync,

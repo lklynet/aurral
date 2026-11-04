@@ -5,9 +5,12 @@ import { db } from "../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import type { HistoryServersRow } from "../db/rows.ts";
+import { getPlexServer } from "./plex.ts";
 
 export const HISTORY_SERVER_PROVIDERS = ["navidrome", "plex", "jellyfin"] as const;
 export type HistoryServerProvider = (typeof HISTORY_SERVER_PROVIDERS)[number];
+export const LOGIN_HISTORY_SERVERS = ["navidrome", "jellyfin"] as const;
+type LoginHistoryServer = (typeof LOGIN_HISTORY_SERVERS)[number];
 
 type Connection = { url: string; username: string; secret: string; accountId: string | null };
 export type ImportedPlay = {
@@ -21,9 +24,14 @@ export type ImportedPlay = {
   artistMbid?: string;
   durationMs?: number;
 };
+type Reader = (
+  connection: Connection,
+  since: number,
+  until: number,
+) => AsyncGenerator<ImportedPlay[]>;
 type Provider = {
   connect: (connection: Connection) => Promise<{ accountId: string | null }>;
-  read: (connection: Connection, since: number, until: number) => AsyncGenerator<ImportedPlay[]>;
+  read: Reader;
 };
 
 const PAGE_SIZE = 500;
@@ -118,49 +126,36 @@ const plexHeaders = (token: string) => ({
   "X-Plex-Product": "Aurral",
 });
 
-const plex: Provider = {
-  async connect({ url, username, secret }) {
-    const { data } = await axios.get(`${url}/accounts`, {
+const readPlex: Reader = async function* ({ url, secret, accountId }, since, until) {
+  for (let start = 0; ; start += PAGE_SIZE) {
+    const { data } = await axios.get(`${url}/status/sessions/history/all`, {
+      params: {
+        "viewedAt>": Math.floor(since / 1000) - 1,
+        "viewedAt<": Math.ceil(until / 1000),
+        accountID: accountId,
+        sort: "viewedAt:asc",
+        "X-Plex-Container-Start": start,
+        "X-Plex-Container-Size": PAGE_SIZE,
+      },
       headers: plexHeaders(secret),
       timeout: TIMEOUT_MS,
     });
-    const accounts = list(object(object(data).MediaContainer).Account).map(object);
-    const account = accounts.find((candidate) => sameName(candidate.name, username));
-    if (!account || account.id == null)
-      throw new HistoryServerError(`Plex has no account named ${username}`);
-    return { accountId: String(account.id) };
-  },
-  async *read({ url, secret, accountId }, since, until) {
-    for (let start = 0; ; start += PAGE_SIZE) {
-      const { data } = await axios.get(`${url}/status/sessions/history/all`, {
-        params: {
-          "viewedAt>": Math.floor(since / 1000) - 1,
-          "viewedAt<": Math.ceil(until / 1000),
-          accountID: accountId,
-          sort: "viewedAt:asc",
-          "X-Plex-Container-Start": start,
-          "X-Plex-Container-Size": PAGE_SIZE,
-        },
-        headers: plexHeaders(secret),
-        timeout: TIMEOUT_MS,
-      });
-      const container = object(object(data).MediaContainer);
-      if (!Array.isArray(container.Metadata) && container.size !== 0)
-        throw new HistoryServerError("Plex history is unavailable");
-      const rows = list(container.Metadata).map(object);
-      yield rows
-        .filter((row) => row.type === "track")
-        .map((row) => ({
-          id: text(row.historyKey) || `${text(row.ratingKey)}:${number(row.viewedAt)}`,
-          trackId: text(row.ratingKey),
-          playedAt: number(row.viewedAt) * 1000,
-          title: text(row.title),
-          artist: text(row.originalTitle) || text(row.grandparentTitle),
-          album: text(row.parentTitle),
-        }));
-      if (rows.length < PAGE_SIZE) return;
-    }
-  },
+    const container = object(object(data).MediaContainer);
+    if (!Array.isArray(container.Metadata) && container.size !== 0)
+      throw new HistoryServerError("Plex history is unavailable");
+    const rows = list(container.Metadata).map(object);
+    yield rows
+      .filter((row) => row.type === "track")
+      .map((row) => ({
+        id: text(row.historyKey) || `${text(row.ratingKey)}:${number(row.viewedAt)}`,
+        trackId: text(row.ratingKey),
+        playedAt: number(row.viewedAt) * 1000,
+        title: text(row.title),
+        artist: text(row.originalTitle) || text(row.grandparentTitle),
+        album: text(row.parentTitle),
+      }));
+    if (rows.length < PAGE_SIZE) return;
+  }
 };
 
 const jellyfinHeaders = (apiKey: string) => ({
@@ -250,7 +245,12 @@ const jellyfin: Provider = {
   },
 };
 
-const PROVIDERS: Record<HistoryServerProvider, Provider> = { navidrome, plex, jellyfin };
+const PROVIDERS: Record<LoginHistoryServer, Provider> = { navidrome, jellyfin };
+const READERS: Record<HistoryServerProvider, Reader> = {
+  navidrome: navidrome.read,
+  plex: readPlex,
+  jellyfin: jellyfin.read,
+};
 
 const selectServer = db.prepare<[number, string], HistoryServersRow>(
   "SELECT * FROM history_servers WHERE user_id = ? AND provider = ?",
@@ -276,6 +276,7 @@ const recordSync = db.prepare<[number | null, number, string | null, number, str
   SET synced_until = COALESCE(?, synced_until), last_synced_at = ?, last_error = ?
   WHERE user_id = ? AND provider = ? AND connected_at = ?
 `);
+const forgetPlexServer = db.prepare("UPDATE history_servers SET url = '' WHERE provider = 'plex'");
 const deleteServer = db.prepare<[number, string]>(
   "DELETE FROM history_servers WHERE user_id = ? AND provider = ?",
 );
@@ -337,6 +338,23 @@ const insertPlays = db.transaction(
 const secretKey = () => getSettingsEncryptionKey();
 
 function connectionOf(row: HistoryServersRow): Connection {
+  if (row.provider === "plex") {
+    const server = getPlexServer();
+    if (!server)
+      throw new HistoryServerError(
+        "Plex isn't connected. An admin can connect it in Settings > Listening > Plex.",
+      );
+    if (server.url !== row.url)
+      throw new HistoryServerError(
+        "The Plex server changed. Disconnect, then sign in with Plex again.",
+      );
+    return {
+      url: server.url,
+      username: row.username,
+      secret: server.token,
+      accountId: row.account_id,
+    };
+  }
   return {
     url: row.url,
     username: row.username,
@@ -361,7 +379,7 @@ export function listHistoryServers(userId: number) {
 
 export async function connectHistoryServer(
   userId: number,
-  provider: HistoryServerProvider,
+  provider: LoginHistoryServer,
   input: { url: string; username: string; secret: string | null },
 ) {
   const existing = selectServer.get(userId, provider);
@@ -369,6 +387,24 @@ export async function connectHistoryServer(
   if (!secret) throw new HistoryServerError("Enter the password, token, or API key");
   const connection = { url: input.url, username: input.username, secret, accountId: null };
   const { accountId } = await PROVIDERS[provider].connect(connection);
+  return saveConnection(userId, provider, { ...connection, accountId });
+}
+
+// A Plex account ID only means something on the server it came from, so a
+// connected or removed server makes every Plex history connection sign in again.
+export function forgetPlexHistoryServer() {
+  forgetPlexServer.run();
+}
+
+export function connectPlexHistory(
+  userId: number,
+  account: { url: string; username: string; accountId: string },
+) {
+  return saveConnection(userId, "plex", { ...account, secret: "" });
+}
+
+async function saveConnection(userId: number, provider: HistoryServerProvider, input: Connection) {
+  const { accountId, secret } = input;
   const removed = db.transaction(() => {
     const current = selectServer.get(userId, provider);
     const sameAccount =
@@ -413,7 +449,7 @@ export async function syncHistoryServer(userId: number, provider: HistoryServerP
   const since = Math.max(0, (row.synced_until ?? 0) - OVERLAP_MS);
   let imported = 0;
   try {
-    for await (const plays of PROVIDERS[provider].read(connectionOf(row), since, until)) {
+    for await (const plays of READERS[provider](connectionOf(row), since, until)) {
       const inserted = insertPlays(userId, provider, row.connected_at, plays);
       if (inserted === null) return { imported };
       imported += inserted;

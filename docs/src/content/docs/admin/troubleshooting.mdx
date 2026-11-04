@@ -86,7 +86,7 @@ By default, **Browse folders** opens only `/data`, the app data folder, and the 
 - Make sure that **Settings > Library > Library folder > Path** is under the shared media mount.
 - Make sure that the media server has the Library folder in a music library, not only the Lidarr library.
 - Check that the playlist file exists in the folder that **Settings > Library > Playlist files** shows.
-- Navidrome and Jellyfin import playlist files. Plex does not. See [Plex](/integrations/plex/#playlists).
+- Plex gets playlists only when an admin connects it with **Send playlists** on. See [Plex](/integrations/plex/#playlists).
 - Read about [removing missing tracks in Navidrome](/integrations/navidrome/#remove-missing-tracks).
 
 ## Library reuse or download import fails on Windows
@@ -115,7 +115,7 @@ The **Lidarr library** storage check can fail on a sample track outside every Li
 
 - Wait for the media server to finish its scan. Jellyfin can take a few minutes.
 - Make sure that the media server has the Library folder and each Lidarr folder that playlists reuse in its music libraries.
-- Make sure that the server sees the Lidarr root folder in the same place relative to the Library folder as Aurral. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).
+- Make sure that the server sees the Library folder and the Lidarr root folder at the same paths as Aurral. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).
 - Make sure that the **Lidarr library** storage check passes.
 
 ## A Subsonic client cannot sign in

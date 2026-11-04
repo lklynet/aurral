@@ -65,12 +65,12 @@ export function playlistDisplayNames(
   return names;
 }
 
-export function buildPlaylistFile(tracks: readonly PlaylistFileTrack[], directory: string) {
+export function buildPlaylistFile(tracks: readonly PlaylistFileTrack[]) {
   const lines = ["#EXTM3U"];
   for (const track of tracks) {
     const seconds = Math.max(0, Math.round((track.durationMs ?? 0) / 1000));
     lines.push(`#EXTINF:${seconds},${track.artist} - ${track.title}`);
-    lines.push(path.relative(directory, track.path).split(path.sep).join("/"));
+    lines.push(track.path);
   }
   return `${lines.join("\n")}\n`;
 }

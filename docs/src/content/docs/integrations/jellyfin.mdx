@@ -18,7 +18,7 @@ Aurral writes an M3U file for each enabled flow and each static playlist to `aur
 
 - Jellyfin imports each file as a playlist that every Jellyfin user can see.
 - Jellyfin applies a change a minute or two after the file changes. Aurral writes each changed file again a few minutes later, so tracks that Jellyfin was still indexing appear too.
-- The files use paths relative to the playlist file. Jellyfin must see the Library folder and the Lidarr root folder with the same layout as Aurral.
+- The files list each track by its full path in Aurral. Jellyfin must see the Library folder and the Lidarr root folder at the same paths.
 - When a playlist is deleted or its flow is turned off, Aurral removes its file and Jellyfin removes the playlist.
 
 Edit these playlists in Aurral, not in Jellyfin.

@@ -408,7 +408,7 @@ test("a track committed after an approved review joins the same pending playlist
   const reviewedPath = trackedJob(downloadTracker, reviewedJobId).finalPath;
   assert.ok(reviewedPath != null);
   for (const file of [pipelinePath, reviewedPath]) {
-    assert.ok(published.includes(path.relative(playlistManager.libraryRoot, file)), published);
+    assert.ok(published.includes(file), published);
   }
 });
 
