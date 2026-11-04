@@ -141,6 +141,19 @@ test("a playlist action shows once its plugin is on and set up, and gets the pla
   assert.notEqual(db.prepare("SELECT settings FROM plugins").pluck().get(), '{"token":"secret"}');
 });
 
+test("a plugin runs its new code once its file changes, even when no one restarted it", async () => {
+  const code = (message: string) =>
+    `export default { actions: { send: () => ({ message: "${message}" }) } };`;
+  await install("box", sendAction, code("first"));
+  await turnOn("box");
+  const playlistId = ownedPlaylist();
+  const answer = async () => (await (await run(owner, "box", "send", playlistId)).json()).message;
+
+  assert.equal(await answer(), "first");
+  await writeFile(path.join(pluginsDir(), "box", "index.js"), code("second version"));
+  assert.equal(await answer(), "second version");
+});
+
 test("saving one setting keeps the others, and an empty value clears it", async () => {
   await install(
     "box",

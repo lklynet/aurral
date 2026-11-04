@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import type { Readable } from "node:stream";
@@ -34,6 +34,7 @@ type Pending = {
 };
 type Exports = string[];
 type Running = {
+  code: string;
   child: ChildProcess;
   ready: Promise<Exports>;
   pending: Map<number, Pending>;
@@ -94,7 +95,12 @@ function failAll(state: Running, error: BrokenPlugin | PluginError) {
   state.pending.clear();
 }
 
-function start(plugin: InstalledPlugin): Running {
+function codeStamp(id: string) {
+  const main = statSync(path.join(pluginFolder(id), PLUGIN_MAIN), { throwIfNoEntry: false });
+  return main ? `${main.ino}:${main.size}:${main.mtimeMs}` : "";
+}
+
+function start(plugin: InstalledPlugin, code: string): Running {
   mkdirSync(pluginDataFolder(plugin.id), { recursive: true });
   const child = fork(RUNNER, [path.join(pluginFolder(plugin.id), PLUGIN_MAIN)], {
     cwd: pluginFolder(plugin.id),
@@ -107,6 +113,7 @@ function start(plugin: InstalledPlugin): Running {
   const settle = Promise.withResolvers<Exports>();
   settle.promise.catch(() => {});
   const state: Running = {
+    code,
     child,
     ready: settle.promise,
     pending: new Map(),
@@ -181,9 +188,18 @@ function scheduleIdleStop(id: string, state: Running) {
   state.idle.unref();
 }
 
-async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: number) {
-  const state = running.get(plugin.id) ?? start(plugin);
+function runningPlugin(plugin: InstalledPlugin) {
+  const code = codeStamp(plugin.id);
+  const current = running.get(plugin.id);
+  if (current?.code === code) return current;
+  stopPlugin(plugin.id);
+  const state = start(plugin, code);
   running.set(plugin.id, state);
+  return state;
+}
+
+async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: number) {
+  const state = runningPlugin(plugin);
   if (state.idle) clearTimeout(state.idle);
   const id = nextCallId++;
   try {
