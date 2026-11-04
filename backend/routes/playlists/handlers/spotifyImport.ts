@@ -38,7 +38,7 @@ function sendSpotifyError<E extends AppEnv>(c: Context<E>, error: unknown, fallb
       {
         error: "Spotify authentication required",
         code: SPOTIFY_AUTH_REQUIRED_CODE,
-        message: "Your Spotify connection expired. Connect Spotify again.",
+        message: failure.message,
       },
       401,
     );
