@@ -39,23 +39,23 @@ Aurral calls one function with one object and waits for its answer.
 }
 ```
 
-| Field            | Use                                                                                                                                                                              |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`             | Lowercase letters, numbers, and `-`. The folder has the same name.                                                                                                               |
-| `name`           | Shown in Settings, menus, and errors.                                                                                                                                            |
-| `version`        | Shown on the plugin's page.                                                                                                                                                      |
-| `api`            | `1`.                                                                                                                                                                             |
-| `description`    | One or two sentences for the plugin's page.                                                                                                                                      |
-| `repository`     | An `https` link. Aurral links to it when the plugin fails, so people report plugin bugs to you.                                                                                  |
-| `uses`           | Up to 10 short notes on what the plugin reads or connects to, like `plex.tv` or `Your plays`. Shown before install.                                                              |
-| `settings`       | Fields for the plugin's page. `type` is `text`, `password`, `number`, or `boolean`. `required` fields must be filled before the plugin runs. `help` adds a line under the field. |
-| `test`           | `true` when `index.js` exports `test`. The plugin's page then shows a **Test** button.                                                                                           |
-| `actions`        | Menu items. See [Actions](#actions).                                                                                                                                             |
-| `events`         | Events the plugin receives. See [Events](#events).                                                                                                                               |
-| `downloadSource` | `{ "albums": false }` for a track source, `{ "albums": true }` to also download albums. See [Download sources](#download-sources).                                               |
-| `importList`     | `{ "label": "Bandcamp", "hosts": ["bandcamp.com"] }` to import playlists from links on those hosts. See [Import lists](#import-lists).                                           |
-| `schedule`       | `"15m"`, `"1h"`, `"6h"`, or `"24h"` to run `scheduled` that often. See [Schedules](#schedules).                                                                                  |
-| `apiAccess`      | `true` to get a key to Aurral's API. See [Aurral's API](#aurrals-api).                                                                                                           |
+| Field            | Use                                                                                                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | Lowercase letters, numbers, and `-`. The folder has the same name.                                                                                                                                              |
+| `name`           | Shown in Settings, menus, and errors.                                                                                                                                                                           |
+| `version`        | Shown on the plugin's page.                                                                                                                                                                                     |
+| `api`            | `1`.                                                                                                                                                                                                            |
+| `description`    | One or two sentences for the plugin's page.                                                                                                                                                                     |
+| `repository`     | An `https` link. Aurral links to it when the plugin fails, so people report plugin bugs to you.                                                                                                                 |
+| `uses`           | Up to 10 short notes on what the plugin reads or connects to, like `plex.tv` or `Your plays`. Shown before install.                                                                                             |
+| `settings`       | Fields for the plugin's page. `type` is `text`, `password`, `number`, or `boolean`. `required` fields must be filled before the plugin runs. A `boolean` starts as `false`. `help` adds a line under the field. |
+| `test`           | `true` when `index.js` exports `test`. The plugin's page then shows a **Test** button.                                                                                                                          |
+| `actions`        | Menu items. See [Actions](#actions).                                                                                                                                                                            |
+| `events`         | Events the plugin receives. See [Events](#events).                                                                                                                                                              |
+| `downloadSource` | `{ "albums": false }` for a track source, `{ "albums": true }` to also download albums. See [Download sources](#download-sources).                                                                              |
+| `importList`     | `{ "label": "Bandcamp", "hosts": ["bandcamp.com"] }` to import playlists from links on those hosts. See [Import lists](#import-lists).                                                                          |
+| `schedule`       | `"15m"`, `"1h"`, `"6h"`, or `"24h"` to run `scheduled` that often. See [Schedules](#schedules).                                                                                                                 |
+| `apiAccess`      | `true` to get a key to Aurral's API. See [Aurral's API](#aurrals-api).                                                                                                                                          |
 
 Each capability can be turned off on its own in **Settings > Plugins**, so keep them independent.
 
@@ -125,7 +125,7 @@ Return `{ message }` to show it to the user, or nothing. An action has 2 minutes
 
 ## Events
 
-List events in the manifest and export a function for each under `events`. Aurral queues every event and retries a failed one 5 times with a growing delay, so a slow or failing plugin never holds Aurral up. An event has 1 minute. Its answer is ignored.
+List events in the manifest and export a function for each under `events`. Aurral queues every event and hands it to the plugin without waiting for the answer, so a slow plugin never holds Aurral up. An event has 10 seconds, isn't retried, and its answer is ignored. A crash or timeout still counts as broken.
 
 | Event               | When                                      | Receives                                                                                                                                                             |
 | ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

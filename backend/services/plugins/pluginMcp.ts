@@ -25,7 +25,7 @@ import {
   pluginManifestSchema,
 } from "./pluginManifest.ts";
 import { listPlugins, messageResult, refreshInstalledPlugins } from "./pluginService.ts";
-import { pluginInput, readPlugin, whilePluginTests } from "./pluginStore.ts";
+import { isSafeMode, pluginInput, readPlugin, whilePluginTests } from "./pluginStore.ts";
 
 const GUIDE_FILE = fileURLToPath(new URL("./plugin-api.md", import.meta.url));
 const TYPES_FILE = fileURLToPath(new URL("./aurral-plugin.d.ts", import.meta.url));
@@ -207,9 +207,13 @@ async function pluginLogs(pluginId: string, limit: number) {
 async function testPlugin(input: v.InferOutput<(typeof toolInputs)["test_plugin"]>) {
   const plugin = readPlugin(input.id);
   if (!plugin?.manifest) throw new PluginToolError("Write the plugin with write_plugin first");
+  if (isSafeMode())
+    throw new PluginToolError("Safe mode is on, so no plugin runs. Ask the admin to turn it off.");
   const installed = { ...plugin, manifest: plugin.manifest };
   const downloads = input.path.startsWith("downloadSource.");
   const directory = path.join(resolveAurralDataDir(), "_staging", "plugins", plugin.id, "test");
+  if (input.path === "downloadSource.download" || input.path === "downloadSource.downloadAlbum")
+    await fs.rm(directory, { recursive: true, force: true });
   if (downloads) await fs.mkdir(directory, { recursive: true });
   const call = {
     ...pluginInput(installed),

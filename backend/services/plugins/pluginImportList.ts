@@ -16,7 +16,7 @@ const MAX_TRACKS = 5000;
 const optionalText = v.nullish(v.pipe(v.string(), v.maxLength(500)));
 export const playlistResult = v.object({
   name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(200)),
-  artworkUrl: v.nullish(v.pipe(v.string(), v.url(), v.startsWith("https://"))),
+  artworkUrl: v.nullish(v.pipe(v.string(), v.url(), v.regex(/^https?:\/\//i))),
   tracks: v.pipe(
     v.array(
       v.object({

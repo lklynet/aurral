@@ -7,7 +7,7 @@ import { asAppError } from "../../lib/errors.ts";
 import { webhookSettingsSchema } from "../db/helpers/integrationSettings.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import {
-  deliverPluginEvent,
+  dispatchPluginEvent,
   emitPluginEvent,
   pluginEventDeliverySchema,
 } from "./plugins/pluginEvents.ts";
@@ -231,7 +231,7 @@ export async function deliverQueuedNotification(
     return;
   }
   if (payload.kind === "plugin") {
-    await deliverPluginEvent(payload);
+    dispatchPluginEvent(payload);
     return;
   }
   await sendWebhooksDirect(

@@ -23,7 +23,7 @@ const [
   { refreshInstalledPlugins, listPlugins },
   { flowPlaylistConfig },
   { websocketService },
-  { emitPluginEvent },
+  { deliverPluginEvent, emitPluginEvent, pluginEventDeliverySchema },
   { listHonkerJobs },
   { deliverQueuedNotification, queuedNotificationSchema },
   { scanMusicRoot },
@@ -242,13 +242,18 @@ test("an error the plugin throws is reported without turning it off", async () =
 });
 
 test("safe mode hides plugin actions and refuses to run them", async () => {
-  await install("box", sendAction, `export default { actions: { send: () => null } };`);
+  await install(
+    "box",
+    { ...sendAction, test: true },
+    `export default { test: () => null, actions: { send: () => null } };`,
+  );
   await turnOn("box");
   const playlistId = ownedPlaylist();
 
   await routes(admin).request("/plugins/safe-mode", json("PUT", { enabled: true }));
   assert.deepEqual(await actionsFor(owner), []);
   assert.equal((await run(owner, "box", "send", playlistId)).status, 404);
+  assert.equal((await routes(admin).request("/plugins/box/test", { method: "POST" })).status, 409);
 
   await routes(admin).request("/plugins/safe-mode", json("PUT", { enabled: false }));
   assert.deepEqual(await (await run(owner, "box", "send", playlistId)).json(), {
@@ -414,7 +419,7 @@ test("an event is queued for each subscribed plugin and delivered with its data"
   emitPluginEvent("track.played", played);
   const [job] = queued();
   assert.ok(job);
-  await deliverQueuedNotification(v.parse(queuedNotificationSchema, job.payload));
+  await deliverPluginEvent(v.parse(pluginEventDeliverySchema, job.payload));
   const input = JSON.parse(await readFile(out, "utf8"));
   assert.equal(input.event, "track.played");
   assert.deepEqual(input.track, { title: "Night Drive" });
@@ -430,8 +435,22 @@ test("an event is queued for each subscribed plugin and delivered with its data"
     "export default {};",
   );
   for (let attempt = 0; attempt < 3; attempt += 1)
-    await deliverQueuedNotification(v.parse(queuedNotificationSchema, stale.payload));
+    await deliverPluginEvent(v.parse(pluginEventDeliverySchema, stale.payload));
   assert.equal((await listPlugins()).plugins[0]?.enabled, true);
+});
+
+test("a plugin that never answers an event doesn't hold up Aurral's notifications", async () => {
+  await install(
+    "stuck",
+    { events: ["track.played"] },
+    `export default { events: { "track.played": () => new Promise(() => {}) } };`,
+  );
+  await turnOn("stuck");
+  emitPluginEvent("track.played", { playedAt: 1 });
+  const [job] = listHonkerJobs("_outbox:notifications");
+  assert.ok(job);
+
+  await deliverQueuedNotification(v.parse(queuedNotificationSchema, job.payload));
 });
 
 test("an import list previews links on its hosts and refuses others", async () => {

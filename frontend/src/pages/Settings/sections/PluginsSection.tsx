@@ -9,7 +9,8 @@ import { queryKeys } from "../../../queryClient.ts";
 import { API_BASE_URL } from "../../../utils/api/core.ts";
 import { pluginsClient } from "../../../utils/api/clients/plugins.ts";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
-import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
+import { copyText } from "../../../utils/shareLink.ts";
+import { SettingsCommitInput, SettingsInput, SettingsTextarea } from "../components/SettingsField";
 import { useSettingsRoute } from "../settingsRoute.tsx";
 import { readApiError } from "../utils/apiError.ts";
 import {
@@ -503,13 +504,19 @@ function AgentGroup() {
       parseResponse(pluginsClient["dev-keys"].$get({}, { init: { signal } })),
   });
   const refreshKeys = () => queryClient.invalidateQueries({ queryKey: queryKeys.pluginDevKeys });
+  const [prompt, setPrompt] = useState<string | null>(null);
   const copy = useMutation({
     mutationFn: async () => {
       const { key } = await parseResponse(pluginsClient["dev-keys"].$post());
-      await navigator.clipboard.writeText(agentPrompt(key));
+      const text = agentPrompt(key);
+      const copied = await copyText(text);
+      setPrompt(copied ? null : text);
+      return copied;
     },
-    onSuccess: () => showSuccess("Prompt copied. Paste it into your agent."),
-    onError: () => showError("Couldn't copy the prompt"),
+    onSuccess: (copied) => {
+      if (copied) showSuccess("Prompt copied. Paste it into your agent.");
+    },
+    onError: (error) => showError(errorText(error, "Couldn't create a developer key")),
     onSettled: refreshKeys,
   });
   const revoke = useMutation({
@@ -535,6 +542,21 @@ function AgentGroup() {
           Copy prompt
         </button>
       </SettingsRow>
+      {prompt ? (
+        <SettingsRow
+          label="Prompt"
+          help="Your browser didn't allow copying. Copy this into your agent."
+          stack
+        >
+          <SettingsTextarea
+            readOnly
+            rows={4}
+            value={prompt}
+            aria-label="Agent prompt"
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </SettingsRow>
+      ) : null}
       {(keys.data?.keys ?? []).map((key) => (
         <SettingsRow
           key={key.id}

@@ -116,9 +116,8 @@ export function isPluginReady(plugin: InstalledPlugin) {
   return plugin.manifest.settings.every(
     (setting) =>
       !setting.required ||
-      (setting.type === "boolean"
-        ? typeof plugin.settings[setting.key] === "boolean"
-        : String(plugin.settings[setting.key] ?? "").trim() !== ""),
+      setting.type === "boolean" ||
+      String(plugin.settings[setting.key] ?? "").trim() !== "",
   );
 }
 
@@ -147,7 +146,14 @@ const hasApiAccess = (plugin: InstalledPlugin) =>
 
 export function pluginInput(plugin: InstalledPlugin) {
   return {
-    settings: plugin.settings,
+    settings: {
+      ...Object.fromEntries(
+        plugin.manifest.settings.flatMap((setting) =>
+          setting.type === "boolean" ? [[setting.key, false]] : [],
+        ),
+      ),
+      ...plugin.settings,
+    },
     libraryFolder: resolveDownloadRoot(),
     dataFolder: pluginDataFolder(plugin.id),
     ...(hasApiAccess(plugin)

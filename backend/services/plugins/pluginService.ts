@@ -183,6 +183,7 @@ export async function removePlugin(id: string) {
 export async function testPlugin(id: string, { countFailures = true } = {}) {
   const plugin = installedPlugin(id);
   if (!plugin.manifest.test) throw new PluginRequestError(400, "This plugin has no test");
+  if (isSafeMode()) throw new PluginRequestError(409, "Turn off safe mode to test plugins");
   try {
     const result = await whilePluginTests(id, () =>
       callPlugin(
