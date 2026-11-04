@@ -26,7 +26,6 @@ type TrackContext = {
   recordingMbid?: unknown;
   trackMbid?: unknown;
   recordingMbidAliases?: unknown;
-  isrc?: unknown;
   albumTrackCount?: unknown;
   albumTrackTitles?: unknown;
   secondaryTypes?: unknown;
@@ -83,7 +82,6 @@ export function buildTrackRequest(context: TrackContext = {}) {
     releaseMbid: cleanText(context.releaseMbid),
     recordingMbid: cleanText(context.recordingMbid || context.trackMbid),
     recordingMbidAliases: cleanTextList(context.recordingMbidAliases),
-    isrc: cleanText(context.isrc),
     variants: extractVariants(trackName),
     albumTrackCount: cleanPositiveInt(context.albumTrackCount),
     albumTrackTitles: cleanTextList(context.albumTrackTitles),

@@ -25,6 +25,7 @@ interface SpotifyTokenPayload {
 interface SpotifyTrackItem {
   type: "track";
   name?: string;
+  duration_ms?: number;
   artists?: { name?: string }[];
   album?: { name?: string };
 }
@@ -367,7 +368,7 @@ export const spotifyClient = {
         searchParams: {
           limit: 50,
           additional_types: "episode",
-          fields: "items(item(type,name,artists(name),album(name))),next,total,offset",
+          fields: "items(item(type,name,duration_ms,artists(name),album(name))),next,total,offset",
         },
         onPage: (page) => pages.push(page),
       },

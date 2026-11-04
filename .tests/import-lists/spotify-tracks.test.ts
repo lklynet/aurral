@@ -8,6 +8,7 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
       track: {
         type: "track",
         name: "Track One",
+        duration_ms: 215000,
         artists: [{ name: "Artist A" }],
         album: { name: "Album A" },
       },
@@ -25,6 +26,7 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
   assert.equal(tracks[0]?.artistName, "Artist A");
   assert.equal(tracks[0]?.trackName, "Track One");
   assert.equal(tracks[0]?.albumName, "Album A");
+  assert.equal(tracks[0]?.durationMs, 215000);
 });
 
 test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () => {

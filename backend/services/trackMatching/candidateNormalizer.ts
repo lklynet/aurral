@@ -145,7 +145,6 @@ export type RawCandidate = {
   track?: unknown;
   discNumber?: unknown;
   disc?: unknown;
-  isrc?: unknown;
   recordingMbid?: unknown;
   trackMbid?: unknown;
   releaseMbid?: unknown;
@@ -301,7 +300,6 @@ export function normalizeCandidate<Raw extends RawCandidate = RawCandidate>(
     discNumber: positiveNumber(raw.discNumber ?? raw.disc)
       ? Math.round(Number(raw.discNumber ?? raw.disc))
       : null,
-    isrc: cleanText(raw.isrc),
     recordingMbid: cleanText(raw.recordingMbid || raw.trackMbid),
     releaseMbid: cleanText(raw.releaseMbid),
     filename: fileName,
