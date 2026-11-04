@@ -1,45 +1,43 @@
 ---
 title: Plex
-description: Point Plex at the Aurral Library folder, bring in Aurral playlist files, and import Plex plays.
+description: Point Plex at the Aurral Library folder, send it Aurral playlists, and import Plex plays.
 ---
 
-Plex is optional. Plex scans the Library folder like any other music folder. To bring your Plex and Plexamp plays into Wrapped and recommendations, connect Plex in **Settings > Listening**.
+Plex is optional. Plex scans the Library folder like any other music folder. Connect Plex in **Settings > Listening > Plex** to send Aurral's playlists to it and to bring your Plex and Plexamp plays into Wrapped and recommendations.
 
 ## Setup
 
 1. Mount the same media root in Aurral and Plex, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 2. In Plex, add the Library folder, for example `/data/downloads/aurral`, to a music library. It can be its own library or an extra folder in your existing one.
-3. If playlists reuse tracks from Lidarr, make sure the Lidarr root folder, such as `/data/music`, is in a Plex music library too.
+3. If playlists reuse tracks from Lidarr, add the Lidarr root folder, such as `/data/music`, to the same Plex music library.
 4. In the Plex server settings, turn on **Scan my library automatically**, so Plex picks up new files on its own.
+
+## Connect the server
+
+An admin connects the server once.
+
+1. Open **Settings > Listening > Plex**.
+2. Enter the **Server URL**, such as `http://plex:32400`.
+3. Select **Sign in with Plex** and sign in with the Plex account that owns the server.
+
+This also imports the owner's plays.
 
 ## Playlists
 
-Aurral writes an M3U file for each enabled flow and each static playlist to `aurral-weekly-flow/_playlists` in the Library folder. **Settings > Library > Playlist files** shows the folder.
+With **Send playlists** on, Aurral adds every enabled flow and static playlist to Plex and updates it when the playlist changes. The playlists belong to the server owner's Plex account.
 
-Plex does not read playlist files from its libraries. [ListPorter](https://github.com/mrsilver76/listporter) uploads them to Plex. It needs the .NET 8 runtime.
-
-1. Add the Library folder and the Lidarr root folder to the same Plex music library. ListPorter matches tracks within one library.
-2. Run ListPorter on the playlist folder, for example every hour with cron:
-
-   ```bash
-   ListPorter -s 192.168.1.10:32400 -t <server owner token> -l <library ID> \
-     -i /data/downloads/aurral/aurral-weekly-flow/_playlists
-   ```
-
-   The library ID is the `source=` value in the Plex web address of the library. Leave out `-l` when the server has one music library.
-
-- ListPorter matches each entry by its artist folder, album folder, and file name, so Plex can see the files at a different path than Aurral.
-- A changed file replaces the tracks of its Plex playlist. The playlists belong to the account of the token.
-- When a playlist is deleted, renamed, or its flow is turned off, its Plex playlist stays. Delete it in Plex. ListPorter's `--mirror` option deletes it too, but it also deletes every other playlist in that Plex library that you made in Plex.
+- Plex reads each playlist file at the path Aurral wrote it, so Plex has to see the Library folder and the Lidarr root folder at the same paths as Aurral. If it can't find any of the tracks, **Settings > Listening > Plex** shows an error.
+- Deleting or renaming a playlist, or turning off its flow, removes it from Plex. So do turning off **Send playlists** and **Disconnect server**.
+- Aurral finds its playlists in Plex by name. A playlist you made in Plex with the same name as an Aurral playlist is replaced.
 
 ## Listening history
 
-1. Find your Plex token. Plex explains how in [Finding an authentication token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/). Use the token of the server owner.
-2. In Aurral, open **Settings > Listening > Plex**.
-3. Enter the **Server URL**, the name of your **Plex account**, and the **Server owner token**.
-4. Select **Connect Plex**.
+Once the server is connected, each Aurral user can import their own Plex plays.
 
-The owner token can read the history of every account on the server, so each Aurral user can import their own Plex account with it. Aurral imports the music plays of that account, then checks for new plays every hour. Only admins can connect a server. **Disconnect** removes the plays that Aurral imported.
+1. Open **Settings > Listening > Plex**.
+2. Select **Sign in with Plex** and sign in with your Plex account. It must have access to the server.
+
+Aurral imports the music plays of that account, then checks for new plays every hour. **Disconnect** removes the plays that Aurral imported.
 
 ## Bring a Plex playlist into Aurral
 

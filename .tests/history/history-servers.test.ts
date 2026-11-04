@@ -7,12 +7,13 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { createFakeNavidrome } from "../helpers/fakeNavidrome.ts";
 
-const [state, { db }, { userOps }, servers, { getPlayHistory }] = await setupIsolatedBackend(
+const [state, { db }, { userOps }, servers, { getPlayHistory }, plex] = await setupIsolatedBackend(
   "history-servers",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/historyServers.ts"),
   () => import("../../backend/services/playEventService.ts"),
+  () => import("../../backend/services/plex.ts"),
 );
 
 const originalFetch = globalThis.fetch;
@@ -133,21 +134,13 @@ test("a Jellyfin server without Playback Reporting says so and keeps the error v
   );
 });
 
-test("Plex imports only the connected account's tracks", async () => {
+test("Plex imports only the signed-in account's tracks, using the server owner's token", async () => {
   const seen: (string | null)[] = [];
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.pathname === "/accounts") {
-      return Response.json({
-        MediaContainer: {
-          Account: [
-            { id: 1, name: "Owner" },
-            { id: 7, name: "Listener" },
-          ],
-        },
-      });
-    }
-    seen.push(url.searchParams.get("accountID"));
+    seen.push(
+      `${new Headers(init?.headers).get("x-plex-token")} ${url.searchParams.get("accountID")}`,
+    );
     if (url.searchParams.has("type")) return Response.json({ MediaContainer: { size: 0 } });
     return Response.json({
       MediaContainer: {
@@ -168,14 +161,15 @@ test("Plex imports only the connected account's tracks", async () => {
     });
   };
 
-  await servers.connectHistoryServer(userId, "plex", {
+  plex.savePlexServer({ url: "http://plex.test", token: "owner-token", sendPlaylists: false });
+  await servers.connectPlexHistory(userId, {
     url: "http://plex.test",
     username: "listener",
-    secret: "token",
+    accountId: "7",
   });
   await servers.syncHistoryServer(userId, "plex");
 
-  assert.deepEqual(seen, ["7"]);
+  assert.deepEqual(seen, ["owner-token 7"]);
   assert.deepEqual(
     importedPlays().map((play) => [play.title, play.track_id, play.played_at]),
     [["Song", "plex:42", 1_767_268_800_000]],
@@ -183,20 +177,27 @@ test("Plex imports only the connected account's tracks", async () => {
 });
 
 test("a Plex reply without history fails the sync instead of skipping it", async () => {
-  globalThis.fetch = async (input) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.pathname === "/accounts") {
-      return Response.json({ MediaContainer: { Account: [{ id: 1, name: "Owner" }] } });
-    }
-    return Response.json({});
-  };
-  await servers.connectHistoryServer(userId, "plex", {
+  globalThis.fetch = async () => Response.json({});
+  plex.savePlexServer({ url: "http://plex.test", token: "owner-token", sendPlaylists: false });
+  await servers.connectPlexHistory(userId, {
     url: "http://plex.test",
     username: "owner",
-    secret: "token",
+    accountId: "1",
   });
 
   await assert.rejects(servers.syncHistoryServer(userId, "plex"));
+});
+
+test("Plex history says so when the server is disconnected", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "owner-token", sendPlaylists: false });
+  await servers.connectPlexHistory(userId, {
+    url: "http://plex.test",
+    username: "owner",
+    accountId: "1",
+  });
+  plex.removePlexServer();
+
+  await assert.rejects(servers.syncHistoryServer(userId, "plex"), /Plex isn't connected/);
 });
 
 test("connecting another account replaces the previous account's plays", async () => {

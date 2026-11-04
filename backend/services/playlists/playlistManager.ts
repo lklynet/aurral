@@ -38,6 +38,7 @@ import {
   saveWrittenPlaylistFiles,
   writePlaylistFile,
 } from "./playlistFiles.ts";
+import { removePlaylistsFromPlex, sendPlaylistsToPlex } from "../plex.ts";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
@@ -47,6 +48,8 @@ const PLAYLIST_SYNC_DELAY_SECONDS = 2;
 // file, so each changed file is written once more after servers catch up.
 const PLAYLIST_REWRITE_DELAY_SECONDS = 180;
 const LIBRARY_DOWNLOADS_ID = "library";
+
+const playlistTitle = (fileName: string) => fileName.slice(0, -PLAYLIST_FILE_EXTENSION.length);
 
 const stringList = (value: unknown) =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : null;
@@ -121,14 +124,17 @@ export class PlaylistManager {
     };
     const renamed = Object.keys(written).filter((id) => written[id] !== fileNameOf(id));
     const ids = [...new Set([...(entityIds ?? entities.map((entity) => entity.id)), ...renamed])];
+    const removed: string[] = [];
     for (const id of ids) {
       await this._relocateArtwork(id);
       const file = written[id];
       if (!renamed.includes(id) || file === undefined) continue;
       await fs.rm(path.join(this.libraryRoot, file), { force: true });
+      removed.push(playlistTitle(file));
       delete written[id];
     }
     const changed: string[] = [];
+    const uploads: { title: string; path: string; empty: boolean }[] = [];
     for (const id of ids) {
       const flow = flowPlaylistConfig.getFlow(id);
       const entity = flow?.enabled ? flow : flowPlaylistConfig.getStaticPlaylist(id);
@@ -138,15 +144,24 @@ export class PlaylistManager {
       if (!entity || !fileName) continue;
       await this._ensureFlowArtwork(id, names.get(id) ?? entity.name, flow ? "Flow" : "Playlist");
       const tracks = await collectPlaylistFileTracks(id, { downloadRoot: this.downloadRoot });
-      const content = buildPlaylistFile(tracks, this.libraryRoot);
-      if (
-        await writePlaylistFile(path.join(this.libraryRoot, fileName), content, { force: rewrite })
-      )
+      const filePath = path.join(this.libraryRoot, fileName);
+      if (await writePlaylistFile(filePath, buildPlaylistFile(tracks), { force: rewrite })) {
         changed.push(id);
+        uploads.push({ title: playlistTitle(fileName), path: filePath, empty: !tracks.length });
+      }
       written[id] = fileName;
     }
     saveWrittenPlaylistFiles(written);
+    await sendPlaylistsToPlex(this.downloadRoot, { upload: uploads, remove: removed });
     if (changed.length && !rewrite) this.requestPlaylistSync(changed, { rewrite: true });
+  }
+
+  requestPlexUpload() {
+    return enqueueSystemTaskJob({ kind: PLAYLIST_SYNC_KIND, entityIds: null, rewrite: true });
+  }
+
+  async removePlaylistsFromPlex() {
+    await removePlaylistsFromPlex(Object.values(readWrittenPlaylistFiles()).map(playlistTitle));
   }
 
   scheduleScanLibrary(force = false) {

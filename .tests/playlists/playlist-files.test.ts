@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, afterEach } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -19,6 +19,7 @@ const [
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { downloadTracker },
   { playlistDisplayNames },
+  plex,
 ] = await setupIsolatedBackend(
   "playlist-files",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -28,7 +29,10 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistFiles.ts"),
+  () => import("../../backend/services/plex.ts"),
 );
+
+const originalFetch = globalThis.fetch;
 
 const { downloadRoot, libraryRoot } = playlistManager;
 
@@ -41,6 +45,10 @@ beforeEach(async () => {
   tx.commit();
   dbOps.updateSettings({ onboardingComplete: true, flows: [], sharedPlaylists: [] });
   await fs.rm(downloadRoot, { recursive: true, force: true });
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 afterAll(async () => {
@@ -75,7 +83,7 @@ function pendingSyncs() {
     );
 }
 
-test("writes a playlist file with relative paths and rewrites it once later", async () => {
+test("writes a playlist file with full paths and rewrites it once later", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Road: Trip" });
   await addDownloadedTrack(playlist.id, "Song A");
 
@@ -84,7 +92,7 @@ test("writes a playlist file with relative paths and rewrites it once later", as
   assert.deepEqual(await playlistFiles(), ["Road_ Trip.m3u"]);
   assert.equal(
     await fs.readFile(path.join(libraryRoot, "Road_ Trip.m3u"), "utf8"),
-    "#EXTM3U\n#EXTINF:61,Artist - Song A\n../../Artist/Album/Song A.flac\n",
+    `#EXTM3U\n#EXTINF:61,Artist - Song A\n${path.join(downloadRoot, "Artist", "Album", "Song A.flac")}\n`,
   );
   const [rewrite] = pendingSyncs();
   assert.ok(rewrite);
@@ -172,4 +180,75 @@ test("names stay unique when the owner prefix is off", () => {
     [...playlistDisplayNames(entities, { prefixOwnerUsername: true }).values()],
     ["ana - Mix", "bo - mix", "ana - Solo", "ana - Solo (2)", "ana - Solo (2) (2)"],
   );
+});
+
+function fakePlex({ uploadStatus = 200 } = {}) {
+  const requests: string[] = [];
+  const playlists = new Map<string, string>();
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const method = init?.method ?? "GET";
+    if (url.pathname === "/library/sections")
+      return Response.json({
+        MediaContainer: {
+          Directory: [
+            { key: "2", type: "movie", Location: [{ path: downloadRoot }] },
+            { key: "3", type: "artist", Location: [{ path: path.dirname(downloadRoot) }] },
+          ],
+        },
+      });
+    if (url.pathname === "/playlists/upload") {
+      const file = url.searchParams.get("path") ?? "";
+      requests.push(`upload ${url.searchParams.get("sectionID")} ${path.basename(file)}`);
+      if (uploadStatus === 200)
+        playlists.set(path.basename(file, ".m3u"), String(playlists.size + 1));
+      return new Response(null, { status: uploadStatus });
+    }
+    if (url.pathname === "/playlists" && method === "GET")
+      return Response.json({
+        MediaContainer: {
+          Metadata: [...playlists].map(([title, ratingKey]) => ({ title, ratingKey })),
+        },
+      });
+    if (method === "DELETE") {
+      const key = url.pathname.split("/").pop();
+      const title = [...playlists].find(([, ratingKey]) => ratingKey === key)?.[0];
+      requests.push(`delete ${title}`);
+      if (title) playlists.delete(title);
+      return new Response(null, { status: 204 });
+    }
+    return new Response(null, { status: 404 });
+  };
+  return { requests, playlists };
+}
+
+test("Plex gets each changed playlist file and loses renamed or emptied ones", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const fake = fakePlex();
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
+  flowPlaylistConfig.createStaticPlaylist({ name: "Empty" });
+  await addDownloadedTrack(playlist.id, "Song A");
+
+  await playlistManager.syncPlaylists();
+  await playlistManager.syncPlaylists();
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "New" });
+  await playlistManager.syncPlaylists({ entityIds: [playlist.id] });
+
+  assert.deepEqual(fake.requests, ["upload 3 Old.m3u", "delete Old", "upload 3 New.m3u"]);
+  assert.deepEqual([...fake.playlists.keys()], ["New"]);
+  assert.equal(plex.plexPlaylistError(), null);
+});
+
+test("a playlist Plex can't match shows an error until an upload works", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  fakePlex({ uploadStatus: 500 });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Mix" });
+  await addDownloadedTrack(playlist.id, "Song A");
+
+  await playlistManager.syncPlaylists();
+  assert.match(plex.plexPlaylistError() ?? "", /Plex found none of the tracks in Mix/);
+
+  fakePlex();
+  await playlistManager.syncPlaylists({ rewrite: true });
+  assert.equal(plex.plexPlaylistError(), null);
 });

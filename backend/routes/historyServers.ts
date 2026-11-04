@@ -11,11 +11,13 @@ import {
   HISTORY_SERVER_PROVIDERS,
   HistoryServerError,
   listHistoryServers,
+  LOGIN_HISTORY_SERVERS,
 } from "../services/historyServers.ts";
 import { logger } from "../services/logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 const providerParam = v.object({ provider: v.picklist(HISTORY_SERVER_PROVIDERS) });
+const loginProviderParam = v.object({ provider: v.picklist(LOGIN_HISTORY_SERVERS) });
 const connectBody = v.object({
   url: v.string(),
   username: v.string(),
@@ -34,7 +36,7 @@ export default new Hono<AppEnv>()
     "/:provider",
     requirePermission("accessSettings"),
     requireUserAccount,
-    validate("param", providerParam),
+    validate("param", loginProviderParam),
     validate("json", connectBody),
     async (c) => {
       const { provider } = c.req.valid("param");

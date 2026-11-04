@@ -22,6 +22,7 @@ import {
   historyServerStatus,
   useHistoryServers,
 } from "./listening/HistoryServers";
+import { PlexDetail, usePlex } from "./listening/PlexDetail";
 import {
   SettingsActions,
   SettingsGroup,
@@ -496,12 +497,18 @@ export function ListeningSection() {
   const provider = PROVIDERS.find((id) => id === item);
   const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
   const historyServers = useHistoryServers();
+  const plex = usePlex();
   const historyServer = HISTORY_SERVERS.find((id) => id === item);
-  const showHistoryServers =
-    hasPermission("accessSettings") || Boolean(historyServers.data?.servers.length);
+  const shownHistoryServers = HISTORY_SERVERS.filter(
+    (id) =>
+      hasPermission("accessSettings") ||
+      (id === "plex" && plex.data?.connected) ||
+      historyServers.data?.servers.some((server) => server.provider === id),
+  );
 
   if (provider) return <ServiceDetail provider={provider} />;
   if (item === "spotify") return <SpotifyDetail />;
+  if (historyServer === "plex") return <PlexDetail />;
   if (historyServer) return <HistoryServerDetail provider={historyServer} />;
 
   return (
@@ -541,22 +548,20 @@ export function ListeningSection() {
                 : { label: "Not set up", tone: "muted" }
           }
         />
-        {showHistoryServers
-          ? HISTORY_SERVERS.map((id) => (
-              <SettingsServiceRow
-                key={id}
-                to={`listening/${id}`}
-                name={historyServerLabel(id)}
-                status={
-                  historyServers.data
-                    ? historyServerStatus(
-                        historyServers.data.servers.find((server) => server.provider === id),
-                      )
-                    : null
-                }
-              />
-            ))
-          : null}
+        {shownHistoryServers.map((id) => (
+          <SettingsServiceRow
+            key={id}
+            to={`listening/${id}`}
+            name={historyServerLabel(id)}
+            status={
+              historyServers.data
+                ? historyServerStatus(
+                    historyServers.data.servers.find((server) => server.provider === id),
+                  )
+                : null
+            }
+          />
+        ))}
       </SettingsGroup>
       <SettingsGroup title="Discovery tastes">
         <ResetTastesRow />
