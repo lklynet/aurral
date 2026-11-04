@@ -17,6 +17,7 @@ import { isRunningInDocker } from "./runtimeInfo.ts";
 
 const LOG_DIR = path.join(resolveAurralDataDir(), "logs");
 const DEBUG_SETTING = "debugLogging";
+const FRESH_SETTING = "logsFreshSince";
 const MAX_EXPORT_ENTRIES = 20000;
 const AUTH_FAILURE_STATUSES = new Set([401, 403, 407]);
 const TOKEN_SEGMENT = /^[\w:.-]{20,}$/;
@@ -29,6 +30,13 @@ const safePath = (pathname: string) =>
     .join("/");
 
 export const isDebugLoggingOn = () => dbOps.getJSONSetting(DEBUG_SETTING, v.boolean()) === true;
+
+export const getFreshSince = () =>
+  dbOps.getJSONSetting(FRESH_SETTING, v.nullable(v.number())) ?? null;
+
+export const setFreshSince = (since: number | null) => dbOps.setJSONSetting(FRESH_SETTING, since);
+
+const afterFresh = (since: number) => Math.max(since, getFreshSince() ?? 0);
 
 export function setDebugLogging(enabled: boolean) {
   dbOps.setJSONSetting(DEBUG_SETTING, enabled);
@@ -68,7 +76,8 @@ export function startWorkerLogging() {
 
 export const queryLogs = (query: LogQuery) => readLogEntries(LOG_DIR, query);
 
-export const listLogProblems = (since: number) => readLogProblems(LOG_DIR, { since });
+export const listLogProblems = (since: number) =>
+  readLogProblems(LOG_DIR, { since: afterFresh(since) });
 
 function enabledIntegrations() {
   return Object.entries(dbOps.getSettings().integrations ?? {})
@@ -99,7 +108,9 @@ function formatEntry(entry: StoredLogEntry) {
   return lines.join("\n");
 }
 
-export async function exportLogs({ since, level }: { since: number; level: LogLevel }) {
+export async function exportLogs({ since: window, level }: { since: number; level: LogLevel }) {
+  const since = afterFresh(window);
+  const freshSince = getFreshSince();
   const entries = await readLogEntries(LOG_DIR, { since, level, limit: MAX_EXPORT_ENTRIES });
   const header = [
     `Aurral ${APP_VERSION}${(await isRunningInDocker()) ? " (Docker)" : ""}`,
@@ -108,6 +119,11 @@ export async function exportLogs({ since, level }: { since: number; level: LogLe
     `Integrations: ${enabledIntegrations().join(", ") || "none"}`,
     `Debug logging: ${isDebugLoggingOn() ? "on" : "off"}`,
     `Showing ${level} and above since ${new Date(since).toISOString()}, ${entries.length} lines`,
+    ...(freshSince && freshSince >= window
+      ? [
+          `Started fresh at ${new Date(freshSince).toISOString()}; earlier problems were already reviewed`,
+        ]
+      : []),
   ];
   return `${header.join("\n")}\n\n${entries.reverse().map(formatEntry).join("\n")}\n`;
 }

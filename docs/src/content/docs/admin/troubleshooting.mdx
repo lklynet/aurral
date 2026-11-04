@@ -9,9 +9,11 @@ Start with **Settings > Status > Storage > Run checks**. Most file problems show
 
 Open **Settings > Status > Logs**. **Problems** groups the warnings and errors from the last day, with how often each happened. Select one to see its lines. **Download** saves the last day of the log, and **Copy problems** copies its warnings and errors. Passwords, tokens, and API keys are masked before they are saved, so the log is safe to attach to an issue.
 
+Once you've dealt with the problems listed, **Start fresh** hides them so only new ones show, on this page and in the links an agent reads. Nothing is deleted, and **Show earlier** brings them back.
+
 To see more detail, turn on **Debug logging**, reproduce the problem, and turn it off again.
 
-**Agent triage** copies a prompt for an AI agent with live links to the log and a playbook that helps it tell a setup problem from an Aurral bug, and file an issue when it finds one. The links carry your admin API key, which gives full admin access, so only share them with an agent you trust. Rotate the key in **Settings > General** to revoke them.
+**Agent triage** copies a prompt for an AI agent with live links to the log and a playbook that helps it tell a setup problem from an Aurral bug, and file an issue when it finds one. When it's done, it asks whether to start the log fresh for you. The links carry your admin API key, which gives full admin access, so only share them with an agent you trust. Rotate the key in **Settings > General** to revoke them.
 
 The log lives in the `logs` folder of the data folder. In Docker that is `/config/logs/aurral.log`. It holds up to 50 MB, then drops the oldest lines. To download it from another machine, use the API key:
 
