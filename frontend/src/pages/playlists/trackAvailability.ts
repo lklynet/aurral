@@ -16,6 +16,7 @@ export interface PlaylistTrack {
   qualityOwned?: boolean;
   qualityState?: string | null;
   libraryOwned?: boolean;
+  isPreview?: boolean;
 }
 
 export const canPlayTrack = (track: PlaylistTrack) =>
@@ -29,6 +30,7 @@ export function countAvailableTracks(tracks: PlaylistTrack[]) {
 }
 
 export function getTrackAvailability(track: PlaylistTrack) {
+  if (track.isPreview && !track.streamUrl) return { status: "failed", label: "No preview" };
   if (track.status === "done" && track.streamUrl) return { status: "done", label: "Available" };
   if (track.status === "pending") return { status: "pending", label: "Queued" };
   if (track.status === "downloading") return { status: "downloading", label: "Downloading" };

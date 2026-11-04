@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
   deezerErrorSchema,
+  deezerGetPlayableTrackByIsrc,
   deezerPageSchema,
   deezerPreviewPath,
   deezerTrackSchema,
@@ -142,7 +143,15 @@ const normalizePlaylistSummary = (playlist: DeezerPlaylist) => {
 
 type PlaylistSummary = NonNullable<ReturnType<typeof normalizePlaylistSummary>>;
 
-const normalizeTracks = (rows: v.InferOutput<typeof deezerTrackSchema>[]) => {
+type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
+
+const withPlayablePreview = async (row: DeezerTrack) => {
+  if (row.preview || !row.isrc) return row;
+  const playable = await deezerGetPlayableTrackByIsrc(row.isrc).catch(() => null);
+  return playable ? { ...row, id: playable.id, preview: playable.preview } : row;
+};
+
+const normalizeTracks = (rows: DeezerTrack[]) => {
   const stats = {
     sourceItems: rows.length,
     unavailable: 0,
@@ -202,7 +211,10 @@ const normalizeTracks = (rows: v.InferOutput<typeof deezerTrackSchema>[]) => {
   return { tracks, stats, excluded };
 };
 
-export async function getDeezerPlaylist(value: unknown) {
+export async function getDeezerPlaylist(
+  value: unknown,
+  { findMissingPreviews = false }: { findMissingPreviews?: boolean } = {},
+) {
   const id = validateDeezerPlaylistId(value);
   const summary = normalizePlaylistSummary(
     await deezerRequest(deezerPlaylistSchema, `/playlist/${id}`),
@@ -210,7 +222,7 @@ export async function getDeezerPlaylist(value: unknown) {
   if (!summary) {
     throw providerError("The Deezer playlist is unavailable", 404, "DEEZER_PLAYLIST_NOT_FOUND");
   }
-  const rows: v.InferOutput<typeof deezerTrackSchema>[] = [];
+  const rows: DeezerTrack[] = [];
   let index = 0;
   while (index < MAX_TRACKS) {
     const page = await deezerList(deezerTrackSchema, `/playlist/${id}/tracks`, {
@@ -221,7 +233,9 @@ export async function getDeezerPlaylist(value: unknown) {
     index += page.received;
     if (page.received === 0 || !page.next) break;
   }
-  return { ...summary, ...normalizeTracks(rows.slice(0, MAX_TRACKS)) };
+  const listed = rows.slice(0, MAX_TRACKS);
+  const tracks = findMissingPreviews ? await Promise.all(listed.map(withPlayablePreview)) : listed;
+  return { ...summary, ...normalizeTracks(tracks) };
 }
 
 async function loadShelf() {
