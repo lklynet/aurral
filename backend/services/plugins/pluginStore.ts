@@ -53,7 +53,9 @@ const countBroken = db
     "UPDATE plugins SET broken_in_a_row = broken_in_a_row + 1 WHERE id = ? RETURNING broken_in_a_row",
   )
   .pluck();
-const clearBroken = db.prepare<[string]>("UPDATE plugins SET broken_in_a_row = 0 WHERE id = ?");
+const clearBroken = db.prepare<[string]>(
+  "UPDATE plugins SET broken_in_a_row = 0 WHERE id = ? AND broken_in_a_row > 0",
+);
 
 function readSettings(stored: string) {
   if (!stored) return {};
@@ -75,7 +77,6 @@ function readRow(row: PluginsRow) {
     disabled: dbHelpers.readJSON(capabilityKeys, row.disabled, "plugin capabilities") ?? [],
     sourceUrl: row.source_url,
     scheduledAt: row.scheduled_at,
-    brokenInARow: row.broken_in_a_row,
   };
 }
 

@@ -248,7 +248,7 @@ export async function callPlugin<Schema extends v.GenericSchema>(
         `returned something Aurral can't read${at ? ` at ${at}` : ""}: ${issue.message}`,
       );
     }
-    if (plugin.brokenInARow) clearBrokenCalls(plugin.id);
+    clearBrokenCalls(plugin.id);
     if (plugin.lastError) recordPluginError(plugin.id, null);
     return parsed.output;
   } catch (error) {
