@@ -98,7 +98,14 @@ export function updatePlugin(
   savePlugin(plugin, {
     ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
     ...(patch.priority === undefined ? {} : { priority: patch.priority }),
-    ...(patch.settings ? { settings: readSettingsInput(plugin.manifest, patch.settings) } : {}),
+    ...(patch.settings
+      ? {
+          settings: readSettingsInput(plugin.manifest, {
+            ...plugin.settings,
+            ...patch.settings,
+          }),
+        }
+      : {}),
   });
   if (patch.enabled === false) stopPlugin(id);
   logger.info(

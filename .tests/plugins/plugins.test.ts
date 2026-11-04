@@ -118,6 +118,29 @@ test("a playlist action shows once its plugin is on and set up, and gets the pla
   assert.notEqual(db.prepare("SELECT settings FROM plugins").pluck().get(), '{"token":"secret"}');
 });
 
+test("saving one setting keeps the others, and an empty value clears it", async () => {
+  await install(
+    "box",
+    {
+      settings: [
+        { key: "url", label: "URL", type: "text" },
+        { key: "token", label: "Token", type: "password" },
+      ],
+    },
+    "export default {};",
+  );
+  const save = (settings: Record<string, unknown>) =>
+    routes(admin).request("/plugins/box", json("PUT", { settings }));
+  const stored = async () =>
+    (await listPlugins()).plugins.find((plugin) => plugin.id === "box")?.settings;
+
+  await save({ url: "https://box.test" });
+  await save({ token: "secret" });
+  assert.deepEqual(await stored(), { url: "https://box.test", token: "secret" });
+  await save({ url: "" });
+  assert.deepEqual(await stored(), { token: "secret" });
+});
+
 test("an admin-only action is hidden from other users and refused for them", async () => {
   await install(
     "retag",

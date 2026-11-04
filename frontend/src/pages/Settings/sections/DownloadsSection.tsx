@@ -39,9 +39,12 @@ export function DownloadsSection() {
     isClientEnabled(definition, clientConfig(settings, definition)),
   );
   const availableClients = clients.filter((definition) => !enabledClients.includes(definition));
-  const pluginSources = (usePlugins().data?.plugins ?? []).filter(
-    (plugin) => plugin.enabled && plugin.manifest?.downloadSource,
-  );
+  const pluginList = usePlugins().data;
+  const pluginSources = pluginList?.safeMode
+    ? []
+    : (pluginList?.plugins ?? []).filter(
+        (plugin) => plugin.enabled && plugin.manifest?.downloadSource,
+      );
   const activeClient = clients.find((definition) => definition.key === item);
   const mapping = resolveMappingItem(settings, item);
 

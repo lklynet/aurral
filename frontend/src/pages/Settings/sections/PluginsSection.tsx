@@ -167,9 +167,7 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
               key={setting.key}
               plugin={plugin}
               setting={setting}
-              save={(value) =>
-                save.mutate({ settings: { ...plugin.settings, [setting.key]: value } })
-              }
+              save={(value) => save.mutate({ settings: { [setting.key]: value } })}
             />
           ))}
         </SettingsGroup>
