@@ -76,6 +76,7 @@ test("a delisted Deezer track previews a live copy of the same release", async (
     "/track/102": track(102, "The Shower Scene", "Your Favorite Weapon", "", "USRZR0389001"),
     "/track/isrc:USRZR0389001": track(102, "The Shower Scene", "Your Favorite Weapon"),
     "/track/103": track(103, "Jude Law", "Your Favorite Weapon"),
+    "/track/104": { ...track(104, "Кукушка", "Чёрный альбом"), artist: { name: "Кино" } },
   };
   const searches: Record<string, unknown[]> = {
     "Brand New The Shower Scene": [
@@ -83,6 +84,10 @@ test("a delisted Deezer track previews a live copy of the same release", async (
       track(503, "The Shower Scene", "Your Favorite Weapon", "live-503.mp3", "USRZR1132601"),
     ],
     "Brand New Jude Law": [track(504, "Jude Law", "Live at Leeds", "live.mp3")],
+    "Кино Кукушка": [
+      { ...track(505, "Кукушка", "Звезда по имени Солнце", "other.mp3"), artist: { name: "Кино" } },
+      { ...track(506, "Кукушка", "Чёрный альбом", "live-506.mp3"), artist: { name: "Кино" } },
+    ],
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
@@ -96,4 +101,5 @@ test("a delisted Deezer track previews a live copy of the same release", async (
   assert.equal(await getDeezerPreviewLink("101"), "live-501.mp3");
   assert.equal(await getDeezerPreviewLink("102"), "live-503.mp3");
   assert.equal(await getDeezerPreviewLink("103"), null);
+  assert.equal(await getDeezerPreviewLink("104"), "live-506.mp3");
 });

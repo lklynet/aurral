@@ -150,14 +150,18 @@ export async function getDeezerPreviewLink(trackId: string): Promise<string | nu
 
 type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
+const nameKey = (value: unknown) =>
+  normalizeTitle(value) ||
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
 const isSameRelease = (candidate: DeezerTrack, track: DeezerTrack) =>
   candidate.title.toLowerCase() === track.title.toLowerCase() &&
   [
     [candidate.artist?.name, track.artist?.name],
     [candidate.album?.title, track.album?.title],
-  ].every(
-    ([left, right]) => normalizeTitle(left) && normalizeTitle(left) === normalizeTitle(right),
-  );
+  ].every(([left, right]) => nameKey(left) && nameKey(left) === nameKey(right));
 
 async function findPlayableCopy(track: DeezerTrack) {
   const isrc = track.isrc && /^[A-Z0-9]{12}$/i.test(track.isrc) ? track.isrc : null;
