@@ -12,7 +12,11 @@ export default function TelemetryPageSeen() {
   const sentAt = useRef(new Map<TelemetryPage, number>());
 
   useEffect(() => {
-    if (!enabled || !page) return;
+    if (!enabled) {
+      sentAt.current.clear();
+      return;
+    }
+    if (!page) return;
     const now = Date.now();
     if (now - (sentAt.current.get(page) ?? 0) < RESEND_AFTER_MS) return;
     sentAt.current.set(page, now);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
 import { TELEMETRY_INTERVAL_MS, isTelemetryReport } from "../../lib/telemetry.ts";
 import {
@@ -9,14 +10,21 @@ import {
 
 const previousVersion = process.env.APP_VERSION;
 process.env.APP_VERSION = "2.20.0";
-const [isolatedState, { db }, { dbOps }, telemetry, { buildTelemetryReport, sendTelemetryReport }] =
-  await setupIsolatedBackend(
-    "telemetry-report",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/telemetry.ts"),
-    () => import("../../backend/services/telemetryReport.ts"),
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  telemetry,
+  { buildTelemetryReport, sendTelemetryReport },
+  { createLogWriter },
+] = await setupIsolatedBackend(
+  "telemetry-report",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/telemetry.ts"),
+  () => import("../../backend/services/telemetryReport.ts"),
+  () => import("../../backend/services/logFile.ts"),
+);
 process.env.APP_VERSION = previousVersion;
 
 const IPHONE =
@@ -90,6 +98,27 @@ test("the report fits the schema aurral.org accepts and holds only buckets", asy
     display: ["pwa"],
   });
   assert.doesNotMatch(JSON.stringify(report), /zebra|quokka|Midnight|Boards|Roygbiv|Dayvan/);
+});
+
+test("problems count every warning, not just the first 200 kinds", async () => {
+  const writer = createLogWriter(join(isolatedState.dataDir, "logs"));
+  for (let index = 0; index < 1100; index += 1) {
+    const msg = `Lidarr returned ${index}`;
+    writer.append({
+      ts: new Date().toISOString(),
+      level: "warn",
+      cat: "lidarr",
+      msg,
+      proc: "main",
+      fp: msg,
+    });
+  }
+  writer.flush();
+
+  assert.deepEqual((await buildTelemetryReport()).problems.lidarr, {
+    warn: "1k-9k",
+    error: "0",
+  });
 });
 
 test("admins are asked once, and choosing in Settings counts as asked", async () => {

@@ -274,7 +274,9 @@
       }
 
       function renderSection(title, current, previous, ordered, hasBefore) {
-        const entries = [...current.totals];
+        const entries = [...new Set([...current.totals.keys(), ...previous.totals.keys()])].map(
+          (value) => [value, current.totals.get(value) ?? 0],
+        );
         if (entries.length === 0) return null;
         entries.sort(
           ordered ? ([a], [b]) => BUCKETS.indexOf(a) - BUCKETS.indexOf(b) : ([, a], [, b]) => b - a,
