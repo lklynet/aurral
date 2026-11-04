@@ -3,6 +3,7 @@ import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/p
 interface SpotifyPlaylistTrack {
   type?: string;
   name?: string;
+  duration_ms?: number;
   artists?: { name?: string }[];
   album?: { name?: string };
 }
@@ -50,6 +51,7 @@ export function parseSpotifyPlaylistItems(items: (SpotifyPlaylistItem | null)[] 
       artistName,
       trackName,
       albumName: albumName || null,
+      durationMs: Number(track.duration_ms) > 0 ? Number(track.duration_ms) : null,
     });
     positions.push(position);
   }
