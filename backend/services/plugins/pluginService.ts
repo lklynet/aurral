@@ -26,6 +26,7 @@ import {
   isPluginReady,
   isSafeMode,
   isSafeModeForced,
+  pluginUpdatesCheckedAt,
   pluginInput,
   readPlugin,
   readPlugins,
@@ -66,6 +67,7 @@ export async function listPlugins() {
     folder: pluginsDir(),
     safeMode: isSafeMode(),
     safeModeForced: isSafeModeForced(),
+    updatesCheckedAt: pluginUpdatesCheckedAt(),
     plugins: folders.map((folder) => {
       const plugin = stored.get(folder.id);
       const installed =
@@ -80,6 +82,18 @@ export async function listPlugins() {
         priority: installed?.priority ?? DEFAULT_PLUGIN_PRIORITY,
         lastError: installed?.lastError ?? null,
         sourceUrl: plugin?.sourceUrl ?? null,
+        update:
+          installed && plugin?.update
+            ? {
+                version: plugin.update.version,
+                adds: pluginCapabilities(plugin.update).filter(
+                  (capability) =>
+                    !pluginCapabilities(installed.manifest).some(
+                      (current) => current.key === capability.key,
+                    ),
+                ),
+              }
+            : null,
         capabilities: installed
           ? pluginCapabilities(installed.manifest).map((capability) => ({
               ...capability,

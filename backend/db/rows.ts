@@ -521,6 +521,7 @@ export interface PluginsRow {
   source_url: string | null;
   scheduled_at: number | null;
   broken_in_a_row: number;
+  update_manifest: string | null;
   updated_at: number;
 }
 

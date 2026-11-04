@@ -453,6 +453,19 @@ button:is(.settings-dialog__link, .settings-service) {
   font-weight: 500;
 }
 
+.settings-service__detail {
+  display: block;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-sm);
+  font-weight: 400;
+}
+
+.settings-beta {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  font-weight: 400;
+}
+
 .settings-service__status {
   display: inline-flex;
   align-items: center;

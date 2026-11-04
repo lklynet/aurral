@@ -21,7 +21,13 @@ const [
   { pluginsDir },
   { stopAllPlugins },
   { listPlugins },
-  { inspectPluginLink, installPluginLink, unpackPluginArchive, updatePluginFromSource },
+  {
+    checkPluginUpdates,
+    inspectPluginLink,
+    installPluginLink,
+    unpackPluginArchive,
+    updatePluginFromSource,
+  },
 ] = await setupIsolatedBackend(
   "plugin-install",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -194,6 +200,52 @@ test("a GitHub repo link offers each plugin in it and installs the ones chosen",
       ["crate", "1.1.0", repo],
     ],
   );
+});
+
+test("the daily check finds newer versions with what they add, and Update all installs them", async (t) => {
+  let box = manifest("1.0.0");
+  const server = await createMockHttpServer((_request, response) =>
+    response.end(
+      zip({
+        "plugins/box/manifest.json": box,
+        "plugins/box/index.js": "export default {};",
+        "plugins/crate/manifest.json": manifest("1.0.0", "crate"),
+        "plugins/crate/index.js": "export default {};",
+      }),
+    ),
+  );
+  t.onTestFinished(server.close);
+  const inspected = await inspectPluginLink(`${server.url}/plugins.zip`);
+  await installPluginLink(inspected.token, ["box", "crate"]);
+  const updates = async () => {
+    const list = await listPlugins();
+    return {
+      checkedAt: list.updatesCheckedAt,
+      plugins: list.plugins.map((plugin) => [
+        plugin.id,
+        plugin.manifest?.version,
+        plugin.update?.version,
+        plugin.update?.adds.map((capability) => capability.key),
+      ]),
+    };
+  };
+
+  box = JSON.stringify({ ...JSON.parse(manifest("1.1.0")), apiAccess: true });
+  await checkPluginUpdates(1000);
+  assert.deepEqual(await updates(), {
+    checkedAt: 1000,
+    plugins: [
+      ["box", "1.0.0", "1.1.0", ["api"]],
+      ["crate", "1.0.0", undefined, undefined],
+    ],
+  });
+
+  const response = await admin.request("/plugins/updates", { method: "POST" });
+  assert.deepEqual(await response.json(), { installed: [{ id: "box", version: "1.1.0" }] });
+  assert.deepEqual((await updates()).plugins, [
+    ["box", "1.1.0", undefined, undefined],
+    ["crate", "1.0.0", undefined, undefined],
+  ]);
 });
 
 test("a zip with a path outside its folder is refused before anything is written", async () => {

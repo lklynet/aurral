@@ -236,6 +236,11 @@ export async function processSystemTask(
       await runDuePluginSchedules();
       return;
     }
+    case "plugin-update-check": {
+      const { checkPluginUpdates } = await import("./plugins/pluginInstaller.ts");
+      await checkPluginUpdates();
+      return;
+    }
     case "update-check": {
       const { checkForUpdates } = await import("./updates.ts");
       await checkForUpdates();

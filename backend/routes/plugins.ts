@@ -13,6 +13,7 @@ import {
   discardPluginLink,
   inspectPluginLink,
   installPluginLink,
+  updateAllPlugins,
   updatePluginFromSource,
 } from "../services/plugins/pluginInstaller.ts";
 import {
@@ -157,6 +158,7 @@ export default new Hono<AppEnv>()
   .post("/:id/test", requireAuth, requireAdmin, validate("param", pluginParam), (c) =>
     answer(c, () => testPlugin(c.req.valid("param").id)),
   )
+  .post("/updates", requireAuth, requireAdmin, (c) => answer(c, updateAllPlugins))
   .post("/:id/update", requireAuth, requireAdmin, validate("param", pluginParam), (c) =>
     answer(c, () => updatePluginFromSource(c.req.valid("param").id)),
   )

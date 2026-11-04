@@ -185,6 +185,7 @@ export default function SettingsModal() {
                         >
                           <Icon aria-hidden="true" />
                           <span>{entry.label}</span>
+                          {"beta" in entry ? <span className="settings-beta">Beta</span> : null}
                           {entry.id === "status" && hasStorageFailure ? (
                             <span className="settings-dialog__alert">
                               <span className="sr-only">Storage issues</span>

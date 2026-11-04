@@ -13,7 +13,13 @@ import {
   type PluginManifest,
 } from "./pluginManifest.ts";
 import { PluginRequestError, refreshInstalledPlugins } from "./pluginService.ts";
-import { readPlugin, savePluginSourceUrl } from "./pluginStore.ts";
+import {
+  markPluginUpdatesChecked,
+  readPlugin,
+  readPlugins,
+  savePluginSourceUrl,
+  savePluginUpdate,
+} from "./pluginStore.ts";
 
 const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 50 * 1024 * 1024;
@@ -230,6 +236,7 @@ export async function installPluginLink(token: string, ids: string[]) {
   await refreshInstalledPlugins();
   for (const [index, { manifest }] of chosen.entries()) {
     savePluginSourceUrl(manifest.id, entry.url);
+    savePluginUpdate(manifest.id, null);
     logger.info(`plugin:${manifest.id}`, replaced[index] ? "Plugin updated" : "Plugin installed", {
       version: manifest.version,
       url: entry.url,
@@ -240,15 +247,56 @@ export async function installPluginLink(token: string, ids: string[]) {
   };
 }
 
-export async function updatePluginFromSource(id: string) {
-  const url = readPlugin(id)?.sourceUrl;
-  if (!url) throw new PluginRequestError(404, "This plugin wasn't installed from a link");
+const linkedPlugins = () =>
+  Map.groupBy(
+    readPlugins().filter((plugin) => plugin.manifest && plugin.sourceUrl),
+    (plugin) => plugin.sourceUrl ?? "",
+  );
+
+export async function checkPluginUpdates(now = Date.now()) {
+  for (const [url, plugins] of linkedPlugins()) {
+    try {
+      const { token, plugins: found } = await inspectPluginLink(url);
+      await discardPluginLink(token);
+      for (const plugin of plugins) {
+        const latest = found.find((entry) => entry.manifest.id === plugin.id)?.manifest;
+        savePluginUpdate(
+          plugin.id,
+          latest && latest.version !== plugin.manifest?.version ? latest : null,
+        );
+      }
+    } catch (error) {
+      logger.warn("plugins", "Couldn't check for plugin updates", {
+        url,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  markPluginUpdatesChecked(now);
+}
+
+async function updateFromLink(url: string, ids: string[]) {
   const { token, plugins } = await inspectPluginLink(url);
   try {
-    if (!plugins.some((plugin) => plugin.manifest.id === id))
-      throw new PluginRequestError(400, `The link no longer has ${id}`);
-    return await installPluginLink(token, [id]);
+    const missing = ids.find((id) => !plugins.some((plugin) => plugin.manifest.id === id));
+    if (missing) throw new PluginRequestError(400, `The link no longer has ${missing}`);
+    return (await installPluginLink(token, ids)).installed;
   } finally {
     await discardPluginLink(token);
   }
+}
+
+export async function updatePluginFromSource(id: string) {
+  const url = readPlugin(id)?.sourceUrl;
+  if (!url) throw new PluginRequestError(404, "This plugin wasn't installed from a link");
+  return { installed: await updateFromLink(url, [id]) };
+}
+
+export async function updateAllPlugins() {
+  const installed = [];
+  for (const [url, plugins] of linkedPlugins()) {
+    const ids = plugins.filter((plugin) => plugin.update).map((plugin) => plugin.id);
+    if (ids.length) installed.push(...(await updateFromLink(url, ids)));
+  }
+  return { installed };
 }

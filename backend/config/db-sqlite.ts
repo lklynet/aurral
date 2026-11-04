@@ -211,6 +211,7 @@ db.exec(`
     source_url TEXT,
     scheduled_at INTEGER,
     broken_in_a_row INTEGER NOT NULL DEFAULT 0,
+    update_manifest TEXT,
     updated_at INTEGER NOT NULL
   );
 
@@ -735,6 +736,7 @@ tryAddColumn("ALTER TABLE plugins ADD COLUMN disabled TEXT NOT NULL DEFAULT '[]'
 tryAddColumn("ALTER TABLE plugins ADD COLUMN source_url TEXT");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN scheduled_at INTEGER");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN broken_in_a_row INTEGER NOT NULL DEFAULT 0");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN update_manifest TEXT");
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_play_events_external
     ON play_events(user_id, source, external_id) WHERE external_id IS NOT NULL;

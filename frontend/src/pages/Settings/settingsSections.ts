@@ -27,7 +27,7 @@ export const SETTINGS_SECTIONS = [
   { id: "downloads", label: "Downloads", icon: Download, group: "server" },
   { id: "discovery", label: "Discovery", icon: Compass, group: "server" },
   { id: "notifications", label: "Notifications", icon: Bell, group: "server" },
-  { id: "plugins", label: "Plugins", icon: Puzzle, group: "server" },
+  { id: "plugins", label: "Plugins", icon: Puzzle, group: "server", beta: true },
   { id: "status", label: "Status", icon: Activity, group: "server" },
   { id: "metadata", label: "Metadata", icon: Database, group: "server", hidden: true },
 ] as const;

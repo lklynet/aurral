@@ -15,6 +15,7 @@ import {
 } from "./pluginManifest.ts";
 
 const SAFE_MODE_KEY = "pluginSafeMode";
+const UPDATES_CHECKED_KEY = "pluginUpdatesCheckedAt";
 const API_KEY_PREFIX = "aurral_plugin_";
 const settingValue = v.union([v.string(), v.number(), v.boolean()]);
 const settingValues = v.record(v.string(), settingValue);
@@ -40,6 +41,9 @@ const updateSourceUrl = db.prepare<[string | null, string]>(
 );
 const updateScheduledAt = db.prepare<[number, string]>(
   "UPDATE plugins SET scheduled_at = ? WHERE id = ?",
+);
+const updateAvailable = db.prepare<[string | null, string]>(
+  "UPDATE plugins SET update_manifest = ? WHERE id = ?",
 );
 const deleteRow = db.prepare<[string]>("DELETE FROM plugins WHERE id = ?");
 const updateError = db.prepare<[string | null, string]>(
@@ -67,6 +71,9 @@ function readRow(row: PluginsRow) {
   const manifest = row.manifest
     ? dbHelpers.readJSON(pluginManifestSchema, row.manifest, `plugin ${row.id} manifest`)
     : null;
+  const update = row.update_manifest
+    ? dbHelpers.readJSON(pluginManifestSchema, row.update_manifest, `plugin ${row.id} update`)
+    : null;
   return {
     id: row.id,
     manifest,
@@ -77,6 +84,7 @@ function readRow(row: PluginsRow) {
     disabled: dbHelpers.readJSON(capabilityKeys, row.disabled, "plugin capabilities") ?? [],
     sourceUrl: row.source_url,
     scheduledAt: row.scheduled_at,
+    update: update && update.version !== manifest?.version ? update : null,
   };
 }
 
@@ -256,6 +264,18 @@ export function disablePlugin(id: string, reason: string) {
 
 export function savePluginSourceUrl(id: string, url: string | null) {
   updateSourceUrl.run(url, id);
+}
+
+export function savePluginUpdate(id: string, manifest: PluginManifest | null) {
+  updateAvailable.run(manifest ? JSON.stringify(manifest) : null, id);
+}
+
+export function pluginUpdatesCheckedAt() {
+  return dbOps.getJSONSetting(UPDATES_CHECKED_KEY, v.number());
+}
+
+export function markPluginUpdatesChecked(at: number) {
+  dbOps.setJSONSetting(UPDATES_CHECKED_KEY, at);
 }
 
 export function markPluginScheduled(id: string, at: number) {

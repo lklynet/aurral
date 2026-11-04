@@ -154,6 +154,23 @@ function PluginTest({ plugin }: { plugin: Plugin }) {
   );
 }
 
+function UpdateLine({ update }: { update: NonNullable<Plugin["update"]> }) {
+  return (
+    <>
+      Update to {update.version}
+      {update.adds.length ? (
+        <>
+          {" · "}
+          <span className="settings-row__warning">
+            adds{" "}
+            {update.adds.map((capability) => `${capability.kind}: ${capability.label}`).join(", ")}
+          </span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function PluginManage({ plugin }: { plugin: Plugin }) {
   const route = useSettingsRoute();
   const refresh = useRefreshPlugins();
@@ -180,7 +197,10 @@ function PluginManage({ plugin }: { plugin: Plugin }) {
   return (
     <SettingsGroup>
       {plugin.sourceUrl ? (
-        <SettingsRow label="Update" help={plugin.sourceUrl}>
+        <SettingsRow
+          label="Update"
+          help={plugin.update ? <UpdateLine update={plugin.update} /> : plugin.sourceUrl}
+        >
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -571,6 +591,54 @@ function SafeModeGroup({ list }: { list: PluginList }) {
   );
 }
 
+function InstalledGroup({ list }: { list: PluginList }) {
+  const refresh = useRefreshPlugins();
+  const { showSuccess, showError } = useToast();
+  const pending = list.plugins.filter((plugin) => plugin.update).length;
+  const updateAll = useMutation({
+    mutationFn: () => parseResponse(pluginsClient.updates.$post()),
+    onSuccess: ({ installed }) =>
+      showSuccess(
+        installed.length === 1 ? "Updated 1 plugin" : `Updated ${installed.length} plugins`,
+      ),
+    onError: (error) => showError(errorText(error, "Couldn't update the plugins")),
+    onSettled: refresh,
+  });
+  return (
+    <SettingsGroup
+      title="Installed"
+      note={
+        list.updatesCheckedAt && list.plugins.some((plugin) => plugin.sourceUrl)
+          ? `Checked for updates ${formatRelativeTime(new Date(list.updatesCheckedAt))}.`
+          : undefined
+      }
+      actions={
+        pending ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => updateAll.mutate()}
+            disabled={updateAll.isPending}
+          >
+            {updateAll.isPending ? <DotLoader size="xs" label={null} /> : null}
+            Update {pending}
+          </button>
+        ) : null
+      }
+    >
+      {list.plugins.map((plugin) => (
+        <SettingsServiceRow
+          key={plugin.id}
+          to={`plugins/${plugin.id}`}
+          name={plugin.manifest?.name ?? plugin.id}
+          detail={plugin.update ? <UpdateLine update={plugin.update} /> : null}
+          status={pluginStatus(plugin)}
+        />
+      ))}
+    </SettingsGroup>
+  );
+}
+
 export function PluginsSection() {
   const item = useSettingsItem();
   const plugins = usePlugins();
@@ -580,7 +648,13 @@ export function PluginsSection() {
   if (active) return <PluginDetail key={active.id} plugin={active} />;
 
   return (
-    <SettingsPage title="Plugins">
+    <SettingsPage
+      title={
+        <>
+          Plugins <span className="settings-beta">Beta</span>
+        </>
+      }
+    >
       {plugins.isError ? (
         <SettingsNote tone="warning">
           Couldn&apos;t load plugins. Refresh the page to retry.
@@ -591,18 +665,7 @@ export function PluginsSection() {
           {list.safeMode ? (
             <SettingsNote tone="warning">Safe mode is on. No plugin runs.</SettingsNote>
           ) : null}
-          {list.plugins.length ? (
-            <SettingsGroup title="Installed">
-              {list.plugins.map((plugin) => (
-                <SettingsServiceRow
-                  key={plugin.id}
-                  to={`plugins/${plugin.id}`}
-                  name={plugin.manifest?.name ?? plugin.id}
-                  status={pluginStatus(plugin)}
-                />
-              ))}
-            </SettingsGroup>
-          ) : null}
+          {list.plugins.length ? <InstalledGroup list={list} /> : null}
           <InstallGroup list={list} />
           <AgentGroup />
           <SafeModeGroup list={list} />
