@@ -107,6 +107,9 @@ const createAuthRequiredError = (
   return error;
 };
 
+const canReadLikedSongs = (userId: number | undefined) =>
+  Boolean(spotifyConnectionStore.getConnection(userId)?.scope?.includes("user-library-read"));
+
 const createIncompletePlaylistError = (
   playlistId: string,
   reportedTotal: number | null,
@@ -322,12 +325,9 @@ export const spotifyClient = {
     const playlists = await fetchAllPages<SpotifyPlaylistSummary | null>(userId, "/me/playlists", {
       searchParams: { limit: 50 },
     });
-    const liked: SpotifyPage<unknown> | null = await spotifyRequest(userId, "/me/tracks", {
-      searchParams: { limit: 1 },
-    }).catch((error) => {
-      if (asAppError(error)?.statusCode === 403) return null;
-      throw error;
-    });
+    const liked: SpotifyPage<unknown> | null = canReadLikedSongs(userId)
+      ? await spotifyRequest(userId, "/me/tracks", { searchParams: { limit: 1 } })
+      : null;
     const connection = spotifyConnectionStore.getPublicStatus(userId);
     return {
       user: connection.displayName || "Spotify",
@@ -369,6 +369,9 @@ export const spotifyClient = {
     { forceRefresh = false }: { forceRefresh?: boolean } = {},
   ): Promise<(SpotifyPlaylistItem | null)[]> {
     await getValidConnection(userId);
+    if (playlistId === SPOTIFY_LIKED_SONGS_ID && !canReadLikedSongs(userId)) {
+      throw createAuthRequiredError("Connect Spotify again to import Liked Songs.");
+    }
     const generation = getPlaylistTrackGeneration(userId);
     const cacheKey = playlistTrackCacheKey(userId, playlistId);
     if (!forceRefresh) {
@@ -385,9 +388,6 @@ export const spotifyClient = {
         ? fetchAllPages<SpotifyPlaylistItem | null>(userId, "/me/tracks", {
             searchParams: { limit: 50 },
             onPage,
-          }).catch((error) => {
-            if (asAppError(error)?.statusCode !== 403) throw error;
-            throw createAuthRequiredError("Connect Spotify again to import Liked Songs.");
           })
         : fetchAllPages<SpotifyPlaylistItem | null>(
             userId,

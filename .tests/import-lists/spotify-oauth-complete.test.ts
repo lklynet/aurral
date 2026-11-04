@@ -40,4 +40,5 @@ test("a saved connection is returned to the client", async () => {
   const response = await completeOAuth();
   assert.equal(response.status, 200);
   assert.equal(response.body.connected, true);
+  assert.match(spotifyConnectionStore.getConnection(1)?.scope ?? "", /\buser-library-read\b/);
 });
