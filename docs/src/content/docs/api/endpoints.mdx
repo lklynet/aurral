@@ -360,6 +360,7 @@ The routes call a static playlist a shared playlist.
 | `GET`    | `/api/playlists/status`                                              | Download worker, flow, and static playlist status                                                     |
 | `GET`    | `/api/playlists/jobs`                                                | List Library and accessible flow and playlist jobs                                                    |
 | `GET`    | `/api/playlists/jobs/:playlistId`                                    | List jobs for a flow or static playlist                                                               |
+| `POST`   | `/api/playlists/jobs/cancel`                                         | Cancel every pending or downloading song you can control                                              |
 | `POST`   | `/api/playlists/jobs/:jobId/cancel`                                  | Cancel a pending or downloading song without changing its monitoring                                  |
 | `POST`   | `/api/playlists/research-missing`                                    | Re-search every missing track in Wanted                                                               |
 | `GET`    | `/api/playlists/jobs/:jobId/manual-search/sources`                   | List the download clients available for a manual search                                               |
