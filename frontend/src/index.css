@@ -875,7 +875,7 @@ textarea:disabled {
 }
 
 .input::placeholder {
-  color: var(--aurral-text);
+  color: var(--aurral-text-subtle);
 }
 
 .input:focus-visible {
