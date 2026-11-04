@@ -56,176 +56,126 @@ export function resolveSettingsPath(path: string | null, canManageServer: boolea
   return { section, item: item || null };
 }
 
-type SettingsSearchMetadata = {
-  sections?: string[];
-  services?: Record<string, string>;
-  fields?: Record<string, string>;
+export type SettingsSearchContext = {
+  canManageServer: boolean;
+  lidarrConnected: boolean;
+  signInMethods: boolean;
+  sidebarArt: boolean;
 };
 
-const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearchMetadata>> = {
+type SettingsSearchEntry =
+  | string
+  | {
+      keywords?: string;
+      item?: string;
+      when?: Exclude<keyof SettingsSearchContext, "canManageServer">;
+    };
+
+const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEntry>> = {
   profile: {
-    sections: ["Password", "Sign-in methods", "Lidarr defaults"],
-    services: {
-      Google: "sign in connect account",
-      SSO: "single sign-on OIDC identity provider connect",
+    Password: "change current new confirm local",
+    "Sign-in methods": {
+      keywords: "Google SSO OIDC single sign-on connect linked accounts",
+      when: "signInMethods",
     },
-    fields: {
-      "Current password": "change password authentication",
-      "New password": "change set password authentication local",
-      "Root folder": "Lidarr default library path artist adds",
-      "Quality profile": "Lidarr default profile artist adds",
+    "API access": "API key X-Api-Key api_key token copy rotate",
+    "Lidarr defaults": {
+      keywords: "root folder quality profile artist adds",
+      when: "lidarrConnected",
     },
   },
   listening: {
-    sections: ["Services", "Discovery tastes"],
-    services: {
-      "Last.fm": "scrobbling listening history username recommendations",
-      ListenBrainz: "scrobbling user token listening history username recommendations",
-      Koito: "scrobbling API key URL listening history recommendations",
-      Spotify: "streaming history data export import zip recommendations",
-      Navidrome: "listening history plays import Subsonic music server",
-      Plex: "listening history plays import Plexamp music server",
-      Jellyfin: "listening history plays import Playback Reporting music server",
-    },
-    fields: {
-      "Reset discovery tastes": "more like this less like this blocklist",
-    },
+    Services: "scrobbling listening history recommendations",
+    "Discovery tastes": "reset more like this less like this blocklist",
+    "Last.fm": { item: "lastfm", keywords: "scrobbling listening history" },
+    ListenBrainz: { item: "listenbrainz", keywords: "scrobbling user token listening history" },
+    Koito: { item: "koito", keywords: "scrobbling API key URL listening history" },
+    Spotify: { item: "spotify", keywords: "streaming history data export import zip" },
+    Navidrome: { item: "navidrome", keywords: "listening history plays import Subsonic" },
+    Plex: { item: "plex", keywords: "listening history plays import Plexamp" },
+    Jellyfin: { item: "jellyfin", keywords: "listening history plays import Playback Reporting" },
   },
   appearance: {
-    sections: ["Theme"],
-    fields: {
-      Theme: "color scheme dark light presets custom colors import",
-      "Immersive mode": "artwork colors tint",
-      "Environment art": "sidebar backdrop",
-    },
+    "Color scheme": "dark light system mode",
+    Theme: "presets custom colors import immersive mode artwork tint",
+    Sidebar: { keywords: "environment art backdrop", when: "sidebarArt" },
   },
   "shared-links": {
-    sections: ["Shared links"],
-    fields: { "Shared links": "share playlist artist album revoke" },
+    "Shared links": "share playlist artist album revoke expire",
   },
   general: {
-    sections: ["Display", "Subsonic", "API access", "Backup"],
-    fields: {
-      "Date and time format": "display all users",
-      "Favorite flow tracks": "Subsonic keep library",
-      "API key": "X-Api-Key api_key authentication copy rotate",
-      "Back up": "backup export download config database",
-      Restore: "restore import upload backup migrate move server",
-    },
+    Display: "date and time format all users",
+    Subsonic: "favorite flow tracks keep clients",
+    "API access": "API key X-Api-Key api_key admin authentication copy rotate",
+    Backup: "back up restore export import download upload config database migrate move server",
   },
   users: {
-    sections: ["Users", "Sign-in", "Local network auto-login"],
-    services: {
-      Google: "sign in authentication OAuth login client ID secret redirect",
-    },
-    fields: {
-      "Auto-login": "local network bypass authentication login",
-      Username: "create edit user account",
-      Permissions: "roles manage users access",
-      "SSO-only": "sign in mode hide local login form SSO",
-      Status: "active suspended disabled user account",
-      "Claim by SSO sign-in": "legacy account adoption migration link identity upgrade",
-    },
+    Users: "create edit add account permissions roles suspended disabled claim",
+    "Sign-in": "SSO SSO-only OIDC single sign-on login form",
+    "Local network auto-login": "LAN bypass authentication",
+    Google: { item: "google", keywords: "OAuth sign in client ID secret redirect" },
   },
   library: {
-    sections: [
-      "Library folder",
-      "Playlist files",
-      "Read-only folders",
-      "Import a folder",
-      "Clean up Library",
-      "Library managers",
-    ],
-    services: {
-      Lidarr:
-        "connection API key server URL external URL root folder quality profile metadata profile tag monitor search on add community guide",
-    },
-    fields: {
-      "Library folder": "downloads folder path media library root",
-      "Read-only folders": "existing music never changes",
-      "Playlist files": "M3U Navidrome Plex Jellyfin media server playlists owner username",
-      "Import folder":
-        "ingest existing music library folder move copy hardlink Lidarr root monitor",
-      Mode: "move copy hardlink",
-      "Fill in missing tags": "tagging retag MusicBrainz IDs genre year track numbers metadata",
-      "Clean up Library": "rename organize tags files naming folders media management",
+    "Library folder": "downloads path media root",
+    "Playlist files": "M3U Navidrome Plex Jellyfin media server playlists owner",
+    "Read-only folders": "existing music never changes",
+    "Import a folder": "ingest existing music move copy hardlink fill in missing tags",
+    "Clean up Library": "rename organize tags files naming folders",
+    "Library managers": "Lidarr",
+    Lidarr: {
+      item: "lidarr",
+      keywords:
+        "connection API key server URL root folder quality profile metadata profile tag monitor search on add community guide",
     },
   },
   monitoring: {
-    sections: ["Default rules", "Missing tracks", "Removed from monitoring"],
-    fields: {
-      "Default rules":
-        "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
-      "Search again for missing tracks":
-        "retry failed missing album tracks automatic schedule on off",
-      "Search interval": "days between missing track searches",
-      "Removed from monitoring": "excluded deleted albums tracks allow again exclusions",
-    },
+    "Default rules":
+      "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
+    "Missing tracks": "search again retry failed album tracks interval days schedule",
+    "Removed from monitoring": "excluded deleted albums tracks allow again exclusions",
   },
   downloads: {
-    sections: ["Download clients", "Quality", "Review queue", "Remote path mappings"],
-    services: {
-      slskd: "Soulseek download client",
-      "yt-dlp": "YouTube web download client staging",
-      NZBGet: "Usenet download client",
-      SABnzbd: "Usenet download client",
-      Tidarr: "Tidal download client",
-      deemix: "Deezer download client bitrate",
-      Prowlarr: "indexer manager search usenet categories download client SABnzbd NZBGet Tidarr",
-    },
-    fields: {
-      "Quality profile":
-        "FLAC MP3 M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff",
-      "Automatic upgrades": "upgrade searches Flow Static tracks interval",
-      "Maximum wait": "review queue held tracks deny automatically timeout",
-      "Remote path mappings": "download client path mapping remote local",
+    "Download clients": "add client priority sources",
+    "Review queue": "maximum wait hours held tracks deny",
+    "Remote path mappings": "download client path mapping remote local docker",
+    slskd: { item: "slskd", keywords: "Soulseek download client" },
+    NZBGet: { item: "nzbget", keywords: "Usenet download client" },
+    SABnzbd: { item: "sabnzbd", keywords: "Usenet download client" },
+    Tidarr: { item: "tidarr", keywords: "Tidal download client" },
+    "yt-dlp": { item: "ytdlp", keywords: "YouTube download client staging" },
+    deemix: { item: "deemix", keywords: "Deezer download client bitrate" },
+    Prowlarr: { item: "prowlarr", keywords: "indexers indexer manager search usenet categories" },
+    "Quality profile": {
+      item: "quality",
+      keywords:
+        "FLAC MP3 M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
     },
   },
   discovery: {
-    sections: ["Recommendations", "Status", "Sources"],
-    services: {
-      "Last.fm": "recommendations API key shared secret scrobbling",
-      Ticketmaster: "local shows concerts events consumer key radius",
-      News: "RSS articles feeds custom",
+    Recommendations:
+      "refresh frequency daily weekly monthly mode safer balanced deeper artists per refresh now",
+    Status: "source artwork cache clear",
+    "Last.fm": { item: "lastfm", keywords: "recommendations API key shared secret" },
+    Ticketmaster: {
+      item: "ticketmaster",
+      keywords: "local shows concerts events consumer key radius",
     },
-    fields: {
-      Refresh: "auto refresh frequency daily weekly monthly recommendations",
-      Mode: "discovery mode safer balanced deeper recommendations",
-      "Artists per refresh": "recommended artists number",
-      "Refresh now": "update recommendations discovery",
-      "Clear artwork cache": "stored artwork links native library image files reset",
-      "Local shows": "Ticketmaster recommended trending artists",
-      "Feed groups":
-        "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical regional concerts festivals live music",
-    },
+    News: { item: "news", keywords: "RSS articles feeds" },
   },
   notifications: {
-    sections: ["Inbox", "Push", "Webhooks", "Webhook events"],
-    services: {
-      Gotify: "push notifications mobile alerts token",
-      Webhooks: "notifications HTTP callbacks headers body",
-    },
-    fields: {
-      Inbox: "on off upcoming releases shows artist news recommended discoveries",
-      "Discover updated": "notification event webhook Gotify",
-      "Flow finished": "notification event webhook Gotify",
-      "Request made": "notification event webhook Gotify",
-      "Request available": "notification event webhook Gotify",
-    },
+    Inbox: "upcoming releases shows artist news recommended discoveries",
+    Webhooks: "HTTP callbacks headers body events",
+    Gotify: { item: "gotify", keywords: "push notifications mobile alerts token events" },
   },
   status: {
-    sections: ["Storage", "Tasks", "About"],
-    fields: {
-      "Storage health": "disk space free total paths run checks transfers",
-      Tasks: "scheduled workers queue jobs running failed retry clear stale",
-      Version: "runtime application build uptime environment platform container",
-      "Database path": "sqlite data directory app data",
-    },
+    About:
+      "version runtime application build uptime environment platform container database path data directory",
+    Storage: { item: "storage", keywords: "disk space health free paths run checks" },
+    Tasks: { item: "tasks", keywords: "scheduled workers queue jobs running failed retry stale" },
+    Logs: { item: "logs", keywords: "errors warnings problems" },
   },
   metadata: {
-    sections: ["Metadata server"],
-    services: { BrainzMash: "MusicBrainz metadata provider" },
-    fields: { "Base URL": "metadata server address endpoint" },
+    "Metadata server": "BrainzMash MusicBrainz provider base URL",
   },
 };
 
@@ -235,28 +185,36 @@ const normalizeSearchText = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const SETTINGS_SEARCH_ITEMS = SETTINGS_SECTIONS.flatMap((section) => {
-  const metadata: SettingsSearchMetadata = SETTINGS_SEARCH_METADATA[section.id] || {};
-  const item = (label: string, keywords = "") => ({
-    key: `${section.id}:${label}`,
-    label,
-    section,
-    searchText: normalizeSearchText(`${section.label} ${label} ${keywords}`),
-  });
-  return [
-    item(section.label),
-    ...(metadata.sections || []).map((label) => item(label)),
-    ...Object.entries(metadata.services || {}).map(([label, keywords]) => item(label, keywords)),
-    ...Object.entries(metadata.fields || {}).map(([label, keywords]) => item(label, keywords)),
-  ];
-});
+export const SETTINGS_SEARCH_ITEMS = SETTINGS_SECTIONS.flatMap((section) =>
+  Object.entries({ [section.label]: "", ...SETTINGS_SEARCH[section.id] }).map(([label, entry]) => {
+    const { keywords = "", item, when } = typeof entry === "string" ? { keywords: entry } : entry;
+    const group = item || label === section.label ? null : label;
+    return {
+      key: `${section.id}:${label}`,
+      label,
+      section,
+      path: item ? `${section.id}/${item}` : section.id,
+      group,
+      when,
+      labelText: normalizeSearchText(`${section.label} ${label}`),
+      searchText: normalizeSearchText(`${section.label} ${label} ${keywords}`),
+    };
+  }),
+);
 
-export function searchSettings(query: string, canManageServer: boolean) {
+export type SettingsSearchResult = (typeof SETTINGS_SEARCH_ITEMS)[number];
+
+export function searchSettings(query: string, context: SettingsSearchContext) {
   const terms = normalizeSearchText(query).split(" ").filter(Boolean);
   if (!terms.length) return [];
-  return SETTINGS_SEARCH_ITEMS.filter(
+  const matches = (text: string) => terms.every((term) => text.includes(term));
+  const hits = SETTINGS_SEARCH_ITEMS.filter(
     (item) =>
-      (item.section.group === "account" || canManageServer) &&
-      terms.every((term) => item.searchText.includes(term)),
+      (item.section.group === "account" || context.canManageServer) &&
+      (!item.when || context[item.when]) &&
+      matches(item.searchText),
   );
+  const rank = (item: SettingsSearchResult) =>
+    !matches(item.labelText) ? 2 : item.label === item.section.label ? 0 : 1;
+  return hits.sort((a, b) => rank(a) - rank(b));
 }
