@@ -106,11 +106,11 @@ async function extractArchive(file: string, target: string) {
     throw new PluginRequestError(400, "The plugin has too many files");
   if (entries.reduce((total, entry) => total + entry.size, 0) > MAX_EXTRACTED_BYTES)
     throw new PluginRequestError(400, "The plugin is larger than 50 MB unpacked");
-  if (!entries.every((entry) => safeName(entry.name)))
-    throw new PluginRequestError(400, "The zip file has a path outside its folder");
   const tops = new Set(entries.map((entry) => entry.name.split("/")[0]));
   const nested = !entries.some((entry) => entry.name === "manifest.json") && tops.size === 1;
   const strip = nested ? `${[...tops][0]}/` : "";
+  if (!entries.every((entry) => safeName(entry.name.slice(strip.length))))
+    throw new PluginRequestError(400, "The zip file has a path outside its folder");
   for (const entry of entries) {
     const destination = path.join(target, entry.name.slice(strip.length));
     await fs.mkdir(path.dirname(destination), { recursive: true });
@@ -218,7 +218,18 @@ async function moveIntoPlace({ folder, manifest }: Found) {
   return replacing;
 }
 
-export async function installPluginLink(token: string, ids: string[]) {
+let installing = Promise.resolve();
+
+export function installPluginLink(token: string, ids: string[]) {
+  const run = installing.then(() => installFromInspected(token, ids));
+  installing = run.then(
+    () => {},
+    () => {},
+  );
+  return run;
+}
+
+async function installFromInspected(token: string, ids: string[]) {
   forgetExpired();
   const entry = inspected.get(token);
   if (!entry) throw new PluginRequestError(404, "Check the link again before installing");

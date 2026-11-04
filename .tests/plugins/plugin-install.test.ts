@@ -258,6 +258,14 @@ test("a zip with a path outside its folder is refused before anything is written
 
   await assert.rejects(unpackPluginArchive(archive, target), /a path outside its folder/);
   await assert.rejects(access(path.join(scratch, "escaped.js")));
+
+  const nested = path.join(scratch, "nested.zip");
+  await writeFile(
+    nested,
+    zip({ "repo/manifest.json": manifest("1.0.0"), "repo/index.js": "", "repo/../escaped.js": "" }),
+  );
+  await assert.rejects(unpackPluginArchive(nested, target), /a path outside its folder/);
+  await assert.rejects(access(path.join(scratch, "escaped.js")));
 });
 
 test("an agent with a developer key writes and tests a plugin over MCP, and it stays off", async () => {
