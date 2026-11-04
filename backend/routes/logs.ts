@@ -9,10 +9,12 @@ import { validate } from "../middleware/validate.ts";
 import { LOG_LEVELS, recordLog } from "../services/logger.ts";
 import {
   exportLogs,
+  getFreshSince,
   isDebugLoggingOn,
   listLogProblems,
   queryLogs,
   setDebugLogging,
+  setFreshSince,
 } from "../services/logs.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -54,6 +56,10 @@ const clientError = v.object({
 });
 
 const since = (value: number) => Date.now() - value * HOUR_MS;
+const freshSince = (start = 0) => {
+  const value = getFreshSince();
+  return value === null || value <= start ? null : new Date(value).toISOString();
+};
 
 export default new Hono<AppEnv>()
   .basePath("/logs")
@@ -97,6 +103,7 @@ export default new Hono<AppEnv>()
       {
         problems: await listLogProblems(start),
         since: new Date(start).toISOString(),
+        freshSince: freshSince(start),
         debug: isDebugLoggingOn(),
       },
       200,
@@ -117,6 +124,14 @@ export default new Hono<AppEnv>()
       return c.body(body, 200);
     },
   )
+  .post("/fresh", (c) => {
+    setFreshSince(Date.now());
+    return c.json({ freshSince: freshSince() }, 200);
+  })
+  .delete("/fresh", (c) => {
+    setFreshSince(null);
+    return c.json({ freshSince: freshSince() }, 200);
+  })
   .put("/debug", validate("json", v.object({ enabled: v.boolean() })), (c) => {
     setDebugLogging(c.req.valid("json").enabled);
     return c.json({ debug: isDebugLoggingOn() }, 200);

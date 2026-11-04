@@ -39,7 +39,7 @@ function StatusSummary() {
         <SettingsServiceRow
           to="status/logs"
           name="Logs"
-          status={logsServiceStatus(problems.data?.problems)}
+          status={logsServiceStatus(problems.data)}
         />
       </SettingsGroup>
       <AboutGroup />
