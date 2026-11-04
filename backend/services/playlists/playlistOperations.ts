@@ -26,7 +26,6 @@ import {
 } from "./playlistTracks.ts";
 import {
   jobDownloadedItsFile,
-  normalizeExistingFileMode,
   removePlaylistFileIfUnshared,
   reuseTrackForPlaylist,
   sortJobsForTrackReuse,
@@ -216,9 +215,6 @@ const queueTracksForPlaylist = async (
   playlistId: string,
   { downloadMissing = true } = {},
 ) => {
-  const existingFileMode = downloadMissing
-    ? normalizeExistingFileMode(downloadWorker.getWorkerSettings().existingFileMode)
-    : "reuse";
   const reusedJobIds = [];
   const jobIds = [];
   const createdJobIds = [];
@@ -233,7 +229,6 @@ const queueTracksForPlaylist = async (
     createdJobIds.push(jobId);
     try {
       const reuse = await reuseTrackForPlaylist(track, playlistId, {
-        existingFileMode,
         downloadRoot: downloadWorker.downloadRoot,
         targetPlaylistType: playlistId,
         skipHistory: true,
@@ -256,15 +251,10 @@ const queueTracksForPlaylist = async (
 };
 
 async function reuseSavedFlowTracks(flowId: string, jobIds: string[]) {
-  const existingFileMode = normalizeExistingFileMode(
-    downloadWorker.getWorkerSettings().existingFileMode,
-  );
-  if (existingFileMode === "download") return;
   for (const jobId of jobIds) {
     const job = downloadTracker.getJob(jobId);
     if (job?.status !== "saved") continue;
     await reuseTrackForPlaylist(job, flowId, {
-      existingFileMode,
       downloadRoot: downloadWorker.downloadRoot,
       existingJobId: jobId,
       excludeJobIds: [jobId],
@@ -907,11 +897,8 @@ async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {
   await withPlaylistMutation(
     safePlaylistId,
     async () => {
-      const { existingFileMode } = downloadWorker.getWorkerSettings();
-      const mode = normalizeExistingFileMode(existingFileMode);
-      if (mode !== "download" && (job.status === "done" || job.status === "failed")) {
+      if (job.status === "done" || job.status === "failed") {
         const reuse = await reuseTrackForPlaylist(job, safePlaylistId, {
-          existingFileMode: mode,
           downloadRoot: downloadWorker.downloadRoot,
           existingJobId: safeJobId,
           excludeJobIds: [safeJobId],

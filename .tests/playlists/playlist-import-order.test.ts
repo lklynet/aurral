@@ -231,7 +231,7 @@ beforeEach(async () => {
     onboardingComplete: true,
     flows: [],
     sharedPlaylists: [],
-    playlistWorker: { existingFileMode: "reuse", concurrency: 1 },
+    playlistWorker: { concurrency: 1 },
   });
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();

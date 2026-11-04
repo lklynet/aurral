@@ -70,7 +70,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
       tracks: [{ artistName: "Burial", trackName: "Archangel" }],
     },
   ]);
-  writeRaw("weeklyFlowWorker", { concurrency: 2, existingFileMode: "hardlink" });
+  writeRaw("weeklyFlowWorker", { concurrency: 2 });
   writeRaw("integrations", {
     metadata: { provider: "brainzmash", baseUrl: "https://brainzmash.kell.ly/" },
     coverArtArchive: { enabled: true },
@@ -93,13 +93,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
   );
 
   assert.equal(readJson("sharedPlaylists")[0].name, "Old Playlist");
-  assert.deepEqual(
-    {
-      concurrency: readJson("playlistWorker").concurrency,
-      mode: readJson("playlistWorker").existingFileMode,
-    },
-    { concurrency: 2, mode: "reuse" },
-  );
+  assert.equal(readJson("playlistWorker").concurrency, 2);
 
   const integrations = readJson("integrations");
   assert.equal("coverArtArchive" in integrations, false);
@@ -144,8 +138,8 @@ test("keeps current settings when an older key repeats them", async () => {
   reset();
   writeRaw("flows", [{ id: "current-flow", name: "Current", size: 30, tags: ["dub"] }]);
   writeRaw("weeklyFlows", [{ id: "discover", name: "Stale" }]);
-  writeRaw("playlistWorker", { concurrency: 1, existingFileMode: "download" });
-  writeRaw("weeklyFlowWorker", { concurrency: 3, existingFileMode: "copy" });
+  writeRaw("playlistWorker", { concurrency: 1 });
+  writeRaw("weeklyFlowWorker", { concurrency: 3 });
   const integrations = JSON.stringify({ metadata: { baseUrl: "https://metadata.example" } });
   writeRaw("integrations", integrations);
   userOps.createUser("someone", "hash", "admin", null);
@@ -162,7 +156,6 @@ test("keeps current settings when an older key repeats them", async () => {
     [["current-flow", "Current", ["dub"]]],
   );
   assert.equal(readRaw("weeklyFlows"), undefined);
-  assert.equal(readJson("playlistWorker").existingFileMode, "download");
   assert.equal(readJson("playlistWorker").concurrency, 1);
   assert.equal(readRaw("weeklyFlowWorker"), undefined);
   assert.equal(readRaw("integrations"), integrations);

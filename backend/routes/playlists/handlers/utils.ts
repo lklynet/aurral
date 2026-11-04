@@ -34,7 +34,6 @@ export const requireFlowAccessIfSignedIn = createMiddleware<AppEnv>(async (c, ne
   await next();
 });
 
-export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_FLOW_SIZE;
 
 const fourDigitYear = (label: string) =>

@@ -15,7 +15,6 @@ import {
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
 import { safeLogDiagnostic } from "../logger.ts";
 import {
-  normalizeExistingFileMode,
   repairOrphanedPlaylistTrackPaths,
   moveHandedOverTracksToLidarr,
   repairReusableTrackLinks,
@@ -281,10 +280,6 @@ export class DownloadWorker {
     return Math.min(MAX_CONCURRENCY, Math.max(MIN_CONCURRENCY, Math.floor(parsed)));
   }
 
-  _normalizeExistingFileMode(value: unknown) {
-    return normalizeExistingFileMode(value);
-  }
-
   _getNextReadyPendingJob(lastPlaylistType: string | null = null) {
     const now = Date.now();
     return downloadTracker.getNextPendingMatching(
@@ -338,7 +333,6 @@ export class DownloadWorker {
     return {
       concurrency: this._normalizeConcurrency(raw.concurrency),
       retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(raw.retryPausedPlaylistIds),
-      existingFileMode: this._normalizeExistingFileMode(raw.existingFileMode),
     };
   }
 
@@ -350,18 +344,8 @@ export class DownloadWorker {
           ? base.concurrency
           : this._normalizeConcurrency(nextSettings.concurrency),
       retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(base.retryPausedPlaylistIds),
-      existingFileMode:
-        nextSettings.existingFileMode === undefined
-          ? base.existingFileMode
-          : this._normalizeExistingFileMode(nextSettings.existingFileMode),
     };
-    dbOps.updateSettings({
-      playlistWorker: {
-        concurrency: normalized.concurrency,
-        retryPausedPlaylistIds: normalized.retryPausedPlaylistIds,
-        existingFileMode: normalized.existingFileMode,
-      },
-    });
+    dbOps.updateSettings({ playlistWorker: normalized });
     return normalized;
   }
 
@@ -479,25 +463,17 @@ export class DownloadWorker {
       return null;
     }
     this.lastReuseRepairAt = now;
-    const { existingFileMode } = this.getWorkerSettings();
     if (force) {
-      await repairOrphanedPlaylistTrackPaths({
-        existingFileMode,
-        downloadRoot: this.downloadRoot,
-      });
-    }
-    if (normalizeExistingFileMode(existingFileMode) === "download") {
-      return null;
+      await repairOrphanedPlaylistTrackPaths({ downloadRoot: this.downloadRoot });
     }
     const result = await repairReusableTrackLinks({
-      existingFileMode,
       downloadRoot: this.downloadRoot,
       cursor: this.reuseRepairCursor,
     });
     if (Number.isFinite(result?.nextCursor)) {
       this.reuseRepairCursor = result.nextCursor;
     }
-    await moveHandedOverTracksToLidarr({ existingFileMode, downloadRoot: this.downloadRoot });
+    await moveHandedOverTracksToLidarr({ downloadRoot: this.downloadRoot });
     return result;
   }
 
@@ -678,43 +654,39 @@ export class DownloadWorker {
         return;
       downloadTracker.updateMetadata(job.id, resolvedTrack);
       Object.assign(job, resolvedTrack);
-      const { existingFileMode } = this.getWorkerSettings();
-      if (existingFileMode !== "download") {
-        const reuse = await reuseTrackForPlaylist(resolvedTrack, job.playlistType, {
-          existingFileMode,
-          downloadRoot: this.downloadRoot,
-          existingJobId: job.id,
-          excludeJobIds: [job.id],
-          allowLidarr: !job.requestGroupId,
+      const reuse = await reuseTrackForPlaylist(resolvedTrack, job.playlistType, {
+        downloadRoot: this.downloadRoot,
+        existingJobId: job.id,
+        excludeJobIds: [job.id],
+        allowLidarr: !job.requestGroupId,
+      });
+      if (reuse.reused) {
+        this._recordCompletedTrack(Number(process.hrtime.bigint() - perfStartHr) / 1e6, 0);
+        phaseStart = process.hrtime.bigint();
+        this._assertJobCanContinue(job, runGeneration);
+        await this.checkPlaylistComplete(job.playlistType);
+        timingsMs.completionCheck += Number(process.hrtime.bigint() - phaseStart) / 1e6;
+        const cpuDelta = process.cpuUsage(perfStartCpu);
+        const elapsedMs = Number(process.hrtime.bigint() - perfStartHr) / 1e6;
+        this.lastJobMetrics = {
+          jobId: job.id,
+          finishedAt: Date.now(),
+          elapsedMs: Math.round(elapsedMs),
+          cpuUserMs: Math.round(cpuDelta.user / 1000),
+          cpuSystemMs: Math.round(cpuDelta.system / 1000),
+          cpuTotalMs: Math.round((cpuDelta.user + cpuDelta.system) / 1000),
+          timingsMs: {
+            completionCheck: Math.round(timingsMs.completionCheck),
+          },
+        };
+        return;
+      }
+      if (reuse.deferred) {
+        downloadTracker.deferPendingToBack(job.id, reuse.reason, {
+          keepRetryTier: true,
         });
-        if (reuse.reused) {
-          this._recordCompletedTrack(Number(process.hrtime.bigint() - perfStartHr) / 1e6, 0);
-          phaseStart = process.hrtime.bigint();
-          this._assertJobCanContinue(job, runGeneration);
-          await this.checkPlaylistComplete(job.playlistType);
-          timingsMs.completionCheck += Number(process.hrtime.bigint() - phaseStart) / 1e6;
-          const cpuDelta = process.cpuUsage(perfStartCpu);
-          const elapsedMs = Number(process.hrtime.bigint() - perfStartHr) / 1e6;
-          this.lastJobMetrics = {
-            jobId: job.id,
-            finishedAt: Date.now(),
-            elapsedMs: Math.round(elapsedMs),
-            cpuUserMs: Math.round(cpuDelta.user / 1000),
-            cpuSystemMs: Math.round(cpuDelta.system / 1000),
-            cpuTotalMs: Math.round((cpuDelta.user + cpuDelta.system) / 1000),
-            timingsMs: {
-              completionCheck: Math.round(timingsMs.completionCheck),
-            },
-          };
-          return;
-        }
-        if (reuse.deferred) {
-          downloadTracker.deferPendingToBack(job.id, reuse.reason, {
-            keepRetryTier: true,
-          });
-          this._scheduleProcessIn(JOB_COOLDOWN_MS);
-          return;
-        }
+        this._scheduleProcessIn(JOB_COOLDOWN_MS);
+        return;
       }
       if (!isAnyDownloadSourceConfigured()) {
         throw new Error(getDownloadSourceNotConfiguredMessage());

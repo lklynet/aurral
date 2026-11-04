@@ -11,12 +11,11 @@ import { logger } from "../../../services/logger.ts";
 import { requireAdmin } from "../../../middleware/guards.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import { EXISTING_FILE_MODE_OPTIONS, requireFlowAccess } from "./utils.ts";
+import { requireFlowAccess } from "./utils.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const workerSettings = v.object({
   concurrency: v.optional(v.union([v.number(), v.string()])),
-  existingFileMode: v.optional(v.string()),
 });
 
 export default new Hono<AppEnv>()
@@ -30,22 +29,15 @@ export default new Hono<AppEnv>()
     requireAdmin,
     validate("json", workerSettings),
     async (c) => {
-      const { concurrency, existingFileMode } = c.req.valid("json");
+      const { concurrency } = c.req.valid("json");
       if (concurrency !== undefined) {
         const parsed = Number(concurrency);
         if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3) {
           return c.json({ error: "concurrency must be an integer between 1 and 3" }, 400);
         }
       }
-      if (
-        existingFileMode !== undefined &&
-        !EXISTING_FILE_MODE_OPTIONS.includes(existingFileMode.trim().toLowerCase())
-      ) {
-        return c.json({ error: "existingFileMode must be one of: download, reuse" }, 400);
-      }
       const settings = await downloadWorker.updateWorkerSettings({
         concurrency: concurrency === undefined ? undefined : Number(concurrency),
-        existingFileMode,
       });
       return c.json({ success: true, settings }, 200);
     },

@@ -114,7 +114,6 @@ test("startup migration from v1 splits weeklyFlowWorker settings into playlistWo
       .get()?.value || "{}",
   );
   assert.equal(playlistWorker.concurrency, 2);
-  assert.equal(playlistWorker.existingFileMode, "reuse");
   assert.equal(playlistWorker.preferredFormat, undefined);
 
   const weeklyFlowWorker = JSON.parse(

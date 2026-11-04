@@ -494,7 +494,6 @@ test("deleting a playlist keeps the Library files it reused and deletes the file
 });
 
 test("a playlist that skips downloads reuses Library files and saves the rest", async () => {
-  dbOps.updateSettings({ playlistWorker: { existingFileMode: "download", concurrency: 1 } });
   const reused = { artistName: "Reuse Band", albumName: "Only Local", trackName: "On Disk" };
   const missing = { artistName: "Fresh Band", albumName: "Not Here", trackName: "Elsewhere" };
   const libraryFile = await addLibraryFile(reused);

@@ -329,12 +329,7 @@ export class PlaylistManager {
       }
       downloadTracker.clearByPlaylistId(playlistType);
       const { repairJobsUnderRemovedPlaylistDir } = await import("../downloadJobs/fileReuse.ts");
-      const { downloadWorker } = await import("../downloadJobs/downloadWorker.ts");
-      const { existingFileMode } = downloadWorker.getWorkerSettings();
-      await repairJobsUnderRemovedPlaylistDir(playlistType, {
-        existingFileMode,
-        downloadRoot: this.downloadRoot,
-      });
+      await repairJobsUnderRemovedPlaylistDir(playlistType, { downloadRoot: this.downloadRoot });
     }
   }
 

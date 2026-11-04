@@ -108,18 +108,7 @@ function buildPlaylistWorkerSettings(
     : Array.isArray(legacy.retryPausedPlaylistIds)
       ? legacy.retryPausedPlaylistIds
       : [];
-  const existingFileModeRaw = current.existingFileMode ?? legacy.existingFileMode;
-  const existingFileMode =
-    String(existingFileModeRaw || "")
-      .trim()
-      .toLowerCase() === "download"
-      ? "download"
-      : "reuse";
-  return {
-    concurrency,
-    retryPausedPlaylistIds,
-    existingFileMode,
-  };
+  return { concurrency, retryPausedPlaylistIds };
 }
 
 function backfillSlskdSettings(db: Database.Database, dbHelpers: JsonHelpers) {

@@ -1,10 +1,8 @@
-import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
 import { DEFAULT_METADATA_BASE_URL } from "../config/constants.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { migrateLegacyAdmin } from "../middleware/auth.ts";
-import { normalizeExistingFileMode } from "./downloadJobs/fileReuseMode.ts";
 import { STORED_DATA_MIGRATION_SETTING, STORED_DATA_MIGRATION_VERSION } from "./honkerDb.ts";
 import { convertRetiredFlows } from "./flows/staticPlaylistFromFlow.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
@@ -40,21 +38,6 @@ function moveRenamedSettingKeys() {
   dbOps.invalidateSettingsCache();
 }
 
-function storeExistingFileMode() {
-  const stored = dbHelpers.readJSON(
-    v.record(v.string(), v.unknown()),
-    db
-      .prepare<[], Pick<SettingsRow, "value">>(
-        "SELECT value FROM settings WHERE key = 'playlistWorker'",
-      )
-      .get()?.value,
-    "playlistWorker",
-  );
-  const mode = stored?.existingFileMode;
-  if (mode == null || mode === normalizeExistingFileMode(mode)) return;
-  dbOps.updateSettings({ playlistWorker: dbOps.getSettings().playlistWorker });
-}
-
 function storeCurrentIntegrations() {
   const settings = dbOps.getSettings();
   const integrations = { ...(settings.integrations || {}) };
@@ -88,7 +71,6 @@ function storeCurrentIntegrations() {
 export async function migrateStoredData() {
   moveRenamedSettingKeys();
   flowPlaylistConfig.saveNormalized();
-  storeExistingFileMode();
   storeCurrentIntegrations();
   migrateLegacyAdmin();
   await convertRetiredFlows();
