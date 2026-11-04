@@ -2,10 +2,11 @@ import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
   deezerErrorSchema,
-  deezerGetPlayableTrackByIsrc,
+  deezerGetPlayableCopy,
   deezerPageSchema,
   deezerPreviewPath,
   deezerTrackSchema,
+  type DeezerTrack,
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
 
@@ -143,11 +144,9 @@ const normalizePlaylistSummary = (playlist: DeezerPlaylist) => {
 
 type PlaylistSummary = NonNullable<ReturnType<typeof normalizePlaylistSummary>>;
 
-type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
-
 const withPlayablePreview = async (row: DeezerTrack) => {
-  if (row.preview || !row.isrc) return row;
-  const playable = await deezerGetPlayableTrackByIsrc(row.isrc).catch(() => null);
+  if (row.preview) return row;
+  const playable = await deezerGetPlayableCopy(row).catch(() => null);
   return playable ? { ...row, id: playable.id, preview: playable.preview } : row;
 };
 
