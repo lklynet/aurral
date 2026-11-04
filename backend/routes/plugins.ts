@@ -10,6 +10,7 @@ import {
   revokePluginDevKey,
 } from "../services/plugins/pluginDevKeys.ts";
 import {
+  discardPluginLink,
   inspectPluginLink,
   installPluginLink,
   updatePluginFromSource,
@@ -93,8 +94,27 @@ export default new Hono<AppEnv>()
     "/install",
     requireAuth,
     requireAdmin,
-    validate("json", v.object({ token: v.pipe(v.string(), v.minLength(1)) })),
-    (c) => answer(c, () => installPluginLink(c.req.valid("json").token)),
+    validate(
+      "json",
+      v.object({
+        token: v.pipe(v.string(), v.minLength(1)),
+        ids: v.pipe(v.array(v.string()), v.minLength(1), v.maxLength(100)),
+      }),
+    ),
+    (c) => {
+      const { token, ids } = c.req.valid("json");
+      return answer(c, () => installPluginLink(token, ids));
+    },
+  )
+  .delete(
+    "/install/:token",
+    requireAuth,
+    requireAdmin,
+    validate("param", v.object({ token: v.string() })),
+    async (c) => {
+      await discardPluginLink(c.req.valid("param").token);
+      return c.json({ ok: true }, 200);
+    },
   )
   .get("/dev-keys", requireAuth, requireAdmin, (c) => c.json({ keys: listPluginDevKeys() }, 200))
   .post("/dev-keys", requireAuth, requireAdmin, (c) => c.json(createPluginDevKey(), 200))

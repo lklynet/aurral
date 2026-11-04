@@ -3,7 +3,7 @@ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -77,9 +77,9 @@ function zip(files: Record<string, string>) {
   return Buffer.concat([...locals, directory, end]);
 }
 
-const manifest = (version: string) =>
+const manifest = (version: string, id = "box") =>
   JSON.stringify({
-    id: "box",
+    id,
     name: "Box",
     version,
     api: 1,
@@ -99,6 +99,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   stopAllPlugins();
   await rm(pluginsDir(), { recursive: true, force: true });
   await rm(scratch, { recursive: true, force: true });
@@ -115,20 +116,84 @@ test("a plugin installs off from a compressed zip link and updates from the same
   const url = `${server.url}/box.zip`;
 
   const inspected = await inspectPluginLink(url);
-  assert.equal(inspected.manifest.id, "box");
-  assert.equal(inspected.installedVersion, null);
+  assert.deepEqual(
+    inspected.plugins.map((found) => [found.manifest.id, found.installedVersion]),
+    [["box", null]],
+  );
   assert.equal((await listPlugins()).plugins.length, 0);
 
-  await installPluginLink(inspected.token);
+  await installPluginLink(inspected.token, ["box"]);
   const [installed] = (await listPlugins()).plugins;
   assert.equal(installed?.manifest?.version, "1.0.0");
   assert.equal(installed?.enabled, false);
   assert.equal(installed?.sourceUrl, url);
-  await assert.rejects(installPluginLink(inspected.token), /Check the link again/);
+  await assert.rejects(installPluginLink(inspected.token, ["box"]), /Check the link again/);
 
   served = plugin("1.1.0");
   await updatePluginFromSource("box");
   assert.equal((await listPlugins()).plugins[0]?.manifest?.version, "1.1.0");
+});
+
+test("a GitHub repo link offers each plugin in it and installs the ones chosen", async (t) => {
+  let version = "1.0.0";
+  const requested: string[] = [];
+  const server = await createMockHttpServer((request, response) => {
+    requested.push(String(request.url));
+    if (request.url === "/repos/you/aurral-plugins/releases/latest") {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    response.end(
+      zip({
+        "you-aurral-plugins-1a2b/README.md": "",
+        "you-aurral-plugins-1a2b/plugins/box/manifest.json": manifest(version),
+        "you-aurral-plugins-1a2b/plugins/box/index.js": "export default {};",
+        "you-aurral-plugins-1a2b/plugins/crate/manifest.json": manifest(version, "crate"),
+        "you-aurral-plugins-1a2b/plugins/crate/index.js": "export default {};",
+        "you-aurral-plugins-1a2b/plugins/broken/manifest.json": "{",
+      }),
+    );
+  });
+  t.onTestFinished(server.close);
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    realFetch(String(input).replace("https://api.github.com", server.url), init),
+  );
+  const repo = "https://github.com/you/aurral-plugins";
+
+  const inspected = await inspectPluginLink(repo);
+  assert.deepEqual(
+    inspected.plugins.map((found) => found.manifest.id),
+    ["box", "crate"],
+  );
+  assert.deepEqual(inspected.problems, [
+    { folder: "plugins/broken", error: "manifest.json is not valid JSON" },
+  ]);
+  assert.deepEqual(requested, [
+    "/repos/you/aurral-plugins/releases/latest",
+    "/repos/you/aurral-plugins/zipball",
+  ]);
+
+  assert.deepEqual(await installPluginLink(inspected.token, ["crate"]), {
+    installed: [{ id: "crate", version: "1.0.0" }],
+  });
+  await installPluginLink(inspected.token, ["box"]);
+  await assert.rejects(installPluginLink(inspected.token, ["box"]), /Check the link again/);
+
+  version = "1.1.0";
+  await updatePluginFromSource("crate");
+  assert.deepEqual(
+    (await listPlugins()).plugins.map((plugin) => [
+      plugin.id,
+      plugin.manifest?.version,
+      plugin.sourceUrl,
+    ]),
+    [
+      ["box", "1.0.0", repo],
+      ["crate", "1.1.0", repo],
+    ],
+  );
 });
 
 test("a zip with a path outside its folder is refused before anything is written", async () => {

@@ -1,11 +1,12 @@
 import { fork, type ChildProcess } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import * as v from "valibot";
 import { logger } from "../logger.ts";
-import { PLUGIN_MAIN, pluginFolder } from "./pluginManifest.ts";
+import { PLUGIN_MAIN, pluginDataFolder, pluginFolder } from "./pluginManifest.ts";
 import { disablePlugin, recordPluginError, type InstalledPlugin } from "./pluginStore.ts";
 
 const RUNNER = fileURLToPath(new URL("./pluginRunner.ts", import.meta.url));
@@ -89,6 +90,7 @@ function failAll(state: Running, error: BrokenPlugin | PluginError) {
 }
 
 function start(plugin: InstalledPlugin): Running {
+  mkdirSync(pluginDataFolder(plugin.id), { recursive: true });
   const child = fork(RUNNER, [path.join(pluginFolder(plugin.id), PLUGIN_MAIN)], {
     cwd: pluginFolder(plugin.id),
     env: pluginEnv(),

@@ -1,37 +1,69 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import * as v from "valibot";
 import { resolveAurralDataDir } from "../../config/data-dir.ts";
 import { logger } from "../logger.ts";
 import { extractZipEntry, readZipEntries, ZipFormatError } from "../zip.ts";
 import { stopPlugin } from "./pluginHost.ts";
-import { pluginFolder, readPluginManifestAt, type PluginManifest } from "./pluginManifest.ts";
+import {
+  pluginCapabilities,
+  pluginFolder,
+  readPluginManifestAt,
+  type PluginManifest,
+} from "./pluginManifest.ts";
 import { PluginRequestError, refreshInstalledPlugins } from "./pluginService.ts";
 import { readPlugin, savePluginSourceUrl } from "./pluginStore.ts";
 
 const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 50 * 1024 * 1024;
 const MAX_FILES = 500;
+const MAX_SEARCH_DEPTH = 2;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const INSPECT_TTL_MS = 15 * 60_000;
+const GITHUB_API = "https://api.github.com";
+const GITHUB_REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/;
+const HEADERS = { "User-Agent": "Aurral" };
 
-type Inspected = {
-  url: string;
-  root: string;
-  folder: string;
-  manifest: PluginManifest;
-  expiresAt: number;
-};
+type Found = { folder: string; manifest: PluginManifest };
+type Problem = { folder: string; error: string };
+type Inspected = { url: string; root: string; plugins: Found[]; expiresAt: number };
 
 const inspected = new Map<string, Inspected>();
 const installsDir = () => path.join(resolveAurralDataDir(), "_staging", "plugin-installs");
 
-async function downloadArchive(url: string, file: string) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) }).catch(
-    (error: unknown) => {
-      throw new PluginRequestError(400, `Couldn't download the plugin: ${String(error)}`);
-    },
+const latestRelease = v.object({
+  tag_name: v.string(),
+  assets: v.array(v.object({ name: v.string(), browser_download_url: v.string() })),
+});
+
+async function archiveUrl(url: string) {
+  const match = GITHUB_REPO.exec(url);
+  if (!match) return url;
+  const repo = `${GITHUB_API}/repos/${match[1]}/${match[2]}`;
+  const response = await fetch(`${repo}/releases/latest`, {
+    headers: { ...HEADERS, Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    throw new PluginRequestError(400, `Couldn't reach GitHub: ${String(error)}`);
+  });
+  if (response.status === 404) return `${repo}/zipball`;
+  if (!response.ok) throw new PluginRequestError(400, `GitHub answered HTTP ${response.status}`);
+  const release = v.safeParse(latestRelease, await response.json());
+  if (!release.success) return `${repo}/zipball`;
+  const asset = release.output.assets.find((entry) => entry.name.endsWith(".zip"));
+  return (
+    asset?.browser_download_url ?? `${repo}/zipball/${encodeURIComponent(release.output.tag_name)}`
   );
+}
+
+async function downloadArchive(url: string, file: string) {
+  const response = await fetch(url, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    throw new PluginRequestError(400, `Couldn't download the plugin: ${String(error)}`);
+  });
   if (!response.ok || !response.body)
     throw new PluginRequestError(400, `Couldn't download the plugin: HTTP ${response.status}`);
   if (Number(response.headers.get("content-length") || 0) > MAX_ARCHIVE_BYTES)
@@ -55,7 +87,7 @@ function safeName(name: string) {
   return !path.posix.isAbsolute(normalized) && !normalized.startsWith("..") && !name.includes("\\");
 }
 
-export async function unpackPluginArchive(file: string, target: string) {
+async function extractArchive(file: string, target: string) {
   let entries;
   try {
     entries = (await readZipEntries(file)).filter((entry) => !entry.name.endsWith("/"));
@@ -83,43 +115,91 @@ export async function unpackPluginArchive(file: string, target: string) {
       throw error;
     }
   }
-  const read = await readPluginManifestAt(target);
-  if (!read.manifest) throw new PluginRequestError(400, `This plugin can't load: ${read.error}`);
-  return read.manifest;
+}
+
+async function pluginFolders(dir: string, depth = 0): Promise<string[]> {
+  if (
+    await fs.access(path.join(dir, "manifest.json")).then(
+      () => true,
+      () => false,
+    )
+  )
+    return [dir];
+  if (depth >= MAX_SEARCH_DEPTH) return [];
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const children = entries.filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules",
+  );
+  const found = await Promise.all(
+    children.map((entry) => pluginFolders(path.join(dir, entry.name), depth + 1)),
+  );
+  return found.flat().sort();
+}
+
+export async function unpackPluginArchive(file: string, target: string) {
+  await extractArchive(file, target);
+  const plugins: Found[] = [];
+  const problems: Problem[] = [];
+  for (const folder of await pluginFolders(target)) {
+    const name = path.relative(target, folder) || ".";
+    const read = await readPluginManifestAt(folder);
+    if (!read.manifest) problems.push({ folder: name, error: read.error });
+    else if (plugins.some((plugin) => plugin.manifest.id === read.manifest.id))
+      problems.push({ folder: name, error: `Another folder has the id ${read.manifest.id}` });
+    else plugins.push({ folder, manifest: read.manifest });
+  }
+  if (plugins.length) return { plugins, problems };
+  const [problem] = problems;
+  if (!problem)
+    throw new PluginRequestError(
+      400,
+      "No plugins found. A plugin is a folder with manifest.json and index.js.",
+    );
+  const where = problem.folder === "." ? "This plugin" : problem.folder;
+  throw new PluginRequestError(400, `${where} can't load: ${problem.error}`);
+}
+
+export async function discardPluginLink(token: string) {
+  const entry = inspected.get(token);
+  inspected.delete(token);
+  if (entry) await fs.rm(entry.root, { recursive: true, force: true });
 }
 
 function forgetExpired() {
   const now = Date.now();
-  for (const [token, entry] of inspected) {
-    if (entry.expiresAt > now) continue;
-    inspected.delete(token);
-    void fs.rm(entry.root, { recursive: true, force: true });
-  }
+  for (const [token, entry] of inspected) if (entry.expiresAt <= now) void discardPluginLink(token);
 }
 
 export async function inspectPluginLink(url: string) {
   forgetExpired();
   const token = randomUUID();
   const root = path.join(installsDir(), token);
-  const folder = path.join(root, "plugin");
+  const folder = path.join(root, "plugins");
   await fs.mkdir(folder, { recursive: true });
   try {
-    const archive = path.join(root, "plugin.zip");
-    await downloadArchive(url, archive);
-    const manifest = await unpackPluginArchive(archive, folder);
-    inspected.set(token, { url, root, folder, manifest, expiresAt: Date.now() + INSPECT_TTL_MS });
-    const current = readPlugin(manifest.id)?.manifest ?? null;
-    return { token, manifest, installedVersion: current?.version ?? null };
+    const archive = path.join(root, "plugins.zip");
+    await downloadArchive(await archiveUrl(url), archive);
+    const { plugins, problems } = await unpackPluginArchive(archive, folder);
+    inspected.set(token, { url, root, plugins, expiresAt: Date.now() + INSPECT_TTL_MS });
+    return {
+      token,
+      plugins: plugins.map(({ manifest }) => ({
+        manifest,
+        capabilities: pluginCapabilities(manifest),
+        installedVersion: readPlugin(manifest.id)?.manifest?.version ?? null,
+      })),
+      problems,
+    };
   } catch (error) {
     await fs.rm(root, { recursive: true, force: true });
     throw error;
   }
 }
 
-async function moveIntoPlace(entry: Inspected) {
-  const target = pluginFolder(entry.manifest.id);
+async function moveIntoPlace({ folder, manifest }: Found) {
+  const target = pluginFolder(manifest.id);
   const previous = `${target}.previous`;
-  stopPlugin(entry.manifest.id);
+  stopPlugin(manifest.id);
   await fs.rm(previous, { recursive: true, force: true });
   const replacing = await fs.stat(target).then(
     () => true,
@@ -127,35 +207,48 @@ async function moveIntoPlace(entry: Inspected) {
   );
   if (replacing) await fs.rename(target, previous);
   await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.rename(entry.folder, target);
+  await fs.rename(folder, target);
   await fs.rm(previous, { recursive: true, force: true });
-  await fs.rm(entry.root, { recursive: true, force: true });
-  await refreshInstalledPlugins();
-  savePluginSourceUrl(entry.manifest.id, entry.url);
-  logger.info(`plugin:${entry.manifest.id}`, replacing ? "Plugin updated" : "Plugin installed", {
-    version: entry.manifest.version,
-    url: entry.url,
-  });
+  return replacing;
 }
 
-export async function installPluginLink(token: string) {
+export async function installPluginLink(token: string, ids: string[]) {
   forgetExpired();
   const entry = inspected.get(token);
   if (!entry) throw new PluginRequestError(404, "Check the link again before installing");
-  inspected.delete(token);
-  await moveIntoPlace(entry);
-  return { id: entry.manifest.id, version: entry.manifest.version };
+  const chosen = entry.plugins.filter((plugin) => ids.includes(plugin.manifest.id));
+  if (!chosen.length || chosen.length !== new Set(ids).size)
+    throw new PluginRequestError(400, "Choose plugins from this link");
+  entry.plugins = entry.plugins.filter((plugin) => !chosen.includes(plugin));
+  if (!entry.plugins.length) inspected.delete(token);
+  const replaced = [];
+  try {
+    for (const plugin of chosen) replaced.push(await moveIntoPlace(plugin));
+  } finally {
+    if (!entry.plugins.length) await fs.rm(entry.root, { recursive: true, force: true });
+  }
+  await refreshInstalledPlugins();
+  for (const [index, { manifest }] of chosen.entries()) {
+    savePluginSourceUrl(manifest.id, entry.url);
+    logger.info(`plugin:${manifest.id}`, replaced[index] ? "Plugin updated" : "Plugin installed", {
+      version: manifest.version,
+      url: entry.url,
+    });
+  }
+  return {
+    installed: chosen.map(({ manifest }) => ({ id: manifest.id, version: manifest.version })),
+  };
 }
 
 export async function updatePluginFromSource(id: string) {
   const url = readPlugin(id)?.sourceUrl;
   if (!url) throw new PluginRequestError(404, "This plugin wasn't installed from a link");
-  const { token, manifest } = await inspectPluginLink(url);
-  if (manifest.id !== id) {
-    const entry = inspected.get(token);
-    inspected.delete(token);
-    if (entry) await fs.rm(entry.root, { recursive: true, force: true });
-    throw new PluginRequestError(400, `The link now has the plugin ${manifest.id}`);
+  const { token, plugins } = await inspectPluginLink(url);
+  try {
+    if (!plugins.some((plugin) => plugin.manifest.id === id))
+      throw new PluginRequestError(400, `The link no longer has ${id}`);
+    return await installPluginLink(token, [id]);
+  } finally {
+    await discardPluginLink(token);
   }
-  return installPluginLink(token);
 }

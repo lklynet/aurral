@@ -76,13 +76,18 @@ export function pluginStatus(plugin: Plugin): ServiceStatus {
   return { label: plugin.manifest?.downloadSource ? `On, priority ${plugin.priority}` : "On" };
 }
 
-function describeAdds(manifest: Manifest) {
-  const parts = manifest.actions.map((action) => `${action.label} in ${action.target} menus`);
-  if (manifest.events.length) parts.push(`${manifest.events.join(", ")} events`);
-  if (manifest.downloadSource)
-    parts.push(manifest.downloadSource.albums ? "an album download source" : "a download source");
-  if (manifest.importList) parts.push(`${manifest.importList.label} playlist imports`);
-  return parts.join(", ") || null;
+function CapabilityList({ plugin }: { plugin: Inspected["plugins"][number] }) {
+  const parts = plugin.capabilities.map((capability) => (
+    <span
+      key={capability.key}
+      className={capability.key === "api" ? "settings-row__warning" : undefined}
+    >
+      {capability.kind}: {capability.label}
+    </span>
+  ));
+  if (plugin.manifest.uses.length)
+    parts.push(<span key="uses">Uses {plugin.manifest.uses.join(", ")}</span>);
+  return parts.flatMap((part, index) => (index ? [", ", part] : [part]));
 }
 
 function SettingField({
@@ -157,7 +162,8 @@ function PluginManage({ plugin }: { plugin: Plugin }) {
   const update = useMutation({
     mutationFn: () =>
       parseResponse(pluginsClient[":id"].update.$post({ param: { id: plugin.id } })),
-    onSuccess: (result) => showSuccess(`Updated to ${result.version}`),
+    onSuccess: ({ installed: [updated] }) =>
+      showSuccess(updated ? `Updated to ${updated.version}` : "Updated"),
     onError: (error) => showError(errorText(error, "Couldn't update the plugin")),
     onSettled: refresh,
   });
@@ -186,7 +192,7 @@ function PluginManage({ plugin }: { plugin: Plugin }) {
           </button>
         </SettingsRow>
       ) : null}
-      <SettingsRow label="Remove" help="Deletes the plugin folder and its settings.">
+      <SettingsRow label="Remove" help="Deletes the plugin, its settings, and its files.">
         <button type="button" className="btn btn-danger btn-sm" onClick={() => setRemoving(true)}>
           Remove
         </button>
@@ -194,7 +200,7 @@ function PluginManage({ plugin }: { plugin: Plugin }) {
       <ConfirmModal
         open={removing}
         title={`Remove ${name}?`}
-        body="Its folder and settings are deleted. Playlists it imported stay."
+        body="Its folder, settings, and files are deleted. Playlists it imported stay."
         confirmLabel="Remove"
         busyLabel="Removing…"
         tone="danger"
@@ -334,43 +340,68 @@ function InstallGroup({ list }: { list: PluginList }) {
   const { showSuccess } = useToast();
   const [url, setUrl] = useState("");
   const [checked, setChecked] = useState<Inspected | null>(null);
+  const [installed, setInstalled] = useState<string[]>([]);
   const inspect = useMutation({
     mutationFn: () => parseResponse(pluginsClient.install.inspect.$post({ json: { url } })),
-    onSuccess: setChecked,
+    onSuccess: (result) => {
+      setChecked(result);
+      setInstalled([]);
+    },
   });
   const install = useMutation({
-    mutationFn: (token: string) => parseResponse(pluginsClient.install.$post({ json: { token } })),
-    onSuccess: async (result) => {
-      setChecked(null);
-      setUrl("");
-      showSuccess(`Installed ${result.id} ${result.version}. Turn it on to use it.`);
+    mutationFn: ({ token, id }: { token: string; id: string }) =>
+      parseResponse(pluginsClient.install.$post({ json: { token, ids: [id] } })),
+    onSuccess: async ({ installed: [done] }) => {
+      if (!done) return;
+      setInstalled((ids) => [...ids, done.id]);
+      showSuccess(`Installed ${done.id} ${done.version}. Turn it on to use it.`);
       await refresh();
     },
   });
   const failure = inspect.error ?? install.error;
 
   if (checked) {
-    const adds = describeAdds(checked.manifest);
+    const close = () => {
+      void pluginsClient.install[":token"].$delete({ param: { token: checked.token } });
+      setChecked(null);
+      setUrl("");
+      install.reset();
+    };
     return (
-      <SettingsGroup title="Install from a link">
-        <SettingsRow
-          label={`${checked.manifest.name} ${checked.manifest.version}`}
-          help={
-            checked.installedVersion
-              ? `Replaces ${checked.installedVersion}.`
-              : checked.manifest.description
-          }
-        />
-        {checked.manifest.uses.length ? (
-          <SettingsRow label="Uses">
-            <span className="settings-row__value">{checked.manifest.uses.join(", ")}</span>
-          </SettingsRow>
-        ) : null}
-        {adds ? (
-          <SettingsRow label="Adds">
-            <span className="settings-row__value">{adds}</span>
-          </SettingsRow>
-        ) : null}
+      <SettingsGroup title="Install from a link" note={url.replace(/^https:\/\//, "")}>
+        {checked.plugins.map((found) => {
+          const { manifest } = found;
+          const busy = install.isPending && install.variables.id === manifest.id;
+          return (
+            <SettingsRow
+              key={manifest.id}
+              label={`${manifest.name} ${manifest.version}`}
+              help={<CapabilityList plugin={found} />}
+            >
+              {installed.includes(manifest.id) ? (
+                <span className="settings-row__value">Installed</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => install.mutate({ token: checked.token, id: manifest.id })}
+                  disabled={install.isPending}
+                >
+                  {busy ? <DotLoader size="xs" label={null} /> : null}
+                  {found.installedVersion ? `Update from ${found.installedVersion}` : "Install"}
+                </button>
+              )}
+            </SettingsRow>
+          );
+        })}
+        {checked.problems.map((problem) => (
+          <SettingsRow
+            key={problem.folder}
+            label={problem.folder}
+            help={`Can't load: ${problem.error}`}
+            tone="error"
+          />
+        ))}
         <SettingsActions
           status={
             install.error
@@ -381,19 +412,10 @@ function InstallGroup({ list }: { list: PluginList }) {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            onClick={() => setChecked(null)}
+            onClick={close}
             disabled={install.isPending}
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => install.mutate(checked.token)}
-            disabled={install.isPending}
-          >
-            {install.isPending ? <DotLoader size="xs" label={null} /> : null}
-            {checked.installedVersion ? "Update" : "Install"}
+            Done
           </button>
         </SettingsActions>
       </SettingsGroup>
@@ -405,8 +427,8 @@ function InstallGroup({ list }: { list: PluginList }) {
       title="Install from a link"
       note={
         <>
-          Paste a link to a plugin&apos;s <code className="settings-code">.zip</code>. You can also
-          put its folder in <code className="settings-code">{list.folder}</code>.
+          Paste a link to a plugin&apos;s GitHub repo. You can also put its folder in{" "}
+          <code className="settings-code">{list.folder}</code>.
         </>
       }
     >
@@ -425,7 +447,7 @@ function InstallGroup({ list }: { list: PluginList }) {
           <SettingsInput
             id="plugin-install-url"
             type="url"
-            placeholder="https://github.com/…/plugin.zip"
+            placeholder="https://github.com/you/aurral-plugins"
             autoComplete="off"
             spellCheck={false}
             value={url}

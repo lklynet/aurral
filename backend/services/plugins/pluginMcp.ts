@@ -25,7 +25,7 @@ import {
   pluginManifestSchema,
 } from "./pluginManifest.ts";
 import { listPlugins, messageResult, refreshInstalledPlugins } from "./pluginService.ts";
-import { pluginInput, readPlugin } from "./pluginStore.ts";
+import { pluginInput, readPlugin, whilePluginTests } from "./pluginStore.ts";
 
 const GUIDE_FILE = fileURLToPath(new URL("./plugin-api.md", import.meta.url));
 const TYPES_FILE = fileURLToPath(new URL("./aurral-plugin.d.ts", import.meta.url));
@@ -113,7 +113,7 @@ export const PLUGIN_MCP_TOOLS: { name: ToolName; description: string; inputSchem
   {
     name: "test_plugin",
     description:
-      "Calls one exported function, such as actions.send, events.track.played, downloadSource.search, importList.fetch, or test. Aurral adds settings and libraryFolder, and a directory for downloads. Works while the plugin is off. Returns the answer, or the error Aurral would show, plus the plugin's log lines.",
+      "Calls one exported function, such as actions.send, events.track.played, downloadSource.search, importList.fetch, scheduled, or test. Aurral adds settings, libraryFolder, dataFolder, api when the manifest asks for it, and a directory for downloads. Works while the plugin is off. Returns the answer, or the error Aurral would show, plus the plugin's log lines.",
     inputSchema: objectSchema(
       {
         id: { type: "string" },
@@ -223,12 +223,14 @@ async function testPlugin(input: v.InferOutput<(typeof toolInputs)["test_plugin"
     if (logs.length < MAX_TEST_LOG_LINES) logs.push(line);
   });
   try {
-    const answer = await callPlugin(
-      installed,
-      { path: input.path, input: call },
-      answerSchema(input.path),
-      TEST_TIMEOUT_MS,
-      { countFailures: false },
+    const answer = await whilePluginTests(plugin.id, () =>
+      callPlugin(
+        installed,
+        { path: input.path, input: call },
+        answerSchema(input.path),
+        TEST_TIMEOUT_MS,
+        { countFailures: false },
+      ),
     );
     result = { ok: true, answer };
   } catch (error) {

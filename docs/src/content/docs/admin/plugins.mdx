@@ -1,6 +1,6 @@
 ---
 title: Plugins
-description: Add menu actions, events, download sources, and playlist imports to Aurral with plugins.
+description: Add menu actions, events, schedules, download sources, and playlist imports to Aurral with plugins.
 ---
 
 Plugins add features Aurral doesn't have on its own. A plugin can add:
@@ -9,6 +9,8 @@ Plugins add features Aurral doesn't have on its own. A plugin can add:
 - **Events**, so it hears when a playlist changes, a track is played, a download finishes, or Aurral sends a notification.
 - **A download source** for tracks, or for whole albums.
 - **A playlist import** from links on another site.
+- **A schedule**, so it runs on its own every 15 minutes, hour, 6 hours, or day.
+- **Admin access to Aurral's API**, so it can do anything an admin can do in Aurral, like creating playlists or requesting albums.
 
 Plugins are app-wide. Only admins install them, turn them on, and set them up. Everyone sees the actions a plugin adds, except actions the plugin marks for admins.
 
@@ -18,13 +20,13 @@ A plugin runs as Aurral, so it can read and change what Aurral can. Install plug
 
 ## Install a plugin
 
-In **Settings > Plugins**, paste a link to the plugin's `.zip` under **Install from a link** and select **Check**. Aurral shows what the plugin uses and adds before you install it.
+In **Settings > Plugins**, paste a link to the plugin's GitHub repo under **Install from a link** and select **Check**. Aurral installs from the repo's latest release. When a repo has more than one plugin, choose the ones you want. Aurral shows what each plugin uses and adds before you install it. A link to a `.zip` works too.
 
 You can also put the plugin's folder in the `plugins` folder of the data folder. In Docker that is `/config/plugins`, so a plugin with the id `send-to-box` lives in `/config/plugins/send-to-box`. Aurral reads the folder each time you open **Settings > Plugins**.
 
 A new plugin is off. Open it, fill in its settings, and turn it on. If it has a **Test** button, use it to check its settings.
 
-A plugin installed from a link has an **Update** button that installs the newest version from the same link. **Remove** deletes the plugin's folder and settings.
+A plugin installed from a link has an **Update** button that installs the newest version from the same link. **Remove** deletes the plugin's folder, its settings, and the files it kept.
 
 ## Choose what a plugin adds
 

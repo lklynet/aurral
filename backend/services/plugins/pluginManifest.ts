@@ -13,6 +13,7 @@ export const PLUGIN_EVENTS = [
   "download.finished",
   "notification",
 ] as const;
+export const PLUGIN_SCHEDULES = ["15m", "1h", "6h", "24h"] as const;
 
 const text = (max: number) => v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(max));
 const key = v.pipe(
@@ -81,6 +82,8 @@ export const pluginManifestSchema = v.object({
     ),
     null,
   ),
+  schedule: v.optional(v.nullable(v.picklist(PLUGIN_SCHEDULES)), null),
+  apiAccess: v.optional(v.boolean(), false),
   test: v.optional(v.boolean(), false),
 });
 
@@ -88,6 +91,14 @@ export type PluginManifest = v.InferOutput<typeof pluginManifestSchema>;
 export type PluginSetting = PluginManifest["settings"][number];
 export type PluginEvent = (typeof PLUGIN_EVENTS)[number];
 export type PluginActionTarget = (typeof PLUGIN_ACTION_TARGETS)[number];
+export type PluginSchedule = (typeof PLUGIN_SCHEDULES)[number];
+
+const SCHEDULE_LABELS: Record<PluginSchedule, string> = {
+  "15m": "Every 15 minutes",
+  "1h": "Every hour",
+  "6h": "Every 6 hours",
+  "24h": "Every day",
+};
 
 const ACTION_KINDS: Record<PluginActionTarget, string> = {
   playlist: "Playlist menu",
@@ -116,6 +127,10 @@ export function pluginCapabilities(manifest: PluginManifest) {
     ...(manifest.importList
       ? [{ key: "importList", label: manifest.importList.label, kind: "Import list" }]
       : []),
+    ...(manifest.schedule
+      ? [{ key: "schedule", label: SCHEDULE_LABELS[manifest.schedule], kind: "Schedule" }]
+      : []),
+    ...(manifest.apiAccess ? [{ key: "api", label: "Admin access", kind: "Aurral API" }] : []),
   ];
 }
 export type PluginFolder =
@@ -124,6 +139,8 @@ export type PluginFolder =
 
 export const pluginsDir = () => path.join(resolveAurralDataDir(), "plugins");
 export const pluginFolder = (id: string) => path.join(pluginsDir(), id);
+export const pluginDataFolder = (id: string) =>
+  path.join(resolveAurralDataDir(), "plugin-data", id);
 
 async function isFile(filePath: string) {
   return (await fs.stat(filePath).catch(() => null))?.isFile() === true;

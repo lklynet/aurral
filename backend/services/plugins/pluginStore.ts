@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
@@ -6,6 +7,7 @@ import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
 import type { PluginsRow } from "../../db/rows.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import {
+  pluginDataFolder,
   pluginManifestSchema,
   type PluginEvent,
   type PluginFolder,
@@ -13,6 +15,7 @@ import {
 } from "./pluginManifest.ts";
 
 const SAFE_MODE_KEY = "pluginSafeMode";
+const API_KEY_PREFIX = "aurral_plugin_";
 const settingValue = v.union([v.string(), v.number(), v.boolean()]);
 const settingValues = v.record(v.string(), settingValue);
 const capabilityKeys = v.array(v.string());
@@ -34,6 +37,9 @@ const updateRow = db.prepare<[number, string, number, string, number, string]>(
 );
 const updateSourceUrl = db.prepare<[string | null, string]>(
   "UPDATE plugins SET source_url = ? WHERE id = ?",
+);
+const updateScheduledAt = db.prepare<[number, string]>(
+  "UPDATE plugins SET scheduled_at = ? WHERE id = ?",
 );
 const deleteRow = db.prepare<[string]>("DELETE FROM plugins WHERE id = ?");
 const updateError = db.prepare<[string | null, string]>(
@@ -62,6 +68,7 @@ function readRow(row: PluginsRow) {
     lastError: row.last_error,
     disabled: dbHelpers.readJSON(capabilityKeys, row.disabled, "plugin capabilities") ?? [],
     sourceUrl: row.source_url,
+    scheduledAt: row.scheduled_at,
   };
 }
 
@@ -111,12 +118,59 @@ export function activePlugin(id: string) {
   return activePlugins().find((plugin) => plugin.id === id) ?? null;
 }
 
-export function pluginInput(plugin: InstalledPlugin) {
-  return { settings: plugin.settings, libraryFolder: resolveDownloadRoot() };
-}
-
 export const isCapabilityOn = (plugin: InstalledPlugin, key: string) =>
   !plugin.disabled.includes(key);
+
+const apiKeyFor = (id: string) =>
+  `${API_KEY_PREFIX}${id}_${createHmac("sha256", getSettingsEncryptionKey())
+    .update(`plugin-api:${id}`)
+    .digest("base64url")}`;
+
+const hasApiAccess = (plugin: InstalledPlugin) =>
+  plugin.manifest.apiAccess && isCapabilityOn(plugin, "api");
+
+export function pluginInput(plugin: InstalledPlugin) {
+  return {
+    settings: plugin.settings,
+    libraryFolder: resolveDownloadRoot(),
+    dataFolder: pluginDataFolder(plugin.id),
+    ...(hasApiAccess(plugin)
+      ? {
+          api: {
+            url: `http://127.0.0.1:${process.env.PORT || 3001}/api`,
+            key: apiKeyFor(plugin.id),
+          },
+        }
+      : {}),
+  };
+}
+
+export const isPluginApiKey = (key: string) => key.startsWith(API_KEY_PREFIX);
+
+const testing = new Map<string, number>();
+
+export async function whilePluginTests<Result>(id: string, run: () => Promise<Result>) {
+  testing.set(id, (testing.get(id) ?? 0) + 1);
+  try {
+    return await run();
+  } finally {
+    const left = (testing.get(id) ?? 1) - 1;
+    if (left) testing.set(id, left);
+    else testing.delete(id);
+  }
+}
+
+export function pluginForApiKey(key: string) {
+  const id = key.slice(API_KEY_PREFIX.length).split("_")[0] ?? "";
+  const plugin = readPlugin(id);
+  if (!plugin?.manifest || isSafeMode()) return null;
+  const installed = { ...plugin, manifest: plugin.manifest };
+  const expected = Buffer.from(apiKeyFor(id));
+  const given = Buffer.from(key);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  const running = (installed.enabled && isPluginReady(installed)) || testing.has(id);
+  return running && hasApiAccess(installed) ? id : null;
+}
 
 export function activePluginWith(id: string, capability: string) {
   const plugin = activePlugin(id);
@@ -184,6 +238,10 @@ export function disablePlugin(id: string, reason: string) {
 
 export function savePluginSourceUrl(id: string, url: string | null) {
   updateSourceUrl.run(url, id);
+}
+
+export function markPluginScheduled(id: string, at: number) {
+  updateScheduledAt.run(at, id);
 }
 
 export function forgetPlugin(id: string) {

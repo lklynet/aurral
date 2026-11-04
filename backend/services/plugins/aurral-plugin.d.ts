@@ -3,6 +3,8 @@ export type SettingValue = string | number | boolean;
 export interface Base {
   settings: Record<string, SettingValue>;
   libraryFolder: string;
+  dataFolder: string;
+  api?: { url: string; key: string };
 }
 
 export interface User {
@@ -197,4 +199,5 @@ export interface AurralPlugin {
   events?: { [Name in keyof Events]?: (input: EventInput<Name>) => Answer<unknown> };
   downloadSource?: DownloadSource;
   importList?: { fetch(input: Base & { url: string }): Answer<ImportedPlaylist> };
+  scheduled?(input: Base): Answer<unknown>;
 }

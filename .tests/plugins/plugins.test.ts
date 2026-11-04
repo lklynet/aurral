@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as v from "valibot";
@@ -18,7 +18,7 @@ const [
   state,
   { db },
   { default: pluginRoutes },
-  { pluginsDir },
+  { pluginsDir, pluginDataFolder },
   { stopAllPlugins },
   { refreshInstalledPlugins, listPlugins },
   { flowPlaylistConfig },
@@ -28,6 +28,9 @@ const [
   { deliverQueuedNotification, queuedNotificationSchema },
   { scanMusicRoot },
   { getLibrary },
+  { runDuePluginSchedules },
+  { activePlugin, pluginInput, setSafeMode, whilePluginTests },
+  { resolveRequestUser },
 ] = await setupIsolatedBackend(
   "plugins",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -42,6 +45,9 @@ const [
   () => import("../../backend/services/notificationService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/plugins/pluginSchedule.ts"),
+  () => import("../../backend/services/plugins/pluginStore.ts"),
+  () => import("../../backend/middleware/auth.ts"),
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
@@ -92,6 +98,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   stopAllPlugins();
   await rm(pluginsDir(), { recursive: true, force: true });
+  await rm(path.dirname(pluginDataFolder("any")), { recursive: true, force: true });
 });
 
 afterAll(async () => {
@@ -434,4 +441,55 @@ test("an import list previews links on its hosts and refuses others", async () =
   assert.equal(body.trackCount, 1);
   assert.equal(body.skipped, 1);
   assert.equal((await preview("https://example.com/list")).status, 400);
+});
+
+test("a scheduled plugin runs once its interval passes and keeps files in its data folder", async () => {
+  await install(
+    "ticker",
+    { schedule: "1h" },
+    `import { readFile, writeFile } from "node:fs/promises";
+    export default { async scheduled({ dataFolder }) {
+      const file = dataFolder + "/runs";
+      await writeFile(file, String(Number(await readFile(file, "utf8").catch(() => "0")) + 1));
+    } };`,
+  );
+  const start = Date.now();
+  const hours = (count: number) => start + count * 60 * 60_000;
+
+  assert.deepEqual(await runDuePluginSchedules(start), []);
+  await turnOn("ticker");
+  assert.deepEqual(await runDuePluginSchedules(start), ["ticker"]);
+  assert.deepEqual(await runDuePluginSchedules(hours(0.5)), []);
+  assert.deepEqual(await runDuePluginSchedules(hours(1)), ["ticker"]);
+  assert.equal(await readFile(path.join(pluginDataFolder("ticker"), "runs"), "utf8"), "2");
+
+  await turnOn("ticker", { capabilities: { schedule: false } });
+  assert.deepEqual(await runDuePluginSchedules(hours(3)), []);
+  await routes(admin).request("/plugins/ticker", { method: "DELETE" });
+  await assert.rejects(access(pluginDataFolder("ticker")));
+});
+
+test("a plugin's API key acts as an admin only while the plugin can run", async () => {
+  await install("helper", { apiAccess: true }, "export default {};");
+  await turnOn("helper");
+  const plugin = activePlugin("helper");
+  assert.ok(plugin);
+  const key = pluginInput(plugin).api?.key ?? "";
+  const userFor = (apiKey: string) => resolveRequestUser({ headers: { "x-api-key": apiKey } });
+
+  assert.deepEqual(
+    { username: userFor(key)?.username, role: userFor(key)?.role },
+    { username: "plugin:helper", role: "admin" },
+  );
+  assert.equal(userFor(`${key}x`), null);
+
+  await routes(admin).request("/plugins/helper", json("PUT", { enabled: false }));
+  assert.equal(userFor(key), null);
+  assert.equal((await whilePluginTests("helper", async () => userFor(key)))?.role, "admin");
+
+  await turnOn("helper", { capabilities: { api: false } });
+  assert.equal(userFor(key), null);
+  await turnOn("helper", { capabilities: { api: true } });
+  setSafeMode(true);
+  assert.equal(userFor(key), null);
 });

@@ -11,6 +11,7 @@ import {
 import { callPlugin, PluginError, stopPlugin } from "./pluginHost.ts";
 import {
   pluginCapabilities,
+  pluginDataFolder,
   pluginFolder,
   pluginsDir,
   scanPluginFolders,
@@ -21,6 +22,7 @@ import {
   activePlugins,
   forgetPlugin,
   isCapabilityOn,
+  whilePluginTests,
   isPluginReady,
   isSafeMode,
   isSafeModeForced,
@@ -159,6 +161,7 @@ export async function removePlugin(id: string) {
     throw new PluginRequestError(404, "Plugin not found");
   stopPlugin(id);
   await fs.rm(pluginFolder(id), { recursive: true, force: true });
+  await fs.rm(pluginDataFolder(id), { recursive: true, force: true });
   forgetPlugin(id);
   logger.info(`plugin:${id}`, "Plugin removed");
 }
@@ -167,12 +170,14 @@ export async function testPlugin(id: string, { countFailures = true } = {}) {
   const plugin = installedPlugin(id);
   if (!plugin.manifest.test) throw new PluginRequestError(400, "This plugin has no test");
   try {
-    const result = await callPlugin(
-      plugin,
-      { path: "test", input: pluginInput(plugin) },
-      messageResult,
-      TEST_TIMEOUT_MS,
-      { countFailures },
+    const result = await whilePluginTests(id, () =>
+      callPlugin(
+        plugin,
+        { path: "test", input: pluginInput(plugin) },
+        messageResult,
+        TEST_TIMEOUT_MS,
+        { countFailures },
+      ),
     );
     return { message: result?.message?.trim() || "Connected" };
   } catch (error) {

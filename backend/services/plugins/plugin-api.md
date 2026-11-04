@@ -1,12 +1,14 @@
 A plugin is a folder with two files, `manifest.json` and `index.js`. The manifest says what the plugin adds. `index.js` is an ES module whose default export has the functions Aurral calls.
 
+A plugin works in two directions. Aurral calls it from menus, on events, on a schedule, as a download source, or to import a playlist. With `apiAccess`, the plugin can also call Aurral's API and do anything an admin can do in the app.
+
 Aurral runs each plugin in its own Node process. It starts the process on the first call and stops it after 5 idle minutes. Bundle every package into `index.js`, because Aurral doesn't install any. Node's built-in modules and `fetch` are available.
 
 ## How a call works
 
 Aurral calls one function with one object and waits for its answer.
 
-- Every input has `settings` (the values from the plugin's page) and `libraryFolder` (the path of the Library folder).
+- Every input has `settings` (the values from the plugin's page), `libraryFolder` (the path of the Library folder), and `dataFolder` (a folder for the plugin's own files, kept between calls and updates and deleted when the plugin is removed). With `apiAccess`, it also has `api`. See [Aurral's API](#aurrals-api).
 - Return the answer the function's section describes. Aurral checks every answer. An answer it can't read counts as a failure and the error names the field.
 - Throw an `Error` to fail a call. Its message shows in Aurral with the plugin's name. Thrown errors are expected, for example when a service is down.
 - A crash, a timeout, or an answer Aurral can't read counts as broken. After 3 in a row, Aurral turns the plugin off.
@@ -31,7 +33,9 @@ Aurral calls one function with one object and waits for its answer.
   "actions": [{ "id": "send", "label": "Send to Box", "target": "playlist" }],
   "events": ["playlist.changed"],
   "downloadSource": null,
-  "importList": null
+  "importList": null,
+  "schedule": null,
+  "apiAccess": false
 }
 ```
 
@@ -50,6 +54,8 @@ Aurral calls one function with one object and waits for its answer.
 | `events`         | Events the plugin receives. See [Events](#events).                                                                                                                               |
 | `downloadSource` | `{ "albums": false }` for a track source, `{ "albums": true }` to also download albums. See [Download sources](#download-sources).                                               |
 | `importList`     | `{ "label": "Bandcamp", "hosts": ["bandcamp.com"] }` to import playlists from links on those hosts. See [Import lists](#import-lists).                                           |
+| `schedule`       | `"15m"`, `"1h"`, `"6h"`, or `"24h"` to run `scheduled` that often. See [Schedules](#schedules).                                                                                  |
+| `apiAccess`      | `true` to get a key to Aurral's API. See [Aurral's API](#aurrals-api).                                                                                                           |
 
 Each capability can be turned off on its own in **Settings > Plugins**, so keep them independent.
 
@@ -84,7 +90,7 @@ export default {
 };
 ```
 
-Each manifest entry needs its function: `test`, `actions.<id>`, `events["<event>"]`, `downloadSource.search` and the rest, or `importList.fetch`. A missing function counts as broken.
+Each manifest entry needs its function: `test`, `actions.<id>`, `events["<event>"]`, `downloadSource.search` and the rest, `importList.fetch`, or `scheduled`. A missing function counts as broken.
 
 ## Test
 
@@ -130,6 +136,29 @@ List events in the manifest and export a function for each under `events`. Aurra
 | `notification`      | Aurral sent a notification                | `kind` (`discovery.updated`, `flow.done`, `request.made`, or `request.available`), `title`, `message`, and details like `album` or `flow`                            |
 
 Every event also receives `event`, its name.
+
+## Schedules
+
+Set `"schedule"` and export `scheduled`. Aurral calls `scheduled({ settings, libraryFolder, dataFolder })` that often, starting within 15 minutes of the plugin being turned on. A run has 10 minutes and its answer is ignored. A failed run isn't retried, because the next one comes on schedule. Keep what a run needs to remember, like the last item it saw, in `dataFolder`.
+
+## Aurral's API
+
+Set `"apiAccess": true` to call Aurral's API. Every input then has `api` with `url`, the base of the API, and `key`. Send the key in the `X-Api-Key` header:
+
+```js
+export default {
+  async scheduled({ api, dataFolder }) {
+    const response = await fetch(`${api.url}/library/recent`, {
+      headers: { "X-Api-Key": api.key },
+    });
+    if (!response.ok) throw new Error(`Aurral answered ${response.status}`);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(`${dataFolder}/recent.json`, JSON.stringify(await response.json()));
+  },
+};
+```
+
+The key acts as an admin, so the plugin can do anything an admin can do in Aurral, like creating playlists, requesting albums, starting flows, or changing settings. People see this before they install, and can turn it off on the plugin's page. The key works only while the plugin is on or being tested, and stops working in safe mode. The [endpoint reference](https://docs.aurral.org/api/endpoints/) lists every route. The [app API contract](https://docs.aurral.org/api/app-contract/) lists the ones that stay stable between releases.
 
 ## Download sources
 
@@ -187,4 +216,8 @@ The plugin shows as a source in **Import playlist**. A user pastes a link on one
 
 ## Install and update
 
-People install a plugin by putting its folder in the `plugins` folder of their data folder, or by pasting a link to a `.zip` in **Settings > Plugins**. The zip holds `manifest.json` and `index.js`, at its root or in one folder. Publish each version as a release asset, so people can update from the same link.
+People install plugins by pasting a link in **Settings > Plugins**, or by putting a plugin's folder in the `plugins` folder of their data folder.
+
+A link can be a GitHub repo, like `https://github.com/you/aurral-plugins`. Aurral uses the latest release: its first `.zip` asset when it has one, or else its source. A repo without releases installs from its default branch. Aurral finds every folder with a `manifest.json`, at the root or up to two folders down, and lets people choose which to install. Each plugin folder holds everything it needs. A link can also point straight at a `.zip`.
+
+**Update** downloads the same link again and replaces the plugin's folder. Publish a release for each version, and attach a `.zip` when `index.js` has to be built first.

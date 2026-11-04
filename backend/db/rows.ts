@@ -519,6 +519,7 @@ export interface PluginsRow {
   last_error: string | null;
   disabled: string;
   source_url: string | null;
+  scheduled_at: number | null;
   updated_at: number;
 }
 

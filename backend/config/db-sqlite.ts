@@ -209,6 +209,7 @@ db.exec(`
     last_error TEXT,
     disabled TEXT NOT NULL DEFAULT '[]',
     source_url TEXT,
+    scheduled_at INTEGER,
     updated_at INTEGER NOT NULL
   );
 
@@ -731,6 +732,7 @@ tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN external_id TEXT");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN disabled TEXT NOT NULL DEFAULT '[]'");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN source_url TEXT");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN scheduled_at INTEGER");
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_play_events_external
     ON play_events(user_id, source, external_id) WHERE external_id IS NOT NULL;
