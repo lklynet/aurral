@@ -15,6 +15,7 @@ import {
   CollectionPlayButtons,
 } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
+import { usePlaylistPluginActions } from "../../hooks/usePluginActions.ts";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -125,6 +126,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const share = useShareAction();
+  const pluginActions = usePlaylistPluginActions(playlist.id);
   const showTrackAvailability = playlist.showTrackAvailability === true;
   const {
     tracks: savedTracks,
@@ -399,6 +401,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                   checked: showTrackAvailability,
                   onSelect: () => updateTrackAvailability(!showTrackAvailability),
                 }),
+                ...pluginActions,
                 {
                   id: "delete",
                   label: "Delete playlist",

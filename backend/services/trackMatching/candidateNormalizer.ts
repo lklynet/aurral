@@ -38,6 +38,15 @@ export const SOURCE_CAPABILITIES = {
     advertisedDuration: true,
     releaseContext: false,
   },
+  plugin: {
+    structuredArtist: true,
+    structuredAlbum: true,
+    structuredDuration: true,
+    providerTrackId: true,
+    filename: false,
+    directoryContext: false,
+    releaseContext: false,
+  },
   usenet: {
     structuredArtist: false,
     structuredAlbum: false,
@@ -74,7 +83,9 @@ const DEFAULT_CAPABILITIES: SourceCapabilities = Object.freeze({
 });
 
 export function getCapabilities(source?: string): SourceCapabilities {
-  const key = String(source || "").toLowerCase();
+  const key = String(source || "")
+    .toLowerCase()
+    .replace(/^plugin:.*/, "plugin");
   return (
     (isOwnKey(SOURCE_CAPABILITIES, key) ? SOURCE_CAPABILITIES[key] : undefined) || {
       ...DEFAULT_CAPABILITIES,

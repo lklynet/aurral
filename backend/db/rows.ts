@@ -501,6 +501,16 @@ export interface PlaylistDownloadJobsRevisionRow {
   revision: number;
 }
 
+export interface PluginsRow {
+  id: string;
+  manifest: string | null;
+  enabled: number;
+  settings: string;
+  priority: number;
+  last_error: string | null;
+  updated_at: number;
+}
+
 export interface SessionsRow {
   id: number;
   user_id: number;

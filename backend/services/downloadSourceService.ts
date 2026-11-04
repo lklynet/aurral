@@ -2,6 +2,7 @@ import { isOwnKey } from "../../lib/ownKey.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient, getUsenetClient } from "./download/downloadClientSettings.ts";
+import { activePluginSources, pluginSourceLabel } from "./plugins/pluginStore.ts";
 
 const SOURCE_LABELS = {
   slskd: "Soulseek",
@@ -105,6 +106,7 @@ export function getEnabledDownloadSources() {
   if (status.usenet.configured) sources.push(status.usenet);
   if (status.deemix.configured) sources.push(status.deemix);
   if (status.ytdlp.configured) sources.push(status.ytdlp);
+  sources.push(...activePluginSources());
   return sources.sort((left, right) => {
     if (left.priority !== right.priority) return left.priority - right.priority;
     return left.id.localeCompare(right.id);
@@ -137,10 +139,15 @@ export function getDownloadSourceNotConfiguredMessage() {
   if (!status.usenet.configured) pieces.push("Prowlarr + SABnzbd/NZBGet/Tidarr");
   if (!status.deemix.configured) pieces.push("deemix");
   if (!status.ytdlp.configured) pieces.push("yt-dlp");
-  return `No download source is configured. Configure ${pieces.join(" or ")} in Settings → Downloads to enable downloads for flows and playlists.`;
+  return `No download source is configured. Configure ${pieces.join(" or ")} in Settings → Downloads, or turn on a download source plugin, to enable downloads for flows and playlists.`;
 }
 
 export function getSourceLabel(sourceId: string | null | undefined) {
   const id = String(sourceId || "");
-  return (isOwnKey(SOURCE_LABELS, id) && SOURCE_LABELS[id]) || id || "download source";
+  return (
+    (isOwnKey(SOURCE_LABELS, id) && SOURCE_LABELS[id]) ||
+    pluginSourceLabel(id) ||
+    id ||
+    "download source"
+  );
 }

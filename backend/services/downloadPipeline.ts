@@ -41,6 +41,8 @@ import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts"
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { discardHeldFile } from "./downloadJobs/reviewFiles.ts";
 import { processShareDownload } from "./shareLinks/download.ts";
+import { processPluginPipelinePayload } from "./plugins/pluginDownloadSource.ts";
+import { pluginIdFromSource } from "./plugins/pluginStore.ts";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
@@ -53,9 +55,15 @@ type SlskdStepHelpers = Parameters<typeof processSlskdPipelinePayload>[1];
 type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
 type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
+type PluginStepPayload = Parameters<typeof processPluginPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
-type AdapterPayload = SlskdStepPayload | UsenetStepPayload | YtdlpStepPayload | DeemixStepPayload;
+type AdapterPayload =
+  | SlskdStepPayload
+  | UsenetStepPayload
+  | YtdlpStepPayload
+  | DeemixStepPayload
+  | PluginStepPayload;
 type AdapterState<Payload> = {
   [Key in Exclude<Payload extends unknown ? keyof Payload : never, keyof TrackerPayload>]?:
     | (Payload extends unknown ? (Key extends keyof Payload ? Payload[Key] : never) : never)
@@ -579,6 +587,9 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
     }
     return processYtdlpPipelinePayload(payload as YtdlpStepPayload, { failOrTryNextSource });
+  }
+  if (pluginIdFromSource(payload.source)) {
+    return processPluginPipelinePayload(payload as PluginStepPayload, { failOrTryNextSource });
   }
   if (payload.source !== "slskd") {
     const job = downloadTracker.getJob(payload.jobId);

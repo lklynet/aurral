@@ -200,6 +200,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS plugins (
+    id TEXT PRIMARY KEY NOT NULL,
+    manifest TEXT,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    settings TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 30,
+    last_error TEXT,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS history_servers (
     user_id INTEGER NOT NULL,
     provider TEXT NOT NULL,

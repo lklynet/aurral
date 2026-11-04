@@ -9,6 +9,7 @@ import {
   Library,
   Link,
   Monitor,
+  Puzzle,
   SlidersHorizontal,
   User,
   Users,
@@ -26,6 +27,7 @@ export const SETTINGS_SECTIONS = [
   { id: "downloads", label: "Downloads", icon: Download, group: "server" },
   { id: "discovery", label: "Discovery", icon: Compass, group: "server" },
   { id: "notifications", label: "Notifications", icon: Bell, group: "server" },
+  { id: "plugins", label: "Plugins", icon: Puzzle, group: "server" },
   { id: "status", label: "Status", icon: Activity, group: "server" },
   { id: "metadata", label: "Metadata", icon: Database, group: "server", hidden: true },
 ] as const;
@@ -167,6 +169,13 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Inbox: "upcoming releases shows artist news recommended discoveries",
     Webhooks: "HTTP callbacks headers body events",
     Gotify: { item: "gotify", keywords: "push notifications mobile alerts token events" },
+  },
+  plugins: {
+    sections: ["Installed", "Safe mode"],
+    fields: {
+      Plugins: "add-ons extensions integrations download sources playlist actions",
+      "Safe mode": "turn off all plugins troubleshoot bug report",
+    },
   },
   status: {
     About:

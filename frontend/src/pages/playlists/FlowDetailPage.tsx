@@ -21,6 +21,7 @@ import {
   CollectionPlayButtons,
 } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
+import { usePlaylistPluginActions } from "../../hooks/usePluginActions.ts";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -99,6 +100,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
     usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
+  const pluginActions = usePlaylistPluginActions(flow.id);
   const playback = usePlaylistTrackPlayback({
     tracks,
     playbackSource: {
@@ -313,6 +315,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
                       },
                     ]
                   : []),
+                ...pluginActions,
                 {
                   id: "delete",
                   label: "Delete flow",

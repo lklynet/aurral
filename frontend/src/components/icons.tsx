@@ -99,6 +99,7 @@ export const Pencil = createIcon(icons.Edit03);
 export function Play(props: IconProps) {
   return <icons.Play strokeWidth={1.5} fill="currentColor" {...props} />;
 }
+export const Puzzle = createIcon(icons.PuzzlePiece01);
 export const Plus = createIcon(icons.Plus);
 export const RefreshCw = createIcon(icons.RefreshCw01);
 export const Repeat = createIcon(icons.Repeat01);
