@@ -13,7 +13,7 @@ import {
   RELEASE_WAIT_SECONDS,
 } from "../releaseResolver.ts";
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
-import { safeLogDiagnostic } from "../logger.ts";
+import { logger, safeLogDiagnostic } from "../logger.ts";
 import {
   repairOrphanedPlaylistTrackPaths,
   moveHandedOverTracksToLidarr,
@@ -661,6 +661,16 @@ export class DownloadWorker {
         allowLidarr: !job.requestGroupId,
       });
       if (reuse.reused) {
+        if (job.requestGroupId && reuse.finalPath) {
+          const { recordRequestGroupDownloaded } = await import("../aurralHistoryService.ts");
+          await recordRequestGroupDownloaded(job.requestGroupId, reuse.finalPath).catch(
+            (error: unknown) =>
+              logger.warn("history", "Could not record a finished album request", {
+                jobId: job.id,
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+          );
+        }
         this._recordCompletedTrack(Number(process.hrtime.bigint() - perfStartHr) / 1e6, 0);
         phaseStart = process.hrtime.bigint();
         this._assertJobCanContinue(job, runGeneration);

@@ -501,3 +501,37 @@ test("an Aurral album request is available once its last track is filed", async 
     assert.deepEqual(request?.body, { album: "Souvlaki", folder: "/music/Slowdive/Souvlaki" });
   });
 });
+
+test("an Aurral album request with a failed track is not announced as available", async () => {
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const { recordPipelineJobSuccess } = await import("../../backend/services/pipelineHelpers.ts");
+  const { recordAlbumRequested } = await import("../../backend/services/aurralHistoryService.ts");
+  downloadTracker.clearAll();
+  const requestGroupId = "pygmalion-request";
+  recordAlbumRequested({
+    albumId: "78",
+    albumName: "Pygmalion",
+    artistName: "Slowdive",
+    managedBy: "aurral",
+    requestGroupId,
+  });
+  const queue = (trackName: string) =>
+    requireFixture(
+      downloadTracker.addJob(
+        { artistName: "Slowdive", trackName, albumName: "Pygmalion", requestGroupId },
+        "library",
+      ),
+    );
+  const failed = queue("Rutti");
+  const filed = queue("Crazy for You");
+  downloadTracker.setFailed(failed, "No source had it");
+
+  await recordPipelineJobSuccess({
+    downloadTracker,
+    job: requireFixture(downloadTracker.getJob(filed)),
+    committedFinalPath: "/music/Slowdive/Pygmalion/02 - Crazy for You.flac",
+  });
+
+  assert.equal(dbOps.getAlbumRequestByGroup(requestGroupId)?.statusLabel, "Requested");
+});

@@ -2011,13 +2011,11 @@ export class DownloadTracker {
   }
 
   isRequestGroupDone(requestGroupId: string) {
-    const statuses = requestGroupStatusesStmt.all(requestGroupId).map(({ status }) => status);
-    return (
-      statuses.includes("done") &&
-      statuses.every(
-        (status) => !["pending", "downloading", "cancel_requested", "blocked"].includes(status),
-      )
-    );
+    const statuses = requestGroupStatusesStmt
+      .all(requestGroupId)
+      .map(({ status }) => status)
+      .filter((status) => status !== "cancelled");
+    return statuses.length > 0 && statuses.every((status) => status === "done");
   }
 
   hasPersistedJob(id: string | null | undefined) {

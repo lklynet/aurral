@@ -1,4 +1,3 @@
-import path from "node:path";
 import { logger } from "./logger.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
@@ -213,9 +212,8 @@ export async function recordPipelineJobSuccess({
   try {
     const history = await import("./aurralHistoryService.ts");
     history.recordTrackJobCompleted(job);
-    const { requestGroupId } = job;
-    if (requestGroupId && committedFinalPath && downloadTracker.isRequestGroupDone(requestGroupId))
-      history.recordRequestGroupDownloaded(requestGroupId, path.dirname(committedFinalPath));
+    if (job.requestGroupId && committedFinalPath)
+      await history.recordRequestGroupDownloaded(job.requestGroupId, committedFinalPath);
   } catch (error) {
     logger.warn("history", "Could not record completed download job", {
       jobId: job.id,

@@ -1,3 +1,4 @@
+import path from "node:path";
 import crypto from "crypto";
 import { expandAlbumGrabHistory } from "./albumGrabActivity.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -542,7 +543,9 @@ export const recordAlbumSearchCompleted = ({
   return entry;
 };
 
-export const recordRequestGroupDownloaded = (requestGroupId: string, albumPath: string) => {
+export const recordRequestGroupDownloaded = async (requestGroupId: string, filePath: string) => {
+  const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
+  if (!downloadTracker.isRequestGroupDone(requestGroupId)) return null;
   const request = dbOps.getAlbumRequestByGroup(requestGroupId);
   if (!request || request.statusLabel === "Downloaded") return null;
   return recordAlbumSearchCompleted({
@@ -550,7 +553,7 @@ export const recordRequestGroupDownloaded = (requestGroupId: string, albumPath: 
     albumName: request.metadata?.albumName,
     artistName: request.metadata?.artistName,
     artistMbid: request.metadata?.artistMbid,
-    albumPath,
+    albumPath: path.dirname(filePath),
     referenceId: albumRequestReferenceId(request),
   });
 };
