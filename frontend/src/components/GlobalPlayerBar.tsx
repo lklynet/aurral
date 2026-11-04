@@ -129,7 +129,7 @@ function GlobalPlayerBar() {
   const [sheetPresence, setSheetPresence] = useState("closed");
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef<{ pointerId: number; startY: number } | null>(null);
+  const dragRef = useRef<{ pointerId: number; startY: number; fromArt: boolean } | null>(null);
   const draggedRef = useRef(false);
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
@@ -272,7 +272,11 @@ function GlobalPlayerBar() {
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest("button:not(.now-playing__art-button), a, input")) return;
     if (!target?.closest(".now-playing__header, .now-playing__art")) return;
-    dragRef.current = { pointerId: event.pointerId, startY: event.clientY };
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      fromArt: Boolean(target.closest(".now-playing__art-button")),
+    };
     draggedRef.current = false;
     setIsDragging(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -286,8 +290,10 @@ function GlobalPlayerBar() {
   const handleSheetPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     const distance = event.clientY - dragRef.current.startY;
+    const { fromArt } = dragRef.current;
     dragRef.current = null;
     draggedRef.current = Math.abs(distance) > SHEET_TAP_DISTANCE;
+    if (event.type === "pointerup" && fromArt && !draggedRef.current) setSheetLyrics(true);
     setIsDragging(false);
     if (event.type === "pointerup" && distance > SHEET_DISMISS_DISTANCE) {
       setSheetOpen(false);
@@ -444,6 +450,7 @@ function GlobalPlayerBar() {
                       aria-label="Show lyrics"
                       onClick={() => {
                         if (!draggedRef.current) setSheetLyrics(true);
+                        draggedRef.current = false;
                       }}
                     >
                       {artwork("global-player__art now-playing__art", false)}

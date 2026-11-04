@@ -13656,27 +13656,22 @@ a.blocklist-page__name:focus-visible {
 }
 
 .player-lyrics.is-synced .player-lyrics__line {
-  color: var(--aurral-text-subtle);
   font-weight: 700;
   cursor: pointer;
-  transition:
-    color var(--aurral-duration-fast) var(--aurral-ease-out),
-    opacity var(--aurral-duration-fast) var(--aurral-ease-out);
+  transition: color var(--aurral-duration-fast) var(--aurral-ease-out);
 }
 
 .player-lyrics.is-synced .player-lyrics__line.is-past {
-  opacity: 0.6;
+  color: var(--aurral-text-subtle);
 }
 
 .player-lyrics.is-synced .player-lyrics__line.is-active {
   color: var(--aurral-text);
-  opacity: 1;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .player-lyrics.is-synced .player-lyrics__line:not(.is-active):hover {
-    color: var(--aurral-text-muted);
-    opacity: 1;
+    color: var(--aurral-text);
   }
 }
 
