@@ -40,7 +40,7 @@ import { getApiErrorText } from "../utils/api/errors.ts";
 
 import { Navigate, useParams, useSearchParams } from "react-router";
 import RouteLink from "../components/RouteLink";
-import { AlertCircle, Music, Square } from "../components/icons";
+import { AlertCircle, Music, X } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { ActivityRequest } from "./activity/activityListUtils.ts";
@@ -465,7 +465,7 @@ function ActivityPage() {
               className="btn btn-secondary activity-toolbar__action"
               onClick={() => setConfirmingCancelAll(true)}
             >
-              <Square aria-hidden="true" />
+              <X aria-hidden="true" />
               <span>Cancel all</span>
             </button>
           ) : null
