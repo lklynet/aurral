@@ -1792,6 +1792,134 @@ test("asking for an album downloads the missing tracks of the edition its track 
   );
 });
 
+test("asking for an album leaves out its [silence] places", async (t: TestContext) => {
+  const artistMbid = "5e5e5e5e-5e5e-4e5e-8e5e-000000000011";
+  const albumMbid = "5e5e5e5e-5e5e-4e5e-8e5e-000000000012";
+  const silence = "5e5e5e5e-5e5e-4e5e-8e5e-200000000009";
+  const tracks = [
+    ["5e5e5e5e-5e5e-4e5e-8e5e-200000000001", "Opening"],
+    [silence, "[silence]"],
+    [silence, "[Silence]"],
+    ["5e5e5e5e-5e5e-4e5e-8e5e-200000000002", "Hidden Track"],
+  ];
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        id: albumMbid,
+        title: "Silent Album",
+        artistid: artistMbid,
+        artists: [{ id: artistMbid, artistname: "Silent Artist" }],
+        releases: [
+          {
+            id: "silent-release",
+            status: "Official",
+            tracks: tracks.map(([recordingid, trackname], index) => ({
+              id: `silent-release-${index}`,
+              recordingid,
+              trackname,
+              artistid: artistMbid,
+              durationms: 4000,
+              trackposition: index + 1,
+              mediumnumber: 1,
+            })),
+          },
+        ],
+      }),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  const originalIsConfigured = lidarrClient.isConfigured;
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+      metadata: {
+        ...originalSettings.integrations?.metadata,
+        baseUrl: metadata.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearApiCaches();
+  downloadWorker.start = async () => {};
+  lidarrClient.isConfigured = () => false;
+  t.onTestFinished(async () => {
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearApiCaches();
+    await metadata.close();
+  });
+
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Silent Album",
+    artistMbid,
+    artistName: "Silent Artist",
+    managedBy: "aurral",
+  });
+
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  assert.deepEqual(
+    requested.body.jobIds.map((id) => getJob(id).trackName),
+    ["Opening", "Hidden Track"],
+  );
+  assert.equal(
+    db
+      .prepare<[string], number>("SELECT COUNT(*) FROM library_tracks WHERE mbid = ?")
+      .pluck()
+      .get(silence),
+    0,
+  );
+});
+
+test("an album's track list adds no missing [silence] places", () => {
+  const recording = (index: number) => `5e5e5e5e-5e5e-4e5e-8e5e-30000000000${index}`;
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "name:quiet", name: "Quiet" });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "release-group:5e5e5e5e-5e5e-4e5e-8e5e-000000000021",
+    releaseGroupMbid: "5e5e5e5e-5e5e-4e5e-8e5e-000000000021",
+    artistId: artist.id,
+    title: "Quiet Album",
+  });
+  libraryStore.storeLibraryAlbumTrackList(album.id, {
+    release: {
+      id: "quiet-release",
+      tracks: ["Opening", "[silence]", "Closing"].map((title, index) => ({
+        id: `quiet-release-${index}`,
+        recordingId: recording(index),
+        oldRecordingIds: [],
+        title,
+        mediumNumber: 1,
+        trackNumber: index + 1,
+        trackPosition: index + 1,
+        durationMs: null,
+        artistId: null,
+      })),
+    },
+  });
+
+  assert.deepEqual(
+    db
+      .prepare<[number], string>(
+        `SELECT track.title FROM library_album_tracks AS link
+         JOIN library_tracks AS track ON track.id = link.track_id
+         WHERE link.album_id = ? ORDER BY link.track_number`,
+      )
+      .pluck()
+      .all(album.id),
+    ["Opening", "Closing"],
+  );
+});
+
 test("an album scanned with its release ID stays one album through downloads and scans", async () => {
   setDownloadSourceConfigured(true);
   const releaseGroup = "abababab-abab-4bab-8bab-000000000001";

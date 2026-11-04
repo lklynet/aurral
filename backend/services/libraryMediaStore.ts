@@ -8,7 +8,11 @@ import {
   notifyLibraryManagementChanged,
 } from "./libraryManagementStore.ts";
 import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.ts";
-import { isVariousArtistsCredit, withoutRemasterLabel } from "./trackMatching/titleText.ts";
+import {
+  isSilenceTrack,
+  isVariousArtistsCredit,
+  withoutRemasterLabel,
+} from "./trackMatching/titleText.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
 import { readRawLibraryMetadata } from "./libraryMetadata.ts";
@@ -1676,7 +1680,7 @@ export function chooseLibraryAlbumRelease(
 // tagged file by title and position, then the only tagged file left with the
 // title of a song the release lists once. The rest are added as missing, and
 // an untagged copy then folds into its track. Missing tracks download only
-// once someone asks for them.
+// once someone asks for them. A "[silence]" place is never missing.
 export function storeLibraryAlbumTrackList(
   albumId: number,
   {
@@ -1736,8 +1740,8 @@ export function storeLibraryAlbumTrackList(
     const recordings = [];
     for (const [index, track] of tracks.entries()) {
       const have = places[index];
-      if (have) {
-        recordings.push(have.mbid || track.mbid);
+      if (have || isSilenceTrack(track.title)) {
+        recordings.push(have?.mbid || track.mbid);
         continue;
       }
       const key = buildIdentityKey("recording", track.mbid);

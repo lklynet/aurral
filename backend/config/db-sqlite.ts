@@ -1565,6 +1565,32 @@ db.exec(`
 initializeLibraryGenreIndex(db);
 initializeLibrarySearchIndex(db);
 
+// A MusicBrainz "[silence]" place is not a track an album is missing, so
+// the ones listed without a file go. Silence files stay.
+const silenceTracksMigrationKey = "migration:silence-tracks-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(silenceTracksMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const silentTracks = `
+    SELECT track.id FROM library_tracks AS track
+    WHERE lower(trim(track.title)) = '[silence]'
+      AND NOT EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id)
+  `;
+  db.prepare(`
+    UPDATE library_albums SET updated_at = ?
+    WHERE id IN (SELECT album_id FROM library_album_tracks WHERE track_id IN (${silentTracks}))
+  `).run(Date.now());
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'library_search_documents'").get()) {
+    db.exec(`
+      DELETE FROM library_search_documents
+      WHERE entity_kind = 'track' AND entity_id IN (${silentTracks})
+    `);
+  }
+  db.exec(`DELETE FROM library_tracks WHERE id IN (${silentTracks})`);
+}).immediate();
+
 const existingDownloadFolder = db
   .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")
   .get("downloadFolderPath");
