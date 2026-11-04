@@ -117,9 +117,6 @@ export function buildAurralTrackDestination(
   return path.posix.join(artistName, existingFolderName(path.join(base, artistName), album));
 }
 
-const folderName = (value: string | null | undefined, fallback: string) =>
-  sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
-
 // The Library's naming: Artist/Album/07 - Title.ext, or 2-07 - Title.ext past
 // the first disc, under the Library folder.
 export function buildLibraryTrackPath(
@@ -137,8 +134,8 @@ export function buildLibraryTrackPath(
     root,
     buildAurralTrackDestination(
       null,
-      folderName(track?.artistName, "Unknown Artist"),
-      folderName(track?.albumName, "Unknown Album"),
+      sanitizePathPart(track?.artistName, "Unknown Artist"),
+      sanitizePathPart(track?.albumName, "Unknown Album"),
       { root },
     ),
     buildTrackFileName(track, String(ext || "").toLowerCase()),

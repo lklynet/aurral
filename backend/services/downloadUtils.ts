@@ -41,9 +41,11 @@ type BlockedJobFields = {
   releaseTitle?: string | null;
 };
 
+// A leading dot hides a file or folder from most scanners, so names never start with one.
 export function sanitizePathPart(value: unknown, fallback = "Unknown") {
   const text = String(value || "")
     .replace(/[<>:"/\\|?*]/g, "_")
+    .replace(/^[\s.]+/, "")
     .trim();
   return text || fallback;
 }
