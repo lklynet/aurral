@@ -9,7 +9,9 @@ import RelativeTime from "../../../../components/RelativeTime";
 import { Select, type SelectOption } from "../../../../components/Select";
 import TooltipButton from "../../../../components/TooltipButton";
 import { queryClient, queryKeys } from "../../../../queryClient.ts";
+import { authClient } from "../../../../utils/api/clients/auth.ts";
 import { logsClient } from "../../../../utils/api/clients/logs.ts";
+import { API_BASE_URL } from "../../../../utils/api/core.ts";
 import { getApiErrorMessage } from "../../../../utils/api/errors.ts";
 import { formatDate } from "../../../../utils/dateTime.ts";
 import { useServerSettings } from "../../SettingsProviders";
@@ -73,6 +75,17 @@ function entryDetails(entry: Entry) {
 async function exportText(level: LogLevel) {
   const response = await logsClient.export.$get({ query: { level } });
   return response.text();
+}
+
+function triagePrompt(apiKey: string) {
+  const link = (path: string, query: Record<string, string>) =>
+    `${new URL(`${API_BASE_URL}/logs/${path}`, window.location.origin)}?${new URLSearchParams({ ...query, api_key: apiKey })}`;
+  return [
+    "Diagnose problems in my Aurral server by following https://raw.githubusercontent.com/lklynet/aurral/main/.github/triage/PLAYBOOK.md",
+    "These links are live and carry my admin API key. Fetch them again after changes, and never post them anywhere.",
+    `Problems from the last day, grouped: ${link("problems", {})}`,
+    `Full log with version and integrations: ${link("export", { level: "warn" })}`,
+  ].join("\n");
 }
 
 export function useLogProblems() {
@@ -279,6 +292,18 @@ export function LogsPage() {
     onSuccess: () => showSuccess("Copied the last day of warnings and errors."),
     onError: (error) => showError(getApiErrorMessage(error, "Couldn't copy the log.")),
   });
+  const apiKey = useQuery({
+    queryKey: queryKeys.apiKey,
+    queryFn: ({ signal }) => parseResponse(authClient["api-key"].$get({}, { init: { signal } })),
+  });
+  const copyTriage = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(triagePrompt(key));
+      showSuccess("Copied a prompt with your admin API key.");
+    } catch {
+      showError("Couldn't copy the prompt.");
+    }
+  };
   const download = useMutation({
     mutationFn: async () => {
       const url = URL.createObjectURL(new Blob([await exportText("info")]));
@@ -358,6 +383,19 @@ export function LogsPage() {
             onChange={({ target }) => toggleDebug.mutate(target.checked)}
             aria-label="Debug logging"
           />
+        </SettingsRow>
+        <SettingsRow
+          label="Agent triage"
+          help="Copies a prompt with live links to these logs. It carries your admin API key."
+        >
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => apiKey.data && void copyTriage(apiKey.data.apiKey)}
+            disabled={!apiKey.data}
+          >
+            Copy prompt
+          </button>
         </SettingsRow>
       </SettingsGroup>
     </SettingsPage>

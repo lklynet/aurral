@@ -11,6 +11,8 @@ Open **Settings > Status > Logs**. **Problems** groups the warnings and errors f
 
 To see more detail, turn on **Debug logging**, reproduce the problem, and turn it off again.
 
+**Agent triage** copies a prompt for an AI agent with live links to the log and a playbook that helps it tell a setup problem from an Aurral bug, and file an issue when it finds one. The links carry your admin API key, which gives full admin access, so only share them with an agent you trust. Rotate the key in **Settings > General** to revoke them.
+
 The log lives in the `logs` folder of the data folder. In Docker that is `/config/logs/aurral.log`. It holds up to 50 MB, then drops the oldest lines. To download it from another machine, use the API key:
 
 ```sh
