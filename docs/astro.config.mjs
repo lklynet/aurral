@@ -97,6 +97,7 @@ export default defineConfig({
           items: [
             { slug: "api/overview" },
             { slug: "api/app-contract" },
+            { slug: "api/plugins" },
             { slug: "api/endpoints" },
           ],
         },

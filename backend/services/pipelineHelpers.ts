@@ -3,6 +3,7 @@ import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracke
 import type { classifyAudioQuality } from "./qualityProfileModel.ts";
 import type { finalizeQualityUpgradeSuccess } from "./qualityProfileService.ts";
 import type { HistoryJob } from "./aurralHistoryService.ts";
+import { emitPluginEvent } from "./plugins/pluginEvents.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
 export const SEARCH_RESET = Object.freeze({
@@ -141,7 +142,8 @@ export async function finalizePipelineJobSuccess(options: PipelineJobSuccessOpti
 }
 
 export type PipelineSuccessJob = Parameters<typeof finalizeQualityUpgradeSuccess>[0] &
-  Pick<DownloadJob, "albumName" | "managedBy">;
+  Pick<DownloadJob, "albumName" | "managedBy"> &
+  Partial<Pick<DownloadJob, "trackName" | "artistName" | "trackMbid" | "downloadSource">>;
 
 type PipelineJobSuccessOptions = {
   downloadTracker: DownloadTracker;
@@ -179,6 +181,16 @@ export async function recordPipelineJobSuccess({
   }
 
   if (onSuccess) await onSuccess();
+  emitPluginEvent("download.finished", {
+    track: {
+      title: job.trackName ?? null,
+      artist: job.artistName ?? null,
+      album: job.albumName || album || null,
+      mbid: job.trackMbid ?? null,
+      path: committedFinalPath,
+    },
+    source: job.downloadSource ?? null,
+  });
 
   import("./aurralHistoryService.ts")
     .then(({ recordTrackJobCompleted }) => recordTrackJobCompleted(job))

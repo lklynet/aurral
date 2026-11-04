@@ -18,6 +18,7 @@ import { shareLinksClient } from "../../../utils/api/clients/shareLinks.ts";
 import { staticPlaylistsClient } from "../../../utils/api/clients/staticPlaylists.ts";
 import { parseM3u, type M3uTrack } from "../../../../../lib/m3u.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
+import { pluginsClient } from "../../../utils/api/clients/plugins.ts";
 import { formatTrackTotal } from "../playlistPageUtils.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -41,7 +42,8 @@ const IMPORT_SOURCES = [
   { id: "aurral", label: "Aurral share" },
   { id: "file", label: "M3U file" },
 ] as const;
-type ImportSource = (typeof IMPORT_SOURCES)[number]["id"];
+type ImportSource = (typeof IMPORT_SOURCES)[number]["id"] | `plugin:${string}`;
+const PLUGIN_SOURCE = "plugin:";
 type ImportTrack = { artistName: string; title: string };
 type FilePlaylist = { name: string; tracks: M3uTrack[]; skipped: number };
 type ImportPlaylist = {
@@ -312,6 +314,33 @@ export function PlaylistImportModal({
       ).then(validYoutubePreview),
   });
   const resetYoutubePreview = youtubePreview.reset;
+  const pluginImportLists = useQuery({
+    queryKey: queryKeys.pluginImportLists,
+    queryFn: ({ signal }) =>
+      parseResponse(pluginsClient["import-lists"].$get({}, { init: { signal } })),
+    enabled: user?.permissions?.accessFlow !== false,
+  });
+  const pluginPreview = useMutation({
+    mutationFn: ({ id, url }: { id: string; url: string }) =>
+      parseResponse(
+        pluginsClient[":id"].import.preview.$post(
+          { param: { id }, json: { url } },
+          { fetch: youtubeFetch },
+        ),
+      ),
+  });
+  const resetPluginPreview = pluginPreview.reset;
+  const pluginId = source.startsWith(PLUGIN_SOURCE) ? source.slice(PLUGIN_SOURCE.length) : null;
+  const pluginImportList = pluginId
+    ? pluginImportLists.data?.importLists.find((entry) => entry.pluginId === pluginId)
+    : undefined;
+  const importSources: { id: ImportSource; label: string }[] = [
+    ...IMPORT_SOURCES,
+    ...(pluginImportLists.data?.importLists ?? []).map((entry) => ({
+      id: `${PLUGIN_SOURCE}${entry.pluginId}` as const,
+      label: entry.label,
+    })),
+  ];
 
   const resetState = useCallback(() => {
     setSource("spotify");
@@ -326,7 +355,8 @@ export function PlaylistImportModal({
     setSyncIntervalHours(24);
     setKeepRemovedTracks(true);
     resetYoutubePreview();
-  }, [resetYoutubePreview]);
+    resetPluginPreview();
+  }, [resetYoutubePreview, resetPluginPreview]);
 
   const handleSpotifyError = useCallback(
     (error: ApiError) => {
@@ -514,18 +544,19 @@ export function PlaylistImportModal({
     spotifyPlaylistsQuery.isLoading;
   const listenBrainzLoading = scrobbleStatusQuery.isLoading || listenBrainzPlaylistsQuery.isLoading;
 
-  const youtubePlaylist: ImportPlaylist | null = youtubePreview.data
-    ? {
-        ...youtubePreview.data.playlist,
-        trackCount: Number(youtubePreview.data.trackCount || 0),
-      }
+  const linkPreview = pluginId ? pluginPreview.data : youtubePreview.data;
+  const linkPlaylist: ImportPlaylist | null = linkPreview
+    ? { ...linkPreview.playlist, trackCount: Number(linkPreview.trackCount || 0) }
     : null;
   const youtubeError = youtubePreview.error
     ? getApiErrorMessage(youtubePreview.error, "Failed to preview YouTube Music playlist")
     : "";
+  const pluginError = pluginPreview.error
+    ? getApiErrorMessage(pluginPreview.error, "Couldn't read that link")
+    : "";
   const selectedPlaylist: ImportPlaylist | null =
-    source === "youtube"
-      ? youtubePlaylist
+    source === "youtube" || pluginId
+      ? linkPlaylist
       : source === "aurral"
         ? sharedPlaylist && {
             id: sharedPlaylist.url,
@@ -535,8 +566,13 @@ export function PlaylistImportModal({
         : source === "file"
           ? filePlaylist && { id: filePlaylist.name, name: filePlaylist.name }
           : pickedPlaylist;
-  const previewPayload = source === "youtube" ? youtubePreview.data : previewQuery.data;
-  const previewLoading = source === "youtube" ? youtubePreview.isPending : previewQuery.isLoading;
+  const previewPayload = source === "youtube" || pluginId ? linkPreview : previewQuery.data;
+  const previewLoading =
+    source === "youtube"
+      ? youtubePreview.isPending
+      : pluginId
+        ? pluginPreview.isPending
+        : previewQuery.isLoading;
   const previewTrackCount = Number(previewPayload?.trackCount || 0);
   const previewSkipped = Number(previewPayload?.skipped || 0);
   const previewTracks = Array.isArray(previewPayload?.previewTracks)
@@ -571,6 +607,7 @@ export function PlaylistImportModal({
     setPlaylistNameDraft(null);
     setYoutubeUrl("");
     youtubePreview.reset();
+    pluginPreview.reset();
     setFilePlaylist(null);
     setFileError("");
     setShareUrl("");
@@ -602,6 +639,10 @@ export function PlaylistImportModal({
     const url = youtubeUrl.trim();
     if (!url || previewLoading || importing) return;
     setPlaylistNameDraft(null);
+    if (pluginId) {
+      pluginPreview.mutate({ id: pluginId, url });
+      return;
+    }
     youtubePreview.mutate(url, {
       onError: (error) => {
         showError?.(getApiErrorMessage(error, "Failed to preview YouTube Music playlist"));
@@ -613,6 +654,7 @@ export function PlaylistImportModal({
     setYoutubeUrl(value);
     setPlaylistNameDraft(null);
     youtubePreview.reset();
+    pluginPreview.reset();
   };
 
   const handleImportExternal = () => {
@@ -626,13 +668,15 @@ export function PlaylistImportModal({
     const isListenBrainz = source === "listenbrainz";
     const isLastfm = source === "lastfm";
     const isYoutube = source === "youtube";
-    const providerLabel = isListenBrainz
-      ? "ListenBrainz"
-      : isLastfm
-        ? "Last.fm"
-        : isYoutube
-          ? "YouTube Music"
-          : "Spotify";
+    const providerLabel = pluginImportList
+      ? pluginImportList.label
+      : isListenBrainz
+        ? "ListenBrainz"
+        : isLastfm
+          ? "Last.fm"
+          : isYoutube
+            ? "YouTube Music"
+            : "Spotify";
     const payload = {
       playlistId: selectedPlaylist.id,
       name: finalName,
@@ -642,25 +686,41 @@ export function PlaylistImportModal({
     };
     const externalName = selectedPlaylist.name;
     const runImport = () =>
-      parseResponse(
-        isListenBrainz
-          ? importApi.listenbrainz.$post({
-              json: {
-                ...payload,
-                externalName,
-                ...(selectedPlaylist.sourceType
-                  ? { playlistType: selectedPlaylist.sourceType }
-                  : {}),
+      pluginId
+        ? parseResponse(
+            pluginsClient[":id"].import.$post(
+              {
+                param: { id: pluginId },
+                json: {
+                  url: selectedPlaylist.id,
+                  name: finalName,
+                  syncEnabled: payload.syncEnabled,
+                  syncIntervalHours,
+                  keepRemovedTracks,
+                },
               },
-            })
-          : isLastfm
-            ? importApi.lastfm.$post({
-                json: { ...payload, externalName, username: lastfmUsername },
-              })
-            : isYoutube
-              ? importApi["youtube-music"].$post({ json: payload }, { fetch: youtubeFetch })
-              : importApi.spotify.$post({ json: { ...payload, externalName } }),
-      );
+              { fetch: youtubeFetch },
+            ),
+          )
+        : parseResponse(
+            isListenBrainz
+              ? importApi.listenbrainz.$post({
+                  json: {
+                    ...payload,
+                    externalName,
+                    ...(selectedPlaylist.sourceType
+                      ? { playlistType: selectedPlaylist.sourceType }
+                      : {}),
+                  },
+                })
+              : isLastfm
+                ? importApi.lastfm.$post({
+                    json: { ...payload, externalName, username: lastfmUsername },
+                  })
+                : isYoutube
+                  ? importApi["youtube-music"].$post({ json: payload }, { fetch: youtubeFetch })
+                  : importApi.spotify.$post({ json: { ...payload, externalName } }),
+          );
     externalImport.mutate(runImport, {
       onSuccess: () => {
         showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
@@ -757,7 +817,7 @@ export function PlaylistImportModal({
     );
   };
 
-  const sourceLabel = IMPORT_SOURCES.find((entry) => entry.id === source)?.label ?? "";
+  const sourceLabel = importSources.find((entry) => entry.id === source)?.label ?? "";
   const canImport = Boolean(
     source === "aurral"
       ? sharedPlaylist
@@ -775,6 +835,7 @@ export function PlaylistImportModal({
   const clearSelection = () => {
     setPlaylistNameDraft(null);
     if (source === "youtube") youtubePreview.reset();
+    else if (pluginId) pluginPreview.reset();
     else if (source === "aurral") handleChangeShare();
     else if (source === "file") setFilePlaylist(null);
     else setPickedPlaylist(null);
@@ -1034,6 +1095,19 @@ export function PlaylistImportModal({
         onLoad: handleLoadShare,
       });
     }
+    if (pluginId) {
+      return loadRow({
+        id: "playlist-import-plugin-url",
+        label: "Playlist link",
+        help: pluginImportList ? `Use a link from ${pluginImportList.hosts.join(", ")}.` : "",
+        error: pluginError,
+        value: youtubeUrl,
+        placeholder: "https://…",
+        loading: previewLoading,
+        onChange: handleYoutubeUrlChange,
+        onLoad: handlePreviewYoutube,
+      });
+    }
     if (source === "youtube") {
       return loadRow({
         id: "playlist-import-youtube-url",
@@ -1216,7 +1290,7 @@ export function PlaylistImportModal({
       closeDisabled={importing}
       nav={
         <nav className="settings-dialog__group" aria-label="Import from">
-          {IMPORT_SOURCES.map((entry) => {
+          {importSources.map((entry) => {
             const active = entry.id === source;
             return (
               <button

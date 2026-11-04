@@ -261,7 +261,7 @@ const normalizeFlow = (flow: StoredFlow) => {
 export function normalizeImportSource(value: StoredImportSource | null | undefined) {
   if (!value || typeof value !== "object") return null;
   const provider = String(value.provider || "").trim();
-  if (!IMPORT_SOURCE_PROVIDERS.has(provider)) return null;
+  if (!IMPORT_SOURCE_PROVIDERS.has(provider) && !provider.startsWith("plugin:")) return null;
   const syncIntervalHours = Number(value.syncIntervalHours);
   const lastSyncAt = Number(value.lastSyncAt);
   const hasSync =

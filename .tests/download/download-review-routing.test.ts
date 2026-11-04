@@ -972,6 +972,27 @@ test("denying a held file starts a stopped worker to search again", async () => 
   assert.equal(start.mock.calls.length, 1);
 });
 
+test("denying a held plugin download skips that result next time", async () => {
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
+  const jobId = addDurationMismatchJob("deny-plugin");
+  assert.ok(jobId != null);
+  const staged = path.join(isolatedState.baseDir, "deny-plugin", "held.mp3");
+  await writeOneSecondMp3(staged);
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadSource: "plugin:tapes",
+    releaseGuid: "t1",
+    remoteFilename: "t1.flac",
+  });
+  downloadTracker.setBlocked(jobId, "downloaded file is too short", staged);
+  const { denyBlockedJob } =
+    await import("../../backend/services/downloadJobs/blockedJobReview.ts");
+  await denyBlockedJob(jobId);
+  assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources?.at(-1), [
+    "plugin:tapes",
+    "t1",
+  ]);
+});
+
 async function waitUntilGone(filePath: string) {
   const watcher = watch(path.dirname(filePath));
   try {

@@ -123,6 +123,8 @@ export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJo
       downloadTracker.recordDeniedSource(job.id, "usenet", guid);
     } else if (payload.source === "deemix" && raw?.albumId) {
       downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
+    } else if (payload.source?.startsWith("plugin:") && typeof raw?.id === "string") {
+      downloadTracker.recordDeniedSource(job.id, payload.source, `album:${raw.id}`);
     }
   }
 }
@@ -262,7 +264,7 @@ export async function finishAlbumGrab(
     resetFields = {},
   }: {
     filePaths?: string[];
-    source: "deemix" | "soulseek" | "usenet";
+    source: string;
     album?: string | null;
     resetFields?: Record<string, unknown>;
   },

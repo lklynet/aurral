@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import * as v from "valibot";
+import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import {
@@ -10,6 +12,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
+import { writeFlacFixture } from "../helpers/flacFixture.ts";
 
 const [
   state,
@@ -19,6 +22,12 @@ const [
   { stopAllPlugins },
   { refreshInstalledPlugins, listPlugins },
   { flowPlaylistConfig },
+  { websocketService },
+  { emitPluginEvent },
+  { listHonkerJobs },
+  { deliverQueuedNotification, queuedNotificationSchema },
+  { scanMusicRoot },
+  { getLibrary },
 ] = await setupIsolatedBackend(
   "plugins",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -27,6 +36,12 @@ const [
   () => import("../../backend/services/plugins/pluginHost.ts"),
   () => import("../../backend/services/plugins/pluginService.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/websocketService.ts"),
+  () => import("../../backend/services/plugins/pluginEvents.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/notificationService.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
@@ -74,6 +89,7 @@ const sendAction = { actions: [{ id: "send", label: "Send to Box", target: "play
 beforeEach(() => resetDatabase(db));
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   stopAllPlugins();
   await rm(pluginsDir(), { recursive: true, force: true });
 });
@@ -238,6 +254,11 @@ test("plugin folders that can't load are listed with the reason", async () => {
     (await routes(admin).request("/plugins/renamed", json("PUT", { enabled: true }))).status,
     404,
   );
+  assert.equal((await routes(admin).request("/plugins/broken", { method: "DELETE" })).status, 200);
+  assert.deepEqual(
+    (await listPlugins()).plugins.map((plugin) => plugin.id),
+    ["future", "renamed"],
+  );
 });
 
 test("only admins see and change plugins", async () => {
@@ -248,4 +269,157 @@ test("only admins see and change plugins", async () => {
     (await routes(owner).request("/plugins/box", json("PUT", { enabled: true }))).status,
     403,
   );
+});
+
+test("a turned-off capability is hidden and refused while the rest of the plugin works", async () => {
+  await install(
+    "box",
+    {
+      actions: [
+        { id: "send", label: "Send to Box", target: "playlist" },
+        { id: "share", label: "Share on Box", target: "playlist" },
+      ],
+    },
+    `export default { actions: { send: () => null, share: () => null } };`,
+  );
+  await turnOn("box", { capabilities: { "action:send": false } });
+  const playlistId = ownedPlaylist();
+
+  assert.deepEqual(
+    (await actionsFor(owner)).map((action: { id: string }) => action.id),
+    ["share"],
+  );
+  assert.equal((await run(owner, "box", "send", playlistId)).status, 404);
+  assert.equal((await run(owner, "box", "share", playlistId)).status, 200);
+  assert.equal((await turnOn("box", { capabilities: { "action:nope": false } })).status, 400);
+
+  await turnOn("box", { capabilities: { "action:send": true } });
+  assert.equal((await actionsFor(owner)).length, 2);
+});
+
+test("album and track actions get the Library's album and tracks", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-plugin-library-"));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  for (const [index, title] of ["Night Drive", "Morning Run"].entries())
+    await writeFlacFixture(path.join(root, `0${index + 1}.flac`), {
+      title,
+      artist: "Glass Coast",
+      album_artist: "Glass Coast",
+      album: "Lowlands",
+      track: index + 1,
+    });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const library = getLibrary({ availableOnly: true });
+  const album = library.albums.find((entry) => entry.title === "Lowlands");
+  assert.ok(album);
+  const trackIds = library.tracks.map((track) => track.id);
+
+  await install(
+    "tags",
+    {
+      actions: [
+        { id: "album", label: "Album", target: "album" },
+        { id: "tracks", label: "Tracks", target: "track" },
+      ],
+    },
+    `export default { actions: {
+      album: ({ album }) => ({ message: album.artist + " / " + album.title + ": " + album.tracks.map((track) => track.trackNumber + " " + track.title).join(", ") }),
+      tracks: ({ tracks }) => ({ message: tracks.map((track) => track.title + " @ " + track.album + " " + (track.path !== null)).sort().join(", ") }),
+    } };`,
+  );
+  await turnOn("tags");
+  const runOn = (action: string, body: object) =>
+    routes(owner).request(`/plugins/tags/actions/${action}`, json("POST", body));
+
+  assert.deepEqual(await (await runOn("album", { albumId: album.id })).json(), {
+    message: "Glass Coast / Lowlands: 1 Night Drive, 2 Morning Run",
+  });
+  assert.deepEqual(await (await runOn("tracks", { trackIds })).json(), {
+    message: "Morning Run @ Lowlands true, Night Drive @ Lowlands true",
+  });
+  assert.equal((await runOn("album", { albumId: "missing" })).status, 404);
+});
+
+test("a background action answers right away and reports its result to the user who ran it", async () => {
+  await install(
+    "slow",
+    { actions: [{ id: "sync", label: "Sync", target: "playlist", background: true }] },
+    `export default { actions: { sync: async () => ({ message: "Synced 12 tracks" }) } };`,
+  );
+  await turnOn("slow");
+  const playlistId = ownedPlaylist();
+  const finished = new Promise<unknown[]>((resolve) => {
+    vi.spyOn(websocketService, "broadcast").mockImplementation((...args) => {
+      resolve(args);
+      return 1;
+    });
+  });
+
+  assert.deepEqual(await (await run(owner, "slow", "sync", playlistId)).json(), {
+    message: "Sync started",
+  });
+  assert.deepEqual(await finished, [
+    "plugins",
+    { type: "plugin_action_finished", ok: true, message: "Synced 12 tracks" },
+    { userId: owner.id },
+  ]);
+});
+
+test("an event is queued for each subscribed plugin and delivered with its data", async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), "aurral-plugin-event-"));
+  t.onTestFinished(() => rm(folder, { recursive: true, force: true }));
+  const out = path.join(folder, "played.json");
+  await install(
+    "scrobble",
+    { events: ["track.played"], settings: [{ key: "out", label: "Out", type: "text" }] },
+    `export default { events: { "track.played": async (input) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(input.settings.out, JSON.stringify(input));
+    } } };`,
+  );
+  const queued = () =>
+    listHonkerJobs("_outbox:notifications").filter(
+      (job) => v.parse(queuedNotificationSchema, job.payload).kind === "plugin",
+    );
+  const played = { track: { title: "Night Drive" }, playedAt: 5 };
+
+  emitPluginEvent("track.played", played);
+  assert.equal(queued().length, 0);
+
+  await turnOn("scrobble", { settings: { out }, capabilities: { "event:track.played": false } });
+  emitPluginEvent("track.played", played);
+  assert.equal(queued().length, 0);
+
+  await turnOn("scrobble", { capabilities: { "event:track.played": true } });
+  emitPluginEvent("track.played", played);
+  const [job] = queued();
+  assert.ok(job);
+  await deliverQueuedNotification(v.parse(queuedNotificationSchema, job.payload));
+  const input = JSON.parse(await readFile(out, "utf8"));
+  assert.equal(input.event, "track.played");
+  assert.deepEqual(input.track, { title: "Night Drive" });
+  assert.equal(input.playedAt, 5);
+  assert.equal(typeof input.libraryFolder, "string");
+});
+
+test("an import list previews links on its hosts and refuses others", async () => {
+  await install(
+    "camp",
+    { importList: { label: "Bandcamp", hosts: ["bandcamp.com"] } },
+    `export default { importList: { fetch: ({ url }) => ({
+      name: "Picks from " + new URL(url).hostname,
+      tracks: [{ artist: "Glass Coast", title: "Night Drive" }, { artist: "", title: "" }],
+    }) } };`,
+  );
+  await turnOn("camp");
+  const preview = (url: string) =>
+    routes(owner).request("/plugins/camp/import/preview", json("POST", { url }));
+
+  const response = await preview("https://glasscoast.bandcamp.com/album/lowlands");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.playlist.name, "Picks from glasscoast.bandcamp.com");
+  assert.equal(body.trackCount, 1);
+  assert.equal(body.skipped, 1);
+  assert.equal((await preview("https://example.com/list")).status, 400);
 });

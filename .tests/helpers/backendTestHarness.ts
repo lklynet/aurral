@@ -51,6 +51,7 @@ const RESET_TABLES = [
   "library_scan_runs",
   "library_search_documents",
   "plugins",
+  "plugin_dev_keys",
   "settings",
 ];
 

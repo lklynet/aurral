@@ -1,0 +1,213 @@
+import assert from "node:assert/strict";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import zlib from "node:zlib";
+import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import {
+  cleanupIsolatedState,
+  createMockHttpServer,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
+
+const [
+  state,
+  { db },
+  { default: pluginRoutes },
+  { default: mcpRoutes },
+  { pluginsDir },
+  { stopAllPlugins },
+  { listPlugins },
+  { inspectPluginLink, installPluginLink, unpackPluginArchive, updatePluginFromSource },
+] = await setupIsolatedBackend(
+  "plugin-install",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/routes/plugins.ts"),
+  () => import("../../backend/routes/mcp.ts"),
+  () => import("../../backend/services/plugins/pluginManifest.ts"),
+  () => import("../../backend/services/plugins/pluginHost.ts"),
+  () => import("../../backend/services/plugins/pluginService.ts"),
+  () => import("../../backend/services/plugins/pluginInstaller.ts"),
+);
+
+const admin = signedInAs(testUser(1, { username: "admin", role: "admin" })).route(
+  "/",
+  pluginRoutes,
+);
+
+function zip(files: Record<string, string>) {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, content] of Object.entries(files)) {
+    const data = Buffer.from(content);
+    const packed = zlib.deflateRawSync(data);
+    const fileName = Buffer.from(name);
+    const fields = (header: Buffer, at: number) => {
+      header.writeUInt16LE(8, at);
+      header.writeUInt32LE(zlib.crc32(data), at + 6);
+      header.writeUInt32LE(packed.length, at + 10);
+      header.writeUInt32LE(data.length, at + 14);
+      header.writeUInt16LE(fileName.length, at + 18);
+    };
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    fields(local, 8);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    fields(central, 10);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, fileName, packed);
+    centrals.push(central, fileName);
+    offset += local.length + fileName.length + packed.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
+const manifest = (version: string) =>
+  JSON.stringify({
+    id: "box",
+    name: "Box",
+    version,
+    api: 1,
+    actions: [{ id: "send", label: "Send to Box", target: "playlist" }],
+  });
+const plugin = (version: string) =>
+  zip({
+    "box-main/manifest.json": manifest(version),
+    "box-main/index.js": `export default { actions: { send: () => ({ message: "${version}" }) } };`,
+  });
+
+let scratch = "";
+
+beforeEach(async () => {
+  resetDatabase(db);
+  scratch = await mkdtemp(path.join(tmpdir(), "aurral-plugin-install-"));
+});
+
+afterEach(async () => {
+  stopAllPlugins();
+  await rm(pluginsDir(), { recursive: true, force: true });
+  await rm(scratch, { recursive: true, force: true });
+});
+
+afterAll(async () => {
+  await cleanupIsolatedState(state);
+});
+
+test("a plugin installs off from a compressed zip link and updates from the same link", async (t) => {
+  let served = plugin("1.0.0");
+  const server = await createMockHttpServer((_request, response) => response.end(served));
+  t.onTestFinished(server.close);
+  const url = `${server.url}/box.zip`;
+
+  const inspected = await inspectPluginLink(url);
+  assert.equal(inspected.manifest.id, "box");
+  assert.equal(inspected.installedVersion, null);
+  assert.equal((await listPlugins()).plugins.length, 0);
+
+  await installPluginLink(inspected.token);
+  const [installed] = (await listPlugins()).plugins;
+  assert.equal(installed?.manifest?.version, "1.0.0");
+  assert.equal(installed?.enabled, false);
+  assert.equal(installed?.sourceUrl, url);
+  await assert.rejects(installPluginLink(inspected.token), /Check the link again/);
+
+  served = plugin("1.1.0");
+  await updatePluginFromSource("box");
+  assert.equal((await listPlugins()).plugins[0]?.manifest?.version, "1.1.0");
+});
+
+test("a zip with a path outside its folder is refused before anything is written", async () => {
+  const archive = path.join(scratch, "evil.zip");
+  await writeFile(
+    archive,
+    zip({ "manifest.json": manifest("1.0.0"), "index.js": "", "../escaped.js": "" }),
+  );
+  const target = path.join(scratch, "plugin");
+
+  await assert.rejects(unpackPluginArchive(archive, target), /a path outside its folder/);
+  await assert.rejects(access(path.join(scratch, "escaped.js")));
+});
+
+test("an agent with a developer key writes and tests a plugin over MCP, and it stays off", async () => {
+  let id = 0;
+  const rpc = (key: string | null, method: string, params: object = {}) =>
+    mcpRoutes.request("/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: (id += 1), method, params }),
+    });
+  const call = async (key: string, name: string, args: object) => {
+    const { result } = await (await rpc(key, "tools/call", { name, arguments: args })).json();
+    return { ...result, text: result.content[0].text };
+  };
+
+  assert.equal((await rpc("aurral_dev_guess", "tools/list")).status, 401);
+  const { key } = await (await admin.request("/plugins/dev-keys", { method: "POST" })).json();
+  assert.equal(
+    (await (await rpc(key, "initialize")).json()).result.serverInfo.name,
+    "aurral-plugins",
+  );
+  assert.match((await call(key, "plugin_docs", {})).text, /## Download sources/);
+
+  const broken = await call(key, "write_plugin", {
+    id: "box",
+    manifest: { id: "box", name: "Box", version: "1", api: 1, actions: [{ id: "send" }] },
+    code: "export default {};",
+  });
+  assert.match(JSON.parse(broken.text).error, /actions\.0\.label/);
+
+  const written = await call(key, "write_plugin", {
+    id: "box",
+    manifest: JSON.parse(manifest("1.0.0")),
+    code: `export default { actions: { send: ({ playlist, user }) => { console.log("sending"); return { message: user.username + " sent " + playlist.name }; } } };`,
+  });
+  assert.equal(JSON.parse(written.text).loads, true);
+
+  const tested = JSON.parse(
+    (
+      await call(key, "test_plugin", {
+        id: "box",
+        path: "actions.send",
+        input: { playlist: { name: "Road trip" } },
+      })
+    ).text,
+  );
+  assert.deepEqual(tested.answer, { message: "agent sent Road trip" });
+  assert.ok(tested.logs.some((line: { message: string }) => line.message === "sending"));
+  assert.equal((await listPlugins()).plugins[0]?.enabled, false);
+
+  await admin.request("/plugins/box", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: true }),
+  });
+  const refused = await call(key, "write_plugin", {
+    id: "box",
+    manifest: JSON.parse(manifest("1.0.1")),
+    code: "export default {};",
+  });
+  assert.equal(refused.isError, true);
+  assert.match(refused.text, /box is on/);
+
+  const [listed] = (await (await admin.request("/plugins/dev-keys")).json()).keys;
+  await admin.request(`/plugins/dev-keys/${listed.id}`, { method: "DELETE" });
+  assert.equal((await rpc(key, "tools/list")).status, 401);
+});

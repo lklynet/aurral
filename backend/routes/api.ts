@@ -18,6 +18,7 @@ import libraryStreams from "./library/streams.ts";
 import lidarrFeed from "./lidarrFeed.ts";
 import lidarrWebhook from "./lidarrWebhook.ts";
 import logs from "./logs.ts";
+import mcp from "./mcp.ts";
 import news from "./news.ts";
 import onboarding from "./onboarding.ts";
 import playEvents from "./playEvents.ts";
@@ -93,6 +94,7 @@ export const api = new Hono<AppEnv>()
   .route("/", historyServers)
   .route("/", plex)
   .route("/", plugins)
+  .route("/", mcp)
   .route("/", filesystem)
   .route("/", discovery)
   .route("/", news)

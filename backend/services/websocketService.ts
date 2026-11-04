@@ -41,7 +41,8 @@ export type WebSocketChannelPayload =
   | { type: "library_scan_completed" }
   | { type: "release_metadata_refreshed" }
   | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
-  | ({ type: "discovery_update" } & DiscoveryUpdateFields);
+  | ({ type: "discovery_update" } & DiscoveryUpdateFields)
+  | { type: "plugin_action_finished"; ok: boolean; message: string };
 
 export type WebSocketChannelMessage = {
   channel: string;

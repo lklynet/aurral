@@ -257,6 +257,8 @@ export const queryKeys = {
   historyServers: (userId: MaybeId): QueryKey => ["history-servers", userId || null],
   plex: (userId: MaybeId): QueryKey => ["plex", userId || null],
   plugins: ["settings", "plugins"],
+  pluginDevKeys: ["settings", "plugins", "dev-keys"],
+  pluginImportLists: ["plugins", "import-lists"],
   pluginActions: (userId: MaybeId): QueryKey => ["plugins", "actions", userId || null],
   apiKey: ["auth", "api-key"],
   telemetry: ["settings", "telemetry"],

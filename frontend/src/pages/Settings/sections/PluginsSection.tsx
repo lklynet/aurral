@@ -1,12 +1,19 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
+import { ConfirmModal } from "../../../components/ConfirmModal";
+import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
+import { API_BASE_URL } from "../../../utils/api/core.ts";
 import { pluginsClient } from "../../../utils/api/clients/plugins.ts";
-import { SettingsCommitInput } from "../components/SettingsField";
+import { formatRelativeTime } from "../../../utils/dateTime.ts";
+import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
+import { useSettingsRoute } from "../settingsRoute.tsx";
 import { readApiError } from "../utils/apiError.ts";
 import {
+  SettingsActions,
   SettingsGroup,
   SettingsNote,
   SettingsPage,
@@ -19,7 +26,18 @@ import {
 type PluginList = InferResponseType<typeof pluginsClient.$get, 200>;
 type Plugin = PluginList["plugins"][number];
 type Manifest = NonNullable<Plugin["manifest"]>;
-type Patch = { enabled?: boolean; settings?: Plugin["settings"]; priority?: number };
+type Patch = {
+  enabled?: boolean;
+  settings?: Plugin["settings"];
+  priority?: number;
+  capabilities?: Record<string, boolean>;
+};
+type Inspected = InferResponseType<(typeof pluginsClient.install.inspect)["$post"], 200>;
+
+const errorText = (error: unknown, fallback: string) => {
+  const failure = readApiError(error);
+  return failure.error || failure.text || fallback;
+};
 
 export function usePlugins(enabled = true) {
   return useQuery({
@@ -29,20 +47,22 @@ export function usePlugins(enabled = true) {
   });
 }
 
-function useSavePlugin(id: string) {
+function useRefreshPlugins() {
   const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.plugins }),
+      queryClient.invalidateQueries({ queryKey: ["plugins"] }),
+    ]);
+}
+
+function useSavePlugin(id: string) {
+  const refresh = useRefreshPlugins();
   const { showError } = useToast();
   return useMutation({
     mutationFn: (json: Patch) => parseResponse(pluginsClient[":id"].$put({ param: { id }, json })),
-    onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.plugins }),
-        queryClient.invalidateQueries({ queryKey: ["plugins", "actions"] }),
-      ]),
-    onError: (error) => {
-      const failure = readApiError(error);
-      showError(failure.error || failure.text || "Couldn't save the plugin");
-    },
+    onSettled: refresh,
+    onError: (error) => showError(errorText(error, "Couldn't save the plugin")),
   });
 }
 
@@ -57,8 +77,11 @@ export function pluginStatus(plugin: Plugin): ServiceStatus {
 }
 
 function describeAdds(manifest: Manifest) {
-  const parts = manifest.actions.map((action) => `${action.label} in playlist menus`);
-  if (manifest.downloadSource) parts.push("a download source");
+  const parts = manifest.actions.map((action) => `${action.label} in ${action.target} menus`);
+  if (manifest.events.length) parts.push(`${manifest.events.join(", ")} events`);
+  if (manifest.downloadSource)
+    parts.push(manifest.downloadSource.albums ? "an album download source" : "a download source");
+  if (manifest.importList) parts.push(`${manifest.importList.label} playlist imports`);
   return parts.join(", ") || null;
 }
 
@@ -100,6 +123,89 @@ function SettingField({
   );
 }
 
+function PluginTest({ plugin }: { plugin: Plugin }) {
+  const refresh = useRefreshPlugins();
+  const test = useMutation({
+    mutationFn: () => parseResponse(pluginsClient[":id"].test.$post({ param: { id: plugin.id } })),
+    onSettled: refresh,
+  });
+  const status = test.isSuccess
+    ? { tone: "success" as const, message: test.data.message }
+    : test.isError
+      ? { tone: "error" as const, message: errorText(test.error, "The test failed") }
+      : null;
+  return (
+    <SettingsActions status={status}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        onClick={() => test.mutate()}
+        disabled={test.isPending}
+      >
+        {test.isPending ? <DotLoader size="xs" label={null} /> : null}
+        Test
+      </button>
+    </SettingsActions>
+  );
+}
+
+function PluginManage({ plugin }: { plugin: Plugin }) {
+  const route = useSettingsRoute();
+  const refresh = useRefreshPlugins();
+  const { showSuccess, showError } = useToast();
+  const [removing, setRemoving] = useState(false);
+  const update = useMutation({
+    mutationFn: () =>
+      parseResponse(pluginsClient[":id"].update.$post({ param: { id: plugin.id } })),
+    onSuccess: (result) => showSuccess(`Updated to ${result.version}`),
+    onError: (error) => showError(errorText(error, "Couldn't update the plugin")),
+    onSettled: refresh,
+  });
+  const remove = useMutation({
+    mutationFn: () => parseResponse(pluginsClient[":id"].$delete({ param: { id: plugin.id } })),
+    onSuccess: async () => {
+      setRemoving(false);
+      route.back();
+      await refresh();
+    },
+    onError: (error) => showError(errorText(error, "Couldn't remove the plugin")),
+  });
+  const name = plugin.manifest?.name ?? plugin.id;
+  return (
+    <SettingsGroup>
+      {plugin.sourceUrl ? (
+        <SettingsRow label="Update" help={plugin.sourceUrl}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => update.mutate()}
+            disabled={update.isPending}
+          >
+            {update.isPending ? <DotLoader size="xs" label={null} /> : null}
+            Update
+          </button>
+        </SettingsRow>
+      ) : null}
+      <SettingsRow label="Remove" help="Deletes the plugin folder and its settings.">
+        <button type="button" className="btn btn-danger btn-sm" onClick={() => setRemoving(true)}>
+          Remove
+        </button>
+      </SettingsRow>
+      <ConfirmModal
+        open={removing}
+        title={`Remove ${name}?`}
+        body="Its folder and settings are deleted. Playlists it imported stay."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        tone="danger"
+        busy={remove.isPending}
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => remove.mutate()}
+      />
+    </SettingsGroup>
+  );
+}
+
 function PluginDetail({ plugin }: { plugin: Plugin }) {
   const save = useSavePlugin(plugin.id);
   const { manifest } = plugin;
@@ -107,9 +213,9 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
     return (
       <SettingsPage title={plugin.id} back="Plugins">
         <SettingsNote tone="error">{plugin.error}</SettingsNote>
+        <PluginManage plugin={plugin} />
       </SettingsPage>
     );
-  const adds = describeAdds(manifest);
   return (
     <SettingsPage title={manifest.name} back="Plugins">
       {plugin.lastError ? (
@@ -139,9 +245,9 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
             onChange={(event) => save.mutate({ enabled: event.target.checked })}
           />
         </SettingsRow>
-        {adds ? (
-          <SettingsRow label="Adds">
-            <span className="settings-row__value">{adds}</span>
+        {manifest.uses.length ? (
+          <SettingsRow label="Uses">
+            <span className="settings-row__value">{manifest.uses.join(", ")}</span>
           </SettingsRow>
         ) : null}
         <SettingsRow label="Version">
@@ -160,7 +266,31 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
           </SettingsRow>
         ) : null}
       </SettingsGroup>
-      {manifest.settings.length ? (
+      {plugin.capabilities.length ? (
+        <SettingsGroup title="Adds">
+          {plugin.capabilities.map((capability) => {
+            const id = `plugin-${plugin.id}-${capability.key}`;
+            return (
+              <SettingsRow
+                key={capability.key}
+                label={capability.label}
+                htmlFor={id}
+                help={capability.kind}
+              >
+                <PillToggle
+                  id={id}
+                  aria-label={capability.label}
+                  checked={capability.enabled}
+                  onChange={(event) =>
+                    save.mutate({ capabilities: { [capability.key]: event.target.checked } })
+                  }
+                />
+              </SettingsRow>
+            );
+          })}
+        </SettingsGroup>
+      ) : null}
+      {manifest.settings.length || manifest.test ? (
         <SettingsGroup title="Settings">
           {manifest.settings.map((setting) => (
             <SettingField
@@ -170,6 +300,7 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
               save={(value) => save.mutate({ settings: { [setting.key]: value } })}
             />
           ))}
+          {manifest.test ? <PluginTest plugin={plugin} /> : null}
         </SettingsGroup>
       ) : null}
       {manifest.downloadSource ? (
@@ -193,21 +324,206 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
           </SettingsRow>
         </SettingsGroup>
       ) : null}
+      <PluginManage plugin={plugin} />
     </SettingsPage>
   );
 }
 
-function SafeModeGroup({ list }: { list: PluginList }) {
+function InstallGroup({ list }: { list: PluginList }) {
+  const refresh = useRefreshPlugins();
+  const { showSuccess } = useToast();
+  const [url, setUrl] = useState("");
+  const [checked, setChecked] = useState<Inspected | null>(null);
+  const inspect = useMutation({
+    mutationFn: () => parseResponse(pluginsClient.install.inspect.$post({ json: { url } })),
+    onSuccess: setChecked,
+  });
+  const install = useMutation({
+    mutationFn: (token: string) => parseResponse(pluginsClient.install.$post({ json: { token } })),
+    onSuccess: async (result) => {
+      setChecked(null);
+      setUrl("");
+      showSuccess(`Installed ${result.id} ${result.version}. Turn it on to use it.`);
+      await refresh();
+    },
+  });
+  const failure = inspect.error ?? install.error;
+
+  if (checked) {
+    const adds = describeAdds(checked.manifest);
+    return (
+      <SettingsGroup title="Install from a link">
+        <SettingsRow
+          label={`${checked.manifest.name} ${checked.manifest.version}`}
+          help={
+            checked.installedVersion
+              ? `Replaces ${checked.installedVersion}.`
+              : checked.manifest.description
+          }
+        />
+        {checked.manifest.uses.length ? (
+          <SettingsRow label="Uses">
+            <span className="settings-row__value">{checked.manifest.uses.join(", ")}</span>
+          </SettingsRow>
+        ) : null}
+        {adds ? (
+          <SettingsRow label="Adds">
+            <span className="settings-row__value">{adds}</span>
+          </SettingsRow>
+        ) : null}
+        <SettingsActions
+          status={
+            install.error
+              ? { tone: "error", message: errorText(install.error, "Couldn't install it") }
+              : null
+          }
+        >
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setChecked(null)}
+            disabled={install.isPending}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => install.mutate(checked.token)}
+            disabled={install.isPending}
+          >
+            {install.isPending ? <DotLoader size="xs" label={null} /> : null}
+            {checked.installedVersion ? "Update" : "Install"}
+          </button>
+        </SettingsActions>
+      </SettingsGroup>
+    );
+  }
+
+  return (
+    <SettingsGroup
+      title="Install from a link"
+      note={
+        <>
+          Paste a link to a plugin&apos;s <code className="settings-code">.zip</code>. You can also
+          put its folder in <code className="settings-code">{list.folder}</code>.
+        </>
+      }
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (url.trim()) inspect.mutate();
+        }}
+      >
+        <SettingsRow
+          label="Link"
+          htmlFor="plugin-install-url"
+          help={failure ? errorText(failure, "Couldn't read the plugin") : undefined}
+          tone={failure ? "error" : "default"}
+        >
+          <SettingsInput
+            id="plugin-install-url"
+            type="url"
+            placeholder="https://github.com/…/plugin.zip"
+            autoComplete="off"
+            spellCheck={false}
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+          />
+          <button
+            type="submit"
+            className="btn btn-secondary btn-sm"
+            disabled={inspect.isPending || !url.trim()}
+          >
+            {inspect.isPending ? <DotLoader size="xs" label={null} /> : null}
+            Check
+          </button>
+        </SettingsRow>
+      </form>
+    </SettingsGroup>
+  );
+}
+
+const mcpUrl = () => new URL(`${API_BASE_URL}/mcp`, window.location.href).href;
+
+const agentPrompt = (key: string) => `Build an Aurral plugin that ___.
+Connect to the MCP server at ${mcpUrl()}
+with the header Authorization: Bearer ${key}
+Read plugin_docs first. Test with test_plugin until it passes.`;
+
+function AgentGroup() {
   const queryClient = useQueryClient();
+  const { showSuccess, showError } = useToast();
+  const keys = useQuery({
+    queryKey: queryKeys.pluginDevKeys,
+    queryFn: ({ signal }) =>
+      parseResponse(pluginsClient["dev-keys"].$get({}, { init: { signal } })),
+  });
+  const refreshKeys = () => queryClient.invalidateQueries({ queryKey: queryKeys.pluginDevKeys });
+  const copy = useMutation({
+    mutationFn: async () => {
+      const { key } = await parseResponse(pluginsClient["dev-keys"].$post());
+      await navigator.clipboard.writeText(agentPrompt(key));
+    },
+    onSuccess: () => showSuccess("Prompt copied. Paste it into your agent."),
+    onError: () => showError("Couldn't copy the prompt"),
+    onSettled: refreshKeys,
+  });
+  const revoke = useMutation({
+    mutationFn: (keyId: number) =>
+      parseResponse(
+        pluginsClient["dev-keys"][":keyId"].$delete({ param: { keyId: String(keyId) } }),
+      ),
+    onSettled: refreshKeys,
+  });
+  return (
+    <SettingsGroup
+      title="Build with an agent"
+      note="Tell your agent what you want. It builds and tests the plugin in this Aurral, and you turn it on when it's ready."
+    >
+      <SettingsRow label="Developer key" help="Expires in 24 hours.">
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => copy.mutate()}
+          disabled={copy.isPending}
+        >
+          {copy.isPending ? <DotLoader size="xs" label={null} /> : null}
+          Copy prompt
+        </button>
+      </SettingsRow>
+      {(keys.data?.keys ?? []).map((key) => (
+        <SettingsRow
+          key={key.id}
+          label={<code className="settings-code">aurral_dev_…{key.hint}</code>}
+          help={
+            key.lastUsedAt
+              ? `Used ${formatRelativeTime(new Date(key.lastUsedAt))}`
+              : `Expires ${formatRelativeTime(new Date(key.expiresAt))}`
+          }
+        >
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => revoke.mutate(key.id)}
+            disabled={revoke.isPending}
+          >
+            Revoke
+          </button>
+        </SettingsRow>
+      ))}
+    </SettingsGroup>
+  );
+}
+
+function SafeModeGroup({ list }: { list: PluginList }) {
+  const refresh = useRefreshPlugins();
   const { showError } = useToast();
   const toggle = useMutation({
     mutationFn: (enabled: boolean) =>
       parseResponse(pluginsClient["safe-mode"].$put({ json: { enabled } })),
-    onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.plugins }),
-        queryClient.invalidateQueries({ queryKey: ["plugins", "actions"] }),
-      ]),
+    onSettled: refresh,
     onError: () => showError("Couldn't change safe mode"),
   });
   return (
@@ -253,24 +569,20 @@ export function PluginsSection() {
           {list.safeMode ? (
             <SettingsNote tone="warning">Safe mode is on. No plugin runs.</SettingsNote>
           ) : null}
-          <SettingsGroup
-            title="Installed"
-            note={
-              <>
-                Add a plugin by putting its folder in{" "}
-                <code className="settings-code">{list.folder}</code>.
-              </>
-            }
-          >
-            {list.plugins.map((plugin) => (
-              <SettingsServiceRow
-                key={plugin.id}
-                to={`plugins/${plugin.id}`}
-                name={plugin.manifest?.name ?? plugin.id}
-                status={pluginStatus(plugin)}
-              />
-            ))}
-          </SettingsGroup>
+          {list.plugins.length ? (
+            <SettingsGroup title="Installed">
+              {list.plugins.map((plugin) => (
+                <SettingsServiceRow
+                  key={plugin.id}
+                  to={`plugins/${plugin.id}`}
+                  name={plugin.manifest?.name ?? plugin.id}
+                  status={pluginStatus(plugin)}
+                />
+              ))}
+            </SettingsGroup>
+          ) : null}
+          <InstallGroup list={list} />
+          <AgentGroup />
           <SafeModeGroup list={list} />
         </>
       ) : null}

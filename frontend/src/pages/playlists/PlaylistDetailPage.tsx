@@ -155,8 +155,13 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const [syncing, setSyncing] = useState(false);
 
   const importSource = playlist.importSource || null;
-  const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
-  const providerLabel = isSyncable ? getImportedProviderLabel(importSource!.provider) : "";
+  const fromPlugin = importSource?.provider.startsWith("plugin:") === true;
+  const isSyncable = fromPlugin || SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
+  const providerLabel = fromPlugin
+    ? playlist.sourceName || "a plugin"
+    : isSyncable
+      ? getImportedProviderLabel(importSource!.provider)
+      : "";
   const totalTracks = Math.max(
     0,
     getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) -

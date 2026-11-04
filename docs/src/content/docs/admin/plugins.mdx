@@ -1,9 +1,16 @@
 ---
 title: Plugins
-description: Add actions and download sources to Aurral with plugins.
+description: Add menu actions, events, download sources, and playlist imports to Aurral with plugins.
 ---
 
-Plugins add features to Aurral that it doesn't have on its own. A plugin can add actions to playlist and flow menus, such as **Send to Plex**, and it can be a download source.
+Plugins add features Aurral doesn't have on its own. A plugin can add:
+
+- **Actions** to playlist, flow, album, artist, and track menus, such as **Send to Plex**.
+- **Events**, so it hears when a playlist changes, a track is played, a download finishes, or Aurral sends a notification.
+- **A download source** for tracks, or for whole albums.
+- **A playlist import** from links on another site.
+
+Plugins are app-wide. Only admins install them, turn them on, and set them up. Everyone sees the actions a plugin adds, except actions the plugin marks for admins.
 
 Each plugin runs in its own process. A plugin that crashes, hangs, or answers with something Aurral can't read fails on its own, and Aurral keeps working. Its errors show on its page in **Settings > Plugins** and in the log under `plugin:<id>`.
 
@@ -11,17 +18,39 @@ A plugin runs as Aurral, so it can read and change what Aurral can. Install plug
 
 ## Install a plugin
 
-1. Put the plugin's folder in the `plugins` folder of the data folder. In Docker that is `/config/plugins`, so a plugin with the id `send-to-box` lives in `/config/plugins/send-to-box`.
-2. Open **Settings > Plugins**. Aurral reads the folder each time you open it.
-3. Open the plugin, fill in its settings, and turn it on.
+In **Settings > Plugins**, paste a link to the plugin's `.zip` under **Install from a link** and select **Check**. Aurral shows what the plugin uses and adds before you install it.
 
-A new plugin is off until you turn it on. Its actions show in menus only once it is on and its required settings are filled in.
+You can also put the plugin's folder in the `plugins` folder of the data folder. In Docker that is `/config/plugins`, so a plugin with the id `send-to-box` lives in `/config/plugins/send-to-box`. Aurral reads the folder each time you open **Settings > Plugins**.
 
-To update a plugin, replace its folder and open **Settings > Plugins** again. To remove it, delete its folder. Aurral keeps its settings in case you put it back.
+A new plugin is off. Open it, fill in its settings, and turn it on. If it has a **Test** button, use it to check its settings.
+
+A plugin installed from a link has an **Update** button that installs the newest version from the same link. **Remove** deletes the plugin's folder and settings.
+
+## Choose what a plugin adds
+
+A plugin's page lists everything it adds under **Adds**. Turn off any of them and the rest keep working. For example, keep a plugin's **Send to Plex** action and turn off its download source.
+
+## Build a plugin with an agent
+
+Under **Build with an agent**, select **Copy prompt** and paste it into an agent that supports MCP, such as Claude Code or Codex. Fill in what you want the plugin to do.
+
+The prompt has a developer key that lets the agent read the plugin API, write a plugin, and test it against your Library. The agent can't turn a plugin on, so you check it and turn it on when it's ready. A key lasts 24 hours. Revoke it on the same page.
+
+To write a plugin yourself, read the [plugin API](/api/plugins/).
+
+## Download sources
+
+A download source plugin joins the other download sources. Set its **Priority** on its page. Sources with a lower number are searched first.
+
+Aurral checks every file a plugin downloads the same way it checks its own downloads. A file that doesn't match goes to the review queue or is denied.
+
+## Playlist imports
+
+A plugin that imports playlists shows as a source in **Import playlist**. Paste a link to a playlist on its site. Synced imports update on the schedule you choose, the same as other imports.
 
 ## When a plugin fails
 
-When a plugin throws an error, the action shows the plugin's name and message, and the plugin's page shows the last error with a link to report it.
+When a plugin throws an error, Aurral shows the plugin's name and message, and the plugin's page shows the last error with a link to report it.
 
 When a plugin crashes, hangs, or answers in a shape Aurral can't read three times in a row, Aurral turns it off. Its page says why. Turn it on again once it is fixed.
 
@@ -30,95 +59,3 @@ When a plugin crashes, hangs, or answers in a shape Aurral can't read three time
 Safe mode runs Aurral with every plugin off and keeps each plugin's own setting. Turn it on in **Settings > Plugins**. If Aurral won't start, or the page won't load, set `AURRAL_SAFE_MODE=true` and restart.
 
 Before you report a bug in Aurral, check whether it still happens in safe mode. If it doesn't, report it to the plugin.
-
-## Download source plugins
-
-A download source plugin joins the other download sources. It downloads one track at a time and never a whole album. Set its **Priority** on its page. Sources with a lower number are searched first.
-
-Aurral checks every file a plugin downloads the same way it checks yt-dlp downloads. A file that doesn't match the track goes to the review queue or is denied.
-
-## Write a plugin
-
-A plugin is a folder with two files: `manifest.json` and `index.js`. Aurral runs `index.js` with Node as an ES module. Bundle any packages into `index.js`, because Aurral doesn't install them.
-
-```json title="manifest.json"
-{
-  "id": "send-to-box",
-  "name": "Send to Box",
-  "version": "1.0.0",
-  "api": 1,
-  "description": "Sends playlists to Box.",
-  "repository": "https://github.com/you/aurral-send-to-box",
-  "settings": [
-    { "key": "url", "label": "Box URL", "type": "text", "required": true },
-    { "key": "token", "label": "Token", "type": "password", "required": true }
-  ],
-  "actions": [{ "id": "send", "label": "Send to Box", "target": "playlist" }],
-  "downloadSource": false
-}
-```
-
-| Field            | Use                                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `id`             | Lowercase letters, numbers, and `-`. The folder must have the same name.                                             |
-| `api`            | The plugin API version. This Aurral runs version `1`.                                                                |
-| `repository`     | An `https` link. Aurral links to it when the plugin fails, so people report plugin bugs to you.                      |
-| `settings`       | Fields for the plugin's page. `type` is `text`, `password`, `number`, or `boolean`.                                  |
-| `actions`        | Menu items. `target` is `playlist`, which covers playlists and flows. Set `"admin": true` to show it only to admins. |
-| `downloadSource` | `true` when `index.js` exports a download source.                                                                    |
-
-```js title="index.js"
-export default {
-  actions: {
-    async send({ settings, user, playlist, libraryFolder }) {
-      await fetch(`${settings.url}/playlists`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${settings.token}` },
-        body: JSON.stringify({ name: playlist.name, tracks: playlist.tracks }),
-      });
-      return { message: `Sent ${playlist.tracks.length} tracks to Box` };
-    },
-  },
-};
-```
-
-An action receives:
-
-- `settings`: the values from the plugin's page.
-- `user`: the `id`, `username`, and `role` of the person who chose the action.
-- `playlist`: its `id`, `name`, `kind` (`playlist` or `flow`), `file` (the path of its M3U file, or `null`), and `tracks`. Each track has `path`, `title`, `artist`, and when known `album`, `durationMs`, and `mbid`.
-- `libraryFolder`: the path of the Library folder.
-
-Return `{ message }` to show it to the user, or nothing. Throw an `Error` to show its message as a failure. An action has 2 minutes.
-
-A download source exports `search` and `download`:
-
-```js title="index.js"
-export default {
-  downloadSource: {
-    async search({ settings, track }) {
-      return [
-        {
-          id: "123",
-          title: "Song",
-          artist: "Artist",
-          album: "Album",
-          durationMs: 215000,
-          format: "flac",
-          data: { url: "https://example.com/123.flac" },
-        },
-      ];
-    },
-    async download({ settings, result, directory }) {
-      // Save the file inside `directory`, then return its path.
-      return { path: "123.flac" };
-    },
-  },
-};
-```
-
-`search` receives the `track` to find: `artist`, `title`, `album`, `durationMs`, `artistMbid`, `albumMbid`, `releaseMbid`, `trackMbid`, `releaseYear`, `trackNumber`, and `discNumber`. Any of them can be `null`. Return up to 50 results. Each needs `id`, `title`, and `artist`. `album`, `durationMs`, `format`, and `bitrate` (in kbps) help Aurral choose. Put anything `download` needs in `data`. Aurral passes it back unchanged and drops other fields.
-
-`download` receives the chosen `result` and an empty `directory`. Save one audio file inside it and return its path, relative to `directory` or absolute. A search has 1 minute and a download has 30 minutes.
-
-Anything a plugin writes to the console goes to the Aurral log under `plugin:<id>`.

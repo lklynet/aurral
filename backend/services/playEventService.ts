@@ -4,6 +4,8 @@ import { getHonkerDb, getPlayEventOutbox } from "./honkerDb.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
 import type { PlayEventsRow } from "../db/rows.ts";
+import { userOps } from "../db/helpers/index.ts";
+import { emitPluginEvent } from "./plugins/pluginEvents.ts";
 
 type PlayEventInput = {
   trackId?: unknown;
@@ -182,6 +184,21 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
     throw error;
   }
   const event = toPublicEvent(getEventStmt.get(eventId));
+  emitPluginEvent("track.played", {
+    user: { id: userId, username: userOps.getUserById(userId)?.username ?? null },
+    track: {
+      id: trackId,
+      title,
+      artist,
+      album: text(input.album, 500) || null,
+      durationMs: positiveInt(input.durationMs),
+      artistMbid: text(input.artistMbid, 100) || null,
+      albumMbid: text(input.albumMbid, 100) || null,
+      trackMbid: text(input.trackMbid, 100) || null,
+    },
+    playedAt,
+    source: text(input.source, 50) || "unknown",
+  });
   return event;
 };
 

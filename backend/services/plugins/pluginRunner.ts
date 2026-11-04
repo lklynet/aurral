@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { format } from "node:util";
 import * as v from "valibot";
 
 type Handler = (input: unknown) => unknown;
@@ -7,20 +8,25 @@ const record = v.record(v.string(), v.unknown());
 const request = v.object({
   type: v.literal("call"),
   id: v.number(),
-  method: v.picklist(["action", "search", "download"]),
-  name: v.optional(v.string()),
+  path: v.string(),
   input: v.unknown(),
 });
 
-const isHandler = (value: unknown): value is Handler => typeof value === "function";
-const handlers = (value: unknown) =>
-  Object.fromEntries(
-    Object.entries(v.is(record, value) ? value : {}).filter((entry): entry is [string, Handler] =>
-      isHandler(entry[1]),
-    ),
-  );
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error ?? "unknown error");
+
+function exportedHandlers(plugin: Record<string, unknown>) {
+  const found = new Map<string, Handler>();
+  for (const [name, value] of Object.entries(plugin)) {
+    if (typeof value === "function") found.set(name, (input) => value.call(plugin, input));
+    if (!v.is(record, value)) continue;
+    for (const [child, handler] of Object.entries(value)) {
+      if (typeof handler === "function")
+        found.set(`${name}.${child}`, (input) => handler.call(value, input));
+    }
+  }
+  return found;
+}
 
 function send(message: object) {
   process.send?.(message);
@@ -28,33 +34,34 @@ function send(message: object) {
 
 process.on("disconnect", () => process.exit(0));
 
+for (const [method, level] of [
+  ["log", "info"],
+  ["info", "info"],
+  ["debug", "info"],
+  ["warn", "warn"],
+  ["error", "warn"],
+] as const)
+  console[method] = (...args: unknown[]) => send({ type: "log", level, message: format(...args) });
+
 try {
   const loaded: unknown = await import(pathToFileURL(String(process.argv[2])).href);
   const plugin = v.is(record, loaded) && v.is(record, loaded.default) ? loaded.default : loaded;
-  const exported = v.is(record, plugin) ? plugin : {};
-  const actions = handlers(exported.actions);
-  const source = handlers(exported.downloadSource);
-  const { search, download } = source;
-  const methods = { search, download };
+  const handlers = exportedHandlers(v.is(record, plugin) ? plugin : {});
 
   process.on("message", async (raw) => {
     const parsed = v.safeParse(request, raw);
     if (!parsed.success) return;
-    const { id, method, name, input } = parsed.output;
-    const handler = method === "action" ? actions[name ?? ""] : methods[method];
+    const { id, path, input } = parsed.output;
     try {
-      if (!handler) throw new Error(`${method} ${name ?? ""} is not exported`);
+      const handler = handlers.get(path);
+      if (!handler) throw new Error(`${path} is not exported`);
       const value = await handler(input);
       send({ type: "result", id, value: value ?? null });
     } catch (error) {
       send({ type: "error", id, message: errorMessage(error) });
     }
   });
-  send({
-    type: "ready",
-    actions: Object.keys(actions),
-    downloadSource: Boolean(search && download),
-  });
+  send({ type: "ready", exports: [...handlers.keys()] });
 } catch (error) {
   process.send?.(
     { type: "fatal", message: `index.js failed to load: ${errorMessage(error)}` },

@@ -33,13 +33,23 @@ const [
   () => import("../../backend/services/downloadSourceService.ts"),
 );
 
-const SOURCE = `export default { downloadSource: {
+const SOURCE = `let polls = 0;
+export default { downloadSource: {
   search: ({ track }) => [{ id: "t1", title: track.title, artist: track.artist, album: track.album, durationMs: 1000, format: "flac", source: "tape", data: { file: "t1.flac" } }],
   download: async ({ settings, result, directory }) => {
     const { copyFile } = await import("node:fs/promises");
     if (settings.escape) return { path: settings.fixture };
+    if (settings.pending) return { pending: "client-7" };
     await copyFile(settings.fixture, directory + "/" + result.data.file);
     return { path: result.data.file };
+  },
+  status: async ({ settings, id, directory, libraryFolder }) => {
+    polls += 1;
+    if (id !== "client-7" || !libraryFolder) throw new Error("wrong status input");
+    if (polls < 2) return { done: false };
+    const { copyFile } = await import("node:fs/promises");
+    await copyFile(settings.fixture, directory + "/done.flac");
+    return { done: true, path: "done.flac" };
   },
 } };`;
 
@@ -55,10 +65,11 @@ async function installSource(settings: Record<string, unknown>) {
       name: "Tapes",
       version: "1.0.0",
       api: 1,
-      downloadSource: true,
+      downloadSource: {},
       settings: [
         { key: "fixture", label: "Fixture", type: "text" },
         { key: "escape", label: "Escape", type: "boolean" },
+        { key: "pending", label: "Pending", type: "boolean" },
       ],
     }),
   );
@@ -127,6 +138,30 @@ test("a plugin source's download is checked and filed in the Library", async () 
   const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   assert.equal(job.downloadSource, "plugin:tapes");
+  await access(String(job.finalPath));
+});
+
+test("a plugin source can hand a download to its client and finish once status says done", async () => {
+  const fixture = await writeFlacFixture(
+    path.join(fixtureDir, "source.flac"),
+    { title: "Night Drive", artist: "Glass Coast", album: "Lowlands" },
+    { seconds: 1 },
+  );
+  await installSource({ fixture, pending: true });
+  const jobId = createTrackedJob(
+    downloadTracker,
+    {
+      artistName: "Glass Coast",
+      trackName: "Night Drive",
+      albumName: "Lowlands",
+      durationMs: 1000,
+    },
+    "plugin-source",
+  );
+
+  assert.deepEqual(await runToEnd(jobId), ["search", "download", "poll", "poll", "finalize"]);
+  const job = trackedJob(downloadTracker, jobId);
+  assert.equal(job.status, "done");
   await access(String(job.finalPath));
 });
 

@@ -16,9 +16,7 @@ const MAX_BROKEN_IN_A_ROW = 3;
 const MAX_LOG_LINE = 2000;
 const ENV_KEYS = ["PATH", "HOME", "TZ", "LANG", "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS"];
 
-export type PluginRequest =
-  | { method: "action"; name: string; input: unknown }
-  | { method: "search" | "download"; input: unknown };
+export type PluginRequest = { path: string; input: unknown };
 
 export class PluginError extends Error {}
 
@@ -27,7 +25,7 @@ type Pending = {
   reject: (error: BrokenPlugin | PluginError) => void;
   timer: NodeJS.Timeout;
 };
-type Exports = { actions: string[]; downloadSource: boolean };
+type Exports = string[];
 type Running = {
   child: ChildProcess;
   ready: Promise<Exports>;
@@ -39,14 +37,11 @@ type Running = {
 class BrokenPlugin extends Error {}
 
 const childMessage = v.variant("type", [
-  v.object({
-    type: v.literal("ready"),
-    actions: v.array(v.string()),
-    downloadSource: v.boolean(),
-  }),
+  v.object({ type: v.literal("ready"), exports: v.array(v.string()) }),
   v.object({ type: v.literal("result"), id: v.number(), value: v.unknown() }),
   v.object({ type: v.literal("error"), id: v.number(), message: v.string() }),
   v.object({ type: v.literal("fatal"), message: v.string() }),
+  v.object({ type: v.literal("log"), level: v.picklist(["info", "warn"]), message: v.string() }),
 ]);
 
 const running = new Map<string, Running>();
@@ -61,11 +56,28 @@ function pluginEnv() {
   );
 }
 
-function forwardLines(id: string, stream: Readable | null, level: "info" | "warn") {
+type PluginLogLine = { level: "info" | "warn"; message: string };
+const logWatchers = new Map<string, Set<(line: PluginLogLine) => void>>();
+
+function pluginLog(id: string, level: PluginLogLine["level"], text: string) {
+  if (!text.trim()) return;
+  const message = text.slice(0, MAX_LOG_LINE);
+  logger[level](logCategory(id), message);
+  for (const watcher of logWatchers.get(id) ?? []) watcher({ level, message });
+}
+
+export function watchPluginLogs(id: string, watcher: (line: PluginLogLine) => void) {
+  const watchers = logWatchers.get(id) ?? new Set();
+  logWatchers.set(id, watchers.add(watcher));
+  return () => {
+    watchers.delete(watcher);
+    if (!watchers.size) logWatchers.delete(id);
+  };
+}
+
+function forwardLines(id: string, stream: Readable | null, level: PluginLogLine["level"]) {
   if (!stream) return;
-  readline.createInterface({ input: stream }).on("line", (line) => {
-    if (line.trim()) logger[level](logCategory(id), line.slice(0, MAX_LOG_LINE));
-  });
+  readline.createInterface({ input: stream }).on("line", (line) => pluginLog(id, level, line));
 }
 
 function failAll(state: Running, error: BrokenPlugin | PluginError) {
@@ -103,9 +115,13 @@ function start(plugin: InstalledPlugin): Running {
     const parsed = v.safeParse(childMessage, raw);
     if (!parsed.success) return;
     const message = parsed.output;
+    if (message.type === "log") {
+      pluginLog(plugin.id, message.level, message.message);
+      return;
+    }
     if (message.type === "ready") {
       clearTimeout(startTimer);
-      settle.resolve({ actions: message.actions, downloadSource: message.downloadSource });
+      settle.resolve(message.exports);
       return;
     }
     if (message.type === "fatal") {
@@ -163,10 +179,8 @@ async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: 
   running.set(plugin.id, state);
   if (state.idle) clearTimeout(state.idle);
   const exports = await state.ready;
-  if (request.method === "action" && !exports.actions.includes(request.name))
-    throw new BrokenPlugin(`${PLUGIN_MAIN} doesn't export the action ${request.name}`);
-  if (request.method !== "action" && !exports.downloadSource)
-    throw new BrokenPlugin(`${PLUGIN_MAIN} doesn't export downloadSource.search and download`);
+  if (!exports.includes(request.path))
+    throw new BrokenPlugin(`${PLUGIN_MAIN} doesn't export ${request.path}`);
   const id = nextCallId++;
   try {
     return await new Promise<unknown>((resolve, reject) => {
@@ -188,7 +202,7 @@ async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: 
   }
 }
 
-function recordFailure(plugin: InstalledPlugin, error: unknown) {
+function recordFailure(plugin: InstalledPlugin, error: unknown, countFailures: boolean) {
   const broken = error instanceof BrokenPlugin;
   const message =
     error instanceof Error ? error.message : `failed: ${String(error ?? "unknown error")}`;
@@ -196,7 +210,7 @@ function recordFailure(plugin: InstalledPlugin, error: unknown) {
     version: plugin.manifest.version,
   });
   recordPluginError(plugin.id, message);
-  if (!broken) return new PluginError(message);
+  if (!broken || !countFailures) return new PluginError(message);
   const count = (brokenInARow.get(plugin.id) ?? 0) + 1;
   brokenInARow.set(plugin.id, count);
   if (count >= MAX_BROKEN_IN_A_ROW) {
@@ -217,6 +231,7 @@ export async function callPlugin<Schema extends v.GenericSchema>(
   request: PluginRequest,
   output: Schema,
   timeoutMs: number,
+  { countFailures = true } = {},
 ): Promise<v.InferOutput<Schema>> {
   try {
     const value = await send(plugin, request, timeoutMs);
@@ -232,6 +247,6 @@ export async function callPlugin<Schema extends v.GenericSchema>(
     if (plugin.lastError) recordPluginError(plugin.id, null);
     return parsed.output;
   } catch (error) {
-    throw recordFailure(plugin, error);
+    throw recordFailure(plugin, error, countFailures);
   }
 }

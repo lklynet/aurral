@@ -4,11 +4,18 @@ import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
 import type { PluginsRow } from "../../db/rows.ts";
-import { pluginManifestSchema, type PluginFolder, type PluginManifest } from "./pluginManifest.ts";
+import { resolveDownloadRoot } from "../downloadPaths.ts";
+import {
+  pluginManifestSchema,
+  type PluginEvent,
+  type PluginFolder,
+  type PluginManifest,
+} from "./pluginManifest.ts";
 
 const SAFE_MODE_KEY = "pluginSafeMode";
 const settingValue = v.union([v.string(), v.number(), v.boolean()]);
 const settingValues = v.record(v.string(), settingValue);
+const capabilityKeys = v.array(v.string());
 
 export type PluginSettingValues = v.InferOutput<typeof settingValues>;
 export type InstalledPlugin = ReturnType<typeof readRow> & { manifest: PluginManifest };
@@ -22,9 +29,13 @@ const upsertManifest = db.prepare<[string, string, number]>(`
 const clearManifest = db.prepare<[number, string]>(
   "UPDATE plugins SET manifest = NULL, updated_at = ? WHERE id = ?",
 );
-const updateRow = db.prepare<[number, string, number, number, string]>(
-  "UPDATE plugins SET enabled = ?, settings = ?, priority = ?, updated_at = ? WHERE id = ?",
+const updateRow = db.prepare<[number, string, number, string, number, string]>(
+  "UPDATE plugins SET enabled = ?, settings = ?, priority = ?, disabled = ?, updated_at = ? WHERE id = ?",
 );
+const updateSourceUrl = db.prepare<[string | null, string]>(
+  "UPDATE plugins SET source_url = ? WHERE id = ?",
+);
+const deleteRow = db.prepare<[string]>("DELETE FROM plugins WHERE id = ?");
 const updateError = db.prepare<[string | null, string]>(
   "UPDATE plugins SET last_error = ? WHERE id = ?",
 );
@@ -49,6 +60,8 @@ function readRow(row: PluginsRow) {
     settings: readSettings(row.settings),
     priority: row.priority,
     lastError: row.last_error,
+    disabled: dbHelpers.readJSON(capabilityKeys, row.disabled, "plugin capabilities") ?? [],
+    sourceUrl: row.source_url,
   };
 }
 
@@ -98,6 +111,24 @@ export function activePlugin(id: string) {
   return activePlugins().find((plugin) => plugin.id === id) ?? null;
 }
 
+export function pluginInput(plugin: InstalledPlugin) {
+  return { settings: plugin.settings, libraryFolder: resolveDownloadRoot() };
+}
+
+export const isCapabilityOn = (plugin: InstalledPlugin, key: string) =>
+  !plugin.disabled.includes(key);
+
+export function activePluginWith(id: string, capability: string) {
+  const plugin = activePlugin(id);
+  return plugin && isCapabilityOn(plugin, capability) ? plugin : null;
+}
+
+export function pluginsForEvent(event: PluginEvent) {
+  return activePlugins().filter(
+    (plugin) => plugin.manifest.events.includes(event) && isCapabilityOn(plugin, `event:${event}`),
+  );
+}
+
 export function recordInstalledPlugins(folders: PluginFolder[]) {
   const now = Date.now();
   const changed: string[] = [];
@@ -123,14 +154,20 @@ export function recordInstalledPlugins(folders: PluginFolder[]) {
 }
 
 export function savePlugin(
-  plugin: Pick<InstalledPlugin, "id" | "enabled" | "settings" | "priority">,
-  patch: { enabled?: boolean; settings?: PluginSettingValues; priority?: number },
+  plugin: Pick<InstalledPlugin, "id" | "enabled" | "settings" | "priority" | "disabled">,
+  patch: {
+    enabled?: boolean;
+    settings?: PluginSettingValues;
+    priority?: number;
+    disabled?: string[];
+  },
 ) {
   const settings = patch.settings ?? plugin.settings;
   updateRow.run(
     (patch.enabled ?? plugin.enabled) ? 1 : 0,
     encryptWithKey(JSON.stringify(settings), getSettingsEncryptionKey()) ?? "",
     patch.priority ?? plugin.priority,
+    JSON.stringify(patch.disabled ?? plugin.disabled),
     Date.now(),
     plugin.id,
   );
@@ -145,6 +182,14 @@ export function disablePlugin(id: string, reason: string) {
   disableRow.run(reason, Date.now(), id);
 }
 
+export function savePluginSourceUrl(id: string, url: string | null) {
+  updateSourceUrl.run(url, id);
+}
+
+export function forgetPlugin(id: string) {
+  deleteRow.run(id);
+}
+
 export const PLUGIN_SOURCE_PREFIX = "plugin:";
 
 export function pluginIdFromSource(source: string | null | undefined) {
@@ -155,13 +200,14 @@ export function pluginIdFromSource(source: string | null | undefined) {
 
 export function activePluginSources() {
   return activePlugins()
-    .filter((plugin) => plugin.manifest.downloadSource)
+    .filter((plugin) => plugin.manifest.downloadSource && isCapabilityOn(plugin, "downloadSource"))
     .map((plugin) => ({
       id: `${PLUGIN_SOURCE_PREFIX}${plugin.id}`,
       label: plugin.manifest.name,
       enabled: true,
       configured: true,
       priority: plugin.priority,
+      albums: plugin.manifest.downloadSource?.albums === true,
     }));
 }
 

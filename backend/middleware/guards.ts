@@ -84,6 +84,7 @@ const openPaths = new Set([
   "/api/auth/oidc/exchange",
   "/api/auth/google/login",
   "/api/auth/google/exchange",
+  "/api/mcp",
 ]);
 
 const isOpen = (method: string, path: string) =>

@@ -39,6 +39,7 @@ import {
   writePlaylistFile,
 } from "./playlistFiles.ts";
 import { removePlaylistsFromPlex, sendPlaylistsToPlex } from "../plex.ts";
+import { emitPluginEvent } from "../plugins/pluginEvents.ts";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
@@ -148,10 +149,22 @@ export class PlaylistManager {
       if (await writePlaylistFile(filePath, buildPlaylistFile(tracks), { force: rewrite })) {
         changed.push(id);
         uploads.push({ title: playlistTitle(fileName), path: filePath, empty: !tracks.length });
+        if (!rewrite)
+          emitPluginEvent("playlist.changed", {
+            playlist: {
+              id,
+              name: entity.name,
+              title: playlistTitle(fileName),
+              kind: flow ? "flow" : "playlist",
+              file: filePath,
+              tracks,
+            },
+          });
       }
       written[id] = fileName;
     }
     saveWrittenPlaylistFiles(written);
+    for (const name of removed) emitPluginEvent("playlist.removed", { playlist: { title: name } });
     await sendPlaylistsToPlex(this.downloadRoot, { upload: uploads, remove: removed });
     if (changed.length && !rewrite) this.requestPlaylistSync(changed, { rewrite: true });
   }

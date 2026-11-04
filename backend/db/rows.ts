@@ -501,6 +501,15 @@ export interface PlaylistDownloadJobsRevisionRow {
   revision: number;
 }
 
+export interface PluginDevKeysRow {
+  id: number;
+  key_hash: string;
+  hint: string;
+  created_at: number;
+  expires_at: number;
+  last_used_at: number | null;
+}
+
 export interface PluginsRow {
   id: string;
   manifest: string | null;
@@ -508,6 +517,8 @@ export interface PluginsRow {
   settings: string;
   priority: number;
   last_error: string | null;
+  disabled: string;
+  source_url: string | null;
   updated_at: number;
 }
 

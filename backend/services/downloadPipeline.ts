@@ -32,7 +32,8 @@ import {
 import {
   getDownloadSourceNotConfiguredMessage,
   getEnabledDownloadSources,
-  ALBUM_GRAB_SOURCE_IDS,
+  isAlbumGrabSource,
+  isAlbumGrabSourceId,
   getSourceLabel,
   isAnyDownloadSourceConfigured,
 } from "./downloadSourceService.ts";
@@ -191,7 +192,7 @@ export function buildNextSourcePayload<Payload extends SourceFields>(
   const sources = getEnabledDownloadSources().filter(
     (source) =>
       (!allowedSources || allowedSources.has(source.id)) &&
-      (payload?.albumGrab !== true || ALBUM_GRAB_SOURCE_IDS.includes(source.id)),
+      (payload?.albumGrab !== true || isAlbumGrabSource(source)),
   );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
@@ -557,7 +558,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       return awaitAttemptRelease(payload);
     }
   }
-  if (payload.albumGrab === true && !ALBUM_GRAB_SOURCE_IDS.includes(source)) {
+  if (payload.albumGrab === true && !isAlbumGrabSourceId(source)) {
     const job = downloadTracker.getJob(payload.jobId);
     return job
       ? failOrTryNextSource(

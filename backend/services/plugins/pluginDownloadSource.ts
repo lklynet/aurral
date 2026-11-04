@@ -18,6 +18,11 @@ import {
   writeAudioMetadata,
 } from "../downloadUtils.ts";
 import { logger } from "../logger.ts";
+import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
+import { isSameCoreAlbum } from "../downloadJobs/deemixSearch.ts";
+import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
+import { attemptRelease } from "../releaseResolver.ts";
+import type { ReleaseManifest } from "../releaseManifest.ts";
 import {
   buildNextCandidatePayload,
   finalizePipelineJobSuccess,
@@ -33,15 +38,20 @@ import {
 } from "../trackMatching/index.ts";
 import { callPlugin, PluginError } from "./pluginHost.ts";
 import {
-  activePlugin,
+  activePluginWith,
   pluginIdFromSource,
+  pluginInput,
   PLUGIN_SOURCE_PREFIX,
   type InstalledPlugin,
 } from "./pluginStore.ts";
 
 const SEARCH_TIMEOUT_MS = 60_000;
 const DOWNLOAD_TIMEOUT_MS = 30 * 60_000;
+const STATUS_TIMEOUT_MS = 60_000;
+const POLL_SECONDS = 15;
+const MAX_POLLS = (24 * 60 * 60) / POLL_SECONDS;
 const MAX_RESULTS = 50;
+const MAX_ALBUM_CANDIDATES = 5;
 
 const text = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500));
 const searchResult = v.object({
@@ -54,10 +64,31 @@ const searchResult = v.object({
   bitrate: v.nullish(v.pipe(v.number(), v.minValue(0))),
   data: v.optional(v.unknown()),
 });
-const searchResults = v.pipe(v.array(searchResult), v.maxLength(MAX_RESULTS));
-const downloadResult = v.object({ path: v.pipe(v.string(), v.minLength(1)) });
+export const searchResults = v.pipe(v.array(searchResult), v.maxLength(MAX_RESULTS));
+const albumResult = v.object({
+  id: text,
+  title: text,
+  artist: text,
+  year: v.nullish(v.pipe(v.number(), v.integer())),
+  trackCount: v.nullish(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  format: v.nullish(v.pipe(v.string(), v.maxLength(20))),
+  bitrate: v.nullish(v.pipe(v.number(), v.minValue(0))),
+  data: v.optional(v.unknown()),
+});
+export const albumResults = v.pipe(v.array(albumResult), v.maxLength(MAX_RESULTS));
+const pending = v.pipe(v.string(), v.minLength(1), v.maxLength(500));
+const filePathText = v.pipe(v.string(), v.minLength(1));
+export const trackDownloadResult = v.union([
+  v.object({ path: filePathText }),
+  v.object({ pending }),
+]);
+export const albumDownloadResult = v.nullish(v.object({ pending: v.optional(pending) }), {});
+export const statusResult = v.object({
+  done: v.boolean(),
+  path: v.optional(filePathText),
+});
 
-type PluginResult = v.InferOutput<typeof searchResult>;
+type PluginResult = v.InferOutput<typeof searchResult> | v.InferOutput<typeof albumResult>;
 type PluginCandidate = Omit<ReturnType<typeof toPipelineCandidate>, "raw"> & {
   raw: PluginResult;
 };
@@ -75,6 +106,11 @@ type PluginPayload = {
   candidateIndex?: number;
   downloadedPath?: string | null;
   heldForReview?: ReturnType<typeof holdForReview> | null;
+  pendingId?: string | null;
+  pollAttempts?: number;
+  albumGrab?: boolean;
+  releaseMbid?: string | null;
+  albumGroupJobIds?: string[];
 };
 type Helpers = {
   failOrTryNextSource: (
@@ -127,6 +163,63 @@ async function resolveDownloadedFile(directory: string, returned: string) {
   return filePath;
 }
 
+async function albumInput(payload: PluginPayload, job: DownloadJob) {
+  const release: ReleaseManifest | null = await attemptRelease(payload, job);
+  return {
+    artist: release?.artistNames[0] ?? job.artistName ?? null,
+    title: release?.title || job.albumName || null,
+    releaseMbid: release?.releaseMbid || null,
+    releaseGroupMbid: release?.releaseGroupMbid ?? null,
+    tracks: (release?.tracks ?? []).map((track) => ({
+      title: track.title,
+      trackNumber: track.trackNumber,
+      discNumber: track.discNumber,
+      durationMs: track.durationMs ?? null,
+    })),
+  };
+}
+
+async function handleAlbumSearch(
+  payload: PluginPayload,
+  plugin: InstalledPlugin,
+  helpers: Helpers,
+) {
+  const job = downloadTracker.getJob(payload.jobId);
+  if (!job || job.status === "failed" || job.status === "done") return null;
+  const source = sourceId(plugin);
+  downloadTracker.setDownloading(job.id);
+  downloadTracker.updateDownloadMetadata(job.id, {
+    downloadSource: source,
+    downloadClient: source,
+  });
+  recordHistory(job, "recordTrackJobSearching");
+  const album = await albumInput(payload, job);
+  let results: v.InferOutput<typeof albumResults>;
+  try {
+    results = await callPlugin(
+      plugin,
+      { path: "downloadSource.searchAlbum", input: { ...pluginInput(plugin), album } },
+      albumResults,
+      SEARCH_TIMEOUT_MS,
+    );
+  } catch (error) {
+    if (!(error instanceof PluginError)) throw error;
+    return helpers.failOrTryNextSource(payload, job, `album search failed: ${error.message}`);
+  }
+  const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source);
+  const candidates = results
+    .filter(
+      (result) =>
+        !denied.has(`album:${result.id}`.toLowerCase()) &&
+        isSameCoreAlbum(result.title, album.title),
+    )
+    .slice(0, MAX_ALBUM_CANDIDATES)
+    .map((result) => ({ raw: result, resolvedAlbumName: result.title, releaseVerified: false }));
+  if (candidates.length === 0)
+    return helpers.failOrTryNextSource(payload, job, "No matching album in the plugin's results");
+  return { ...payload, phase: "download", source, candidates, candidateIndex: 0 };
+}
+
 async function handleSearch(payload: PluginPayload, plugin: InstalledPlugin, helpers: Helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
@@ -145,7 +238,10 @@ async function handleSearch(payload: PluginPayload, plugin: InstalledPlugin, hel
   try {
     results = await callPlugin(
       plugin,
-      { method: "search", input: { settings: plugin.settings, track: trackInput(resolvedTrack) } },
+      {
+        path: "downloadSource.search",
+        input: { ...pluginInput(plugin), track: trackInput(resolvedTrack) },
+      },
       searchResults,
       SEARCH_TIMEOUT_MS,
     );
@@ -172,11 +268,50 @@ async function handleSearch(payload: PluginPayload, plugin: InstalledPlugin, hel
   return { ...payload, phase: "download", source, candidates, candidateIndex: 0, resolvedTrack };
 }
 
+function trackDownloaded(payload: PluginPayload, plugin: InstalledPlugin, filePath: string) {
+  const job = downloadTracker.getJob(payload.jobId);
+  const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
+  if (job && candidate)
+    downloadTracker.updateDownloadMetadata(job.id, {
+      downloadSource: sourceId(plugin),
+      downloadClient: sourceId(plugin),
+      releaseGuid: candidate.raw.id,
+      releaseTitle: candidate.raw.title,
+      remoteFilename: path.basename(filePath),
+    });
+  return {
+    ...payload,
+    phase: "finalize",
+    source: sourceId(plugin),
+    candidate,
+    pendingId: null,
+    downloadedPath: filePath,
+  };
+}
+
+async function downloadFailed(
+  payload: PluginPayload,
+  plugin: InstalledPlugin,
+  job: DownloadJob,
+  error: PluginError,
+  helpers: Helpers,
+) {
+  await cleanup(stagingDir(plugin, job.id));
+  if (!isPipelinePayloadActive(payload)) return null;
+  logger.warn(`plugin:${plugin.id}`, "Plugin download failed", {
+    jobId: job.id,
+    result: payload.candidates?.[Number(payload.candidateIndex || 0)]?.raw.id ?? null,
+    error: error.message,
+  });
+  if (hasNextCandidate(payload))
+    return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
+  return helpers.failOrTryNextSource(payload, job, `download failed: ${error.message}`);
+}
+
 async function handleDownload(payload: PluginPayload, plugin: InstalledPlugin, helpers: Helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
-  const index = Number(payload.candidateIndex || 0);
-  const candidate = payload.candidates?.[index];
+  const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
   const result = candidate?.raw;
   if (!candidate || !v.is(searchResult, result))
     return helpers.failOrTryNextSource(payload, job, "No search result to download");
@@ -184,47 +319,102 @@ async function handleDownload(payload: PluginPayload, plugin: InstalledPlugin, h
   const directory = stagingDir(plugin, job.id);
   await cleanup(directory);
   await fs.mkdir(directory, { recursive: true });
-  let filePath: string;
+  const album = payload.albumGrab === true;
   try {
-    const downloaded = await callPlugin(
-      plugin,
-      { method: "download", input: { settings: plugin.settings, result, directory } },
-      downloadResult,
-      DOWNLOAD_TIMEOUT_MS,
-    );
-    filePath = await resolveDownloadedFile(directory, downloaded.path);
+    const started = album
+      ? await callPlugin(
+          plugin,
+          {
+            path: "downloadSource.downloadAlbum",
+            input: {
+              ...pluginInput(plugin),
+              result,
+              album: await albumInput(payload, job),
+              directory,
+            },
+          },
+          albumDownloadResult,
+          DOWNLOAD_TIMEOUT_MS,
+        )
+      : await callPlugin(
+          plugin,
+          {
+            path: "downloadSource.download",
+            input: { ...pluginInput(plugin), result, directory },
+          },
+          trackDownloadResult,
+          DOWNLOAD_TIMEOUT_MS,
+        );
+    if (!isPipelinePayloadActive(payload)) {
+      await cleanup(directory);
+      return null;
+    }
+    if ("pending" in started && started.pending)
+      return {
+        ...payload,
+        phase: "poll",
+        pendingId: started.pending,
+        pollAttempts: 0,
+        delaySeconds: POLL_SECONDS,
+      };
+    if (album) return { ...payload, phase: "finalize", candidate, pendingId: null };
+    if (!("path" in started) || !started.path)
+      throw new PluginError("returned neither a path nor a pending download");
+    return trackDownloaded(payload, plugin, await resolveDownloadedFile(directory, started.path));
   } catch (error) {
     if (!(error instanceof PluginError)) throw error;
-    await cleanup(directory);
-    if (!isPipelinePayloadActive(payload)) return null;
-    logger.warn(`plugin:${plugin.id}`, "Plugin download failed", {
-      jobId: job.id,
-      result: result.id,
-      error: error.message,
-    });
-    if (hasNextCandidate(payload))
-      return buildNextCandidatePayload(payload, { downloadedPath: null });
-    return helpers.failOrTryNextSource(payload, job, `download failed: ${error.message}`);
+    return downloadFailed(payload, plugin, job, error, helpers);
   }
-  if (!isPipelinePayloadActive(payload)) {
-    await cleanup(directory);
-    return null;
+}
+
+async function handlePoll(payload: PluginPayload, plugin: InstalledPlugin, helpers: Helpers) {
+  const job = downloadTracker.getJob(payload.jobId);
+  if (!job || job.status === "failed" || job.status === "done") return null;
+  const directory = stagingDir(plugin, job.id);
+  const pollAttempts = Number(payload.pollAttempts || 0) + 1;
+  try {
+    const status = await callPlugin(
+      plugin,
+      {
+        path: "downloadSource.status",
+        input: { ...pluginInput(plugin), id: payload.pendingId, directory },
+      },
+      statusResult,
+      STATUS_TIMEOUT_MS,
+    );
+    if (!isPipelinePayloadActive(payload)) {
+      await cleanup(directory);
+      return null;
+    }
+    if (!status.done) {
+      if (pollAttempts >= MAX_POLLS)
+        throw new PluginError("didn't finish the download within a day");
+      return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_SECONDS };
+    }
+    const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
+    if (payload.albumGrab === true)
+      return { ...payload, phase: "finalize", candidate, pendingId: null, pollAttempts };
+    if (!status.path) throw new PluginError("finished a download without its path");
+    return trackDownloaded(payload, plugin, await resolveDownloadedFile(directory, status.path));
+  } catch (error) {
+    if (!(error instanceof PluginError)) throw error;
+    return downloadFailed(payload, plugin, job, error, helpers);
   }
-  downloadTracker.updateDownloadMetadata(job.id, {
-    downloadSource: sourceId(plugin),
-    downloadClient: sourceId(plugin),
-    releaseGuid: result.id,
-    releaseTitle: result.title,
-    remoteFilename: path.basename(filePath),
-  });
-  return {
-    ...payload,
-    phase: "finalize",
+}
+
+async function handleAlbumFinalize(payload: PluginPayload, plugin: InstalledPlugin) {
+  const directory = stagingDir(plugin, payload.jobId);
+  const filePaths = (await fs.readdir(directory, { recursive: true }).catch(() => []))
+    .map((entry) => path.join(directory, entry))
+    .filter(isAudioFile);
+  const next = await finishAlbumGrab(payload, {
+    filePaths,
     source: sourceId(plugin),
-    candidate,
-    candidateIndex: index,
-    downloadedPath: filePath,
-  };
+    album: getPayloadCandidate(payload)?.resolvedAlbumName ?? null,
+    resetFields: { pendingId: null, pollAttempts: 0, downloadedPath: null },
+  });
+  await cleanup(directory);
+  return next;
 }
 
 async function handleFinalize(payload: PluginPayload, plugin: InstalledPlugin, helpers: Helpers) {
@@ -314,7 +504,7 @@ async function handleFinalize(payload: PluginPayload, plugin: InstalledPlugin, h
 
 export async function processPluginPipelinePayload(payload: PluginPayload, helpers: Helpers) {
   const id = pluginIdFromSource(payload.source);
-  const plugin = id ? activePlugin(id) : null;
+  const plugin = id ? activePluginWith(id, "downloadSource") : null;
   if (!plugin?.manifest.downloadSource) {
     const job = downloadTracker.getJob(payload.jobId);
     return job ? helpers.failOrTryNextSource(payload, job, "The plugin is turned off") : null;
@@ -323,8 +513,14 @@ export async function processPluginPipelinePayload(payload: PluginPayload, helpe
     await cleanup(stagingDir(plugin, payload.jobId));
     return null;
   }
-  if (payload.phase === "search") return handleSearch(payload, plugin, helpers);
+  const album = payload.albumGrab === true;
+  if (payload.phase === "search")
+    return album
+      ? handleAlbumSearch(payload, plugin, helpers)
+      : handleSearch(payload, plugin, helpers);
   if (payload.phase === "download") return handleDownload(payload, plugin, helpers);
-  if (payload.phase === "finalize") return handleFinalize(payload, plugin, helpers);
+  if (payload.phase === "poll") return handlePoll(payload, plugin, helpers);
+  if (payload.phase === "finalize")
+    return album ? handleAlbumFinalize(payload, plugin) : handleFinalize(payload, plugin, helpers);
   throw new Error(`Unknown plugin pipeline phase: ${payload.phase}`);
 }
