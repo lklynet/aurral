@@ -1,7 +1,7 @@
 import ArtworkImage from "../../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { DotLoader } from "../../components/DotLoader";
 import { SkeletonReleaseCard, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import {
@@ -103,11 +103,31 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
   const { hasPermission } = useAuth();
-  const [selectedTab, setSelectedTab] = useState("all");
-  const [showLiveAlbums, setShowLiveAlbums] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const selectedTab = releaseTabs.find((tab) => tab.value === tabParam)?.value ?? "all";
+  const showLiveAlbums = searchParams.get("live") !== "0";
+  const searchTerm = searchParams.get("q") ?? "";
+  const sortParam = searchParams.get("sort");
+  const sortOption = sortOptions.find((option) => option.value === sortParam) ?? sortOptions[0];
+  const sortKey: SortKey = sortOption.value;
+  const directionParam = searchParams.get("dir");
+  const sortDirection: SortDirection =
+    directionParam === "asc" || directionParam === "desc"
+      ? directionParam
+      : sortOption.defaultDirection;
+  const updateFilters = (changes: Record<string, string | null>) =>
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        for (const [key, value] of Object.entries(changes)) {
+          if (value) next.set(key, value);
+          else next.delete(key);
+        }
+        return next;
+      },
+      { replace: true, state },
+    );
   const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [visibleCoverIds, setVisibleCoverIds] = useState<string[]>([]);
@@ -377,13 +397,15 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   };
 
   const handleSortOptionClick = (option: (typeof sortOptions)[number]) => {
-    if (sortKey === option.value) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      setSortMenuOpen(false);
-      return;
-    }
-    setSortKey(option.value);
-    setSortDirection(option.defaultDirection);
+    updateFilters({
+      sort: option.value,
+      dir:
+        sortKey === option.value
+          ? sortDirection === "asc"
+            ? "desc"
+            : "asc"
+          : option.defaultDirection,
+    });
     setSortMenuOpen(false);
   };
 
@@ -601,7 +623,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                onChange={(event) => updateFilters({ q: event.target.value || null })}
                 placeholder=""
                 className="global-search__input"
                 autoComplete="off"
@@ -636,7 +658,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                 <button
                   key={tab.value}
                   type="button"
-                  onClick={() => setSelectedTab(tab.value)}
+                  onClick={() => updateFilters({ tab: tab.value === "all" ? null : tab.value })}
                   className={`artist-tab${active ? " is-active" : ""}`}
                 >
                   {tab.label}
@@ -648,7 +670,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             <span>Live albums</span>
             <PillToggle
               checked={showLiveAlbums}
-              onChange={(event) => setShowLiveAlbums(event.target.checked)}
+              onChange={(event) => updateFilters({ live: event.target.checked ? null : "0" })}
               aria-label="Show live albums"
             />
           </div>
