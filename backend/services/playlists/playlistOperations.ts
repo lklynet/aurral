@@ -211,9 +211,14 @@ const syncStaticPlaylistConfigFromJobs = async (playlistId: string) => {
   return updatedPlaylist;
 };
 
-const queueTracksForPlaylist = async (tracks: PlaylistTrack[], playlistId: string) => {
-  const settings = downloadWorker.getWorkerSettings();
-  const existingFileMode = normalizeExistingFileMode(settings.existingFileMode);
+const queueTracksForPlaylist = async (
+  tracks: PlaylistTrack[],
+  playlistId: string,
+  { downloadMissing = true } = {},
+) => {
+  const existingFileMode = downloadMissing
+    ? normalizeExistingFileMode(downloadWorker.getWorkerSettings().existingFileMode)
+    : "reuse";
   const reusedJobIds = [];
   const jobIds = [];
   const createdJobIds = [];
@@ -223,7 +228,7 @@ const queueTracksForPlaylist = async (tracks: PlaylistTrack[], playlistId: strin
       reusedJobIds.push(libraryJob.id);
       continue;
     }
-    const jobId = downloadTracker.addJob(track, playlistId);
+    const jobId = downloadTracker.addJob(track, playlistId, { saved: !downloadMissing });
     if (!jobId) continue;
     createdJobIds.push(jobId);
     try {
@@ -243,6 +248,7 @@ const queueTracksForPlaylist = async (tracks: PlaylistTrack[], playlistId: strin
         `[Playlists] Reuse failed for ${track.artistName} - ${track.trackName}: ${asAppError(error)?.message || error}`,
       );
     }
+    if (!downloadMissing) continue;
     jobIds.push(jobId);
     recordTrackJobQueued(downloadTracker.getJob(jobId));
   }
@@ -297,13 +303,18 @@ const recordPlaylistHistory = (playlistId: string, { tracksQueued = 0, tracksReu
   });
 };
 
-async function seedStaticPlaylistTracks(playlistId: string, tracks: PlaylistTrack[]) {
+async function seedStaticPlaylistTracks(
+  playlistId: string,
+  tracks: PlaylistTrack[],
+  options?: { downloadMissing?: boolean },
+) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   const allowedTracks = filterBlockedPlaylistTracks(playlist?.ownerUserId, tracks);
   const missingTracks = filterTracksMissingDownloadJobs(allowedTracks, playlistId);
   const { reusedJobIds, jobIds, createdJobIds } = await queueTracksForPlaylist(
     missingTracks,
     playlistId,
+    options,
   );
   playlistManager.requestPlaylistSync([playlistId]);
   if (reusedJobIds.length > 0) {
@@ -583,6 +594,7 @@ async function createStaticPlaylistLocked({
   ownerUserId = null,
   importSource = null,
   description = null,
+  downloadMissing = true,
 }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim() || randomUUID();
   const normalizedTracks = filterBlockedPlaylistTracks(ownerUserId, normalizeTrackList(tracks));
@@ -602,7 +614,9 @@ async function createStaticPlaylistLocked({
   }
   activatePlaylistDownloadGeneration(safePlaylistId);
   const queued = normalizedTracks.length
-    ? await seedStaticPlaylistTracks(safePlaylistId, normalizedTracks)
+    ? await seedStaticPlaylistTracks(safePlaylistId, normalizedTracks, {
+        downloadMissing: downloadMissing !== false,
+      })
     : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
   await playlistManager.ensurePlaylistArtwork(safePlaylistId);
   playlistManager.requestPlaylistSync([safePlaylistId]);

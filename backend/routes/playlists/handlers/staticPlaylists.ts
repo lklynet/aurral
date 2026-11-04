@@ -82,6 +82,7 @@ const playlistInput = v.object({
   sourceName: v.nullish(v.string(), null),
   sourceFlowId: v.nullish(v.string(), null),
   tracks: playlistTracks,
+  downloadMissing: v.optional(v.boolean(), true),
 });
 const enabledInput = v.object({ enabled: v.boolean() });
 const bulkInput = v.object({ jobIds: v.array(v.string()) });
@@ -108,7 +109,7 @@ const playlistUpdate = v.object({
 async function createStaticPlaylist<E extends AppEnv>(
   c: Context<E>,
   user: RequestUser,
-  { name, sourceName, sourceFlowId, tracks }: v.InferOutput<typeof playlistInput>,
+  { name, sourceName, sourceFlowId, tracks, downloadMissing }: v.InferOutput<typeof playlistInput>,
 ) {
   const safeName = String(name || "").trim();
   const normalizedTracks = Array.isArray(tracks) ? dedupePlaylistTracks(tracks) : [];
@@ -130,6 +131,7 @@ async function createStaticPlaylist<E extends AppEnv>(
     sourceFlowId,
     tracks: normalizedTracks,
     ownerUserId: user.id,
+    downloadMissing,
   });
 
   return c.json({ success: true, playlistId, queued: true, operationId: result.operationId }, 200);

@@ -439,6 +439,7 @@ async function createPlaylist(
       syncIntervalHours: number;
       keepRemovedTracks: boolean;
     };
+    downloadMissing?: boolean;
   } = {},
 ) {
   const result = await operations.processPlaylistOperation({
@@ -490,6 +491,19 @@ test("deleting a playlist keeps the Library files it reused and deletes the file
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(playlist!.id), null);
   await assert.rejects(fs.access(downloadedFile), { code: "ENOENT" });
   await assertStillInLibrary(libraryFile);
+});
+
+test("a playlist that skips downloads reuses Library files and saves the rest", async () => {
+  dbOps.updateSettings({ playlistWorker: { existingFileMode: "download", concurrency: 1 } });
+  const reused = { artistName: "Reuse Band", albumName: "Only Local", trackName: "On Disk" };
+  const missing = { artistName: "Fresh Band", albumName: "Not Here", trackName: "Elsewhere" };
+  const libraryFile = await addLibraryFile(reused);
+  mockPlaylistServices();
+  const { jobFor } = await createPlaylist([reused, missing], { downloadMissing: false });
+
+  assert.equal(requireFixture(jobFor(reused)).status, "done");
+  assert.equal(requireFixture(jobFor(reused)).finalPath, libraryFile);
+  assert.equal(requireFixture(jobFor(missing)).status, "saved");
 });
 
 test("removing a reused track from a playlist keeps its Library file", async () => {

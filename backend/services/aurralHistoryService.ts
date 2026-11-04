@@ -656,7 +656,7 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
           id: stableId("playlist_import", row.id),
           kind: "playlist_import",
           title: state === "processing" ? `Preparing ${playlistName}` : `Queued ${playlistName}`,
-          subtitle: `${sourceName} · ${countLabel} waiting for download`,
+          subtitle: `${sourceName} · ${countLabel} ${payload.downloadMissing === false ? "waiting to match" : "waiting for download"}`,
           status: state,
           statusLabel: state === "processing" ? "Preparing" : "Queued",
           href: flowPlaylistConfig.getStaticPlaylist(playlistId)
