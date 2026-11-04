@@ -400,6 +400,18 @@ test("an event is queued for each subscribed plugin and delivered with its data"
   assert.deepEqual(input.track, { title: "Night Drive" });
   assert.equal(input.playedAt, 5);
   assert.equal(typeof input.libraryFolder, "string");
+
+  emitPluginEvent("track.played", played);
+  const [stale] = queued();
+  assert.ok(stale);
+  await install(
+    "scrobble",
+    { settings: [{ key: "out", label: "Out", type: "text" }] },
+    "export default {};",
+  );
+  for (let attempt = 0; attempt < 3; attempt += 1)
+    await deliverQueuedNotification(v.parse(queuedNotificationSchema, stale.payload));
+  assert.equal((await listPlugins()).plugins[0]?.enabled, true);
 });
 
 test("an import list previews links on its hosts and refuses others", async () => {

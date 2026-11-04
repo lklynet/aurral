@@ -404,9 +404,13 @@ async function handlePoll(payload: PluginPayload, plugin: InstalledPlugin, helpe
 
 async function handleAlbumFinalize(payload: PluginPayload, plugin: InstalledPlugin) {
   const directory = stagingDir(plugin, payload.jobId);
-  const filePaths = (await fs.readdir(directory, { recursive: true }).catch(() => []))
-    .map((entry) => path.join(directory, entry))
-    .filter(isAudioFile);
+  const entries = (await fs.readdir(directory, { recursive: true }).catch(() => [])).filter(
+    isAudioFile,
+  );
+  const resolved = await Promise.all(
+    entries.map((entry) => resolveDownloadedFile(directory, entry).catch(() => null)),
+  );
+  const filePaths = resolved.filter((file) => file !== null);
   const next = await finishAlbumGrab(payload, {
     filePaths,
     source: sourceId(plugin),

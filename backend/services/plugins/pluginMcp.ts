@@ -32,6 +32,7 @@ const TYPES_FILE = fileURLToPath(new URL("./aurral-plugin.d.ts", import.meta.url
 const TEST_TIMEOUT_MS = 2 * 60_000;
 const MAX_CODE_BYTES = 5 * 1024 * 1024;
 const MAX_EXTRA_FILES = 20;
+const MAX_TEST_LOG_LINES = 200;
 const SAMPLE_USER = { id: 0, username: "agent", role: "admin" };
 
 const id = v.pipe(v.string(), v.regex(/^[a-z0-9][a-z0-9-]{0,62}$/));
@@ -169,6 +170,9 @@ async function writePlugin(input: v.InferOutput<(typeof toolInputs)["write_plugi
   const parsed = v.safeParse(pluginManifestSchema, input.manifest);
   if (parsed.success && parsed.output.id !== input.id)
     throw new PluginToolError(`manifest.id is ${parsed.output.id}, but id is ${input.id}`);
+  const files = Object.entries(input.files ?? {}).map(
+    ([file, content]) => [safeRelative(file), content] as const,
+  );
   const folder = pluginFolder(input.id);
   await fs.mkdir(folder, { recursive: true });
   await fs.writeFile(
@@ -176,8 +180,8 @@ async function writePlugin(input: v.InferOutput<(typeof toolInputs)["write_plugi
     `${JSON.stringify(input.manifest, null, 2)}\n`,
   );
   await fs.writeFile(path.join(folder, PLUGIN_MAIN), input.code);
-  for (const [file, content] of Object.entries(input.files ?? {})) {
-    const target = path.join(folder, safeRelative(file));
+  for (const [file, content] of files) {
+    const target = path.join(folder, file);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, content);
   }
@@ -215,7 +219,9 @@ async function testPlugin(input: v.InferOutput<(typeof toolInputs)["test_plugin"
   };
   let result: { ok: true; answer: unknown } | { ok: false; error: string };
   const logs: { level: string; message: string }[] = [];
-  const stopWatching = watchPluginLogs(plugin.id, (line) => logs.push(line));
+  const stopWatching = watchPluginLogs(plugin.id, (line) => {
+    if (logs.length < MAX_TEST_LOG_LINES) logs.push(line);
+  });
   try {
     const answer = await callPlugin(
       installed,

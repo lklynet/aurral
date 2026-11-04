@@ -36,7 +36,7 @@ export async function deliverPluginEvent({
   data,
 }: v.InferOutput<typeof pluginEventDeliverySchema>) {
   const plugin = activePluginWith(pluginId, `event:${event}`);
-  if (!plugin) return;
+  if (!plugin?.manifest.events.includes(event)) return;
   await callPlugin(
     plugin,
     { path: `events.${event}`, input: { ...pluginInput(plugin), event, ...data } },

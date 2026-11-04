@@ -31,7 +31,8 @@ const year = (date: string | null) => {
 
 function trackContext(track: LibraryTrack, library: Library) {
   const file = track.files.find((entry) => entry.available) ?? track.files[0] ?? null;
-  const placement = track.albums[0];
+  const placement =
+    track.albums.find((entry) => entry.albumId === file?.albumId) ?? track.albums[0];
   const album = library.albums.find((entry) => entry.id === (file?.albumId ?? placement?.albumId));
   return {
     id: track.id,
