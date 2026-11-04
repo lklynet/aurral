@@ -4629,6 +4629,37 @@ textarea:disabled {
   line-clamp: 5;
 }
 
+.artist-about-bio-more {
+  margin-top: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: var(--aurral-font-base);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.artist-about-card__body--overlay .artist-about-bio-more {
+  color: var(--aurral-overlay-foreground);
+}
+
+.artist-bio-modal {
+  max-width: 40rem;
+  max-height: min(42rem, calc(100dvh - 2rem));
+  overflow: auto;
+}
+
+.artist-bio-modal__text {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-base);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
 .artist-about-aside {
   display: grid;
   align-content: start;

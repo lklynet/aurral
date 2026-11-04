@@ -1,5 +1,8 @@
-import { Fragment, useMemo } from "react";
-import { ExternalLink } from "../../../components/icons";
+import { Fragment, useCallback, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { ExternalLink, X } from "../../../components/icons";
+import TooltipButton from "../../../components/TooltipButton";
+import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import type { AppSettingsResponse } from "../../../utils/api/clients/settings.ts";
@@ -82,6 +85,66 @@ const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>): RelationLin
 };
 
 const tagSearchPath = (name: string) => `/search?q=${encodeURIComponent(`#${name}`)}&type=tag`;
+
+function ArtistBio({ name, bio }: { name: string; bio: string }) {
+  const titleId = useId();
+  const [clipped, setClipped] = useState(false);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const { dialogRef, handleBackdropClick } = useModalDialog({ open, onClose: close });
+  const bioRef = useCallback(
+    (node: HTMLParagraphElement | null) => {
+      if (!node || !bio) return;
+      const measure = () => setClipped(node.scrollHeight > node.clientHeight + 1);
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+      return () => observer.disconnect();
+    },
+    [bio],
+  );
+
+  return (
+    <>
+      <p ref={bioRef} className="artist-about-bio">
+        {bio}
+      </p>
+      {clipped && (
+        <button type="button" className="artist-about-bio-more" onClick={() => setOpen(true)}>
+          More
+        </button>
+      )}
+      {open &&
+        createPortal(
+          <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+            <section
+              ref={dialogRef}
+              className="artist-modal artist-bio-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+            >
+              <div className="artist-modal__header">
+                <h2 id={titleId} className="artist-modal__title">
+                  {name ? `About ${name}` : "About"}
+                </h2>
+                <TooltipButton
+                  className="btn btn-ghost btn-icon-square"
+                  onClick={close}
+                  label="Close"
+                >
+                  <X className="artist-icon-md" aria-hidden="true" />
+                </TooltipButton>
+              </div>
+              <p className="artist-bio-modal__text">{bio}</p>
+            </section>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
 
 export function ArtistDetailsAbout({
   artist,
@@ -211,7 +274,7 @@ export function ArtistDetailsAbout({
               )}
             </div>
             {artist?.bio ? (
-              <p className="artist-about-bio">{artist.bio}</p>
+              <ArtistBio name={artist.name || ""} bio={artist.bio} />
             ) : (
               <p className="artist-modal__subcopy">No biography available.</p>
             )}
