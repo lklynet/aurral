@@ -523,6 +523,23 @@ test("an imported track links the Library file at its path even when its names d
   assert.equal(requireFixture(job).albumName, "Fly or Die");
 });
 
+test("an imported track does not link an indexed file that is gone from disk", async () => {
+  const library = { artistName: "Gone Band", albumName: "Gone Record", trackName: "Vanished" };
+  const libraryFile = await addLibraryFile(library);
+  await fs.rm(libraryFile);
+  mockPlaylistServices();
+  const result = await operations.processPlaylistOperation({
+    kind: "shared-playlist-create",
+    name: "Stale M3U",
+    tracks: [{ ...library, path: libraryFile }],
+    downloadMissing: false,
+  });
+  assert.ok(result && typeof result === "object" && "playlist" in result);
+  const [job] = downloadTracker.getByPlaylistType(requireFixture(result.playlist).id);
+
+  assert.equal(requireFixture(job).status, "saved");
+});
+
 test("removing a reused track from a playlist keeps its Library file", async () => {
   const reused = { artistName: "Reuse Band", albumName: "Single Removal", trackName: "Stays Put" };
   const libraryFile = await addLibraryFile(reused);

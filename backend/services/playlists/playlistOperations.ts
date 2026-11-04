@@ -25,6 +25,7 @@ import {
   tracksShareMembership,
 } from "./playlistTracks.ts";
 import {
+  fileExists,
   jobDownloadedItsFile,
   removePlaylistFileIfUnshared,
   reuseTrackForPlaylist,
@@ -316,41 +317,52 @@ const indexedFileStmt = db.prepare<
   LIMIT 1
 `);
 
-const linkIndexedFiles = (tracks: unknown, playlistId: string, ownerUserId: unknown) => {
+const linkIndexedFiles = async (tracks: unknown, playlistId: string, ownerUserId: unknown) => {
   const jobIds: string[] = [];
-  const byPath = new Map<string, unknown>();
-  const linked = (Array.isArray(tracks) ? tracks : []).map((track: unknown) => {
-    if (!isRecord(track) || typeof track.path !== "string") return track;
-    if (byPath.has(track.path)) return byPath.get(track.path);
-    const file = indexedFileStmt.get(track.path);
-    if (!file) return track;
-    const input = normalizePlaylistTrack({
-      artistName: file.artist_name,
-      trackName: file.title,
-      albumName: file.album_title,
-      artistMbid: file.artist_mbid,
-      albumMbid: file.album_mbid,
-      trackMbid: file.track_mbid,
-      durationMs: file.duration_ms,
-      trackNumber: file.track_number,
-      discNumber: file.disc_number,
-    });
-    if (!input || !filterBlockedPlaylistTracks(ownerUserId, [input]).length) return track;
-    const jobId = downloadTracker.addJob(input, playlistId);
-    if (!jobId) return track;
+  const byIdentity = new Map<string, PlaylistTrack>();
+  const linked: unknown[] = [];
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    const file =
+      isRecord(track) && typeof track.path === "string" ? indexedFileStmt.get(track.path) : null;
+    const input =
+      file &&
+      normalizePlaylistTrack({
+        artistName: file.artist_name,
+        trackName: file.title,
+        albumName: file.album_title,
+        artistMbid: file.artist_mbid,
+        albumMbid: file.album_mbid,
+        trackMbid: file.track_mbid,
+        durationMs: file.duration_ms,
+        trackNumber: file.track_number,
+        discNumber: file.disc_number,
+      });
+    if (!file || !input || !filterBlockedPlaylistTracks(ownerUserId, [input]).length) {
+      linked.push(track);
+      continue;
+    }
+    const identity = buildPlaylistTrackIdentity(input);
+    const existing = byIdentity.get(identity);
+    if (existing) {
+      linked.push(existing);
+      continue;
+    }
+    const finalPath =
+      file.source === "lidarr" ? resolveLocalPath(file.path, getPathMappings("lidarr")) : file.path;
+    const jobId = (await fileExists(finalPath)) && downloadTracker.addJob(input, playlistId);
+    if (!jobId) {
+      linked.push(track);
+      continue;
+    }
     const external = file.source === "lidarr" || file.source === "readonly";
-    downloadTracker.setDone(
-      jobId,
-      file.source === "lidarr" ? resolveLocalPath(file.path, getPathMappings("lidarr")) : file.path,
-      input.albumName,
-      external ? file.path : null,
-      { reusedLibraryFile: true },
-    );
+    downloadTracker.setDone(jobId, finalPath, input.albumName, external ? file.path : null, {
+      reusedLibraryFile: true,
+    });
     jobIds.push(jobId);
     const linkedTrack = { ...input, canonicalJobId: jobId };
-    byPath.set(track.path, linkedTrack);
-    return linkedTrack;
-  });
+    byIdentity.set(identity, linkedTrack);
+    linked.push(linkedTrack);
+  }
   return { tracks: linked, jobIds };
 };
 
@@ -658,7 +670,7 @@ async function createStaticPlaylistLocked({
   let playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   const linked = playlist
     ? { tracks, jobIds: [] }
-    : linkIndexedFiles(tracks, safePlaylistId, ownerUserId);
+    : await linkIndexedFiles(tracks, safePlaylistId, ownerUserId);
   const normalizedTracks = filterBlockedPlaylistTracks(
     ownerUserId,
     normalizeTrackList(linked.tracks),

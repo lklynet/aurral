@@ -137,7 +137,7 @@ export async function pathsShareDevice(
   }
 }
 
-async function fileExists(filePath: string) {
+export async function fileExists(filePath: string) {
   try {
     const stat = await fs.stat(filePath);
     return stat.isFile();
