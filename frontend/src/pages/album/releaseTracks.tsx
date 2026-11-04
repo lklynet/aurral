@@ -1,7 +1,8 @@
-import { useCallback } from "react";
-import { MoreVertical, Plus } from "../../components/icons";
+import { useCallback, useMemo } from "react";
+import { Download, Plus } from "../../components/icons";
 import { DotLoader, DownloadingIcon } from "../../components/DotLoader";
 import SearchLibraryCheck from "../../components/SearchLibraryCheck";
+import TooltipButton from "../../components/TooltipButton";
 import type { TrackListRow } from "../../components/TrackList";
 import { useAudioQueue } from "../../contexts/audioQueueContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -19,13 +20,45 @@ import {
   reserveUniquePlaylistName,
   type ReleaseGroup,
 } from "../ArtistDetails/utils";
-import { formatDuration } from "../library/libraryShared.tsx";
+import { formatDuration, trackDownloadActionLabel } from "../library/libraryShared.tsx";
 import { releaseTrackId } from "./mergeAlbumTracks.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
 import {
   TrackPlaylistSubmenu,
   type PlaylistSelection,
 } from "../ArtistDetails/components/TrackPlaylistMenu";
+
+export function OwnedTrackMark() {
+  return (
+    <span className="native-library-track__owned">
+      <SearchLibraryCheck size="discover" />
+    </span>
+  );
+}
+
+const hasTrackId = (ids: ReadonlySet<string> | undefined, track: ReleaseGroupTrack) =>
+  Boolean(ids) && [track.mbid, track.id].some((id) => id && ids!.has(String(id)));
+
+export const releaseTrackPayload = (
+  release: ReleaseGroup | null | undefined,
+  track: ReleaseGroupTrack,
+  artistName: string,
+  artistMbid: string | null | undefined,
+) =>
+  buildStaticPlaylistTrackPayload({
+    artistName: artistName || "",
+    trackName: track?.trackName || track?.title || "",
+    albumName: release?.title || "",
+    artistMbid: artistMbid || "",
+    albumMbid: release?.id || "",
+    releaseMbid: track?.releaseMbid,
+    trackMbid: track?.mbid || track?.id || "",
+    releaseYear: String(release?.["first-release-date"] || "").slice(0, 4),
+    durationMs: track?.length,
+    trackNumber: track?.trackNumber,
+    discNumber: track?.discNumber,
+    reason: null,
+  });
 
 export function useReleasePreviewQueue({
   release,
@@ -35,6 +68,8 @@ export function useReleasePreviewQueue({
   artistMbid,
   artwork,
   playbackSource,
+  ownedTrackMbids,
+  awaitingRelease = false,
 }: {
   release: ReleaseGroup | null | undefined;
   trackKey: string | undefined;
@@ -43,7 +78,14 @@ export function useReleasePreviewQueue({
   artistMbid: string | null | undefined;
   artwork: string | null | undefined;
   playbackSource: PlaybackSource | null;
+  ownedTrackMbids?: readonly string[];
+  awaitingRelease?: boolean;
 }) {
+  const ownedIds = useMemo(() => new Set((ownedTrackMbids || []).map(String)), [ownedTrackMbids]);
+  const isOwned = useCallback(
+    (track: ReleaseGroupTrack) => hasTrackId(ownedIds, track),
+    [ownedIds],
+  );
   const normalizeTrack = useCallback(
     (track: ReleaseGroupTrack, index: number) =>
       normalizePreviewTrack(
@@ -58,9 +100,15 @@ export function useReleasePreviewQueue({
           artwork: artwork || null,
           artistMbid: artistMbid || undefined,
           albumMbid: release?.id || "",
+          trackMbid: track?.mbid || null,
+          durationMs: track?.length ?? null,
+          download:
+            awaitingRelease || isOwned(track)
+              ? null
+              : releaseTrackPayload(release, track, artistName, artistMbid),
         },
       ),
-    [artistMbid, artistName, artwork, release?.id, release?.title, trackKey],
+    [artistMbid, artistName, artwork, awaitingRelease, isOwned, release, trackKey],
   );
   const getQueueTracks = useCallback(
     () =>
@@ -91,9 +139,19 @@ export function useReleasePreviewQueue({
       playing: isCurrent && (isPlaying || isStarting),
       loading: isCurrent && isLoading,
       onPlay: track.preview_url ? () => previewTrack(track, index) : null,
+      previewOnly: Boolean(track.preview_url),
     };
   };
-  return { ...toolbar, trackKey, normalizeTrack, getQueueTracks, previewTrack, previewPlayback };
+  return {
+    ...toolbar,
+    trackKey,
+    normalizeTrack,
+    getQueueTracks,
+    previewTrack,
+    previewPlayback,
+    isOwned,
+    awaitingRelease,
+  };
 }
 
 export function useReleaseTracks({
@@ -103,8 +161,6 @@ export function useReleaseTracks({
   preview,
   playbackSource,
   albumDownloading,
-  awaitingRelease = false,
-  ownedTrackMbids,
   playlists,
 }: {
   release: ReleaseGroup;
@@ -113,39 +169,18 @@ export function useReleaseTracks({
   preview: ReturnType<typeof useReleasePreviewQueue>;
   playbackSource: PlaybackSource;
   albumDownloading: boolean;
-  /** The album waits for its release date: missing tracks can't be downloaded yet. */
-  awaitingRelease?: boolean;
-  ownedTrackMbids: readonly string[] | undefined;
   playlists: ReturnType<typeof useLibraryActions>;
 }) {
+  const { awaitingRelease, isOwned: isOwnedReleaseTrack } = preview;
   const { showError } = useToast();
   const { isTrackDownloading } = useActiveDownloads();
   const getQueueItems = useQueueTrackActions();
   const { savingKeys, addTrackToLibrary } = useAddTrackToLibrary();
 
-  const buildReleaseTrackPayload = (track: ReleaseGroupTrack) =>
-    buildStaticPlaylistTrackPayload({
-      artistName: artistName || "",
-      trackName: track?.trackName || track?.title || "",
-      albumName: release.title || "",
-      artistMbid: artistMbid || "",
-      albumMbid: release.id || "",
-      releaseMbid: track?.releaseMbid,
-      trackMbid: track?.mbid || track?.id || "",
-      releaseYear: String(release["first-release-date"] || "").slice(0, 4),
-      durationMs: track?.length,
-      trackNumber: track?.trackNumber,
-      discNumber: track?.discNumber,
-      reason: null,
-    });
-
   const defaultPlaylistName = reserveUniquePlaylistName(
     playlists.staticPlaylists,
     `${artistName || "Artist"} Picks`,
   );
-  const ownedTrackSet = new Set((ownedTrackMbids || []).map(String));
-  const isOwnedReleaseTrack = (track: ReleaseGroupTrack) =>
-    [track.mbid, track.id].filter(Boolean).some((identity) => ownedTrackSet.has(String(identity)));
 
   const buildReleaseTrackRow = (
     track: ReleaseGroupTrack,
@@ -156,10 +191,14 @@ export function useReleaseTracks({
     const title = track.title || track.trackName || "Unknown Track";
     const isOwned = isOwnedReleaseTrack(track);
     const canPlay = Boolean(track.preview_url);
-    const membershipTrack = buildReleaseTrackPayload(track);
+    const membershipTrack = releaseTrackPayload(release, track, artistName, artistMbid);
     const downloading =
       !isOwned &&
       (albumDownloading || isTrackDownloading(track) || isTrackDownloading(membershipTrack));
+    const busy = downloading || savingKeys.has(id);
+    const downloadLabel = trackDownloadActionLabel(
+      downloading ? "downloading" : savingKeys.has(id) ? "submitting" : null,
+    );
     const queueItems = canPlay
       ? getQueueItems(preview.normalizeTrack(track, index), { source: playbackSource })
       : [];
@@ -169,10 +208,10 @@ export function useReleaseTracks({
         ? [
             {
               id: "add-library",
-              label: downloading ? "Downloading…" : "Add to library",
-              icon: downloading ? DownloadingIcon : Plus,
+              label: downloadLabel,
+              icon: downloading ? DownloadingIcon : Download,
               separatorBefore: queueItems.length > 0,
-              disabled: downloading || savingKeys.has(id),
+              disabled: busy,
               onSelect: () => addTrackToLibrary(membershipTrack, id),
             },
           ]
@@ -185,19 +224,21 @@ export function useReleaseTracks({
       time: formatDuration(track.length) || "—",
       missing: !isOwned,
       ...preview.previewPlayback(track, index),
-      badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
+      trailing: isOwned ? (
+        <OwnedTrackMark />
+      ) : awaitingRelease ? null : (
+        <TooltipButton
+          className="native-library-track__download"
+          onClick={() => void addTrackToLibrary(membershipTrack, id)}
+          disabled={busy}
+          label={downloadLabel}
+          aria-label={`${downloadLabel}: ${title}`}
+        >
+          {busy ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
+        </TooltipButton>
+      ),
       menu: {
         items,
-        triggerLabel: downloading ? `Downloading ${title}` : `Add ${title}`,
-        triggerClassName: "btn btn-add-action btn-add-action--menu",
-        triggerIcon: (
-          <>
-            <span className="btn-add-action__icon">
-              {downloading ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
-            </span>
-            <MoreVertical className="btn-add-action__more" aria-hidden="true" />
-          </>
-        ),
         ...(items.at(-1) ? { additionalItemsAfter: items.at(-1)?.id } : {}),
         onMenuOpen: playlists.loadStaticPlaylists,
         renderAdditionalItems: ({ closeMenu }) => (

@@ -57,6 +57,7 @@ import RouteLink from "../../components/RouteLink";
 import type { PlaylistSelection, PlaylistTrackIdentity } from "./components/TrackPlaylistMenu";
 import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
 import type { ReleaseGroup } from "./utils";
+import { releaseTrackPayload } from "../album/releaseTracks.tsx";
 import type { ArtistFeedbackSource } from "../../utils/artistTaste.ts";
 import StatePanel from "../../components/StatePanel";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -344,23 +345,7 @@ function ArtistDetailsPage() {
   const buildReleaseTrackPayload = (
     track: ReleaseGroupTrack,
     releaseGroup: ReleaseGroup | undefined,
-  ) => {
-    const year = String(releaseGroup?.["first-release-date"] || "").slice(0, 4);
-    return buildStaticPlaylistTrackPayload({
-      artistName: artist?.name || artistNameFromNav || "",
-      trackName: track?.trackName || track?.title || "",
-      albumName: releaseGroup?.title || "",
-      artistMbid: mbid || "",
-      albumMbid: releaseGroup?.id || "",
-      releaseMbid: track?.releaseMbid,
-      trackMbid: track?.mbid || track?.id || "",
-      releaseYear: year,
-      durationMs: track?.length,
-      trackNumber: track?.trackNumber,
-      discNumber: track?.discNumber,
-      reason: null,
-    });
-  };
+  ) => releaseTrackPayload(releaseGroup, track, artist?.name || artistNameFromNav || "", mbid);
 
   const buildPreviewTrackPayload = (track: ArtistPreviewTrack) =>
     buildStaticPlaylistTrackPayload({

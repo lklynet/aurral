@@ -51,6 +51,7 @@ export function CollectionPage({
 
 interface CollectionPlayButtonsProps {
   label: string;
+  playLabel?: string;
   disabled?: boolean;
   isPlaying: boolean;
   isShuffleEnabled?: boolean;
@@ -60,6 +61,7 @@ interface CollectionPlayButtonsProps {
 
 export function CollectionPlayButtons({
   label,
+  playLabel = "Play",
   disabled,
   isPlaying,
   isShuffleEnabled,
@@ -73,10 +75,10 @@ export function CollectionPlayButtons({
         className="native-library-page-play"
         onClick={onPlay}
         disabled={disabled}
-        aria-label={`${isPlaying ? "Pause" : "Play"} ${label}`}
+        aria-label={`${isPlaying ? "Pause" : playLabel} ${label}`}
       >
         {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-        {isPlaying ? "Pause" : "Play"}
+        {isPlaying ? "Pause" : playLabel}
       </button>
       {onShuffle ? (
         <TooltipButton

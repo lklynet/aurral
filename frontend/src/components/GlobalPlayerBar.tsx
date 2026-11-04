@@ -12,6 +12,7 @@ import { Link, useLocation } from "react-router";
 import { albumPath } from "../../../lib/albumPath.ts";
 import {
   ChevronDown,
+  Download,
   ListMusic,
   Music,
   Pause,
@@ -36,10 +37,50 @@ import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
 import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.ts";
 import { useCollectionTint } from "./CollectionHeader";
 import ArtworkImage from "./ArtworkImage";
+import PreviewChip from "./PreviewChip";
+import { DotLoader } from "./DotLoader";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
+import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
+import { trackDownloadActionLabel } from "../pages/library/libraryShared.tsx";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SEEK_SHORTCUT_SECONDS = 5;
+type PlayerTrack = NonNullable<ReturnType<typeof useAudioQueue>["currentTrack"]>;
+
+function PreviewDownloadButton({
+  track,
+  className,
+  tooltipPlacement,
+}: {
+  track: PlayerTrack;
+  className: string;
+  tooltipPlacement?: "top";
+}) {
+  const { savingKeys, addTrackToLibrary } = useAddTrackToLibrary();
+  const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
+  const payload = track.download;
+  if (!payload?.artistName || !payload.trackName) return null;
+  const key = String(track.id);
+  const sending = savingKeys.has(key);
+  const busy =
+    sending || isTrackDownloading(payload) || isAlbumDownloading(payload.albumMbid || null);
+  const label = busy
+    ? trackDownloadActionLabel(sending ? "submitting" : "downloading")
+    : "Download full track";
+  return (
+    <TooltipButton
+      className={className}
+      tooltipPlacement={tooltipPlacement}
+      onClick={() => void addTrackToLibrary(payload, key)}
+      disabled={busy}
+      label={label}
+      aria-label={`${label}: ${track.title}`}
+    >
+      {busy ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
+    </TooltipButton>
+  );
+}
 function GlobalPlayerBar() {
   const [failedArtwork, setFailedArtwork] = useState<string | null>(null);
   const {
@@ -285,7 +326,10 @@ function GlobalPlayerBar() {
           <span className="global-player__mini-copy">
             <span className="global-player__title">{currentTrack.title}</span>
             <span className="global-player__subtitle">
-              {playbackError || [artistLabel, albumLabel].filter(Boolean).join(" · ")}
+              {playbackError ||
+                [currentTrack.isPreview ? "Preview" : "", artistLabel, albumLabel]
+                  .filter(Boolean)
+                  .join(" · ")}
             </span>
           </span>
         </button>
@@ -369,6 +413,15 @@ function GlobalPlayerBar() {
 
                   <div className="now-playing__meta">
                     <h2 className="now-playing__title">{currentTrack.title}</h2>
+                    {currentTrack.isPreview ? (
+                      <div className="global-player__title-row">
+                        <PreviewChip />
+                        <PreviewDownloadButton
+                          track={currentTrack}
+                          className="global-player__preview-download"
+                        />
+                      </div>
+                    ) : null}
                     {artistLabel || albumLabel ? (
                       <p className="now-playing__subtitle">
                         {metaLink(artistLabel, artistPath)}
@@ -453,6 +506,7 @@ function GlobalPlayerBar() {
           <div className="global-player__meta">
             <div className="global-player__title-row">
               <span className="global-player__title">{currentTrack.title}</span>
+              {currentTrack.isPreview ? <PreviewChip /> : null}
             </div>
             {artistLabel || albumLabel ? (
               <span className="global-player__subtitle">
@@ -538,6 +592,13 @@ function GlobalPlayerBar() {
         </div>
 
         <div className="global-player__side">
+          {currentTrack.isPreview ? (
+            <PreviewDownloadButton
+              track={currentTrack}
+              className="btn btn-ghost btn-icon btn-xs"
+              tooltipPlacement="top"
+            />
+          ) : null}
           {canShareTrack ? (
             <TooltipButton
               tooltipPlacement="top"

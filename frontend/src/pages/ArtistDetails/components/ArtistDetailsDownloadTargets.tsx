@@ -172,6 +172,14 @@ export function ArtistDetailsDownloadTargets({
   });
   const tint = useCollectionTint(coverUrl);
 
+  const pickRelease = useMemo(
+    () => ({
+      ...release,
+      id: missingReleasePick?.releaseGroupId,
+      title: missingReleasePick?.title || release?.title || "",
+    }),
+    [missingReleasePick?.releaseGroupId, missingReleasePick?.title, release],
+  );
   const {
     normalizeTrack,
     previewTrack,
@@ -181,7 +189,7 @@ export function ArtistDetailsDownloadTargets({
     handlePlayAll,
     handleShufflePlay,
   } = useReleasePreviewQueue({
-    release: { id: missingReleasePick?.releaseGroupId, title: missingReleasePick?.title || "" },
+    release: pickRelease,
     trackKey: "pick",
     tracks,
     artistName: artistName || artist?.name || "",

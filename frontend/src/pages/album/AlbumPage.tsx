@@ -65,7 +65,7 @@ import {
 } from "../library/libraryShared.tsx";
 
 import { mergeAlbumTracks } from "./mergeAlbumTracks.ts";
-import { useReleasePreviewQueue, useReleaseTracks } from "./releaseTracks.tsx";
+import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./releaseTracks.tsx";
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
 import { useReleaseCover } from "./useReleaseCover.ts";
@@ -293,6 +293,30 @@ function AlbumPage() {
     }),
     [libraryAlbum?.id, releaseGroupMbid, title],
   );
+  const merged = useMemo(
+    () =>
+      mergeAlbumTracks({
+        libraryTracks: albumTracks,
+        releaseTracks,
+        libraryAlbumId: libraryAlbum?.id ?? null,
+        releaseKey: releaseGroupMbid || "release",
+      }),
+    [albumTracks, libraryAlbum?.id, releaseGroupMbid, releaseTracks],
+  );
+  const hasMissingTracks = merged.some(
+    (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
+  );
+  const ownedTrackMbids = useMemo(
+    () => [
+      ...(libraryInfo?.ownedTrackMbids || []),
+      ...merged.flatMap((entry) =>
+        entry.releaseTrack && entry.libraryTrack && firstAvailableFile(entry.libraryTrack)
+          ? [entry.releaseTrack.mbid, entry.releaseTrack.id].filter((id) => id != null)
+          : [],
+      ),
+    ],
+    [libraryInfo?.ownedTrackMbids, merged],
+  );
   const preview = useReleasePreviewQueue({
     release,
     trackKey: releaseGroupMbid || undefined,
@@ -301,6 +325,8 @@ function AlbumPage() {
     artistMbid,
     artwork,
     playbackSource,
+    ownedTrackMbids,
+    awaitingRelease,
   });
   const releaseRows = useReleaseTracks({
     release,
@@ -309,8 +335,6 @@ function AlbumPage() {
     preview,
     playbackSource,
     albumDownloading: releaseDownloading,
-    awaitingRelease,
-    ownedTrackMbids: libraryInfo?.ownedTrackMbids,
     playlists: actions,
   });
 
@@ -325,19 +349,6 @@ function AlbumPage() {
     onLibraryAlbumRequested: albumState.markAlbumRequested,
   });
 
-  const merged = useMemo(
-    () =>
-      mergeAlbumTracks({
-        libraryTracks: albumTracks,
-        releaseTracks,
-        libraryAlbumId: libraryAlbum?.id ?? null,
-        releaseKey: releaseGroupMbid || "release",
-      }),
-    [albumTracks, libraryAlbum?.id, releaseGroupMbid, releaseTracks],
-  );
-  const hasMissingTracks = merged.some(
-    (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
-  );
   const rows: TrackListRow[] = merged.map((entry) => {
     const { releaseIndex } = entry;
     if (!entry.libraryTrack) {
@@ -364,6 +375,7 @@ function AlbumPage() {
       key: entry.key,
       number: entry.number,
       subtitle: isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle,
+      ...(hasFile && hasMissingTracks ? { trailing: <OwnedTrackMark /> } : {}),
       time: hasFile
         ? row.time
         : formatDuration(trackDurationMs(track)) ||
@@ -652,7 +664,8 @@ function AlbumPage() {
                     onShuffle: () => actions.playTracks(albumTracks, null, true),
                   }
                 : {
-                    label: `${title || "Release"} previews`,
+                    label: title || "Release",
+                    playLabel: libraryResolving ? undefined : "Preview",
                     disabled: libraryResolving || preview.disabled,
                     isPlaying: preview.isListPlaying,
                     isShuffleEnabled: preview.isShuffleEnabled,
