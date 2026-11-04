@@ -182,7 +182,7 @@ export function deemixQueueIds(
 
 export function readDeemixAlbumQueue(item: DeemixQueueItem | null) {
   const status = String(item?.status || "");
-  const finished = ["completed", "withErrors", "failed"].includes(status);
+  const finished = !item || ["completed", "withErrors", "failed"].includes(status);
   const seen = new Set();
   const filePaths =
     finished && item?.type === "album"
@@ -534,7 +534,8 @@ export class DeemixClient {
     if (!id) return null;
     const settings = this._getSettings();
     const data = await request<DeemixQueueResponse>(settings, "GET", "/api/getQueue");
-    return data?.queue?.[id] || null;
+    if (!data?.queue || typeof data.queue !== "object") throw new Error("deemix sent no queue");
+    return data.queue[id] || null;
   }
 
   async removeFromQueue(uuid: string | null | undefined) {

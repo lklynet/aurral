@@ -60,6 +60,7 @@ const ALBUM_QUEUE_RESET = Object.freeze({
 });
 const POLL_DELAY_SECONDS = 3;
 const MAX_POLL_ATTEMPTS = 200;
+const QUEUE_ITEM_GONE = "deemix no longer lists this download in its queue";
 
 type DeemixClientInstance = DeemixClient;
 type DeemixAlbum = Awaited<ReturnType<DeemixClientInstance["searchAlbums"]>>[number];
@@ -513,8 +514,8 @@ async function pollReleaseTracks(
       return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
     }
   }
-  const waiting = items.some(
-    (item) => !item || ["inQueue", "downloading"].includes(String(item.status || "")),
+  const waiting = items.some((item) =>
+    ["inQueue", "downloading"].includes(String(item?.status || "")),
   );
   if (waiting) return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
   const downloadedPaths = items.map(readQueuedRemotePath).filter(Boolean);
@@ -526,7 +527,10 @@ async function pollReleaseTracks(
     helpers.failOrTryNextSource(
       payload,
       job,
-      safeLogDiagnostic(items.map(readQueueError).find(Boolean) || "deemix release tracks failed"),
+      safeLogDiagnostic(
+        items.map(readQueueError).find(Boolean) ||
+          (items.every((item) => !item) ? QUEUE_ITEM_GONE : "deemix release tracks failed"),
+      ),
     )
   );
 }
@@ -656,11 +660,13 @@ async function handleDeemixPoll(payload: DeemixPayload, helpers: DeemixHelpers) 
       helpers.failOrTryNextSource(
         payload,
         job,
-        safeLogDiagnostic(readQueueError(queueItem) || `deemix album ${status || "failed"}`),
+        safeLogDiagnostic(
+          readQueueError(queueItem) || (queueItem ? `deemix album ${status}` : QUEUE_ITEM_GONE),
+        ),
       )
     );
   }
-  if (!queueItem || status === "inQueue" || status === "downloading") {
+  if (status === "inQueue" || status === "downloading") {
     return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
   }
   const downloadedPath = readQueuedFilePath(queueItem);
@@ -672,7 +678,8 @@ async function handleDeemixPoll(payload: DeemixPayload, helpers: DeemixHelpers) 
       });
     });
     const reason = safeLogDiagnostic(
-      readQueueError(queueItem) || `deemix download ${status || "failed"}`,
+      readQueueError(queueItem) ||
+        (queueItem ? `deemix download ${status || "failed"}` : QUEUE_ITEM_GONE),
     );
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null });
