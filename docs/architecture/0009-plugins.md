@@ -22,5 +22,5 @@ A plugin is a folder in `<data dir>/plugins/<id>` with a `manifest.json` and a b
 ## Traps
 
 - Plugins are not sandboxed. A plugin runs as the Aurral user and can read the data dir. The env filter only keeps Aurral's secrets out of its environment by accident. The docs tell users to trust plugins like Docker images.
-- Turning a plugin off stops its process only in the process that saved the change. Another process keeps its copy until it goes idle, but never calls it, because every call reads the table first.
+- Turning a plugin off stops its process only in the process that saved the change. Another process keeps its copy until it goes idle and starts no new call, because every call reads the table first. A call already running there, such as a download, finishes or times out.
 - Changing a capability's input or output shape breaks plugins. Add a field, or raise `PLUGIN_API_VERSION` and keep reading the old version.

@@ -34,12 +34,12 @@ const [
 );
 
 const SOURCE = `export default { downloadSource: {
-  search: ({ track }) => [{ id: "t1", title: track.title, artist: track.artist, album: track.album, durationMs: 1000, format: "flac" }],
-  download: async ({ settings, directory }) => {
+  search: ({ track }) => [{ id: "t1", title: track.title, artist: track.artist, album: track.album, durationMs: 1000, format: "flac", source: "tape", data: { file: "t1.flac" } }],
+  download: async ({ settings, result, directory }) => {
     const { copyFile } = await import("node:fs/promises");
     if (settings.escape) return { path: settings.fixture };
-    await copyFile(settings.fixture, directory + "/t1.flac");
-    return { path: "t1.flac" };
+    await copyFile(settings.fixture, directory + "/" + result.data.file);
+    return { path: result.data.file };
   },
 } };`;
 

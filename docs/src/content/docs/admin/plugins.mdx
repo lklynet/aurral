@@ -105,6 +105,7 @@ export default {
           album: "Album",
           durationMs: 215000,
           format: "flac",
+          data: { url: "https://example.com/123.flac" },
         },
       ];
     },
@@ -116,7 +117,7 @@ export default {
 };
 ```
 
-`search` receives the `track` to find: `artist`, `title`, `album`, `durationMs`, `artistMbid`, `albumMbid`, `releaseMbid`, `trackMbid`, `releaseYear`, `trackNumber`, and `discNumber`. Any of them can be `null`. Return up to 50 results. Each needs `id`, `title`, and `artist`. `album`, `durationMs`, `format`, and `bitrate` (in kbps) help Aurral choose. Other fields are kept and passed back to `download`.
+`search` receives the `track` to find: `artist`, `title`, `album`, `durationMs`, `artistMbid`, `albumMbid`, `releaseMbid`, `trackMbid`, `releaseYear`, `trackNumber`, and `discNumber`. Any of them can be `null`. Return up to 50 results. Each needs `id`, `title`, and `artist`. `album`, `durationMs`, `format`, and `bitrate` (in kbps) help Aurral choose. Put anything `download` needs in `data`. Aurral passes it back unchanged and drops other fields.
 
 `download` receives the chosen `result` and an empty `directory`. Save one audio file inside it and return its path, relative to `directory` or absolute. A search has 1 minute and a download has 30 minutes.
 

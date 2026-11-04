@@ -44,7 +44,7 @@ const DOWNLOAD_TIMEOUT_MS = 30 * 60_000;
 const MAX_RESULTS = 50;
 
 const text = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500));
-const searchResult = v.looseObject({
+const searchResult = v.object({
   id: text,
   title: text,
   artist: text,
@@ -52,6 +52,7 @@ const searchResult = v.looseObject({
   durationMs: v.nullish(v.pipe(v.number(), v.minValue(0))),
   format: v.nullish(v.pipe(v.string(), v.maxLength(20))),
   bitrate: v.nullish(v.pipe(v.number(), v.minValue(0))),
+  data: v.optional(v.unknown()),
 });
 const searchResults = v.pipe(v.array(searchResult), v.maxLength(MAX_RESULTS));
 const downloadResult = v.object({ path: v.pipe(v.string(), v.minLength(1)) });
