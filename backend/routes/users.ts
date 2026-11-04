@@ -128,9 +128,7 @@ export default new Hono<AppEnv>()
         return c.json({ error: passwordValidation.error }, 400);
       }
       const hash = hashPassword(password);
-      const perms = isValidPermissions(permissions)
-        ? { ...userOps.getDefaultPermissions(), ...permissions }
-        : null;
+      const perms = isValidPermissions(permissions) ? permissions : null;
       const created = userOps.createUser(un, hash, role, perms, true, false, password);
       if (!created) {
         return c.json({ error: "Failed to create user" }, 500);

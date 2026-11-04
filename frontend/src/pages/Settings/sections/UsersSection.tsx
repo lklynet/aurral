@@ -16,7 +16,8 @@ import {
   SettingsServiceRow,
   useSettingsItem,
 } from "../SettingsLayout";
-import { EditUserPage, NewUserPage, describeUser } from "./users/UserPages";
+import { GRANULAR_PERMISSIONS } from "../constants";
+import { EditUserPage, NewUserPage, PermissionsGroup, describeUser } from "./users/UserPages";
 
 type GoogleSettings = NonNullable<SettingsState["integrations"]["google"]>;
 type AutoLoginStatus = NonNullable<
@@ -161,6 +162,22 @@ function GooglePage() {
   );
 }
 
+function DefaultPermissionsPage() {
+  const { settings } = useServerSettings();
+  const saveSecurity = useSaveSecurity();
+
+  return (
+    <SettingsPage title="Default permissions" back="Users">
+      <PermissionsGroup
+        title="New users"
+        note="New accounts start with these, including SSO and proxy sign-ins. Existing users keep theirs."
+        permissions={{ ...GRANULAR_PERMISSIONS, ...settings.security.defaultPermissions }}
+        onChange={(defaultPermissions) => void saveSecurity({ defaultPermissions })}
+      />
+    </SettingsPage>
+  );
+}
+
 function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
   const { bootstrap, user: me } = useAuth();
   const ssoEnabled = !!bootstrap?.oidcEnabled;
@@ -197,6 +214,7 @@ function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
           />
         ))
       )}
+      <SettingsServiceRow to="users/defaults" name="Default permissions" />
     </SettingsGroup>
   );
 }
@@ -261,6 +279,7 @@ export function UsersSection() {
 
   if (item === "new") return <NewUserPage />;
   if (item === "google") return <GooglePage />;
+  if (item === "defaults") return <DefaultPermissionsPage />;
   if (item && /^\d+$/.test(item)) {
     const user = users.data?.find((entry) => String(entry.id) === item && entry.id !== me?.id);
     if (user) return <EditUserPage key={user.id} user={user} />;
