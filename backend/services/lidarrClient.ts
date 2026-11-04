@@ -264,7 +264,7 @@ interface LidarrRequestOptions {
 
 type LidarrParseOptions = LidarrRequestOptions & { parse?: LidarrParse<unknown> };
 
-type LidarrAlbumListOptions = LidarrRequestOptions & { artistIds?: Array<number | string> };
+type LidarrAlbumListOptions = LidarrRequestOptions & { artistIds: Array<number | string> };
 
 interface LidarrRequestFailure {
   code?: string;
@@ -501,7 +501,6 @@ export class LidarrClient {
   declare _artistByMbidCache: Map<string, { artist: LidarrArtist | null; at: number }>;
   declare _artistByMbidInflight: Map<string, Promise<LidarrArtist | null>>;
   declare _albumCache: Map<string, LidarrCacheEntry>;
-  declare _albumMbidIndex: { source: LidarrAlbum[]; map: Map<string, LidarrAlbum> } | null;
   declare _statusCache: Map<string, LidarrCacheEntry>;
   declare _rootFoldersCache: { data: LidarrRootFolder[]; at: number } | null;
   declare _inflightGets: Map<string, Promise<unknown>>;
@@ -523,7 +522,6 @@ export class LidarrClient {
     this._artistByMbidCache = new BoundedMap(LIDARR_ARTIST_INDEX_CACHE_MAX);
     this._artistByMbidInflight = new Map();
     this._albumCache = new BoundedMap(LIDARR_ARTIST_ALBUM_CACHE_MAX);
-    this._albumMbidIndex = null;
     this._statusCache = new BoundedMap(LIDARR_STATUS_CACHE_MAX);
     this._rootFoldersCache = null;
     this._inflightGets = new Map();
@@ -880,7 +878,6 @@ export class LidarrClient {
       this._artistListCache = null;
       this._invalidateArtistIndexes();
       this._albumCache = new BoundedMap(LIDARR_ARTIST_ALBUM_CACHE_MAX);
-      this._albumMbidIndex = null;
     }
     if (method !== "GET" && endpoint.startsWith("/command")) {
       this._statusCache.delete("/command");
@@ -1879,42 +1876,20 @@ export class LidarrClient {
     }
   }
 
-  async getAllAlbums(options: LidarrAlbumListOptions = {}): Promise<LidarrAlbum[]> {
-    const { artistIds, ...requestOptions } = options;
-    if (Array.isArray(artistIds)) {
-      const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
-      if (normalizedArtistIds.length === 0) return [];
-      const results = await mapWithConcurrency(
-        normalizedArtistIds,
-        LIDARR_MAX_CONCURRENT,
-        async (artistId: string | null) => {
-          return this.request(`/album?artistId=${artistId}`, "GET", null, false, {
-            ...requestOptions,
-            parse: many(albumSchema),
-          });
-        },
-        { stopOnError: true },
-      );
-      return results.flat();
-    }
-    return this.request("/album", "GET", null, false, {
-      ...requestOptions,
-      parse: many(albumSchema),
-    });
-  }
-
-  async getAlbumMbidIndex(options: LidarrAlbumListOptions = {}) {
-    const albums = await this.getAllAlbums(options);
-    if (!options.forceRefresh && this._albumMbidIndex && this._albumMbidIndex.source === albums) {
-      return this._albumMbidIndex.map;
-    }
-    const map = new Map<string, LidarrAlbum>();
-    for (const album of albums) {
-      const mbid = String(album?.foreignAlbumId || "").trim();
-      if (mbid) map.set(mbid, album);
-    }
-    this._albumMbidIndex = { source: albums, map };
-    return map;
+  async getAllAlbums({ artistIds, ...requestOptions }: LidarrAlbumListOptions) {
+    const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
+    if (normalizedArtistIds.length === 0) return [];
+    const results = await mapWithConcurrency(
+      normalizedArtistIds,
+      LIDARR_MAX_CONCURRENT,
+      async (artistId: string | null) =>
+        this.request(`/album?artistId=${artistId}`, "GET", null, false, {
+          ...requestOptions,
+          parse: many(albumSchema),
+        }),
+      { stopOnError: true },
+    );
+    return results.flat();
   }
 
   async getAlbumByMbid(albumMbid: string, options: LidarrRequestOptions = {}) {

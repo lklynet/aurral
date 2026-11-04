@@ -640,6 +640,39 @@ test("a request survives Lidarr being unreachable", async (t: import("vite-plus/
   );
 });
 
+test("a request without its Lidarr album ID finds it among its artist's albums, never the whole library", async (t: import("vite-plus/test").TestContext) => {
+  t.onTestFinished(() => {
+    db.prepare("DELETE FROM aurral_history").run();
+  });
+  const lookups: string[] = [];
+  const lidarrStub = lidarrWithAlbum(async (id) => {
+    lookups.push(String(id));
+    return { id: Number(id), foreignAlbumId: "found", statistics: { trackFileCount: 0 } };
+  });
+  vi.spyOn(lidarrStub, "getArtistByMbid").mockImplementation(async (mbid) =>
+    mbid === "artist-mbid" ? { id: 9, artistName: "Artist", foreignArtistId: mbid } : null,
+  );
+  const albumLists: unknown[] = [];
+  vi.spyOn(lidarrStub, "getAllAlbums").mockImplementation(async (options) => {
+    albumLists.push(options.artistIds);
+    return [
+      { id: 6161, foreignAlbumId: "other", title: "Other Album" },
+      { id: 6262, foreignAlbumId: "found", title: "Found Album" },
+    ];
+  });
+  historyModule.recordAlbumRequested({
+    albumName: "Found Album",
+    artistName: "Artist",
+    artistMbid: "artist-mbid",
+    searching: true,
+  });
+
+  await getAurralHistoryRequests(lidarrStub);
+
+  assert.deepEqual(albumLists, [[9]]);
+  assert.deepEqual(lookups, ["6262"]);
+});
+
 test("Aurral album requests are not checked against Lidarr by library album ID", async () => {
   const lidarrAlbumLookups: string[] = [];
   const lidarrStub = lidarrWithAlbum(async (id) => {

@@ -32,7 +32,9 @@ function poll(queueItem: { status: string } | null) {
   const client = settings.getDownloadClient("deemix");
   vi.spyOn(client, "getQueueItem").mockImplementation(async () => queueItem);
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
-  const failOrTryNextSource = vi.fn(async () => null);
+  const failOrTryNextSource = vi.fn(
+    async (_payload: unknown, _job: unknown, _reason: string) => null,
+  );
   return processDeemixPipelinePayload(
     { phase: "poll", source: "deemix", jobId, queueUuid: "track_1_1", pollAttempts: 0 },
     { failOrTryNextSource },

@@ -47,14 +47,14 @@ async function fakeLidarr(t: TestContext, responses: Record<string, unknown>) {
 
 test("Lidarr lists skip only the records Aurral can't read", async (t) => {
   const { client } = await fakeLidarr(t, {
-    "GET /api/v1/album": [
+    "GET /api/v1/album?artistId=7": [
       { id: 1, foreignAlbumId: "a", title: "Kept" },
       { id: "2", foreignAlbumId: "b", title: "Text id" },
       { id: 3, foreignAlbumId: "c", title: { text: "Object title" } },
     ],
   });
 
-  const albums = await client.getAllAlbums();
+  const albums = await client.getAllAlbums({ artistIds: [7] });
 
   assert.deepEqual(
     albums.map((album) => album.title),

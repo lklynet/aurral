@@ -224,16 +224,12 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
 
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
   const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetAlbumMbidIndex = lidarrClient.getAlbumMbidIndex;
   const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
   const originalGetTracks = libraryManager.getTracks;
   const originalWarn = logger.warn;
   let lookupOptions: Parameters<typeof lidarrClient.getAlbumByMbid>[1];
   let warning: { category: string; message: string; data: unknown } | undefined;
   lidarrClient.isConfigured = () => true;
-  lidarrClient.getAlbumMbidIndex = async () => {
-    throw new Error("Sequence contains more than one element");
-  };
   lidarrClient.getAlbumByMbid = async (mbid, options) => {
     lookupOptions = options;
     if (mbid === "broken-album") {
@@ -290,7 +286,6 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
     assert.equal(oversized.body?.error, "mbids must contain at most 100 unique values");
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getAlbumMbidIndex = originalGetAlbumMbidIndex;
     lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
     libraryManager.getTracks = originalGetTracks;
     logger.warn = originalWarn;
