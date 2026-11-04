@@ -88,7 +88,7 @@ const eventSchema = v.looseObject({ type: v.string() });
 
 const downloadEventTypes = new Set(["DownloadFileComplete", "DownloadDirectoryComplete"]);
 
-const downloadEventSchema = v.union([
+const downloadEventSchema = v.variant("type", [
   v.looseObject({
     type: v.literal("DownloadFileComplete"),
     data: v.pipe(
