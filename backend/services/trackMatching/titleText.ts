@@ -25,6 +25,9 @@ export function inOtherScript(left: string | null | undefined, right: string | n
   return hasNonLatinLetter(left) !== hasNonLatinLetter(right);
 }
 
+// MusicBrainz titles the gap and pregap tracks of a release "[silence]".
+export const isSilenceTrack = (title: unknown) => /^\s*\[silence\]\s*$/iu.test(String(title ?? ""));
+
 // "Various Artists" credits a compilation, not a performer.
 export function isVariousArtistsCredit(
   name: string | null | undefined,

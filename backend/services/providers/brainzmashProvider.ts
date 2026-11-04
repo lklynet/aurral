@@ -25,7 +25,11 @@ import {
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
 import { selectBestAlbumImage } from "../imageService.ts";
-import { coreAlbumTitle, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
+import {
+  coreAlbumTitle,
+  isSilenceTrack,
+  withoutFeaturedArtists,
+} from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
 import { readMany, readOne } from "../integrationData.ts";
@@ -704,7 +708,9 @@ export async function getAlbumTracksByAlbumMbid(
   const album = await getAlbumByMbid(albumMbid);
   const release = chooseRelease(album);
   return Array.isArray(release?.tracks)
-    ? release.tracks.map((track) => ({ ...track, releaseMbid: release.id || null }))
+    ? release.tracks
+        .filter((track) => !isSilenceTrack(track.title))
+        .map((track) => ({ ...track, releaseMbid: release.id || null }))
     : [];
 }
 
