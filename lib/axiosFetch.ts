@@ -325,14 +325,18 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
       failure.request = { method, url };
     }
     if (timeoutTriggered || !externalSignal?.aborted) {
+      const cause = failure?.cause instanceof Error ? failure.cause : undefined;
+      const causeCode =
+        cause && "code" in cause && typeof cause.code === "string" ? cause.code : null;
+      const message = failure?.message || String(error);
       try {
         reportFailure?.({
           method,
           url,
           status: failure?.response?.status ?? null,
-          code: failure?.code ?? null,
+          code: failure?.code ?? causeCode,
           ms: Date.now() - startedAt,
-          message: failure?.message || String(error),
+          message: cause?.message ? `${message}: ${cause.message}` : message,
         });
       } catch {}
     }
