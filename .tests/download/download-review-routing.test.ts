@@ -28,7 +28,7 @@ const [
   { processYtdlpPipelinePayload, isYtdlpLiveResult, hasEnoughCandidates },
   { processUsenetPipelinePayload, collectDownloadedAudioFiles },
   { processDeemixPipelinePayload },
-  { dbOps },
+  { dbOps, userOps },
   { db },
   pipelineHelpersModule,
   ,
@@ -337,6 +337,36 @@ test("yt-dlp sends plausible duration mismatches to review", async (t) => {
 
   assert.equal(result, null);
   await assertReviewable(jobId, "ytdlp");
+});
+
+test("a flow track fails instead of waiting for review", async (t) => {
+  useOnlySources(t, "ytdlp");
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const owner = userOps.createUser("listener", "hash");
+  assert.ok(owner);
+  const flow = flowPlaylistConfig.createFlow({ name: "Weekly", ownerUserId: owner.id });
+  const jobId = addDurationMismatchJob(flow.id);
+  const filePath = path.join(
+    process.env.DOWNLOAD_FOLDER!,
+    ".ytdlp-staging",
+    jobId,
+    "Artist Name - Correct Track.mp3",
+  );
+  await writeOneSecondMp3(filePath);
+
+  const result = await processPipelinePayload({
+    phase: "finalize",
+    source: "ytdlp",
+    jobId,
+    downloadedPath: filePath,
+    candidate: { raw: { id: "video-1", title: "Artist Name - Correct Track" } },
+    candidateIndex: 0,
+  });
+
+  assert.equal(result, null);
+  assert.equal(trackedJob(downloadTracker, jobId).status, "failed");
+  await assert.rejects(access(filePath));
 });
 
 test("yt-dlp auto-rejects weak title matches instead of reviewing them", async () => {

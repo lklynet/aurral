@@ -117,6 +117,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     "Sign-in": "SSO SSO-only OIDC single sign-on login form",
     "Local network auto-login": "LAN bypass authentication",
     Google: { item: "google", keywords: "OAuth sign in client ID secret redirect" },
+    "Default permissions": { item: "defaults", keywords: "new users permissions SSO register" },
   },
   library: {
     "Library folder": "downloads path media root",

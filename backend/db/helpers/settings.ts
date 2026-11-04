@@ -40,6 +40,7 @@ const flag = lenient(v.boolean());
 const securitySchema = v.looseObject({
   localNetworkBypass: lenient(v.looseObject({ enabled: flag })),
   ssoOnly: flag,
+  defaultPermissions: lenient(v.record(v.string(), v.boolean())),
 });
 
 type StoredSecurity = v.InferOutput<typeof securitySchema>;

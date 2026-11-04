@@ -62,18 +62,22 @@ function formatListenHistory({ listenHistory: { lastfm, listenbrainz, koito } }:
   );
 }
 
-function PermissionsGroup({
+export function PermissionsGroup({
+  title = "Permissions",
+  note,
   permissions,
   onChange,
   children,
 }: {
+  title?: string;
+  note?: ReactNode;
   permissions: Permissions;
   onChange: (permissions: Permissions) => void;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const id = useId();
   return (
-    <SettingsGroup title="Permissions">
+    <SettingsGroup title={title} note={note}>
       {granularPerms.map(({ key, label }) => (
         <SettingsRow key={key} label={label} htmlFor={`${id}-${key}`}>
           <PillToggle
@@ -91,12 +95,15 @@ function PermissionsGroup({
 
 export function NewUserPage() {
   const formId = useId();
-  const { health, fetchSettings, showSuccess, showError } = useServerSettings();
+  const { settings, health, fetchSettings, showSuccess, showError } = useServerSettings();
   const users = useSettingsUsers();
   const route = useSettingsRoute();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [permissions, setPermissions] = useState<Permissions>({ ...GRANULAR_PERMISSIONS });
+  const [permissions, setPermissions] = useState<Permissions>(() => ({
+    ...GRANULAR_PERMISSIONS,
+    ...settings.security.defaultPermissions,
+  }));
   const [creating, setCreating] = useState(false);
   const ready = username.trim().length > 0 && password.length > 0;
 

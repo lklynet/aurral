@@ -1,4 +1,5 @@
 import { logger } from "./logger.ts";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { classifyAudioQuality } from "./qualityProfileModel.ts";
 import type { finalizeQualityUpgradeSuccess } from "./qualityProfileService.ts";
@@ -121,6 +122,7 @@ export function blockPipelineJobForReview({
 }) {
   const stagingPath = String(sourcePath || "").trim();
   if (!validation?.blocked || !stagingPath) return false;
+  if (flowPlaylistConfig.getFlow(job.playlistId || job.playlistType)) return false;
   const reason = validation.reason || "Blocked for review";
   if (!downloadTracker.setBlocked(job.id, reason, stagingPath)) return false;
   import("./aurralHistoryService.ts")

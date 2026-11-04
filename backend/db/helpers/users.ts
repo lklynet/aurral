@@ -2,7 +2,7 @@ import crypto from "crypto";
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
-import { getSettingsEncryptionKey } from "./settings.ts";
+import { dbOps, getSettingsEncryptionKey } from "./settings.ts";
 import type { UsersRow } from "../rows.ts";
 
 export type UserPermissions = Record<string, unknown>;
@@ -89,6 +89,13 @@ const DEFAULT_PERMISSIONS = {
 };
 
 export type Permission = keyof typeof DEFAULT_PERMISSIONS | "accessSettings";
+
+function newUserPermissions() {
+  const configured = dbOps.getSettings().security.defaultPermissions ?? {};
+  return Object.fromEntries(
+    Object.entries(DEFAULT_PERMISSIONS).map(([key, value]) => [key, configured[key] ?? value]),
+  );
+}
 
 function encryptSubsonicPassword(password: string | null | undefined) {
   const value = password == null ? "" : String(password);
@@ -230,9 +237,7 @@ export const userOps = {
   ) {
     const un = String(username).trim();
     if (!un) return null;
-    const perms = permissions
-      ? { ...DEFAULT_PERMISSIONS, ...permissions }
-      : { ...DEFAULT_PERMISSIONS };
+    const perms = { ...newUserPermissions(), ...permissions };
     try {
       const result = insertUserStmt.run(
         un.toLowerCase(),
