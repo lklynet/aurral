@@ -139,8 +139,14 @@ function ActivityPage() {
     [activityQuery.data],
   );
   const cancelableCount = useMemo(
-    () => (activityQuery.data ?? []).filter(isCancelableDownload).length,
-    [activityQuery.data],
+    () =>
+      (activityQuery.data ?? []).filter(
+        (request) =>
+          isCancelableDownload(request) &&
+          (hasFlowAccess ||
+            (user?.id != null && String(request.requestedBy?.id) === String(user.id))),
+      ).length,
+    [activityQuery.data, hasFlowAccess, user?.id],
   );
   const loading = activityQuery.isPending;
   const error =
