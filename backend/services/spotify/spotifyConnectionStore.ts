@@ -20,6 +20,7 @@ interface SpotifyConnectionInput {
   refreshToken?: string;
   expiresAt?: number;
   displayName?: string | null;
+  scope?: string | null;
   reconnectRequired?: boolean;
 }
 
@@ -53,6 +54,7 @@ const normalizeConnection = (raw: unknown) => {
     refreshToken,
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
     displayName: String(raw.displayName || "").trim() || null,
+    scope: typeof raw.scope === "string" ? raw.scope : null,
     connectedAt:
       raw.connectedAt != null && Number.isFinite(Number(raw.connectedAt))
         ? Number(raw.connectedAt)
@@ -98,6 +100,7 @@ export const spotifyConnectionStore = {
       refreshToken,
       expiresAt,
       displayName = null,
+      scope = null,
       reconnectRequired = false,
     }: SpotifyConnectionInput = {},
   ) {
@@ -117,6 +120,7 @@ export const spotifyConnectionStore = {
           ? parsedExpiresAt
           : now + 3600 * 1000,
       displayName: String(displayName || "").trim() || null,
+      scope,
       connectedAt: now,
       reconnectRequired,
     };
@@ -135,6 +139,7 @@ export const spotifyConnectionStore = {
       refreshToken: refreshToken || current.refreshToken,
       expiresAt: expiresAt ?? current.expiresAt,
       displayName: current.displayName,
+      scope: current.scope,
       reconnectRequired: current.reconnectRequired,
     });
   },

@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import * as v from "valibot";
-import { buildSpotifyOAuthUrl, SPOTIFY_API_BASE } from "../../../services/spotify/spotifyConfig.ts";
+import {
+  buildSpotifyOAuthUrl,
+  SPOTIFY_API_BASE,
+  SPOTIFY_SCOPES,
+} from "../../../services/spotify/spotifyConfig.ts";
 import { spotifyConnectionStore } from "../../../services/spotify/spotifyConnectionStore.ts";
 import {
   SPOTIFY_AUTH_REQUIRED_CODE,
@@ -121,6 +125,7 @@ export default new Hono<AppEnv>()
           refreshToken,
           expiresAt,
           displayName,
+          scope: SPOTIFY_SCOPES,
         });
         if (!saved) {
           return c.json(
