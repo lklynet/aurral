@@ -171,11 +171,10 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Gotify: { item: "gotify", keywords: "push notifications mobile alerts token events" },
   },
   plugins: {
-    sections: ["Installed", "Safe mode"],
-    fields: {
-      Plugins: "add-ons extensions integrations download sources playlist actions",
-      "Safe mode": "turn off all plugins troubleshoot bug report",
-    },
+    Installed: "add-ons extensions integrations download sources playlist actions updates",
+    "Install from a link": "GitHub repo zip add install plugin",
+    "Build with an agent": "MCP developer key Claude Codex prompt",
+    "Safe mode": "turn off all plugins troubleshoot bug report",
   },
   status: {
     About:
