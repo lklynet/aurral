@@ -232,6 +232,31 @@ test("a request takes the commonest edition's whole tracklist, with the lengths 
   assert.deepEqual(manifest.secondaryTypes, ["Live"]);
 });
 
+test("a deluxe edition pressed as often as the standard one is not the standard edition", async (t) => {
+  const tied = "a1a1a1a1-0000-4000-8000-000000000005";
+  const pressing = (id: string, tracks: (typeof releases)[keyof typeof releases]) => ({
+    id,
+    title: "Tied",
+    status: "Official",
+    tracks,
+  });
+  await stubMetadata(t, [
+    {
+      ...group,
+      id: tied,
+      title: "Tied",
+      releases: [
+        pressing("std-a", releases["std-a"]),
+        pressing("std-b", releases["std-b"]),
+        pressing("deluxe", releases.deluxe),
+        pressing("deluxe-b", releases.deluxe),
+      ],
+    },
+  ]);
+  const manifest = await resolveReleaseManifest(job("Middle", "rec-2", { albumMbid: tied }));
+  assert.equal(manifest?.releaseMbid, "std-a");
+});
+
 test("a pressing without a length takes the midpoint of its pressings' lengths", async (t) => {
   const pressed = "a1a1a1a1-0000-4000-8000-000000000002";
   const names = ["Alpha", "Beta", "Gamma"];
