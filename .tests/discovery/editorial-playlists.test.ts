@@ -220,6 +220,32 @@ test("a Deezer playlist skips a track Aurral can't read and still pages by what 
   );
 });
 
+test("a Deezer playlist keeps tracks whose album has no cover", async (t) => {
+  stubDeezer(t, {
+    ...rockEssentials([]),
+    "/playlist/1306931615": {
+      body: { id: 1306931615, title: "Rock Essentials", picture_xl: null, picture_big: null },
+    },
+    "/playlist/1306931615/tracks": {
+      body: {
+        data: [
+          {
+            ...deezerTrack("No Refunds", "Los Bitchos"),
+            album: { id: 1, title: "No Refunds", cover_medium: null, cover_xl: null },
+          },
+        ],
+      },
+    },
+  });
+
+  const playlist = await getEditorialPlaylist(OWNER, "1306931615");
+
+  assert.deepEqual(
+    playlist.tracks.map((track) => [`${track.artistName} - ${track.trackName}`, track.artworkUrl]),
+    [["Los Bitchos - No Refunds", null]],
+  );
+});
+
 test("adding the same Deezer playlist twice at once queues it only once", async (t: import("vite-plus/test").TestContext) => {
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
   const payloads = captureEnqueues();

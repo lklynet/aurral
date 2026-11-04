@@ -19,9 +19,9 @@ export const deezerPageSchema = v.looseObject({
 export const deezerArtistSchema = v.looseObject({
   id: v.number(),
   name: v.optional(v.string()),
-  picture_xl: v.optional(v.string()),
-  picture_big: v.optional(v.string()),
-  picture_medium: v.optional(v.string()),
+  picture_xl: v.nullish(v.string()),
+  picture_big: v.nullish(v.string()),
+  picture_medium: v.nullish(v.string()),
   nb_fan: v.optional(v.number()),
 });
 
@@ -40,8 +40,8 @@ export const deezerTrackSchema = v.looseObject({
     v.looseObject({
       id: v.optional(v.number()),
       title: v.optional(v.string()),
-      cover_medium: v.optional(v.string()),
-      cover_xl: v.optional(v.string()),
+      cover_medium: v.nullish(v.string()),
+      cover_xl: v.nullish(v.string()),
     }),
   ),
 });
@@ -51,9 +51,9 @@ const deezerAlbumSchema = v.looseObject({
   title: v.optional(v.string()),
   record_type: v.optional(v.string()),
   release_date: v.optional(v.string()),
-  cover_xl: v.optional(v.string()),
-  cover_big: v.optional(v.string()),
-  cover_medium: v.optional(v.string()),
+  cover_xl: v.nullish(v.string()),
+  cover_big: v.nullish(v.string()),
+  cover_medium: v.nullish(v.string()),
   fans: v.optional(v.number()),
 });
 
