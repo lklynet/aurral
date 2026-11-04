@@ -1,0 +1,123 @@
+---
+title: Plugins
+description: Add actions and download sources to Aurral with plugins.
+---
+
+Plugins add features to Aurral that it doesn't have on its own. A plugin can add actions to playlist and flow menus, such as **Send to Plex**, and it can be a download source.
+
+Each plugin runs in its own process. A plugin that crashes, hangs, or answers with something Aurral can't read fails on its own, and Aurral keeps working. Its errors show on its page in **Settings > Plugins** and in the log under `plugin:<id>`.
+
+A plugin runs as Aurral, so it can read and change what Aurral can. Install plugins only from people you trust, the same as a Docker image.
+
+## Install a plugin
+
+1. Put the plugin's folder in the `plugins` folder of the data folder. In Docker that is `/config/plugins`, so a plugin with the id `send-to-box` lives in `/config/plugins/send-to-box`.
+2. Open **Settings > Plugins**. Aurral reads the folder each time you open it.
+3. Open the plugin, fill in its settings, and turn it on.
+
+A new plugin is off until you turn it on. Its actions show in menus only once it is on and its required settings are filled in.
+
+To update a plugin, replace its folder and open **Settings > Plugins** again. To remove it, delete its folder. Aurral keeps its settings in case you put it back.
+
+## When a plugin fails
+
+When a plugin throws an error, the action shows the plugin's name and message, and the plugin's page shows the last error with a link to report it.
+
+When a plugin crashes, hangs, or answers in a shape Aurral can't read three times in a row, Aurral turns it off. Its page says why. Turn it on again once it is fixed.
+
+## Safe mode
+
+Safe mode runs Aurral with every plugin off and keeps each plugin's own setting. Turn it on in **Settings > Plugins**. If Aurral won't start, or the page won't load, set `AURRAL_SAFE_MODE=true` and restart.
+
+Before you report a bug in Aurral, check whether it still happens in safe mode. If it doesn't, report it to the plugin.
+
+## Download source plugins
+
+A download source plugin joins the other download sources. It downloads one track at a time and never a whole album. Set its **Priority** on its page. Sources with a lower number are searched first.
+
+Aurral checks every file a plugin downloads the same way it checks yt-dlp downloads. A file that doesn't match the track goes to the review queue or is denied.
+
+## Write a plugin
+
+A plugin is a folder with two files: `manifest.json` and `index.js`. Aurral runs `index.js` with Node as an ES module. Bundle any packages into `index.js`, because Aurral doesn't install them.
+
+```json title="manifest.json"
+{
+  "id": "send-to-box",
+  "name": "Send to Box",
+  "version": "1.0.0",
+  "api": 1,
+  "description": "Sends playlists to Box.",
+  "repository": "https://github.com/you/aurral-send-to-box",
+  "settings": [
+    { "key": "url", "label": "Box URL", "type": "text", "required": true },
+    { "key": "token", "label": "Token", "type": "password", "required": true }
+  ],
+  "actions": [{ "id": "send", "label": "Send to Box", "target": "playlist" }],
+  "downloadSource": false
+}
+```
+
+| Field            | Use                                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `id`             | Lowercase letters, numbers, and `-`. The folder must have the same name.                                             |
+| `api`            | The plugin API version. This Aurral runs version `1`.                                                                |
+| `repository`     | An `https` link. Aurral links to it when the plugin fails, so people report plugin bugs to you.                      |
+| `settings`       | Fields for the plugin's page. `type` is `text`, `password`, `number`, or `boolean`.                                  |
+| `actions`        | Menu items. `target` is `playlist`, which covers playlists and flows. Set `"admin": true` to show it only to admins. |
+| `downloadSource` | `true` when `index.js` exports a download source.                                                                    |
+
+```js title="index.js"
+export default {
+  actions: {
+    async send({ settings, user, playlist, libraryFolder }) {
+      await fetch(`${settings.url}/playlists`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${settings.token}` },
+        body: JSON.stringify({ name: playlist.name, tracks: playlist.tracks }),
+      });
+      return { message: `Sent ${playlist.tracks.length} tracks to Box` };
+    },
+  },
+};
+```
+
+An action receives:
+
+- `settings`: the values from the plugin's page.
+- `user`: the `id`, `username`, and `role` of the person who chose the action.
+- `playlist`: its `id`, `name`, `kind` (`playlist` or `flow`), `file` (the path of its M3U file, or `null`), and `tracks`. Each track has `path`, `title`, `artist`, and when known `album`, `durationMs`, and `mbid`.
+- `libraryFolder`: the path of the Library folder.
+
+Return `{ message }` to show it to the user, or nothing. Throw an `Error` to show its message as a failure. An action has 2 minutes.
+
+A download source exports `search` and `download`:
+
+```js title="index.js"
+export default {
+  downloadSource: {
+    async search({ settings, track }) {
+      return [
+        {
+          id: "123",
+          title: "Song",
+          artist: "Artist",
+          album: "Album",
+          durationMs: 215000,
+          format: "flac",
+        },
+      ];
+    },
+    async download({ settings, result, directory }) {
+      // Save the file inside `directory`, then return its path.
+      return { path: "123.flac" };
+    },
+  },
+};
+```
+
+`search` receives the `track` to find: `artist`, `title`, `album`, `durationMs`, `artistMbid`, `albumMbid`, `releaseMbid`, `trackMbid`, `releaseYear`, `trackNumber`, and `discNumber`. Any of them can be `null`. Return up to 50 results. Each needs `id`, `title`, and `artist`. `album`, `durationMs`, `format`, and `bitrate` (in kbps) help Aurral choose. Other fields are kept and passed back to `download`.
+
+`download` receives the chosen `result` and an empty `directory`. Save one audio file inside it and return its path, relative to `directory` or absolute. A search has 1 minute and a download has 30 minutes.
+
+Anything a plugin writes to the console goes to the Aurral log under `plugin:<id>`.
