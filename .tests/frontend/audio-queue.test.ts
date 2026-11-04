@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
 import {
+  AUTOPLAY_SOURCE,
   getFormatLoadAttempts,
   getHowlerFormat,
   getUpcomingTracks,
@@ -322,6 +323,26 @@ test("with shuffle on, play next is next in the shuffle and stays next when shuf
   const unshuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: false });
   assert.equal(currentId(unshuffled), "t2");
   assert.deepEqual(upcomingIds(unshuffled), ["x", "t3", "t4", "t5", "t6", "t7", "y"]);
+});
+
+test("autoplay tracks stay after everything you queue and leave when autoplay or shuffle changes", () => {
+  const playing = startQueue({ startTrackId: "t6" });
+  const autoplayed = queueReducer(playing, {
+    type: "EXTEND_QUEUE",
+    tracks: ["a1", "a2"].map((id) => ({ ...extra(id), queueSource: AUTOPLAY_SOURCE })),
+  });
+  assert.equal(autoplayed.queueRevision, playing.queueRevision);
+  assert.deepEqual(upcomingIds(autoplayed), ["t7", "a1", "a2"]);
+
+  const queued = insert(autoplayed, ["y"], "end");
+  assert.deepEqual(upcomingIds(queued), ["t7", "y", "a1", "a2"]);
+  assert.deepEqual(upcomingIds(queueReducer(queued, { type: "CLEAR_UPCOMING" })), ["a1", "a2"]);
+  assert.deepEqual(upcomingIds(queueReducer(queued, { type: "REMOVE_AUTOPLAY" })), ["t7", "y"]);
+
+  const shuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: true });
+  assert.equal(currentId(shuffled), "t6");
+  assert.ok(!upcomingIds(shuffled).some((id) => id === "a1" || id === "a2"));
+  assert.ok(upcomingIds(shuffled).includes("y"));
 });
 
 test("adding to an empty queue starts playing the added track", () => {

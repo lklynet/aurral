@@ -4,6 +4,7 @@ import type {
   QueueEntry,
   QueueSource,
   QueueTrackInput,
+  RadioSeed,
   RepeatMode,
 } from "../utils/audioQueue.ts";
 
@@ -31,6 +32,12 @@ export type AudioQueueValue = {
   setShuffleEnabled: (enabled: boolean) => void;
   repeatMode: RepeatMode;
   toggleRepeat: () => void;
+  autoplayEnabled: boolean;
+  setAutoplayEnabled: (enabled: boolean) => void;
+  startRadio: (
+    seed: RadioSeed,
+    options: { label: string; first?: QueueTrackInput | null },
+  ) => Promise<boolean>;
   playQueue: (
     tracks: QueueTrackInput[],
     options?: {

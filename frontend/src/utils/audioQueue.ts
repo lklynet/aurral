@@ -1,4 +1,6 @@
+import type { InferRequestType } from "hono/client";
 import { resolveApiPath } from "./api/core.ts";
+import type { libraryRadioClient } from "./api/clients/libraryRadio.ts";
 import type { LibraryTrack } from "./libraryPageData.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
 import type { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils.ts";
@@ -17,7 +19,14 @@ const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
 
 const DEFAULT_FORMAT_ATTEMPTS = ["mp3", "m4a", "flac", "ogg", "aac"];
 
-export type QueueSource = { type: string; id: string | number; label?: string };
+export type RadioSeed = Omit<
+  InferRequestType<typeof libraryRadioClient.radio.$post>["json"],
+  "exclude" | "limit"
+>;
+
+export type QueueSource = { type: string; id: string | number; label?: string; seed?: RadioSeed };
+
+export const AUTOPLAY_SOURCE: QueueSource = { type: "autoplay", id: "autoplay", label: "Autoplay" };
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -215,6 +224,23 @@ export function isDownloadedLibraryAlbum(
 
 export type QueueEntry = QueueTrack & { entryId: string; queueSource?: QueueSource | null };
 
+export function radioSeedFor(
+  tracks: Pick<QueueTrack, "libraryTrackId" | "artist" | "artistMbid">[],
+): RadioSeed {
+  const trackIds = tracks.flatMap((track) =>
+    track.libraryTrackId == null ? [] : [String(track.libraryTrackId)],
+  );
+  const artists = tracks.flatMap((track) =>
+    track.libraryTrackId == null && track.artist
+      ? [{ mbid: track.artistMbid, name: track.artist }]
+      : [],
+  );
+  return { trackIds: [...new Set(trackIds)], artists };
+}
+
+export const isAutoplayEntry = (entry: Pick<QueueEntry, "queueSource">) =>
+  entry.queueSource?.type === AUTOPLAY_SOURCE.type;
+
 export type QueueState = {
   queue: QueueEntry[];
   currentIndex: number;
@@ -259,6 +285,8 @@ export type QueueAction =
       position: "next" | "end";
       source?: QueueSource | null;
     }
+  | { type: "EXTEND_QUEUE"; tracks: QueueTrack[] }
+  | { type: "REMOVE_AUTOPLAY" }
   | { type: "REMOVE_ENTRY"; entryId: string }
   | { type: "REORDER_UPCOMING"; entryIds: string[] }
   | { type: "CLEAR_UPCOMING" }
@@ -353,6 +381,24 @@ function arrange(state: QueueState, queue: QueueEntry[], playback: QueueEntry[])
   };
 }
 
+function withoutUpcoming(state: QueueState, matches: (entry: QueueEntry) => boolean) {
+  const order = playbackEntries(state);
+  const removed = new Set(
+    upcomingPositions(state).flatMap((index) => {
+      const entry = order[index];
+      return entry && matches(entry) ? [entry.entryId] : [];
+    }),
+  );
+  if (removed.size === 0) return state;
+  const keep = (track: QueueEntry) => !removed.has(track.entryId);
+  return arrange(state, state.queue.filter(keep), order.filter(keep));
+}
+
+function firstAutoplayAt(entries: QueueEntry[], from: number) {
+  const index = entries.findIndex((entry, at) => at >= from && isAutoplayEntry(entry));
+  return index < 0 ? entries.length : index;
+}
+
 function playAt(state: QueueState, index: number, autoplay: boolean): QueueState {
   return {
     ...state,
@@ -360,6 +406,17 @@ function playAt(state: QueueState, index: number, autoplay: boolean): QueueState
     autoplay,
     error: null,
     queueRevision: state.queueRevision + 1,
+  };
+}
+
+function shuffleFrom(state: QueueState, enabled: boolean): QueueState {
+  const currentQueueIndex = state.playbackOrder[state.currentIndex];
+  if (currentQueueIndex === undefined) return { ...state, isShuffleEnabled: enabled };
+  return {
+    ...state,
+    isShuffleEnabled: enabled,
+    playbackOrder: buildPlaybackOrder(state.queue.length, enabled, currentQueueIndex),
+    currentIndex: enabled ? 0 : currentQueueIndex,
   };
 }
 
@@ -475,10 +532,12 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       const [entries, nextEntryId] = withEntryIds(state, tracks);
       const order = playbackEntries(state);
       const next = action.position === "next";
-      const playbackAt = next ? state.currentIndex + 1 : order.length;
-      const queueAt = next
-        ? state.queue.findIndex((track) => track.entryId === currentEntryId(state)) + 1
-        : state.queue.length;
+      const currentQueueAt =
+        state.queue.findIndex((track) => track.entryId === currentEntryId(state)) + 1;
+      const playbackAt = next
+        ? state.currentIndex + 1
+        : firstAutoplayAt(order, state.currentIndex + 1);
+      const queueAt = next ? currentQueueAt : firstAutoplayAt(state.queue, currentQueueAt);
       return {
         ...arrange(
           state,
@@ -488,6 +547,16 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         nextEntryId,
       };
     }
+    case "EXTEND_QUEUE": {
+      if (action.tracks.length === 0 || state.currentIndex < 0) return state;
+      const [entries, nextEntryId] = withEntryIds(state, action.tracks);
+      return {
+        ...arrange(state, [...state.queue, ...entries], [...playbackEntries(state), ...entries]),
+        nextEntryId,
+      };
+    }
+    case "REMOVE_AUTOPLAY":
+      return withoutUpcoming(state, isAutoplayEntry);
     case "REMOVE_ENTRY": {
       if (!action.entryId || action.entryId === currentEntryId(state)) return state;
       if (!state.queue.some((track) => track.entryId === action.entryId)) return state;
@@ -515,13 +584,8 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         ...entryIds.map((entryId) => upcomingById.get(entryId)!),
       ]);
     }
-    case "CLEAR_UPCOMING": {
-      const order = playbackEntries(state);
-      const cleared = new Set(upcomingPositions(state).map((index) => order[index]?.entryId));
-      if (cleared.size === 0) return state;
-      const keep = (track: QueueEntry) => !cleared.has(track.entryId);
-      return arrange(state, state.queue.filter(keep), order.filter(keep));
-    }
+    case "CLEAR_UPCOMING":
+      return withoutUpcoming(state, (entry) => !isAutoplayEntry(entry));
     case "RESTORE_ORDER": {
       const current = currentEntryId(state);
       const { queue, playbackOrder, isShuffleEnabled } = action;
@@ -558,14 +622,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       if (state.queue.length === 0 || state.currentIndex < 0) {
         return { ...state, isShuffleEnabled: action.enabled };
       }
-      const currentQueueIndex = state.playbackOrder[state.currentIndex];
-      if (currentQueueIndex === undefined) return { ...state, isShuffleEnabled: action.enabled };
-      return {
-        ...state,
-        isShuffleEnabled: action.enabled,
-        playbackOrder: buildPlaybackOrder(state.queue.length, action.enabled, currentQueueIndex),
-        currentIndex: action.enabled ? 0 : currentQueueIndex,
-      };
+      return shuffleFrom(withoutUpcoming(state, isAutoplayEntry), action.enabled);
     }
     case "TOGGLE_REPEAT": {
       return { ...state, repeatMode: NEXT_REPEAT_MODE[state.repeatMode] };

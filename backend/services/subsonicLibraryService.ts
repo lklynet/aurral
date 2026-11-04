@@ -12,6 +12,7 @@ import {
   getLibrary,
   getLibraryForAlbumReferences,
   getLibraryForArtistReferences,
+  getLibraryForTrackIds,
   getLibraryForTrackMatches,
   getLibrarySearchPage,
   getLibraryTopTracks,
@@ -53,6 +54,7 @@ import type {
 import { libraryNameKey, subsonicId as idFor } from "./libraryMediaStore.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
+import { buildRadio, type RadioSeed } from "./radio.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withHonkerLock } from "./honkerDb.ts";
 import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.ts";
@@ -719,6 +721,37 @@ export function getSong(value: string, user?: SubsonicUser) {
   );
   const track = findLibraryEntry(library, parsed);
   return track?.identityKey ? toSong(library, track) : null;
+}
+
+const radioSeedFor = (parsed: ParsedId | null, artistOnly: boolean): RadioSeed | null => {
+  if (parsed?.kind === "artist") {
+    return parsed.key.startsWith("name:artist:")
+      ? { artists: [{ name: parsed.key.slice("name:artist:".length) }] }
+      : { artists: [{ id: parsed.key }] };
+  }
+  if (artistOnly) return null;
+  if (parsed?.kind === "song") return { trackIds: [parsed.key] };
+  if (parsed?.kind === "album") return { albumIds: [parsed.key] };
+  return null;
+};
+
+export async function getSimilarSongs(
+  value: string,
+  { count, artistOnly = false }: { count?: string; artistOnly?: boolean },
+  user: SubsonicUser,
+) {
+  const seed = radioSeedFor(parseId(value), artistOnly);
+  if (!seed) return [];
+  const userId = user && user.id > 0 ? user.id : null;
+  const trackIds = await buildRadio({ userId, seed, limit: normalizeLimit(count, 50) });
+  const library = indexFocusedLibrary(
+    getLibraryForTrackIds({ ids: trackIds, source: "all", availableOnly: true }),
+    starredAtFor(user),
+  );
+  return trackIds.flatMap((trackId) => {
+    const track = library.tracksById.get(trackId);
+    return track ? [toSong(library, track)] : [];
+  });
 }
 
 export function findUniqueLibrarySong(artist: string, title: string, user?: SubsonicUser) {

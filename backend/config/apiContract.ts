@@ -13,5 +13,6 @@ export const API_CONTRACT = {
     "trending",
     "flowAutoDownload",
     "pluginActions",
+    "radio",
   ],
 };

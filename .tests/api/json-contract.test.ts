@@ -274,6 +274,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
     "trending",
     "flowAutoDownload",
     "pluginActions",
+    "radio",
   ]) {
     assert.ok(
       bootstrap.api.features.includes(feature),

@@ -8,6 +8,7 @@ import files from "./handlers/files.ts";
 import libraryIndex from "./handlers/libraryIndex.ts";
 import misc from "./handlers/misc.ts";
 import monitoring from "./handlers/monitoring.ts";
+import radio from "./handlers/radio.ts";
 import tracks from "./handlers/tracks.ts";
 
 export default new Hono<AppEnv>()
@@ -17,6 +18,7 @@ export default new Hono<AppEnv>()
   .route("/", monitoring)
   .route("/", albums)
   .route("/", tracks)
+  .route("/", radio)
   .route("/", downloads)
   .route("/", misc)
   .route("/", files);

@@ -9,8 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import {
+  AUTOPLAY_SOURCE,
   getUpcomingTracks,
   getFormatLoadAttempts,
+  isAutoplayEntry,
+  radioSeedFor,
   getHowlerFormat,
   initialQueueState,
   normalizeQueueTrack,
@@ -24,13 +27,15 @@ import type {
   QueueSource,
   QueueState,
   QueueTrackInput,
+  RadioSeed,
 } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
-import { getRequestToken } from "../utils/api/core";
+import { buildAuthenticatedApiUrl, getRequestToken } from "../utils/api/core";
 import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
 import { parseResponse } from "hono/client";
 import { playEventsClient } from "../utils/api/clients/playEvents.ts";
+import { libraryRadioClient } from "../utils/api/clients/libraryRadio.ts";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 import {
@@ -46,6 +51,10 @@ const DEFAULT_VOLUME = 0.7;
 const PRELOAD_LEAD_SECONDS = 20;
 const POSITION_SAVE_MS = 5000;
 const PLAYER_CHANNEL = "aurral.player";
+const AUTOPLAY_KEY = "aurral.player.autoplay";
+const RADIO_REFILL_AT = 2;
+const AUTOPLAY_SEED_TRACKS = 5;
+const RADIO_EXCLUDE_LIMIT = 500;
 const PASSIVE_ACTIONS = new Set([
   "SET_ALBUM_ARTWORK",
   "UPDATE_ARTWORK",
@@ -119,6 +128,37 @@ function useSharedVolume() {
   return { ...audio, setVolume, setMuted };
 }
 
+function readAutoplay() {
+  try {
+    return window.localStorage.getItem(AUTOPLAY_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function writeAutoplay(enabled: boolean) {
+  try {
+    window.localStorage.setItem(AUTOPLAY_KEY, String(enabled));
+  } catch {}
+}
+
+async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
+  const exclude = queue
+    .flatMap((entry) => (entry.libraryTrackId == null ? [] : [String(entry.libraryTrackId)]))
+    .slice(-RADIO_EXCLUDE_LIMIT);
+  const { tracks } = await parseResponse(
+    libraryRadioClient.radio.$post({ json: { ...seed, exclude } }),
+  );
+  return tracks.map(({ streamPath, artworkUrl, ...track }) =>
+    normalizeQueueTrack({
+      ...track,
+      src: buildAuthenticatedApiUrl(streamPath),
+      artwork: artworkUrl,
+      recordHistory: true,
+    }),
+  );
+}
+
 function trackAt(state: QueueState, playbackIndex: number) {
   const queueIndex = state.playbackOrder[playbackIndex];
   return queueIndex == null ? null : (state.queue[queueIndex] ?? null);
@@ -166,6 +206,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   const { volume, muted, setVolume, setMuted } = useSharedVolume();
+  const [autoplayEnabled, setAutoplayState] = useState(readAutoplay);
+  const autoplayRef = useRef(autoplayEnabled);
+  autoplayRef.current = autoplayEnabled;
+  const refillRef = useRef<string | null>(null);
 
   const [state, applyAction] = useReducer(queueReducer, initialQueueState);
   const dispatch = useCallback((action: QueueAction) => {
@@ -362,6 +406,34 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       });
     },
     [playQueue],
+  );
+
+  const startRadio = useCallback(
+    async (
+      seed: RadioSeed,
+      { label, first }: { label: string; first?: QueueTrackInput | null },
+    ) => {
+      const source: QueueSource = {
+        type: "radio",
+        id: JSON.stringify(seed),
+        label: `${label} radio`,
+        seed,
+      };
+      refillRef.current = null;
+      if (first && playQueue([first], { source })) return true;
+      return playQueue(await fetchRadio(seed), { source });
+    },
+    [playQueue],
+  );
+
+  const setAutoplayEnabled = useCallback(
+    (enabled: boolean) => {
+      setAutoplayState(enabled);
+      writeAutoplay(enabled);
+      refillRef.current = null;
+      if (!enabled) dispatch({ type: "REMOVE_AUTOPLAY" });
+    },
+    [dispatch],
   );
 
   const insertTracks = useCallback(
@@ -583,6 +655,37 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const isActive = state.queue.length > 0 && state.currentIndex >= 0;
   const upcoming = useMemo(() => getUpcomingTracks(state), [state]);
 
+  useEffect(() => {
+    if (!isPlayingOrStarting || state.repeatMode !== "off" || !currentTrack) return;
+    if (currentTrack.isPreview || upcoming.length > RADIO_REFILL_AT) return;
+    const station =
+      currentTrack.queueSource === undefined ? state.source : currentTrack.queueSource;
+    const radio = station?.type === "radio" && station.seed ? station : null;
+    if (!radio && !(autoplayEnabled && upcoming.every(({ track }) => isAutoplayEntry(track)))) {
+      return;
+    }
+    if (refillRef.current === currentTrack.entryId) return;
+    refillRef.current = currentTrack.entryId;
+    const played = state.playbackOrder
+      .slice(Math.max(0, state.currentIndex - AUTOPLAY_SEED_TRACKS + 1), state.currentIndex + 1)
+      .flatMap((queueIndex) => state.queue[queueIndex] ?? [])
+      .filter((entry) => !entry.isPreview)
+      .reverse();
+    const seed = radio?.seed ?? radioSeedFor(played);
+    const queueSource = radio ?? AUTOPLAY_SOURCE;
+    const entryId = currentTrack.entryId;
+    fetchRadio(seed, state.queue)
+      .then((tracks) => {
+        if (!stateRef.current.queue.some((entry) => entry.entryId === entryId)) return;
+        if (!radio && !autoplayRef.current) return;
+        dispatch({
+          type: "EXTEND_QUEUE",
+          tracks: tracks.map((track) => ({ ...track, queueSource })),
+        });
+      })
+      .catch(() => {});
+  }, [autoplayEnabled, currentTrack, dispatch, isPlayingOrStarting, state, upcoming]);
+
   const missingArtworkMbid = currentTrack && !currentTrack.artwork ? currentTrack.albumMbid : null;
   const currentArtist = currentTrack?.artist || "";
   const currentAlbum = currentTrack?.album || "";
@@ -716,6 +819,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       setShuffleEnabled,
       repeatMode: state.repeatMode,
       toggleRepeat,
+      autoplayEnabled,
+      setAutoplayEnabled,
+      startRadio,
       playQueue,
       playTrack,
       togglePlayPause,
@@ -734,8 +840,11 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     }),
     [
       addToQueue,
+      autoplayEnabled,
       clearQueue,
       clearUpcoming,
+      setAutoplayEnabled,
+      startRadio,
       updateQueueArtwork,
       queueNext,
       removeFromQueue,
