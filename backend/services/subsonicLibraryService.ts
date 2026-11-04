@@ -50,7 +50,7 @@ import type {
   SubsonicStarChangesRow,
   SubsonicStarsRow,
 } from "../db/rows.ts";
-import { subsonicId as idFor } from "./libraryMediaStore.ts";
+import { libraryNameKey, subsonicId as idFor } from "./libraryMediaStore.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
@@ -1561,6 +1561,86 @@ export function restoreStars(user: SubsonicUser, entries: unknown) {
   });
   addStars();
   return true;
+}
+
+export type ImportedFavorite = { mbid: string; starredAt: number } & (
+  | { kind: "artist"; artist: string }
+  | { kind: "album"; album: string; artist: string }
+  | { kind: "song"; title: string; artist: string; album: string; durationMs: number | undefined }
+);
+
+const favoriteArtistsStmt = db.prepare<
+  [],
+  Pick<LibraryArtistsRow, "identity_key" | "mbid" | "name">
+>("SELECT identity_key, mbid, name FROM library_artists ORDER BY id");
+const favoriteAlbumsStmt = db.prepare<
+  [],
+  Pick<
+    LibraryAlbumsRow,
+    "identity_key" | "mbid" | "release_group_mbid" | "title" | "album_artist"
+  > & {
+    artist_name: string;
+  }
+>(
+  `SELECT album.identity_key, album.mbid, album.release_group_mbid, album.title, album.album_artist,
+     artist.name AS artist_name
+   FROM library_albums AS album
+   JOIN library_artists AS artist ON artist.id = album.artist_id
+   ORDER BY album.id`,
+);
+
+const nameKey = (...names: (string | null | undefined)[]) => {
+  const keys = names.map(libraryNameKey);
+  return keys.every(Boolean) ? keys.join("\u0000") : null;
+};
+
+const indexByKeys = <T extends { identity_key: string }>(
+  rows: T[],
+  keys: (row: T) => (string | null | undefined)[],
+) => {
+  const index = new Map<string, string>();
+  for (const row of rows) {
+    for (const key of keys(row)) if (key && !index.has(key)) index.set(key, row.identity_key);
+  }
+  return index;
+};
+
+// Favorites from another server become this user's own stars, matched by MusicBrainz ID and
+// then by name. Anything not in the library is skipped and counted.
+export function importFavorites(userId: number, favorites: ImportedFavorite[]) {
+  const artists = favorites.some((favorite) => favorite.kind === "artist")
+    ? indexByKeys(favoriteArtistsStmt.all(), (row) => [row.mbid, nameKey(row.name)])
+    : new Map<string, string>();
+  const albums = favorites.some((favorite) => favorite.kind === "album")
+    ? indexByKeys(favoriteAlbumsStmt.all(), (row) => [
+        row.mbid,
+        row.release_group_mbid,
+        nameKey(row.artist_name, row.title),
+        nameKey(row.album_artist, row.title),
+      ])
+    : new Map<string, string>();
+  const songs = favorites.filter((favorite) => favorite.kind === "song");
+  const songKeys = new Map(
+    resolveLibraryTracks(songs).map((match, index) => [songs[index], match?.track.identityKey]),
+  );
+  const matches = favorites.flatMap((favorite) => {
+    const key =
+      favorite.kind === "artist"
+        ? artists.get(favorite.mbid) || artists.get(nameKey(favorite.artist) ?? "")
+        : favorite.kind === "album"
+          ? albums.get(favorite.mbid) || albums.get(nameKey(favorite.artist, favorite.album) ?? "")
+          : songKeys.get(favorite);
+    return key ? [{ kind: favorite.kind, key, starredAt: favorite.starredAt }] : [];
+  });
+  const addStars = db.transaction(() => {
+    let added = 0;
+    for (const { kind, key, starredAt } of matches) {
+      added += addStarStmt.run(userId, kind, key, starredAt).changes;
+    }
+    if (added) touchStars(userId);
+    return added;
+  });
+  return { added: addStars(), missing: favorites.length - matches.length };
 }
 
 const starredRows = (user: SubsonicUser): StarRow[] => (user?.id ? getStarsStmt.all(user.id) : []);

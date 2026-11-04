@@ -5,6 +5,10 @@ import { useAuth } from "../../../../contexts/AuthContext";
 import { useToast } from "../../../../contexts/ToastContext";
 import { queryKeys } from "../../../../queryClient.ts";
 import { historyServersClient } from "../../../../utils/api/clients/historyServers.ts";
+import {
+  clearLibraryFavoritesCache,
+  clearLibraryPageCache,
+} from "../../../../utils/api/endpoints/library.ts";
 import { formatDateTime } from "../../../../utils/dateTime.ts";
 import { SettingsInput } from "../../components/SettingsField";
 import { readApiError } from "../../utils/apiError.ts";
@@ -118,6 +122,33 @@ export function HistoryServerDetail({ provider }: { provider: LoginHistoryServer
     onSuccess: () => showSuccess(`Importing ${fields.label} plays.`),
     onError: fail(`Couldn't sync ${fields.label}`),
   });
+  const favorites = useMutation({
+    mutationFn: () =>
+      parseResponse(
+        historyServersClient[":provider"].favorites.$post({ param: { provider: "navidrome" } }),
+      ),
+    onSuccess: ({ added, missing }) => {
+      if (added) {
+        clearLibraryFavoritesCache();
+        clearLibraryPageCache();
+        void queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+      }
+      showSuccess(
+        [
+          added
+            ? `Added ${added.toLocaleString()} ${added === 1 ? "favorite" : "favorites"}.`
+            : "No new favorites.",
+          missing
+            ? `${missing.toLocaleString()} ${missing === 1 ? "isn't" : "aren't"} in your library.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    },
+    onError: fail(`Couldn't import ${fields.label} favorites`),
+  });
+  const importFavorites = provider === "navidrome" ? () => favorites.mutate() : undefined;
   const disconnect = useMutation({
     mutationFn: () => historyServersClient[":provider"].$delete({ param }),
     onSuccess: async () => {
@@ -127,7 +158,7 @@ export function HistoryServerDetail({ provider }: { provider: LoginHistoryServer
     },
     onError: fail(`Couldn't disconnect ${fields.label}`),
   });
-  const busy = connect.isPending || sync.isPending || disconnect.isPending;
+  const busy = connect.isPending || sync.isPending || favorites.isPending || disconnect.isPending;
 
   return (
     <SettingsPage title={fields.label} back="Listening">
@@ -184,6 +215,7 @@ export function HistoryServerDetail({ provider }: { provider: LoginHistoryServer
                 <HistoryServerActions
                   busy={busy}
                   onSync={() => sync.mutate()}
+                  onImportFavorites={importFavorites}
                   onDisconnect={() => disconnect.mutate()}
                   label={fields.label}
                 />
@@ -195,6 +227,7 @@ export function HistoryServerDetail({ provider }: { provider: LoginHistoryServer
             <HistoryServerActions
               busy={busy}
               onSync={() => sync.mutate()}
+              onImportFavorites={importFavorites}
               onDisconnect={() => disconnect.mutate()}
               label={fields.label}
             />
@@ -211,11 +244,13 @@ export function HistoryServerActions({
   busy,
   label,
   onSync,
+  onImportFavorites,
   onDisconnect,
 }: {
   busy: boolean;
   label: string;
   onSync: () => void;
+  onImportFavorites?: () => void;
   onDisconnect: () => void;
 }) {
   return (
@@ -223,12 +258,23 @@ export function HistoryServerActions({
       <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSync}>
         Sync now
       </button>
+      {onImportFavorites ? (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy}
+          onClick={onImportFavorites}
+        >
+          Import favorites
+        </button>
+      ) : null}
       <button
         type="button"
         className="btn btn-ghost btn-sm"
         disabled={busy}
         onClick={() => {
-          if (window.confirm(`Disconnect ${label}? Aurral removes the plays it imported.`)) {
+          const kept = onImportFavorites ? " Favorites stay." : "";
+          if (window.confirm(`Disconnect ${label}? Aurral removes the plays it imported.${kept}`)) {
             onDisconnect();
           }
         }}
