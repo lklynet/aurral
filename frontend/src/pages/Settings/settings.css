@@ -382,6 +382,10 @@ button:is(.settings-dialog__link, .settings-service) {
   color: var(--aurral-danger);
 }
 
+.settings-row__warning {
+  color: var(--aurral-warning);
+}
+
 .settings-row__value {
   color: var(--aurral-text-muted);
 }
@@ -447,6 +451,19 @@ button:is(.settings-dialog__link, .settings-service) {
   flex: 1;
   min-width: 0;
   font-weight: 500;
+}
+
+.settings-service__detail {
+  display: block;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-sm);
+  font-weight: 400;
+}
+
+.settings-beta {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  font-weight: 400;
 }
 
 .settings-service__status {

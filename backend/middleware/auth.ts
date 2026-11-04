@@ -4,6 +4,7 @@ import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { createSession, getSessionByToken } from "../config/session-helpers.ts";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.ts";
+import { isPluginApiKey, pluginForApiKey } from "../services/plugins/pluginStore.ts";
 import type { RequestUser } from "./requestUser.ts";
 import type { UserPermissions, UserRecord } from "../db/helpers/users.ts";
 
@@ -310,6 +311,17 @@ function resolveApiKeyUser(req: CredentialRequest) {
   const queryKey = req.query?.api_key?.trim() || "";
   const incoming = headerKey || queryKey;
   if (!incoming) return null;
+  if (isPluginApiKey(incoming)) {
+    const pluginId = pluginForApiKey(incoming);
+    return pluginId
+      ? {
+          id: -1,
+          username: `plugin:${pluginId}`,
+          role: "admin",
+          permissions: buildPermissions("admin"),
+        }
+      : null;
+  }
   try {
     const storedKey = getApiKey();
     if (safeCompare(incoming, storedKey)) {

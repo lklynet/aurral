@@ -60,12 +60,16 @@ export async function shareLink(url: string, title: string) {
       if (error instanceof Error && error.name === "AbortError") return "cancelled";
     }
   }
-  if (typeof nav?.clipboard?.writeText === "function") {
+  if (await copyText(url)) return "copied";
+  throw new Error("Could not copy the share link");
+}
+
+export async function copyText(text: string) {
+  if (typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function") {
     try {
-      await nav.clipboard.writeText(url);
-      return "copied";
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {}
   }
-  if (copyWithSelection(url)) return "copied";
-  throw new Error("Could not copy the share link");
+  return copyWithSelection(text);
 }

@@ -21,7 +21,7 @@ export async function assignDownloadedAlbumFiles({
 }: {
   jobs: AlbumJob[];
   filePaths?: string[] | null;
-  source: "deemix" | "soulseek" | "usenet";
+  source: string;
   manifest: ReleaseManifest;
   verified?: boolean;
   parseAudio?: typeof parseFile;

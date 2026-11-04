@@ -108,7 +108,7 @@ export const QUEUE_DEFINITIONS = [
     queue: "_outbox:notifications",
     label: "Notifications",
     workerLabel: "Notification worker",
-    description: "Delivers queued Gotify and webhook notifications.",
+    description: "Delivers queued Gotify and webhook notifications and plugin events.",
     worker: "notification-outbox",
   },
 ];

@@ -87,6 +87,7 @@ export default defineConfig({
             { slug: "admin/users" },
             { slug: "admin/environment" },
             { slug: "admin/usage-stats" },
+            { slug: "admin/plugins" },
             { slug: "admin/troubleshooting" },
           ],
         },
@@ -96,6 +97,7 @@ export default defineConfig({
           items: [
             { slug: "api/overview" },
             { slug: "api/app-contract" },
+            { slug: "api/plugins" },
             { slug: "api/endpoints" },
           ],
         },

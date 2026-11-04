@@ -23,6 +23,7 @@ import {
 import { ProwlarrDetail, prowlarrServiceStatus } from "./downloads/ProwlarrDetail";
 import { QualityProfileDetail, qualityServiceStatus } from "./downloads/QualityProfileDetail";
 import { PathMappingDetail, PathMappingsTable, resolveMappingItem } from "./downloads/PathMappings";
+import { pluginStatus, usePlugins } from "./PluginsSection";
 
 const MAX_REVIEW_WAIT_HOURS = 720;
 
@@ -38,6 +39,12 @@ export function DownloadsSection() {
     isClientEnabled(definition, clientConfig(settings, definition)),
   );
   const availableClients = clients.filter((definition) => !enabledClients.includes(definition));
+  const pluginList = usePlugins().data;
+  const pluginSources = pluginList?.safeMode
+    ? []
+    : (pluginList?.plugins ?? []).filter(
+        (plugin) => plugin.enabled && plugin.manifest?.downloadSource,
+      );
   const activeClient = clients.find((definition) => definition.key === item);
   const mapping = resolveMappingItem(settings, item);
 
@@ -53,7 +60,9 @@ export function DownloadsSection() {
       <SettingsGroup
         title="Download clients"
         note={
-          downloadClientSettings && enabledClients.length === 0 ? "No clients are on." : undefined
+          downloadClientSettings && enabledClients.length + pluginSources.length === 0
+            ? "No clients are on."
+            : undefined
         }
         actions={
           availableClients.length > 0 ? (
@@ -88,6 +97,14 @@ export function DownloadsSection() {
             />
           );
         })}
+        {pluginSources.map((plugin) => (
+          <SettingsServiceRow
+            key={plugin.id}
+            to={`plugins/${plugin.id}`}
+            name={plugin.manifest?.name ?? plugin.id}
+            status={pluginStatus(plugin)}
+          />
+        ))}
       </SettingsGroup>
       <SettingsGroup title="Indexers">
         <SettingsServiceRow

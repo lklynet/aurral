@@ -50,6 +50,8 @@ const RESET_TABLES = [
   "custom_artwork",
   "library_scan_runs",
   "library_search_documents",
+  "plugins",
+  "plugin_dev_keys",
   "settings",
 ];
 

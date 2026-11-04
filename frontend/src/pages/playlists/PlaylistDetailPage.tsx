@@ -15,6 +15,7 @@ import {
   CollectionPlayButtons,
 } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
+import { usePlaylistPluginActions } from "../../hooks/usePluginActions.ts";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -125,6 +126,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const share = useShareAction();
+  const pluginActions = usePlaylistPluginActions(playlist.id);
   const showTrackAvailability = playlist.showTrackAvailability === true;
   const {
     tracks: savedTracks,
@@ -153,8 +155,13 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const [syncing, setSyncing] = useState(false);
 
   const importSource = playlist.importSource || null;
-  const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
-  const providerLabel = isSyncable ? getImportedProviderLabel(importSource!.provider) : "";
+  const fromPlugin = importSource?.provider.startsWith("plugin:") === true;
+  const isSyncable = fromPlugin || SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
+  const providerLabel = fromPlugin
+    ? playlist.sourceName || "a plugin"
+    : isSyncable
+      ? getImportedProviderLabel(importSource!.provider)
+      : "";
   const totalTracks = Math.max(
     0,
     getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) -
@@ -399,6 +406,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                   checked: showTrackAvailability,
                   onSelect: () => updateTrackAvailability(!showTrackAvailability),
                 }),
+                ...pluginActions,
                 {
                   id: "delete",
                   label: "Delete playlist",

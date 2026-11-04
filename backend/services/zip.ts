@@ -246,6 +246,8 @@ export async function readZipEntries(file: string) {
       entries.push({
         name: central.toString("utf8", at + 46, nameEnd),
         stored: central.readUInt16LE(at + 10) === 0 && size === compressedSize,
+        deflated: central.readUInt16LE(at + 10) === 8,
+        compressedSize,
         crc: central.readUInt32LE(at + 16),
         size,
         dataOffset: localOffset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28),
@@ -258,22 +260,33 @@ export async function readZipEntries(file: string) {
   }
 }
 
-export async function extractZipEntry(file: string, entry: ZipFileEntry, target: string) {
-  if (!entry.stored)
+export async function extractZipEntry(
+  file: string,
+  entry: ZipFileEntry,
+  target: string,
+  { allowDeflate = false } = {},
+) {
+  const inflate = allowDeflate && entry.deflated;
+  if (!entry.stored && !inflate)
     throw new ZipFormatError(
       `${entry.name} is compressed. Only uncompressed zip files are supported.`,
     );
   let crc = 0;
+  let written = 0;
   const checksum = new Transform({
     transform(chunk: Buffer, _encoding, done) {
+      written += chunk.length;
+      if (written > entry.size) return done(new ZipFormatError(`${entry.name} is damaged.`));
       crc = zlib.crc32(chunk, crc);
       done(null, chunk);
     },
   });
+  const length = inflate ? entry.compressedSize : entry.size;
   const source =
-    entry.size > 0
-      ? createReadStream(file, { start: entry.dataOffset, end: entry.dataOffset + entry.size - 1 })
+    length > 0
+      ? createReadStream(file, { start: entry.dataOffset, end: entry.dataOffset + length - 1 })
       : Readable.from([]);
-  await pipeline(source, checksum, createWriteStream(target));
+  if (inflate) await pipeline(source, zlib.createInflateRaw(), checksum, createWriteStream(target));
+  else await pipeline(source, checksum, createWriteStream(target));
   if (crc !== entry.crc) throw new ZipFormatError(`${entry.name} is damaged.`);
 }

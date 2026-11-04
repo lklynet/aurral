@@ -11,6 +11,7 @@ import { loadRemoteShare } from "../shareLinks/remote.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
+import { fetchPluginPlaylist } from "../plugins/pluginImportList.ts";
 
 type CodedError = Error & { statusCode?: number };
 
@@ -80,6 +81,10 @@ export async function fetchImportedPlaylistTracks({
   if (provider === "deezer-playlist") {
     const { tracks, stats, excluded, artworkUrl } = await getDeezerPlaylist(externalId);
     return { tracks, stats, excluded, artworkUrl };
+  }
+  if (provider.startsWith("plugin:")) {
+    const { tracks, stats, artworkUrl } = await fetchPluginPlaylist(provider, externalId);
+    return { tracks, stats, artworkUrl };
   }
   if (provider === "aurral-share") {
     const { manifest } = await loadRemoteShare(externalId);

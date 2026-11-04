@@ -252,16 +252,21 @@ export type ServiceStatus = { label: ReactNode; tone?: "default" | "muted" | "er
 export function SettingsServiceRow({
   to,
   name,
+  detail,
   status,
 }: {
   to: string;
   name: ReactNode;
+  detail?: ReactNode;
   status?: ServiceStatus | null;
 }) {
   const tone = status?.tone ?? "default";
   return (
     <SettingsLink to={to} className="settings-service">
-      <span className="settings-service__name">{name}</span>
+      <span className="settings-service__name">
+        {name}
+        {detail ? <span className="settings-service__detail">{detail}</span> : null}
+      </span>
       {status ? (
         <span className={`settings-service__status settings-service__status--${tone}`}>
           {tone === "error" ? <AlertCircle aria-hidden="true" /> : null}

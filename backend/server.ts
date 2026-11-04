@@ -24,6 +24,8 @@ import {
   shutdownHonkerInfrastructure,
 } from "./services/honkerWorkerRuntime.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
+import { stopAllPlugins } from "./services/plugins/pluginHost.ts";
+import { refreshInstalledPlugins } from "./services/plugins/pluginService.ts";
 import { asAppError } from "../lib/errors.ts";
 import { startMainLogging } from "./services/logs.ts";
 
@@ -118,6 +120,7 @@ const gracefulShutdown = async (signal: NodeJS.Signals) => {
     clearInterval(interval);
   }
   stopPlaylistStatusBroadcasts();
+  stopAllPlugins();
   await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
   await stopShareListener();
   await new Promise<void>((resolve) => {
@@ -143,6 +146,11 @@ httpServer.listen(PORT, async () => {
   bootstrapHonkerSchedules();
   initializeAppRuntime();
   void syncShareListener();
+  refreshInstalledPlugins().catch((error) =>
+    logger.warn("system", "Couldn't read the plugins folder", {
+      message: asAppError(error)?.message,
+    }),
+  );
 });
 
 httpServer.on("error", (error: NodeJS.ErrnoException) => {

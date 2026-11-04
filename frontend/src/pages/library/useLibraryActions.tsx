@@ -84,6 +84,7 @@ import {
   reserveUniquePlaylistName,
 } from "../ArtistDetails/utils";
 import { queryClient, queryKeys } from "../../queryClient.ts";
+import { usePluginActions } from "../../hooks/usePluginActions.ts";
 import { showFavoriteRemoved } from "../../utils/favoriteUndo.ts";
 import { libraryAlbumPath as albumLink } from "../../../../lib/albumPath.ts";
 import {
@@ -174,6 +175,9 @@ export function useLibraryActions({
   const { hasPermission, user } = useAuth();
   const toast = useToast();
   const shareLibrary = useLibraryShareAction();
+  const pluginActions = usePluginActions();
+  const pluginMenuItems: typeof pluginActions = (target, input) =>
+    isPreviewLibrary ? [] : pluginActions(target, input);
   const { showError, showSuccess } = toast;
   const {
     staticPlaylists,
@@ -1033,6 +1037,7 @@ export function useLibraryActions({
         ]
       : []),
     ...extra,
+    ...pluginMenuItems("album", { albumId: album.id }),
     ...(canDeleteAlbum && canRemoveLibraryAlbum(album, { lidarrConnected })
       ? [
           {
@@ -1253,6 +1258,7 @@ export function useLibraryActions({
             },
           ]
         : []),
+      ...pluginMenuItems("track", { trackIds: [track.id] }),
       ...(monitoringItem ? [monitoringItem] : []),
       ...(keepFileItem ? [{ ...keepFileItem, separatorBefore: !monitoringItem }] : []),
       ...(canDeleteTrack && (hasDeletableTrackFile(track) || hasAurralTrackFile(track))
@@ -1462,6 +1468,7 @@ export function useLibraryActions({
     libraryArtistPath,
     libraryAlbumPath,
     shareMenuItem,
+    pluginMenuItems,
     albumMenuItems,
     collectionQueueItems,
     collectionPlayItems,

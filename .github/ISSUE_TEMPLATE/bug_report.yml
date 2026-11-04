@@ -81,6 +81,18 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: plugins
+    attributes:
+      label: Plugins
+      description: Turn on safe mode in Settings > Plugins and try again. A bug that goes away in safe mode belongs to the plugin, so report it there.
+      options:
+        - I don't use plugins
+        - It still happens in safe mode
+        - I haven't tried safe mode
+    validations:
+      required: true
+
   - type: input
     id: version
     attributes:

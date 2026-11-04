@@ -12,5 +12,6 @@ export const API_CONTRACT = {
     "shareImports",
     "trending",
     "flowAutoDownload",
+    "pluginActions",
   ],
 };

@@ -18,6 +18,7 @@ import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { pluginIdFromSource } from "../plugins/pluginStore.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
 
@@ -127,7 +128,9 @@ export async function denyBlockedJob(
       if (!getBlockedJob(job.id)) return false;
       await discardReviewFile(job);
       const deniedSourceKey =
-        job.downloadSource && ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+        job.downloadSource &&
+        (["usenet", "ytdlp", "deemix"].includes(job.downloadSource) ||
+          pluginIdFromSource(job.downloadSource))
           ? String(job.releaseGuid || "").trim()
           : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
       if (job.downloadSource && deniedSourceKey) {

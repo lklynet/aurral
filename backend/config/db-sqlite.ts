@@ -200,6 +200,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS plugins (
+    id TEXT PRIMARY KEY NOT NULL,
+    manifest TEXT,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    settings TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 30,
+    last_error TEXT,
+    disabled TEXT NOT NULL DEFAULT '[]',
+    source_url TEXT,
+    scheduled_at INTEGER,
+    broken_in_a_row INTEGER NOT NULL DEFAULT 0,
+    update_manifest TEXT,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS plugin_dev_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash TEXT NOT NULL UNIQUE,
+    hint TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS history_servers (
     user_id INTEGER NOT NULL,
     provider TEXT NOT NULL,
@@ -708,6 +732,11 @@ tryAddColumn("ALTER TABLE share_links ADD COLUMN manifest TEXT");
 tryAddColumn("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN external_id TEXT");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN disabled TEXT NOT NULL DEFAULT '[]'");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN source_url TEXT");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN scheduled_at INTEGER");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN broken_in_a_row INTEGER NOT NULL DEFAULT 0");
+tryAddColumn("ALTER TABLE plugins ADD COLUMN update_manifest TEXT");
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_play_events_external
     ON play_events(user_id, source, external_id) WHERE external_id IS NOT NULL;

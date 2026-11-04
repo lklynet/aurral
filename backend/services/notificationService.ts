@@ -6,6 +6,11 @@ import { enqueueNotification, parseHonkerPayload } from "./honkerDb.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { webhookSettingsSchema } from "../db/helpers/integrationSettings.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
+import {
+  dispatchPluginEvent,
+  emitPluginEvent,
+  pluginEventDeliverySchema,
+} from "./plugins/pluginEvents.ts";
 
 type WebhookSettings = v.InferOutput<typeof webhookSettingsSchema>;
 type WebhookTarget = NonNullable<WebhookSettings["webhooks"]>[number];
@@ -36,6 +41,7 @@ interface RequestNotice {
 const text = v.optional(v.string());
 
 export const queuedNotificationSchema = v.variant("kind", [
+  pluginEventDeliverySchema,
   v.looseObject({
     kind: v.literal("gotify"),
     title: text,
@@ -224,6 +230,10 @@ export async function deliverQueuedNotification(
     await sendGotifyDirect(payload.title, payload.message, payload.priority ?? 5);
     return;
   }
+  if (payload.kind === "plugin") {
+    dispatchPluginEvent(payload);
+    return;
+  }
   await sendWebhooksDirect(
     payload.integrations || {},
     payload.event,
@@ -305,6 +315,11 @@ export async function notifyDiscoveryUpdated() {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const tasks = [];
+  emitPluginEvent("notification", {
+    kind: "discovery.updated",
+    title: "Discover updated",
+    message: "Daily Discover recommendations have been updated.",
+  });
   if (gotify.notifyDiscoveryUpdated) {
     tasks.push(
       queueGotify("Aurral – Discover", "Daily Discover recommendations have been updated.", 5),
@@ -330,6 +345,12 @@ export async function notifyFlowDone(
   const failed = stats.failed ?? 0;
   const displayName = String(flowName || playlistType || "").trim() || playlistType;
   const tasks = [];
+  emitPluginEvent("notification", {
+    kind: "flow.done",
+    title: "Flow finished",
+    message: `Flow "${displayName}" finished processing.`,
+    flow: { name: displayName, path: flowPath, completed, failed },
+  });
   if (gotify.notifyWeeklyFlowDone) {
     tasks.push(
       queueGotify(
@@ -358,6 +379,13 @@ export async function notifyRequestMade({
   const actor = requestActorVars(user);
   const subject = formatRequestSubject(albumName, artistName);
   const tasks = [];
+  emitPluginEvent("notification", {
+    kind: "request.made",
+    title: "Album requested",
+    message: `Album requested: ${subject}`,
+    album: { title: albumName ?? null, artist: artistName ?? null },
+    user: actor.username ? { username: actor.username } : null,
+  });
   if (gotify.notifyRequestMade) {
     const byUser = actor.username ? ` (${actor.username})` : "";
     tasks.push(queueGotify("Aurral – Request", `Album requested: ${subject}${byUser}`, 5));
@@ -382,6 +410,13 @@ export async function notifyRequestAvailable({
   const actor = requestActorVars(user);
   const subject = formatRequestSubject(albumName, artistName);
   const tasks = [];
+  emitPluginEvent("notification", {
+    kind: "request.available",
+    title: "Album available",
+    message: `Album available: ${subject}`,
+    album: { title: albumName ?? null, artist: artistName ?? null },
+    user: actor.username ? { username: actor.username } : null,
+  });
   if (gotify.notifyRequestAvailable) {
     const byUser = actor.username ? ` requested by ${actor.username}` : "";
     tasks.push(queueGotify("Aurral – Request", `Album available: ${subject}${byUser}`, 5));
