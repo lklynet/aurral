@@ -30,6 +30,7 @@ export const deezerTrackSchema = v.looseObject({
   title: v.string(),
   title_short: v.optional(v.string()),
   preview: v.optional(v.string()),
+  isrc: v.optional(v.string()),
   duration: v.optional(v.number()),
   rank: v.optional(v.number()),
   track_position: v.optional(v.number()),
@@ -86,6 +87,7 @@ const deezerAlbumTrackCache = createCache(3600);
 const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
 const deezerPreviewLinkCache = createCache(5 * 60);
+const deezerIsrcTrackCache = createCache(24 * 3600, 5000);
 const deezerInflightRequests = new Map();
 const deezerLimiter = createRateLimiter(110);
 
@@ -144,6 +146,19 @@ export async function getDeezerPreviewLink(trackId: string): Promise<string | nu
     const link = track?.preview || null;
     deezerPreviewLinkCache.set(cacheKey, link);
     return link;
+  });
+}
+
+export async function deezerGetPlayableTrackByIsrc(isrc: string) {
+  if (!/^[A-Z0-9]{12}$/i.test(isrc)) return null;
+  const cacheKey = `dz-isrc:${isrc}`;
+  return cachedOrInflight(deezerIsrcTrackCache, cacheKey, deezerInflightRequests, async () => {
+    const track = await deezerLimiter.schedule(() =>
+      deezerGet(deezerTrackSchema, `/track/isrc:${isrc}`, { timeout: 3000 }),
+    );
+    const playable = track?.preview ? track : null;
+    deezerIsrcTrackCache.set(cacheKey, playable);
+    return playable;
   });
 }
 

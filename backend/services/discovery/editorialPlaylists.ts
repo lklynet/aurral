@@ -106,7 +106,7 @@ export async function resolveEditorialTrackLinks({
 
 export async function getEditorialPlaylist(user: RequestUser, value: string) {
   const id = validateDeezerPlaylistId(value);
-  const playlist = await getDeezerPlaylist(id);
+  const playlist = await getDeezerPlaylist(id, { findMissingPreviews: true });
   return {
     id: playlist.id,
     name: playlist.name,

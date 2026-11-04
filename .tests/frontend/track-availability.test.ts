@@ -26,6 +26,18 @@ test("availability counts playable completed tracks, including tracks reused fro
   assert.equal(countAvailableTracks(tracks), 3);
 });
 
+test("a Deezer track without a preview says so instead of looking queued", () => {
+  assert.equal(
+    getTrackAvailability({ id: "track", status: "done", isPreview: true }).label,
+    "No preview",
+  );
+  assert.equal(
+    getTrackAvailability({ id: "track", status: "done", isPreview: true, streamUrl: "/p.mp3" })
+      .label,
+    "Available",
+  );
+});
+
 test("completed tracks without a stream URL offer a fresh search when availability is enabled", () => {
   for (const streamUrl of [undefined, null, ""]) {
     for (const qualityState of ["preferred", "upgrade"]) {
