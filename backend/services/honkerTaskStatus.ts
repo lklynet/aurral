@@ -176,6 +176,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Update check",
     description: "Checks aurral.org for a newer Aurral build in this channel.",
   },
+  "telemetry-report": {
+    label: "Usage stats",
+    description: "Sends anonymous usage stats to aurral.org every 3 days when turned on.",
+  },
   "trending-charts-refresh": {
     label: "Trending charts refresh",
     description: "Updates the Trending charts from Deezer and Apple Music.",

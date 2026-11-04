@@ -5,12 +5,16 @@ import { setDateTimeFormat } from "../../../utils/dateTime.ts";
 import { queryKeys } from "../../../queryClient.ts";
 import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsGroup, SettingsPage, SettingsRow } from "../SettingsLayout";
+import { SettingsGroup, SettingsPage, SettingsRow, useSettingsItem } from "../SettingsLayout";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { BackupGroup } from "./BackupGroup";
+import { UsageStatsDetail, UsageStatsGroup } from "./UsageStats";
 
 export function GeneralSection() {
   const { settings, updateSettings } = useServerSettings();
+  const item = useSettingsItem();
+
+  if (item === "usage-stats") return <UsageStatsDetail />;
 
   return (
     <SettingsPage title="General">
@@ -35,6 +39,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
       </SettingsGroup>
+      <UsageStatsGroup />
       <SettingsGroup title="Subsonic">
         <SettingsRow
           label="Favorite flow tracks"

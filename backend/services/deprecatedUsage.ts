@@ -4,6 +4,7 @@ import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import type { DEPRECATION_KINDS } from "../../lib/telemetry.ts";
 import { logger } from "./logger.ts";
 
 export const DEPRECATED_USAGE_SETTING = "deprecatedUsage";
@@ -24,7 +25,7 @@ const DEPRECATIONS = {
     "A client called /api/weekly-flow. Use /api/playlists instead. Aurral 3.0 removes /api/weekly-flow.",
   "weekly-flow-channel":
     "A client subscribed to the weekly-flow WebSocket channel. Use the playlists channel instead. Aurral 3.0 removes weekly-flow.",
-};
+} satisfies Record<(typeof DEPRECATION_KINDS)[number], string>;
 
 type DeprecationKind = keyof typeof DEPRECATIONS;
 

@@ -105,6 +105,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   general: {
     Display: "date and time format all users",
+    "Usage stats": "telemetry anonymous analytics privacy aurral.org share",
     Subsonic: "favorite flow tracks keep clients",
     "API access": "API key X-Api-Key api_key admin authentication copy rotate",
     Backup: "back up restore export import download upload config database migrate move server",

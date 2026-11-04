@@ -257,6 +257,7 @@ export const queryKeys = {
   historyServers: (userId: MaybeId): QueryKey => ["history-servers", userId || null],
   plex: (userId: MaybeId): QueryKey => ["plex", userId || null],
   apiKey: ["auth", "api-key"],
+  telemetry: ["settings", "telemetry"],
   myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
