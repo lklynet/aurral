@@ -1,5 +1,4 @@
-import * as v from "valibot";
-import { MAX_TELEMETRY_BYTES, telemetryReportSchema } from "../../../lib/telemetry.ts";
+import { MAX_TELEMETRY_BYTES, isTelemetryReport } from "../../../lib/telemetry.ts";
 
 const DAY_S = 24 * 60 * 60;
 const RETENTION_DAYS = 400;
@@ -45,14 +44,13 @@ export async function onRequestPost({ env, request }) {
   } catch {
     return answer(400, "invalid_json");
   }
-  const result = v.safeParse(telemetryReportSchema, parsed);
-  if (!result.success) return answer(400, "invalid_report");
+  if (!isTelemetryReport(parsed)) return answer(400, "invalid_report");
   await ensureSchema(db);
   const now = Math.floor(Date.now() / 1000);
   const day = now - (now % DAY_S);
   await db
     .prepare("INSERT INTO telemetry_reports (day, report) VALUES (?, ?)")
-    .bind(day, JSON.stringify(result.output))
+    .bind(day, JSON.stringify(parsed))
     .run();
   await db
     .prepare("DELETE FROM telemetry_reports WHERE day < ?")

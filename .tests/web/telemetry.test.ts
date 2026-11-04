@@ -93,6 +93,9 @@ test("reports with extra fields, free text, or unofficial versions are refused",
     { ...report, integrations: ["https://lidarr.home.lan"] },
     { ...report, version: "my-fork" },
     { ...report, scale: { users: 7 } },
+    { ...report, seen: { ...report.seen, path: "/music/private" } },
+    { ...report, downloads: { slskd: { done: "1" } } },
+    Object.fromEntries(Object.entries(report).filter(([key]) => key !== "docker")),
   ]) {
     assert.equal((await post(db, body)).status, 400);
   }

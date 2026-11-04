@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import * as v from "valibot";
 import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
-import { TELEMETRY_INTERVAL_MS, telemetryReportSchema } from "../../lib/telemetry.ts";
+import { TELEMETRY_INTERVAL_MS, isTelemetryReport } from "../../lib/telemetry.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -74,7 +73,8 @@ test("the report fits the schema aurral.org accepts and holds only buckets", asy
   telemetry.noteClientSeen("news", true, IPHONE);
   telemetry.noteSubsonicClient("Symfonium");
 
-  const report = v.parse(telemetryReportSchema, await buildTelemetryReport());
+  const report = await buildTelemetryReport();
+  assert.ok(isTelemetryReport(report));
 
   assert.equal(report.scale.users, "2-9");
   assert.equal(report.scale.admins, "1");
@@ -118,5 +118,5 @@ test("a report goes out once every three days, and only when turned on", async (
   assert.equal(await sendTelemetryReport(start + TELEMETRY_INTERVAL_MS), true);
 
   assert.equal(sent.length, 2);
-  assert.ok(sent.every((report) => v.is(telemetryReportSchema, report)));
+  assert.ok(sent.every(isTelemetryReport));
 });

@@ -1,4 +1,3 @@
-import * as v from "valibot";
 import { releaseChannel } from "./release-version.ts";
 
 export const TELEMETRY_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -254,36 +253,60 @@ export function subsonicClientName(client: string): (typeof SUBSONIC_CLIENTS)[nu
   return SUBSONIC_CLIENTS.find((name) => normalized.startsWith(name)) ?? "other";
 }
 
-const count = v.picklist(COUNT_BUCKETS);
-const counts = <const Keys extends readonly string[]>(keys: Keys) =>
-  v.record(v.picklist(keys), count);
-const list = <const Keys extends readonly string[]>(keys: Keys) =>
-  v.pipe(v.array(v.picklist(keys)), v.maxLength(keys.length));
+type Guard<Value> = (value: unknown) => value is Value;
+type Guarded<Check> = Check extends Guard<infer Value> ? Value : never;
+type Exact<Shape> = { [Key in keyof Shape]: Guarded<Shape[Key]> };
 
-export const telemetryReportSchema = v.strictObject({
-  schema: v.literal(1),
-  version: v.pipe(
-    v.string(),
-    v.maxLength(64),
-    v.check((version) => releaseChannel(version) !== null, "Not an Aurral release"),
-  ),
-  docker: v.boolean(),
-  os: v.picklist(["linux", "darwin", "win32", "freebsd", "other"]),
-  arch: v.picklist(["x64", "arm64", "arm", "other"]),
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const oneOf =
+  <const Values extends readonly unknown[]>(values: Values) =>
+  (value: unknown): value is Values[number] =>
+    values.includes(value);
+
+const exact =
+  <Shape extends Record<string, Guard<unknown>>>(shape: Shape) =>
+  (value: unknown): value is Exact<Shape> =>
+    isObject(value) &&
+    Object.keys(value).length === Object.keys(shape).length &&
+    Object.entries(shape).every(([key, check]) => Object.hasOwn(value, key) && check(value[key]));
+
+const list =
+  <const Values extends readonly string[]>(values: Values) =>
+  (value: unknown): value is Values[number][] =>
+    Array.isArray(value) && value.length <= values.length && value.every(oneOf(values));
+
+const recordOf =
+  <const Keys extends readonly string[], Value>(keys: Keys, check: Guard<Value>) =>
+  (value: unknown): value is Partial<Record<Keys[number], Value>> =>
+    isObject(value) &&
+    Object.entries(value).every(([key, item]) => keys.includes(key) && check(item));
+
+const count = oneOf(COUNT_BUCKETS);
+const counts = <const Keys extends readonly string[]>(keys: Keys) => recordOf(keys, count);
+
+export const isTelemetryReport = exact({
+  schema: oneOf([1]),
+  version: (value: unknown): value is string =>
+    typeof value === "string" && value.length <= 64 && releaseChannel(value) !== null,
+  docker: (value: unknown): value is boolean => typeof value === "boolean",
+  os: oneOf(["linux", "darwin", "win32", "freebsd", "other"]),
+  arch: oneOf(["x64", "arm64", "arm", "other"]),
   scale: counts(SCALE_KEYS),
   integrations: list(INTEGRATIONS),
   auth: list(AUTH_MODES),
   settings: list(SETTING_FLAGS),
-  dateTimeFormat: v.picklist(DATE_TIME_FORMATS),
-  discovery: v.picklist(DISCOVERY_SOURCES),
+  dateTimeFormat: oneOf(DATE_TIME_FORMATS),
+  discovery: oneOf(DISCOVERY_SOURCES),
   listening: counts(LISTEN_SOURCES),
   playbackServers: counts(PLAYBACK_SERVERS),
   plays: counts(PLAY_SOURCES),
-  downloads: v.record(v.picklist(DOWNLOAD_SOURCES), v.strictObject({ done: count, failed: count })),
+  downloads: recordOf(DOWNLOAD_SOURCES, exact({ done: count, failed: count })),
   imports: counts(IMPORT_SOURCES),
   appearance: counts(APPEARANCES),
   themes: counts(THEME_KINDS),
-  seen: v.strictObject({
+  seen: exact({
     pages: list(TELEMETRY_PAGES),
     devices: list(DEVICES),
     os: list(CLIENT_OS),
@@ -291,8 +314,8 @@ export const telemetryReportSchema = v.strictObject({
     subsonicClients: list(SUBSONIC_CLIENTS),
     display: list(SEEN_GROUPS.display),
   }),
-  problems: v.record(v.picklist(LOG_CATEGORIES), v.strictObject({ warn: count, error: count })),
+  problems: recordOf(LOG_CATEGORIES, exact({ warn: count, error: count })),
   deprecations: list(DEPRECATION_KINDS),
 });
 
-export type TelemetryReport = v.InferOutput<typeof telemetryReportSchema>;
+export type TelemetryReport = Guarded<typeof isTelemetryReport>;
