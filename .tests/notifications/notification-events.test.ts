@@ -9,6 +9,7 @@ import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import * as v from "valibot";
 
 import {
   setupIsolatedBackend,
@@ -30,6 +31,9 @@ const {
   notifyRequestMade,
   notifyRequestAvailable,
   notifyFlowDone,
+  notifyArtistAdded,
+  notifyTrackAdded,
+  queuedNotificationSchema,
 } = notifications;
 
 async function withCaptureServer(
@@ -119,17 +123,12 @@ test("interpolateBody does not rescan substituted placeholder values", () => {
 test("deliverQueuedNotification interpolates request webhook bodies", async () => {
   await withCaptureServer(async ({ baseUrl, waitFor }) => {
     await deliverQueuedNotification({
-      kind: "webhooks",
+      kind: "webhook",
       event: "notifyRequestAvailable",
-      integrations: {
-        webhookEvents: { notifyRequestAvailable: true },
-        webhooks: [
-          {
-            url: `${baseUrl}/hook`,
-            body: '{"album":"$albumName","by":"$username","event":"$event"}',
-            headers: [],
-          },
-        ],
+      webhook: {
+        url: `${baseUrl}/hook`,
+        body: '{"album":"$albumName","by":"$username","event":"$event"}',
+        headers: [],
       },
       vars: {
         albumName: "Blue Train",
@@ -161,15 +160,12 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
           notifyRequestMade: true,
           notifyRequestAvailable: false,
         },
-        webhookEvents: {
-          notifyRequestMade: true,
-          notifyRequestAvailable: false,
-        },
         webhooks: [
           {
             url: `${baseUrl}/hook`,
-            body: '{"album":"$albumName","user":"$username","event":"$event"}',
+            body: '{"album":"$albumName","user":"$username","event":"$event","text":"$message"}',
             headers: [],
+            events: ["notifyRequestMade"],
           },
         ],
       },
@@ -193,31 +189,78 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
       album: "Blue Train",
       user: "alice",
       event: "notifyRequestMade",
+      text: "Album requested: Blue Train by John Coltrane (alice)",
     });
   });
 });
 
-test("queued webhooks carry only webhook settings, and a notification Aurral can't read is dropped", async () => {
+test("each subscribed webhook is queued on its own, carrying only itself", async () => {
   await withCaptureServer(async ({ baseUrl, waitFor }) => {
     dbOps.updateSettings({
       integrations: {
         lidarr: { url: "http://lidarr.test", apiKey: "lidarr-secret" },
-        webhookEvents: { notifyRequestMade: true },
-        webhooks: [{ url: `${baseUrl}/hook`, headers: [] }],
+        webhooks: [
+          { url: `${baseUrl}/discord`, headers: [], events: ["notifyArtistAdded"] },
+          { url: `${baseUrl}/autopulse`, headers: [], events: ["notifyTrackAdded"] },
+          {
+            url: `${baseUrl}/both`,
+            headers: [],
+            events: ["notifyArtistAdded", "notifyTrackAdded"],
+          },
+        ],
       },
     });
 
     honker.enqueueNotification({ kind: "email" });
-    await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
-    await waitFor(1);
+    notifyArtistAdded({ artistName: "Slowdive", user: { id: 7, username: "alice" } });
 
     const queued = honker.listHonkerJobs("_outbox:notifications");
-    assert.equal(queued.length, 1);
-    const { integrations } = requireFixture(requireFixture(queued[0]).payload);
-    assert.deepEqual(Object.keys(requireFixture(integrations)).sort(), [
-      "webhookEvents",
-      "webhooks",
-    ]);
+    assert.deepEqual(
+      queued.flatMap((job) => {
+        const queuedJob = v.safeParse(queuedNotificationSchema, requireFixture(job).payload);
+        if (!queuedJob.success || queuedJob.output.kind !== "webhook") return [];
+        const { webhook } = queuedJob.output;
+        return webhook.url.startsWith(baseUrl) ? [webhook] : [];
+      }),
+      [
+        { url: `${baseUrl}/discord`, headers: [], events: ["notifyArtistAdded"] },
+        { url: `${baseUrl}/both`, headers: [], events: ["notifyArtistAdded", "notifyTrackAdded"] },
+      ],
+    );
+    const requests = await waitFor(2);
+    assert.deepEqual(requests.map((entry) => entry.url).sort(), ["/both", "/discord"]);
+  });
+});
+
+test("notifyTrackAdded hands webhooks the file and its folder", async () => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    dbOps.updateSettings({
+      integrations: {
+        webhooks: [
+          {
+            url: `${baseUrl}/autopulse`,
+            body: '{"path":"$path","folder":"$albumPath","track":"$trackName","text":"$message"}',
+            headers: [],
+            events: ["notifyTrackAdded"],
+          },
+        ],
+      },
+    });
+
+    notifyTrackAdded({
+      trackName: "Alison",
+      artistName: "Slowdive",
+      albumName: "Souvlaki",
+      filePath: "/music/Slowdive/Souvlaki/01 - Alison.flac",
+    });
+
+    const [request] = await waitFor(1);
+    assert.deepEqual(request?.body, {
+      path: "/music/Slowdive/Souvlaki/01 - Alison.flac",
+      folder: "/music/Slowdive/Souvlaki",
+      track: "Alison",
+      text: "Track added: Alison by Slowdive",
+    });
   });
 });
 
@@ -232,10 +275,6 @@ test("notifyRequestAvailable omits actor text when username is missing", async (
           token: "test-token",
           notifyRequestMade: false,
           notifyRequestAvailable: true,
-        },
-        webhookEvents: {
-          notifyRequestMade: false,
-          notifyRequestAvailable: false,
         },
         webhooks: [],
       },
@@ -264,15 +303,12 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
           notifyRequestMade: false,
           notifyRequestAvailable: false,
         },
-        webhookEvents: {
-          notifyRequestMade: false,
-          notifyRequestAvailable: true,
-        },
         webhooks: [
           {
             url: `${baseUrl}/hook`,
             body: '{"event":"$event"}',
             headers: [],
+            events: ["notifyRequestAvailable"],
           },
         ],
       },
@@ -326,16 +362,12 @@ test("failed notification delivery is logged without an unhandled rejection", as
       integrations: {
         ...settings.integrations,
         gotify: { ...settings.integrations?.gotify, notifyRequestMade: false },
-        webhookEvents: {
-          ...settings.integrations?.webhookEvents,
-          notifyRequestMade: true,
-          notifyRequestAvailable: true,
-        },
         webhooks: [
           {
             url: webhookUrl,
             body: '{"album":"$albumName"}',
             headers: [{ key: "Authorization", value: "receiver-secret" }],
+            events: ["notifyRequestMade", "notifyRequestAvailable"],
           },
         ],
       },
@@ -385,14 +417,12 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
           token: "test-token",
           notifyWeeklyFlowDone: true,
         },
-        webhookEvents: {
-          notifyWeeklyFlowDone: true,
-        },
         webhooks: [
           {
             url: `${baseUrl}/hook`,
             body: '{"name":"$flowName","path":"$flowPath"}',
             headers: [],
+            events: ["notifyWeeklyFlowDone"],
           },
         ],
       },
@@ -416,5 +446,58 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     });
     assert.ok(webhook != null);
     assert.doesNotMatch(webhook.body.path, /_playlists/);
+  });
+});
+
+test("an Aurral album request is available once its last track is filed", async () => {
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const { recordPipelineJobSuccess } = await import("../../backend/services/pipelineHelpers.ts");
+  const { recordAlbumRequested } = await import("../../backend/services/aurralHistoryService.ts");
+  downloadTracker.clearAll();
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    dbOps.updateSettings({
+      integrations: {
+        webhooks: [
+          {
+            url: `${baseUrl}/beets`,
+            body: '{"album":"$albumName","folder":"$albumPath"}',
+            headers: [],
+            events: ["notifyRequestAvailable"],
+          },
+        ],
+      },
+    });
+    const requestGroupId = "souvlaki-request";
+    recordAlbumRequested({
+      albumId: "77",
+      albumName: "Souvlaki",
+      artistName: "Slowdive",
+      managedBy: "aurral",
+      requestGroupId,
+    });
+    const queue = (trackName: string) =>
+      requireFixture(
+        downloadTracker.addJob(
+          { artistName: "Slowdive", trackName, albumName: "Souvlaki", requestGroupId },
+          "library",
+        ),
+      );
+    const first = queue("Alison");
+    const second = queue("Machine Gun");
+    const file = (jobId: string, name: string) =>
+      recordPipelineJobSuccess({
+        downloadTracker,
+        job: requireFixture(downloadTracker.getJob(jobId)),
+        committedFinalPath: `/music/Slowdive/Souvlaki/${name}`,
+      });
+
+    await file(first, "01 - Alison.flac");
+    assert.equal(dbOps.getAlbumRequestByGroup(requestGroupId)?.statusLabel, "Requested");
+
+    await file(second, "02 - Machine Gun.flac");
+    assert.equal(dbOps.getAlbumRequestByGroup(requestGroupId)?.statusLabel, "Downloaded");
+    const [request] = await waitFor(1);
+    assert.deepEqual(request?.body, { album: "Souvlaki", folder: "/music/Slowdive/Souvlaki" });
   });
 });

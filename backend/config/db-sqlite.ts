@@ -863,6 +863,32 @@ db.transaction(() => {
   db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));
 }).immediate();
 
+const webhookEventsMigrationKey = "migration:webhook-events-per-webhook-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(webhookEventsMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const stored = db
+    .prepare<[], Pick<SettingsRow, "value">>(
+      "SELECT value FROM settings WHERE key = 'integrations' AND json_valid(value)",
+    )
+    .get();
+  const integrations = v.safeParse(
+    v.looseObject({
+      webhooks: v.optional(v.array(v.looseObject({})), []),
+      webhookEvents: v.optional(v.record(v.string(), v.unknown()), {}),
+    }),
+    stored ? JSON.parse(stored.value) : null,
+  );
+  if (!integrations.success) return;
+  const { webhookEvents, webhooks, ...rest } = integrations.output;
+  const events = Object.keys(webhookEvents).filter((event) => webhookEvents[event] === true);
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(
+    JSON.stringify({ ...rest, webhooks: webhooks.map((webhook) => ({ ...webhook, events })) }),
+  );
+}).immediate();
+
 const perUserDiscoveryMigrationKey = "migration:per-user-discovery-v1";
 db.transaction(() => {
   const claimed = db

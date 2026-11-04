@@ -90,20 +90,16 @@ test("webhook test route sends GET directly with disabled event toggles and does
     url: "http://saved.example/hook",
     body: "saved body",
     headers: [{ key: "X-Saved", value: "true" }],
+    events: [],
   };
-  dbOps.updateSettings({
-    integrations: {
-      webhooks: [savedWebhook],
-      webhookEvents: { notifyRequestMade: false },
-    },
-  });
+  dbOps.updateSettings({ integrations: { webhooks: [savedWebhook] } });
 
   await withReceiver(200, async ({ url, requests }) => {
     const response = await testWebhook({
       url,
       body: "",
       headers: [{ key: "X-Test-Webhook", value: "get" }],
-      webhookEvents: { notifyRequestMade: false },
+      events: [],
     });
 
     assert.equal(response.statusCode, 200);
@@ -116,9 +112,6 @@ test("webhook test route sends GET directly with disabled event toggles and does
   });
 
   assert.deepEqual(dbOps.getSettings().integrations.webhooks, [savedWebhook]);
-  assert.deepEqual(dbOps.getSettings().integrations.webhookEvents, {
-    notifyRequestMade: false,
-  });
 });
 
 test("direct webhook test sends POST headers and fixed placeholder values without event toggles", async () => {

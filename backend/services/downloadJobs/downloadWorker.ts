@@ -789,9 +789,7 @@ export class DownloadWorker {
               ? path.join(playlistManager.downloadRoot, AURRAL_FLOWS_DIR, playlistType)
               : playlistManager.downloadRoot;
             const { notifyFlowDone } = await import("../notificationService.ts");
-            notifyFlowDone(playlistType, { completed, failed }, flowPath, flowName).catch((err) =>
-              console.warn("[DownloadWorker] Gotify notification failed:", err.message),
-            );
+            notifyFlowDone(playlistType, { completed, failed }, flowPath, flowName);
             import("../download/downloadClientSettings.ts")
               .then(({ getDownloadClient }) => {
                 const slskdClient = getDownloadClient("slskd");

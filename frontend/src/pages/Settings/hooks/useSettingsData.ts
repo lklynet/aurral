@@ -181,14 +181,10 @@ const defaultSettings = {
       notifyWeeklyFlowDone: false,
       notifyRequestMade: false,
       notifyRequestAvailable: false,
+      notifyArtistAdded: false,
+      notifyTrackAdded: false,
     },
     webhooks: [],
-    webhookEvents: {
-      notifyDiscoveryUpdated: false,
-      notifyWeeklyFlowDone: false,
-      notifyRequestMade: false,
-      notifyRequestAvailable: false,
-    },
   },
   inbox: {
     enabled: true,

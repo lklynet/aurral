@@ -1,6 +1,6 @@
 ---
 title: Notifications (Gotify and webhooks)
-description: Send alerts when discovery updates, a flow finishes, or an album request changes.
+description: Send alerts when music is added, discovery updates, a flow finishes, or an album request changes.
 ---
 
 Aurral can send a notification for these events:
@@ -9,8 +9,10 @@ Aurral can send a notification for these events:
 - **Flow finished**: a flow finished its downloads. The message includes the number of finished and failed tracks.
 - **Request made**: a user requested an album.
 - **Request available**: a requested album was downloaded, or was already on disk.
+- **Artist added**: a user added an artist to the Library.
+- **Track added**: Aurral filed a downloaded track in the Library. This fires once per track, including flow tracks.
 
-Aurral can send notifications to Gotify, to webhooks, or to both. Gotify and webhooks have separate event switches. Aurral does not send an event that is turned off, even when a webhook URL exists.
+Aurral can send notifications to Gotify, to webhooks, or to both. Gotify has one set of event switches, and each webhook has its own. Aurral does not send an event that is turned off.
 
 ## Gotify
 
@@ -24,36 +26,67 @@ Gotify is a self-hosted push notification server.
 
 ## Webhooks
 
-A webhook sends one HTTP request for each event. Configure webhooks in **Settings > Notifications > Webhooks**. Each webhook has these fields:
+A webhook sends one HTTP request for each event it has turned on. Configure webhooks in **Settings > Notifications > Webhooks**. Each webhook has these fields:
 
 - **URL**: the endpoint to call. It must start with `http://` or `https://`.
 - **Body**: optional JSON. Leave it blank to send a `GET` request. Enter a body to send a `POST` request.
 - **Headers**: optional header names and values.
+- **Events**: the events this webhook receives.
+
+Give each receiver only the events it needs. For example, a Discord webhook can receive **Artist added** while a media server scanner receives **Track added**.
 
 The body can use these placeholders:
 
 | Placeholder                 | Value                                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------------------ |
-| `$flowName`                 | The playlist name                                                                          |
+| `$message`                  | A ready-made sentence describing the event, the same text Gotify receives                  |
+| `$event`                    | The event name, such as `notifyTrackAdded`                                                 |
+| `$artistName`, `$albumName` | The artist and album                                                                       |
+| `$trackName`                | The track, for **Track added**                                                             |
+| `$path`                     | The track file, for **Track added**                                                        |
+| `$albumPath`                | The folder holding the files, for **Track added** and for albums Aurral downloaded         |
+| `$username`, `$userId`      | The user who requested the album or added the artist                                       |
+| `$flowName`                 | The playlist name, for **Flow finished**                                                   |
 | `$flowPath`                 | The media path. For a flow, `_flows/<flow-id>`. For a static playlist, the Library folder. |
-| `$albumName`, `$artistName` | The requested album and its artist                                                         |
-| `$username`, `$userId`      | The user who requested the album                                                           |
-| `$event`                    | The event name                                                                             |
 
-The album, user, and event placeholders apply to request events.
+A placeholder that doesn't apply to an event is empty. Paths are the paths Aurral sees. If the receiver runs in another container, mount the Library folder at the same path there, or rewrite the prefix in the receiver.
 
-Under **Webhook events** in **Settings > Notifications**, turn on the events that your webhooks send.
+`$message` is enough for most chat services. For Discord, use the body `{"content":"$message"}`. For ntfy, point the URL at your topic and use `{"message":"$message"}`.
 
 ### Test a webhook
 
 Open the webhook and select **Send test**. Aurral sends the current URL, body, and headers at once. The test ignores the event switches and does not save the webhook. It fills the placeholders with these values:
 
-| Placeholder   | Test value             |
-| ------------- | ---------------------- |
-| `$event`      | `webhookTest`          |
-| `$flowName`   | `Aurral webhook test`  |
-| `$flowPath`   | `/aurral/test-webhook` |
-| `$albumName`  | `Test album`           |
-| `$artistName` | `Test artist`          |
-| `$username`   | `webhook-test-user`    |
-| `$userId`     | `webhook-test-user`    |
+| Placeholder   | Test value                                           |
+| ------------- | ---------------------------------------------------- |
+| `$event`      | `webhookTest`                                        |
+| `$message`    | `Aurral webhook test`                                |
+| `$flowName`   | `Aurral webhook test`                                |
+| `$flowPath`   | `/aurral/test-webhook`                               |
+| `$albumName`  | `Test album`                                         |
+| `$albumPath`  | `/music/Test artist/Test album`                      |
+| `$artistName` | `Test artist`                                        |
+| `$trackName`  | `Test track`                                         |
+| `$path`       | `/music/Test artist/Test album/01 - Test track.flac` |
+| `$username`   | `webhook-test-user`                                  |
+| `$userId`     | `webhook-test-user`                                  |
+
+## Use beets alongside Aurral
+
+Aurral keeps track of the files in its Library folder, so beets can fix tags but must not move or rename files. Set beets to write tags in place:
+
+```yaml
+import:
+  copy: no
+  move: no
+  write: yes
+```
+
+Then have Aurral tell beets when an album lands:
+
+1. Run a small service next to beets that turns an HTTP request into a command, such as [webhook](https://github.com/adnanh/webhook). Have it run `beet import -q` on the folder it receives.
+2. Add an Aurral webhook pointing at that service with the body `{"folder":"$albumPath"}`, and turn on **Request available**.
+
+Aurral watches the Library folder and picks up the new tags on its own. If the folder isn't watched, have the service call `POST /api/library/refresh` with the admin API key after beets finishes. See [API overview](/api/overview/).
+
+If beets organizes your main collection, add that folder as a read-only folder instead. Aurral plays it and flows skip what you have, without Aurral changing it. See [Library](/using/library/).

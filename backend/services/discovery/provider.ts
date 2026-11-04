@@ -364,9 +364,7 @@ export const updateDiscoveryCache = async (
     });
 
     const { notifyDiscoveryUpdated } = await import("../notificationService.ts");
-    notifyDiscoveryUpdated().catch((err) =>
-      logger.warn("discovery", "[Discovery] Notification failed:", asAppError(err)?.message),
-    );
+    notifyDiscoveryUpdated();
     void recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
 
     try {

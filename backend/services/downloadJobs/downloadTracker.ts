@@ -113,6 +113,9 @@ const persistedRevisionStmt = db.prepare<[], Pick<PlaylistDownloadJobsRevisionRo
 const liveJobStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE id = ?`,
 );
+const requestGroupStatusesStmt = db.prepare<[string], Pick<PlaylistDownloadJobsRow, "status">>(
+  `SELECT status FROM ${JOBS_TABLE} WHERE request_group_id = ? AND upgrade_for_job_id IS NULL`,
+);
 const livePlaylistJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id`,
 );
@@ -2005,6 +2008,16 @@ export class DownloadTracker {
 
   getAll() {
     return sortByCreatedAt(Array.from(this.jobs.values()));
+  }
+
+  isRequestGroupDone(requestGroupId: string) {
+    const statuses = requestGroupStatusesStmt.all(requestGroupId).map(({ status }) => status);
+    return (
+      statuses.includes("done") &&
+      statuses.every(
+        (status) => !["pending", "downloading", "cancel_requested", "blocked"].includes(status),
+      )
+    );
   }
 
   hasPersistedJob(id: string | null | undefined) {

@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { logger } from "../../services/logger.ts";
 import { USENET_CLIENT_KEYS } from "../../services/usenetClientCommon.ts";
+import { NOTIFICATION_EVENTS } from "../../../lib/notificationEvents.ts";
 import { lenient, listOf, recordOf } from "./storedSchemas.ts";
 
 const number = v.pipe(
@@ -17,28 +18,15 @@ const id = lenient(v.nullable(number));
 const service = <Entries extends v.ObjectEntries>(entries: Entries) =>
   lenient(v.looseObject(entries));
 
-const webhookSettings = {
-  webhooks: lenient(
-    listOf(
-      v.looseObject({
-        url: v.string(),
-        headers: lenient(listOf(v.looseObject({ key: v.string(), value: v.string() }))),
-        body: nullableText,
-      }),
-    ),
-  ),
-  webhookEvents: service({
-    notifyDiscoveryUpdated: flag,
-    notifyWeeklyFlowDone: flag,
-    notifyRequestMade: flag,
-    notifyRequestAvailable: flag,
-  }),
-};
-
-export const webhookSettingsSchema = v.looseObject(webhookSettings);
+export const webhookSchema = v.looseObject({
+  url: v.string(),
+  headers: lenient(listOf(v.looseObject({ key: v.string(), value: v.string() }))),
+  body: nullableText,
+  events: lenient(listOf(v.picklist(NOTIFICATION_EVENTS))),
+});
 
 export const integrationSettingsSchema = v.looseObject({
-  ...webhookSettings,
+  webhooks: lenient(listOf(webhookSchema)),
   lastfm: service({
     apiKey: text,
     apiSecret: text,
@@ -137,6 +125,8 @@ export const integrationSettingsSchema = v.looseObject({
     notifyWeeklyFlowDone: flag,
     notifyRequestMade: flag,
     notifyRequestAvailable: flag,
+    notifyArtistAdded: flag,
+    notifyTrackAdded: flag,
   }),
   google: service({ enabled: flag, clientId: text, clientSecret: text, redirectUri: text }),
   musicbrainz: service({ email: text, customUrl: text }),

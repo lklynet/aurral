@@ -1,30 +1,36 @@
 import * as v from "valibot";
+import path from "node:path";
 import axios from "../../lib/axiosFetch.ts";
+import type { NotificationEvent } from "../../lib/notificationEvents.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
 import { enqueueNotification, parseHonkerPayload } from "./honkerDb.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { webhookSettingsSchema } from "../db/helpers/integrationSettings.ts";
-import type { StoredIntegrations } from "../db/helpers/settings.ts";
+import { webhookSchema } from "../db/helpers/integrationSettings.ts";
 import {
   dispatchPluginEvent,
   emitPluginEvent,
   pluginEventDeliverySchema,
 } from "./plugins/pluginEvents.ts";
 
-type WebhookSettings = v.InferOutput<typeof webhookSettingsSchema>;
-type WebhookTarget = NonNullable<WebhookSettings["webhooks"]>[number];
+type WebhookTarget = v.InferOutput<typeof webhookSchema>;
 type WebhookHeader = NonNullable<WebhookTarget["headers"]>[number];
 
-interface WebhookVars {
-  flowPath: string;
-  flowName: string;
-  albumName: string;
-  artistName: string;
-  username: string;
-  userId: string;
-  event: string;
-}
+const WEBHOOK_PLACEHOLDERS = [
+  "flowPath",
+  "flowName",
+  "albumName",
+  "albumPath",
+  "artistName",
+  "trackName",
+  "path",
+  "username",
+  "userId",
+  "event",
+  "message",
+] as const;
+
+type WebhookVars = Partial<Record<(typeof WEBHOOK_PLACEHOLDERS)[number], string>>;
 
 interface RequestActor {
   username?: string;
@@ -35,6 +41,7 @@ interface RequestActor {
 interface RequestNotice {
   albumName?: string;
   artistName?: string;
+  albumPath?: string | null;
   user?: RequestActor | null;
 }
 
@@ -48,23 +55,11 @@ export const queuedNotificationSchema = v.variant("kind", [
     message: text,
     priority: v.optional(v.number()),
   }),
-  v.looseObject({
-    kind: v.literal("webhooks"),
-    integrations: v.optional(webhookSettingsSchema),
-    event: text,
-    vars: v.optional(
-      v.looseObject({
-        flowPath: text,
-        flowName: text,
-        albumName: text,
-        artistName: text,
-        username: text,
-        userId: text,
-        event: text,
-      }),
-    ),
-    flowPath: text,
-    flowName: text,
+  v.object({
+    kind: v.literal("webhook"),
+    event: v.string(),
+    webhook: webhookSchema,
+    vars: v.record(v.string(), v.string()),
   }),
 ]);
 
@@ -121,105 +116,38 @@ function escapeJsonString(value: unknown) {
   return JSON.stringify(String(value ?? "")).slice(1, -1);
 }
 
-const WEBHOOK_PLACEHOLDERS = [
-  "flowPath",
-  "flowName",
-  "albumName",
-  "artistName",
-  "username",
-  "userId",
-  "event",
-];
+const placeholderPattern = new RegExp(`\\$(${WEBHOOK_PLACEHOLDERS.join("|")})\\b`, "g");
 
-export function interpolateBody(str: string | null | undefined, vars: Partial<WebhookVars> = {}) {
-  const source = String(str ?? "");
-  const pattern = new RegExp(`\\$(${WEBHOOK_PLACEHOLDERS.join("|")})`, "g");
-  return source.replace(pattern, (_, key: keyof WebhookVars) => escapeJsonString(vars[key] ?? ""));
+export function interpolateBody(str: string | null | undefined, vars: Record<string, string> = {}) {
+  return String(str ?? "").replace(placeholderPattern, (_, key: string) =>
+    escapeJsonString(vars[key] ?? ""),
+  );
 }
 
-function normalizeWebhookVars(vars: Partial<WebhookVars> = {}, flowPath = "", flowName = "") {
-  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-    return {
-      flowPath: vars.flowPath ?? flowPath ?? "",
-      flowName: vars.flowName ?? flowName ?? "",
-      albumName: vars.albumName ?? "",
-      artistName: vars.artistName ?? "",
-      username: vars.username ?? "",
-      userId: vars.userId ?? "",
-      event: vars.event ?? "",
-    };
+async function sendWebhookDirect(webhook: WebhookTarget, event: string, vars: WebhookVars) {
+  const url = (webhook.url || "").trim();
+  if (!/^https?:\/\//i.test(url)) {
+    logger.warn("notifications", "Skipping a webhook without an http(s) URL", { event });
+    return;
   }
-  return {
-    flowPath: flowPath || "",
-    flowName: flowName || "",
-    albumName: "",
-    artistName: "",
-    username: "",
-    userId: "",
-    event: "",
-  };
-}
-
-function requestActorVars(user: RequestActor | null = null) {
-  if (!user || typeof user !== "object") {
-    return { username: "", userId: "" };
-  }
-  const username = String(user.username || "").trim();
-  const userId = user.userId ?? user.id;
-  return {
-    username,
-    userId: userId == null || userId === "" ? "" : String(userId),
-  };
-}
-
-function formatRequestSubject(albumName?: string, artistName?: string) {
-  const album = String(albumName || "").trim() || "Album";
-  const artist = String(artistName || "").trim();
-  return artist ? `${album} by ${artist}` : album;
-}
-
-async function sendWebhooksDirect(
-  { webhooks, webhookEvents = {} }: WebhookSettings,
-  event: string | undefined,
-  vars: Partial<WebhookVars> = {},
-) {
-  if (!event || !webhookEvents[event]) return;
-  if (!Array.isArray(webhooks) || webhooks.length === 0) return;
-
-  const resolved = normalizeWebhookVars({ ...vars, event });
-
-  for (const webhook of webhooks) {
-    const url = (webhook.url || "").trim();
-    if (!url) continue;
-    if (!/^https?:\/\//i.test(url)) {
-      console.warn(`[NotificationService] Skipping webhook with non-http(s) URL: ${url}`);
-      continue;
-    }
-    const rawBody = (webhook.body || "").trim();
-    try {
-      if (rawBody) {
-        const interpolated = interpolateBody(rawBody, resolved);
-        let parsed;
-        try {
-          parsed = JSON.parse(interpolated);
-        } catch {
-          parsed = interpolated;
-        }
-        const headers = {
-          ...buildHeaders(webhook.headers),
-          "Content-Type": "application/json",
-        };
-        await axios.post(url, parsed, { timeout: 30000, headers });
-      } else {
-        await axios.get(url, {
-          timeout: 30000,
-          headers: buildHeaders(webhook.headers),
-        });
+  const rawBody = (webhook.body || "").trim();
+  try {
+    if (rawBody) {
+      const interpolated = interpolateBody(rawBody, { ...vars, event });
+      let parsed;
+      try {
+        parsed = JSON.parse(interpolated);
+      } catch {
+        parsed = interpolated;
       }
-    } catch (error) {
-      logDeliveryFailure("webhooks", event, url, error);
-      throw error;
+      const headers = { ...buildHeaders(webhook.headers), "Content-Type": "application/json" };
+      await axios.post(url, parsed, { timeout: 30000, headers });
+    } else {
+      await axios.get(url, { timeout: 30000, headers: buildHeaders(webhook.headers) });
     }
+  } catch (error) {
+    logDeliveryFailure("webhooks", event, url, error);
+    throw error;
   }
 }
 
@@ -234,38 +162,42 @@ export async function deliverQueuedNotification(
     dispatchPluginEvent(payload);
     return;
   }
-  await sendWebhooksDirect(
-    payload.integrations || {},
-    payload.event,
-    normalizeWebhookVars(payload.vars, payload.flowPath, payload.flowName),
-  );
+  await sendWebhookDirect(payload.webhook, payload.event, payload.vars);
 }
 
-function queueGotify(title: string, message: string, priority = 5) {
-  return enqueueNotification({
-    kind: "gotify",
-    title,
-    message,
-    priority,
-    requestedAt: Date.now(),
-  });
-}
+type Notice = {
+  title: string;
+  message: string;
+  vars?: WebhookVars;
+  plugin?: Record<string, unknown> & { kind: string };
+};
 
-function queueWebhooks(
-  { webhooks, webhookEvents }: StoredIntegrations,
-  event: string,
-  vars: Partial<WebhookVars> = {},
-) {
-  const resolved = normalizeWebhookVars({ ...vars, event });
-  return enqueueNotification({
-    kind: "webhooks",
-    integrations: parseHonkerPayload(JSON.stringify({ webhooks, webhookEvents })) ?? {},
-    event,
-    vars: resolved,
-    flowPath: resolved.flowPath,
-    flowName: resolved.flowName,
-    requestedAt: Date.now(),
-  });
+function notify(event: NotificationEvent, { title, message, vars = {}, plugin }: Notice) {
+  try {
+    const { integrations } = dbOps.getSettings();
+    if (plugin) emitPluginEvent("notification", { title, message, ...plugin });
+    if (integrations?.gotify?.[event]) {
+      enqueueNotification({ kind: "gotify", title, message, priority: 5, requestedAt: Date.now() });
+    }
+    const resolved = Object.fromEntries(
+      Object.entries({ ...vars, message, event }).filter(([, value]) => value),
+    );
+    for (const webhook of integrations?.webhooks ?? []) {
+      if (!webhook.events?.includes(event)) continue;
+      enqueueNotification({
+        kind: "webhook",
+        event,
+        webhook: parseHonkerPayload(JSON.stringify(webhook)) ?? {},
+        vars: resolved,
+        requestedAt: Date.now(),
+      });
+    }
+  } catch (error) {
+    logger.warn("notifications", "Could not queue a notification", {
+      event,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function sendGotifyTest(
@@ -295,138 +227,150 @@ const WEBHOOK_TEST_VARS = Object.freeze({
   flowPath: "/aurral/test-webhook",
   flowName: "Aurral webhook test",
   albumName: "Test album",
+  albumPath: "/music/Test artist/Test album",
   artistName: "Test artist",
+  trackName: "Test track",
+  path: "/music/Test artist/Test album/01 - Test track.flac",
   username: "webhook-test-user",
   userId: "webhook-test-user",
+  message: "Aurral webhook test",
 });
 
 export async function sendWebhookTest(webhook: WebhookTarget) {
-  await sendWebhooksDirect(
-    {
-      webhooks: [webhook],
-      webhookEvents: { webhookTest: true },
-    },
-    "webhookTest",
-    WEBHOOK_TEST_VARS,
-  );
+  await sendWebhookDirect(webhook, "webhookTest", WEBHOOK_TEST_VARS);
 }
 
-export async function notifyDiscoveryUpdated() {
-  const settings = dbOps.getSettings();
-  const gotify = settings.integrations?.gotify || {};
-  const tasks = [];
-  emitPluginEvent("notification", {
-    kind: "discovery.updated",
-    title: "Discover updated",
-    message: "Daily Discover recommendations have been updated.",
+function actorVars(user: RequestActor | null | undefined) {
+  const username = String(user?.username || "").trim();
+  const userId = user?.userId ?? user?.id;
+  return { username, userId: userId == null ? "" : String(userId) };
+}
+
+function byline(album?: string, artist?: string) {
+  const name = String(album || "").trim() || "Album";
+  const by = String(artist || "").trim();
+  return by ? `${name} by ${by}` : name;
+}
+
+export function notifyDiscoveryUpdated() {
+  const message = "Daily Discover recommendations have been updated.";
+  notify("notifyDiscoveryUpdated", {
+    title: "Aurral – Discover",
+    message,
+    vars: { flowName: "Aurral – Discover" },
+    plugin: { kind: "discovery.updated", title: "Discover updated" },
   });
-  if (gotify.notifyDiscoveryUpdated) {
-    tasks.push(
-      queueGotify("Aurral – Discover", "Daily Discover recommendations have been updated.", 5),
-    );
-  }
-  tasks.push(
-    queueWebhooks(settings.integrations, "notifyDiscoveryUpdated", {
-      flowName: "Aurral – Discover",
-    }),
-  );
-  await Promise.all(tasks);
 }
 
-export async function notifyFlowDone(
+export function notifyFlowDone(
   playlistType: string,
-  stats: { completed?: number; failed?: number } = {},
+  { completed = 0, failed = 0 }: { completed?: number; failed?: number } = {},
   flowPath = "",
   flowName = "",
 ) {
-  const settings = dbOps.getSettings();
-  const gotify = settings.integrations?.gotify || {};
-  const completed = stats.completed ?? 0;
-  const failed = stats.failed ?? 0;
-  const displayName = String(flowName || playlistType || "").trim() || playlistType;
-  const tasks = [];
-  emitPluginEvent("notification", {
-    kind: "flow.done",
-    title: "Flow finished",
-    message: `Flow "${displayName}" finished processing.`,
-    flow: { name: displayName, path: flowPath, completed, failed },
+  const name = String(flowName || playlistType || "").trim() || playlistType;
+  const counts = completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : "";
+  notify("notifyWeeklyFlowDone", {
+    title: "Aurral – Flow",
+    message: `Flow "${name}" finished processing.${counts}`,
+    vars: { flowPath, flowName: name },
+    plugin: {
+      kind: "flow.done",
+      title: "Flow finished",
+      message: `Flow "${name}" finished processing.`,
+      flow: { name, path: flowPath, completed, failed },
+    },
   });
-  if (gotify.notifyWeeklyFlowDone) {
-    tasks.push(
-      queueGotify(
-        "Aurral – Flow",
-        `Flow "${displayName}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
-        5,
-      ),
-    );
-  }
-  tasks.push(
-    queueWebhooks(settings.integrations, "notifyWeeklyFlowDone", {
-      flowPath,
-      flowName: displayName,
-    }),
-  );
-  await Promise.all(tasks);
 }
 
-export async function notifyRequestMade({
-  albumName,
-  artistName,
-  user = null,
-}: RequestNotice = {}) {
-  const settings = dbOps.getSettings();
-  const gotify = settings.integrations?.gotify || {};
-  const actor = requestActorVars(user);
-  const subject = formatRequestSubject(albumName, artistName);
-  const tasks = [];
-  emitPluginEvent("notification", {
-    kind: "request.made",
-    title: "Album requested",
-    message: `Album requested: ${subject}`,
-    album: { title: albumName ?? null, artist: artistName ?? null },
-    user: actor.username ? { username: actor.username } : null,
-  });
-  if (gotify.notifyRequestMade) {
-    const byUser = actor.username ? ` (${actor.username})` : "";
-    tasks.push(queueGotify("Aurral – Request", `Album requested: ${subject}${byUser}`, 5));
-  }
-  tasks.push(
-    queueWebhooks(settings.integrations, "notifyRequestMade", {
-      albumName: String(albumName || "").trim(),
-      artistName: String(artistName || "").trim(),
-      ...actor,
-    }),
-  );
-  await Promise.all(tasks);
+function requestVars({ albumName, artistName, albumPath, user }: RequestNotice) {
+  return {
+    albumName: String(albumName || "").trim(),
+    artistName: String(artistName || "").trim(),
+    albumPath: albumPath || "",
+    ...actorVars(user),
+  };
 }
 
-export async function notifyRequestAvailable({
-  albumName,
-  artistName,
-  user = null,
-}: RequestNotice = {}) {
-  const settings = dbOps.getSettings();
-  const gotify = settings.integrations?.gotify || {};
-  const actor = requestActorVars(user);
-  const subject = formatRequestSubject(albumName, artistName);
-  const tasks = [];
-  emitPluginEvent("notification", {
-    kind: "request.available",
-    title: "Album available",
-    message: `Album available: ${subject}`,
-    album: { title: albumName ?? null, artist: artistName ?? null },
-    user: actor.username ? { username: actor.username } : null,
+export function notifyRequestMade(notice: RequestNotice = {}) {
+  const vars = requestVars(notice);
+  const subject = byline(notice.albumName, notice.artistName);
+  notify("notifyRequestMade", {
+    title: "Aurral – Request",
+    message: `Album requested: ${subject}${vars.username ? ` (${vars.username})` : ""}`,
+    vars,
+    plugin: {
+      kind: "request.made",
+      title: "Album requested",
+      message: `Album requested: ${subject}`,
+      album: { title: notice.albumName ?? null, artist: notice.artistName ?? null },
+      user: vars.username ? { username: vars.username } : null,
+    },
   });
-  if (gotify.notifyRequestAvailable) {
-    const byUser = actor.username ? ` requested by ${actor.username}` : "";
-    tasks.push(queueGotify("Aurral – Request", `Album available: ${subject}${byUser}`, 5));
-  }
-  tasks.push(
-    queueWebhooks(settings.integrations, "notifyRequestAvailable", {
+}
+
+export function notifyRequestAvailable(notice: RequestNotice = {}) {
+  const vars = requestVars(notice);
+  const subject = byline(notice.albumName, notice.artistName);
+  notify("notifyRequestAvailable", {
+    title: "Aurral – Request",
+    message: `Album available: ${subject}${vars.username ? ` requested by ${vars.username}` : ""}`,
+    vars,
+    plugin: {
+      kind: "request.available",
+      title: "Album available",
+      message: `Album available: ${subject}`,
+      album: { title: notice.albumName ?? null, artist: notice.artistName ?? null },
+      user: vars.username ? { username: vars.username } : null,
+    },
+  });
+}
+
+export function notifyArtistAdded({
+  artistName,
+  user,
+}: {
+  artistName: string;
+  user?: RequestActor | null;
+}) {
+  const actor = actorVars(user);
+  const message = `Artist added: ${artistName}`;
+  notify("notifyArtistAdded", {
+    title: "Aurral – Library",
+    message: `${message}${actor.username ? ` (${actor.username})` : ""}`,
+    vars: { artistName, ...actor },
+    plugin: {
+      kind: "artist.added",
+      title: "Artist added",
+      message,
+      artist: { name: artistName },
+      user: actor.username ? { username: actor.username } : null,
+    },
+  });
+}
+
+export function notifyTrackAdded({
+  trackName,
+  artistName,
+  albumName,
+  filePath,
+}: {
+  trackName?: string | null;
+  artistName?: string | null;
+  albumName?: string | null;
+  filePath: string;
+}) {
+  const track = String(trackName || "").trim() || path.basename(filePath);
+  const artist = String(artistName || "").trim();
+  notify("notifyTrackAdded", {
+    title: "Aurral – Library",
+    message: `Track added: ${artist ? `${track} by ${artist}` : track}`,
+    vars: {
+      trackName: track,
+      artistName: artist,
       albumName: String(albumName || "").trim(),
-      artistName: String(artistName || "").trim(),
-      ...actor,
-    }),
-  );
-  await Promise.all(tasks);
+      path: filePath,
+      albumPath: path.dirname(filePath),
+    },
+  });
 }

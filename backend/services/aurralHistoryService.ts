@@ -330,14 +330,21 @@ const queueRequestNotification = (
   {
     albumName,
     artistName,
+    albumPath = null,
     requester,
-  }: { albumName: string; artistName: string; requester: HistoryRequester | null },
+  }: {
+    albumName: string;
+    artistName: string;
+    albumPath?: string | null;
+    requester: HistoryRequester | null;
+  },
 ) => {
   import("./notificationService.ts")
     .then((notifications) =>
       notifications[notifyName]({
         albumName,
         artistName,
+        albumPath,
         user: requester ? { id: requester.userId, username: requester.username } : null,
       }),
     )
@@ -492,9 +499,11 @@ export const recordAlbumSearchCompleted = ({
   albumName,
   artistName,
   artistMbid,
+  albumPath = null,
   user = null,
   referenceId = null,
 }: AlbumRef & {
+  albumPath?: string | null;
   user?: RequesterUser | null;
   referenceId?: string | null;
 } = {}) => {
@@ -514,6 +523,7 @@ export const recordAlbumSearchCompleted = ({
     statusLabel: "Downloaded",
     href: buildArtistHref(artistMbid),
     metadata: {
+      ...existing?.metadata,
       albumId,
       albumName: name,
       artistName: artist,
@@ -525,10 +535,24 @@ export const recordAlbumSearchCompleted = ({
     queueRequestNotification("notifyRequestAvailable", {
       albumName: name,
       artistName: artist,
+      albumPath,
       requester,
     });
   }
   return entry;
+};
+
+export const recordRequestGroupDownloaded = (requestGroupId: string, albumPath: string) => {
+  const request = dbOps.getAlbumRequestByGroup(requestGroupId);
+  if (!request || request.statusLabel === "Downloaded") return null;
+  return recordAlbumSearchCompleted({
+    albumId: request.metadata?.albumId,
+    albumName: request.metadata?.albumName,
+    artistName: request.metadata?.artistName,
+    artistMbid: request.metadata?.artistMbid,
+    albumPath,
+    referenceId: albumRequestReferenceId(request),
+  });
 };
 
 const albumRequestReferenceId = (entry: AurralHistoryEntry) => {
