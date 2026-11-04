@@ -194,8 +194,7 @@ async function walkFiles(rootPath: string, output: string[] = []) {
 }
 
 function safePathPart(value: string) {
-  const result = sanitizePathPart(value, "");
-  return result && result !== "." && result !== ".." ? result : null;
+  return sanitizePathPart(value, "") || null;
 }
 
 function legacyPlaylistId(sourcePath: string, rootPath: string, knownIds: Set<string>) {

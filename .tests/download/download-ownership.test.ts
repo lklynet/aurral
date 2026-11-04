@@ -329,3 +329,14 @@ test("recording a transfer prunes transfer history for settled downloads only", 
     .map((row) => row.key.slice("downloadJobTransfers:".length));
   assert.deepEqual(history, [activeId, nextId].sort());
 });
+
+test("downloads never name a folder or file with a leading dot", () => {
+  assert.equal(
+    ownership.downloadDestinationForJob({
+      artistName: ".wav_909 & 7thRaw",
+      albumName: "...",
+      playlistType: "library",
+    }),
+    "wav_909 & 7thRaw/Unknown Album",
+  );
+});

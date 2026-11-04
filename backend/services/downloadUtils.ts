@@ -41,9 +41,11 @@ type BlockedJobFields = {
   releaseTitle?: string | null;
 };
 
+// A leading dot hides a file or folder from most scanners, so names never start with one.
 export function sanitizePathPart(value: unknown, fallback = "Unknown") {
   const text = String(value || "")
     .replace(/[<>:"/\\|?*]/g, "_")
+    .replace(/^[\s.]+/, "")
     .trim();
   return text || fallback;
 }
@@ -319,6 +321,7 @@ export async function writeAudioMetadata(filePath: string, metadata: DownloadTra
       artistMbid: performer ? undefined : metadata.artistMbid,
       albumArtistMbid: metadata.artistMbid,
       releaseGroupMbid: metadata.albumMbid,
+      releaseMbid: metadata.releaseMbid,
       recordingMbid: metadata.trackMbid,
       year: metadata.releaseYear,
       trackNumber: metadata.trackNumber,

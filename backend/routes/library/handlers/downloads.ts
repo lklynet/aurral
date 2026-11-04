@@ -9,6 +9,7 @@ import { validate } from "../../../middleware/validate.ts";
 import {
   albumHasTrackFiles,
   classifyLidarrDownloadEvent,
+  getLidarrAlbumsById,
   parseLidarrSearchContext,
   readLidarrQueueItemStatus,
   resolveAlbumSearchOutcome,
@@ -120,13 +121,7 @@ export const getDownloadStatusesForAlbumIds = async (
         queueByAlbumId.set(qAlbumId, q);
       }
 
-      let verifiedAlbumsPromise;
-      const getVerifiedAlbums = () =>
-        (verifiedAlbumsPromise ??= lidarrClient
-          .getAllAlbums()
-          .then((albums) => new Map(albums.map((album) => [String(album.id), album])))
-          .catch(() => new Map()));
-
+      const unverified = new Map<string, number>();
       for (const albumId of albumIdArray) {
         if (!albumId || albumId === "undefined" || albumId === "null") continue;
         const lidarrAlbumId = parseInt(albumId, 10);
@@ -152,11 +147,7 @@ export const getDownloadStatusesForAlbumIds = async (
           if (historyEntry.event === "imported") {
             statuses[albumId] = { status: "added", updatedAt };
           } else if (historyEntry.event === "failed" || staleGrab) {
-            const album = (await getVerifiedAlbums()).get(String(lidarrAlbumId));
-            statuses[albumId] = {
-              status: albumHasTrackFiles(album) ? "added" : "failed",
-              updatedAt,
-            };
+            unverified.set(albumId, lidarrAlbumId);
           } else {
             statuses[albumId] = { status: "processing", updatedAt };
           }
@@ -175,6 +166,13 @@ export const getDownloadStatusesForAlbumIds = async (
             updatedAt: new Date().toISOString(),
           };
         }
+      }
+
+      const albums = await getLidarrAlbumsById(lidarrClient, [...unverified.values()]);
+      const updatedAt = new Date().toISOString();
+      for (const [albumId, lidarrAlbumId] of unverified) {
+        const hasFiles = albumHasTrackFiles(albums.get(String(lidarrAlbumId)));
+        statuses[albumId] = { status: hasFiles ? "added" : "failed", updatedAt };
       }
     } catch (error) {
       const failure = asAppError(error);
@@ -328,8 +326,8 @@ const getActiveLidarrAlbums = async () => {
       .map(([albumId]) => String(albumId)),
   );
   if (activeIds.size === 0) return [];
-  const albums = await lidarrClient.getAllAlbums();
-  return albums.filter((album) => activeIds.has(String(album?.id)));
+  const albums = await getLidarrAlbumsById(lidarrClient, [...activeIds]);
+  return [...albums.values()].filter((album) => album != null);
 };
 
 export const getActiveLibraryDownloads = async () => {

@@ -202,85 +202,54 @@ test("forced Lidarr status reads bypass the client cache", async (t: import("vit
   assert.equal(calls, 2);
 });
 
-test("failed or stale history verifies albums with one bulk read", async () => {
+test("failed or stale history checks only those albums, each by id", async () => {
   const now = Date.now();
-  const calls = { bulk: 0, detail: 0 };
-  let bulkFailure = false;
+  const read: string[] = [];
+  const album = (id: number, trackFileCount: number) => ({
+    id,
+    foreignAlbumId: `album-${id}`,
+    statistics: { trackFileCount },
+  });
+  const albums: Record<string, ReturnType<typeof album> | null> = {
+    101: album(101, 2),
+    102: album(102, 0),
+    103: null,
+  };
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
-    calls.bulk += 1;
-    if (bulkFailure) throw new Error("provider unavailable");
-    return [
-      { id: 101, foreignAlbumId: "album-101", statistics: { trackFileCount: 2 } },
-      { id: 102, foreignAlbumId: "album-102", statistics: { trackFileCount: 0 } },
-    ];
+    throw new Error("the whole album list is never read");
   });
-  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async () => {
-    calls.detail += 1;
-    return null;
+  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async (albumId) => {
+    read.push(String(albumId));
+    if (String(albumId) === "104") throw new Error("provider unavailable");
+    return albums[String(albumId)] ?? null;
   });
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60 * 1000).toISOString();
 
-  const normal = await getDownloadStatusesForAlbumIds(["100"], {
-    queue: [],
-    history: {
-      records: [{ id: 100, albumId: 100, eventType: "grabbed", date: new Date(now).toISOString() }],
-    },
-    commands: [],
-  });
-  assert.equal(normal[100]?.status, "processing");
-  assert.deepEqual(calls, { bulk: 0, detail: 0 });
-
-  const verified = await getDownloadStatusesForAlbumIds(["101", "102"], {
+  const statuses = await getDownloadStatusesForAlbumIds(["100", "101", "102", "103", "104"], {
     queue: [],
     history: {
       records: [
-        {
-          id: 101,
-          albumId: 101,
-          eventType: "AlbumImportIncomplete",
-          date: new Date(now).toISOString(),
-        },
-        {
-          id: 102,
-          albumId: 102,
-          eventType: "grabbed",
-          date: new Date(now - 16 * 60 * 1000).toISOString(),
-        },
+        { id: 100, albumId: 100, eventType: "grabbed", date: at(0) },
+        { id: 101, albumId: 101, eventType: "AlbumImportIncomplete", date: at(0) },
+        { id: 102, albumId: 102, eventType: "grabbed", date: at(16) },
+        { id: 103, albumId: 103, eventType: "DownloadFailed", date: at(0) },
+        { id: 104, albumId: 104, eventType: "DownloadFailed", date: at(0) },
       ],
     },
     commands: [],
   });
-  assert.equal(verified[101]?.status, "added");
-  assert.equal(verified[102]?.status, "failed");
-  assert.deepEqual(calls, { bulk: 1, detail: 0 });
 
-  bulkFailure = true;
-  const failedVerification = await getDownloadStatusesForAlbumIds(["101", "102"], {
-    queue: [],
-    history: {
-      records: [
-        { id: 101, albumId: 101, eventType: "DownloadFailed", date: new Date(now).toISOString() },
-        {
-          id: 102,
-          albumId: 102,
-          eventType: "AlbumImportIncomplete",
-          date: new Date(now).toISOString(),
-        },
-      ],
-    },
-    commands: [],
-  });
-  assert.equal(failedVerification[101]?.status, "failed");
-  assert.equal(failedVerification[102]?.status, "failed");
-  assert.deepEqual(calls, { bulk: 2, detail: 0 });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(statuses).map(([id, entry]) => [id, entry.status])),
+    { 100: "processing", 101: "added", 102: "failed", 103: "failed", 104: "failed" },
+  );
+  assert.deepEqual(read.sort(), ["101", "102", "103", "104"]);
 });
 
 test("album status reads Lidarr event types rather than words in the history", async () => {
   const now = Date.now();
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => [
-    { id: 201, foreignAlbumId: "album-201", statistics: { trackFileCount: 0 } },
-  ]);
   const at = (minutesAgo: number) => new Date(now - minutesAgo * 60 * 1000).toISOString();
   const statuses = await getDownloadStatusesForAlbumIds(["200", "201", "202", "203", "204"], {
     queue: [

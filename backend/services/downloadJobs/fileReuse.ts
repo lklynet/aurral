@@ -176,21 +176,6 @@ function usesLibraryFolders(playlistType: string) {
   return key === "library" || Boolean(flowPlaylistConfig.getStaticPlaylist(key));
 }
 
-/**
- * Sanitizes a path segment to strip directory traversal sequences and invalid characters.
- *
- * @param {string|null|undefined} value - Raw path component.
- * @param {string} [fallback="Unknown"] - Safe fallback if value is empty or resolves to traversal.
- * @returns {string} Sanitized directory or file name.
- */
-function sanitizeSafeSegment(value: string | null | undefined, fallback = "Unknown") {
-  const text = sanitizePathPart(value, fallback);
-  if (!text || text === "." || text === ".." || text.startsWith(".")) {
-    return fallback;
-  }
-  return text;
-}
-
 // Downloads are named "Title" or, with a known album position, "07 - Title",
 // or "2-07 - Title" past the first disc. An album can repeat a title, so a
 // known position must match too.
@@ -222,16 +207,16 @@ async function findLocalExistingSource(
   track: DownloadTrackInput,
   options: SourceOptions = {},
 ): Promise<ReuseSource | null> {
-  const targetPlaylistType = sanitizeSafeSegment(options.targetPlaylistType, "");
+  const targetPlaylistType = sanitizePathPart(options.targetPlaylistType, "");
   if (!targetPlaylistType) return null;
 
   const root = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const ephemeral = isFlowPlaylistType(targetPlaylistType);
   const libraryFolders = usesLibraryFolders(targetPlaylistType);
 
-  const artistDir = sanitizeSafeSegment(track?.artistName, "Unknown Artist");
-  const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
-  const expectedBaseName = sanitizeSafeSegment(track?.trackName, "Unknown Track");
+  const artistDir = sanitizePathPart(track?.artistName, "Unknown Artist");
+  const albumDir = sanitizePathPart(track?.albumName, "Unknown Album");
+  const expectedBaseName = sanitizePathPart(track?.trackName, "Unknown Track");
   const trackNumber = normalizePositiveInteger(track?.trackNumber);
   const discNumber = normalizePositiveInteger(track?.discNumber);
 

@@ -12,7 +12,7 @@ import type {
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
-import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
+import type { LidarrClient } from "./lidarrClient.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { libraryAlbumPath } from "../../lib/albumPath.ts";
 
@@ -849,24 +849,15 @@ export const syncAlbumSearchHistory = async (
   ]);
   const context = parseLidarrSearchContext({ queue, history, commands });
 
-  let lidarrAlbums: LidarrAlbum[] | null = null;
-  const loadLidarrAlbums = async () => {
-    if (lidarrAlbums) return lidarrAlbums;
-    lidarrAlbums = await lidarrClient.getAllAlbums().catch(() => []);
-    return lidarrAlbums;
-  };
-
   const resolveMissingAlbumId = async (entry: AurralHistoryEntry) => {
     const albumName = normalizeAlbumMatchText(entry.metadata?.albumName);
-    const artistName = normalizeAlbumMatchText(entry.metadata?.artistName);
-    if (!albumName || !artistName) return null;
-    const albums = await loadLidarrAlbums();
-    const match = albums.find((album) => {
-      const title = normalizeAlbumMatchText(album?.title);
-      const artist = normalizeAlbumMatchText(album?.artist?.artistName);
-      return title === albumName && artist === artistName;
-    });
-    return match?.id != null ? String(match.id) : null;
+    const artistMbid = String(entry.metadata?.artistMbid || "").trim();
+    if (!albumName || !artistMbid) return null;
+    const artist = await lidarrClient.getArtistByMbid(artistMbid).catch(() => null);
+    if (!artist) return null;
+    const albums = await lidarrClient.getAllAlbums({ artistIds: [artist.id] }).catch(() => []);
+    const match = albums.find((album) => normalizeAlbumMatchText(album?.title) === albumName);
+    return match ? String(match.id) : null;
   };
 
   const resolvedEntries = [];

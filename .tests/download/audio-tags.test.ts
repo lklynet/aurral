@@ -67,7 +67,7 @@ afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("tagging a download keeps the uploader's release ID, ratings, lyrics, ReplayGain, grouping, and cover art", async () => {
+test("tagging a download keeps the uploader's ratings, lyrics, ReplayGain, grouping, and cover art, but not their release ID", async () => {
   const filePath = makeAudio("uploaded.mp3", ["-c:a", "libmp3lame"]);
   tagAsUploader(filePath, (file) => {
     const id3 = file.getTag(taglib.TagTypes.Id3v2, true);
@@ -96,7 +96,7 @@ test("tagging a download keeps the uploader's release ID, ratings, lyrics, Repla
   assert.equal(common.musicbrainz_recordingid, job.trackMbid);
   assert.equal(common.musicbrainz_releasegroupid, job.albumMbid);
   assert.equal(common.musicbrainz_albumartistid?.[0], job.artistMbid);
-  assert.equal(common.musicbrainz_albumid, "dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+  assert.equal(common.musicbrainz_albumid, undefined);
   assert.equal(common.grouping, "Live set");
   assert.equal(common.rating?.[0]?.rating, 1);
   assert.match(common.lyrics?.[0]?.text ?? String(common.lyrics?.[0] ?? ""), /celebrate/);
@@ -131,6 +131,25 @@ test("tagging an M4A keeps its freeform tags and the tags the job has no value f
   assert.equal(common.track.no, 7);
   assert.equal(common.replaygain_track_gain?.dB, -4.2);
   assert.equal(common.year, 2001);
+});
+
+test("tracks from uploaders of different releases get the one release Aurral picked for the album", async () => {
+  const releaseMbid = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const uploads = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+  const files = uploads.map((uploaderRelease, index) => {
+    const filePath = makeAudio(`disc-${index}.flac`, ["-c:a", "flac"]);
+    tagAsUploader(filePath, (file) => {
+      file.tag.musicBrainzReleaseGroupId = job.albumMbid;
+      file.tag.musicBrainzReleaseId = uploaderRelease;
+    });
+    return filePath;
+  });
+
+  for (const filePath of files) await writeAudioMetadata(filePath, { ...job, releaseMbid });
+
+  for (const filePath of files) {
+    assert.equal((await parseFile(filePath)).common.musicbrainz_albumid, releaseMbid);
+  }
 });
 
 test("tagging a hardlinked download leaves the other link as it was", async () => {
