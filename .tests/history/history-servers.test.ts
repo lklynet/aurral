@@ -200,7 +200,7 @@ test("Plex history says so when the server is disconnected", async () => {
   await assert.rejects(servers.syncHistoryServer(userId, "plex"), /Plex isn't connected/);
 });
 
-test("Plex history stops when the admin connects a different server", async () => {
+test("Plex history stops when the admin connects a server, even at the same URL", async () => {
   const seen: string[] = [];
   globalThis.fetch = async (input) => {
     seen.push(String(input));
@@ -212,7 +212,8 @@ test("Plex history stops when the admin connects a different server", async () =
     username: "owner",
     accountId: "1",
   });
-  plex.savePlexServer({ url: "http://other.test", token: "other-token", sendPlaylists: false });
+  plex.savePlexServer({ url: "http://plex.test", token: "other-token", sendPlaylists: false });
+  servers.forgetPlexHistoryServer();
 
   await assert.rejects(servers.syncHistoryServer(userId, "plex"), /The Plex server changed/);
   assert.deepEqual(seen, []);

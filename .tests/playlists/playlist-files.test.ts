@@ -189,6 +189,8 @@ function fakePlex({ uploadStatus = 200 } = {}) {
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? "GET";
+    if (url.href === "https://plex.tv/api/v2/user") return Response.json({ id: 5, username: "b" });
+    if (url.pathname === "/accounts") return Response.json({ MediaContainer: { Account: [] } });
     if (url.pathname === "/library/sections")
       return Response.json({
         MediaContainer: {
@@ -270,4 +272,22 @@ test("a rename Plex couldn't apply removes the old playlist on the next sync", a
   fake.fail.deletes = false;
   await playlistManager.syncPlaylists({ entityIds: [playlist.id], rewrite: true });
   assert.deepEqual([...fake.playlists.keys()], ["New"]);
+});
+
+test("removals left from one Plex server never reach the next one", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const fake = fakePlex();
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
+  await addDownloadedTrack(playlist.id, "Song A");
+  await playlistManager.syncPlaylists();
+  fake.fail.deletes = true;
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "New" });
+  await playlistManager.syncPlaylists({ entityIds: [playlist.id] });
+
+  fake.fail.deletes = false;
+  await plex.connectPlexServer("http://plex.test", "other-token");
+  fake.requests.length = 0;
+  await playlistManager.syncPlaylists({ entityIds: [playlist.id], rewrite: true });
+
+  assert.deepEqual(fake.requests, ["upload 3 New.m3u"]);
 });

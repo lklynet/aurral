@@ -276,6 +276,7 @@ const recordSync = db.prepare<[number | null, number, string | null, number, str
   SET synced_until = COALESCE(?, synced_until), last_synced_at = ?, last_error = ?
   WHERE user_id = ? AND provider = ? AND connected_at = ?
 `);
+const forgetPlexServer = db.prepare("UPDATE history_servers SET url = '' WHERE provider = 'plex'");
 const deleteServer = db.prepare<[number, string]>(
   "DELETE FROM history_servers WHERE user_id = ? AND provider = ?",
 );
@@ -387,6 +388,12 @@ export async function connectHistoryServer(
   const connection = { url: input.url, username: input.username, secret, accountId: null };
   const { accountId } = await PROVIDERS[provider].connect(connection);
   return saveConnection(userId, provider, { ...connection, accountId });
+}
+
+// A Plex account ID only means something on the server it came from, so a
+// connected or removed server makes every Plex history connection sign in again.
+export function forgetPlexHistoryServer() {
+  forgetPlexServer.run();
 }
 
 export function connectPlexHistory(

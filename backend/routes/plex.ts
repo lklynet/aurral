@@ -5,7 +5,11 @@ import { requireAdmin, requireAuth, requireUserAccount } from "../middleware/gua
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
 import { validate } from "../middleware/validate.ts";
-import { connectPlexHistory, HistoryServerError } from "../services/historyServers.ts";
+import {
+  connectPlexHistory,
+  forgetPlexHistoryServer,
+  HistoryServerError,
+} from "../services/historyServers.ts";
 import { enqueueSystemTaskJob } from "../services/honkerDb.ts";
 import { logger } from "../services/logger.ts";
 import {
@@ -27,6 +31,7 @@ const queueHistorySync = (userId: number) =>
 async function finishSignIn(userId: number, token: string, serverUrl: string | undefined) {
   if (serverUrl) {
     const owner = await connectPlexServer(serverUrl, token);
+    forgetPlexHistoryServer();
     await connectPlexHistory(userId, { url: serverUrl, ...owner });
     playlistManager.requestPlexUpload();
   } else {
@@ -108,5 +113,6 @@ export default new Hono<AppEnv>()
   .delete("/", requireAdmin, async (c) => {
     if (getPlexServer()?.sendPlaylists) await playlistManager.removePlaylistsFromPlex();
     removePlexServer();
+    forgetPlexHistoryServer();
     return c.body(null, 204);
   });

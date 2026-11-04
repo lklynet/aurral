@@ -55,6 +55,7 @@ export function savePlexServer(server: PlexServer) {
 export function removePlexServer() {
   dbOps.setJSONSetting(SERVER_KEY, null);
   setPlaylistError(null);
+  setPendingRemovals([]);
 }
 
 export function plexPlaylistError() {
@@ -143,6 +144,7 @@ export async function connectPlexServer(url: string, token: string) {
   await serverAccounts(url, token);
   const owner = await plexTvUser(token);
   savePlexServer({ url, token, sendPlaylists: true });
+  setPendingRemovals([]);
   return { username: owner.username, accountId: OWNER_ACCOUNT_ID };
 }
 
