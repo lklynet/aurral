@@ -505,6 +505,24 @@ test("a playlist that skips downloads reuses Library files and saves the rest", 
   assert.equal(requireFixture(jobFor(missing)).status, "saved");
 });
 
+test("an imported track links the Library file at its path even when its names differ", async () => {
+  const library = { artistName: "N.E.R.D", albumName: "Fly or Die", trackName: "Thrasher" };
+  const libraryFile = await addLibraryFile(library);
+  mockPlaylistServices();
+  const result = await operations.processPlaylistOperation({
+    kind: "shared-playlist-create",
+    name: "From an M3U",
+    tracks: [{ artistName: "N.E.R.D.", trackName: "Thrasher", path: libraryFile }],
+  });
+  assert.ok(result && typeof result === "object" && "playlist" in result);
+  const [job] = downloadTracker.getByPlaylistType(requireFixture(result.playlist).id);
+
+  assert.equal(requireFixture(job).status, "done");
+  assert.equal(requireFixture(job).finalPath, libraryFile);
+  assert.equal(requireFixture(job).artistName, "N.E.R.D");
+  assert.equal(requireFixture(job).albumName, "Fly or Die");
+});
+
 test("removing a reused track from a playlist keeps its Library file", async () => {
   const reused = { artistName: "Reuse Band", albumName: "Single Removal", trackName: "Stays Put" };
   const libraryFile = await addLibraryFile(reused);

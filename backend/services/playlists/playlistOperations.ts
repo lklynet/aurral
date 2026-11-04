@@ -57,6 +57,12 @@ import {
   restorePlaylistDownloadWork,
 } from "../downloadJobs/downloadCancellation.ts";
 import { cancelPlaylistDownloadWork } from "../downloadJobs/downloadCancellationService.ts";
+import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
+import type {
+  LibraryAlbumTracksRow,
+  LibraryMediaFilesRow,
+  LibraryTracksRow,
+} from "../../db/rows.ts";
 
 import {
   captureStaticPlaylistSelection,
@@ -284,6 +290,70 @@ const filterTracksMissingDownloadJobs = (tracks: PlaylistTrack[], playlistId: st
   return missing;
 };
 
+const indexedFileStmt = db.prepare<
+  [string],
+  Pick<LibraryMediaFilesRow, "path" | "source" | "duration_ms"> &
+    Pick<LibraryTracksRow, "title"> &
+    Partial<Pick<LibraryAlbumTracksRow, "track_number" | "disc_number">> & {
+      track_mbid: string | null;
+      artist_name: string | null;
+      artist_mbid: string | null;
+      album_title: string | null;
+      album_mbid: string | null;
+    }
+>(`
+  SELECT media.path, media.source, media.duration_ms, track.title, track.mbid AS track_mbid,
+    COALESCE(track.artist_name, artist.name) AS artist_name,
+    CASE WHEN track.artist_name IS NULL OR track.artist_name = artist.name THEN artist.mbid END AS artist_mbid,
+    album.title AS album_title, album.release_group_mbid AS album_mbid,
+    link.track_number, link.disc_number
+  FROM library_media_files AS media
+  JOIN library_tracks AS track ON track.id = media.track_id
+  LEFT JOIN library_album_tracks AS link ON link.track_id = media.track_id AND link.album_id = media.album_id
+  LEFT JOIN library_albums AS album ON album.id = media.album_id
+  LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
+  WHERE media.path = ? AND media.available = 1 AND media.source != 'flow'
+  LIMIT 1
+`);
+
+const linkIndexedFiles = (tracks: unknown, playlistId: string, ownerUserId: unknown) => {
+  const jobIds: string[] = [];
+  const byPath = new Map<string, unknown>();
+  const linked = (Array.isArray(tracks) ? tracks : []).map((track: unknown) => {
+    if (!isRecord(track) || typeof track.path !== "string") return track;
+    if (byPath.has(track.path)) return byPath.get(track.path);
+    const file = indexedFileStmt.get(track.path);
+    if (!file) return track;
+    const input = normalizePlaylistTrack({
+      artistName: file.artist_name,
+      trackName: file.title,
+      albumName: file.album_title,
+      artistMbid: file.artist_mbid,
+      albumMbid: file.album_mbid,
+      trackMbid: file.track_mbid,
+      durationMs: file.duration_ms,
+      trackNumber: file.track_number,
+      discNumber: file.disc_number,
+    });
+    if (!input || !filterBlockedPlaylistTracks(ownerUserId, [input]).length) return track;
+    const jobId = downloadTracker.addJob(input, playlistId);
+    if (!jobId) return track;
+    const external = file.source === "lidarr" || file.source === "readonly";
+    downloadTracker.setDone(
+      jobId,
+      file.source === "lidarr" ? resolveLocalPath(file.path, getPathMappings("lidarr")) : file.path,
+      input.albumName,
+      external ? file.path : null,
+      { reusedLibraryFile: true },
+    );
+    jobIds.push(jobId);
+    const linkedTrack = { ...input, canonicalJobId: jobId };
+    byPath.set(track.path, linkedTrack);
+    return linkedTrack;
+  });
+  return { tracks: linked, jobIds };
+};
+
 const recordPlaylistHistory = (playlistId: string, { tracksQueued = 0, tracksReused = 0 } = {}) => {
   if (tracksQueued + tracksReused <= 0) return;
   recordPlaylistTracksAdded({
@@ -296,16 +366,14 @@ const recordPlaylistHistory = (playlistId: string, { tracksQueued = 0, tracksReu
 async function seedStaticPlaylistTracks(
   playlistId: string,
   tracks: PlaylistTrack[],
-  options?: { downloadMissing?: boolean },
+  { linkedJobIds = [], ...options }: { downloadMissing?: boolean; linkedJobIds?: string[] } = {},
 ) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   const allowedTracks = filterBlockedPlaylistTracks(playlist?.ownerUserId, tracks);
   const missingTracks = filterTracksMissingDownloadJobs(allowedTracks, playlistId);
-  const { reusedJobIds, jobIds, createdJobIds } = await queueTracksForPlaylist(
-    missingTracks,
-    playlistId,
-    options,
-  );
+  const queued = await queueTracksForPlaylist(missingTracks, playlistId, options);
+  const { jobIds, createdJobIds } = queued;
+  const reusedJobIds = [...linkedJobIds, ...queued.reusedJobIds];
   playlistManager.requestPlaylistSync([playlistId]);
   if (reusedJobIds.length > 0) {
     playlistManager.scheduleScanLibrary();
@@ -587,25 +655,37 @@ async function createStaticPlaylistLocked({
   downloadMissing = true,
 }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim() || randomUUID();
-  const normalizedTracks = filterBlockedPlaylistTracks(ownerUserId, normalizeTrackList(tracks));
   let playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
+  const linked = playlist
+    ? { tracks, jobIds: [] }
+    : linkIndexedFiles(tracks, safePlaylistId, ownerUserId);
+  const normalizedTracks = filterBlockedPlaylistTracks(
+    ownerUserId,
+    normalizeTrackList(linked.tracks),
+  );
   if (!playlist) {
-    playlist = flowPlaylistConfig.createStaticPlaylist({
-      id: safePlaylistId,
-      name,
-      sourceName,
-      sourceFlowId,
-      discoverPresetId,
-      tracks: normalizedTracks,
-      ownerUserId,
-      importSource: isRecord(importSource) ? importSource : null,
-      description,
-    });
+    try {
+      playlist = flowPlaylistConfig.createStaticPlaylist({
+        id: safePlaylistId,
+        name,
+        sourceName,
+        sourceFlowId,
+        discoverPresetId,
+        tracks: normalizedTracks,
+        ownerUserId,
+        importSource: isRecord(importSource) ? importSource : null,
+        description,
+      });
+    } catch (error) {
+      for (const jobId of linked.jobIds) downloadTracker.removeJob(jobId);
+      throw error;
+    }
   }
   activatePlaylistDownloadGeneration(safePlaylistId);
   const queued = normalizedTracks.length
     ? await seedStaticPlaylistTracks(safePlaylistId, normalizedTracks, {
         downloadMissing: downloadMissing !== false,
+        linkedJobIds: linked.jobIds,
       })
     : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
   await playlistManager.ensurePlaylistArtwork(safePlaylistId);

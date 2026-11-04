@@ -3,6 +3,7 @@ export type M3uTrack = {
   trackName: string;
   albumName: string | null;
   durationMs: number | null;
+  path: string | null;
 };
 
 type EntryInfo = { display?: string; durationMs?: number | null; artist?: string; album?: string };
@@ -68,7 +69,9 @@ export function parseM3u(content: string) {
       else if (/^#EXTALB:/i.test(line)) info = { ...info, album: line.slice(8).trim() };
       continue;
     }
-    const path = fromPath(line);
+    const location = line.replace(/^"(.*)"$/, "$1");
+    const decoded = decodePath(location);
+    const path = fromPath(location);
     const display = info.display ? splitDisplay(info.display) : null;
     const artistName = info.artist || display?.artistName || path?.artistName;
     const displayTitle =
@@ -93,6 +96,7 @@ export function parseM3u(content: string) {
       trackName,
       albumName: entry.album || path?.albumName || null,
       durationMs: entry.durationMs,
+      path: decoded.startsWith("/") ? decoded : null,
     });
   }
   return { name, tracks, skipped };
