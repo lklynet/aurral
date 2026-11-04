@@ -185,6 +185,7 @@ test("names stay unique when the owner prefix is off", () => {
 function fakePlex({ uploadStatus = 200 } = {}) {
   const requests: string[] = [];
   const playlists = new Map<string, string>();
+  const fail = { deletes: false };
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? "GET";
@@ -211,6 +212,7 @@ function fakePlex({ uploadStatus = 200 } = {}) {
         },
       });
     if (method === "DELETE") {
+      if (fail.deletes) return new Response(null, { status: 503 });
       const key = url.pathname.split("/").pop();
       const title = [...playlists].find(([, ratingKey]) => ratingKey === key)?.[0];
       requests.push(`delete ${title}`);
@@ -219,7 +221,7 @@ function fakePlex({ uploadStatus = 200 } = {}) {
     }
     return new Response(null, { status: 404 });
   };
-  return { requests, playlists };
+  return { requests, playlists, fail };
 }
 
 test("Plex gets each changed playlist file and loses renamed or emptied ones", async () => {
@@ -251,4 +253,21 @@ test("a playlist Plex can't match shows an error until an upload works", async (
   fakePlex();
   await playlistManager.syncPlaylists({ rewrite: true });
   assert.equal(plex.plexPlaylistError(), null);
+});
+
+test("a rename Plex couldn't apply removes the old playlist on the next sync", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const fake = fakePlex();
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
+  await addDownloadedTrack(playlist.id, "Song A");
+  await playlistManager.syncPlaylists();
+
+  fake.fail.deletes = true;
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "New" });
+  await playlistManager.syncPlaylists({ entityIds: [playlist.id] });
+  assert.deepEqual([...fake.playlists.keys()], ["Old"]);
+
+  fake.fail.deletes = false;
+  await playlistManager.syncPlaylists({ entityIds: [playlist.id], rewrite: true });
+  assert.deepEqual([...fake.playlists.keys()], ["New"]);
 });

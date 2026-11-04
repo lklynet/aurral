@@ -9,6 +9,7 @@ import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 const PLEX_TV = "https://plex.tv";
 const SERVER_KEY = "plexServer";
 const PLAYLIST_STATUS_KEY = "plexPlaylistStatus";
+const PENDING_REMOVALS_KEY = "plexPendingRemovals";
 const TIMEOUT_MS = 30_000;
 const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 const OWNER_ACCOUNT_ID = "1";
@@ -20,6 +21,7 @@ const plexServerSchema = v.object({
 });
 const serverSchema = v.nullable(plexServerSchema);
 const playlistStatusSchema = v.nullable(v.object({ error: v.nullable(v.string()) }));
+const pendingRemovalsSchema = v.nullable(v.array(v.string()));
 const record = v.record(v.string(), v.unknown());
 const object = (value: unknown) => (v.is(record, value) ? value : {});
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
@@ -62,6 +64,10 @@ export function plexPlaylistError() {
 function setPlaylistError(error: string | null) {
   dbOps.setJSONSetting(PLAYLIST_STATUS_KEY, { error });
 }
+
+const pendingRemovals = () =>
+  dbOps.getJSONSetting(PENDING_REMOVALS_KEY, pendingRemovalsSchema) ?? [];
+const setPendingRemovals = (titles: string[]) => dbOps.setJSONSetting(PENDING_REMOVALS_KEY, titles);
 
 const pendingSignIns = new Map<
   string,
@@ -202,13 +208,23 @@ export async function sendPlaylistsToPlex(
   { upload, remove }: { upload: PlaylistFile[]; remove: string[] },
 ) {
   const server = getPlexServer();
-  if (!server?.sendPlaylists || (!upload.length && !remove.length)) return;
+  if (!server?.sendPlaylists) return;
+  const removals = [...new Set([...pendingRemovals(), ...remove])];
+  if (!upload.length && !removals.length) return;
+  const stillSending = () => {
+    const current = getPlexServer();
+    return current?.sendPlaylists === true && current.url === server.url;
+  };
   try {
-    for (const title of remove) await deletePlexPlaylist(server, title);
+    while (removals[0] !== undefined) {
+      await deletePlexPlaylist(server, removals[0]);
+      removals.shift();
+    }
     const files = upload.filter((file) => !file.empty);
     for (const file of upload) if (file.empty) await deletePlexPlaylist(server, file.title);
     const sectionId = files.length ? await musicSectionFor(server, libraryFolder) : "";
     for (const file of files) {
+      if (!stillSending()) return;
       try {
         await axios.post(`${server.url}/playlists/upload`, null, {
           params: { sectionID: sectionId, path: file.path },
@@ -227,11 +243,15 @@ export async function sendPlaylistsToPlex(
     setPlaylistError(
       error instanceof PlexError ? error.message : "Couldn't send playlists to Plex",
     );
+  } finally {
+    setPendingRemovals(removals);
   }
 }
 
 export async function removePlaylistsFromPlex(titles: string[]) {
   const server = getPlexServer();
   if (!server) return;
-  for (const title of titles) await deletePlexPlaylist(server, title).catch(() => {});
+  for (const title of new Set([...pendingRemovals(), ...titles]))
+    await deletePlexPlaylist(server, title).catch(() => {});
+  setPendingRemovals([]);
 }

@@ -39,6 +39,8 @@ Once the server is connected, each Aurral user can import their own Plex plays.
 
 Aurral imports the music plays of that account, then checks for new plays every hour. **Disconnect** removes the plays that Aurral imported.
 
+If an admin connects a different Plex server, each user disconnects Plex and signs in again.
+
 ## Bring a Plex playlist into Aurral
 
 Plex cannot export a playlist as M3U on its own. [plex2pl](https://github.com/tx3stn/plex2pl) with `"outputFormat": "m3u"` writes an M3U file for each Plex music playlist. Then, in Aurral, open **Library > Playlists**, open the create menu, select **Import playlist**, and select **M3U**.

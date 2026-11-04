@@ -343,6 +343,10 @@ function connectionOf(row: HistoryServersRow): Connection {
       throw new HistoryServerError(
         "Plex isn't connected. An admin can connect it in Settings > Listening > Plex.",
       );
+    if (server.url !== row.url)
+      throw new HistoryServerError(
+        "The Plex server changed. Disconnect, then sign in with Plex again.",
+      );
     return {
       url: server.url,
       username: row.username,
