@@ -6,7 +6,17 @@ import { asAppError } from "../../lib/errors.ts";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.ts";
 import { lrclibGetLyrics } from "./apiClients/lrclib.ts";
 
-function textLyrics(text: string | undefined) {
+type LyricLine = { start?: number; value: string };
+type Lyrics = { lang: string; synced: boolean; offset?: number; line: LyricLine[] };
+type LyricsLookup = {
+  filePath?: string | null;
+  artist: string;
+  title: string;
+  album?: string | null;
+  durationSec?: number | null;
+};
+
+function textLyrics(text: string | undefined): Omit<Lyrics, "lang"> | null {
   const lines = String(text || "")
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/);
@@ -37,7 +47,7 @@ function textLyrics(text: string | undefined) {
   return line.length ? { synced: false, line } : null;
 }
 
-function embeddedLyrics(tag: ILyricsTag) {
+function embeddedLyrics(tag: ILyricsTag): Omit<Lyrics, "lang"> | null {
   const synchronized = Array.isArray(tag.syncText) ? tag.syncText : [];
   if (synchronized.length) {
     const synced =
@@ -53,35 +63,60 @@ function embeddedLyrics(tag: ILyricsTag) {
   return textLyrics(tag.text);
 }
 
-export async function getLyricsBySongId(id: string, user: RequestUser) {
-  const song = getSong(id, user);
-  const filePath = song && resolveStreamPath(id, user);
-  if (!filePath) return [];
-  const display = { displayArtist: song.artist, displayTitle: song.title };
+async function localLyrics(filePath: string): Promise<Lyrics[]> {
   const sidecarPath = path.join(path.dirname(filePath), `${path.parse(filePath).name}.lrc`);
   try {
     const lyrics = textLyrics(await readFile(sidecarPath, "utf8"));
-    if (lyrics) return [{ ...display, lang: "und", ...lyrics }];
+    if (lyrics) return [{ lang: "und", ...lyrics }];
   } catch (error) {
     const code = asAppError(error)?.code;
     if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
   }
-  const embedded = await parseFile(filePath, { skipCovers: true })
+  return parseFile(filePath, { skipCovers: true })
     .then((metadata) =>
       (metadata.common.lyrics || []).flatMap((tag) => {
         const lyrics = embeddedLyrics(tag);
-        return lyrics ? [{ ...display, lang: tag.language || "und", ...lyrics }] : [];
+        return lyrics ? [{ lang: tag.language || "und", ...lyrics }] : [];
       }),
     )
     .catch(() => []);
-  if (embedded.length) return embedded;
-  const online = textLyrics(
-    (await lrclibGetLyrics({
-      artist: song.artist,
-      title: song.title || "",
-      album: song.album,
-      durationSec: song.duration,
-    })) || "",
-  );
-  return online ? [{ ...display, lang: "und", ...online }] : [];
+}
+
+async function findLyrics({ filePath, ...track }: LyricsLookup): Promise<Lyrics[]> {
+  const local = filePath ? await localLyrics(filePath) : [];
+  if (local.length) return local;
+  const online = textLyrics((await lrclibGetLyrics(track)) || "");
+  return online ? [{ lang: "und", ...online }] : [];
+}
+
+export async function findTrackLyrics(lookup: LyricsLookup) {
+  const found = await findLyrics(lookup);
+  const lyrics = found.find((entry) => entry.synced) ?? found[0];
+  if (!lyrics) return null;
+  const offset = lyrics.offset ?? 0;
+  return {
+    synced: lyrics.synced,
+    lines: lyrics.line.map(({ start, value }) => ({
+      start: start === undefined ? undefined : Math.max(0, start - offset),
+      value,
+    })),
+  };
+}
+
+export async function getLyricsBySongId(id: string, user: RequestUser) {
+  const song = getSong(id, user);
+  const filePath = song && resolveStreamPath(id, user);
+  if (!filePath) return [];
+  const lyrics = await findLyrics({
+    filePath,
+    artist: song.artist,
+    title: song.title || "",
+    album: song.album,
+    durationSec: song.duration,
+  });
+  return lyrics.map((entry) => ({
+    displayArtist: song.artist,
+    displayTitle: song.title,
+    ...entry,
+  }));
 }
