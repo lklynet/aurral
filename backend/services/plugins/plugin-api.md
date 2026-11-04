@@ -1,3 +1,5 @@
+**Plugins are in beta.** This API can change in any Aurral release until plugins reach a stable release, and a change can break plugins that work today. Expect to update your plugin when Aurral changes.
+
 A plugin is a folder with two files, `manifest.json` and `index.js`. The manifest says what the plugin adds. `index.js` is an ES module whose default export has the functions Aurral calls.
 
 A plugin works in two directions. Aurral calls it from menus, on events, on a schedule, as a download source, or to import a playlist. With `apiAccess`, the plugin can also call Aurral's API and do anything an admin can do in the app.
