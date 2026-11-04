@@ -287,10 +287,8 @@ function TokenDetail({
 }
 
 function ServiceDetail({ provider }: { provider: ScrobbleProvider }) {
-  const { hasPermission } = useAuth();
   const { history, save } = useListenHistory();
   const scrobbleStatus = useScrobbleStatus();
-  const canScrobble = provider !== "koito" || hasPermission("accessSettings");
   const inputId = `listening-history-${provider}`;
 
   return (
@@ -299,11 +297,7 @@ function ServiceDetail({ provider }: { provider: ScrobbleProvider }) {
         <SettingsRow
           label={provider === "koito" ? "Koito URL" : "Username"}
           htmlFor={inputId}
-          help={
-            canScrobble && provider !== "koito"
-              ? "Filled in when you connect scrobbling."
-              : undefined
-          }
+          help={provider === "koito" ? undefined : "Filled in when you connect scrobbling."}
         >
           <SettingsCommitInput
             id={inputId}
@@ -316,7 +310,7 @@ function ServiceDetail({ provider }: { provider: ScrobbleProvider }) {
           />
         </SettingsRow>
       </SettingsGroup>
-      {!canScrobble ? null : scrobbleStatus.isError ? (
+      {scrobbleStatus.isError ? (
         <SettingsNote tone="warning">Couldn&apos;t load scrobbling.</SettingsNote>
       ) : !scrobbleStatus.data ? null : provider === "lastfm" ? (
         <LastfmDetail status={scrobbleStatus.data.lastfm} />
@@ -527,12 +521,7 @@ export function ListeningSection() {
             name={PROVIDER_LABELS[id]}
             status={
               history && scrobbleStatus.data
-                ? serviceStatus(
-                    history[id],
-                    id === "koito" && !hasPermission("accessSettings")
-                      ? undefined
-                      : scrobbleStatus.data[id],
-                  )
+                ? serviceStatus(history[id], scrobbleStatus.data[id])
                 : null
             }
           />

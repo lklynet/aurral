@@ -116,7 +116,7 @@ import {
   getArtistByMbid as getMetadataArtistByMbid,
   selectAlbumRelease,
 } from "./providers/brainzmashProvider.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { isSilenceTrack, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 const LIDARR_RETRY_MS = 60000;
 const metadataLookups = new PQueue({ concurrency: 4 });
 const LIDARR_MONITOR_OPTIONS = new Set([
@@ -2353,7 +2353,7 @@ export class LibraryManager {
         recording: String(track?.recordingId || track?.id || "").trim(),
         title: String(track?.title || "").trim(),
       }))
-      .filter((track) => track.recording);
+      .filter((track) => track.recording && !isSilenceTrack(track.title));
   }
 
   // A release other than a studio album is skipped when every recording on it
@@ -3551,7 +3551,7 @@ export class LibraryManager {
         trackMbid: String(track?.recordingId || track?.id || "").trim(),
         title: String(track?.title || "").trim(),
       }))
-      .filter((track) => track.trackMbid && track.title);
+      .filter((track) => track.trackMbid && track.title && !isSilenceTrack(track.title));
     if (tracks.length === 0) {
       return finishExistingOr({
         error: "Album metadata does not contain an unambiguous track list",

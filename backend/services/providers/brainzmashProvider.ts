@@ -25,7 +25,11 @@ import {
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
 import { selectBestAlbumImage } from "../imageService.ts";
-import { coreAlbumTitle, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
+import {
+  coreAlbumTitle,
+  isSilenceTrack,
+  withoutFeaturedArtists,
+} from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
 import { readMany, readOne } from "../integrationData.ts";
@@ -622,8 +626,9 @@ function tally<T, K>(releases: T[], key: (release: T) => K) {
 // The album is the official tracklist most of its releases share: pressings
 // of the standard edition far outnumber deluxe editions and box sets, which
 // can run to 90 tracks, and misprints that swap tracks. A tie goes to the
-// longer tracklist, and among its releases a single disc, numbered like CD
-// and digital copies, comes first. The expanded edition is the longest one
+// shorter tracklist, since a deluxe edition pressed as often as the standard
+// one is still the deluxe edition, and among its releases a single disc,
+// numbered like CD and digital copies, comes first. The expanded edition is the longest one
 // that keeps every standard track and is at most twice as long, which leaves
 // out box sets.
 export function selectAlbumRelease(
@@ -639,7 +644,7 @@ export function selectAlbumRelease(
   );
   const pool = official.length > 0 ? official : withTracks;
   const [mostCommon] = [...tally(pool, (release) => release.tracks.length)].sort(
-    ([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount,
+    ([leftCount, left], [rightCount, right]) => right - left || leftCount - rightCount,
   );
   if (!mostCommon) return releases[0] || null;
   const [trackCount] = mostCommon;
@@ -703,7 +708,9 @@ export async function getAlbumTracksByAlbumMbid(
   const album = await getAlbumByMbid(albumMbid);
   const release = chooseRelease(album);
   return Array.isArray(release?.tracks)
-    ? release.tracks.map((track) => ({ ...track, releaseMbid: release.id || null }))
+    ? release.tracks
+        .filter((track) => !isSilenceTrack(track.title))
+        .map((track) => ({ ...track, releaseMbid: release.id || null }))
     : [];
 }
 

@@ -6,6 +6,7 @@ import { isOwnKey } from "../../../lib/ownKey.ts";
 // never fabricates values.
 
 import { foldDiacritics } from "../providers/brainzmashRanking.ts";
+import { isSilenceTrack } from "./titleText.ts";
 
 export const SOURCE_CAPABILITIES = {
   deemix: {
@@ -198,7 +199,7 @@ export function implausibleBitrateKbps({
   durationMs?: unknown;
   trackTitle?: unknown;
 }) {
-  if (/^\s*\[silence\]\s*$/iu.test(String(trackTitle || ""))) return null;
+  if (isSilenceTrack(trackTitle)) return null;
   const extension = getFileExtension(filePath);
   const kind =
     lossless === true || (lossless == null && LOSSLESS_EXTENSIONS.has(extension))

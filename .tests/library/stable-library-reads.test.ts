@@ -809,3 +809,30 @@ test("an artist with unreadable metadata fields keeps the rest of its details", 
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
+
+test("random songs leave out [silence] tracks", () => {
+  const key = `random-silence:${process.pid}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: `${key} Artist` });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: `${key} Album`,
+  });
+  for (const title of ["Song", "[silence]"]) {
+    const track = upsertLibraryTrack({ identityKey: `${key}:${title}`, title });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/${key}/${title}.flac`,
+    });
+  }
+
+  const titles = getLibraryTrackPage({ availableOnly: true, random: true, limit: 500 }).tracks.map(
+    (track) => track.title,
+  );
+
+  assert.ok(titles.includes("Song"));
+  assert.ok(!titles.includes("[silence]"));
+});

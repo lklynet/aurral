@@ -2427,6 +2427,7 @@ export function getLibraryTrackPage({
     conditions.push("CAST(substr(COALESCE(album.release_date, ''), 1, 4) AS INTEGER) <= ?");
     parameters.push(upperYear);
   }
+  if (random) conditions.push("lower(trim(track.title)) <> '[silence]'");
   const boundedLimit = pageLimit(limit, 20);
   if (boundedLimit === 0) return { artists: [], albums: [], tracks: [] };
   const useSearchIndex =
