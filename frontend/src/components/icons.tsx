@@ -88,6 +88,7 @@ export const LockOpen = createIcon(icons.LockUnlocked01);
 export const LogOut = createIcon(icons.LogOut01);
 export const MapPin = createIcon(icons.MarkerPin01);
 export const Menu = createIcon(icons.Menu01);
+export const Mic = createIcon(icons.Microphone01);
 export const Monitor = createIcon(icons.Monitor01);
 export const Moon = createIcon(icons.Moon01);
 export const MoreHorizontal = createIcon(icons.DotsHorizontal);

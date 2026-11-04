@@ -24,6 +24,7 @@ import { GripVertical, Music, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
+import PlayerLyrics from "./PlayerLyrics";
 
 type QueueEntry = AudioQueueValue["upcoming"][number];
 
@@ -186,15 +187,30 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
   );
 }
 
+export type PlayerPanelView = "queue" | "lyrics";
+
+const PANEL_VIEWS = [
+  { id: "queue", label: "Queue" },
+  { id: "lyrics", label: "Lyrics" },
+] as const satisfies readonly { id: PlayerPanelView; label: string }[];
+
 interface PlayerQueuePanelProps {
   id: string;
+  view: PlayerPanelView;
+  onViewChange: (view: PlayerPanelView) => void;
   onClose: () => void;
   closeRef: RefObject<HTMLButtonElement | null>;
 }
 
-export function PlayerQueuePanel({ id, onClose, closeRef }: PlayerQueuePanelProps) {
+export function PlayerQueuePanel({
+  id,
+  view,
+  onViewChange,
+  onClose,
+  closeRef,
+}: PlayerQueuePanelProps) {
   const { currentTrack, source } = useAudioQueue();
-  const titleId = useId();
+  const tabsId = useId();
   const [height, setHeight] = useState<number | null>(null);
 
   useEffect(() => {
@@ -211,40 +227,64 @@ export function PlayerQueuePanel({ id, onClose, closeRef }: PlayerQueuePanelProp
     <aside
       id={id}
       className="player-queue"
-      aria-labelledby={titleId}
+      aria-label="Player panel"
       style={height ? { "--player-queue-height": `${height}px` } : undefined}
     >
       <div className="player-queue__header">
-        <h2 id={titleId} className="player-queue__title">
-          Queue
-        </h2>
+        <div className="player-queue__tabs" role="tablist" aria-label="Player panel">
+          {PANEL_VIEWS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              id={`${tabsId}-${entry.id}`}
+              aria-selected={view === entry.id}
+              aria-controls={`${tabsId}-panel`}
+              className={`player-queue__tab${view === entry.id ? " is-active" : ""}`}
+              onClick={() => onViewChange(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
         <TooltipButton
           ref={closeRef}
-          title="Close queue"
-          aria-label="Close queue"
+          title="Close panel"
+          aria-label="Close panel"
           className="btn btn-ghost btn-icon btn-xs"
           onClick={onClose}
         >
           <X className="artist-icon-sm" />
         </TooltipButton>
       </div>
-      <div className="player-queue__body">
-        <section className="player-queue__section" aria-label="Now playing">
-          <h3 className="player-queue__heading">Now playing</h3>
-          <div className="player-queue__now">
-            <QueueArt src={currentTrack.artwork} />
-            <span className="player-queue__copy">
-              <span className="player-queue__name">{currentTrack.title}</span>
-              {currentTrack.artist ? (
-                <span className="player-queue__artist">{currentTrack.artist}</span>
+      <div
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${view}`}
+        className="player-queue__view"
+      >
+        {view === "lyrics" ? (
+          <PlayerLyrics key={currentTrack.entryId} track={currentTrack} variant="panel" />
+        ) : (
+          <div className="player-queue__body">
+            <section className="player-queue__section" aria-label="Now playing">
+              <h3 className="player-queue__heading">Now playing</h3>
+              <div className="player-queue__now">
+                <QueueArt src={currentTrack.artwork} />
+                <span className="player-queue__copy">
+                  <span className="player-queue__name">{currentTrack.title}</span>
+                  {currentTrack.artist ? (
+                    <span className="player-queue__artist">{currentTrack.artist}</span>
+                  ) : null}
+                </span>
+              </div>
+              {source?.label ? (
+                <p className="player-queue__source">Playing from {source.label}</p>
               ) : null}
-            </span>
+            </section>
+            <UpNextQueue />
           </div>
-          {source?.label ? (
-            <p className="player-queue__source">Playing from {source.label}</p>
-          ) : null}
-        </section>
-        <UpNextQueue />
+        )}
       </div>
     </aside>
   );

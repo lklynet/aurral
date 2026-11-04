@@ -21,6 +21,7 @@ import logs from "./logs.ts";
 import mcp from "./mcp.ts";
 import news from "./news.ts";
 import onboarding from "./onboarding.ts";
+import lyrics from "./lyrics.ts";
 import playEvents from "./playEvents.ts";
 import plex from "./plex.ts";
 import plugins from "./plugins.ts";
@@ -98,6 +99,7 @@ export const api = new Hono<AppEnv>()
   .route("/", filesystem)
   .route("/", discovery)
   .route("/", news)
+  .route("/", lyrics)
   .route("/", playEvents)
   .route("/", shareLinks)
   .route("/", starPrompt)

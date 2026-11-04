@@ -6,6 +6,7 @@ export const PLAYER_SHORTCUTS = {
   next: { keys: "Shift+ArrowRight", label: "Shift+→" },
   seek: { keys: "ArrowLeft ArrowRight", label: "← →" },
   mute: { keys: "M", label: "M" },
+  lyrics: { keys: "L", label: "L" },
 };
 
 const KEY_HANDLERS = [
@@ -68,6 +69,7 @@ function shortcutFor(event: KeyboardEvent) {
     return event.key === "ArrowLeft" ? "seekBack" : "seekForward";
   }
   if ((event.key === "m" || event.key === "M") && !event.shiftKey && !event.repeat) return "mute";
+  if ((event.key === "l" || event.key === "L") && !event.shiftKey && !event.repeat) return "lyrics";
   return null;
 }
 

@@ -7,7 +7,7 @@ import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middlew
 import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.ts";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
-import { getLyricsBySongId } from "../services/subsonicLyricsService.ts";
+import { getLyricsBySongId } from "../services/lyricsService.ts";
 import { sendAudioFile } from "../services/audioFileStream.ts";
 import { sendFile } from "../services/fileResponses.ts";
 import { sendViaNode } from "./shared/sendViaNode.ts";
