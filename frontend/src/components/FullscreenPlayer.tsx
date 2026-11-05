@@ -159,11 +159,15 @@ function useArtworkTint(artwork: string | null | undefined) {
   useEffect(() => {
     let dead = false;
     void extractArtworkWash(artwork).then((wash) => {
-      if (dead || !wash) return;
-      setTint({
-        "--collection-tint": `light-dark(${wash.light}, ${wash.dark})`,
-        "--fullscreen-glow": `light-dark(${wash.dark}, ${wash.light})`,
-      });
+      if (dead) return;
+      setTint(
+        wash
+          ? {
+              "--collection-tint": `light-dark(${wash.light}, ${wash.dark})`,
+              "--fullscreen-glow": `light-dark(${wash.dark}, ${wash.light})`,
+            }
+          : undefined,
+      );
     });
     return () => {
       dead = true;
