@@ -14163,8 +14163,8 @@ a.blocklist-page__name:focus-visible {
     content: "";
     position: fixed;
     inset: 0;
-    background-color: color-mix(in srgb, var(--player-tint, transparent) 32%, transparent);
-    mask-image: radial-gradient(farthest-corner at 0 100%, #000, transparent 70%);
+    background-color: color-mix(in srgb, var(--player-tint, transparent) 28%, transparent);
+    mask-image: radial-gradient(circle at 0 100%, #000, transparent 36rem);
     pointer-events: none;
     transition: background-color var(--aurral-duration-slower) var(--aurral-ease-standard);
   }
