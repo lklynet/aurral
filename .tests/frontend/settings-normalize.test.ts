@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { normalizeSettings } from "../../frontend/src/pages/Settings/utils.ts";
 
-test("normalizing saved settings keeps the Google sign-in integration", () => {
+test("normalizing saved settings keeps Google sign-in and an empty metadata URL", () => {
   const google = {
     enabled: true,
     clientId: "client",
@@ -14,4 +14,5 @@ test("normalizing saved settings keeps the Google sign-in integration", () => {
   const normalized = normalizeSettings({ integrations: { google } });
 
   assert.deepEqual(normalized.integrations.google, google);
+  assert.equal(normalized.integrations.metadata.baseUrl, "");
 });

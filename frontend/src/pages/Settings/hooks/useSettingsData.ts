@@ -10,12 +10,7 @@ import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.ts";
 import { allReleaseTypes } from "../constants";
-import {
-  DEFAULT_METADATA_BASE_URL,
-  checkForChanges,
-  normalizeSettings,
-  type SettingsState,
-} from "../utils";
+import { checkForChanges, normalizeSettings, type SettingsState } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { appSettingsQueryOptions } from "../../../queryOptions.ts";
 import { readApiError } from "../utils/apiError.ts";
@@ -169,7 +164,7 @@ const defaultSettings = {
     },
     metadata: {
       provider: "brainzmash",
-      baseUrl: DEFAULT_METADATA_BASE_URL,
+      baseUrl: "",
       userAgentSuffix: "",
       enableNarrowFallbacks: true,
     },

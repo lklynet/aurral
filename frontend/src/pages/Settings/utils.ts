@@ -19,7 +19,7 @@ export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
   const trimmed = String(baseUrl || "")
     .trim()
     .replace(/\/+$/, "");
-  return trimmed === LEGACY_METADATA_BASE_URL ? DEFAULT_METADATA_BASE_URL : trimmed;
+  return trimmed === LEGACY_METADATA_BASE_URL ? "" : trimmed;
 };
 
 export const normalizeSettings = (savedSettings: SavedSettings) => {
@@ -193,8 +193,7 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
           metadata.baseUrl ||
             String(legacyMusicbrainz.customUrl || "")
               .trim()
-              .replace(/\/ws\/2\/?$/, "") ||
-            DEFAULT_METADATA_BASE_URL,
+              .replace(/\/ws\/2\/?$/, ""),
         ),
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
