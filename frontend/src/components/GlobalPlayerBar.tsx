@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import { albumPath } from "../../../lib/albumPath.ts";
 import {
+  ArrowDownLeft,
   ChevronDown,
   Download,
   Ellipsis,
@@ -89,7 +90,12 @@ function PreviewDownloadButton({
     </TooltipButton>
   );
 }
-function GlobalPlayerBar() {
+type GlobalPlayerBarProps = {
+  minimized: boolean;
+  onMinimizedChange: (minimized: boolean) => void;
+};
+
+function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps) {
   const [failedArtwork, setFailedArtwork] = useState<string | null>(null);
   const {
     currentTrack,
@@ -220,7 +226,13 @@ function GlobalPlayerBar() {
     seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
     mute: toggleMute,
     lyrics: () => {
-      if (window.matchMedia("(min-width: 768px)").matches) togglePanel("lyrics");
+      if (!window.matchMedia("(min-width: 768px)").matches) return;
+      if (!minimized) {
+        togglePanel("lyrics");
+        return;
+      }
+      onMinimizedChange(false);
+      setPanel("lyrics");
     },
   });
 
@@ -230,8 +242,70 @@ function GlobalPlayerBar() {
       : "",
   );
 
+  const minimize = () => {
+    setPanel(null);
+    onMinimizedChange(true);
+  };
+  const minimizedClass = minimized ? " global-player--minimized" : "";
+  const minimizeButton = (
+    <TooltipButton
+      tooltipPlacement="top"
+      label="Minimize player"
+      onClick={minimize}
+      className="btn btn-ghost btn-icon btn-xs"
+    >
+      <ArrowDownLeft className="artist-icon-sm" />
+    </TooltipButton>
+  );
+
   if (!isActive || !currentTrack) {
-    return null;
+    return (
+      <div
+        className={`global-player global-player--empty${minimizedClass}`}
+        role="region"
+        aria-label="Global audio player"
+      >
+        <div className="global-player__inner">
+          <div className="global-player__track">
+            <span className="global-player__art global-player__art--bar" aria-hidden="true">
+              <Music />
+            </span>
+            <div className="global-player__meta">
+              <span className="global-player__title">Nothing playing</span>
+            </div>
+          </div>
+          <div className="global-player__main">
+            <div className="global-player__controls">
+              <TooltipButton
+                tooltipPlacement="top"
+                disabled
+                label="Previous track"
+                className="btn btn-secondary btn-sm btn-icon global-player__control"
+              >
+                <SkipBack className="artist-icon-sm" />
+              </TooltipButton>
+              <TooltipButton
+                tooltipPlacement="top"
+                disabled
+                label="Play"
+                className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
+              >
+                <Play className="artist-icon-sm" />
+              </TooltipButton>
+              <TooltipButton
+                tooltipPlacement="top"
+                disabled
+                label="Next track"
+                className="btn btn-secondary btn-sm btn-icon global-player__control"
+              >
+                <SkipForward className="artist-icon-sm" />
+              </TooltipButton>
+            </div>
+          </div>
+          <div className="global-player__side">{minimizeButton}</div>
+        </div>
+      </div>
+    );
   }
 
   const volumePercent = muted ? 0 : Math.round(volume * 100);
@@ -343,7 +417,7 @@ function GlobalPlayerBar() {
 
   return (
     <div
-      className="global-player"
+      className={`global-player${minimizedClass}`}
       role="region"
       aria-label="Global audio player"
       style={artTint ? { "--player-tint": artTint } : undefined}
@@ -771,14 +845,7 @@ function GlobalPlayerBar() {
             style={{ "--volume-percent": `${volumePercent}%` }}
             aria-label="Volume"
           />
-          <TooltipButton
-            tooltipPlacement="top"
-            label="Close player"
-            onClick={clearQueue}
-            className="btn btn-ghost btn-icon btn-xs global-player__close"
-          >
-            <X className="artist-icon-sm" />
-          </TooltipButton>
+          {minimizeButton}
         </div>
       </div>
     </div>

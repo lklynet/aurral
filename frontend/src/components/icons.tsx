@@ -31,6 +31,7 @@ export const Activity = createIcon(icons.Activity);
 export const AlertCircle = createIcon(icons.AlertCircle);
 export const AlertTriangle = createIcon(icons.AlertTriangle);
 export const ArrowDown = createIcon(icons.ArrowDown);
+export const ArrowDownLeft = createIcon(icons.ArrowDownLeft);
 export const ArrowLeft = createIcon(icons.ArrowLeft);
 export const ArrowRight = createIcon(icons.ArrowRight);
 export const ArrowUp = createIcon(icons.ArrowUp);
