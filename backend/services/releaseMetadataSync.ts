@@ -228,7 +228,7 @@ export async function refreshReleaseMetadata({
     }
   }
 
-  if (eligibleArtists.length > 0 && artistsRefreshed === 0) {
+  if (artistsFailed > 0 && artistsRefreshed === 0) {
     throw new Error("BrainzMash release metadata refresh failed for every library artist");
   }
 
