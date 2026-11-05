@@ -22,6 +22,7 @@ export type AudioQueueValue = {
   duration: number;
   getPosition: () => number;
   getBufferedEnd: () => number;
+  getMediaElement: () => HTMLAudioElement | null;
   seek: (position: number) => void;
   volume: number;
   muted: boolean;

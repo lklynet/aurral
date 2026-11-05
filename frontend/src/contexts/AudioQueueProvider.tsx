@@ -974,6 +974,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       duration: playback.duration,
       getPosition: engine.getPosition,
       getBufferedEnd: engine.getBufferedEnd,
+      getMediaElement: engine.getMediaElement,
       seek,
       volume,
       muted,

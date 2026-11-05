@@ -227,6 +227,9 @@ export function createAudioEngine() {
       if (!current.loaded) return current.startAt;
       return current.node?.currentTime || 0;
     },
+    getMediaElement() {
+      return current?.node ?? null;
+    },
     getBufferedEnd() {
       const node = current?.node;
       const ranges = node?.buffered;

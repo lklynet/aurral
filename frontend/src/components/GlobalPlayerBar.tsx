@@ -17,6 +17,7 @@ import {
   Ellipsis,
   Heart,
   ListMusic,
+  Maximize,
   Mic,
   Music,
   Pause,
@@ -40,6 +41,7 @@ import TooltipButton from "./TooltipButton";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQueue";
 import PlayerLyrics from "./PlayerLyrics";
+import FullscreenPlayer, { type FullscreenView } from "./FullscreenPlayer";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.ts";
@@ -59,6 +61,17 @@ const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SHEET_TAP_DISTANCE = 8;
 const SEEK_SHORTCUT_SECONDS = 5;
+const FULLSCREEN_VIEW_KEY = "playerFullscreenView";
+
+function savedFullscreenView(): FullscreenView {
+  try {
+    const saved = localStorage.getItem(FULLSCREEN_VIEW_KEY);
+    if (saved === "lyrics" || saved === "queue" || saved === "visualizer") return saved;
+  } catch {
+    // Storage can be blocked; the artwork view is a fine default.
+  }
+  return "art";
+}
 type PlayerTrack = NonNullable<ReturnType<typeof useAudioQueue>["currentTrack"]>;
 
 function PreviewDownloadButton({
@@ -133,6 +146,18 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLyrics, setSheetLyrics] = useState(false);
   const [panel, setPanel] = useState<PlayerPanelView | null>(null);
+  const [fullscreenView, setFullscreenView] = useState<FullscreenView | null>(null);
+  const closeFullscreen = useCallback(() => setFullscreenView(null), []);
+  const changeFullscreenView = (view: FullscreenView) => {
+    setFullscreenView(view);
+    try {
+      localStorage.setItem(FULLSCREEN_VIEW_KEY, view);
+    } catch {
+      // Storage can be blocked; the view still changes for this visit.
+    }
+  };
+  const toggleFullscreen = () =>
+    setFullscreenView((current) => (current ? null : savedFullscreenView()));
   const queuePanelId = useId();
   const queueTriggerRef = useRef<HTMLButtonElement>(null);
   const lyricsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +192,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     if (isActive) return;
     setSheetOpen(false);
     setPanel(null);
+    setFullscreenView(null);
   }, [isActive]);
 
   const queueOpen = panel !== null;
@@ -231,7 +257,12 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     seekBack: () => seekBy(-SEEK_SHORTCUT_SECONDS),
     seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
     mute: toggleMute,
+    fullscreen: toggleFullscreen,
     lyrics: () => {
+      if (fullscreenView) {
+        changeFullscreenView(fullscreenView === "lyrics" ? "art" : "lyrics");
+        return;
+      }
       if (!window.matchMedia("(min-width: 768px)").matches) return;
       if (!minimized) {
         togglePanel("lyrics");
@@ -697,6 +728,14 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
           )
         : null}
 
+      {fullscreenView ? (
+        <FullscreenPlayer
+          view={fullscreenView}
+          onViewChange={changeFullscreenView}
+          onClose={closeFullscreen}
+        />
+      ) : null}
+
       {panel ? (
         <PlayerQueuePanel
           id={queuePanelId}
@@ -870,6 +909,17 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
             className={`btn btn-ghost btn-icon btn-xs global-player__panel-toggle${panel === "queue" ? " is-active" : ""}`}
           >
             <ListMusic className="artist-icon-sm" />
+          </TooltipButton>
+          <TooltipButton
+            tooltipPlacement="top"
+            title={`Full screen (${PLAYER_SHORTCUTS.fullscreen.label})`}
+            aria-label="Full screen"
+            aria-keyshortcuts={PLAYER_SHORTCUTS.fullscreen.keys}
+            aria-haspopup="dialog"
+            onClick={toggleFullscreen}
+            className="btn btn-ghost btn-icon btn-xs"
+          >
+            <Maximize className="artist-icon-sm" />
           </TooltipButton>
           <TooltipButton
             tooltipPlacement="top"

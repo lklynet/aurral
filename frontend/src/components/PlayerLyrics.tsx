@@ -49,7 +49,7 @@ export default function PlayerLyrics({
   variant,
 }: {
   track: PlayerTrack;
-  variant: "panel" | "sheet";
+  variant: "panel" | "sheet" | "fullscreen";
 }) {
   const { seek } = useAudioQueue();
   const lookup = lyricsLookup(track);
