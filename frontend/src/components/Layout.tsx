@@ -13,6 +13,7 @@ import {
 } from "react";
 import RouteLink from "./RouteLink";
 import { useLocation, useNavigate, useNavigationType } from "react-router";
+import { useEdgeSwipeBack } from "../hooks/useEdgeSwipeBack.ts";
 import {
   Sparkles,
   Library,
@@ -66,6 +67,8 @@ function Layout({ children, headerActions }: LayoutProps) {
     height: 0,
   });
   const mainScrollRef = useRef<HTMLElement>(null);
+  const mainWrapRef = useRef<HTMLDivElement>(null);
+  const [isMainScrolled, setIsMainScrolled] = useState(false);
   const scrollbarTrackRef = useRef<HTMLDivElement>(null);
   const scrollbarDragRef = useRef<ScrollbarDrag | null>(null);
   const scrollbarFadeTimeoutRef = useRef<number | null>(null);
@@ -199,6 +202,12 @@ function Layout({ children, headerActions }: LayoutProps) {
     }
     navigate("/");
   }, [navigate]);
+
+  useEdgeSwipeBack(mainWrapRef, {
+    enabled: !sectionNav,
+    onBack: handleMobileBack,
+    resetKey: location.key,
+  });
 
   const persistSidebarWidth = useCallback((width: number) => {
     const nextWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(width)));
@@ -501,7 +510,11 @@ function Layout({ children, headerActions }: LayoutProps) {
           </nav>
         ) : null}
 
-        <div className="app-main-wrap">
+        <div
+          ref={mainWrapRef}
+          className="app-main-wrap"
+          data-scrolled={isMainScrolled || undefined}
+        >
           <main
             className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}${
               isPlayerActive ? " app-main--player-active" : ""
@@ -509,6 +522,7 @@ function Layout({ children, headerActions }: LayoutProps) {
             ref={mainScrollRef}
             onScroll={(event) => {
               scrollPositionsRef.current.set(location.key, event.currentTarget.scrollTop);
+              setIsMainScrolled(event.currentTarget.scrollTop > 0);
               updateMainScrollbar();
               showScrollbarTemporarily();
             }}
@@ -604,6 +618,14 @@ function Layout({ children, headerActions }: LayoutProps) {
                   to={item.path}
                   className={`app-mobile-nav__item${active ? " is-active" : ""}`}
                   aria-current={active ? "page" : undefined}
+                  onClick={(event) => {
+                    const main = mainScrollRef.current;
+                    if (location.pathname + location.search !== item.path || !main?.scrollTop) {
+                      return;
+                    }
+                    event.preventDefault();
+                    main.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
                 >
                   <Icon aria-hidden="true" />
                   <span>{item.label}</span>

@@ -1250,6 +1250,9 @@ export function PlaylistImportModal({
             <div>
               <input
                 type="search"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="input"
                 placeholder="Search playlists"
                 aria-label="Search playlists"

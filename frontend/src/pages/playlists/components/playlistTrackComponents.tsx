@@ -774,6 +774,9 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
               <Search aria-hidden="true" />
               <input
                 type="search"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search tracks"

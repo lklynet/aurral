@@ -111,6 +111,10 @@ const Login = () => {
                   type="text"
                   required
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
                   className="login-input"
                   placeholder="Username"
                   value={username}
@@ -129,6 +133,7 @@ const Login = () => {
                   type="password"
                   required
                   autoComplete="current-password"
+                  enterKeyHint="go"
                   className="login-input"
                   placeholder="Password"
                   value={password}

@@ -35,6 +35,9 @@ export default function ActivityToolbar({
             <Search aria-hidden="true" />
             <input
               type="search"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={filterValue}
               onChange={(event) => onFilterChange(event.target.value)}
               placeholder={placeholder}

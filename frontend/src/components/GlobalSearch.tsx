@@ -174,7 +174,15 @@ function GlobalSearch() {
   useEffect(() => {
     setSearchQuery("");
     closeAutocomplete();
+    inputRef.current?.blur();
   }, [location.pathname, location.search, closeAutocomplete]);
+
+  const cancelSearch = () => {
+    setSearchQuery("");
+    closeAutocomplete();
+    setInputFocused(false);
+    inputRef.current?.blur();
+  };
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
@@ -600,8 +608,14 @@ function GlobalSearch() {
     </>
   );
 
+  const searchActive = inputFocused || searchQuery.length > 0;
+
   return (
-    <form ref={searchContainerRef} onSubmit={handleSubmit} className="global-search">
+    <form
+      ref={searchContainerRef}
+      onSubmit={handleSubmit}
+      className={`global-search${searchActive ? " is-active" : ""}`}
+    >
       <div className="global-search__box global-search__box--unified">
         <div className="global-search__input-wrap global-search__input-wrap--unified">
           <Search className="global-search__icon" />
@@ -622,6 +636,10 @@ function GlobalSearch() {
             aria-label="Search music, artists, or tags"
             className="global-search__input"
             autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="search"
           />
           {!searchQuery && (
             <div className="global-search__placeholder">{emptySearchPlaceholder}</div>
@@ -634,111 +652,119 @@ function GlobalSearch() {
         </div>
       </div>
 
-      {!loadingSuggestions &&
-        suggestionMode === "unified" &&
-        !localSearchConfigured &&
-        searchQuery.trim().length >= 2 && (
-          <div className="global-search__suggestions global-search__suggestions--grouped">
-            <div className="global-search__suggestion-group">Search not configured</div>
-            <div className="global-search__suggestion global-search__suggestion--message">
-              Set up the metadata server in Settings → Metadata to search music.
+      {searchActive ? (
+        <button type="button" className="global-search__cancel" onClick={cancelSearch}>
+          Cancel
+        </button>
+      ) : null}
+
+      <div className="global-search__panel">
+        {!loadingSuggestions &&
+          suggestionMode === "unified" &&
+          !localSearchConfigured &&
+          searchQuery.trim().length >= 2 && (
+            <div className="global-search__suggestions global-search__suggestions--grouped">
+              <div className="global-search__suggestion-group">Search not configured</div>
+              <div className="global-search__suggestion global-search__suggestion--message">
+                Set up the metadata server in Settings → Metadata to search music.
+              </div>
             </div>
+          )}
+
+        {showRecentSearches && (
+          <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">
+            <div className="global-search__recent-header">
+              <span className="global-search__recent-label">Recent searches</span>
+              <button
+                type="button"
+                className="global-search__recent-clear"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleClearRecentSearches}
+              >
+                Clear
+              </button>
+            </div>
+            {recentSelectableRows.map((row, index) => (
+              <button
+                key={row.key}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleSuggestionSelect(row)}
+                className={`global-search__suggestion global-search__suggestion--recent${
+                  index === suggestionIndex ? " is-highlighted" : ""
+                }`}
+              >
+                <Clock className="global-search__recent-icon" aria-hidden="true" />
+                <span className="global-search__recent-query">{row.query}</span>
+              </button>
+            ))}
           </div>
         )}
 
-      {showRecentSearches && (
-        <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">
-          <div className="global-search__recent-header">
-            <span className="global-search__recent-label">Recent searches</span>
-            <button
-              type="button"
-              className="global-search__recent-clear"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={handleClearRecentSearches}
-            >
-              Clear
-            </button>
-          </div>
-          {recentSelectableRows.map((row, index) => (
-            <button
-              key={row.key}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSuggestionSelect(row)}
-              className={`global-search__suggestion global-search__suggestion--recent${
-                index === suggestionIndex ? " is-highlighted" : ""
-              }`}
-            >
-              <Clock className="global-search__recent-icon" aria-hidden="true" />
-              <span className="global-search__recent-query">{row.query}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {suggestionRows.length > 0 && (
-        <div className="global-search__suggestions global-search__suggestions--grouped">
-          {suggestionMode === "tag"
-            ? suggestionRows.map((row, index) =>
-                row.kind === "tag" ? (
-                  <button
-                    key={row.key}
-                    type="button"
-                    onClick={() => handleSuggestionSelect(row)}
-                    className={`global-search__suggestion${
-                      index === suggestionIndex ? " is-highlighted" : ""
-                    }`}
-                  >
-                    #{row.tagName}
-                  </button>
-                ) : null,
-              )
-            : suggestionRows.map((row) => {
-                if (row.kind === "header") {
-                  return (
-                    <div key={row.key} className="global-search__suggestion-group">
-                      {row.label}
-                    </div>
-                  );
-                }
-                if (row.kind !== "item") return null;
-                selectableCursor += 1;
-                const highlighted = selectableCursor === suggestionIndex;
-                const item = row.item;
-                const label = getSuggestionTitle(item);
-                const meta = getSuggestionMeta(item);
-                const action = renderSuggestionAction(item);
-
-                return (
-                  <div
-                    key={row.key}
-                    className={`global-search__suggestion global-search__suggestion--rich${
-                      highlighted ? " is-highlighted" : ""
-                    }`}
-                  >
+        {suggestionRows.length > 0 && (
+          <div className="global-search__suggestions global-search__suggestions--grouped">
+            {suggestionMode === "tag"
+              ? suggestionRows.map((row, index) =>
+                  row.kind === "tag" ? (
                     <button
+                      key={row.key}
                       type="button"
                       onClick={() => handleSuggestionSelect(row)}
-                      className="global-search__suggestion-main"
+                      className={`global-search__suggestion${
+                        index === suggestionIndex ? " is-highlighted" : ""
+                      }`}
                     >
-                      <span className="global-search__suggestion-copy">
-                        <span className="global-search__suggestion-title">{label}</span>
-                        {meta && <span className="global-search__suggestion-meta">{meta}</span>}
-                      </span>
+                      #{row.tagName}
                     </button>
-                    {action && (
-                      <span
-                        className="global-search__suggestion-actions"
-                        onClick={(event) => event.stopPropagation()}
+                  ) : null,
+                )
+              : suggestionRows.map((row) => {
+                  if (row.kind === "header") {
+                    return (
+                      <div key={row.key} className="global-search__suggestion-group">
+                        {row.label}
+                      </div>
+                    );
+                  }
+                  if (row.kind !== "item") return null;
+                  selectableCursor += 1;
+                  const highlighted = selectableCursor === suggestionIndex;
+                  const item = row.item;
+                  const label = getSuggestionTitle(item);
+                  const meta = getSuggestionMeta(item);
+                  const action = renderSuggestionAction(item);
+
+                  return (
+                    <div
+                      key={row.key}
+                      className={`global-search__suggestion global-search__suggestion--rich${
+                        highlighted ? " is-highlighted" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSuggestionSelect(row)}
+                        className="global-search__suggestion-main"
                       >
-                        {action}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-        </div>
-      )}
+                        <span className="global-search__suggestion-copy">
+                          <span className="global-search__suggestion-title">{label}</span>
+                          {meta && <span className="global-search__suggestion-meta">{meta}</span>}
+                        </span>
+                      </button>
+                      {action && (
+                        <span
+                          className="global-search__suggestion-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {action}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+          </div>
+        )}
+      </div>
     </form>
   );
 }
