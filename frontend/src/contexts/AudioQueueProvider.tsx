@@ -213,7 +213,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const [autoplayEnabled, setAutoplayState] = useState(readAutoplay);
   const autoplayRef = useRef(autoplayEnabled);
   autoplayRef.current = autoplayEnabled;
-  const refillRef = useRef<string | null>(null);
+  const refillRef = useRef<{ entryId: string; queue: QueueEntry[] } | null>(null);
   const radioRequestRef = useRef(0);
 
   const [state, applyAction] = useReducer(queueReducer, initialQueueState);
@@ -675,9 +675,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     if (!radio && !(autoplayEnabled && upcoming.every(({ track }) => isAutoplayEntry(track)))) {
       return;
     }
-    const refill = `${currentTrack.entryId}:${state.queue.length}`;
-    if (refillRef.current === refill) return;
-    refillRef.current = refill;
+    const { queue } = state;
+    const entryId = currentTrack.entryId;
+    if (refillRef.current?.entryId === entryId && refillRef.current.queue === queue) return;
+    refillRef.current = { entryId, queue };
     const played = state.playbackOrder
       .slice(Math.max(0, state.currentIndex - AUTOPLAY_SEED_TRACKS + 1), state.currentIndex + 1)
       .flatMap((queueIndex) => state.queue[queueIndex] ?? [])
@@ -685,15 +686,12 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       .reverse();
     const seed = radio?.seed ?? radioSeedFor(played);
     const queueSource = radio ?? AUTOPLAY_SOURCE;
-    const entryId = currentTrack.entryId;
     const revision = state.queueRevision;
-    const { length } = state.queue;
-    fetchRadio(seed, state.queue)
+    fetchRadio(seed, queue)
       .then((tracks) => {
         const latest = stateRef.current;
         if (!ownsQueueRef.current || tracks.length === 0) return;
-        if (latest.queue.length !== length) return;
-        if (!latest.queue.some((entry) => entry.entryId === entryId)) return;
+        if (latest.queue !== queue) return;
         if (!radio && !autoplayRef.current) return;
         const ranOut = !latest.autoplay && latest.queueRevision !== revision;
         dispatch({

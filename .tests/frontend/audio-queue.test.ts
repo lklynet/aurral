@@ -346,6 +346,22 @@ test("autoplay tracks stay after everything you queue and leave when autoplay or
   assert.ok(upcomingIds(shuffled).includes("y"));
 });
 
+test("clearing up next ends a radio station so autoplay takes over", () => {
+  const station = { type: "radio", id: "r", label: "Tricky radio", seed: { trackIds: ["1"] } };
+  const playing = queueReducer(
+    queueReducer(initialQueueState, { type: "PLAY_QUEUE", tracks: [extra("r0")], source: station }),
+    {
+      type: "EXTEND_QUEUE",
+      tracks: ["r1", "r2"].map((id) => ({ ...extra(id), queueSource: station })),
+    },
+  );
+  const cleared = queueReducer(queueReducer(playing, { type: "NEXT" }), { type: "CLEAR_UPCOMING" });
+  assert.deepEqual(upcomingIds(cleared), []);
+  assert.equal(cleared.source?.label, "Tricky radio");
+  assert.equal(cleared.source?.seed, undefined);
+  assert.ok(cleared.queue.every((entry) => entry.queueSource?.seed === undefined));
+});
+
 test("adding to an empty queue starts playing the added track", () => {
   const started = insert(initialQueueState, ["x"], "end");
   assert.equal(currentId(started), "x");

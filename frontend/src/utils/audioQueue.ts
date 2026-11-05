@@ -238,6 +238,9 @@ export function radioSeedFor(
   return { trackIds: [...new Set(trackIds)], artists };
 }
 
+const endStation = <T extends QueueSource | null | undefined>(source: T) =>
+  source?.seed ? { type: source.type, id: source.id, label: source.label } : source;
+
 export const isAutoplayEntry = (entry: Pick<QueueEntry, "queueSource">) =>
   entry.queueSource?.type === AUTOPLAY_SOURCE.type;
 
@@ -584,8 +587,18 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         ...entryIds.map((entryId) => upcomingById.get(entryId)!),
       ]);
     }
-    case "CLEAR_UPCOMING":
-      return withoutUpcoming(state, (entry) => !isAutoplayEntry(entry));
+    case "CLEAR_UPCOMING": {
+      const cleared = withoutUpcoming(state, (entry) => !isAutoplayEntry(entry));
+      return {
+        ...cleared,
+        source: endStation(cleared.source),
+        queue: cleared.queue.map((entry) =>
+          entry.queueSource?.seed
+            ? { ...entry, queueSource: endStation(entry.queueSource) }
+            : entry,
+        ),
+      };
+    }
     case "RESTORE_ORDER": {
       const current = currentEntryId(state);
       const { queue, playbackOrder, isShuffleEnabled } = action;
