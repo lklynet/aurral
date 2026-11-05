@@ -16,7 +16,7 @@ An Aurral artist is monitored or not. A monitored artist either follows the live
 - **Live defaults.** The defaults are one settings row, `monitoringDefaults`, with `updatedAt` and `newReleasesSince`. An artist that follows them takes the later of its own times and the defaults' times, which is the same as re-saving every follower at the moment the defaults change. Saving the defaults queues a reconciliation instead of planning every artist in the request.
 - **Covered releases.** A release that is not a studio album is skipped when every recording on it is in the Library or on an earlier release in the same plan. Studio albums sort first so their recordings count. This keeps singles and EPs from duplicating album tracks without a setting for it.
 - **Exclusions.** Deleting an album, or a track file, adds a row to `library_monitoring_exclusions`. Plans and acquisitions skip excluded albums and tracks. A user request, or **Allow again**, clears the row. This replaces refusing to delete an album of a monitored artist.
-- **Keep this file.** `library_tracks.keep_file` stops quality upgrades for a track's file and cancels one in progress. It does not change monitoring.
+- **Unmonitored tracks.** An unmonitored track keeps its file but gets no quality upgrades, and unmonitoring it cancels an upgrade in progress. A replacement the user asks for with **Re-search** still runs. Unmonitoring is how a user protects a file they like, so there is no separate keep flag.
 - **Races.** A queued acquisition carries a token of the artist's effective monitoring. It does nothing when the token no longer matches, so a later disable or change of rules wins.
 
 ## Alternatives

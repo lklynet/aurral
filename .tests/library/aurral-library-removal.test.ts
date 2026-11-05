@@ -98,7 +98,6 @@ async function createAurralAlbum({
     created_at: number;
     updated_at: number;
     monitored: number;
-    keep_file: number;
   }[] = [];
   for (let index = 0; index < trackCount; index += 1) {
     const trackMbid = `abababab-abab-4bab-8bab-${suffix.slice(2)}${String(index).padStart(2, "0")}`;

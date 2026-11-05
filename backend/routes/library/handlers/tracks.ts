@@ -66,10 +66,7 @@ const requireTrackDeletion = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-const aurralTrackInput = v.object({
-  keepFile: v.optional(v.boolean()),
-  monitored: v.optional(v.boolean()),
-});
+const aurralTrackInput = v.object({ monitored: v.optional(v.boolean()) });
 
 const queueQuery = v.object({ page: v.optional(v.string()), pageSize: v.optional(v.string()) });
 
@@ -132,12 +129,9 @@ export default new Hono<AppEnv>()
     validate("json", aurralTrackInput),
     async (c) => {
       const canonicalId = c.req.param("canonicalId");
-      const { keepFile, monitored } = c.req.valid("json");
+      const { monitored } = c.req.valid("json");
       try {
-        const result =
-          keepFile !== undefined
-            ? await libraryManager.setTrackKeepFile(canonicalId, { keepFile })
-            : await libraryManager.setAurralTrackMonitoring(canonicalId, { monitored });
+        const result = await libraryManager.setAurralTrackMonitoring(canonicalId, { monitored });
         if (isFailure(result)) {
           const { error, statusCode, ...details } = result;
           return c.json({ ...details, error }, isErrorStatus(statusCode) ? statusCode : 500);

@@ -123,8 +123,7 @@ With Lidarr connected, **Download album** on an album that Aurral does not have 
 - To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. On an Aurral album, Aurral looks up the full track list and downloads what is missing. On a Lidarr album, Lidarr searches for it.
 - To get one missing track, select the download button on its row. Aurral downloads the track, even on an album that Lidarr manages.
 - To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
-- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
-- To keep a file you are happy with, select **Keep this file** in the track's menu. Aurral stops upgrading it, including when you ask for an upgrade, and cancels an upgrade that is under way, but keeps monitoring the track. To let Aurral upgrade it again, select **Allow upgrades**.
+- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. An unmonitored track shows a crossed-out eye. Aurral keeps its file and stops upgrading it, so this is also how you keep a copy you are happy with. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
 
 If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. To monitor something again, download it. When nothing is missing, the menu offers **Monitor track** or **Monitor album** instead. An album you unmonitored stays unmonitored when you change the artist's monitoring later.
 
@@ -157,7 +156,7 @@ If no download client is set up, or if tracks wait for review, the album page li
 
 ## Replace a track
 
-To look for another recording of a track that Aurral downloaded, right-click the track and select **Re-search**. The current file stays available until Aurral downloads and checks a replacement. Lidarr tracks do not have this action.
+To look for another recording of a track that Aurral downloaded, right-click the track and select **Re-search** > **Automatic**, or **Manual** to pick a result yourself. The current file stays available until Aurral downloads and checks a replacement. Lidarr tracks do not have this action.
 
 ## Remove tracks, albums, and artists
 

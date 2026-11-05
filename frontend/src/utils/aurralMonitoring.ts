@@ -33,12 +33,6 @@ interface MonitoringResult {
   cleanupFailed?: boolean;
 }
 
-interface KeepFileResult {
-  keepFile?: boolean;
-  cancelledJobIds?: string[];
-  cleanupFailed?: boolean;
-}
-
 export const MONITOR_OPTIONS = [
   { value: "none", label: "None (artist only)" },
   { value: "existing", label: "Existing albums" },
@@ -174,23 +168,3 @@ export const describeAlbumMonitoringResult = (result: MonitoringResult | null | 
 
 export const describeTrackMonitoringResult = (result: MonitoringResult | null | undefined) =>
   describeMonitoringResult(result, "Track");
-
-export const describeKeepFileResult = (
-  result: KeepFileResult | null | undefined,
-  title: string,
-) => {
-  if (!result?.keepFile) return { message: `Aurral can upgrade ${title} again.`, warning: false };
-  const kept = `Keeping ${title}. Aurral won't replace it with an upgrade`;
-  if (result.cleanupFailed) {
-    return {
-      message: `${kept}, but the download client may still hold the upgrade in progress.`,
-      warning: true,
-    };
-  }
-  return {
-    message: result.cancelledJobIds?.length
-      ? `${kept}, and the upgrade in progress was cancelled.`
-      : `${kept}.`,
-    warning: false,
-  };
-};

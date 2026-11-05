@@ -55,6 +55,7 @@ async function createLibraryJob({
   inLibrary = true,
   jobHasAlbum = true,
   fileHasAlbum = true,
+  playlistType = "library",
 }: {
   state?: string;
   albumMonitored?: boolean;
@@ -62,6 +63,7 @@ async function createLibraryJob({
   inLibrary?: boolean;
   jobHasAlbum?: boolean;
   fileHasAlbum?: boolean;
+  playlistType?: string;
 } = {}) {
   sequence += 1;
   const suffix = String(sequence).padStart(12, "0");
@@ -105,7 +107,7 @@ async function createLibraryJob({
       trackMbid,
       managedBy: "aurral",
     },
-    "library",
+    playlistType,
   );
   assert.ok(jobId != null);
   if (state === "failed") {
@@ -136,18 +138,18 @@ async function request<Body = never>(route: string, options: RequestInit = {}) {
   return body;
 }
 
-const keepFile = (jobId: string | null) => {
+const stopMonitoring = (jobId: string | null) => {
   const { id } = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryTracksRow["id"] }>(
       "SELECT id FROM library_tracks WHERE mbid = ?",
     )
     .get(getJob(jobId).trackMbid)!;
-  return request<{ keepFile: boolean; cancelledJobIds: string[] }>(
+  return request<{ monitored: boolean; cancelledJobIds: string[] }>(
     `/api/library/tracks/aurral/${id}`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ keepFile: true }),
+      body: JSON.stringify({ monitored: false }),
     },
   );
 };
@@ -293,52 +295,62 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
   );
 });
 
-test("Keep this file stops upgrades of that file and cancels the upgrade already queued", async () => {
-  const kept = await createLibraryJob();
+test("Stopping monitoring a track cancels its queued upgrade and refuses a new one", async () => {
+  const unmonitored = await createLibraryJob();
   const other = await createLibraryJob();
-  const keptBeforeCheck = await createLibraryJob();
-  const keptLibraryFile = await createLibraryJob();
-  assert.ok(keptLibraryFile != null);
-  const keptLibraryFileMbid = getJob(keptLibraryFile).trackMbid;
-  await keepFile(keptBeforeCheck);
-  await keepFile(keptLibraryFile);
-  downloadTracker.removeJob(keptLibraryFile);
 
   const first = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
     method: "POST",
   });
   assert.equal(first.queued, 2);
-  assert.deepEqual(
-    [kept, other, keptBeforeCheck].map((jobId) => upgradeJobsOf(jobId).length),
-    [1, 1, 0],
-  );
-  assert.deepEqual(
-    downloadTracker.getAll().filter((job) => job.trackMbid === keptLibraryFileMbid),
-    [],
-  );
 
-  const result = await keepFile(kept);
-  assert.equal(result.keepFile, true);
-  assert.deepEqual(result.cancelledJobIds, [requireFixture(upgradeJobsOf(kept)[0]).id]);
+  const result = await stopMonitoring(unmonitored);
+  assert.equal(result.monitored, false);
+  const upgrade = requireFixture(upgradeJobsOf(unmonitored)[0]);
+  assert.deepEqual(result.cancelledJobIds, [upgrade.id]);
   assert.ok(
-    ["cancelled", "cancel_requested"].includes(requireFixture(upgradeJobsOf(kept)[0]).status),
-    requireFixture(upgradeJobsOf(kept)[0]).status,
+    ["cancelled", "cancel_requested"].includes(
+      requireFixture(upgradeJobsOf(unmonitored)[0]).status,
+    ),
   );
   assert.notEqual(requireFixture(upgradeJobsOf(other)[0]).status, "cancelled");
-  assert.equal(getJob(kept).status, "done");
+  assert.equal(getJob(unmonitored).status, "done");
 
   const second = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
     method: "POST",
   });
   assert.equal(second.queued, 0);
-  assert.equal(upgradeJobsOf(kept).length, 1);
 
-  const direct = await fetch(`${baseUrl}/api/playlists/quality-upgrades/library/${kept}`, {
+  const direct = await fetch(`${baseUrl}/api/playlists/quality-upgrades/library/${unmonitored}`, {
     method: "POST",
   });
   assert.equal(direct.status, 409);
-  assert.equal((await direct.json()).code, "kept_file");
-  assert.equal(upgradeJobsOf(kept).length, 1);
+  assert.equal((await direct.json()).code, "unmonitored_track");
+  assert.equal(upgradeJobsOf(unmonitored).length, 1);
+});
+
+test("a Library track opens a manual replacement search on the job that filed it, even from a flow the user cannot open", async () => {
+  const jobId = await createLibraryJob({ playlistType: "deleted-flow" });
+  const { id: trackId } = db
+    .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryTracksRow["id"] }>(
+      "SELECT id FROM library_tracks WHERE mbid = ?",
+    )
+    .get(getJob(jobId).trackMbid)!;
+
+  const job = await request<{ id: string }>(
+    `/api/library/downloads/tracks/${trackId}/replacement-job`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  assert.equal(job.id, jobId);
+
+  const sources = await request<{ sources: { id: string }[] }>(
+    `/api/playlists/jobs/${job.id}/manual-search/sources?mode=replacement`,
+  );
+  assert.ok(sources.sources.some((source) => source.id === "slskd"));
 });
 
 function getJob(id: Parameters<typeof downloadTracker.getJob>[0]) {

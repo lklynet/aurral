@@ -1675,22 +1675,22 @@ test("a track removed while its upgrade's release details are read gets no upgra
   assert.deepEqual(downloadTracker.getAll(), []);
 });
 
-test("a track whose file is kept while its upgrade's release details are read gets no upgrade", async (t) => {
+test("a track unmonitored while its upgrade's release details are read gets no upgrade", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
-  const original = join(resolveDownloadRoot(), "The Band", "kept-upgrade", "01 - First.mp3");
+  const original = join(resolveDownloadRoot(), "The Band", "unmonitored-upgrade", "01 - First.mp3");
   const artist = upsertLibraryArtist({
-    identityKey: "name:kept-upgrade",
+    identityKey: "name:unmonitored-upgrade",
     name: "The Band",
     syncSearch: false,
   });
   const album = upsertLibraryAlbum({
-    identityKey: "name:kept-upgrade:album",
+    identityKey: "name:unmonitored-upgrade:album",
     artistId: artist.id,
-    title: "kept-upgrade",
+    title: "unmonitored-upgrade",
     syncSearch: false,
   });
   const track = upsertLibraryTrack({
-    identityKey: "name:kept-upgrade:first",
+    identityKey: "name:unmonitored-upgrade:first",
     title: "First",
     artistName: "The Band",
     syncSearch: false,
@@ -1703,12 +1703,14 @@ test("a track whose file is kept while its upgrade's release details are read ge
     path: original,
     available: true,
   });
-  const keeping: { result: ReturnType<typeof libraryManager.setTrackKeepFile> | null } = {
-    result: null,
-  };
+  const unmonitoring: {
+    result: ReturnType<typeof libraryManager.setAurralTrackMonitoring> | null;
+  } = { result: null };
   await serveGroups(t, [], {
     missing: () => {
-      keeping.result ??= libraryManager.setTrackKeepFile(String(track.id), { keepFile: true });
+      unmonitoring.result ??= libraryManager.setAurralTrackMonitoring(String(track.id), {
+        monitored: false,
+      });
       return true;
     },
   });
@@ -1734,8 +1736,8 @@ test("a track whose file is kept while its upgrade's release details are read ge
     downloadTracker,
     {
       artistName: "The Band",
-      albumName: "kept-upgrade",
-      albumMbid: "kept-upgrade",
+      albumName: "unmonitored-upgrade",
+      albumMbid: "unmonitored-upgrade",
       trackName: "First",
       trackNumber: 1,
       durationMs: 1000,
@@ -1743,12 +1745,12 @@ test("a track whose file is kept while its upgrade's release details are read ge
     "library",
   );
   assert.ok(id != null);
-  downloadTracker.setDone(id, original, "kept-upgrade");
+  downloadTracker.setDone(id, original, "unmonitored-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const runWorker = await holdDownloadWorker();
 
-  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "kept");
-  assert.equal((await keeping.result)?.keepFile, true);
+  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "unmonitored");
+  assert.equal((await unmonitoring.result)?.monitored, false);
   await runWorker();
   assert.equal(downloadTracker.findActiveUpgradeJob(trackedJob(downloadTracker, id)), null);
   assert.equal(trackedJob(downloadTracker, id).finalPath, original);

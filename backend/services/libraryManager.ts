@@ -223,8 +223,6 @@ const isMonitoredTrack = (trackId: unknown) => Boolean(monitoredTrackStmt.get(Nu
 
 const setTrackMonitoredStmt = db.prepare("UPDATE library_tracks SET monitored = ? WHERE id = ?");
 
-const setTrackKeepFileStmt = db.prepare("UPDATE library_tracks SET keep_file = ? WHERE id = ?");
-
 const trackIdByMbidStmt = db.prepare<[string], Pick<LibraryTracksRow, "id">>(
   "SELECT id FROM library_tracks WHERE mbid = ? ORDER BY id LIMIT 1",
 );
@@ -626,7 +624,6 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
     managedBy: album?.managedBy || null,
     monitorMode: album?.monitorMode || null,
     monitored: track.monitored !== false,
-    keepFile: track.keepFile === true,
     sources: track.sources,
     size: Number(file?.size || 0),
     quality:
@@ -3170,9 +3167,16 @@ export class LibraryManager {
       const [firstAurralAlbum] = aurralAlbums;
       setTrackMonitoredStmt.run(monitored ? 1 : 0, trackId);
       invalidateLibraryQueryCache({ persistedGenres: false });
-      const cancelledJobIds = [];
+      const cancelledJobIds: string[] = [];
       const queuedJobIds: string[] = [];
       let cleanupFailed = false;
+      if (!monitored) {
+        const upgrades = await cancelFileUpgradeJobs(
+          track.files.map((file) => file.path).filter((path): path is string => Boolean(path)),
+        );
+        cancelledJobIds.push(...upgrades.cancelledJobIds);
+        cleanupFailed = upgrades.cleanupFailed;
+      }
       if (!firstAurralAlbum) {
         if (!monitored) {
           const cancellation = await cancelLibraryTrackJobs(
@@ -3180,7 +3184,7 @@ export class LibraryManager {
             trackAlbumOwnerNames(library, track),
           );
           cancelledJobIds.push(...cancellation.cancelledJobIds);
-          cleanupFailed = cancellation.cleanupFailed;
+          cleanupFailed ||= cancellation.cleanupFailed;
         }
         return {
           canonicalId: String(trackId),
@@ -3223,39 +3227,6 @@ export class LibraryManager {
         cleanupFailed,
       };
     });
-  }
-
-  async setTrackKeepFile(canonicalId: unknown, { keepFile }: { keepFile?: unknown } = {}) {
-    if (typeof keepFile !== "boolean") {
-      return {
-        error: "keepFile must be true or false",
-        statusCode: 400,
-        code: "invalid_keep_file",
-      };
-    }
-    const reference = String(canonicalId ?? "").trim();
-    const trackId = Number(reference);
-    if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
-      return {
-        error: "canonicalId must be a positive integer",
-        statusCode: 400,
-        code: "invalid_canonical_id",
-      };
-    }
-    const track = getLibraryForTrackIds({ ids: [trackId] }).tracks.find(
-      (entry) => entry.id === trackId,
-    );
-    if (!track) {
-      return { error: "Track was not found in the library", statusCode: 404, code: "not_found" };
-    }
-    setTrackKeepFileStmt.run(keepFile ? 1 : 0, trackId);
-    invalidateLibraryQueryCache({ persistedGenres: false });
-    const cancellation = keepFile
-      ? await cancelFileUpgradeJobs(
-          track.files.map((file) => file.path).filter((path): path is string => Boolean(path)),
-        )
-      : { cancelledJobIds: [], cleanupFailed: false };
-    return { canonicalId: String(trackId), keepFile, ...cancellation };
   }
 
   // A track asked for from an album's page goes to that album when the

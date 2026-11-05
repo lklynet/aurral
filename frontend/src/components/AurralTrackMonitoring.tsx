@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { Eye, EyeOff, Lock, LockOpen } from "./icons";
+import { Eye, EyeOff } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import {
-  setAurralTrackKeepFile,
   setAurralTrackMonitoring,
   type AurralMonitoringResult,
 } from "../utils/api/endpoints/library.ts";
 import {
-  describeKeepFileResult,
   describeTrackMonitoringResult,
   getMonitoringMenuAction,
 } from "../utils/aurralMonitoring.ts";
@@ -22,11 +20,6 @@ interface AurralTrackRef {
   title?: string | null;
   trackName?: string | null;
   monitored?: boolean;
-  keepFile?: boolean;
-}
-
-interface TrackKeepFileResult {
-  keepFile?: boolean;
 }
 
 interface TrackMenuOptions {
@@ -41,42 +34,12 @@ const trackTitle = (track: AurralTrackRef | null | undefined) =>
 interface AurralTrackMonitoringOptions {
   canChange: boolean;
   onChanged?: (trackId: AurralTrackId, result: AurralMonitoringResult) => void | Promise<void>;
-  onKeepFileChanged?: (trackId: AurralTrackId, result: TrackKeepFileResult) => void | Promise<void>;
 }
 
-export function useAurralTrackMonitoring({
-  canChange,
-  onChanged,
-  onKeepFileChanged,
-}: AurralTrackMonitoringOptions) {
+export function useAurralTrackMonitoring({ canChange, onChanged }: AurralTrackMonitoringOptions) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState<{ id: AurralTrackId; monitored: boolean } | null>(null);
-  const [keepPending, setKeepPending] = useState<{ id: AurralTrackId; keepFile: boolean } | null>(
-    null,
-  );
   const [confirming, setConfirming] = useState<AurralTrackRef | null>(null);
-
-  const isKept = (track: AurralTrackRef | null | undefined) =>
-    keepPending && String(keepPending.id) === String(track?.id)
-      ? keepPending.keepFile
-      : track?.keepFile === true;
-
-  const setKeepFile = async (track: AurralTrackRef, keepFile: boolean) => {
-    if (keepPending) return;
-    setKeepPending({ id: track.id, keepFile });
-    try {
-      const result = await setAurralTrackKeepFile(track.id, keepFile);
-      const { message, warning } = describeKeepFileResult(result, trackTitle(track));
-      (warning ? showError : showSuccess)(message);
-      await onKeepFileChanged?.(track.id, result);
-    } catch (error) {
-      showError(
-        `Could not ${keepFile ? "keep" : "allow upgrades for"} ${trackTitle(track)}. Nothing changed. ${getApiErrorMessage(error, "Try again.")}`,
-      );
-    } finally {
-      setKeepPending(null);
-    }
-  };
 
   const isMonitored = (track: AurralTrackRef | null | undefined) =>
     pending && String(pending.id) === String(track?.id)
@@ -122,25 +85,8 @@ export function useAurralTrackMonitoring({
     };
   };
 
-  const getKeepFileItem = (
-    track: AurralTrackRef,
-    { aurral = false, hasFile = false }: TrackMenuOptions = {},
-  ) => {
-    if (!aurral || !hasFile || !canChange || !Number.isInteger(Number(track?.id))) return null;
-    const kept = isKept(track);
-    return {
-      id: "keep-file",
-      label: kept ? "Allow upgrades" : "Keep this file",
-      icon: kept ? LockOpen : Lock,
-      disabled: keepPending !== null,
-      closeBeforeSelect: true,
-      onSelect: () => setKeepFile(track, !kept),
-    };
-  };
-
   return {
     getMenuItem,
-    getKeepFileItem,
     isMonitored,
     dialog: (
       <ConfirmModal
