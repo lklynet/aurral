@@ -14,7 +14,7 @@ Aurral keeps one log in `<data dir>/logs/aurral.log`, as JSON Lines, and serves 
 - **Bounded size.** The writer starts a new file at 10 MB and keeps five: `aurral.log`, then `aurral.1.log` to `aurral.4.log`. Batched, synchronous appends keep lines in order and flush on exit.
 - **Everything is saved, the console stays quiet.** Info and above always reach the file. Debug lines reach it only while debug logging is on. Console output follows `AURRAL_VERBOSE_LOGS` as before. In the server and worker processes, raw `console.*` calls are saved too, with the category taken from a leading `[Tag]`.
 - **Secrets are masked when written.** Entries go through the same masking as the console, and stacks keep only their frames. The file is safe to share, so the export does no extra filtering.
-- **Repeats share a fingerprint.** `fp` hashes the level, category, message, and reason with quoted text, ids, and numbers stripped. Problems group by it. Failed outgoing requests leave the reason out, since their message already names the host and the network error changes from one try to the next.
+- **Repeats share a fingerprint.** `fp` hashes the level, category, message, and reason with quoted text, ids, and numbers stripped. Problems group by it. Failed outgoing requests hash only their exact message, so each host and status is its own problem however the network error changes from one try to the next.
 
 ## Traps
 

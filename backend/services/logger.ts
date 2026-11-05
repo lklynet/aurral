@@ -145,9 +145,8 @@ const normalizedForFingerprint = (text: string) =>
     .replace(/\b[0-9a-f]{8,}(?:-[0-9a-f]{4,})*\b/gi, "#")
     .replace(/\d+/g, "#");
 
-function fingerprint(level: LogLevel, cat: string, msg: string, reason: string | undefined) {
-  const key = [level, cat, msg, reason ?? ""].map(normalizedForFingerprint).join("\0");
-  return createHash("sha1").update(key).digest("hex").slice(0, 10);
+function fingerprint(...parts: string[]) {
+  return createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 10);
 }
 
 const context = new AsyncLocalStorage<LogContext>();
@@ -232,7 +231,9 @@ function record(
     cat,
     msg,
     proc: PROCESS_NAME,
-    fp: fingerprint(level, cat, msg, groupByMessage ? undefined : reason),
+    fp: groupByMessage
+      ? fingerprint(level, cat, msg)
+      : fingerprint(...[level, cat, msg, reason ?? ""].map(normalizedForFingerprint)),
     ...context.getStore(),
     ...(safeData === undefined ? {} : { data: safeData }),
     ...(err ? { err } : {}),
