@@ -156,8 +156,11 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       // Storage can be blocked; the view still changes for this visit.
     }
   };
-  const toggleFullscreen = () =>
-    setFullscreenView((current) => (current ? null : savedFullscreenView()));
+  // Full screen is for desktops and TVs; phones keep the Now playing sheet.
+  const toggleFullscreen = () => {
+    if (!fullscreenView && !window.matchMedia("(min-width: 768px)").matches) return;
+    setFullscreenView(fullscreenView ? null : savedFullscreenView());
+  };
   const queuePanelId = useId();
   const queueTriggerRef = useRef<HTMLButtonElement>(null);
   const lyricsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -220,8 +223,12 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
     const closeOnDesktop = () => {
-      if (desktop.matches) setSheetOpen(false);
-      else setPanel(null);
+      if (desktop.matches) {
+        setSheetOpen(false);
+        return;
+      }
+      setPanel(null);
+      setFullscreenView(null);
     };
     desktop.addEventListener("change", closeOnDesktop);
     return () => desktop.removeEventListener("change", closeOnDesktop);

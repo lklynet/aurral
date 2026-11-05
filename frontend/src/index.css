@@ -16238,22 +16238,6 @@ a.blocklist-page__name:focus-visible {
   gap: clamp(0.5rem, 2vw, 1.5rem);
 }
 
-@media (max-width: 767px) {
-  .fullscreen-player__stage {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .fullscreen-player:not(.is-art) .fullscreen-player__art {
-    width: min(100%, 40cqh);
-    justify-self: center;
-  }
-
-  .fullscreen-player__pane {
-    justify-self: stretch;
-  }
-}
-
 .fullscreen-player .player-lyrics--fullscreen.is-synced .player-lyrics__line:not(.is-active) {
   color: color-mix(in oklch, var(--aurral-text) 40%, transparent);
 }
