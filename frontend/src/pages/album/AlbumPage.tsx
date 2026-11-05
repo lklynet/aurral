@@ -311,9 +311,7 @@ function AlbumPage() {
   const hasMissingTracks = merged.some(
     (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
   );
-  const creditsReleaseMbid = merged.some((entry) => !entry.libraryTrack)
-    ? releaseTracks[0]?.releaseMbid
-    : null;
+  const creditsReleaseMbid = hasMissingTracks ? releaseTracks[0]?.releaseMbid : null;
   const { data: releaseCredits } = useQuery({
     queryKey: queryKeys.releaseTrackCredits(creditsReleaseMbid),
     queryFn: ({ signal }) => getReleaseTrackCredits(creditsReleaseMbid ?? "", { signal }),
@@ -397,7 +395,9 @@ function AlbumPage() {
       ...row,
       key: entry.key,
       number: entry.number,
-      subtitle: isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle,
+      subtitle:
+        (!hasFile && entry.releaseTrack && creditFor(entry.releaseTrack)) ||
+        (isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle),
       ...(hasFile && hasMissingTracks ? { trailing: <OwnedTrackMark /> } : {}),
       time: hasFile
         ? row.time
