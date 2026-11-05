@@ -22,10 +22,8 @@ export function DiscoverHistoryPrompt({ userId }: { userId: string | number | un
   };
 
   return (
-    <div className="discover-history-prompt">
-      <p className="discover-history-prompt__message">
-        Make Discover yours with your listening history.
-      </p>
+    <div className="app-status-banner discover-history-prompt">
+      <p className="app-status-banner__text">Make Discover yours with your listening history.</p>
       <div className="discover-history-prompt__actions">
         <SettingsLink to="listening/lastfm" className="btn btn-secondary btn-sm">
           Last.fm

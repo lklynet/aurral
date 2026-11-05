@@ -703,6 +703,7 @@ function DiscoverPage() {
 
   return (
     <div className="artist-discover-page" style={tint ? { "--collection-tint": tint } : undefined}>
+      <DiscoverHistoryPrompt userId={authUser?.id} />
       <section className="artist-discover-hero">
         <div className="artist-discover-hero__content">
           <div className="artist-discover-hero__header">
@@ -742,8 +743,6 @@ function DiscoverPage() {
           )}
         </div>
       </section>
-
-      <DiscoverHistoryPrompt userId={authUser?.id} />
 
       {discoverSections.filter((section) => section.enabled).map(renderSection)}
 
