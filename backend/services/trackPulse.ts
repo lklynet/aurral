@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import PQueue from "p-queue";
 import { resolveLibraryTrackPath } from "./libraryReadModel.ts";
 
 const RATE = 3000;
@@ -72,6 +73,7 @@ export async function filePulse(path: string) {
 }
 
 const cache = new Map<string, Promise<TrackPulse | null>>();
+const decodes = new PQueue({ concurrency: 2 });
 
 export function trackPulse(albumId: string, trackId: string) {
   const key = `${albumId}:${trackId}`;
@@ -83,7 +85,7 @@ export function trackPulse(albumId: string, trackId: string) {
   }
   const path = resolveLibraryTrackPath(albumId, trackId);
   if (!path) return Promise.resolve(null);
-  const pending = filePulse(path);
+  const pending = decodes.add(() => filePulse(path)).then((pulse) => pulse ?? null);
   cache.set(key, pending);
   void pending.then((pulse) => {
     if (!pulse) cache.delete(key);
