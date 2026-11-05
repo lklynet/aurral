@@ -1103,7 +1103,9 @@ export function PlaylistImportModal({
       return loadRow({
         id: "playlist-import-plugin-url",
         label: "Playlist link",
-        help: pluginImportList ? `Use a link from ${pluginImportList.hosts.join(", ")}.` : "",
+        help: pluginImportList
+          ? `Use a link from ${pluginImportList.hosts.join(", ")}. Plugins can take up to 2 minutes.`
+          : "",
         error: pluginError,
         value: youtubeUrl,
         placeholder: "https://…",
