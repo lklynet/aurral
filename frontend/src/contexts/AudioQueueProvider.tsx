@@ -156,10 +156,15 @@ function writeAutoplay(enabled: boolean) {
 }
 
 function readDevice() {
-  const created = `Aurral web ${crypto.randomUUID().slice(0, 8)}`;
   try {
     const stored = window.localStorage.getItem(DEVICE_KEY);
     if (stored) return stored;
+  } catch {}
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const created = `Aurral web ${suffix}`;
+  try {
     window.localStorage.setItem(DEVICE_KEY, created);
   } catch {}
   return created;
