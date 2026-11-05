@@ -178,13 +178,13 @@ export async function listenbrainzRequest(
     };
     const getLogKey = (details: ListenbrainzErrorDetails) =>
       `${details.path}:${details.status || "none"}:${details.code || "none"}`;
-    const logError = (message: string, details: ListenbrainzErrorDetails) => {
+    const logFailure = (details: ListenbrainzErrorDetails) => {
       const key = getLogKey(details);
       const now = Date.now();
       const last = listenbrainzErrorLogAt.get(key) || 0;
       if (now - last < 15000) return;
       listenbrainzErrorLogAt.set(key, now);
-      logger.error("api", message, details);
+      logger.warn("listenbrainz", "ListenBrainz request failed", details);
     };
 
     let lastError: unknown = null;
@@ -234,7 +234,7 @@ export async function listenbrainzRequest(
           (Reflect.get(responseData, "error") || Reflect.get(responseData, "message"))) ||
         null,
     };
-    logError("ListenBrainz API error:", details);
+    logFailure(details);
     throw lastError;
   })();
 
