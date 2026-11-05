@@ -277,6 +277,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
           title: track.title,
           artist: track.artist,
           album: track.album,
+          albumId: track.libraryAlbumId,
           artistMbid: track.artistMbid,
           albumMbid: track.albumMbid,
           trackMbid: track.trackMbid,

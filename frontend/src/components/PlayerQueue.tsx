@@ -229,7 +229,10 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
   const autoplayHeadingId = useId();
   const queued = upcoming.filter(({ track }) => !isAutoplayEntry(track));
   const autoplayed = upcoming.filter(({ track }) => isAutoplayEntry(track));
-  const savable = [...(currentTrack ? [currentTrack] : []), ...queued.map(({ track }) => track)];
+  const savable = [
+    ...(currentTrack && !isAutoplayEntry(currentTrack) ? [currentTrack] : []),
+    ...queued.map(({ track }) => track),
+  ];
 
   const handleClear = () => {
     const undo = clearUpcoming();

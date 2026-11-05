@@ -630,7 +630,7 @@ function LibraryPage() {
   }, [filteredArtists, sortDirection, sortMode]);
 
   const sortedAlbums = useMemo(() => {
-    if (sortMode === "newest") return filteredAlbums;
+    if (sortMode !== LIBRARY_DEFAULT_SORT && sortMode !== "artist") return filteredAlbums;
     const items = [...filteredAlbums];
     items.sort((left, right) => {
       if (sortMode === "artist") {
