@@ -90,7 +90,7 @@ function uniqueTags(tags: string[]) {
 function GlobalSearch() {
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [suggestionIndex, setSuggestionIndex] = useState(-1);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
   const [albumOverrides, setAlbumOverrides] = useState<Record<string, Partial<SuggestionAlbum>>>(
@@ -209,6 +209,7 @@ function GlobalSearch() {
   );
 
   const suggestionKeyboardRows = showRecentSearches ? recentSelectableRows : selectableRows;
+  const suggestionIndex = suggestionKeyboardRows.findIndex((row) => row.key === highlightedKey);
 
   const rememberSearch = useCallback((rawQuery: string) => {
     const next = addRecentSearch(rawQuery);
@@ -217,7 +218,7 @@ function GlobalSearch() {
 
   const closeAutocomplete = useCallback(() => {
     setSuggestionsOpen(false);
-    setSuggestionIndex(-1);
+    setHighlightedKey(null);
     setAlbumOverrides({});
   }, []);
 
@@ -318,7 +319,7 @@ function GlobalSearch() {
     event.preventDefault();
     event.stopPropagation();
     setRecentSearches(clearRecentSearches());
-    setSuggestionIndex(-1);
+    setHighlightedKey(null);
   }, []);
 
   const updateSuggestionItem = useCallback(
@@ -508,12 +509,13 @@ function GlobalSearch() {
     if (suggestionKeyboardRows.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSuggestionIndex((current) =>
-        current < suggestionKeyboardRows.length - 1 ? current + 1 : current,
+      setHighlightedKey(
+        suggestionKeyboardRows[Math.min(suggestionIndex + 1, suggestionKeyboardRows.length - 1)]
+          ?.key ?? null,
       );
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
+      setHighlightedKey(suggestionKeyboardRows[suggestionIndex - 1]?.key ?? null);
     } else if (event.key === "Enter") {
       const row = suggestionKeyboardRows[suggestionIndex];
       if (!row) return;
@@ -552,12 +554,12 @@ function GlobalSearch() {
             onChange={(event) => {
               setSearchQuery(event.target.value);
               setSuggestionsOpen(true);
-              setSuggestionIndex(-1);
+              setHighlightedKey(null);
             }}
             onFocus={() => {
               setInputFocused(true);
               setSuggestionsOpen(true);
-              setSuggestionIndex(-1);
+              setHighlightedKey(null);
             }}
             onBlur={() => {
               window.setTimeout(() => setInputFocused(false), 120);

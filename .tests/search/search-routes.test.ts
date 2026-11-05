@@ -214,7 +214,15 @@ function seedLibraryArtist(name: string) {
 
 test("library search ranks exact names first and matches terms across fields", async () => {
   seedLibraryAlbum();
-  for (const name of ["ACDC Tribute Band", "The ACDC Experience", "AC/DC", "Sigur Rós", "U2"]) {
+  for (const name of [
+    "ACDC Tribute Band",
+    "The ACDC Experience",
+    "AC/DC",
+    "Sigur Rós",
+    "U2",
+    "Cure Tribute",
+    "The Cure",
+  ]) {
     seedLibraryArtist(name);
   }
   const search = async (q: string, limit = 1) => {
@@ -233,6 +241,10 @@ test("library search ranks exact names first and matches terms across fields", a
   assert.deepEqual(
     (await search("sigur ros")).artists.map((item) => item.name),
     ["Sigur Rós"],
+  );
+  assert.deepEqual(
+    (await search("cure")).artists.map((item) => item.name),
+    ["The Cure"],
   );
   assert.deepEqual((await search("ac", 5)).artists.map((item) => item.name).slice(0, 1), ["AC/DC"]);
   assert.deepEqual(

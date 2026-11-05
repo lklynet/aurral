@@ -2451,18 +2451,19 @@ function searchLibraryIds(
   const entity = SEARCH_ENTITIES[kind];
   const media = pageMediaExists(kind, sourceFilter, availableOnly);
   const columns = "search_document.entity_id AS id, search_document.title";
-  const byTitle = db
-    .prepare<unknown[], SearchCandidate>(
-      `SELECT ${columns}
-       FROM library_search_documents AS search_document
-       JOIN ${entity.join}
-       WHERE search_document.entity_kind = ?
-         AND search_document.title_key >= ? AND search_document.title_key < ?
-         AND ${media.sql}
-       ORDER BY search_document.title_key
-       LIMIT ?`,
-    )
-    .all(entity.kind, search.key, `${search.key}\u{10FFFF}`, ...media.parameters, wanted);
+  const titlePrefix = db.prepare<unknown[], SearchCandidate>(
+    `SELECT ${columns}
+     FROM library_search_documents AS search_document
+     JOIN ${entity.join}
+     WHERE search_document.entity_kind = ?
+       AND search_document.title_key >= ? AND search_document.title_key < ?
+       AND ${media.sql}
+     ORDER BY search_document.title_key
+     LIMIT ?`,
+  );
+  const byTitle = [search.key, `the${search.key}`].flatMap((key) =>
+    titlePrefix.all(entity.kind, key, `${key}\u{10FFFF}`, ...media.parameters, wanted),
+  );
   const byText = db
     .prepare<unknown[], SearchCandidate>(
       `SELECT ${columns}
