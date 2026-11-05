@@ -65,11 +65,13 @@ Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid), [Ho
   <a href="https://github.com/bmikaili"><img src="https://github.com/bmikaili.png?size=120" width="60" alt="@bmikaili" /></a>
   <a href="https://github.com/booxter"><img src="https://github.com/booxter.png?size=120" width="60" alt="@booxter" /></a>
   <a href="https://github.com/Barosky"><img src="https://github.com/Barosky.png?size=120" width="60" alt="@Barosky" /></a>
+  <a href="https://github.com/robertdistefano"><img src="https://github.com/robertdistefano.png?size=120" width="60" alt="@robertdistefano" /></a>
   <a href="https://github.com/pcsokonay"><img src="https://github.com/pcsokonay.png?size=120" width="60" alt="@pcsokonay" /></a>
   <a href="https://github.com/okcodemaybe"><img src="https://github.com/okcodemaybe.png?size=120" width="60" alt="@okcodemaybe" /></a>
   <a href="https://github.com/jakobbjelver"><img src="https://github.com/jakobbjelver.png?size=120" width="60" alt="@jakobbjelver" /></a>
   <a href="https://github.com/zachyzissou"><img src="https://github.com/zachyzissou.png?size=120" width="60" alt="@zachyzissou" /></a>
   <a href="https://github.com/erleijen"><img src="https://github.com/erleijen.png?size=120" width="60" alt="@erleijen" /></a>
+  <a href="https://github.com/bahraoui"><img src="https://github.com/bahraoui.png?size=120" width="60" alt="@bahraoui" /></a>
 </p>
 
 <p align="center">
