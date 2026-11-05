@@ -24,6 +24,7 @@ import { logger } from "../../../services/logger.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { queryText } from "../utils.ts";
+import { musicbrainzGetReleaseTrackCredits } from "../../../services/apiClients/musicbrainz.ts";
 
 type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
 type ReleaseGroupCovers = Awaited<ReturnType<typeof resolveReleaseGroupCoversBatch>>;
@@ -189,6 +190,15 @@ export default new Hono<AppEnv>()
       c.header("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
       return c.json({ images: [], notFound: false, transientError: true }, 200);
     }
+  })
+  .get("/release/:mbid/credits", async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) {
+      return c.json({ error: "Invalid MBID format" }, 400);
+    }
+    const credits = await musicbrainzGetReleaseTrackCredits(mbid, { signal: c.req.raw.signal });
+    c.header("Cache-Control", credits.size ? "private, max-age=86400" : "no-store");
+    return c.json({ credits: Object.fromEntries(credits) }, 200);
   })
   .get("/release-group/:mbid/tracks", noCache, validate("query", tracksQuery), async (c) => {
     try {

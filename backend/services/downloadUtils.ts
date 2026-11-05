@@ -6,6 +6,8 @@ import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 import { getAlbumByMbid } from "./providers/brainzmashProvider.ts";
+import { musicbrainzGetReleaseTrackCredits } from "./apiClients/musicbrainz.ts";
+import { formatArtistCredit } from "../../lib/artistCredit.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
@@ -306,8 +308,6 @@ export async function writeImportedFileMetadata(
   }
 }
 
-// A compilation's tracks keep their own performer as the artist. The download
-// job knows which track it fetched, so its identity replaces the uploader's.
 const albumGenres = async (albumMbid: string | null | undefined) =>
   albumMbid
     ? getAlbumByMbid(albumMbid).then(
@@ -316,7 +316,20 @@ const albumGenres = async (albumMbid: string | null | undefined) =>
       )
     : undefined;
 
+async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: DownloadTrackFields) {
+  if (!releaseMbid || !trackMbid) return null;
+  const credits = await musicbrainzGetReleaseTrackCredits(releaseMbid);
+  for (const mbid of [trackMbid, ...(recordingMbidAliases ?? [])]) {
+    const credit = credits.get(mbid);
+    if (credit) return credit;
+  }
+  return null;
+}
+
+// A compilation's tracks keep their own performer as the artist. The download
+// job knows which track it fetched, so its identity replaces the uploader's.
 export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
+  const credit = await trackCredit(metadata);
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
@@ -324,10 +337,15 @@ export async function writeAudioMetadata(filePath: string, metadata: DownloadTra
     filePath,
     {
       title: metadata.trackName,
-      artist: performer || metadata.artistName,
+      artist: credit ? formatArtistCredit(credit) : performer || metadata.artistName,
+      artists: credit?.map((entry) => entry.name),
       albumArtist: metadata.artistName,
       album: metadata.albumName,
-      artistMbid: performer ? undefined : metadata.artistMbid,
+      artistMbid: credit
+        ? credit.flatMap((entry) => (entry.mbid ? [entry.mbid] : []))
+        : performer
+          ? undefined
+          : metadata.artistMbid,
       albumArtistMbid: metadata.artistMbid,
       releaseGroupMbid: metadata.albumMbid,
       releaseMbid: metadata.releaseMbid,
@@ -376,7 +394,6 @@ export async function repairYtdlpMetadata(jobs: RepairableJob[] = []) {
       const { common } = metadata;
       const expected = [
         [common.title, job.trackName],
-        [common.artist, job.artistName],
         [common.albumartist, job.artistName],
         [common.album, job.albumName],
       ].filter(([, value]) => String(value || "").trim());
@@ -402,6 +419,7 @@ export async function repairYtdlpMetadata(jobs: RepairableJob[] = []) {
         ],
       ].filter(([, value]) => String(value || "").trim());
       if (
+        String(common.artist || "").trim() &&
         expected.every(([actual, value]) => String(actual || "").trim() === String(value).trim()) &&
         expectedIdentity.every(
           ([actual, value]) => String(actual || "").trim() === String(value).trim(),

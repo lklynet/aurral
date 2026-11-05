@@ -37,7 +37,12 @@ import {
   releaseGroupDetailsQueryOptions,
 } from "../../queryOptions.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import { getReleaseGroupTracks } from "../../utils/api/endpoints/artists.ts";
+import {
+  getReleaseGroupTracks,
+  getReleaseTrackCredits,
+  type ReleaseGroupTrack,
+} from "../../utils/api/endpoints/artists.ts";
+import { formatArtistCredit } from "../../../../lib/artistCredit.ts";
 import {
   ALBUM_DOWNLOADING_STATUSES,
   buildAlbumAddAction,
@@ -306,6 +311,21 @@ function AlbumPage() {
   const hasMissingTracks = merged.some(
     (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
   );
+  const creditsReleaseMbid = hasMissingTracks ? releaseTracks[0]?.releaseMbid : null;
+  const { data: releaseCredits } = useQuery({
+    queryKey: queryKeys.releaseTrackCredits(creditsReleaseMbid),
+    queryFn: ({ signal }) => getReleaseTrackCredits(creditsReleaseMbid ?? "", { signal }),
+    enabled: Boolean(creditsReleaseMbid),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+  const creditFor = useCallback(
+    (track: ReleaseGroupTrack) => {
+      const credit = track.mbid ? releaseCredits?.credits[track.mbid] : undefined;
+      const text = credit ? formatArtistCredit(credit) : "";
+      return text && text.toLowerCase() !== artistName.toLowerCase() ? text : null;
+    },
+    [artistName, releaseCredits],
+  );
   const ownedTrackMbids = useMemo(
     () => [
       ...(libraryInfo?.ownedTrackMbids || []),
@@ -327,6 +347,7 @@ function AlbumPage() {
     playbackSource,
     ownedTrackMbids,
     awaitingRelease,
+    creditFor,
   });
   const releaseRows = useReleaseTracks({
     release,
@@ -374,7 +395,9 @@ function AlbumPage() {
       ...row,
       key: entry.key,
       number: entry.number,
-      subtitle: isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle,
+      subtitle:
+        (!hasFile && entry.releaseTrack && creditFor(entry.releaseTrack)) ||
+        (isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle),
       ...(hasFile && hasMissingTracks ? { trailing: <OwnedTrackMark /> } : {}),
       time: hasFile
         ? row.time

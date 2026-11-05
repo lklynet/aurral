@@ -3,6 +3,7 @@ import { listenbrainzCache, listenbrainzLookupCache } from "./listenbrainz.ts";
 import { deezerArtistCache } from "./deezer.ts";
 import {
   musicbrainzArtistNameCache,
+  musicbrainzReleaseCreditsCache,
   musicbrainzReleaseGroupsCache,
   musicbrainzTagArtistsCache,
 } from "./musicbrainz.ts";
@@ -25,6 +26,7 @@ export function clearApiCaches() {
   listenbrainzLookupCache.flushAll();
   deezerArtistCache.flushAll();
   musicbrainzArtistNameCache.flushAll();
+  musicbrainzReleaseCreditsCache.flushAll();
   musicbrainzReleaseGroupsCache.flushAll();
   musicbrainzTagArtistsCache.flushAll();
   deezerAlbumCache.flushAll();
