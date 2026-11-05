@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
+import { searchDocument, searchKey } from "../services/searchText.ts";
 
-const SEARCH_INDEX_VERSION = "2";
+const SEARCH_INDEX_VERSION = "3";
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
 
 const genreMediaExists = (kind: string, sourceFilter: string | null, availableOnly: boolean) => {
@@ -124,15 +125,16 @@ const createSearchSchema = (db: Database.Database) => {
       title TEXT NOT NULL DEFAULT '',
       artist_name TEXT NOT NULL DEFAULT '',
       album_name TEXT NOT NULL DEFAULT '',
+      title_key TEXT NOT NULL DEFAULT '',
+      search_text TEXT NOT NULL DEFAULT '',
       UNIQUE (entity_kind, entity_id)
     );
 
+    CREATE INDEX IF NOT EXISTS idx_library_search_documents_title_key
+      ON library_search_documents (entity_kind, title_key);
+
     CREATE VIRTUAL TABLE IF NOT EXISTS library_search_fts USING fts5(
-      entity_kind UNINDEXED,
-      entity_id UNINDEXED,
-      title,
-      artist_name,
-      album_name,
+      search_text,
       content='library_search_documents',
       content_rowid='id',
       tokenize='trigram',
@@ -142,52 +144,66 @@ const createSearchSchema = (db: Database.Database) => {
     CREATE TRIGGER IF NOT EXISTS library_search_documents_ai
     AFTER INSERT ON library_search_documents
     BEGIN
-      INSERT INTO library_search_fts(rowid, entity_kind, entity_id, title, artist_name, album_name)
-      VALUES (new.id, new.entity_kind, new.entity_id, new.title, new.artist_name, new.album_name);
+      INSERT INTO library_search_fts(rowid, search_text) VALUES (new.id, new.search_text);
     END;
 
     CREATE TRIGGER IF NOT EXISTS library_search_documents_au
     AFTER UPDATE ON library_search_documents
     BEGIN
-      INSERT INTO library_search_fts(library_search_fts, rowid, entity_kind, entity_id, title, artist_name, album_name)
-      VALUES ('delete', old.id, old.entity_kind, old.entity_id, old.title, old.artist_name, old.album_name);
-      INSERT INTO library_search_fts(rowid, entity_kind, entity_id, title, artist_name, album_name)
-      VALUES (new.id, new.entity_kind, new.entity_id, new.title, new.artist_name, new.album_name);
+      INSERT INTO library_search_fts(library_search_fts, rowid, search_text)
+      VALUES ('delete', old.id, old.search_text);
+      INSERT INTO library_search_fts(rowid, search_text) VALUES (new.id, new.search_text);
     END;
 
     CREATE TRIGGER IF NOT EXISTS library_search_documents_ad
     AFTER DELETE ON library_search_documents
     BEGIN
-      INSERT INTO library_search_fts(library_search_fts, rowid, entity_kind, entity_id, title, artist_name, album_name)
-      VALUES ('delete', old.id, old.entity_kind, old.entity_id, old.title, old.artist_name, old.album_name);
+      INSERT INTO library_search_fts(library_search_fts, rowid, search_text)
+      VALUES ('delete', old.id, old.search_text);
     END;
   `);
   return true;
 };
 
 export const populateLibrarySearchDocuments = (db: Database.Database) => {
+  db.function("aurral_search_key", { deterministic: true }, searchKey);
+  db.function("aurral_search_document", { deterministic: true, varargs: true }, searchDocument);
   db.exec(`
-    INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
-    SELECT 'artist', artist.id, artist.name, '', ''
+    INSERT INTO library_search_documents
+      (entity_kind, entity_id, title, artist_name, album_name, title_key, search_text)
+    SELECT 'artist', artist.id, artist.name, '', '',
+      aurral_search_key(artist.name), aurral_search_document(artist.name)
     FROM library_artists AS artist;
 
-    INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
+    INSERT INTO library_search_documents
+      (entity_kind, entity_id, title, artist_name, album_name, title_key, search_text)
     SELECT
       'album',
       album.id,
       album.title,
       trim(coalesce(artist.name, '') || ' ' || coalesce(album.album_artist, '')),
-      ''
+      '',
+      aurral_search_key(album.title),
+      aurral_search_document(album.title, artist.name, album.album_artist)
     FROM library_albums AS album
     JOIN library_artists AS artist ON artist.id = album.artist_id;
 
-    INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
+    INSERT INTO library_search_documents
+      (entity_kind, entity_id, title, artist_name, album_name, title_key, search_text)
     SELECT
       'track',
       track.id,
       track.title,
       trim(coalesce(track.artist_name, '') || ' ' || coalesce(group_concat(DISTINCT artist.name), '')),
-      trim(coalesce(group_concat(DISTINCT album.title), '') || ' ' || coalesce(group_concat(DISTINCT album.album_artist), ''))
+      trim(coalesce(group_concat(DISTINCT album.title), '') || ' ' || coalesce(group_concat(DISTINCT album.album_artist), '')),
+      aurral_search_key(track.title),
+      aurral_search_document(
+        track.title,
+        track.artist_name,
+        group_concat(DISTINCT artist.name || char(31)),
+        group_concat(DISTINCT album.title || char(31)),
+        group_concat(DISTINCT album.album_artist || char(31))
+      )
     FROM library_tracks AS track
     LEFT JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
     LEFT JOIN library_albums AS album ON album.id = album_track.album_id

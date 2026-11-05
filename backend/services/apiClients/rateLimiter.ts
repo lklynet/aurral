@@ -2,7 +2,7 @@ import PQueue from "p-queue";
 
 const createError = (message: string, code: string) => Object.assign(new Error(message), { code });
 
-type ScheduleOptions = { signal?: AbortSignal; timeoutMs?: number };
+type ScheduleOptions = { signal?: AbortSignal; timeoutMs?: number; priority?: number };
 
 export default function createRateLimiter(
   minTime: number,
@@ -19,7 +19,10 @@ export default function createRateLimiter(
     options: ScheduleOptions & { timeoutMs: number },
   ): Promise<Awaited<T>>;
   function schedule<T>(fn: () => T, options?: ScheduleOptions): Promise<Awaited<T>>;
-  function schedule<T>(fn: (...args: number[]) => T, { signal, timeoutMs }: ScheduleOptions = {}) {
+  function schedule<T>(
+    fn: (...args: number[]) => T,
+    { signal, timeoutMs, priority = 0 }: ScheduleOptions = {},
+  ) {
     if (typeof fn !== "function") {
       return Promise.reject(new TypeError("Rate limiter callback must be a function"));
     }
@@ -28,7 +31,7 @@ export default function createRateLimiter(
     }
 
     const parsedTimeoutMs = Number(timeoutMs);
-    if (!Number.isFinite(parsedTimeoutMs)) return queue.add(() => fn(), { signal });
+    if (!Number.isFinite(parsedTimeoutMs)) return queue.add(() => fn(), { signal, priority });
 
     const deadline = Date.now() + Math.max(0, parsedTimeoutMs);
     const expired = new AbortController();
@@ -43,7 +46,7 @@ export default function createRateLimiter(
           clearTimeout(timer);
           return fn(deadline - Date.now());
         },
-        { signal: AbortSignal.any(signals) },
+        { signal: AbortSignal.any(signals), priority },
       )
       .finally(() => clearTimeout(timer));
   }

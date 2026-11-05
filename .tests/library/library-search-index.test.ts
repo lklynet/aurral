@@ -79,7 +79,7 @@ test("search index service remains usable when the FTS schema is unavailable", a
 
   const searchIndex = await import("../../backend/services/librarySearchIndex.ts");
 
-  assert.equal(searchIndex.getLibrarySearchMatch("artist"), null);
+  assert.equal(searchIndex.parseLibrarySearch("artist")?.indexed, false);
   assert.equal(searchIndex.syncLibrarySearchArtist(1), false);
   assert.equal(searchIndex.syncLibrarySearchAlbum(1), false);
   assert.equal(searchIndex.syncLibrarySearchTrack(1), false);

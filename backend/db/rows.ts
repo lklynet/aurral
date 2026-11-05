@@ -335,14 +335,12 @@ export interface LibrarySearchDocumentsRow {
   title: string;
   artist_name: string;
   album_name: string;
+  title_key: string;
+  search_text: string;
 }
 
 export interface LibrarySearchFtsRow {
-  entity_kind: string;
-  entity_id: number;
-  title: string;
-  artist_name: string;
-  album_name: string;
+  search_text: string;
 }
 
 export interface LibraryTracksRow {

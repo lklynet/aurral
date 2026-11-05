@@ -386,11 +386,6 @@ export async function enrichStaticPlaylistMbids(
       });
     }
 
-    // updateStaticPlaylist already busts cache, but bust again for the full enrichment context
-    import("./unifiedSearchService.ts")
-      .then(({ clearSearchContextCache }) => clearSearchContextCache())
-      .catch(() => {});
-
     const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
     let jobsUpdated = 0;
     const updatedJobIds = new Set<string>();

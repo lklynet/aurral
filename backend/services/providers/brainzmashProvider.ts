@@ -33,6 +33,7 @@ import {
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
 import { readMany, readOne } from "../integrationData.ts";
+import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -500,7 +501,11 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 signal: sharedSignal,
               });
             },
-            { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
+            {
+              signal: sharedSignal,
+              timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
+              priority: ownsPersistentRequest ? 0 : 1,
+            },
           );
           const value = readOne(schema, response.data, { service: "BrainzMash", endpoint: path });
           await storeMetadata(cacheKey, value, cachePolicy);
@@ -752,6 +757,7 @@ export async function searchAlbums(
     sort = "relevance",
     signal,
     throwOnFailure = false,
+    musicbrainzFallback = true,
   }: {
     artistName?: string;
     limit?: number;
@@ -760,6 +766,7 @@ export async function searchAlbums(
     sort?: string;
     signal?: AbortSignal;
     throwOnFailure?: boolean;
+    musicbrainzFallback?: boolean;
   } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
@@ -810,7 +817,7 @@ export async function searchAlbums(
     failure = error;
   }
 
-  if (items.length === 0 && isNarrowFallbacksEnabled()) {
+  if (items.length === 0 && musicbrainzFallback && isNarrowFallbacksEnabled()) {
     failure = null;
     const escapeLucenePhrase = (value: string) =>
       String(value || "")
@@ -858,8 +865,14 @@ export async function searchAlbums(
   if (failure && throwOnFailure) throw failure;
   items = applyReleaseTypeFilter(items, releaseTypes);
 
-  if (sort === "relevance") {
+  if (sort === "match") {
     items = rankAlbumCandidates(query, items, { artistName });
+  } else if (sort === "relevance") {
+    const studioFirst = items.toSorted(
+      (left, right) =>
+        Number(left.secondaryTypes.length > 0) - Number(right.secondaryTypes.length > 0),
+    );
+    items = rankByMatch(parseSearchQuery(query), studioFirst, albumSearchTexts);
   } else if (sort === "artistAsc") {
     items.sort(
       (left, right) =>
@@ -954,6 +967,7 @@ export async function resolveAlbumByArtistAndTitle({
         artistName: searchArtist,
         limit: 10,
         offset: 0,
+        sort: "match",
         throwOnFailure: true,
       });
       const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });

@@ -48,7 +48,12 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("substring search uses the trigram index with stable pagination", () => {
+const queryPlan = (prepare: typeof db.prepare, sql: string) =>
+  prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${sql}`)
+    .all(...Array.from({ length: sql.split("?").length - 1 }, () => null))
+    .map((row) => row.detail);
+
+test("library search reads the trigram and title indexes", () => {
   const prepared: string[] = [];
   const prepare = db.prepare.bind(db) as typeof db.prepare;
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
@@ -67,24 +72,24 @@ test("substring search uses the trigram index with stable pagination", () => {
     result.tracks.tracks.map((entry) => entry.title),
     ["Needle Song"],
   );
-  const searchSql = prepared.find(
-    (sql) => sql.includes("FROM library_tracks AS track") && sql.includes("library_search_fts"),
+  const textSql = prepared.find(
+    (sql) => sql.includes("library_tracks AS track") && sql.includes("library_search_fts MATCH ?"),
   );
-  assert.ok(searchSql);
-  assert.match(searchSql, /MATCH \?/);
-  assert.match(searchSql, /ORDER BY track\.id/);
-  const plan = prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${searchSql}`).all(
-    '"nee" AND "eed" AND "edl" AND "dle"',
-    "%needle%",
-    "%needle%",
-    "%needle%",
-    20,
-    0,
+  const titleSql = prepared.find(
+    (sql) => sql.includes("library_tracks AS track") && sql.includes("title_key >= ?"),
   );
-  assert.ok(plan.some((row) => row.detail.includes("SCAN search_fts VIRTUAL TABLE")));
+  assert.ok(textSql && titleSql);
+  assert.ok(
+    queryPlan(prepare, textSql).some((detail) => detail.includes("SCAN search_fts VIRTUAL TABLE")),
+  );
+  assert.ok(
+    queryPlan(prepare, titleSql).some((detail) =>
+      detail.includes("idx_library_search_documents_title_key"),
+    ),
+  );
 });
 
-test("search keeps category matches and literal wildcards distinct after interleaved inserts", () => {
+test("search ignores symbols between words and matches symbol-only queries literally", () => {
   const searchArtist = libraryStore.upsertLibraryArtist({
     identityKey: "literal:artist",
     name: "Literal %_ Artist",
@@ -129,7 +134,7 @@ test("search keeps category matches and literal wildcards distinct after interle
     assert.deepEqual([...songs.albums.albums], []);
     assert.deepEqual(
       songs.tracks.tracks.map((entry) => entry.id),
-      [first.id],
+      [first.id, plain.id],
     );
     const albums = queryService.getLibrarySearchPage({
       query: "literal %_ album",
@@ -141,7 +146,7 @@ test("search keeps category matches and literal wildcards distinct after interle
     assert.deepEqual([...albums.artists], []);
     assert.deepEqual(
       albums.albums.albums.map((entry) => entry.id),
-      [searchAlbum.id],
+      [laterAlbum.id],
     );
     assert.deepEqual([...albums.tracks.tracks], []);
   } finally {
@@ -236,16 +241,10 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
     (sql) => sql.includes("COUNT(DISTINCT track.id)") && sql.includes("library_search_fts MATCH ?"),
   );
   assert.ok(pageSearchSql);
-  const plan = prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${pageSearchSql}`).all(
-    '"nee" AND "eed" AND "edl" AND "dle"',
-    "lidarr",
-    "%needle%",
-    "%needle%",
-    "%needle%",
-  );
-  assert.ok(plan.some((row) => row.detail.includes("SCAN search_fts VIRTUAL TABLE")));
+  const plan = queryPlan(prepare, pageSearchSql);
+  assert.ok(plan.some((detail) => detail.includes("SCAN search_fts VIRTUAL TABLE")));
   assert.ok(
-    plan.some((row) => row.detail.includes("idx_library_media_files_track_album_source_available")),
+    plan.some((detail) => detail.includes("idx_library_media_files_track_album_source_available")),
   );
   assert.deepEqual(
     prepare(

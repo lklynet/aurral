@@ -1823,9 +1823,6 @@ export class LibraryManager {
           _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
           _artistsCachedAt = Date.now();
           scheduleLibraryReconciliation();
-          import("./unifiedSearchService.ts")
-            .then(({ clearSearchContextCache }) => clearSearchContextCache())
-            .catch(() => {});
           return _cachedArtists;
         } catch (error) {
           const failure = asAppError(error);

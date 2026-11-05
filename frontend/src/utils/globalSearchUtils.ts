@@ -1,4 +1,4 @@
-import { getArtistRecordId } from "./artistTaste";
+import { getPlaylistResultDetail, getReleaseTypeLabel } from "./searchNavigation";
 import type {
   searchLibrary,
   UnifiedSearchItem,
@@ -8,7 +8,8 @@ type LibrarySearchResults = ReturnType<typeof searchLibrary>;
 type LibrarySearchItem =
   | LibrarySearchResults["artists"][number]
   | LibrarySearchResults["albums"][number]
-  | LibrarySearchResults["tracks"][number];
+  | LibrarySearchResults["tracks"][number]
+  | LibrarySearchResults["playlists"][number];
 
 type WithMutableAlbumStatus<Item> = Item extends { type: "album" }
   ? Omit<Item, "status"> & { status?: string }
@@ -16,12 +17,6 @@ type WithMutableAlbumStatus<Item> = Item extends { type: "album" }
 
 export type SearchSuggestion = WithMutableAlbumStatus<UnifiedSearchItem | LibrarySearchItem>;
 export type SearchSuggestionTrack = Extract<SearchSuggestion, { type: "track" }>;
-
-type PlaylistSuggestion = {
-  type: "playlist";
-  name?: string | null;
-  trackCount?: number | null;
-};
 
 export const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 export const LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS = 80;
@@ -40,7 +35,7 @@ export function isEditableTarget(target: EventTarget | null) {
   return ["input", "textarea", "select"].includes(tagName);
 }
 
-export function getSuggestionTitle(item: SearchSuggestion | PlaylistSuggestion | null | undefined) {
+export function getSuggestionTitle(item: SearchSuggestion | null | undefined) {
   if (item?.type === "artist") return item.name || "";
   if (item?.type === "album") return item.title || "";
   if (item?.type === "track") return item.title || "";
@@ -48,27 +43,21 @@ export function getSuggestionTitle(item: SearchSuggestion | PlaylistSuggestion |
   return "";
 }
 
-export function getSuggestionMeta(item: SearchSuggestion | PlaylistSuggestion | null | undefined) {
+export function getSuggestionMeta(item: SearchSuggestion | null | undefined) {
   if (item?.type === "artist") return "Artist";
   if (item?.type === "album") {
-    return item.artistName ? `Album · ${item.artistName}` : "Album";
+    const label = getReleaseTypeLabel(item);
+    return item.artistName ? `${label} · ${item.artistName}` : label;
   }
   if (item?.type === "track") {
     return item.artistName ? `Song · ${item.artistName}` : "Song";
   }
   if (item?.type === "playlist") {
-    return item.trackCount != null
-      ? `Playlist · ${item.trackCount} track${item.trackCount === 1 ? "" : "s"}`
-      : "Playlist";
+    if (item.sourceFlowId) return "Flow";
+    const detail = getPlaylistResultDetail(item);
+    return detail ? `Playlist · ${detail}` : "Playlist";
   }
   return null;
-}
-
-export function getSuggestionItemId(item: SearchSuggestion | null | undefined) {
-  if (!item) return "";
-  if (item.type === "artist") return getArtistRecordId(item) || "";
-  if (item.type === "track") return item.id || item.trackMbid || "";
-  return item.id || "";
 }
 
 export function getTrackSavingKey(track: SearchSuggestionTrack | null | undefined) {
@@ -84,8 +73,8 @@ export function isSuggestionInLibrary(item: SearchSuggestion | null | undefined)
   if (item.type === "album") {
     return isAlbumCompleteInLibrary({ status: item.status });
   }
-  if (item.inLibrary) return true;
-  return false;
+  if (item.type === "playlist") return false;
+  return item.inLibrary;
 }
 
 export function buildTrackPlaylistPayload(track: SearchSuggestionTrack | null | undefined) {

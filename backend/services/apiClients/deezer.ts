@@ -90,10 +90,16 @@ const deezerPreviewLinkCache = createCache(5 * 60);
 const deezerInflightRequests = new Map();
 const deezerLimiter = createRateLimiter(110);
 
+type DeezerRequest = {
+  params?: Record<string, string | number>;
+  timeout: number;
+  signal?: AbortSignal;
+};
+
 async function deezerGet<Schema extends v.GenericSchema>(
   schema: Schema,
   path: string,
-  config: { params?: Record<string, string | number>; timeout: number },
+  config: DeezerRequest,
 ) {
   const { data } = await axios.get(`${DEEZER_API_URL}${path}`, config);
   const failure = v.safeParse(deezerErrorSchema, data);
@@ -105,7 +111,7 @@ async function deezerGet<Schema extends v.GenericSchema>(
 async function deezerList<Schema extends v.GenericSchema>(
   schema: Schema,
   path: string,
-  config: { params?: Record<string, string | number>; timeout: number },
+  config: DeezerRequest,
 ) {
   const page = await deezerGet(deezerPageSchema, path, config);
   return page ? readMany(schema, page.data, { service: "Deezer", endpoint: path }) : [];
@@ -199,6 +205,29 @@ const artistNameKey = (value: unknown) => {
       .replace(/[^\p{L}\p{N}]+/gu, "") || name
   );
 };
+
+const deezerTrackSearchCache = createCache(10 * 60, 500);
+
+export async function searchDeezerTracks(
+  query: string,
+  { limit = 10, signal }: { limit?: number; signal?: AbortSignal } = {},
+) {
+  const cacheKey = `${limit}:${query.trim().toLowerCase()}`;
+  const cached: v.InferOutput<typeof deezerTrackSchema>[] | undefined =
+    deezerTrackSearchCache.get(cacheKey);
+  if (cached) return cached;
+  const tracks = await deezerLimiter.schedule(
+    () =>
+      deezerList(deezerTrackSchema, "/search/track", {
+        params: { q: query.trim(), limit },
+        timeout: 3000,
+        signal,
+      }),
+    { signal, priority: 1 },
+  );
+  deezerTrackSearchCache.set(cacheKey, tracks);
+  return tracks;
+}
 
 export async function getDeezerArtist(
   artistName: string,
