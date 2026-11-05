@@ -193,7 +193,9 @@ export default new Hono<AppEnv>()
         const body = c.req.valid("json");
         const provider = pluginImportProvider(c.req.valid("param").id);
         const playlist = await fetchPluginPlaylist(provider, body.url);
-        const syncIntervalHours = Math.max(0, Number(body.syncIntervalHours ?? 24) || 0);
+        const syncIntervalHours = playlist.sync
+          ? Math.max(0, Number(body.syncIntervalHours ?? 24) || 0)
+          : 0;
         const result = await enqueueImportedPlaylist({
           ownerUserId: c.var.user.id,
           name: body.name.trim() || playlist.name,

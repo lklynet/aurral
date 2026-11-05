@@ -78,6 +78,7 @@ export const pluginManifestSchema = v.object({
       v.object({
         label: text(40),
         hosts: v.pipe(v.array(hostname), v.minLength(1), v.maxLength(10)),
+        sync: v.optional(v.boolean(), true),
       }),
     ),
     null,

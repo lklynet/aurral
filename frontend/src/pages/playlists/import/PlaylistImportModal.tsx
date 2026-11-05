@@ -23,7 +23,10 @@ import { formatTrackTotal } from "../playlistPageUtils.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
-import { listeningHistoryQueryOptions } from "../../../queryOptions.ts";
+import {
+  listeningHistoryQueryOptions,
+  pluginImportListsQueryOptions,
+} from "../../../queryOptions.ts";
 import { reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
@@ -314,12 +317,9 @@ export function PlaylistImportModal({
       ).then(validYoutubePreview),
   });
   const resetYoutubePreview = youtubePreview.reset;
-  const pluginImportLists = useQuery({
-    queryKey: queryKeys.pluginImportLists,
-    queryFn: ({ signal }) =>
-      parseResponse(pluginsClient["import-lists"].$get({}, { init: { signal } })),
-    enabled: user?.permissions?.accessFlow !== false,
-  });
+  const pluginImportLists = useQuery(
+    pluginImportListsQueryOptions(user?.permissions?.accessFlow !== false),
+  );
   const pluginPreview = useMutation({
     mutationFn: ({ id, url }: { id: string; url: string }) =>
       parseResponse(
@@ -1025,23 +1025,27 @@ export function PlaylistImportModal({
       <>
         <SettingsGroup>
           {nameRow}
-          <SettingsRow label="Sync" htmlFor="playlist-import-interval">
-            <Select
-              id="playlist-import-interval"
-              value={syncIntervalHours}
-              onChange={setSyncIntervalHours}
-              disabled={importing}
-              options={SYNC_INTERVAL_OPTIONS}
-            />
-          </SettingsRow>
-          <SettingsRow label={`Keep tracks ${sourceLabel} removes`}>
-            <PillToggle
-              checked={keepRemovedTracks}
-              aria-label={`Keep tracks ${sourceLabel} removes`}
-              onChange={(event) => setKeepRemovedTracks(event.target.checked)}
-              disabled={importing}
-            />
-          </SettingsRow>
+          {pluginImportList?.sync === false ? null : (
+            <>
+              <SettingsRow label="Sync" htmlFor="playlist-import-interval">
+                <Select
+                  id="playlist-import-interval"
+                  value={syncIntervalHours}
+                  onChange={setSyncIntervalHours}
+                  disabled={importing}
+                  options={SYNC_INTERVAL_OPTIONS}
+                />
+              </SettingsRow>
+              <SettingsRow label={`Keep tracks ${sourceLabel} removes`}>
+                <PillToggle
+                  checked={keepRemovedTracks}
+                  aria-label={`Keep tracks ${sourceLabel} removes`}
+                  onChange={(event) => setKeepRemovedTracks(event.target.checked)}
+                  disabled={importing}
+                />
+              </SettingsRow>
+            </>
+          )}
         </SettingsGroup>
         <ImportTracks
           tracks={previewTracks.map((track) => ({

@@ -1,5 +1,6 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
 import { useShareAction } from "../../hooks/useShareAction.ts";
@@ -21,6 +22,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { queryClient, queryKeys } from "../../queryClient.ts";
+import { pluginImportListsQueryOptions } from "../../queryOptions.ts";
 import { parseResponse, type InferRequestType } from "hono/client";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -156,7 +158,14 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
 
   const importSource = playlist.importSource || null;
   const fromPlugin = importSource?.provider.startsWith("plugin:") === true;
-  const isSyncable = fromPlugin || SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
+  const pluginImportLists = useQuery(pluginImportListsQueryOptions(fromPlugin));
+  const pluginSyncs =
+    pluginImportLists.data?.importLists.find(
+      (entry) => `plugin:${entry.pluginId}` === importSource?.provider,
+    )?.sync !== false;
+  const isSyncable = fromPlugin
+    ? pluginSyncs
+    : SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
   const providerLabel = fromPlugin
     ? playlist.sourceName || "a plugin"
     : isSyncable
@@ -174,7 +183,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const owner = playlist.ownerUsername || user?.username || null;
   const syncInterval = importSource?.syncIntervalHours ?? 0;
   const metaParts = [owner, trackLabel];
-  if (isSyncable) {
+  if (isSyncable || fromPlugin) {
     metaParts.push(
       importSource?.syncEnabled === true
         ? `Synced from ${providerLabel}`

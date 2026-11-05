@@ -49,6 +49,7 @@ export function listPluginImportLists() {
       pluginId: plugin.id,
       label: plugin.manifest.importList?.label ?? plugin.manifest.name,
       hosts: plugin.manifest.importList?.hosts ?? [],
+      sync: plugin.manifest.importList?.sync ?? true,
     }));
 }
 
@@ -76,6 +77,7 @@ export async function fetchPluginPlaylist(provider: string, url: string) {
     return {
       id: url,
       label: plugin.manifest.importList.label,
+      sync: plugin.manifest.importList.sync,
       name: playlist.name,
       artworkUrl: playlist.artworkUrl ?? null,
       tracks,

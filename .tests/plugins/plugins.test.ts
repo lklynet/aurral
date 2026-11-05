@@ -31,6 +31,7 @@ const [
   { runDuePluginSchedules },
   { activePlugin, pluginInput, setSafeMode, whilePluginTests },
   { resolveRequestUser },
+  { playlistOperationQueue },
 ] = await setupIsolatedBackend(
   "plugins",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -48,6 +49,7 @@ const [
   () => import("../../backend/services/plugins/pluginSchedule.ts"),
   () => import("../../backend/services/plugins/pluginStore.ts"),
   () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
@@ -473,6 +475,38 @@ test("an import list previews links on its hosts and refuses others", async () =
   assert.equal(body.trackCount, 1);
   assert.equal(body.skipped, 1);
   assert.equal((await preview("https://example.com/list")).status, 400);
+});
+
+test("an import list that never changes imports once, whatever sync the request asks for", async () => {
+  await install(
+    "trip",
+    { importList: { label: "Road Trip", hosts: ["maps.example.com"], sync: false } },
+    `export default { importList: { fetch: () => ({
+      name: "Portland to Boise",
+      tracks: [{ artist: "Laura Gibson", title: "La Grande" }],
+    }) } };`,
+  );
+  await turnOn("trip");
+  const enqueue = vi
+    .spyOn(playlistOperationQueue, "enqueuePayload")
+    .mockImplementation(async () => ({ queued: true, operationId: 1 }));
+
+  const lists = await (await routes(owner).request("/plugins/import-lists")).json();
+  assert.equal(lists.importLists[0].sync, false);
+  const response = await routes(owner).request(
+    "/plugins/trip/import",
+    json("POST", {
+      url: "https://maps.example.com/dir/portland/boise",
+      name: "Portland to Boise",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.partialDeepStrictEqual(enqueue.mock.calls[0]?.[0], {
+    importSource: { provider: "plugin:trip", syncEnabled: false, syncIntervalHours: 0 },
+  });
 });
 
 test("a scheduled plugin runs once its interval passes and keeps files in its data folder", async () => {

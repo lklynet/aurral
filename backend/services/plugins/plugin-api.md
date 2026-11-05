@@ -216,6 +216,8 @@ Set `"downloadSource": { "albums": true }` and export `searchAlbum` and `downloa
 
 The plugin shows as a source in **Import playlist**. A user pastes a link on one of the `hosts` (subdomains count) and Aurral calls `importList.fetch({ url })`. Return `{ name, artworkUrl, tracks }`. Each track needs `artist` and `title` and can have `album`, `durationMs`, and `mbid`. Return up to 5000 tracks. When the user keeps the playlist synced, Aurral calls `fetch` again on its schedule. A fetch has 2 minutes.
 
+Add `"sync": false` when a link's playlist never changes, such as a playlist the plugin builds once. Aurral then imports it once and doesn't offer sync.
+
 ## Install and update
 
 People install plugins by pasting a link in **Settings > Plugins**, or by putting a plugin's folder in the `plugins` folder of their data folder.

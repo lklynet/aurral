@@ -5,6 +5,7 @@ import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
 import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
+import { pluginsClient } from "./utils/api/clients/plugins.ts";
 import { settingsClient } from "./utils/api/clients/settings.ts";
 import { usersClient } from "./utils/api/clients/users.ts";
 import { lookupAlbumsInLibraryBatch } from "./utils/api/endpoints/library.ts";
@@ -24,6 +25,14 @@ export const discoveryQueryOptions = (userId: MaybeId) =>
         await parseResponse(discoveryClient.$get({ query: {} }, { init: { signal } })),
       ),
     staleTime: 30_000,
+  });
+
+export const pluginImportListsQueryOptions = (enabled: boolean) =>
+  queryOptions({
+    queryKey: queryKeys.pluginImportLists,
+    queryFn: ({ signal }) =>
+      parseResponse(pluginsClient["import-lists"].$get({}, { init: { signal } })),
+    enabled,
   });
 
 export const listeningHistoryQueryOptions = (userId: MaybeId) =>
