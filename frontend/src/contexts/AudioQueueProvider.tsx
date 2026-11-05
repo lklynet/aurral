@@ -635,7 +635,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "CLEAR_QUEUE" });
     engine.unload();
     remoteSentRef.current = null;
-    if (owner) playQueueClient.$delete({ json: { device } }).catch(() => {});
+    if (owner) {
+      playQueueClient.$delete({ json: { device, changed: remoteSeenRef.current } }).catch(() => {});
+    }
     return () => {
       if (!track) return;
       const action: QueueAction = {

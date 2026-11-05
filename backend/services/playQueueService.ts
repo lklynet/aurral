@@ -11,8 +11,8 @@ const readQueue = db.prepare<[number], SubsonicPlayQueuesRow>(
   "SELECT * FROM subsonic_play_queues WHERE user_id = ?",
 );
 const clearQueue = db.prepare<[number]>("DELETE FROM subsonic_play_queues WHERE user_id = ?");
-const clearOwnQueue = db.prepare<[number, string]>(
-  "DELETE FROM subsonic_play_queues WHERE user_id = ? AND changed_by = ?",
+const clearSeenQueue = db.prepare<[number, string, number]>(
+  "DELETE FROM subsonic_play_queues WHERE user_id = ? AND (changed_by = ? OR changed_at <= ?)",
 );
 const writeQueue = db.prepare<[number, string, string | null, number | null, number, string]>(`
   INSERT INTO subsonic_play_queues
@@ -72,8 +72,8 @@ export function savePlayerQueue(
   });
 }
 
-export function clearPlayerQueue(user: RequestUser, device: string) {
-  clearOwnQueue.run(user.id, device);
+export function clearPlayerQueue(user: RequestUser, device: string, seen: number) {
+  clearSeenQueue.run(user.id, device, seen);
 }
 
 export function getPlayerQueue(user: RequestUser) {

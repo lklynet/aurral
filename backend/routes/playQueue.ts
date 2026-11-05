@@ -94,7 +94,15 @@ export default new Hono<AppEnv>()
     });
     return c.json({ changed: changed ?? null }, 200);
   })
-  .delete("/", validate("json", v.object({ device })), (c) => {
-    clearPlayerQueue(c.var.user, c.req.valid("json").device);
-    return c.body(null, 204);
-  });
+  .delete(
+    "/",
+    validate(
+      "json",
+      v.object({ device, changed: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 0) }),
+    ),
+    (c) => {
+      const { device, changed } = c.req.valid("json");
+      clearPlayerQueue(c.var.user, device, changed);
+      return c.body(null, 204);
+    },
+  );
