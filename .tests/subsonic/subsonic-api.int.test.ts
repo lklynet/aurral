@@ -689,17 +689,24 @@ test("the web player and Subsonic clients resume the same play queue", async () 
     "failed",
   );
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, flowSong.id);
-  await save([librarySong.streamPath], 0);
+  const { changed } = await save([librarySong.streamPath], 0);
 
   assert.deepEqual(await save([librarySong.streamPath, "/artists/x/preview"], 1), {
     changed: null,
   });
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
 
-  const close = (device: string) =>
-    apiFetch("/api/play-queue", { method: "DELETE", body: JSON.stringify({ device }) });
+  const close = (device: string, seen?: number) =>
+    apiFetch("/api/play-queue", {
+      method: "DELETE",
+      body: JSON.stringify({ device, changed: seen }),
+    });
   assert.equal((await close("Aurral phone")).status, 204);
+  assert.equal((await close("Aurral phone", changed - 1)).status, 204);
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
+  await close("Aurral phone", changed);
+  assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
+  await save([librarySong.streamPath], 0);
   await close("Aurral web");
   assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
 });
