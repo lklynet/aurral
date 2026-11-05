@@ -281,6 +281,7 @@ test("shuffle stays on for every queue played next and the order always matches 
   assert.equal(cleared.queue.length, 0);
   assert.equal(cleared.isShuffleEnabled, true);
   assert.equal(cleared.repeatMode, "all");
+  assert.ok(cleared.queueRevision > shuffleOn.queueRevision);
 
   const shuffleButton = startQueue({ shuffle: true });
   assert.equal(shuffleButton.isShuffleEnabled, true);

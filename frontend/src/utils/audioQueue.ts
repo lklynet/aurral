@@ -632,6 +632,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         ...initialQueueState,
         isShuffleEnabled: state.isShuffleEnabled,
         repeatMode: state.repeatMode,
+        queueRevision: state.queueRevision + 1,
         nextEntryId: state.nextEntryId,
       };
     default:

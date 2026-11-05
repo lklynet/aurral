@@ -685,14 +685,14 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     const seed = radio?.seed ?? radioSeedFor(played);
     const queueSource = radio ?? AUTOPLAY_SOURCE;
     const entryId = currentTrack.entryId;
+    const revision = state.queueRevision;
     fetchRadio(seed, state.queue)
       .then((tracks) => {
         const latest = stateRef.current;
         if (!ownsQueueRef.current || tracks.length === 0) return;
         if (!latest.queue.some((entry) => entry.entryId === entryId)) return;
         if (!radio && !autoplayRef.current) return;
-        const ranOut =
-          !latest.autoplay && trackAt(latest, latest.currentIndex)?.entryId !== entryId;
+        const ranOut = !latest.autoplay && latest.queueRevision !== revision;
         dispatch({
           type: "EXTEND_QUEUE",
           tracks: tracks.map((track) => ({ ...track, queueSource })),
