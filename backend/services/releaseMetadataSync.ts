@@ -14,6 +14,7 @@ import {
   getArtistReleaseCalendar,
   getReleaseCalendarArtistRefreshes,
   isReleaseGroupOwned,
+  isLibraryArtist,
   listReleaseCalendarArtists,
   markReleaseCalendarArtistFailed,
   markReleaseCalendarArtistRefreshed,
@@ -161,7 +162,9 @@ export async function refreshReleaseMetadata({
     } catch (error) {
       lease.signal.throwIfAborted();
       artistsFailed += 1;
-      lease.write(() => markReleaseCalendarArtistFailed(artist.id, nowMs));
+      lease.write(() => {
+        if (isLibraryArtist(artist.id)) markReleaseCalendarArtistFailed(artist.id, nowMs);
+      });
       logger.warn("library", "BrainzMash release metadata refresh failed for artist", {
         artistMbid: artist.mbid,
         message: asAppError(error)?.message || String(error),
@@ -210,18 +213,22 @@ export async function refreshReleaseMetadata({
       });
     }
 
+    let stillInLibrary = false;
     lease.write(() => {
+      stillInLibrary = isLibraryArtist(artist.id);
+      if (!stillInLibrary) return;
       for (const entry of entries) upsertReleaseCalendarEntry(entry);
       releasesStale += markUnseenReleaseCalendarEntries(artist.id, seenReleaseGroupMbids, nowMs);
       markReleaseCalendarArtistRefreshed(artist.id, nowMs);
     });
+    if (!stillInLibrary) continue;
     artistsRefreshed += 1;
     if (artistsRefreshed % 25 === 0) {
       await new Promise((resolve) => setImmediate(resolve));
     }
   }
 
-  if (eligibleArtists.length > 0 && artistsRefreshed === 0) {
+  if (artistsFailed > 0 && artistsRefreshed === 0) {
     throw new Error("BrainzMash release metadata refresh failed for every library artist");
   }
 

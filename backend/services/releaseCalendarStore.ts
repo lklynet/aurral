@@ -76,6 +76,14 @@ const selectArtistRefreshes = db.prepare<[], LibraryReleaseCalendarArtistsRow>(`
   FROM library_release_calendar_artists
 `);
 
+const selectLibraryArtist = db.prepare<[number], Pick<LibraryArtistsRow, "id">>(
+  "SELECT id FROM library_artists WHERE id = ?",
+);
+
+export function isLibraryArtist(artistId: number) {
+  return selectLibraryArtist.get(Number(artistId)) !== undefined;
+}
+
 const upsertArtistRefreshed = db.prepare(`
   INSERT INTO library_release_calendar_artists (artist_id, refreshed_at, failed_at)
   VALUES (?, ?, NULL)
