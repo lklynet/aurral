@@ -827,6 +827,37 @@ test("getEvents reads the download completions slskd stores as JSON text", async
   }
 });
 
+test("getEvents reads the numeric transfer state slskd 0.24.4 and older store in events", async () => {
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify([
+        {
+          type: "DownloadFileComplete",
+          data: JSON.stringify({ transfer: { id: "transfer-1", state: 48 } }),
+        },
+        {
+          type: "DownloadFileComplete",
+          data: JSON.stringify({ transfer: { id: "transfer-2", state: 0 } }),
+        },
+      ]),
+    );
+  });
+  try {
+    const { events } = await new SlskdClient({ url: mock.url }).getEvents(0, 50);
+    assert.deepEqual(
+      events.map((event) =>
+        event.type === "DownloadFileComplete" ? event.data.transfer.state : null,
+      ),
+      ["Completed, Succeeded", "None"],
+    );
+  } finally {
+    await mock.close();
+  }
+});
+
 test("getEvents names the field that made slskd's download event unreadable", async () => {
   const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
   const { logger } = await import("../../backend/services/logger.ts");
