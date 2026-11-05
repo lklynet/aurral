@@ -166,6 +166,11 @@ function useFailingSlskd() {
   const provider = { status: 503, close: async () => {} };
   const serverReady = createMockHttpServer((request, response) => {
     request.resume();
+    if (provider.status < 400 && request.method === "GET") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
+      return;
+    }
     response.writeHead(provider.status);
     response.end();
   }).then((server) => {

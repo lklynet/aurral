@@ -412,6 +412,11 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
   let failCleanup = true;
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
+    if (!failCleanup && request.method === "GET") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
+      return;
+    }
     response.writeHead(failCleanup ? 503 : 204);
     response.end();
   });

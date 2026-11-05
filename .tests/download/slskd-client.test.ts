@@ -570,6 +570,11 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
       response.end(JSON.stringify({ state: "Completed", endedAt: "2026-11-05T12:00:00Z" }));
       return;
     }
+    if (request.method === "PUT" && request.url === "/api/v0/searches/search-owned") {
+      response.writeHead(200);
+      response.end();
+      return;
+    }
     if (request.method === "DELETE" && request.url === "/api/v0/searches/search-owned") {
       response.writeHead(204);
       response.end();
@@ -625,6 +630,7 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
     assert.deepEqual(
       calls.map((call) => `${call.method} ${call.url}`),
       [
+        "PUT /api/v0/searches/search-owned",
         "GET /api/v0/searches/search-owned?includeResponses=false",
         "DELETE /api/v0/searches/search-owned",
         "DELETE /api/v0/transfers/downloads/peer/transfer-owned?remove=true",
@@ -632,6 +638,40 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
     );
   } finally {
     dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("deleteSearch cancels a running search and deletes it only after slskd finalizes it", async () => {
+  const calls: string[] = [];
+  let pendingPolls = 1;
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    calls.push(`${request.method} ${request.url}`);
+    response.setHeader("content-type", "application/json");
+    if (request.method === "GET") {
+      const finalized = calls.includes("PUT /api/v0/searches/running") && pendingPolls-- <= 0;
+      response.end(
+        JSON.stringify({
+          state: "Completed, Cancelled",
+          endedAt: finalized ? "2026-11-05T12:00:00Z" : null,
+        }),
+      );
+      return;
+    }
+    response.writeHead(request.method === "DELETE" ? 204 : 200);
+    response.end();
+  });
+  try {
+    const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+    assert.equal(await new SlskdClient({ url: mock.url }).deleteSearch("running"), true);
+    assert.deepEqual(calls, [
+      "PUT /api/v0/searches/running",
+      "GET /api/v0/searches/running?includeResponses=false",
+      "GET /api/v0/searches/running?includeResponses=false",
+      "DELETE /api/v0/searches/running",
+    ]);
+  } finally {
     await mock.close();
   }
 });

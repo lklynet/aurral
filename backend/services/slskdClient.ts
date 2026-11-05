@@ -1147,37 +1147,30 @@ export class SlskdClient {
     if (!id) return false;
     const client = buildClient(this._config);
     const endpoint = `/api/v0/searches/${encodeURIComponent(id)}`;
-    const deadline = Date.now() + Math.max(1, Number(options.timeout) || 20000);
-    const signal = untilDeadline(deadline, options.signal);
-    const requestOptions = { ...options, signal };
-    let cancellationRequested = false;
+    const signal = untilDeadline(
+      Date.now() + Math.max(1, Number(options.timeout) || 20000),
+      options.signal,
+    );
     try {
-      while (Date.now() < deadline && !signal?.aborted) {
+      const cancelled = await client.put(endpoint, undefined, { signal });
+      if (cancelled.status === 404) return true;
+      if (cancelled.status >= 400) return false;
+      while (!signal?.aborted) {
         const response = await client.get(endpoint, {
-          ...requestOptions,
+          signal,
           params: { includeResponses: false },
         });
         if (response.status === 404) return true;
         if (response.status !== 200) return false;
-        const search = readOne(searchSchema, response.data, { service: "slskd", endpoint });
-        // DELETE only removes slskd's database row; it does not cancel its worker.
-        // Completed is persisted before the final results, so wait for EndedAt too.
-        if (isSearchComplete(search) && search.endedAt) {
-          const removed = await client.delete(endpoint, requestOptions);
-          return [200, 204, 404].includes(removed.status);
+        if (readOne(searchSchema, response.data, { service: "slskd", endpoint }).endedAt) {
+          const deleted = await client.delete(endpoint, { signal });
+          return [200, 204, 404].includes(deleted.status);
         }
-        if (!isSearchComplete(search) && !cancellationRequested) {
-          const cancelled = await client.put(endpoint, undefined, requestOptions);
-          if (cancelled.status === 404) return true;
-          if (![200, 202, 204, 304].includes(cancelled.status)) return false;
-          cancellationRequested = true;
-        }
-        await waitSearchDelay(Math.min(100, Math.max(1, deadline - Date.now())), signal);
+        await waitSearchDelay(250, signal);
       }
     } catch (error) {
       if (!signal?.aborted) throw error;
     }
-    // Keep ownership for a later cleanup attempt if slskd has not finalized yet.
     return false;
   }
 
