@@ -693,3 +693,50 @@ test("an aborted metadata refresh never calls the provider or changes the calend
     removeCalendarArtist(artist.id);
   }
 });
+
+test("an artist removed from the library during a refresh is skipped instead of failing the run", async (t: import("vite-plus/test").TestContext) => {
+  const removed = createCalendarArtist("Removed Mid-Refresh Artist");
+  const kept = createCalendarArtist("Kept Artist");
+  const keptRelease = randomUUID();
+  stubBrainzMash(t, {
+    catalogues: {
+      [removed.mbid]: [catalogueRelease(randomUUID(), "Removed Release")],
+      [kept.mbid]: [catalogueRelease(keptRelease, "Kept Release")],
+    },
+    albumDates: { [keptRelease]: "2026-09-20" },
+    onArtist: () => removeCalendarArtist(removed.id),
+  });
+
+  try {
+    const result = await refreshReleaseMetadata({
+      artists: [removed, kept],
+      now: Date.parse("2026-09-27T12:00:00Z"),
+    });
+    assert.equal(result.artistsRefreshed, 1);
+    assert.deepEqual(
+      (
+        await getRecentMissingReleases(100, {
+          artists: [{ canonicalId: String(kept.id) }],
+          now: "2026-09-27T12:00:00Z",
+        })
+      ).map((album) => album.title),
+      ["Kept Release"],
+    );
+  } finally {
+    removeCalendarArtist(kept.id);
+  }
+});
+
+test("a refresh whose only artist left the library finishes without reporting a failure", async (t: import("vite-plus/test").TestContext) => {
+  const removed = createCalendarArtist("Only Artist Removed Mid-Refresh");
+  stubBrainzMash(t, {
+    catalogues: { [removed.mbid]: [catalogueRelease(randomUUID(), "Removed Release")] },
+    onArtist: () => removeCalendarArtist(removed.id),
+  });
+
+  const result = await refreshReleaseMetadata({
+    artists: [removed],
+    now: Date.parse("2026-09-27T12:00:00Z"),
+  });
+  assert.equal(result.artistsRefreshed, 0);
+});
