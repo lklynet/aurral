@@ -108,6 +108,17 @@ export const tidarrSettings = Object.freeze({
   testConnection: true,
 });
 
+const TIDARR_RELEASE_GUID = /^(\d+)-(?:hires_lossless|lossless|high|low)$/;
+
+// Tidarr lists an album once per quality, and every listing downloads as the same item.
+export function usenetReleaseIdentity(guid: string | null | undefined) {
+  const id = String(guid || "")
+    .trim()
+    .toLowerCase();
+  const tidalAlbum = TIDARR_RELEASE_GUID.exec(id)?.[1];
+  return tidalAlbum ? `tidarr:${tidalAlbum}` : id;
+}
+
 const SABNZBD_API_CLIENTS = {
   sabnzbd: { name: "SABnzbd", apiPath: "/api" },
   tidarr: { name: "Tidarr", apiPath: "/api/sabnzbd/api" },

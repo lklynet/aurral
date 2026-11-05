@@ -767,6 +767,48 @@ for (const albumGrab of [false, true]) {
   });
 }
 
+test("Usenet tries each Tidarr album once, at its best allowed quality", async () => {
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [
+    musicIndexer,
+  ]);
+  const qualities = [
+    ["hires_lossless", "FLAC 24bit", 3040],
+    ["lossless", "FLAC", 3040],
+    ["high", "AAC-320", 3010],
+    ["low", "MP3-96", 3050],
+  ] as const;
+  const search = vi.spyOn(prowlarrClient, "search").mockImplementation(async () =>
+    ["123", "456"].flatMap((album) =>
+      qualities.map(([quality, name, category]) =>
+        releaseFixture({
+          guid: `${album}-${quality}`,
+          title: `Tidal Band - Album (2020)  ${name} [WEB]-Tidarr (10 tracks)`,
+          downloadUrl: `https://prowlarr.invalid/1/download?album=${album}&quality=${quality}`,
+          indexerId: 1,
+          size: 100 * 1024 * 1024,
+          categories: [category],
+        }),
+      ),
+    ),
+  );
+  for (const [denied, expected] of [
+    [null, ["123-hires_lossless", "456-hires_lossless"]],
+    ["123-hires_lossless", ["456-hires_lossless"]],
+  ] as const) {
+    const jobId = createTrackedJob(
+      downloadTracker,
+      { artistName: "Tidal Band", trackName: "First", albumName: "Album", durationMs: 180000 },
+      "usenet-tidarr",
+    );
+    assert.ok(jobId != null);
+    if (denied) downloadTracker.recordDeniedSource(jobId, "usenet", denied);
+    const result = await searchUntilDone({ phase: "search", source: "usenet", jobId });
+    assert.ok(result.candidates);
+    assert.deepEqual(result.candidates.map((entry) => entry.raw.guid).sort(), expected);
+  }
+  search.mockRestore();
+});
+
 test("a Usenet track search tries the requested album before a single of the track within a quality tier", async () => {
   vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
   for (const [name, albumFormat, expected] of [

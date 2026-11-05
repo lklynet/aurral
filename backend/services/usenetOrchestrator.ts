@@ -11,6 +11,7 @@ import {
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getUsenetClient } from "./download/downloadClientSettings.ts";
+import { usenetReleaseIdentity } from "./sabnzbdClient.ts";
 import { logger } from "./logger.ts";
 import {
   buildUsenetSearchQueries,
@@ -19,7 +20,6 @@ import {
   rankUsenetReleases,
   selectRankedUsenetCandidates,
   type UsenetRelease,
-  type UsenetSearchContext,
 } from "./downloadJobs/usenetReleaseSearch.ts";
 import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searchResultCache.ts";
 import { selectVerifiedDownloadedFile } from "./trackMatching/index.ts";
@@ -323,21 +323,22 @@ function blockRelease(payload: UsenetPayload, job: UsenetJob) {
   for (const entry of jobs) downloadTracker.recordDeniedSource(entry.id, "usenet", guid);
 }
 
-function hasEnoughCandidates(
-  aggregated: UsenetRelease[],
-  resolvedTrack: UsenetSearchContext,
+function orderCandidates(
+  ranked: RankedRelease[],
   qualityOptions: QualityOptions,
   albumGrab: boolean,
 ) {
-  const ranked = rankUsenetReleases(aggregated, resolvedTrack).filter(
-    (entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName),
-  );
-  return (
-    orderAdvertisedQualityCandidates(ranked, {
-      ...qualityOptions,
-      readName: (entry) => entry?.raw?.release?.title,
-    }).length >= MIN_USENET_CANDIDATES
-  );
+  const seen = new Set<string>();
+  return orderAdvertisedQualityCandidates(
+    ranked.filter((entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName)),
+    { ...qualityOptions, readName: (entry) => entry?.raw?.release?.title },
+  ).filter((entry) => {
+    const id = usenetReleaseIdentity(entry.raw.release.guid);
+    if (!id) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 function classifyHistoryStatus(item: UsenetHistoryItem) {
@@ -545,20 +546,20 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
     isProwlarrMusicQuery(query)
       ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
       : prowlarrClient.search(query);
-  const deniedSourceGuidSet = deniedAlbumSources([job, ...albumJobs], "usenet");
+  const deniedReleases = new Set(
+    [...deniedAlbumSources([job, ...albumJobs], "usenet")].map(usenetReleaseIdentity),
+  );
   const allowed = (releases: UsenetRelease[]) =>
-    releases.filter(
-      (release: UsenetRelease) =>
-        !deniedSourceGuidSet.has(
-          String(release.guid || "")
-            .trim()
-            .toLowerCase(),
-        ),
-    );
+    releases.filter((release) => !deniedReleases.has(usenetReleaseIdentity(release.guid)));
   const step = await advanceUsenetSearch(
     { ...payload, searchQueries: queries },
     queries,
-    (results) => hasEnoughCandidates(allowed(results), searchContext, qualityOptions, albumGrab),
+    (results) =>
+      orderCandidates(
+        rankUsenetReleases(allowed(results), searchContext),
+        qualityOptions,
+        albumGrab,
+      ).length >= MIN_USENET_CANDIDATES,
     runQuery,
   );
   if (!isPipelinePayloadActive(payload)) return null;
@@ -567,26 +568,7 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
   const lastError = step.searchError;
   const queryCount = step.queryCount;
   const ranked = rankUsenetReleases(aggregated, searchContext);
-  const filteredRanked =
-    deniedSourceGuidSet.size > 0
-      ? ranked.filter(
-          (entry) =>
-            !deniedSourceGuidSet.has(
-              String(entry?.raw?.guid || "")
-                .trim()
-                .toLowerCase(),
-            ),
-        )
-      : ranked;
-  const qualityRanked = orderAdvertisedQualityCandidates(
-    filteredRanked.filter(
-      (entry) => entry.releaseAdmissible && (payload.albumGrab !== true || entry.resolvedAlbumName),
-    ),
-    {
-      ...qualityOptions,
-      readName: (entry) => entry?.raw?.release?.title,
-    },
-  );
+  const qualityRanked = orderCandidates(ranked, qualityOptions, albumGrab);
   const candidates = selectRankedUsenetCandidates(qualityRanked, MAX_DOWNLOAD_CANDIDATES).map(
     (entry) => ({
       raw: entry.raw,
