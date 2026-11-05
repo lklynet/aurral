@@ -145,9 +145,8 @@ const normalizedForFingerprint = (text: string) =>
     .replace(/\b[0-9a-f]{8,}(?:-[0-9a-f]{4,})*\b/gi, "#")
     .replace(/\d+/g, "#");
 
-function fingerprint(level: LogLevel, cat: string, msg: string, reason: string | undefined) {
-  const key = [level, cat, msg, reason ?? ""].map(normalizedForFingerprint).join("\0");
-  return createHash("sha1").update(key).digest("hex").slice(0, 10);
+function fingerprint(...parts: string[]) {
+  return createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 10);
 }
 
 const context = new AsyncLocalStorage<LogContext>();
@@ -206,7 +205,14 @@ const isEmpty = (data: unknown) =>
   data == null ||
   (typeof data === "object" && !(data instanceof Error) && Object.keys(data).length === 0);
 
-function record(level: LogLevel, cat: string, msg: string, data?: unknown, error?: Error) {
+function record(
+  level: LogLevel,
+  cat: string,
+  msg: string,
+  data?: unknown,
+  error?: Error,
+  { groupByMessage = false } = {},
+) {
   if (level === "debug" && !isDebugLogging()) return;
   const err = error ? describeError(error) : undefined;
   const rest =
@@ -225,7 +231,9 @@ function record(level: LogLevel, cat: string, msg: string, data?: unknown, error
     cat,
     msg,
     proc: PROCESS_NAME,
-    fp: fingerprint(level, cat, msg, reason),
+    fp: groupByMessage
+      ? fingerprint(level, cat, msg)
+      : fingerprint(...[level, cat, msg, reason ?? ""].map(normalizedForFingerprint)),
     ...context.getStore(),
     ...(safeData === undefined ? {} : { data: safeData }),
     ...(err ? { err } : {}),
@@ -329,9 +337,14 @@ export function recordLog(
   category: string,
   message: string,
   data?: NonNullable<unknown>,
-  error = findError(data),
+  {
+    error = findError(data),
+    groupByMessage = false,
+  }: { error?: Error; groupByMessage?: boolean } = {},
 ) {
-  record(level, safeLogDiagnostic(category), safeLogDiagnostic(message), data, error);
+  record(level, safeLogDiagnostic(category), safeLogDiagnostic(message), data, error, {
+    groupByMessage,
+  });
 }
 
 export type RuntimeLogger = Pick<Console, "info" | "warn" | "error">;

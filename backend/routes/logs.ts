@@ -83,7 +83,7 @@ export default new Hono<AppEnv>()
           page: report.page,
           user: c.var.user.username,
         },
-        error,
+        { error },
       );
       return c.body(null, 204);
     },

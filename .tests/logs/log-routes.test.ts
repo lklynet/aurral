@@ -169,6 +169,19 @@ test("a failed connection is saved with the network error behind it", async () =
   assert.match(JSON.stringify(reported.at(-1)), /fetch failed: connect ECONNREFUSED/);
 });
 
+test("failures from one host group as one problem whatever the network said", async () => {
+  logOutgoingFailures();
+  const flaky = await createMockHttpServer((request) => request.socket.destroy());
+  await assert.rejects(axios.get(`${flaky.url}/feed`));
+  await flaky.close();
+  await assert.rejects(axios.get(`${flaky.url}/feed`));
+
+  const [dropped, refused] = reported.slice(-2);
+  assert.ok(dropped && refused);
+  assert.notDeepEqual(dropped.data, refused.data);
+  assert.equal(dropped.fp, refused.fp);
+});
+
 test("starting fresh hides earlier problems until it is undone", async () => {
   const asMember = signedInAs(member).route("/", api);
   assert.equal((await asMember.request("/logs/fresh", { method: "POST" })).status, 403);

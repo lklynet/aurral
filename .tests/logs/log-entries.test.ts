@@ -56,6 +56,19 @@ test("repeats that differ only by ids and counts share a fingerprint", async () 
   assert.notEqual(requireFixture(entries[1]).fp, requireFixture(entries[2]).fp);
 });
 
+test("failed requests stay apart for each host and status, even when they differ only by numbers", async () => {
+  const { recordLog, entries } = await freshLogger();
+  for (const message of [
+    "GET 192.168.1.10:8686 failed",
+    "GET 192.168.1.20:5030 failed",
+    "GET example.com returned 502",
+    "GET example.com returned 503",
+  ])
+    recordLog("warn", "http", message, { reason: "fetch failed" }, { groupByMessage: true });
+
+  assert.equal(new Set(entries.map((entry) => entry.fp)).size, 4);
+});
+
 test("console output is saved under the category from its tag", async () => {
   const { recordConsoleCall, entries } = await freshLogger();
   recordConsoleCall("warn", ["[BackgroundWorkers] inbox exited (1); restarting"]);
