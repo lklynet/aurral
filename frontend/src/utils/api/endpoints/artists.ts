@@ -75,6 +75,14 @@ export const getArtistDetails = (
     staleTime: 60_000,
   });
 
+export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
+  parseResponse(
+    artistsClient.release[":mbid"].credits.$get(
+      { param: { mbid: encodeURIComponent(mbid) } },
+      { init: { signal } },
+    ),
+  );
+
 export const getReleaseGroupTracks = (
   mbid: string,
   {

@@ -60,13 +60,9 @@ function userTextFrames(id3: TagLib.Id3v2Tag, description: string) {
 
 // A list tag taglib has no list property for, named as MusicBrainz Picard
 // writes it: a Vorbis comment, an ID3 TXXX frame, or an iTunes freeform atom.
-function textListField(
-  xiphName: string,
-  description: string,
-  other?: { read(tag: TagLib.Tag): string; write(tag: TagLib.Tag, value: string): void },
-) {
+function textListField(xiphName: string, description: string) {
   return {
-    read: (tag: TagLib.Tag, file: TagLib.File) => {
+    read: (_tag: TagLib.Tag, file: TagLib.File) => {
       const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
       const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
       const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
@@ -74,16 +70,13 @@ function textListField(
         xiph?.getField(xiphName),
         id3 && userTextFrames(id3, description)[0]?.text,
         apple?.getItunesStrings(ITUNES_MEAN, description),
-        other?.read(tag),
       ]) {
         const found = texts(values);
         if (found.length) return found;
       }
       return [];
     },
-    write: (tag: TagLib.Tag, value: string[], file: TagLib.File) => {
-      const [lead] = value;
-      if (lead) other?.write(tag, lead);
+    write: (_tag: TagLib.Tag, value: string[], file: TagLib.File) => {
       const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
       if (xiph) xiph.setFieldAsStrings(xiphName, ...value);
       const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
@@ -154,12 +147,7 @@ const FIELDS = {
     },
     normalize: list,
   },
-  artistMbid: textListField("MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id", {
-    read: (tag) => text(tag.musicBrainzArtistId),
-    write: (tag, value) => {
-      tag.musicBrainzArtistId = value;
-    },
-  }),
+  artistMbid: textListField("MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
   albumArtistMbid: {
     read: (tag) => text(tag.musicBrainzReleaseArtistId),
     write: (tag, value: string) => {

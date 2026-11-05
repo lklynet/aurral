@@ -70,6 +70,7 @@ export function useReleasePreviewQueue({
   playbackSource,
   ownedTrackMbids,
   awaitingRelease = false,
+  creditFor = () => null,
 }: {
   release: ReleaseGroup | null | undefined;
   trackKey: string | undefined;
@@ -80,6 +81,7 @@ export function useReleasePreviewQueue({
   playbackSource: PlaybackSource | null;
   ownedTrackMbids?: readonly string[];
   awaitingRelease?: boolean;
+  creditFor?: (track: ReleaseGroupTrack) => string | null;
 }) {
   const ownedIds = useMemo(() => new Set((ownedTrackMbids || []).map(String)), [ownedTrackMbids]);
   const isOwned = useCallback(
@@ -94,7 +96,7 @@ export function useReleasePreviewQueue({
           title: track?.title || track?.trackName,
           preview_url: track?.preview_url,
         },
-        artistName,
+        creditFor(track) || artistName,
         {
           album: release?.title || "",
           artwork: artwork || null,
@@ -108,7 +110,7 @@ export function useReleasePreviewQueue({
               : releaseTrackPayload(release, track, artistName, artistMbid),
         },
       ),
-    [artistMbid, artistName, artwork, awaitingRelease, isOwned, release, trackKey],
+    [artistMbid, artistName, artwork, awaitingRelease, creditFor, isOwned, release, trackKey],
   );
   const getQueueTracks = useCallback(
     () =>
@@ -151,6 +153,7 @@ export function useReleasePreviewQueue({
     previewPlayback,
     isOwned,
     awaitingRelease,
+    creditFor,
   };
 }
 
@@ -221,6 +224,7 @@ export function useReleaseTracks({
       key,
       number,
       title,
+      subtitle: preview.creditFor(track),
       time: formatDuration(track.length) || "—",
       missing: !isOwned,
       ...preview.previewPlayback(track, index),

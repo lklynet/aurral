@@ -365,6 +365,7 @@ async function fetchReleaseTrackCredits(releaseMbid: string, signal: AbortSignal
 // retried after a few minutes, so tagging an album asks once.
 export async function musicbrainzGetReleaseTrackCredits(
   releaseMbid: string,
+  { signal }: { signal?: AbortSignal } = {},
 ): Promise<Map<string, ArtistCredit>> {
   const cached = musicbrainzReleaseCreditsCache.get(releaseMbid);
   if (cached) return cached;
@@ -372,11 +373,13 @@ export async function musicbrainzGetReleaseTrackCredits(
     const credits = await runSharedInflight(
       musicbrainzInflightRequests,
       `release-credits:${releaseMbid}`,
-      (signal: AbortSignal) => fetchReleaseTrackCredits(releaseMbid, signal),
+      (sharedSignal: AbortSignal) => fetchReleaseTrackCredits(releaseMbid, sharedSignal),
+      { signal },
     );
     musicbrainzReleaseCreditsCache.set(releaseMbid, credits);
     return credits;
   } catch (error) {
+    signal?.throwIfAborted();
     const credits = new Map<string, ArtistCredit>();
     musicbrainzReleaseCreditsCache.set(releaseMbid, credits, RELEASE_CREDITS_RETRY_SECONDS);
     logger.warn("musicbrainz", "Release track credits lookup failed", {
