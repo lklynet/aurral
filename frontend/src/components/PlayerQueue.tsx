@@ -20,13 +20,17 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { GripVertical, Music, X } from "./icons";
+import { GripVertical, ListMusic, Music, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 import PlayerLyrics from "./PlayerLyrics";
 import PillToggle from "./PillToggle";
 import { isAutoplayEntry } from "../utils/audioQueue";
+import { useAuth } from "../contexts/AuthContext";
+import { CreatePlaylistModal } from "./PlaylistModals";
+import { useTrackSaveActions } from "../pages/useTrackSaveActions";
+import { reserveUniquePlaylistName } from "../pages/ArtistDetails/utils";
 
 type QueueEntry = AudioQueueValue["upcoming"][number];
 
@@ -166,14 +170,66 @@ function QueueList({ entries, className = "", onReorder }: QueueListProps) {
 
 const entryIdsOf = (entries: QueueEntry[]) => entries.map(({ track }) => track.entryId);
 
+type QueueTrack = QueueEntry["track"];
+
+function SaveQueueButton({ tracks }: { tracks: QueueTrack[] }) {
+  const { playlists, onBulkAddToPlaylist, bulkActionLoading } = useTrackSaveActions();
+  const [open, setOpen] = useState(false);
+  if (!onBulkAddToPlaylist) return null;
+
+  const save = async (name: string) => {
+    await onBulkAddToPlaylist(
+      tracks.map((track) => ({
+        id: track.entryId,
+        artistName: track.artist ?? "",
+        trackName: track.title ?? "",
+        albumName: track.album,
+        artistMbid: track.artistMbid,
+        albumMbid: track.albumMbid,
+        trackMbid: track.trackMbid,
+        durationMs: track.durationMs,
+      })),
+      { mode: "new", name },
+    );
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <TooltipButton
+        label="Save as playlist"
+        className="btn btn-ghost btn-icon btn-xs"
+        onClick={() => setOpen(true)}
+      >
+        <ListMusic aria-hidden="true" />
+      </TooltipButton>
+      <CreatePlaylistModal
+        open={open}
+        defaultName={reserveUniquePlaylistName(playlists, "Queue")}
+        saving={bulkActionLoading}
+        onClose={() => setOpen(false)}
+        onSubmit={save}
+      />
+    </>
+  );
+}
+
 export function UpNextQueue({ className = "" }: { className?: string }) {
-  const { upcoming, reorderUpcoming, clearUpcoming, autoplayEnabled, setAutoplayEnabled } =
-    useAudioQueue();
+  const {
+    currentTrack,
+    upcoming,
+    reorderUpcoming,
+    clearUpcoming,
+    autoplayEnabled,
+    setAutoplayEnabled,
+  } = useAudioQueue();
+  const { hasPermission } = useAuth();
   const { addToast } = useToast();
   const headingId = useId();
   const autoplayHeadingId = useId();
   const queued = upcoming.filter(({ track }) => !isAutoplayEntry(track));
   const autoplayed = upcoming.filter(({ track }) => isAutoplayEntry(track));
+  const savable = [...(currentTrack ? [currentTrack] : []), ...queued.map(({ track }) => track)];
 
   const handleClear = () => {
     const undo = clearUpcoming();
@@ -191,15 +247,20 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
           <h3 id={headingId} className="player-queue__heading">
             Up next
           </h3>
-          {queued.length > 0 ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-xs player-queue__clear"
-              onClick={handleClear}
-            >
-              Clear
-            </button>
-          ) : null}
+          <div className="player-queue__section-actions">
+            {savable.length > 0 && hasPermission("accessFlow") ? (
+              <SaveQueueButton tracks={savable} />
+            ) : null}
+            {queued.length > 0 ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs player-queue__clear"
+                onClick={handleClear}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
         </div>
         {queued.length === 0 ? (
           <p className="player-queue__empty">Use Play next or Add to queue in a track menu.</p>

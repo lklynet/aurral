@@ -28,14 +28,37 @@ export const LIBRARY_DEFAULT_SORT = "name";
 const NAME_SORT = { value: LIBRARY_DEFAULT_SORT, label: "Name" };
 const ARTIST_SORT = { value: "artist", label: "Artist" };
 const NEWEST_SORT = { value: "newest", label: "Recently added" };
+const PLAYED_SORT = { value: "played", label: "Recently played" };
+const PLAYS_SORT = { value: "plays", label: "Most played" };
+const RELEASED_SORT = { value: "released", label: "Release date" };
 
 export const LIBRARY_SORT_OPTIONS: Partial<Record<LibraryViewId, (typeof NAME_SORT)[]>> = {
-  albums: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
+  albums: [NAME_SORT, ARTIST_SORT, NEWEST_SORT, PLAYED_SORT, PLAYS_SORT, RELEASED_SORT],
   tracks: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
   artists: [NAME_SORT, NEWEST_SORT],
   "album-artists": [NAME_SORT, NEWEST_SORT],
   genres: [NAME_SORT],
 };
+
+const HOME_RAIL_SIZE = 20;
+
+export const HOME_ALBUM_RAILS = [
+  { title: "Most played", sort: "plays", path: "/library/albums?sort=plays" },
+  { title: "Explore", sort: "random", availableOnly: true },
+  { title: "Recently added", sort: "newest", path: "/library/albums?sort=newest" },
+  { title: "Recently played", sort: "played", path: "/library/albums?sort=played" },
+  {
+    title: "Recently released",
+    sort: "released",
+    availableOnly: true,
+    path: "/library/albums?sort=released",
+  },
+] as const satisfies readonly {
+  title: string;
+  sort: string;
+  availableOnly?: true;
+  path?: string;
+}[];
 
 export const libraryListParams = (section: LibraryViewId, searchParams: URLSearchParams) => {
   const requestedSort = searchParams.get("sort");
@@ -124,23 +147,20 @@ const fetchLibraryPages = async (
   }
   if (section === "home") {
     return Promise.all([
-      fetchLibraryPage(
-        {
-          kind: "albums",
-          page: 1,
-          pageSize,
-          sort: "newest",
-        },
-        { signal },
+      ...HOME_ALBUM_RAILS.map((rail) =>
+        fetchLibraryPage(
+          {
+            kind: "albums",
+            page: 1,
+            pageSize: HOME_RAIL_SIZE,
+            sort: rail.sort,
+            availableOnly: "availableOnly" in rail ? rail.availableOnly : undefined,
+          },
+          { signal },
+        ),
       ),
       fetchLibraryPage(
-        {
-          kind: "tracks",
-          page: 1,
-          pageSize: 12,
-          sort: "newest",
-          availableOnly: true,
-        },
+        { kind: "tracks", page: 1, pageSize: 12, sort: "newest", availableOnly: true },
         { signal },
       ),
     ]);

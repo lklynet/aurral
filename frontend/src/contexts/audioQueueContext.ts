@@ -34,6 +34,8 @@ export type AudioQueueValue = {
   toggleRepeat: () => void;
   autoplayEnabled: boolean;
   setAutoplayEnabled: (enabled: boolean) => void;
+  levelingEnabled: boolean;
+  setLevelingEnabled: (enabled: boolean) => void;
   startRadio: (
     seed: RadioSeed,
     options: { label: string; first?: QueueTrackInput | null },

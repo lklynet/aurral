@@ -253,6 +253,7 @@ export default new Hono<AppEnv>()
             direction: query.direction,
             artistId: query.artistId,
             albumId: query.albumId,
+            userId: user?.id ?? null,
           }),
           favoriteKeys,
         ),

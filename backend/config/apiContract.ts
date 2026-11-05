@@ -15,5 +15,7 @@ export const API_CONTRACT = {
     "pluginActions",
     "radio",
     "playQueue",
+    "loudness",
+    "albumPlaySorts",
   ],
 };

@@ -10,6 +10,8 @@ import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import { DotLoader } from "../../../components/DotLoader";
+import PillToggle from "../../../components/PillToggle";
+import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
 import { readApiError } from "../utils/apiError.ts";
 import { formatDate } from "../../../utils/dateTime.ts";
@@ -485,6 +487,7 @@ function SpotifyDetail() {
 
 export function ListeningSection() {
   const { user, hasPermission } = useAuth();
+  const { levelingEnabled, setLevelingEnabled } = useAudioQueue();
   const { history } = useListenHistory();
   const scrobbleStatus = useScrobbleStatus();
   const item = useSettingsItem();
@@ -507,6 +510,20 @@ export function ListeningSection() {
 
   return (
     <SettingsPage title="Listening">
+      <SettingsGroup title="Playback">
+        <SettingsRow
+          label="Volume leveling"
+          htmlFor="volume-leveling"
+          help="Play every track at a similar loudness."
+        >
+          <PillToggle
+            id="volume-leveling"
+            aria-label="Volume leveling"
+            checked={levelingEnabled}
+            onChange={(event) => setLevelingEnabled(event.target.checked)}
+          />
+        </SettingsRow>
+      </SettingsGroup>
       <SettingsGroup
         title="Services"
         note="Your history shapes recommendations. Scrobbling sends what you play."

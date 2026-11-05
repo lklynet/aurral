@@ -65,6 +65,7 @@ const PLAYER_CHANNEL = "aurral.player";
 const DEVICE_KEY = "aurral.player.device";
 const REMOTE_SAVE_MS = 30000;
 const AUTOPLAY_KEY = "aurral.player.autoplay";
+const LEVELING_KEY = "aurral.player.leveling";
 const RADIO_REFILL_AT = 2;
 const AUTOPLAY_SEED_TRACKS = 5;
 const RADIO_EXCLUDE_LIMIT = 500;
@@ -141,17 +142,17 @@ function useSharedVolume() {
   return { ...audio, setVolume, setMuted };
 }
 
-function readAutoplay() {
+function readFlag(key: string) {
   try {
-    return window.localStorage.getItem(AUTOPLAY_KEY) !== "false";
+    return window.localStorage.getItem(key) !== "false";
   } catch {
     return true;
   }
 }
 
-function writeAutoplay(enabled: boolean) {
+function writeFlag(key: string, enabled: boolean) {
   try {
-    window.localStorage.setItem(AUTOPLAY_KEY, String(enabled));
+    window.localStorage.setItem(key, String(enabled));
   } catch {}
 }
 
@@ -243,7 +244,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const userActionsRef = useRef(0);
 
   const { volume, muted, setVolume, setMuted } = useSharedVolume();
-  const [autoplayEnabled, setAutoplayState] = useState(readAutoplay);
+  const [autoplayEnabled, setAutoplayState] = useState(() => readFlag(AUTOPLAY_KEY));
+  const [levelingEnabled, setLevelingState] = useState(() => readFlag(LEVELING_KEY));
   const autoplayRef = useRef(autoplayEnabled);
   autoplayRef.current = autoplayEnabled;
   const refillRef = useRef<{ entryId: string; queue: QueueEntry[] } | null>(null);
@@ -382,6 +384,13 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     engine.setMuted(muted);
   }, [engine, muted, volume]);
 
+  useEffect(() => engine.setLeveling(levelingEnabled), [engine, levelingEnabled]);
+
+  const setLevelingEnabled = useCallback((enabled: boolean) => {
+    setLevelingState(enabled);
+    writeFlag(LEVELING_KEY, enabled);
+  }, []);
+
   const toggleMute = useCallback(() => setMuted(!muted), [muted, setMuted]);
 
   const setShuffleEnabled = useCallback(
@@ -476,7 +485,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const setAutoplayEnabled = useCallback(
     (enabled: boolean) => {
       setAutoplayState(enabled);
-      writeAutoplay(enabled);
+      writeFlag(AUTOPLAY_KEY, enabled);
       refillRef.current = null;
       if (!enabled) dispatch({ type: "REMOVE_AUTOPLAY" });
     },
@@ -986,6 +995,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       toggleRepeat,
       autoplayEnabled,
       setAutoplayEnabled,
+      levelingEnabled,
+      setLevelingEnabled,
       startRadio,
       playQueue,
       playTrack,
@@ -1009,6 +1020,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       clearQueue,
       clearUpcoming,
       setAutoplayEnabled,
+      levelingEnabled,
+      setLevelingEnabled,
       startRadio,
       updateQueueArtwork,
       queueNext,

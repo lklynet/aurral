@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import { fileLoudness } from "./audioLoudness.ts";
 import { sendFile } from "./fileResponses.ts";
 
 const AUDIO_CONTENT_TYPES = {
@@ -25,7 +26,12 @@ export function audioContentType(format: string) {
   return knownContentType(normalized) || `audio/${normalized}`;
 }
 
-export const sendAudioFile = (req: IncomingMessage, res: ServerResponse, filePath: string) =>
-  sendFile(req, res, filePath, {
+export async function sendAudioFile(req: IncomingMessage, res: ServerResponse, filePath: string) {
+  if (req.method === "HEAD") {
+    const lufs = await fileLoudness(filePath);
+    if (lufs != null) res.setHeader("X-Aurral-Loudness", lufs.toFixed(1));
+  }
+  return sendFile(req, res, filePath, {
     contentType: knownContentType(path.extname(filePath).slice(1).toLowerCase()),
   });
+}

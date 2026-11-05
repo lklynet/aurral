@@ -5,7 +5,7 @@ description: Browse, play, add, and remove the music in your Library.
 
 The Library is Aurral's index of your music. It includes the files in the Library folder, in your [read-only folders](#add-music-aurral-only-reads), and, if you connect Lidarr, in the Lidarr root folders. Open **Library** in the sidebar to see these sections:
 
-- **Library** shows recently added albums and a short track list.
+- **Library** shows your genres, your most played, recently added, recently played, and recently released albums, a random selection to explore, and your playlists.
 - **Favorites** shows your starred artists, albums, and tracks.
 - **Albums** shows album artwork and how many tracks are available.
 - **Tracks** shows each track, its artist and album, and whether its file exists.
@@ -23,13 +23,15 @@ Select a track or album to play it in the built-in player. An artist or album pa
 
 While a track is in the player, press **Space** to play or pause, **←** and **→** to move 5 seconds, **Shift+←** and **Shift+→** for the previous or next track, **M** to mute, **L** for lyrics, and **F** for the full screen player. The keys do nothing while you type in a field.
 
-To see what plays next, select the queue button in the player. Drag tracks or use the handle with Space and the arrow keys to reorder them, remove one, or clear everything after the current track. On a phone, the queue is in the Now playing view. Any track menu with a playable track has **Play next** and **Add to queue**. When nothing is playing, either one starts the track.
+To see what plays next, select the queue button in the player. Drag tracks or use the handle with Space and the arrow keys to reorder them, remove one, or clear everything after the current track. To keep what's playing and up next, select **Save as playlist**. On a phone, the queue is in the Now playing view. Any track menu with a playable track has **Play next** and **Add to queue**. When nothing is playing, either one starts the track.
 
 To read along, select the lyrics button in the player. On a phone, tap the artwork in the Now playing view. Aurral uses a `.lrc` file with the same name as the track first, then lyrics in the file's tags, then [LRCLIB](https://lrclib.net). Timed lyrics follow the song, and selecting a line jumps to it.
 
 The full screen player shows the song big enough to read across a room, and works as a screen saver: the controls fade when you stop moving the mouse, and the screen stays awake while music plays. Select the full screen button in the player, or press **F**. Its settings button picks a layout, either just the current lyric, lyrics and queue in tabs, or both side by side on a wide screen, and a visualizer. **Chill** drifts slowly. **Beat** moves with the bass of tracks in your Library. Press **Esc** to leave.
 
 Aurral remembers your queue on the server. After a reload, or when you open Aurral on another device, the player comes back paused at the track and time you left. A paused player picks up what you play elsewhere, including Subsonic clients that save their play queue. Previews and tracks outside your Library and playlists stay on the device that played them. Logging out stops playback. If you play in a second tab, the first tab pauses.
+
+**Volume leveling** in **Settings > Listening** plays every track at a similar loudness. Aurral measures each file the first time it plays and remembers the result, so files don't need ReplayGain tags. Loud tracks are turned down to match, and quiet ones play as they are. It's on by default, and the setting belongs to each device. iPhone and iPad browsers don't let a page change the volume, so leveling has no effect there.
 
 The player stays at the bottom of the page. To get the room back, minimize it into the sidebar, and select it there to bring it back.
 

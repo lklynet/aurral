@@ -2688,6 +2688,7 @@ function buildPageQuery({
   direction,
   artistId,
   albumId,
+  userId,
 }: {
   kind: string;
   sourceFilter: string | null;
@@ -2698,9 +2699,11 @@ function buildPageQuery({
   direction: string;
   artistId: string | number | null;
   albumId: string | number | null;
+  userId: number | null;
 }) {
   const where: string[] = [];
   const parameters: unknown[] = [];
+  const joinParameters: unknown[] = [];
   const media = pageMediaExists(kind, sourceFilter, availableOnly);
   where.push(media.sql);
   parameters.push(...media.parameters);
@@ -2744,6 +2747,12 @@ function buildPageQuery({
       where.push("album.id = ?");
       parameters.push(Number(albumId));
     }
+    if (sort === "played" || sort === "plays") {
+      from += `
+        JOIN play_album_stats AS played
+          ON played.user_id = ? AND played.album_key = album.identity_key`;
+      joinParameters.push(userId ?? -1);
+    }
   } else {
     entityKind = "track";
     const needsRelations =
@@ -2782,7 +2791,7 @@ function buildPageQuery({
       JOIN library_search_fts AS search_fts
         ON search_fts.rowid = search_document.id
         AND library_search_fts MATCH ?`;
-    parameters.unshift(searchMatch.match);
+    joinParameters.push(searchMatch.match);
     where.push(searchTermsSql(searchMatch));
     parameters.push(...searchMatch.terms);
   } else if (query) {
@@ -2801,8 +2810,17 @@ function buildPageQuery({
   }
 
   const orderDirection = direction === "desc" ? "DESC" : "ASC";
+  const latestFirst = direction === "desc" ? "ASC" : "DESC";
   let orderBy: string;
-  if (sort === "newest") {
+  if (kind === "albums" && sort === "played") {
+    orderBy = `played.last_played_at ${latestFirst}, album.id`;
+  } else if (kind === "albums" && sort === "plays") {
+    orderBy = `played.play_count ${latestFirst}, played.last_played_at ${latestFirst}, album.id`;
+  } else if (kind === "albums" && sort === "released") {
+    orderBy = `coalesce(album.release_date, '') = '', album.release_date ${latestFirst}, album.id`;
+  } else if (kind === "albums" && sort === "random") {
+    orderBy = "random()";
+  } else if (sort === "newest") {
     orderBy = recentMediaOrder(kind, sourceFilter, availableOnly, direction);
     orderBy += kind === "albums" ? ", album.id" : kind === "artists" ? ", artist.id" : ", track.id";
   } else if (sort === "artist" && kind !== "artists") {
@@ -2823,7 +2841,7 @@ function buildPageQuery({
     from,
     idExpression,
     where: where.join(" AND "),
-    parameters,
+    parameters: [...joinParameters, ...parameters],
     orderBy,
     groupBy,
   };
@@ -3226,6 +3244,7 @@ type LibraryPageOptions = LibraryScope & {
   direction?: unknown;
   artistId?: string | number | null;
   albumId?: string | number | null;
+  userId?: number | null;
 };
 
 type LibraryPageItems = {
@@ -3270,6 +3289,7 @@ export function getLibraryPage({
   direction = "asc",
   artistId = null,
   albumId: albumReference = null,
+  userId = null,
 }: LibraryPageOptions = {}): LibraryPage {
   const albumId =
     text(albumReference) && !/^\d+$/.test(text(albumReference))
@@ -3346,6 +3366,7 @@ export function getLibraryPage({
     direction: normalizedDirection,
     artistId,
     albumId,
+    userId,
   });
   const total = getPageTotal(
     `SELECT COUNT(DISTINCT ${queryDefinition.idExpression}) AS total
