@@ -307,6 +307,7 @@ export type QueueAction =
       source?: QueueSource | null;
       isShuffleEnabled?: boolean;
       repeatMode?: RepeatMode;
+      autoplay?: boolean;
     }
   | { type: "SET_ERROR"; error: string }
   | { type: "CLEAR_ERROR" }
@@ -624,7 +625,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
           repeatMode: action.repeatMode ?? state.repeatMode,
         },
         action.currentIndex,
-        false,
+        action.autoplay === true,
       );
     }
     case "SET_ERROR":

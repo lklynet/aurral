@@ -609,18 +609,52 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     [dispatch],
   );
 
+  const isRunning = useCallback(() => {
+    const snapshot = engine.getSnapshot();
+    return snapshot.isPlaying || snapshot.isStarting;
+  }, [engine]);
+
+  const positionOf = useCallback(
+    (s: QueueState, track: QueueEntry | null | undefined) => {
+      if (!track) return 0;
+      if (loadedSignatureRef.current?.startsWith(`${s.queueRevision}:${track.entryId}:`)) {
+        return engine.getPosition();
+      }
+      const resumeAt = resumeAtRef.current;
+      return resumeAt?.entryId === track.entryId ? resumeAt.position : 0;
+    },
+    [engine],
+  );
+
   const clearQueue = useCallback(() => {
+    const stopped = stateRef.current;
+    const track = trackAt(stopped, stopped.currentIndex);
+    const position = positionOf(stopped, track);
+    const wasRunning = isRunning();
     loadedSignatureRef.current = null;
     dispatch({ type: "CLEAR_QUEUE" });
     engine.unload();
     remoteSentRef.current = null;
     if (owner) playQueueClient.$delete({ json: { device } }).catch(() => {});
-  }, [device, dispatch, engine, owner]);
-
-  const isRunning = useCallback(() => {
-    const snapshot = engine.getSnapshot();
-    return snapshot.isPlaying || snapshot.isStarting;
-  }, [engine]);
+    return () => {
+      if (!track) return;
+      const action: QueueAction = {
+        type: "RESTORE_QUEUE",
+        queue: stopped.queue,
+        playbackOrder: stopped.playbackOrder,
+        currentIndex: stopped.currentIndex,
+        source: stopped.source,
+        isShuffleEnabled: stopped.isShuffleEnabled,
+        repeatMode: stopped.repeatMode,
+        autoplay: wasRunning,
+      };
+      const restored = queueReducer(stateRef.current, action);
+      const restoredTrack = trackAt(restored, restored.currentIndex);
+      if (!restoredTrack) return;
+      resumeAtRef.current = { entryId: restoredTrack.entryId, position };
+      dispatch(action);
+    };
+  }, [device, dispatch, engine, isRunning, owner, positionOf]);
 
   const pushRemote = useCallback(
     (s: QueueState, position: number) => {
@@ -650,17 +684,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const saveQueue = useCallback(() => {
     if (!ownsQueueRef.current || !owner || restoredOwnerRef.current !== owner) return;
     const s = stateRef.current;
-    const track = s.currentIndex >= 0 ? trackAt(s, s.currentIndex) : null;
-    const resumeAt = resumeAtRef.current;
-    let position = 0;
-    if (track && loadedSignatureRef.current?.startsWith(`${s.queueRevision}:${track.entryId}:`)) {
-      position = engine.getPosition();
-    } else if (track && resumeAt?.entryId === track.entryId) {
-      position = resumeAt.position;
-    }
+    const position = positionOf(s, trackAt(s, s.currentIndex));
     writeStoredQueue(serializeQueue(s, { owner, position }));
     pushRemote(s, position);
-  }, [engine, owner, pushRemote]);
+  }, [owner, positionOf, pushRemote]);
 
   const pullRemote = useCallback(async () => {
     if (!owner || restoredOwnerRef.current !== owner || isRunning()) return;

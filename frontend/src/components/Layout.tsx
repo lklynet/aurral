@@ -29,6 +29,7 @@ import {
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";
+import { useCollectionTint } from "./CollectionHeader";
 import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
 import { useAuth } from "../contexts/AuthContext";
@@ -117,7 +118,8 @@ function Layout({ children, headerActions }: LayoutProps) {
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef<HTMLElement>(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
-  const { isActive: isPlayerActive } = useAudioQueue();
+  const { isActive: isPlayerActive, currentTrack } = useAudioQueue();
+  const playerTint = useCollectionTint(isPlayerActive ? currentTrack?.artwork : null);
   const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(location.pathname);
   const settingsOpen = readSettingsPath(location.search) !== null;
   const pageSearch = withoutSettingsParam(location.search);
@@ -456,7 +458,11 @@ function Layout({ children, headerActions }: LayoutProps) {
       className="app-shell"
       data-sidebar-mode={sidebarMode}
       data-resizing={isResizing || undefined}
-      style={{ "--sidebar-width": `${sidebarWidth}px` }}
+      data-player-docked={!playerMinimized || undefined}
+      style={{
+        "--sidebar-width": `${sidebarWidth}px`,
+        ...(playerTint ? { "--player-tint": playerTint } : {}),
+      }}
     >
       <Sidebar
         mode={sidebarMode}
@@ -490,9 +496,7 @@ function Layout({ children, headerActions }: LayoutProps) {
             : sidebarMode === "icons"
               ? " app-content--sidebar-icons"
               : ""
-        }${isPlayerActive ? " app-content--player-active" : ""}${
-          playerMinimized ? "" : " app-content--player-docked"
-        }`}
+        }${isPlayerActive ? " app-content--player-active" : ""}`}
       >
         <header className="app-topbar">
           {!sectionNav ? (

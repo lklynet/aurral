@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Download,
   Ellipsis,
+  Heart,
   ListMusic,
   Mic,
   Music,
@@ -27,11 +28,14 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Stop,
   Volume2,
   VolumeX,
-  X,
 } from "./icons";
 import { useAudioQueue } from "../contexts/audioQueueContext";
+import { useToast } from "../contexts/ToastContext.tsx";
+import { usePlayerFavorite } from "../hooks/usePlayerFavorite.ts";
+import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQueue";
@@ -123,6 +127,8 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const sharePlain = useShareAction();
   const shareLibrary = useLibraryShareAction();
   const startRadio = useStartRadio();
+  const { addToast } = useToast();
+  const favorite = usePlayerFavorite(isActive ? currentTrack : null);
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLyrics, setSheetLyrics] = useState(false);
@@ -242,6 +248,14 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       : "",
   );
 
+  const stop = () => {
+    const undo = clearQueue();
+    addToast(
+      { message: "Queue cleared", action: { label: "Undo", onClick: undo } },
+      "success",
+      8000,
+    );
+  };
   const minimize = () => {
     setPanel(null);
     onMinimizedChange(true);
@@ -407,6 +421,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   );
 
   const playPauseLabel = isPlaying || isStarting ? "Pause" : "Play";
+  const favoriteLabel = favorite?.active ? "Remove from favorites" : "Add to favorites";
   const PlayPauseIcon = isPlaying || isStarting ? Pause : Play;
   const repeatLabel =
     repeatMode === "one"
@@ -420,7 +435,6 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       className={`global-player${minimizedClass}`}
       role="region"
       aria-label="Global audio player"
-      style={artTint ? { "--player-tint": artTint } : undefined}
     >
       <div className="global-player__mini">
         <PlayerMiniProgress />
@@ -518,9 +532,9 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                         {
                           id: "stop",
                           label: "Stop and clear queue",
-                          icon: X,
+                          icon: Stop,
                           danger: true,
-                          onSelect: clearQueue,
+                          onSelect: stop,
                         },
                       ]}
                     />
@@ -545,7 +559,24 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                   )}
 
                   <div className="now-playing__meta">
-                    <h2 className="now-playing__title">{currentTrack.title}</h2>
+                    <div className="now-playing__title-row">
+                      <h2 className="now-playing__title">{currentTrack.title}</h2>
+                      {favorite ? (
+                        <button
+                          type="button"
+                          className={`now-playing__icon-button now-playing__favorite${favorite.active ? " is-active" : ""}`}
+                          onClick={() => void favorite.toggle()}
+                          disabled={favorite.pending}
+                          aria-pressed={favorite.active}
+                          aria-label={favoriteLabel}
+                        >
+                          <Heart
+                            aria-hidden="true"
+                            fill={favorite.active ? "currentColor" : "none"}
+                          />
+                        </button>
+                      ) : null}
+                    </div>
                     {currentTrack.isPreview ? (
                       <div className="global-player__title-row">
                         <PreviewChip />
@@ -692,15 +723,25 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
               </span>
             ) : null}
             {playbackError ? (
-              <span className="global-player__error" role="alert">
-                {playbackError}
-              </span>
+              <Tooltip content={playbackError} placement="top">
+                <span className="global-player__error" role="alert">
+                  {playbackError}
+                </span>
+              </Tooltip>
             ) : null}
           </div>
         </div>
 
         <div className="global-player__main">
           <div className="global-player__controls">
+            <TooltipButton
+              tooltipPlacement="top"
+              label="Stop and clear queue"
+              onClick={stop}
+              className="btn btn-secondary btn-sm btn-icon global-player__control global-player__stop"
+            >
+              <Stop className="artist-icon-sm" />
+            </TooltipButton>
             <TooltipButton
               tooltipPlacement="top"
               label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
@@ -761,6 +802,16 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
               ) : (
                 <Repeat className="artist-icon-sm" />
               )}
+            </TooltipButton>
+            <TooltipButton
+              tooltipPlacement="top"
+              label={favorite ? favoriteLabel : "Only Library tracks can be favorites"}
+              aria-pressed={favorite?.active ?? false}
+              onClick={favorite ? () => void favorite.toggle() : undefined}
+              disabled={!favorite || favorite.pending}
+              className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__favorite${favorite?.active ? " is-active" : ""}`}
+            >
+              <Heart className="artist-icon-sm" fill={favorite?.active ? "currentColor" : "none"} />
             </TooltipButton>
           </div>
 
