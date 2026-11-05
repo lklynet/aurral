@@ -285,9 +285,14 @@ function listeningSignals(userId: number | null, now: number) {
     )
     .all(userId, now - RECENT_PLAY_MS)
     .map((row) => row.trackId);
-  const songKeys = played.flatMap((id) =>
-    id.startsWith("song:") ? [decodeURIComponent(id.slice(5))] : [],
-  );
+  const songKeys = played.flatMap((id) => {
+    if (!id.startsWith("song:")) return [];
+    try {
+      return [decodeURIComponent(id.slice(5))];
+    } catch {
+      return [];
+    }
+  });
   const recent = new Set([
     ...positiveIds(played),
     ...db
