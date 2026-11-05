@@ -95,6 +95,7 @@ function triagePrompt(apiKey: string) {
     `Problems from the last day, grouped: ${link("problems", {})}`,
     `Full log with version and integrations: ${link("export", { level: "warn" })}`,
     `Start fresh, by POST, only after I say yes: ${link("fresh", {})}`,
+    "What went wrong: ",
   ].join("\n");
 }
 
