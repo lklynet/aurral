@@ -445,7 +445,7 @@ test("manual Soulseek search retains ownership after an uncertain creation respo
     await import("../../backend/services/downloadJobs/downloadCancellation.ts");
   let searchId;
   const mock = await createMockHttpServer((req, res) => {
-    if (req.method === "DELETE") {
+    if (req.method !== "POST") {
       req.resume();
       res.writeHead(502);
       res.end();
