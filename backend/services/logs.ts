@@ -80,9 +80,6 @@ export const queryLogs = (query: LogQuery) => readLogEntries(LOG_DIR, query);
 export const listLogProblems = (since: number) =>
   readLogProblems(LOG_DIR, { since: afterFresh(since) });
 
-export const listAllLogProblems = (since: number) =>
-  readLogProblems(LOG_DIR, { since, limit: Infinity });
-
 function enabledIntegrations() {
   return Object.entries(dbOps.getSettings().integrations ?? {})
     .filter(([, service]) => {

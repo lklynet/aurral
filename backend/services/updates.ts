@@ -62,11 +62,10 @@ export function getAvailableUpdate() {
   return selectAvailableUpdate(APP_VERSION, dbOps.getJSONSetting(FEED_SETTING, feedSchema));
 }
 
-export const isOfficialBuild = () =>
-  releaseChannel(APP_VERSION) !== null && (process.env.GITHUB_REPO || REPOSITORY) === REPOSITORY;
-
 export async function checkForUpdates() {
-  if (!isOfficialBuild()) return;
+  if (!releaseChannel(APP_VERSION) || (process.env.GITHUB_REPO || REPOSITORY) !== REPOSITORY) {
+    return;
+  }
   try {
     const response = await fetch(
       `${SHARE_ORIGIN}/api/updates?version=${encodeURIComponent(APP_VERSION)}`,

@@ -28,8 +28,6 @@ import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import StarPrompt from "./components/StarPrompt";
-import TelemetryPageSeen from "./components/TelemetryPageSeen";
-import TelemetryPrompt from "./components/TelemetryPrompt";
 import { DotLoader } from "./components/DotLoader";
 import { SkeletonPageTitle } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
@@ -221,8 +219,6 @@ function ProtectedLayout() {
         <Layout headerActions={<UpdateIndicator visible={!user || user.role === "admin"} />}>
           <SpotifyReconnectNotice />
           <StarPrompt />
-          <TelemetryPageSeen />
-          <TelemetryPrompt />
           {wrappedSeason && (
             <Suspense fallback={null}>
               <WrappedAnnouncement />

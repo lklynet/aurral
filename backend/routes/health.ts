@@ -6,7 +6,7 @@ import os from "os";
 import path from "path";
 import {
   getLastfmApiKey,
-  isNewsConfigured,
+  getNewsSettings,
   getTicketmasterApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients/index.ts";
@@ -45,7 +45,6 @@ import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isRunningInDocker } from "../services/runtimeInfo.ts";
-import { getTelemetryState } from "../services/telemetry.ts";
 
 const STARTED_AT = Date.now();
 
@@ -270,7 +269,6 @@ type BootstrapPayload = {
   lastfmConfigured?: boolean;
   ticketmasterConfigured?: boolean;
   inboxEnabled?: boolean;
-  telemetry?: boolean;
   wrapped?: { year: number; preview: boolean };
   newsConfigured?: boolean;
   musicbrainzConfigured?: boolean;
@@ -360,8 +358,13 @@ function buildBootstrapPayload(req: CredentialRequest) {
     payload.lastfmConfigured = !!getLastfmApiKey();
     payload.ticketmasterConfigured = !!getTicketmasterApiKey();
     payload.inboxEnabled = settings.inbox?.enabled !== false;
-    payload.telemetry = getTelemetryState().enabled;
-    payload.newsConfigured = isNewsConfigured();
+    const newsSettings = getNewsSettings();
+    payload.newsConfigured =
+      newsSettings.enabled &&
+      newsSettings.feeds.some(
+        (feed) =>
+          feed.enabled && (feed.group === "custom" || newsSettings.groups[feed.group] !== false),
+      );
     payload.musicbrainzConfigured = !!settings.integrations?.metadata?.baseUrl;
     payload.metadataConfigured = !!settings.integrations?.metadata?.baseUrl;
     payload.slskdConfigured = downloadSources.slskd.configured;
