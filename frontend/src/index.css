@@ -5886,22 +5886,9 @@ textarea:disabled {
   }
 }
 
-.discover-history-prompt {
-  display: flex;
-  flex-wrap: wrap;
+.app-status-banner.discover-history-prompt {
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
   padding: 0.75rem 0.75rem 0.75rem 1rem;
-  border-radius: var(--aurral-radius);
-  background: var(--aurral-surface-raised);
-}
-
-.discover-history-prompt__message {
-  margin: 0;
-  color: var(--aurral-text);
-  font-size: var(--aurral-font-sm);
 }
 
 .discover-history-prompt__actions {
