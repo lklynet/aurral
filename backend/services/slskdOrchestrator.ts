@@ -1151,7 +1151,7 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
     MAX_DOWNLOAD_CANDIDATES,
   );
   if (candidates.length === 0) {
-    logger.warn("slskd", "No slskd download candidates after search", {
+    logger.info("slskd", "No slskd download candidates after search", {
       jobId: job.id,
       artistName: job.artistName,
       trackName: job.trackName,
@@ -1288,7 +1288,7 @@ async function handleDownload(payload: SlskdPayload, helpers: SlskdHelpers) {
       return waitForSoulseekLogin(payload, job, helpers, asAppError(error)?.message);
     const message = asAppError(error)?.message || String(error);
     recordPayloadOutcome(job, { ...payload, candidate }, "enqueue_failed", message, { candidate });
-    logger.warn("slskd", "slskd batch enqueue failed for candidate", {
+    logger.info("slskd", "slskd batch enqueue failed for candidate", {
       jobId: job.id,
       username,
       file: remoteFile,
@@ -1653,7 +1653,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
     return null;
   }
   if (!validation.valid) {
-    logger.warn("slskd", "slskd download validation failed", {
+    logger.info("slskd", "slskd download validation failed", {
       jobId: job.id,
       artistName: job.artistName,
       trackName: job.trackName,
