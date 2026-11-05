@@ -48,12 +48,13 @@ export function logOutgoingFailures() {
     const { host, pathname } = new URL(url);
     const level =
       status === null || status >= 500 || AUTH_FAILURE_STATUSES.has(status) ? "warn" : "debug";
-    recordLog(level, "http", `${method} ${host} ${status ? `returned ${status}` : "failed"}`, {
-      path: safePath(pathname),
-      ms,
-      ...(code ? { code } : {}),
-      reason: message,
-    });
+    recordLog(
+      level,
+      "http",
+      `${method} ${host} ${status ? `returned ${status}` : "failed"}`,
+      { path: safePath(pathname), ms, ...(code ? { code } : {}), reason: message },
+      { groupByMessage: true },
+    );
   });
 }
 

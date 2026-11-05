@@ -206,7 +206,14 @@ const isEmpty = (data: unknown) =>
   data == null ||
   (typeof data === "object" && !(data instanceof Error) && Object.keys(data).length === 0);
 
-function record(level: LogLevel, cat: string, msg: string, data?: unknown, error?: Error) {
+function record(
+  level: LogLevel,
+  cat: string,
+  msg: string,
+  data?: unknown,
+  error?: Error,
+  { groupByMessage = false } = {},
+) {
   if (level === "debug" && !isDebugLogging()) return;
   const err = error ? describeError(error) : undefined;
   const rest =
@@ -225,7 +232,7 @@ function record(level: LogLevel, cat: string, msg: string, data?: unknown, error
     cat,
     msg,
     proc: PROCESS_NAME,
-    fp: fingerprint(level, cat, msg, reason),
+    fp: fingerprint(level, cat, msg, groupByMessage ? undefined : reason),
     ...context.getStore(),
     ...(safeData === undefined ? {} : { data: safeData }),
     ...(err ? { err } : {}),
@@ -329,9 +336,14 @@ export function recordLog(
   category: string,
   message: string,
   data?: NonNullable<unknown>,
-  error = findError(data),
+  {
+    error = findError(data),
+    groupByMessage = false,
+  }: { error?: Error; groupByMessage?: boolean } = {},
 ) {
-  record(level, safeLogDiagnostic(category), safeLogDiagnostic(message), data, error);
+  record(level, safeLogDiagnostic(category), safeLogDiagnostic(message), data, error, {
+    groupByMessage,
+  });
 }
 
 export type RuntimeLogger = Pick<Console, "info" | "warn" | "error">;
