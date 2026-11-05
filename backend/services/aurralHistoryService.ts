@@ -752,9 +752,8 @@ export const syncTrackDownloadHistory = async (
 
     const job = downloadTracker.getJob(jobId);
     if (!job) {
-      if (isBlocked || stale) {
-        recordTrackJobFailed(fakeJob, "Download no longer active");
-      }
+      if (isBlocked) recordTrackJobFailed(fakeJob, "Download no longer active");
+      else recordTrackJobCancelled(fakeJob);
       continue;
     }
 
