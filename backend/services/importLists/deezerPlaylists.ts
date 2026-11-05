@@ -15,6 +15,7 @@ const MAX_TRACKS = 2_000;
 const SHELF_PLAYLISTS_PER_GENRE = 8;
 const SHELF_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_RESULTS_PER_TAG = 25;
+const MAX_CACHED_SEARCHES = 200;
 const PARTIAL_SHELF_TTL_MS = 15 * 60 * 1000;
 const PLAYLIST_ID_PATTERN = /^\d{1,20}$/;
 const DEEZER_NO_DATA_CODE = 800;
@@ -292,5 +293,9 @@ export async function searchEditorialPlaylists(tag: unknown) {
     .map(normalizePlaylistSummary)
     .filter((playlist): playlist is PlaylistSummary => playlist !== null);
   tagSearchCache.set(key, { playlists, expiresAt: Date.now() + SHELF_TTL_MS });
+  const [oldest] = tagSearchCache.keys();
+  if (oldest !== undefined && tagSearchCache.size > MAX_CACHED_SEARCHES) {
+    tagSearchCache.delete(oldest);
+  }
   return playlists;
 }

@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import axios from "../../lib/axiosFetch.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
@@ -182,13 +183,316 @@ test(
     };
     const retry = await fetch(`${app.url}/api/search/unified?q=lantern`);
     assert.equal(retry.status, 200);
-    const body: { catalog: { artists: SearchItem[] } } = await retry.json();
+    const body: { artists: SearchItem[] } = await retry.json();
     assert.deepEqual(
-      body.catalog.artists.map((artist) => artist.name),
+      body.artists.map((artist) => artist.name),
       ["Lantern"],
     );
   },
 );
+
+function seedLibraryArtist(name: string) {
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: `search-rank:${name}`, name });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: `search-rank:${name}:album`,
+    artistId: artist.id,
+    title: `${name} Live`,
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: `search-rank:${name}:track`,
+    title: "Opener",
+    artistName: name,
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/tmp/search-rank/${artist.id}.flac`,
+  });
+}
+
+test("library search ranks exact names first and matches terms across fields", async () => {
+  seedLibraryAlbum();
+  for (const name of [
+    "ACDC Tribute Band",
+    "The ACDC Experience",
+    "AC/DC",
+    "Sigur Rós",
+    "U2",
+    "Cure Tribute",
+    "The Cure",
+  ]) {
+    seedLibraryArtist(name);
+  }
+  const search = async (q: string, limit = 1) => {
+    const response = await fetch(
+      `${app.url}/api/search/library?${new URLSearchParams({ q, limit: String(limit) })}`,
+    );
+    assert.equal(response.status, 200);
+    const body: Record<"artists" | "albums" | "tracks", SearchItem[]> = await response.json();
+    return body;
+  };
+
+  assert.deepEqual(
+    (await search("ac dc")).artists.map((item) => item.name),
+    ["AC/DC"],
+  );
+  assert.deepEqual(
+    (await search("sigur ros")).artists.map((item) => item.name),
+    ["Sigur Rós"],
+  );
+  assert.deepEqual(
+    (await search("cure")).artists.map((item) => item.name),
+    ["The Cure"],
+  );
+  assert.deepEqual((await search("ac", 5)).artists.map((item) => item.name).slice(0, 1), ["AC/DC"]);
+  assert.deepEqual(
+    (await search("lantern harbor")).tracks.map((item) => item.title),
+    ["Lantern Song"],
+  );
+  for (const q of ["u2 opener", "u2"]) {
+    assert.deepEqual(
+      (await search(q, 5)).tracks.map((item) => item.artistName),
+      ["U2"],
+      q,
+    );
+  }
+});
+
+test("library search finds the user's playlists by name, then by tracklist", async () => {
+  const other = requireFixture(userOps.createUser("search-routes-other", "unused", "user"));
+  const track = (artistName: string, trackName: string) => ({ artistName, trackName });
+  flowPlaylistConfig.createStaticPlaylist({
+    name: "Saturday cleaning",
+    ownerUserId: user.id,
+    tracks: [
+      track("Daft Punk", "One More Time"),
+      track("Michael Jackson", "Billie Jean"),
+      track("Michael Jackson", "Beat It"),
+    ],
+  });
+  flowPlaylistConfig.createStaticPlaylist({
+    name: "Michael Jackson essentials",
+    ownerUserId: user.id,
+    tracks: [track("Michael Jackson", "Thriller")],
+  });
+  flowPlaylistConfig.createStaticPlaylist({
+    name: "Road trip",
+    ownerUserId: user.id,
+    tracks: [track("Daft Punk", "Digital Love")],
+  });
+  flowPlaylistConfig.createStaticPlaylist({
+    name: "Michael Jackson deep cuts",
+    ownerUserId: other.id,
+    tracks: [track("Michael Jackson", "Speechless")],
+  });
+
+  const response = await fetch(`${app.url}/api/search/library?q=michael+jackson&limit=5`);
+  const body: {
+    playlists: { name: string; trackMatch: { title: string; count: number } | null }[];
+  } = await response.json();
+
+  assert.deepEqual(
+    body.playlists.map((playlist) => [playlist.name, playlist.trackMatch]),
+    [
+      ["Michael Jackson essentials", null],
+      ["Saturday cleaning", { title: "Billie Jean", count: 2 }],
+    ],
+  );
+});
+
+test("playlist search keeps Deezer editorial playlists whose names match", async () => {
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    if (!String(input).startsWith("https://api.deezer.com/search/playlist")) {
+      return realFetch(input, init);
+    }
+    const playlist = (id: number, title: string, curator: string) => ({
+      id,
+      title,
+      nb_tracks: 50,
+      picture_xl: `https://cdn.test/${id}.jpg`,
+      user: { name: curator },
+    });
+    return Promise.resolve(
+      Response.json({
+        data: [
+          playlist(1, "Michael (Movie Soundtrack)", "Deezer Soundtracks Editor"),
+          playlist(2, "100% Michael Jackson", "Deezer Artist Editor"),
+          playlist(3, "michael jackson mix", "someone"),
+        ],
+      }),
+    );
+  });
+
+  const response = await fetch(`${app.url}/api/search/playlists?q=michael+jackson`);
+  assert.equal(response.status, 200);
+  const body: { playlists: SearchItem[] } = await response.json();
+  assert.deepEqual(
+    body.playlists.map((playlist) => [playlist.source, playlist.id, playlist.name]),
+    [["deezer", "2", "100% Michael Jackson"]],
+  );
+});
+
+type DeezerSong = { title: string; artist: string; album: string; rank: number };
+
+function stubDeezerSongs(songs: DeezerSong[]) {
+  const realGet = axios.get.bind(axios);
+  vi.spyOn(axios, "get").mockImplementation((url, config) => {
+    if (!String(url).startsWith("https://api.deezer.com/search/track")) return realGet(url, config);
+    const data = songs.map((song, index) => ({
+      id: index + 1,
+      title: song.title,
+      rank: song.rank,
+      artist: { name: song.artist },
+      album: {
+        id: index + 100,
+        title: song.album,
+        cover_medium: `https://cdn.test/${index + 1}.jpg`,
+      },
+    }));
+    return Promise.resolve({
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: {},
+      data: { data },
+    });
+  });
+}
+
+function serveCatalogAlbums(albums: { id: string; title: string; type: string; artist: string }[]) {
+  metadataHandler = (request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url?.startsWith("/search/album")
+          ? albums.map((album) => ({
+              id: album.id,
+              title: album.title,
+              type: album.type,
+              artistid: album.artist,
+              artists: [{ id: album.artist, artistname: album.artist }],
+            }))
+          : [],
+      ),
+    );
+  };
+}
+
+const unifiedSearch = async (q: string) => {
+  const response = await fetch(`${app.url}/api/search/unified?${new URLSearchParams({ q })}`);
+  assert.equal(response.status, 200);
+  const body: { status: string; top: SearchItem; artists: SearchItem[]; tracks: SearchItem[] } =
+    await response.json();
+  return body;
+};
+
+test("unified search folds Deezer songs into the results with their catalog album", async () => {
+  stubDeezerSongs([
+    { title: "As Long As You Love Me", artist: "Justin Bieber", album: "Believe", rank: 415068 },
+    {
+      title: "As Long As You Love Me",
+      artist: "Backstreet Boys",
+      album: "Backstreet's Back",
+      rank: 717064,
+    },
+  ]);
+  serveCatalogAlbums([
+    {
+      id: "bsb-single",
+      title: "As Long as You Love Me",
+      type: "Single",
+      artist: "Backstreet Boys",
+    },
+    { id: "bsb-album", title: "Backstreet's Back", type: "Album", artist: "Backstreet Boys" },
+  ]);
+
+  const body = await unifiedSearch("as long as you love me");
+  assert.equal(body.status, "ok");
+  assert.deepEqual(
+    [body.top.type, body.top.artistName, body.top.albumMbid],
+    ["track", "Backstreet Boys", "bsb-album"],
+  );
+  assert.deepEqual(
+    body.tracks.map((track) => [track.artistName, track.coverUrl]),
+    [
+      ["Justin Bieber", "https://cdn.test/1.jpg"],
+      ["Backstreet Boys", "https://cdn.test/2.jpg"],
+    ],
+  );
+});
+
+test("unified search tops an exact album by a famous artist over an obscure exact song", async () => {
+  stubDeezerSongs([
+    { title: "Ok Computer", artist: "Lemaitre", album: "Ok Computer", rank: 73239 },
+    { title: "Karma Police", artist: "Radiohead", album: "OK Computer", rank: 898957 },
+  ]);
+  serveCatalogAlbums([
+    { id: "ok-computer", title: "OK Computer", type: "Album", artist: "Radiohead" },
+  ]);
+
+  const body = await unifiedSearch("ok computer");
+  assert.deepEqual([body.top.type, body.top.id], ["album", "ok-computer"]);
+});
+
+test("unified search drops near-miss artists once a famous artist is the clear match", async () => {
+  stubDeezerSongs([
+    { title: "Thriller", artist: "Michael Jackson", album: "Thriller", rank: 927235 },
+  ]);
+  metadataHandler = (request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url?.startsWith("/search/artist")
+          ? [
+              { id: "mj", artistname: "Michael Jackson" },
+              { id: "mj-doctor", artistname: "Michael Jackson's Doctor" },
+            ]
+          : [],
+      ),
+    );
+  };
+
+  const body = await unifiedSearch("michael jackson");
+  assert.equal(body.top.id, "mj");
+  assert.deepEqual(
+    body.artists.map((artist) => artist.id),
+    ["mj"],
+  );
+});
+
+test("unified search reports an unreachable catalog, does not cache it, and lists one artist per name", async () => {
+  metadataHandler = (_request, response) => {
+    response.writeHead(400);
+    response.end();
+  };
+  const failed = await fetch(`${app.url}/api/search/unified?q=harbor+lights`);
+  assert.equal(failed.status, 200);
+  assert.equal((await failed.json()).status, "unavailable");
+
+  metadataHandler = (request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url?.startsWith("/search/artist")
+          ? [
+              { id: "harbor-lights-mbid", artistname: "Harbor Lights" },
+              { id: "harbor-lights-other-mbid", artistname: "Harbor Lights" },
+            ]
+          : [],
+      ),
+    );
+  };
+  const recovered = await fetch(`${app.url}/api/search/unified?q=harbor+lights`);
+  const body: { status: string; artists: SearchItem[] } = await recovered.json();
+  assert.equal(body.status, "ok");
+  assert.deepEqual(
+    body.artists.map((artist) => artist.id),
+    ["harbor-lights-mbid"],
+  );
+});
 
 test("adding library search results to a new static playlist keeps their MusicBrainz identity", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);

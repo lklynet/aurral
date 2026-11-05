@@ -55,12 +55,12 @@ async function findSuggestions(tab: BlocklistTab, query: string): Promise<Sugges
     return tags.map((genre) => ({ kind: "genre", key: genre, genre }));
   }
   const [catalog, library] = await Promise.allSettled([
-    searchUnified(query, { mode: "suggest", limit: 6 }),
+    searchUnified(query, { limit: 6 }),
     searchLibrary(query, { limit: 6 }),
   ]);
   if (catalog.status === "rejected" && library.status === "rejected") throw catalog.reason;
   return buildBlocklistArtistSuggestions({
-    ...(catalog.status === "fulfilled" ? catalog.value : {}),
+    catalog: catalog.status === "fulfilled" ? catalog.value : null,
     library: library.status === "fulfilled" ? library.value : null,
   }).map((artist) => ({ kind: "artist", key: artistKey(artist), artist }));
 }

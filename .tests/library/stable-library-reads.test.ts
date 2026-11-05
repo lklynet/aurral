@@ -30,7 +30,6 @@ import {
 import { getLibraryScanQueue } from "../../backend/services/honkerDb.ts";
 import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.ts";
 import { api } from "../../backend/routes/api.ts";
-import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 const app = signedInAs(undefined).route("/", api);
@@ -540,53 +539,6 @@ test("library paginated reads keep tied rows stable", () => {
         expectedTrackIds,
       );
     }
-
-    const artistSearchMatch = getLibrarySearchMatch(artistName);
-    const albumSearchMatch = getLibrarySearchMatch(albumTitle);
-    const trackSearchMatch = getLibrarySearchMatch(trackTitle);
-    assert.ok(artistSearchMatch && albumSearchMatch && trackSearchMatch);
-    assert.deepEqual(
-      [0, 1].map(
-        (offset) =>
-          getLibraryArtistPage({
-            source: "lidarr",
-            availableOnly: true,
-            query: artistName,
-            searchMatch: artistSearchMatch,
-            limit: 1,
-            offset,
-          }).artists[0]?.id,
-      ),
-      expectedIds,
-    );
-    assert.deepEqual(
-      [0, 1].map(
-        (offset) =>
-          getLibraryAlbumPage({
-            source: "lidarr",
-            availableOnly: true,
-            query: albumTitle,
-            searchMatch: albumSearchMatch,
-            limit: 1,
-            offset,
-          }).albums[0]?.id,
-      ),
-      albums.map((album) => album.id),
-    );
-    assert.deepEqual(
-      [0, 1].map(
-        (offset) =>
-          getLibraryTrackPage({
-            source: "lidarr",
-            availableOnly: true,
-            query: trackTitle,
-            searchMatch: trackSearchMatch,
-            limit: 1,
-            offset,
-          }).tracks[0]?.id,
-      ),
-      tracks.map((track) => track.id),
-    );
   } finally {
     if (paths.length) {
       db.prepare(

@@ -15,7 +15,8 @@ import {
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
 import { discoveryClient } from "../utils/api/clients/discovery.ts";
-import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { librarySearchQuery, unifiedSearchQuery } from "../utils/api/endpoints/search.ts";
 import {
   buildUnifiedSuggestionSections,
   flattenSuggestionSections,
@@ -32,7 +33,6 @@ import {
   isEditableTarget,
   getSuggestionTitle,
   getSuggestionMeta,
-  getSuggestionItemId,
   getTrackSavingKey,
   isSuggestionInLibrary,
   buildTrackPlaylistPayload,
@@ -46,7 +46,7 @@ import {
 import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
-import { useDebouncedTask } from "../hooks/useDebouncedTask";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useNavigate, useLocation } from "react-router";
 import { Clock, Search } from "./icons";
@@ -74,27 +74,30 @@ type SuggestionRow =
   | { kind: "tag"; key: string; tagName: string }
   | { kind: "recent"; key: string; query: string };
 type RecentSuggestionRow = Extract<SuggestionRow, { kind: "recent" }>;
-type SuggestionResults = {
-  library: Awaited<ReturnType<typeof searchLibrary>> | null;
-  catalog: Awaited<ReturnType<typeof searchUnified>> | null;
-};
 
-const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
+function uniqueTags(tags: string[]) {
+  const seen = new Set<string>();
+  return tags.filter((tag) => {
+    const key = String(tag || "")
+      .trim()
+      .toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 function GlobalSearch() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
-  const [suggestionRows, setSuggestionRows] = useState<SuggestionRow[]>([]);
-  const [suggestionMode, setSuggestionMode] = useState<SuggestionMode | null>(null);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [suggestionIndex, setSuggestionIndex] = useState(-1);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
+  const [albumOverrides, setAlbumOverrides] = useState<Record<string, Partial<SuggestionAlbum>>>(
+    {},
+  );
   const searchContainerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionResultsRef = useRef<SuggestionResults>(EMPTY_SUGGESTION_RESULTS);
-  const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
-  const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission } = useAuth();
@@ -113,20 +116,85 @@ function GlobalSearch() {
   const [pendingAlbumIds, setPendingAlbumIds] = useState<Record<string, boolean>>({});
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
 
+  const trimmedQuery = searchQuery.trim();
+  const tagPart = trimmedQuery.startsWith("#") ? trimmedQuery.slice(1).trim() : null;
+  const suggestionMode: SuggestionMode | null = !suggestionsOpen
+    ? null
+    : tagPart !== null
+      ? tagPart.length >= 2
+        ? "tag"
+        : null
+      : trimmedQuery.length >= 2
+        ? "unified"
+        : null;
+  const searchText = suggestionMode === "unified" ? trimmedQuery : "";
+  const tagText = suggestionMode === "tag" && tagPart ? tagPart : "";
+  const libraryText = useDebouncedValue(searchText, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
+  const catalogText = useDebouncedValue(searchText, AUTOCOMPLETE_DEBOUNCE_MS);
+  const debouncedTag = useDebouncedValue(tagText, AUTOCOMPLETE_DEBOUNCE_MS);
+  const libraryResults = useQuery({
+    ...librarySearchQuery(libraryText, SUGGEST_LIMIT),
+    enabled: Boolean(searchText && libraryText),
+    placeholderData: keepPreviousData,
+  });
+  const catalogResults = useQuery({
+    ...unifiedSearchQuery(catalogText, SUGGEST_LIMIT),
+    enabled: Boolean(searchText && catalogText),
+    placeholderData: keepPreviousData,
+  });
+  const tagResults = useQuery({
+    queryKey: ["search", "tags", debouncedTag, TAG_SUGGESTIONS_LIMIT],
+    queryFn: ({ signal }) =>
+      parseResponse(
+        discoveryClient.tags.$get(
+          { query: { q: debouncedTag, limit: String(TAG_SUGGESTIONS_LIMIT) } },
+          { init: { signal } },
+        ),
+      ),
+    enabled: Boolean(tagText && debouncedTag),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+  const loadingSuggestions =
+    (suggestionMode === "unified" && catalogResults.isFetching) ||
+    (suggestionMode === "tag" && tagResults.isFetching);
+  const catalogUnavailable =
+    suggestionMode === "unified" &&
+    !catalogResults.isFetching &&
+    (catalogResults.isError || catalogResults.data?.status === "unavailable");
+
+  const suggestionRows = useMemo<SuggestionRow[]>(() => {
+    if (suggestionMode === "tag") {
+      return uniqueTags(tagResults.data?.tags ?? []).map((tagName) => ({
+        kind: "tag",
+        key: `tag:${tagName}`,
+        tagName,
+      }));
+    }
+    if (suggestionMode !== "unified") return [];
+    return flattenSuggestionSections(
+      buildUnifiedSuggestionSections<SuggestionItem>({
+        library: libraryResults.data,
+        catalog: catalogResults.data,
+      }),
+    ).map((row) => {
+      if (row.kind !== "item" || row.item.type !== "album" || !row.item.id) return row;
+      const override = albumOverrides[row.item.id];
+      return override ? { ...row, item: { ...row.item, ...override } } : row;
+    });
+  }, [albumOverrides, catalogResults.data, libraryResults.data, suggestionMode, tagResults.data]);
+
   const selectableRows = useMemo(() => {
     if (suggestionMode === "tag") return suggestionRows;
     return suggestionRows.filter((row) => row.kind === "item");
   }, [suggestionRows, suggestionMode]);
 
-  const showRecentSearches = useMemo(
-    () =>
-      inputFocused &&
-      searchQuery.trim().length < 2 &&
-      recentSearches.length > 0 &&
-      !loadingSuggestions &&
-      suggestionRows.length === 0,
-    [inputFocused, loadingSuggestions, recentSearches.length, searchQuery, suggestionRows.length],
-  );
+  const showRecentSearches =
+    inputFocused &&
+    trimmedQuery.length < 2 &&
+    recentSearches.length > 0 &&
+    !loadingSuggestions &&
+    suggestionRows.length === 0;
 
   const recentSelectableRows = useMemo<RecentSuggestionRow[]>(
     () =>
@@ -141,6 +209,7 @@ function GlobalSearch() {
   );
 
   const suggestionKeyboardRows = showRecentSearches ? recentSelectableRows : selectableRows;
+  const suggestionIndex = suggestionKeyboardRows.findIndex((row) => row.key === highlightedKey);
 
   const rememberSearch = useCallback((rawQuery: string) => {
     const next = addRecentSearch(rawQuery);
@@ -148,28 +217,10 @@ function GlobalSearch() {
   }, []);
 
   const closeAutocomplete = useCallback(() => {
-    suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
-    setSuggestionRows([]);
-    setSuggestionMode(null);
-    setSuggestionIndex(-1);
+    setSuggestionsOpen(false);
+    setHighlightedKey(null);
+    setAlbumOverrides({});
   }, []);
-
-  const showUnifiedSuggestions = useCallback(
-    (results: SuggestionResults, { resetIndex = false } = {}) => {
-      suggestionResultsRef.current = results;
-      setSuggestionRows(
-        flattenSuggestionSections(
-          buildUnifiedSuggestionSections<SearchSuggestion>({
-            ...results.catalog,
-            library: results.library,
-          }),
-        ),
-      );
-      setSuggestionMode("unified");
-      if (resetIndex) setSuggestionIndex(-1);
-    },
-    [],
-  );
 
   useEffect(() => {
     setSearchQuery("");
@@ -198,115 +249,6 @@ function GlobalSearch() {
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
-
-  useEffect(() => {
-    const trimmed = searchQuery.trim();
-    const cancelAll = () => {
-      cancelSuggest();
-      cancelLibrarySuggest();
-    };
-    const isTagShortcut = trimmed.startsWith("#");
-    const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
-
-    if (isTagShortcut) {
-      cancelLibrarySuggest();
-      suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
-      if (tagPart.length < 2) {
-        cancelSuggest();
-        setLoadingSuggestions(false);
-        closeAutocomplete();
-        return;
-      }
-
-      scheduleSuggest(async (isCurrent) => {
-        setLoadingSuggestions(true);
-        try {
-          const data = await parseResponse(
-            discoveryClient.tags.$get({
-              query: { q: tagPart.trim() || undefined, limit: String(TAG_SUGGESTIONS_LIMIT) },
-            }),
-          );
-          if (!isCurrent()) return;
-          const raw = data.tags || [];
-          const seen = new Set();
-          const tags = raw.filter((tag) => {
-            const key = String(tag || "")
-              .trim()
-              .toLowerCase();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setSuggestionRows(
-            tags.map((tagName): SuggestionRow => ({
-              kind: "tag",
-              key: `tag:${tagName}`,
-              tagName,
-            })),
-          );
-          setSuggestionMode("tag");
-          setSuggestionIndex(-1);
-        } catch {
-          if (isCurrent()) {
-            closeAutocomplete();
-          }
-        } finally {
-          if (isCurrent()) {
-            setLoadingSuggestions(false);
-          }
-        }
-      }, AUTOCOMPLETE_DEBOUNCE_MS);
-
-      return cancelSuggest;
-    }
-
-    if (trimmed.length < 2) {
-      cancelAll();
-      setLoadingSuggestions(false);
-      closeAutocomplete();
-      return;
-    }
-
-    scheduleLibrarySuggest(async (isCurrent, signal) => {
-      const library = await searchLibrary(trimmed, { limit: SUGGEST_LIMIT, signal }).catch(
-        () => null,
-      );
-      if (!isCurrent()) return;
-      showUnifiedSuggestions({ ...suggestionResultsRef.current, library }, { resetIndex: true });
-    }, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
-
-    scheduleSuggest(async (isCurrent, signal) => {
-      setLoadingSuggestions(true);
-      try {
-        const catalog = await searchUnified(trimmed, {
-          mode: "suggest",
-          limit: SUGGEST_LIMIT,
-          signal,
-        });
-        if (!isCurrent()) return;
-        setLocalSearchConfigured(!!catalog?.localSearchConfigured);
-        showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog });
-      } catch {
-        if (isCurrent()) {
-          showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog: null });
-        }
-      } finally {
-        if (isCurrent()) {
-          setLoadingSuggestions(false);
-        }
-      }
-    }, AUTOCOMPLETE_DEBOUNCE_MS);
-
-    return cancelAll;
-  }, [
-    searchQuery,
-    closeAutocomplete,
-    scheduleSuggest,
-    cancelSuggest,
-    scheduleLibrarySuggest,
-    cancelLibrarySuggest,
-    showUnifiedSuggestions,
-  ]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -377,32 +319,17 @@ function GlobalSearch() {
     event.preventDefault();
     event.stopPropagation();
     setRecentSearches(clearRecentSearches());
-    setSuggestionIndex(-1);
+    setHighlightedKey(null);
   }, []);
 
   const updateSuggestionItem = useCallback(
-    (
-      targetItem: SuggestionAlbum,
-      updates: Partial<SuggestionAlbum> | ((item: SuggestionAlbum) => Partial<SuggestionAlbum>),
-    ) => {
-      if (!targetItem) return;
-      const targetType = targetItem.type;
-      const targetId = getSuggestionItemId(targetItem);
-      setSuggestionRows((rows) =>
-        rows.map((row) => {
-          if (row.kind !== "item" || row.item?.type !== targetType) return row;
-          const currentId = getSuggestionItemId(row.item);
-          if (!targetId || currentId !== targetId) return row;
-          const patch = typeof updates === "function" ? updates(row.item) : updates || {};
-          return {
-            ...row,
-            item: {
-              ...row.item,
-              ...patch,
-            },
-          };
-        }),
-      );
+    (targetItem: SuggestionAlbum, patch: Partial<SuggestionAlbum>) => {
+      const albumId = targetItem.id;
+      if (!albumId) return;
+      setAlbumOverrides((current) => ({
+        ...current,
+        [albumId]: { ...current[albumId], ...patch },
+      }));
     },
     [],
   );
@@ -582,12 +509,13 @@ function GlobalSearch() {
     if (suggestionKeyboardRows.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSuggestionIndex((current) =>
-        current < suggestionKeyboardRows.length - 1 ? current + 1 : current,
+      setHighlightedKey(
+        suggestionKeyboardRows[Math.min(suggestionIndex + 1, suggestionKeyboardRows.length - 1)]
+          ?.key ?? null,
       );
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
+      setHighlightedKey(suggestionKeyboardRows[suggestionIndex - 1]?.key ?? null);
     } else if (event.key === "Enter") {
       const row = suggestionKeyboardRows[suggestionIndex];
       if (!row) return;
@@ -623,10 +551,15 @@ function GlobalSearch() {
             ref={inputRef}
             type="text"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setSuggestionsOpen(true);
+              setHighlightedKey(null);
+            }}
             onFocus={() => {
               setInputFocused(true);
-              setSuggestionIndex(-1);
+              setSuggestionsOpen(true);
+              setHighlightedKey(null);
             }}
             onBlur={() => {
               window.setTimeout(() => setInputFocused(false), 120);
@@ -659,17 +592,14 @@ function GlobalSearch() {
       ) : null}
 
       <div className="global-search__panel">
-        {!loadingSuggestions &&
-          suggestionMode === "unified" &&
-          !localSearchConfigured &&
-          searchQuery.trim().length >= 2 && (
-            <div className="global-search__suggestions global-search__suggestions--grouped">
-              <div className="global-search__suggestion-group">Search not configured</div>
-              <div className="global-search__suggestion global-search__suggestion--message">
-                Set up the metadata server in Settings → Metadata to search music.
-              </div>
+        {catalogUnavailable && suggestionRows.length === 0 && (
+          <div className="global-search__suggestions global-search__suggestions--grouped">
+            <div className="global-search__suggestion-group">Catalog unavailable</div>
+            <div className="global-search__suggestion global-search__suggestion--message">
+              The metadata server did not answer. Try again in a moment.
             </div>
-          )}
+          </div>
+        )}
 
         {showRecentSearches && (
           <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">

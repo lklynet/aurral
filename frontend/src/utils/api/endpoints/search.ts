@@ -1,38 +1,56 @@
+import { queryOptions } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { apiFetch, apiFetchWithin } from "../core.ts";
+import { apiFetchWithin } from "../core.ts";
 import { searchClient } from "../clients/search.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
-const suggestFetch = apiFetchWithin(12_000);
+const searchFetch = apiFetchWithin(12_000);
 
-const fetchUnified = (
-  query: string,
-  mode: "suggest" | "full",
-  limit: number | undefined,
-  signal: AbortSignal | undefined,
-) =>
-  parseResponse(
-    searchClient.unified.$get(
-      { query: { q: query, mode, limit: limit == null ? undefined : String(limit) } },
-      { fetch: mode === "full" ? apiFetch : suggestFetch, init: { signal } },
-    ),
-  );
-
-export const searchUnified = async (
-  query: string,
-  {
-    mode = "suggest",
-    limit,
-    signal,
-  }: { mode?: "suggest" | "full"; limit?: number; signal?: AbortSignal } = {},
-) => {
-  if (signal) return fetchUnified(query, mode, limit, signal);
-  return queryClient.fetchQuery({
-    queryKey: queryKeys.searchUnified(query, mode, limit),
-    queryFn: ({ signal: querySignal }) => fetchUnified(query, mode, limit, querySignal),
-    staleTime: mode === "full" ? 30_000 : 5_000,
+export const unifiedSearchQuery = (query: string, limit: number) =>
+  queryOptions({
+    queryKey: queryKeys.searchUnified(query, limit),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        searchClient.unified.$get(
+          { query: { q: query, limit: String(limit) } },
+          { fetch: searchFetch, init: { signal } },
+        ),
+      ),
+    staleTime: 30_000,
   });
-};
+
+export const librarySearchQuery = (query: string, limit: number) =>
+  queryOptions({
+    queryKey: queryKeys.searchLibrary(query, limit),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        searchClient.library.$get(
+          { query: { q: query, limit: String(limit) } },
+          { init: { signal } },
+        ),
+      ),
+    staleTime: 15_000,
+  });
+
+export const playlistSearchQuery = (query: string) =>
+  queryOptions({
+    queryKey: queryKeys.searchPlaylists(query),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        searchClient.playlists.$get(
+          { query: { q: query } },
+          { fetch: searchFetch, init: { signal } },
+        ),
+      ),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+export const searchUnified = (query: string, { limit = 5 }: { limit?: number } = {}) =>
+  queryClient.fetchQuery(unifiedSearchQuery(query, limit));
+
+export const searchLibrary = (query: string, { limit = 5 }: { limit?: number } = {}) =>
+  queryClient.fetchQuery(librarySearchQuery(query, limit));
 
 export const searchCatalog = async (
   query: string,
@@ -75,14 +93,3 @@ export const searchCatalog = async (
     staleTime: 30_000,
   });
 };
-
-export const searchLibrary = (
-  query: string,
-  { limit, signal }: { limit?: number; signal?: AbortSignal } = {},
-) =>
-  parseResponse(
-    searchClient.library.$get(
-      { query: { q: query, limit: limit == null ? undefined : String(limit) } },
-      { init: { signal } },
-    ),
-  );

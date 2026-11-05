@@ -128,18 +128,14 @@ export async function fetchFlowTagSuggestions(query: string, existingEntries: st
 }
 
 export async function fetchFlowArtistSuggestions(query: string, existingEntries: string[] = []) {
-  const data = await searchUnified(query, {
-    mode: "suggest",
-    limit: FLOW_FOCUS_SUGGESTION_LIMIT,
-  });
-  const artistCandidates = [
-    data?.top?.type === "artist" ? data.top : null,
-    ...(Array.isArray(data?.catalog?.artists) ? data.catalog.artists : []),
-  ].filter(Boolean);
+  const data = await searchUnified(query, { limit: FLOW_FOCUS_SUGGESTION_LIMIT });
+  const artists = [data.top, ...data.artists].filter(
+    (item): item is (typeof data.artists)[number] => item?.type === "artist",
+  );
   return dedupeFocusSuggestions(
-    artistCandidates.map((artist) => ({
-      label: artist!.name,
-      meta: artist!.source === "brainzmash" ? "Metadata" : "Artist",
+    artists.map((artist) => ({
+      label: artist.name,
+      meta: artist.source === "brainzmash" ? "Metadata" : "Artist",
     })),
     existingEntries,
   );

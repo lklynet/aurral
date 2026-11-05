@@ -1,10 +1,11 @@
 import type { ArtistFeedbackSource } from "./artistTaste.ts";
 import type { UnifiedSearchItem } from "../../../backend/services/unifiedSearchService.ts";
 
+type ArtistBucket = { artists?: (ArtistFeedbackSource | null)[] | null } | null;
+
 type BlocklistSearchResponse = {
-  top?: UnifiedSearchItem | null;
-  catalog?: { artists?: (ArtistFeedbackSource | null)[] | null } | null;
-  library?: { artists?: (ArtistFeedbackSource | null)[] | null } | null;
+  catalog?: (ArtistBucket & { top?: UnifiedSearchItem | null }) | null;
+  library?: ArtistBucket;
 };
 
 function normalizeArtist(artist: ArtistFeedbackSource | null | undefined) {
@@ -15,10 +16,11 @@ function normalizeArtist(artist: ArtistFeedbackSource | null | undefined) {
 }
 
 export function buildBlocklistArtistSuggestions(response: BlocklistSearchResponse, limit = 6) {
+  const top = response.catalog?.top;
   const candidates = [
-    response?.top?.type === "artist" ? response.top : null,
-    ...(Array.isArray(response?.catalog?.artists) ? response.catalog.artists : []),
-    ...(Array.isArray(response?.library?.artists) ? response.library.artists : []),
+    top?.type === "artist" ? top : null,
+    ...(response.catalog?.artists ?? []),
+    ...(response.library?.artists ?? []),
   ];
   const seenIds = new Set();
   const seenNames = new Set();

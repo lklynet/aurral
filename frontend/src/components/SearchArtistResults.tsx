@@ -5,7 +5,6 @@ import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 import RouteLink from "./RouteLink";
-import type { SearchImageMap } from "./SearchMixedResultList";
 import type { ArtistFeedbackAction } from "../utils/artistTaste";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 
@@ -36,7 +35,6 @@ type SearchArtist = {
 
 interface SearchArtistResultsProps {
   artists: SearchArtist[];
-  artistImages: SearchImageMap;
   libraryLookup: Record<string, boolean | undefined>;
   onArtistFeedback?: (
     artist: SearchArtist,
@@ -50,7 +48,6 @@ interface SearchArtistResultsProps {
 
 function SearchArtistResults({
   artists,
-  artistImages,
   libraryLookup,
   onArtistFeedback,
   artistFeedbackLookup,
@@ -92,7 +89,7 @@ function SearchArtistResults({
 
   const artistLinkState = (artist: SearchArtist, artistKey: string) => ({
     artistName: artist.name,
-    artistImage: artistImages[artistKey] || artist.image || artist.imageUrl || undefined,
+    artistImage: artist.image || artist.imageUrl || undefined,
     ...(typeof libraryLookup[artistKey] === "boolean"
       ? { inLibrary: libraryLookup[artistKey] }
       : {}),
@@ -129,13 +126,12 @@ function SearchArtistResults({
             data-artwork
           >
             <ArtistImage
-              src={artistImages[artistKey] || artist.image || artist.imageUrl}
+              src={artist.image || artist.imageUrl}
               mbid={artistId}
               artistName={artist.name}
               alt={artist.name}
               className="artist-discover-card__image"
               showLoading={false}
-              enableBackendFallback={false}
               enablePreviewPlayback
               isInLibrary={!!libraryLookup[artistKey]}
             />

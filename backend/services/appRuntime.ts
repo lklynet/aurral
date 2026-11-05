@@ -261,8 +261,6 @@ export async function forwardWorkerBroadcast(message: WorkerMessage) {
   if (message.channel === "library" && message.data?.type === "library_scan_completed") {
     const { invalidateLibraryQueryCache } = await import("./libraryQueryService.ts");
     invalidateLibraryQueryCache({ persistedGenres: false });
-    const { clearSearchContextCache } = await import("./unifiedSearchService.ts");
-    clearSearchContextCache();
   }
   websocketService.broadcast(message.channel, message.data, { userId });
 }

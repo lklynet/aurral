@@ -2,7 +2,12 @@ import type { ReactNode } from "react";
 import ArtworkImage from "./ArtworkImage";
 import { Music } from "./icons";
 import ArtistImage from "./ArtistImage";
-import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
+import {
+  getPlaylistResultDetail,
+  getReleaseTypeLabel,
+  getSearchResultKey,
+  getSearchResultLink,
+} from "../utils/searchNavigation";
 import { usePlaylistArtwork } from "../hooks/usePlaylistArtwork.ts";
 import { getArtistRecordId } from "../utils/artistTaste";
 import RouteLink from "./RouteLink";
@@ -16,7 +21,6 @@ export type SearchImageMap = Record<string, string | null | undefined>;
 interface SearchMixedResultListProps {
   items: SearchItem[];
   query?: string;
-  artistImages?: SearchImageMap;
   albumCovers?: SearchImageMap;
   renderAction?: ((item: SearchItem) => ReactNode) | null;
 }
@@ -33,9 +37,9 @@ function getSearchPlaylistArtworkUrl(
 
 function getTypeLabel(item: SearchItem) {
   if (item.type === "artist") return "Artist";
-  if (item.type === "album") return "Album";
+  if (item.type === "album") return getReleaseTypeLabel(item);
   if (item.type === "track") return "Song";
-  if (item.type === "playlist") return "Playlist";
+  if (item.type === "playlist") return item.sourceFlowId ? "Flow" : "Playlist";
   return null;
 }
 
@@ -57,21 +61,17 @@ function getSecondaryLabel(item: SearchItem) {
   if (item.type === "track") {
     return [item.artistName, item.albumTitle].filter(Boolean).join(" · ") || null;
   }
-  if (item.type === "playlist" && item.trackCount != null) {
-    return `${item.trackCount} track${item.trackCount === 1 ? "" : "s"}`;
-  }
+  if (item.type === "playlist") return getPlaylistResultDetail(item);
   return null;
 }
 
 function ResultThumbnail({
   item,
-  artistImages,
   albumCovers,
   artworkUrlFor,
 }: {
   artworkUrlFor: ReturnType<typeof usePlaylistArtwork>["artworkUrlFor"];
   item: SearchItem;
-  artistImages: SearchImageMap;
   albumCovers: SearchImageMap;
 }) {
   if (item.type === "artist") {
@@ -79,14 +79,13 @@ function ResultThumbnail({
     return (
       <span className="search-mixed-results__thumb search-mixed-results__thumb--round">
         <ArtistImage
-          src={artistImages[String(artistId)] || item.image || item.imageUrl}
+          src={item.image || item.imageUrl}
           mbid={artistId}
           artistName={item.name}
           alt={item.name}
           className="search-mixed-results__image"
           sizes="3rem"
           showLoading={false}
-          enableBackendFallback={false}
           enablePreviewPlayback
         />
       </span>
@@ -127,7 +126,6 @@ function ResultThumbnail({
 function SearchMixedResultList({
   items,
   query = "",
-  artistImages = {},
   albumCovers = {},
   renderAction = null,
 }: SearchMixedResultListProps) {
@@ -161,7 +159,6 @@ function SearchMixedResultList({
               <div className="search-mixed-results__main">
                 <ResultThumbnail
                   item={item}
-                  artistImages={artistImages}
                   albumCovers={albumCovers}
                   artworkUrlFor={artworkUrlFor}
                 />

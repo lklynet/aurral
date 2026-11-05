@@ -5,8 +5,7 @@ import { buildBlocklistArtistSuggestions } from "../../frontend/src/utils/blockl
 
 test("blocklist suggestions include local artists when the catalog bucket is empty", () => {
   const suggestions = buildBlocklistArtistSuggestions({
-    top: null,
-    catalog: { artists: [] },
+    catalog: { top: null, artists: [] },
     library: {
       artists: [{ id: "radiohead", name: "Radiohead" }],
     },
@@ -18,18 +17,17 @@ test("blocklist suggestions include local artists when the catalog bucket is emp
 test("blocklist suggestions combine and deduplicate unified artist results", () => {
   const suggestions = buildBlocklistArtistSuggestions(
     {
-      top: {
-        id: "radiohead",
-        name: "Radiohead",
-        type: "artist",
-        source: "library",
-        key: "artist:radiohead",
-        sortName: "Radiohead",
-        inLibrary: true,
-        hasMbid: false,
-        score: 1,
-      },
       catalog: {
+        top: {
+          id: "radiohead",
+          name: "Radiohead",
+          type: "artist",
+          source: "library",
+          key: "artist:radiohead",
+          sortName: "Radiohead",
+          inLibrary: true,
+          hasMbid: false,
+        },
         artists: [
           { id: "radiohead", name: "Radiohead" },
           { id: "the-smile", name: "The Smile" },

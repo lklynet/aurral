@@ -7,7 +7,11 @@ import { validate } from "../middleware/validate.ts";
 import { searchAlbums, searchArtists, searchTags } from "../services/searchService.ts";
 import { resolveStreamingLink } from "../services/streamingLinks.ts";
 import { logger, safeLogDiagnostic } from "../services/logger.ts";
-import { searchLibrary, searchUnified } from "../services/unifiedSearchService.ts";
+import {
+  searchDeezerPlaylists,
+  searchLibrary,
+  searchUnified,
+} from "../services/unifiedSearchService.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { errorStatus } from "./shared/errorStatus.ts";
 
@@ -49,11 +53,24 @@ export default new Hono<AppEnv>()
     try {
       const { q = "", limit } = c.req.valid("query");
       if (!q.trim()) return c.json(missingQuery, 400);
-      return c.json(searchLibrary(q, { limit, user: c.var.user || null }), 200);
+      return c.json(searchLibrary(q, { limit, user: c.var.user }), 200);
     } catch (error) {
       return c.json(
         { error: "Failed to search library", message: asAppError(error)?.message },
         500,
+      );
+    }
+  })
+  .get("/playlists", noCache, validate("query", v.object({ q: text })), async (c) => {
+    const { q = "" } = c.req.valid("query");
+    if (!q.trim()) return c.json(missingQuery, 400);
+    try {
+      return c.json({ playlists: await searchDeezerPlaylists(q) }, 200);
+    } catch (error) {
+      logger.info("search", "Playlist search failed", { reason: safeLogDiagnostic(error) });
+      return c.json(
+        { error: "Failed to search playlists", message: asAppError(error)?.message },
+        502,
       );
     }
   })
@@ -76,28 +93,15 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .get(
-    "/unified",
-    noCache,
-    validate("query", v.object({ q: text, mode: text, limit: text })),
-    async (c) => {
-      try {
-        const { q = "", mode = "suggest", limit } = c.req.valid("query");
-        if (!q.trim()) return c.json(missingQuery, 400);
-        return c.json(
-          await searchUnified(q, {
-            mode,
-            limit,
-            user: c.var.user || null,
-            signal: c.req.raw.signal,
-          }),
-          200,
-        );
-      } catch (error) {
-        return c.json(
-          { error: "Failed to run unified search", message: asAppError(error)?.message },
-          500,
-        );
-      }
-    },
-  );
+  .get("/unified", noCache, validate("query", v.object({ q: text, limit: text })), async (c) => {
+    try {
+      const { q = "", limit } = c.req.valid("query");
+      if (!q.trim()) return c.json(missingQuery, 400);
+      return c.json(await searchUnified(q, { limit, signal: c.req.raw.signal }), 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to run unified search", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  });

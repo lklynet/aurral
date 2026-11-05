@@ -18,6 +18,7 @@ export const UNIFIED_FILTER_OPTIONS = [
   { value: "artists", label: "Artists" },
   { value: "albums", label: "Albums" },
   { value: "singles", label: "Singles" },
+  { value: "playlists", label: "Playlists" },
 ];
 
 interface SearchAlbum {
@@ -71,6 +72,3 @@ export function dedupeAlbums<T extends SearchAlbum>(albums: T[]): T[] {
     return true;
   });
 }
-
-export const ARTIST_IMAGE_HYDRATION_CONCURRENCY = 6;
-export const ALBUM_COVER_HYDRATION_CONCURRENCY = 6;
