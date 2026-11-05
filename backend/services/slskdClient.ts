@@ -67,11 +67,37 @@ const searchSchema = v.looseObject({
   responses: v.optional(v.array(searchResponseSchema)),
 });
 
+const transferStateFlags = [
+  "Requested",
+  "Queued",
+  "Initializing",
+  "InProgress",
+  "Completed",
+  "Succeeded",
+  "Cancelled",
+  "TimedOut",
+  "Errored",
+  "Rejected",
+  "Aborted",
+  "Locally",
+  "Remotely",
+];
+
+const transferStateSchema = v.union([
+  v.string(),
+  v.pipe(
+    v.number(),
+    v.transform(
+      (state) => transferStateFlags.filter((_, bit) => state & (1 << bit)).join(", ") || "None",
+    ),
+  ),
+]);
+
 const transferSchema = v.looseObject({
   id: v.string(),
   username: v.optional(v.string()),
   filename: v.optional(v.string()),
-  state: v.optional(v.string()),
+  state: v.optional(transferStateSchema),
   exception: v.nullish(v.string()),
   bytesTransferred: v.nullish(v.number()),
   placeInQueue: v.nullish(v.number()),
