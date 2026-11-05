@@ -12,7 +12,7 @@ import { requireFixture } from "../playlists/fixtures.ts";
 const [
   isolatedState,
   { isSearchComplete, isSearchInProgress, slskdClient },
-  { recordSlskdTransferOutcome },
+  { recordSlskdTransferOutcome, getSlskdCleanupTargets },
   { dbOps },
   { db },
 ] = await setupIsolatedBackend(
@@ -51,7 +51,7 @@ test("ambiguous creation failure cleans only its owned search and retains failed
       }),
       /502/,
     );
-    assert.deepEqual(deleted, ["/api/v0/searches/uncertain-owned"]);
+    assert.deepEqual(deleted, []);
     assert.deepEqual([...owned], ["uncertain-owned"]);
   } finally {
     await mock.close();
@@ -63,15 +63,30 @@ test("cancellation during creation stops a search accepted before its response",
   const controller = new AbortController();
   const owned = new Set();
   const deleted: (string | undefined)[] = [];
+  let cancelled = false;
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
     if (request.method === "POST") {
       controller.abort();
       return;
     }
-    deleted.push(request.url);
-    response.writeHead(204);
-    response.end();
+    if (request.method === "GET") {
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          state: cancelled ? "Completed, Cancelled" : "InProgress",
+          endedAt: cancelled ? "2026-11-05T12:00:00Z" : null,
+        }),
+      );
+    } else if (request.method === "PUT") {
+      cancelled = true;
+      response.writeHead(200);
+      response.end();
+    } else {
+      deleted.push(request.url);
+      response.writeHead(204);
+      response.end();
+    }
   });
   try {
     const client = new SlskdClient({ url: mock.url });
@@ -547,6 +562,14 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
   const calls: { method: string | undefined; url: string | undefined }[] = [];
   const mock = await createMockHttpServer((request, response) => {
     calls.push({ method: request.method, url: request.url });
+    if (
+      request.method === "GET" &&
+      request.url === "/api/v0/searches/search-owned?includeResponses=false"
+    ) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ state: "Completed", endedAt: "2026-11-05T12:00:00Z" }));
+      return;
+    }
     if (request.method === "DELETE" && request.url === "/api/v0/searches/search-owned") {
       response.writeHead(204);
       response.end();
@@ -602,10 +625,41 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
     assert.deepEqual(
       calls.map((call) => `${call.method} ${call.url}`),
       [
+        "GET /api/v0/searches/search-owned?includeResponses=false",
         "DELETE /api/v0/searches/search-owned",
         "DELETE /api/v0/transfers/downloads/peer/transfer-owned?remove=true",
       ],
     );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("cleanupAfterRun retains history targets when search finalization cannot be confirmed", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(request.method === "GET" ? 200 : 502, {
+      "content-type": "application/json",
+    });
+    response.end(JSON.stringify({ state: "Queued", endedAt: null }));
+  });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: { ...originalSettings.integrations, slskd: { url: mock.url } },
+  });
+  try {
+    recordSlskdTransferOutcome({
+      job: { id: "pending-cleanup", artistName: "Artist", trackName: "Track" },
+      candidate: { raw: { user: "peer", file: "Track.flac" } },
+      status: "success",
+      searchIds: ["still-finalizing"],
+    });
+    const result = await slskdClient.cleanupAfterRun();
+    assert.ok("searchesRemoved" in result);
+    assert.equal(result.searchesRemoved, 0);
+    assert.deepEqual(getSlskdCleanupTargets().searchIds, ["still-finalizing"]);
   } finally {
     dbOps.updateSettings(originalSettings);
     await mock.close();
@@ -755,9 +809,22 @@ test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 30
     notifyPoll = resolve;
   });
   const deleted: (string | undefined)[] = [];
+  let searchCancelled = false;
   const server = await createMockHttpServer((req, res) => {
-    if (req.method === "GET") notifyPoll();
-    else {
+    if (req.method === "GET" && req.url?.endsWith("includeResponses=false")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          state: searchCancelled ? "Completed, Cancelled" : "InProgress",
+          endedAt: searchCancelled ? "2026-11-05T12:00:00Z" : null,
+        }),
+      );
+    } else if (req.method === "GET") notifyPoll();
+    else if (req.method === "PUT") {
+      searchCancelled = true;
+      res.writeHead(200);
+      res.end();
+    } else {
       deleted.push(req.url);
       res.writeHead(204);
       res.end();

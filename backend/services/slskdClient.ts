@@ -62,6 +62,7 @@ const searchSchema = v.looseObject({
   id: v.optional(v.string()),
   state: v.optional(v.string()),
   isComplete: v.optional(v.boolean()),
+  endedAt: v.nullish(v.string()),
   fileCount: v.optional(v.number()),
   responseCount: v.optional(v.number()),
   responses: v.optional(v.array(searchResponseSchema)),
@@ -1145,8 +1146,39 @@ export class SlskdClient {
     const id = String(searchId || "").trim();
     if (!id) return false;
     const client = buildClient(this._config);
-    const response = await client.delete(`/api/v0/searches/${encodeURIComponent(id)}`, options);
-    return [200, 204, 404].includes(response.status);
+    const endpoint = `/api/v0/searches/${encodeURIComponent(id)}`;
+    const deadline = Date.now() + Math.max(1, Number(options.timeout) || 20000);
+    const signal = untilDeadline(deadline, options.signal);
+    const requestOptions = { ...options, signal };
+    let cancellationRequested = false;
+    try {
+      while (Date.now() < deadline && !signal?.aborted) {
+        const response = await client.get(endpoint, {
+          ...requestOptions,
+          params: { includeResponses: false },
+        });
+        if (response.status === 404) return true;
+        if (response.status !== 200) return false;
+        const search = readOne(searchSchema, response.data, { service: "slskd", endpoint });
+        // DELETE only removes slskd's database row; it does not cancel its worker.
+        // Completed is persisted before the final results, so wait for EndedAt too.
+        if (isSearchComplete(search) && search.endedAt) {
+          const removed = await client.delete(endpoint, requestOptions);
+          return [200, 204, 404].includes(removed.status);
+        }
+        if (!isSearchComplete(search) && !cancellationRequested) {
+          const cancelled = await client.put(endpoint, undefined, requestOptions);
+          if (cancelled.status === 404) return true;
+          if (![200, 202, 204, 304].includes(cancelled.status)) return false;
+          cancellationRequested = true;
+        }
+        await waitSearchDelay(Math.min(100, Math.max(1, deadline - Date.now())), signal);
+      }
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+    }
+    // Keep ownership for a later cleanup attempt if slskd has not finalized yet.
+    return false;
   }
 
   async removeCompletedDownloads() {
@@ -1214,7 +1246,10 @@ export class SlskdClient {
         ? transfersRemoved > 0
         : await this.removeCompletedDownloads();
 
-      if (typeof markCleaned === "function") {
+      if (
+        typeof markCleaned === "function" &&
+        cleanedSearchIds.length === new Set(searchIds).size
+      ) {
         markCleaned();
       }
       logger.info("slskd", "Cleaned up slskd after run", {
