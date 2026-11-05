@@ -7,7 +7,10 @@ export const PLAYER_SHORTCUTS = {
   seek: { keys: "ArrowLeft ArrowRight", label: "← →" },
   mute: { keys: "M", label: "M" },
   lyrics: { keys: "L", label: "L" },
+  fullscreen: { keys: "F", label: "F" },
 };
+
+const PLAYER_STAGE = "[data-player-stage]";
 
 const KEY_HANDLERS = [
   "input",
@@ -53,8 +56,9 @@ function shortcutFor(event: KeyboardEvent) {
   if (event.defaultPrevented || event.isComposing) return null;
   if (event.ctrlKey || event.metaKey || event.altKey) return null;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest(KEY_HANDLERS)) return null;
-  if (document.querySelector("[aria-modal='true']")) return null;
+  const handler = target?.closest(KEY_HANDLERS);
+  if (handler && !handler.matches(PLAYER_STAGE)) return null;
+  if (document.querySelector(`[aria-modal='true']:not(${PLAYER_STAGE})`)) return null;
 
   if (event.key === " ") {
     if (event.shiftKey || event.repeat || target?.closest(SPACE_ACTIVATED)) return null;
@@ -70,6 +74,8 @@ function shortcutFor(event: KeyboardEvent) {
   }
   if ((event.key === "m" || event.key === "M") && !event.shiftKey && !event.repeat) return "mute";
   if ((event.key === "l" || event.key === "L") && !event.shiftKey && !event.repeat) return "lyrics";
+  if ((event.key === "f" || event.key === "F") && !event.shiftKey && !event.repeat)
+    return "fullscreen";
   return null;
 }
 

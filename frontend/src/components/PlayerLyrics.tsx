@@ -44,14 +44,7 @@ function useActiveLine(lines: { start?: number }[], synced: boolean) {
   return [active, setActive] as const;
 }
 
-export default function PlayerLyrics({
-  track,
-  variant,
-}: {
-  track: PlayerTrack;
-  variant: "panel" | "sheet";
-}) {
-  const { seek } = useAudioQueue();
+export function useTrackLyrics(track: PlayerTrack) {
   const lookup = lyricsLookup(track);
   const lyricsQuery = useQuery({
     queryKey: queryKeys.lyrics(lookup),
@@ -63,6 +56,18 @@ export default function PlayerLyrics({
   const lines = lyrics?.lines ?? [];
   const synced = lyrics?.synced === true;
   const [active, setActive] = useActiveLine(lines, synced);
+  return { lookup, lyricsQuery, lines, synced, active, setActive };
+}
+
+export default function PlayerLyrics({
+  track,
+  variant,
+}: {
+  track: PlayerTrack;
+  variant: "panel" | "sheet" | "stage";
+}) {
+  const { seek } = useAudioQueue();
+  const { lookup, lyricsQuery, lines, synced, active, setActive } = useTrackLyrics(track);
   const listRef = useRef<HTMLOListElement>(null);
   const manualScrollAt = useRef(0);
 

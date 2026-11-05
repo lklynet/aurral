@@ -3,13 +3,13 @@ import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 import { cacheImageLocally } from "./api/endpoints/images.ts";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.ts";
 import { getThemeDocument } from "./theme.ts";
-import { hexToOklch, oklchToHex, pickVividColor } from "./themeColor.ts";
+import { hexToOklch, oklchToHex, pickVividColor, type HexColor } from "./themeColor.ts";
 
 type ArtworkWash = NonNullable<ReturnType<typeof pickArtworkWash>>;
 
 const N = 64;
 const washCache = new Map<string, Promise<ArtworkWash | null>>();
-const accentCache = new Map<string, Promise<string | null>>();
+const accentCache = new Map<string, Promise<HexColor | null>>();
 const localCopyCache = new Map<string, Promise<string>>();
 const WASH_LIGHTNESS = { dark: [0.3, 0.52], light: [0.78, 0.9] } as const;
 const NEUTRAL_CHROMA = 0.012;
