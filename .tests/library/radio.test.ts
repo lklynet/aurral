@@ -103,6 +103,23 @@ test("a track radio mixes the seed artist with similar and same-genre artists, n
   assert.ok(artists.every((name, index) => name !== artists[index - 1]));
 });
 
+test("a blocked similar artist with a big catalog doesn't leave the station empty", async () => {
+  const seed = addArtist("Massive Attack", 1);
+  addArtist("Morcheeba", 20);
+  addArtist("Tricky", 3);
+  addDiscoveryFeedback(userId, { action: "block_artist", artistName: "Morcheeba" });
+
+  const picks = await buildRadio({
+    userId,
+    seed: { trackIds: [String(seed.tracks[0]!.id)] },
+    limit: 4,
+    random: seeded(5),
+    similarArtists: async () => [{ mbid: null, name: "Morcheeba", match: 1 }],
+  });
+
+  assert.deepEqual(countByArtist(picks), { Tricky: 3 });
+});
+
 test("an artist radio still plays when similar artists can't be reached", async () => {
   addArtist("Massive Attack", 8, ["trip hop"]);
   addArtist("Portishead", 4);

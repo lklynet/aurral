@@ -31,7 +31,11 @@ import type {
 } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
-import { buildAuthenticatedApiUrl, getRequestToken } from "../utils/api/core";
+import {
+  buildAuthenticatedApiUrl,
+  getRequestToken,
+  resolveAuthenticatedApiAssetUrl,
+} from "../utils/api/core";
 import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
 import { parseResponse } from "hono/client";
 import { playEventsClient } from "../utils/api/clients/playEvents.ts";
@@ -153,7 +157,7 @@ async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
     normalizeQueueTrack({
       ...track,
       src: buildAuthenticatedApiUrl(streamPath),
-      artwork: artworkUrl,
+      artwork: resolveAuthenticatedApiAssetUrl(artworkUrl),
       recordHistory: true,
     }),
   );
@@ -210,6 +214,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const autoplayRef = useRef(autoplayEnabled);
   autoplayRef.current = autoplayEnabled;
   const refillRef = useRef<string | null>(null);
+  const radioRequestRef = useRef(0);
 
   const [state, applyAction] = useReducer(queueReducer, initialQueueState);
   const dispatch = useCallback((action: QueueAction) => {
@@ -420,8 +425,14 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         seed,
       };
       refillRef.current = null;
+      const request = ++radioRequestRef.current;
       if (first && playQueue([first], { source })) return true;
-      return playQueue(await fetchRadio(seed), { source });
+      const revision = stateRef.current.queueRevision;
+      const tracks = await fetchRadio(seed);
+      if (request !== radioRequestRef.current || stateRef.current.queueRevision !== revision) {
+        return true;
+      }
+      return playQueue(tracks, { source });
     },
     [playQueue],
   );
@@ -676,12 +687,17 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     const entryId = currentTrack.entryId;
     fetchRadio(seed, state.queue)
       .then((tracks) => {
-        if (!stateRef.current.queue.some((entry) => entry.entryId === entryId)) return;
+        const latest = stateRef.current;
+        if (!ownsQueueRef.current || tracks.length === 0) return;
+        if (!latest.queue.some((entry) => entry.entryId === entryId)) return;
         if (!radio && !autoplayRef.current) return;
+        const ranOut =
+          !latest.autoplay && trackAt(latest, latest.currentIndex)?.entryId !== entryId;
         dispatch({
           type: "EXTEND_QUEUE",
           tracks: tracks.map((track) => ({ ...track, queueSource })),
         });
+        if (ranOut) dispatch({ type: "SKIP_TO", index: latest.playbackOrder.length });
       })
       .catch(() => {});
   }, [autoplayEnabled, currentTrack, dispatch, isPlayingOrStarting, state, upcoming]);

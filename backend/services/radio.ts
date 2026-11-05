@@ -212,9 +212,10 @@ function withoutBlockedArtists(
 ) {
   const blockedArtists = getBlockedArtistKeys(userId ?? "global");
   const blockedTags = getBlockedTagKeys(userId);
-  if (!blockedArtists.size && !blockedTags.size) return;
+  const removed = new Set<number>();
+  if (!blockedArtists.size && !blockedTags.size) return removed;
   const ids = [...scores.keys()].filter((id) => !seedArtistIds.has(id));
-  if (!ids.length) return;
+  if (!ids.length) return removed;
   const artists = db
     .prepare<number[], ArtistRow>(
       `SELECT id, name, mbid FROM library_artists WHERE id IN (${placeholders(ids)})`,
@@ -237,8 +238,10 @@ function withoutBlockedArtists(
       hasBlockedTag(genresByArtist.get(artist.id), blockedTags)
     ) {
       scores.delete(artist.id);
+      removed.add(artist.id);
     }
   }
+  return removed;
 }
 
 const CANDIDATE_SELECT = `
@@ -262,10 +265,14 @@ function candidateTracks(artistIds: number[]) {
     .all(...artistIds);
 }
 
-function fallbackTracks(limit: number) {
+function fallbackTracks(limit: number, skipArtistIds: Set<number>) {
+  const skip = [...skipArtistIds];
   return db
-    .prepare<[number], Candidate>(`${CANDIDATE_SELECT} GROUP BY track.id ORDER BY random() LIMIT ?`)
-    .all(limit);
+    .prepare<number[], Candidate>(
+      `${CANDIDATE_SELECT} AND album.artist_id NOT IN (${placeholders(skip)})
+       GROUP BY track.id ORDER BY random() LIMIT ?`,
+    )
+    .all(...skip, limit);
 }
 
 function listeningSignals(userId: number | null, now: number) {
@@ -377,6 +384,7 @@ export async function buildRadio({
     scores.set(artistId, Math.max(scores.get(artistId) ?? 0, score));
   }
   for (const artistId of seedArtistIds) scores.set(artistId, 1);
+  const blocked = withoutBlockedArtists(scores, seedArtistIds, userId);
 
   const excluded = new Set([...positiveIds(exclude), ...resolved.trackIds]);
   const pool = candidateTracks([...scores.keys()]).filter(
@@ -384,14 +392,14 @@ export async function buildRadio({
   );
   if (pool.length < size * 2) {
     const known = new Set(pool.map((candidate) => candidate.trackId));
-    for (const candidate of fallbackTracks(size * 4)) {
+    for (const candidate of fallbackTracks(size * 4, blocked)) {
       if (excluded.has(candidate.trackId) || known.has(candidate.trackId)) continue;
       if (!scores.has(candidate.artistId)) scores.set(candidate.artistId, FALLBACK_SCORE);
       known.add(candidate.trackId);
       pool.push(candidate);
     }
+    withoutBlockedArtists(scores, seedArtistIds, userId);
   }
-  withoutBlockedArtists(scores, seedArtistIds, userId);
   const candidates = pool.filter((candidate) => scores.has(candidate.artistId));
 
   const tracksPerArtist = new Map<number, number>();
