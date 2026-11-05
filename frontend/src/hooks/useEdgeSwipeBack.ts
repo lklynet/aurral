@@ -4,6 +4,7 @@ const EDGE_PX = 24;
 const COMMIT_RATIO = 0.35;
 const COMMIT_VELOCITY = 0.5;
 const SETTLE_MS = 220;
+const VELOCITY_MAX_AGE_MS = 100;
 
 export function useEdgeSwipeBack(
   targetRef: RefObject<HTMLElement | null>,
@@ -11,8 +12,10 @@ export function useEdgeSwipeBack(
 ) {
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+  const settleTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    window.clearTimeout(settleTimerRef.current);
     const target = targetRef.current;
     if (!target) return;
     target.style.transition = "";
@@ -29,7 +32,8 @@ export function useEdgeSwipeBack(
     const settle = (to: number, done?: () => void) => {
       target.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
       target.style.transform = to ? `translate3d(${to}px, 0, 0)` : "";
-      window.setTimeout(() => {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = window.setTimeout(() => {
         if (!to) target.style.transition = "";
         done?.();
       }, SETTLE_MS);
@@ -38,6 +42,7 @@ export function useEdgeSwipeBack(
     const handleStart = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (event.touches.length !== 1 || !touch || !mobile.matches || touch.clientX > EDGE_PX) {
+        if (swipe?.locked) settle(0);
         swipe = null;
         return;
       }
@@ -73,8 +78,10 @@ export function useEdgeSwipeBack(
       const cancelled = event.type === "touchcancel";
       swipe = null;
       const width = target.clientWidth;
+      const fresh = event.timeStamp - last.t <= VELOCITY_MAX_AGE_MS;
       const commit =
-        !cancelled && (last.dx > width * COMMIT_RATIO || last.velocity > COMMIT_VELOCITY);
+        !cancelled &&
+        (last.dx > width * COMMIT_RATIO || (fresh && last.velocity > COMMIT_VELOCITY));
       if (commit) settle(width, () => onBackRef.current());
       else settle(0);
     };
@@ -88,6 +95,7 @@ export function useEdgeSwipeBack(
       target.removeEventListener("touchmove", handleMove);
       target.removeEventListener("touchend", handleEnd);
       target.removeEventListener("touchcancel", handleEnd);
+      window.clearTimeout(settleTimerRef.current);
       target.style.transition = "";
       target.style.transform = "";
     };
