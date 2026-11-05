@@ -431,6 +431,30 @@ test("clearing up next keeps the current track and undo brings the cleared track
   );
 });
 
+test("undoing a stop brings back the whole queue on the same track", () => {
+  const playing = queueReducer(startQueue({ startTrackId: "t3", shuffle: true }), {
+    type: "TOGGLE_REPEAT",
+  });
+  const stopped = queueReducer(playing, { type: "CLEAR_QUEUE" });
+  assert.equal(stopped.currentIndex, -1);
+
+  const undone = queueReducer(stopped, {
+    type: "RESTORE_QUEUE",
+    queue: playing.queue,
+    playbackOrder: playing.playbackOrder,
+    currentIndex: playing.currentIndex,
+    source: playing.source,
+    isShuffleEnabled: playing.isShuffleEnabled,
+    repeatMode: playing.repeatMode,
+    autoplay: true,
+  });
+  assert.equal(currentId(undone), "t3");
+  assert.deepEqual(remainingIds(undone), remainingIds(playing));
+  assert.equal(undone.isShuffleEnabled, true);
+  assert.equal(undone.repeatMode, "all");
+  assert.equal(undone.autoplay, true);
+});
+
 test("file names and stream formats that match built-in object keys are not treated as known formats", () => {
   assert.equal(
     getFormatLoadAttempts({ finalPath: "/music/Artist/Album/01.constructor", quality: "FLAC" })[0],

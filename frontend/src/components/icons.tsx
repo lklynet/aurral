@@ -122,6 +122,7 @@ export const Sparkles = createIcon(icons.Stars01);
 export const Square = createIcon(icons.Square);
 export const SquareCheck = createIcon(icons.CheckSquare);
 export const Star = createIcon(icons.Star01);
+export const Stop = createIcon(icons.Stop);
 export const Sun = createIcon(icons.Sun);
 export const ThumbsDown = createIcon(icons.ThumbsDown);
 export const ThumbsUp = createIcon(icons.ThumbsUp);

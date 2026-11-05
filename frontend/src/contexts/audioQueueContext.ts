@@ -53,7 +53,7 @@ export type AudioQueueValue = {
   togglePlayPause: () => void;
   playNext: () => void;
   playPrevious: () => void;
-  clearQueue: () => void;
+  clearQueue: () => () => void;
   skipTo: (playbackIndex: number) => void;
   toggleShuffle: () => void;
   matchesSource: (candidate: Partial<QueueSource> | null | undefined) => boolean;
