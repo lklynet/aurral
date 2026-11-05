@@ -4,7 +4,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { MAX_REVIEW_TIMEOUT_HOURS } from "../db/helpers/settings.ts";
 import { readIntegrationSettings } from "../db/helpers/integrationSettings.ts";
 import type { AppSettings, StoredIntegrations } from "../db/helpers/settings.ts";
-import { DATE_TIME_FORMATS, DEFAULT_METADATA_BASE_URL, defaultData } from "../config/constants.ts";
+import { DATE_TIME_FORMATS, defaultData } from "../config/constants.ts";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
 import { websocketService } from "./websocketService.ts";
@@ -111,20 +111,18 @@ export function readAppSettings() {
   if (!settings?.integrations?.metadata) {
     settings.integrations.metadata = {
       provider: "brainzmash",
-      baseUrl:
-        String(legacyMusicbrainz.customUrl || "")
-          .trim()
-          .replace(/\/ws\/2\/?$/, "") || DEFAULT_METADATA_BASE_URL,
+      baseUrl: String(legacyMusicbrainz.customUrl || "")
+        .trim()
+        .replace(/\/ws\/2\/?$/, ""),
       userAgentSuffix: "",
       enableNarrowFallbacks: true,
     };
   } else {
     settings.integrations.metadata = {
       ...settings.integrations.metadata,
-      baseUrl:
-        String(settings.integrations.metadata.baseUrl || "")
-          .trim()
-          .replace(/\/+$/, "") || DEFAULT_METADATA_BASE_URL,
+      baseUrl: String(settings.integrations.metadata.baseUrl || "")
+        .trim()
+        .replace(/\/+$/, ""),
     };
   }
   settings.security = {
@@ -177,13 +175,16 @@ function normalizeIntegrationPatch(
       ...metadata,
     };
     nextMetadata.provider = "brainzmash";
-    const baseUrlValidation = validateExternalUrl(nextMetadata.baseUrl || "");
-    if (!baseUrlValidation.valid) {
-      return `Invalid metadata base URL: ${baseUrlValidation.error}`;
+    const trimmedBaseUrl = String(nextMetadata.baseUrl || "").trim();
+    if (trimmedBaseUrl) {
+      const baseUrlValidation = validateExternalUrl(trimmedBaseUrl);
+      if (!baseUrlValidation.valid) {
+        return `Invalid metadata base URL: ${baseUrlValidation.error}`;
+      }
+      nextMetadata.baseUrl = baseUrlValidation.url.replace(/\/+$/, "");
+    } else {
+      nextMetadata.baseUrl = "";
     }
-    nextMetadata.baseUrl = String(baseUrlValidation.url || "")
-      .trim()
-      .replace(/\/+$/, "");
     nextMetadata.userAgentSuffix =
       typeof nextMetadata.userAgentSuffix === "string" ? nextMetadata.userAgentSuffix.trim() : "";
     nextMetadata.enableNarrowFallbacks = nextMetadata.enableNarrowFallbacks !== false;

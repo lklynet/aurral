@@ -25,6 +25,7 @@ const [
   },
   { db },
   { default: axios },
+  { readAppSettings, saveAppSettings },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
@@ -33,6 +34,7 @@ const [
   () => import("../backend/services/metadataProviderBudget.ts"),
   () => import("../backend/config/db-sqlite.ts"),
   () => import("../lib/axiosFetch.ts"),
+  () => import("../backend/services/appSettings.ts"),
 );
 
 const { getMusicbrainzApiBaseUrl } = apiClients;
@@ -51,25 +53,23 @@ afterAll(async () => {
 
 const OFFLINE_CHILD_ARGS = ["--import", new URL("./setup-env.ts", import.meta.url).href];
 
-test("default settings and unset backend config use BrainzMash metadata", () => {
+test("default settings and unset backend config use BrainzMash metadata", async () => {
   assert.equal(defaultData.settings.integrations.metadata.provider, "brainzmash");
-  assert.equal(defaultData.settings.integrations.metadata.baseUrl, DEFAULT_METADATA_BASE_URL);
+  assert.equal(defaultData.settings.integrations.metadata.baseUrl, "");
   assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
 
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...(dbOps.getSettings().integrations || {}),
-      metadata: {
-        provider: "brainzmash",
-        baseUrl: "",
-        userAgentSuffix: "",
-        enableNarrowFallbacks: true,
-      },
-    },
-  });
+  const saveBaseUrl = (baseUrl: string) =>
+    saveAppSettings({ integrations: { metadata: { baseUrl } } });
+  assert.equal((await saveBaseUrl("https://metadata.example/")).error, undefined);
+  assert.equal(getMusicbrainzApiBaseUrl(), "https://metadata.example");
+  assert.equal((await saveBaseUrl("")).error, undefined);
 
   assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
+  assert.equal(readAppSettings().integrations.metadata?.baseUrl, "");
+
+  vi.stubEnv("BRAINZMASH_BASE_URL", "http://metadata.local:5002");
+  assert.equal(brainzmashProvider.getMetadataBaseUrl(), "http://metadata.local:5002");
+  vi.unstubAllEnvs();
 });
 
 test("entity request failures back off for one hour, six hours, then one day", () => {

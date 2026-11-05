@@ -99,7 +99,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
   assert.equal("coverArtArchive" in integrations, false);
   assert.deepEqual(integrations.musicbrainz, { email: "owner@example.com" });
   assert.deepEqual(integrations.lastfm, { username: "listener" });
-  assert.equal(integrations.metadata.baseUrl, "https://lidarrapi.brainzmash.cc");
+  assert.equal(integrations.metadata.baseUrl, "");
 
   const admin = resolveUser("owner", "correct horse battery");
   assert.equal(admin?.role, "admin");

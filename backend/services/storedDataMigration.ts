@@ -1,6 +1,5 @@
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
-import { DEFAULT_METADATA_BASE_URL } from "../config/constants.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { migrateLegacyAdmin } from "../middleware/auth.ts";
 import { STORED_DATA_MIGRATION_SETTING, STORED_DATA_MIGRATION_VERSION } from "./honkerDb.ts";
@@ -56,7 +55,7 @@ function storeCurrentIntegrations() {
     .trim()
     .replace(/\/+$/, "");
   if (baseUrl === RETIRED_METADATA_BASE_URL) {
-    integrations.metadata = { ...integrations.metadata, baseUrl: DEFAULT_METADATA_BASE_URL };
+    integrations.metadata = { ...integrations.metadata, baseUrl: "" };
     changed = true;
   }
   if (integrations.lastfm && "discoverFlowArtworkStyle" in integrations.lastfm) {

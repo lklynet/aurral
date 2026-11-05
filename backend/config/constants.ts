@@ -115,7 +115,7 @@ export const defaultData = {
       },
       metadata: {
         provider: "brainzmash",
-        baseUrl: DEFAULT_METADATA_BASE_URL,
+        baseUrl: "",
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
       },
