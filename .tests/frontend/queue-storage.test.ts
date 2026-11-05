@@ -6,7 +6,11 @@ import {
   queueReducer,
   normalizeQueueTrack,
 } from "../../frontend/src/utils/audioQueue.ts";
-import { parseStoredQueue, serializeQueue } from "../../frontend/src/utils/queueStorage.ts";
+import {
+  parseStoredQueue,
+  remoteQueueFor,
+  serializeQueue,
+} from "../../frontend/src/utils/queueStorage.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 const makeTracks = (count: number, token: string = "old-token") =>
@@ -144,4 +148,23 @@ test("a saved queue does not replace something that is already playing", () => {
 
   assert.ok(saved);
   assert.equal(queueReducer(current, { type: "RESTORE_QUEUE", ...saved }), current);
+});
+
+test("other devices get the Aurral tracks around the current one, without previews", () => {
+  const state = queueReducer(
+    playing([
+      { id: "a", src: "/api/library/canonical-stream/1/11?token=secret" },
+      { id: "b", src: "https://cdn.example/preview.mp3" },
+      { id: "c", src: "/api/playlists/stream/job%201?token=secret" },
+    ]),
+    { type: "SKIP_TO", index: 2 },
+  );
+
+  assert.deepEqual(remoteQueueFor(state, 12.3456), {
+    streamPaths: ["/library/canonical-stream/1/11", "/playlists/stream/job%201"],
+    current: 1,
+    positionMs: 12346,
+  });
+  assert.equal(remoteQueueFor(queueReducer(state, { type: "SKIP_TO", index: 1 }), 0), null);
+  assert.equal(remoteQueueFor(initialQueueState, 0), null);
 });

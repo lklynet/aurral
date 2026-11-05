@@ -56,7 +56,7 @@ const [
   () => import("../../backend/services/qualityProfileService.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
-  () => import("../../backend/services/subsonicPlayQueueService.ts"),
+  () => import("../../backend/services/playQueueService.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/metadataProviderBudget.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),

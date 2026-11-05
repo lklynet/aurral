@@ -87,6 +87,7 @@ type SubsonicPayload = {
   searchResult3: Starred;
   randomSongs: { song: SubsonicEntry[] };
   topSongs: { song: SubsonicEntry[] };
+  playQueueByIndex: { entry: SubsonicEntry[]; currentIndex: number; position: number };
   playQueue: {
     entry: SubsonicEntry[];
     current: string;
@@ -624,6 +625,83 @@ test("saves a personal play queue through form POST, filters missing songs, and 
       undefined,
     );
   }
+});
+
+test("the web player and Subsonic clients resume the same play queue", async () => {
+  const song = requireFixture(
+    responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0],
+  );
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (playlist) => playlist.name === "Canonical Flow",
+  );
+  assert.ok(flow);
+  const flowSong = requireFixture(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry.find((entry) =>
+      entry.id.startsWith("flow-song:"),
+    ),
+  );
+  const body = new URLSearchParams({ current: flowSong.id, position: "4321" });
+  for (const id of [song.id, "song:missing", flowSong.id]) body.append("id", id);
+  assert.equal(
+    responseJson(await request("savePlayQueue", {}, { method: "POST", body })).status,
+    "ok",
+  );
+
+  const { queue } = await (await apiFetch("/api/play-queue")).json();
+  assert.equal(queue.changedBy, "canonical-test");
+  assert.deepEqual(
+    queue.tracks.map((track: { title: string }) => track.title),
+    [song.title, flowSong.title],
+  );
+  assert.equal(queue.currentIndex, 1);
+  assert.equal(queue.positionMs, 4321);
+  for (const track of queue.tracks) {
+    assert.equal((await apiFetch(`/api${track.streamPath}`)).status, 200);
+  }
+
+  const save = (streamPaths: string[], current: number) =>
+    apiFetch("/api/play-queue", {
+      method: "PUT",
+      body: JSON.stringify({ streamPaths, current, positionMs: 1500, device: "Aurral web" }),
+    }).then((response) => response.json());
+  const [librarySong, flowTrack] = queue.tracks;
+  const saved = await save([flowTrack.streamPath, "/artists/x/preview", librarySong.streamPath], 2);
+  assert.ok(saved.changed > 0);
+  const resumed = responseJson(await request("getPlayQueue")).playQueue;
+  assert.deepEqual(
+    resumed.entry.map((entry) => entry.id),
+    [flowSong.id, song.id],
+  );
+  assert.equal(resumed.current, song.id);
+  assert.equal(resumed.position, 1500);
+  assert.equal(resumed.changedBy, "Aurral web");
+  const byIndex = responseJson(await request("getPlayQueueByIndex")).playQueueByIndex;
+  assert.equal(byIndex.currentIndex, 1);
+  assert.equal(byIndex.position, 1500);
+
+  const indexed = { id: [song.id, flowSong.id], currentIndex: 1, position: "249.6" };
+  assert.equal(responseJson(await request("savePlayQueueByIndex", indexed)).status, "ok");
+  const fromIndexed = (await (await apiFetch("/api/play-queue")).json()).queue;
+  assert.equal(fromIndexed.tracks[fromIndexed.currentIndex].title, flowSong.title);
+  assert.equal(fromIndexed.positionMs, 250);
+  assert.equal(
+    responseJson(await request("savePlayQueueByIndex", { ...indexed, currentIndex: 2 })).status,
+    "failed",
+  );
+  assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, flowSong.id);
+  await save([librarySong.streamPath], 0);
+
+  assert.deepEqual(await save([librarySong.streamPath, "/artists/x/preview"], 1), {
+    changed: null,
+  });
+  assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
+
+  const close = (device: string) =>
+    apiFetch("/api/play-queue", { method: "DELETE", body: JSON.stringify({ device }) });
+  assert.equal((await close("Aurral phone")).status, 204);
+  assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
+  await close("Aurral web");
+  assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
 });
 
 test("transcodes requested formats and bitrate limits while preserving raw streams and downloads", async () => {

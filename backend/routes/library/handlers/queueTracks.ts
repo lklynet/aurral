@@ -1,0 +1,42 @@
+import { selectCanonicalFile } from "../../../services/canonicalFileSelector.ts";
+import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
+import { buildPublicLibrary } from "./libraryIndex.ts";
+
+export function toQueueTracks(trackIds: number[]) {
+  const library = buildPublicLibrary(getLibraryForTrackIds({ ids: trackIds, availableOnly: true }));
+  const artists = new Map(library.artists.map((artist) => [artist.id, artist]));
+  const albums = new Map(library.albums.map((album) => [album.id, album]));
+  const tracks = new Map(library.tracks.map((track) => [track.id, track]));
+  return trackIds.flatMap((trackId) => {
+    const track = tracks.get(trackId);
+    const playable = (track?.albums ?? []).flatMap(({ albumId }) => {
+      const album = albums.get(albumId);
+      const file = album && selectCanonicalFile(track?.files, album.id, album.managedBy ?? null);
+      return album && file?.available ? [{ album, file }] : [];
+    });
+    const [first] = playable;
+    if (!track || !first) return [];
+    const { album, file } = first;
+    const artist = artists.get(album.artistId);
+    const artworkUrl = "artworkUrl" in track ? track.artworkUrl : null;
+    return [
+      {
+        id: String(track.id),
+        title: track.title || "Unknown Track",
+        artist: track.artistName || artist?.name || "Unknown Artist",
+        album: album.title || "Unknown Album",
+        streamPath: `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+        streamFormat: file.format || null,
+        quality: file.quality?.quality?.name || file.quality?.audioFormat || null,
+        durationMs: file.durationMs ?? null,
+        artistMbid: artist?.mbid ?? null,
+        albumMbid: album.releaseGroupMbid || album.mbid || null,
+        trackMbid: track.mbid ?? null,
+        libraryTrackId: track.id,
+        libraryAlbumId: album.id,
+        artworkUrl: artworkUrl || album.coverUrl,
+        artworkSource: artworkUrl ? "track" : "album",
+      },
+    ];
+  });
+}
