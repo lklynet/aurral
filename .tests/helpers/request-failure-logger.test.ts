@@ -50,6 +50,19 @@ test("failed API response reasons mask credentials before logging", async () => 
   });
 });
 
+test("requests the client abandoned are not logged as failures", async () => {
+  const events: Parameters<typeof logger.error>[] = [];
+  const client = new AbortController();
+  const app = new Hono<AppEnv>()
+    .use(createRequestFailureLogger({ error: (...args) => events.push(args) }))
+    .get("/api/search/unified", () => {
+      client.abort("Client connection prematurely closed.");
+      return Response.json({ error: "Failed to run unified search" }, { status: 500 });
+    });
+  await app.request("/api/search/unified?q=orwells", { signal: client.signal });
+  assert.deepEqual(events, []);
+});
+
 test("routine client errors are not logged", async () => {
   assert.deepEqual(await sendRequest({ status: 404, body: { error: "Not found" } }), []);
 });

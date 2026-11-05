@@ -27,7 +27,7 @@ export function createRequestFailureLogger(log: Pick<typeof logger, "error"> = l
     await next();
     const { status } = c.res;
     const { path } = c.req;
-    if (status < 500) return;
+    if (status < 500 || c.req.raw.signal.aborted) return;
     if (!path.startsWith("/api/") && path !== "/rest" && !path.startsWith("/rest/")) return;
     const reason = await responseReason(c.res);
     log.error("http", "Request failed", {
