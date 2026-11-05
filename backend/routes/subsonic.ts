@@ -4,7 +4,7 @@ import * as v from "valibot";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
-import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.ts";
+import { getPlayQueue, getPlayQueueByIndex, savePlayQueue } from "../services/playQueueService.ts";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { getLyricsBySongId } from "../services/lyricsService.ts";
@@ -62,8 +62,12 @@ const SUPPORTED_EXTENSIONS = [
   { name: "topSongsByArtistId", versions: [1] },
   { name: "songLyrics", versions: [1] },
   { name: "transcodeOffset", versions: [1] },
+  { name: "indexBasedQueue", versions: [1] },
 ];
 type SubsonicFormat = "xml" | "json";
+
+const isNonNegativeInteger = (value: string) =>
+  /^\d+$/.test(value) && Number.isSafeInteger(Number(value));
 type SubsonicError = { code: number; message: string; helpUrl?: string };
 type SubsonicParams = Record<string, unknown>;
 type SubsonicFailure = [code: number, message: string, helpUrl?: string];
@@ -478,21 +482,35 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   if (method === "getbookmarks") {
     return ok({ bookmarks: { bookmark: [] } });
   }
-  if (method === "saveplayqueue") {
-    const position = getParameter(params, "position");
-    if (position && (!/^\d+$/.test(position) || !Number.isSafeInteger(Number(position)))) {
-      return fail(0, "position must be a nonnegative integer in milliseconds");
+  if (method === "saveplayqueue" || method === "saveplayqueuebyindex") {
+    const ids = getParameters(params, ["id"]);
+    const rawPosition = getParameter(params, "position");
+    const position = rawPosition ? Math.round(Number(rawPosition)) : null;
+    if (position != null && !(Number.isSafeInteger(position) && position >= 0)) {
+      return fail(0, "position must be a nonnegative number of milliseconds");
+    }
+    let current = getParameter(params, "current");
+    if (method === "saveplayqueuebyindex" && ids.length) {
+      const index = getParameter(params, "currentIndex");
+      if (!index) return fail(10, "Required parameter is missing: currentIndex");
+      if (!isNonNegativeInteger(index) || Number(index) >= ids.length) {
+        return fail(0, "currentIndex must point at one of the ids");
+      }
+      current = ids[Number(index)] ?? "";
     }
     savePlayQueue(user, {
-      ids: getParameters(params, ["id"]),
-      current: getParameter(params, "current"),
-      position: position ? Number(position) : null,
+      ids,
+      current,
+      position,
       changedBy: getParameter(params, "c"),
     });
     return ok();
   }
   if (method === "getplayqueue") {
     return ok({ playQueue: getPlayQueue(user) });
+  }
+  if (method === "getplayqueuebyindex") {
+    return ok({ playQueueByIndex: getPlayQueueByIndex(user) });
   }
   if (method === "getalbumlist" || method === "getalbumlist2") {
     const albums = getAlbumList(

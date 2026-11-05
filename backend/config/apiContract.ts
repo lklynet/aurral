@@ -14,5 +14,6 @@ export const API_CONTRACT = {
     "flowAutoDownload",
     "pluginActions",
     "radio",
+    "playQueue",
   ],
 };

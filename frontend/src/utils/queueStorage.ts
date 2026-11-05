@@ -1,3 +1,4 @@
+import { apiPathOf } from "./api/core.ts";
 import type { QueueAction, QueueSource, RepeatMode } from "./audioQueue.ts";
 
 export const QUEUE_STORAGE_KEY = "aurral.player.queue.v1";
@@ -77,16 +78,41 @@ function restoredTrack(track: Record<string, unknown>, token: string | null | un
   return rest;
 }
 
+const positionOrZero = (position: number) =>
+  Number.isFinite(position) && position > 0 ? position : 0;
+
+function storedWindow(state: Pick<QueueSnapshot, "currentIndex" | "playbackOrder">) {
+  const start = Math.max(
+    0,
+    Math.min(state.currentIndex - HISTORY_KEPT, state.playbackOrder.length - MAX_STORED_TRACKS),
+  );
+  return { start, window: state.playbackOrder.slice(start, start + MAX_STORED_TRACKS) };
+}
+
+export function remoteQueueFor(
+  state: Pick<QueueSnapshot, "currentIndex" | "playbackOrder"> & {
+    queue: { src?: string | null }[];
+  },
+  position: number,
+) {
+  if (state.currentIndex < 0) return null;
+  const { start, window } = storedWindow(state);
+  const paths = window.map((queueIndex) => apiPathOf(state.queue[queueIndex]?.src ?? ""));
+  const current = state.currentIndex - start;
+  if (!paths[current]) return null;
+  return {
+    streamPaths: paths.filter((path) => path != null),
+    current: paths.slice(0, current).filter((path) => path != null).length,
+    positionMs: Math.round(positionOrZero(position) * 1000),
+  };
+}
+
 export function serializeQueue(
   state: QueueSnapshot,
   { owner, position = 0 }: { owner: string | null; position?: number },
 ) {
   if (owner == null || state.currentIndex < 0 || state.queue.length === 0) return null;
-  const start = Math.max(
-    0,
-    Math.min(state.currentIndex - HISTORY_KEPT, state.playbackOrder.length - MAX_STORED_TRACKS),
-  );
-  const window = state.playbackOrder.slice(start, start + MAX_STORED_TRACKS);
+  const { start, window } = storedWindow(state);
   const kept = new Set(window);
   const keptQueue = [...state.queue.entries()].filter(([index]) => kept.has(index));
   const storedIndexOf = new Map<number, number>(
@@ -101,7 +127,7 @@ export function serializeQueue(
     isShuffleEnabled: state.isShuffleEnabled,
     repeatMode: state.repeatMode,
     source: state.source ?? null,
-    position: Number.isFinite(position) && position > 0 ? position : 0,
+    position: positionOrZero(position),
   });
 }
 

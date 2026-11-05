@@ -36,8 +36,15 @@ import {
   getRequestToken,
   resolveAuthenticatedApiAssetUrl,
 } from "../utils/api/core";
-import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
+import {
+  QUEUE_STORAGE_KEY,
+  parseStoredQueue,
+  remoteQueueFor,
+  serializeQueue,
+} from "../utils/queueStorage";
 import { parseResponse } from "hono/client";
+import { playQueueClient } from "../utils/api/clients/playQueue.ts";
+import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { playEventsClient } from "../utils/api/clients/playEvents.ts";
 import { libraryRadioClient } from "../utils/api/clients/libraryRadio.ts";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
@@ -55,6 +62,8 @@ const DEFAULT_VOLUME = 0.7;
 const PRELOAD_LEAD_SECONDS = 20;
 const POSITION_SAVE_MS = 5000;
 const PLAYER_CHANNEL = "aurral.player";
+const DEVICE_KEY = "aurral.player.device";
+const REMOTE_SAVE_MS = 30000;
 const AUTOPLAY_KEY = "aurral.player.autoplay";
 const RADIO_REFILL_AT = 2;
 const AUTOPLAY_SEED_TRACKS = 5;
@@ -146,6 +155,33 @@ function writeAutoplay(enabled: boolean) {
   } catch {}
 }
 
+function readDevice() {
+  try {
+    const stored = window.localStorage.getItem(DEVICE_KEY);
+    if (stored) return stored;
+  } catch {}
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const created = `Aurral web ${suffix}`;
+  try {
+    window.localStorage.setItem(DEVICE_KEY, created);
+  } catch {}
+  return created;
+}
+
+const toQueueTrack = ({
+  streamPath,
+  artworkUrl,
+  ...track
+}: QueueTrackInput & { streamPath: string; artworkUrl?: string | null }) =>
+  normalizeQueueTrack({
+    ...track,
+    src: buildAuthenticatedApiUrl(streamPath),
+    artwork: resolveAuthenticatedApiAssetUrl(artworkUrl),
+    recordHistory: true,
+  });
+
 async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
   const exclude = queue
     .flatMap((entry) => (entry.libraryTrackId == null ? [] : [String(entry.libraryTrackId)]))
@@ -153,14 +189,7 @@ async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
   const { tracks } = await parseResponse(
     libraryRadioClient.radio.$post({ json: { ...seed, exclude } }),
   );
-  return tracks.map(({ streamPath, artworkUrl, ...track }) =>
-    normalizeQueueTrack({
-      ...track,
-      src: buildAuthenticatedApiUrl(streamPath),
-      artwork: resolveAuthenticatedApiAssetUrl(artworkUrl),
-      recordHistory: true,
-    }),
-  );
+  return tracks.map(toQueueTrack);
 }
 
 function trackAt(state: QueueState, playbackIndex: number) {
@@ -208,6 +237,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const restoredOwnerRef = useRef<string | null>(null);
   const resumeAtRef = useRef<{ entryId: string; position: number } | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const [device] = useState(readDevice);
+  const remoteSentRef = useRef<{ key: string; positionMs: number; at: number } | null>(null);
+  const remoteSeenRef = useRef(0);
+  const userActionsRef = useRef(0);
 
   const { volume, muted, setVolume, setMuted } = useSharedVolume();
   const [autoplayEnabled, setAutoplayState] = useState(readAutoplay);
@@ -218,7 +251,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
 
   const [state, applyAction] = useReducer(queueReducer, initialQueueState);
   const dispatch = useCallback((action: QueueAction) => {
-    if (!PASSIVE_ACTIONS.has(action.type)) ownsQueueRef.current = true;
+    if (!PASSIVE_ACTIONS.has(action.type)) {
+      ownsQueueRef.current = true;
+      userActionsRef.current += 1;
+    }
     applyAction(action);
   }, []);
   const stateRef = useRef(state);
@@ -577,7 +613,39 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     loadedSignatureRef.current = null;
     dispatch({ type: "CLEAR_QUEUE" });
     engine.unload();
-  }, [dispatch, engine]);
+    remoteSentRef.current = null;
+    if (owner) playQueueClient.$delete({ json: { device } }).catch(() => {});
+  }, [device, dispatch, engine, owner]);
+
+  const isRunning = useCallback(() => {
+    const snapshot = engine.getSnapshot();
+    return snapshot.isPlaying || snapshot.isStarting;
+  }, [engine]);
+
+  const pushRemote = useCallback(
+    (s: QueueState, position: number) => {
+      const remote = remoteQueueFor(s, position);
+      if (!remote) return;
+      const key = JSON.stringify([remote.streamPaths, remote.current]);
+      const sent = remoteSentRef.current;
+      const now = Date.now();
+      if (sent?.key === key) {
+        const moved = Math.abs(sent.positionMs - remote.positionMs) >= 1000;
+        if (!moved || (isRunning() && now - sent.at < REMOTE_SAVE_MS)) return;
+      }
+      remoteSentRef.current = { key, positionMs: remote.positionMs, at: now };
+      parseResponse(
+        playQueueClient.$put({ json: { ...remote, device } }, { init: { keepalive: true } }),
+      )
+        .then(({ changed }) => {
+          if (changed) remoteSeenRef.current = Math.max(remoteSeenRef.current, changed);
+        })
+        .catch(() => {
+          if (remoteSentRef.current?.key === key) remoteSentRef.current = null;
+        });
+    },
+    [device, isRunning],
+  );
 
   const saveQueue = useCallback(() => {
     if (!ownsQueueRef.current || !owner || restoredOwnerRef.current !== owner) return;
@@ -591,7 +659,36 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       position = resumeAt.position;
     }
     writeStoredQueue(serializeQueue(s, { owner, position }));
-  }, [engine, owner]);
+    pushRemote(s, position);
+  }, [engine, owner, pushRemote]);
+
+  const pullRemote = useCallback(async () => {
+    if (!owner || restoredOwnerRef.current !== owner || isRunning()) return;
+    const actions = userActionsRef.current;
+    const { queue } = await parseResponse(playQueueClient.$get()).catch(() => ({ queue: null }));
+    if (!queue || queue.changedBy === device || queue.changed <= remoteSeenRef.current) return;
+    if (restoredOwnerRef.current !== owner || userActionsRef.current !== actions || isRunning()) {
+      return;
+    }
+    remoteSeenRef.current = queue.changed;
+    const tracks = queue.tracks.map(toQueueTrack);
+    const action: QueueAction = {
+      type: "RESTORE_QUEUE",
+      queue: tracks,
+      playbackOrder: tracks.map((_, index) => index),
+      currentIndex: queue.currentIndex,
+    };
+    const position = queue.positionMs / 1000;
+    const restored = queueReducer(queueReducer(stateRef.current, { type: "CLEAR_QUEUE" }), action);
+    const track = trackAt(restored, restored.currentIndex);
+    ownsQueueRef.current = false;
+    loadedSignatureRef.current = null;
+    engine.unload();
+    resumeAtRef.current = track ? { entryId: track.entryId, position } : null;
+    applyAction({ type: "CLEAR_QUEUE" });
+    applyAction(action);
+    writeStoredQueue(serializeQueue(restored, { owner, position }));
+  }, [device, engine, isRunning, owner]);
 
   useEffect(() => {
     if (restoredOwnerRef.current === owner) return;
@@ -600,6 +697,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     let cur = stateRef.current;
     if (previousOwner != null) {
       ownsQueueRef.current = false;
+      remoteSentRef.current = null;
+      remoteSeenRef.current = 0;
       resumeAtRef.current = null;
       loadedSignatureRef.current = null;
       engine.unload();
@@ -615,6 +714,26 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     resumeAtRef.current = track ? { entryId: track.entryId, position: saved.position } : null;
     applyAction(action);
   }, [engine, owner]);
+
+  useEffect(() => {
+    if (!owner) return undefined;
+    void pullRemote();
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") void pullRemote();
+    };
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
+  }, [owner, pullRemote]);
+
+  useWebSocketChannel(
+    "play-queue",
+    (message) => {
+      if (message.type === "play_queue_changed" && message.changedBy !== device) {
+        void pullRemote();
+      }
+    },
+    { enabled: Boolean(owner) },
+  );
 
   useEffect(() => {
     saveQueue();

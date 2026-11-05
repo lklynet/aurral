@@ -305,6 +305,7 @@ test("system and browsing responses match the Subsonic and OpenSubsonic schemas"
   await assertValid("getNowPlaying");
   await assertValid("getBookmarks");
   await assertValid("getPlayQueue");
+  await assertValid("getPlayQueueByIndex");
   await assertValid("getIndexes");
   await assertValid("getGenres");
   await assertValid("getUser", { username: "alice" });

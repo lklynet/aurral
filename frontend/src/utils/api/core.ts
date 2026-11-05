@@ -242,6 +242,12 @@ const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl
 export const resolveApiPath = (path: string) =>
   joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
 
+export const apiPathOf = (url: string) => {
+  const [path = ""] = url.split("?");
+  const base = getApiBaseUrl();
+  return path.startsWith(`${base}/`) ? path.slice(base.length) : null;
+};
+
 export const buildAuthenticatedApiUrl = (path: string, params: Record<string, unknown> = {}) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path || "")

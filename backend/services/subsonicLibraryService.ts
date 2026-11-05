@@ -48,6 +48,7 @@ import type {
 import type {
   LibraryAlbumsRow,
   LibraryArtistsRow,
+  LibraryTracksRow,
   SubsonicStarChangesRow,
   SubsonicStarsRow,
 } from "../db/rows.ts";
@@ -1918,6 +1919,46 @@ export function resolveStreamPath(value: string, user: SubsonicUser) {
   const album = findAlbumForTrack(library, track);
   const file = firstFile(track, album?.id, album?.managedBy);
   return file?.available && file.path ? file.path : null;
+}
+
+const libraryTrackKey = db.prepare<[number], Pick<LibraryTracksRow, "identity_key">>(
+  "SELECT identity_key FROM library_tracks WHERE id = ?",
+);
+const libraryTrackByKey = db.prepare<[string], Pick<LibraryTracksRow, "id">>(
+  "SELECT id FROM library_tracks WHERE identity_key = ?",
+);
+
+function playlistSongId(user: SubsonicUser, job: DownloadJob) {
+  const flow = job.playlistType ? flowPlaylistConfig.getFlowForUser(user, job.playlistType) : null;
+  if (flow && playlistOwnsJob(flow, job)) return idFor("flow-song", `${flow.id}:${job.id}`);
+  const shared = flowPlaylistConfig
+    .getStaticPlaylistsForUser(user)
+    .find((playlist) => playlistOwnsJob(playlist, job));
+  return shared ? idFor("shared-song", `${shared.id}:${job.id}`) : null;
+}
+
+export function songIdForQueueEntry(
+  user: SubsonicUser,
+  entry: { trackId: number } | { jobId: string },
+) {
+  if ("trackId" in entry) {
+    const row = libraryTrackKey.get(entry.trackId);
+    return row ? idFor("song", row.identity_key) : null;
+  }
+  const job = downloadTracker.getJob(entry.jobId);
+  if (!job || !isPlayableJob(job)) return null;
+  const owned = findAvailableLibraryTrack(trackFromJob(job));
+  return owned?.track.identityKey
+    ? idFor("song", owned.track.identityKey)
+    : playlistSongId(user, job);
+}
+
+export function queueEntryForSong(user: SubsonicUser, value: string) {
+  const playlistEntry = playlistJobFromId(user, value);
+  if (playlistEntry) return { job: playlistEntry.job };
+  const parsed = parseId(value);
+  const row = parsed?.kind === "song" ? libraryTrackByKey.get(parsed.key) : undefined;
+  return row ? { trackId: row.id } : null;
 }
 
 const storedImageUrl = (key: string) => dbOps.getImage(key)?.imageUrl || null;
