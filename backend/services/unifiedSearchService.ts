@@ -156,12 +156,14 @@ function toSong(
   const artistKey = searchKey(artistName);
   const songKey = releaseKey(track.title_short || track.title);
   const albumKey = releaseKey(track.album?.title);
-  const album = albums.find(
-    (entry) =>
-      entry.id &&
-      searchKey(entry.artistName) === artistKey &&
-      [albumKey, songKey].includes(releaseKey(entry.title)),
-  );
+  const byArtistTitle = (titleKey: string) =>
+    albums.find(
+      (entry) =>
+        entry.id &&
+        searchKey(entry.artistName) === artistKey &&
+        releaseKey(entry.title) === titleKey,
+    );
+  const album = byArtistTitle(albumKey) ?? byArtistTitle(songKey);
   const artist = artists.find((entry) => searchKey(entry.name) === artistKey);
   return {
     type: "track",

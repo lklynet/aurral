@@ -218,6 +218,7 @@ function GlobalSearch() {
   const closeAutocomplete = useCallback(() => {
     setSuggestionsOpen(false);
     setSuggestionIndex(-1);
+    setAlbumOverrides({});
   }, []);
 
   useEffect(() => {

@@ -8,8 +8,8 @@ import {
   searchDocument,
 } from "../../backend/services/searchText.ts";
 
-test("parseSearchQuery keeps words separate unless every word is short", () => {
-  assert.deepEqual(parseSearchQuery("AC/DC")?.terms, ["acdc"]);
+test("parseSearchQuery keeps each distinct word as a term", () => {
+  assert.deepEqual(parseSearchQuery("AC/DC")?.terms, ["ac", "dc"]);
   assert.deepEqual(parseSearchQuery("as long as you love me")?.terms, [
     "as",
     "long",

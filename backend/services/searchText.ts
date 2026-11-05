@@ -24,9 +24,7 @@ export type SearchQuery = { key: string; bare: string; words: string[]; terms: s
 export function parseSearchQuery(value: unknown): SearchQuery | null {
   const words = searchWords(value);
   if (!words.length) return null;
-  const key = words.join("");
-  const terms = words.some((word) => word.length >= 3) ? [...new Set(words)] : [key];
-  return { key, bare: withoutArticle(words), words, terms };
+  return { key: words.join(""), bare: withoutArticle(words), words, terms: [...new Set(words)] };
 }
 
 function withoutArticle(words: string[]) {

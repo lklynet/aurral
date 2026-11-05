@@ -239,10 +239,13 @@ test("library search ranks exact names first and matches terms across fields", a
     (await search("lantern harbor")).tracks.map((item) => item.title),
     ["Lantern Song"],
   );
-  assert.deepEqual(
-    (await search("u2 opener", 5)).tracks.map((item) => item.artistName),
-    ["U2"],
-  );
+  for (const q of ["u2 opener", "u2"]) {
+    assert.deepEqual(
+      (await search(q, 5)).tracks.map((item) => item.artistName),
+      ["U2"],
+      q,
+    );
+  }
 });
 
 test("library search finds the user's playlists by name, then by tracklist", async () => {
@@ -391,13 +394,14 @@ test("unified search folds Deezer songs into the results with their catalog albu
       type: "Single",
       artist: "Backstreet Boys",
     },
+    { id: "bsb-album", title: "Backstreet's Back", type: "Album", artist: "Backstreet Boys" },
   ]);
 
   const body = await unifiedSearch("as long as you love me");
   assert.equal(body.status, "ok");
   assert.deepEqual(
     [body.top.type, body.top.artistName, body.top.albumMbid],
-    ["track", "Backstreet Boys", "bsb-single"],
+    ["track", "Backstreet Boys", "bsb-album"],
   );
   assert.deepEqual(
     body.tracks.map((track) => [track.artistName, track.coverUrl]),

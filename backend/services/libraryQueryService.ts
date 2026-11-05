@@ -2463,22 +2463,30 @@ function searchLibraryIds(
        LIMIT ?`,
     )
     .all(entity.kind, search.key, `${search.key}\u{10FFFF}`, ...media.parameters, wanted);
-  const byText = search.match
-    ? db
-        .prepare<unknown[], SearchCandidate>(
-          `SELECT ${columns}
-           FROM library_search_fts AS search_fts
-           CROSS JOIN library_search_documents AS search_document
-             ON search_document.id = search_fts.rowid
-           CROSS JOIN ${entity.join}
-           WHERE library_search_fts MATCH ?
-             AND search_document.entity_kind = ?
-             AND ${searchTermsSql(search)}
-             AND ${media.sql}
-           LIMIT ?`,
-        )
-        .all(search.match, entity.kind, ...search.terms, ...media.parameters, wanted)
-    : [];
+  const byText = db
+    .prepare<unknown[], SearchCandidate>(
+      `SELECT ${columns}
+       FROM ${
+         search.match
+           ? `library_search_fts AS search_fts
+              CROSS JOIN library_search_documents AS search_document
+                ON search_document.id = search_fts.rowid`
+           : "library_search_documents AS search_document NOT INDEXED"
+       }
+       CROSS JOIN ${entity.join}
+       WHERE ${search.match ? "library_search_fts MATCH ? AND" : ""}
+         search_document.entity_kind = ?
+         AND ${searchTermsSql(search)}
+         AND ${media.sql}
+       LIMIT ?`,
+    )
+    .all(
+      ...(search.match ? [search.match] : []),
+      entity.kind,
+      ...search.terms,
+      ...media.parameters,
+      wanted,
+    );
   const seen = new Set<number>();
   return [...byTitle, ...byText]
     .filter(({ id }) => !seen.has(id) && seen.add(id))
