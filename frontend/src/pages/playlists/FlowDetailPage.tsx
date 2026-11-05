@@ -42,6 +42,7 @@ import {
   formatFlowTrackLabel,
   formatTrackTotal,
   getFlowActivityMessage,
+  optionMenuItem,
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
@@ -114,6 +115,8 @@ function FlowDetail({ flow }: { flow: Flow }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);
+  const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
+  const [downloadingSaved, setDownloadingSaved] = useState(false);
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
@@ -194,6 +197,35 @@ function FlowDetail({ flow }: { flow: Flow }) {
     } catch (err) {
       showError(getApiErrorMessage(err, "Failed to download flow tracks"));
     }
+  };
+
+  const updateSetting = async (
+    json: { autoDownload?: boolean; recordHistory?: boolean; showInLibrary?: boolean },
+    successMessage: string,
+  ) => {
+    try {
+      await parseResponse(
+        flowsClient.flows[":flowId"].$put({ param: { flowId: encodeURIComponent(flow.id) }, json }),
+      );
+      showSuccess(successMessage);
+      await fetchStatus();
+      return true;
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to update flow setting"));
+      return false;
+    }
+  };
+
+  const enableAutoDownload = async () => {
+    if (await updateSetting({ autoDownload: true }, "New tracks will download automatically"))
+      setConfirmDownloadSaved(savedCount > 0);
+  };
+
+  const downloadSavedNow = async () => {
+    setDownloadingSaved(true);
+    await handleDownloadSaved();
+    setDownloadingSaved(false);
+    setConfirmDownloadSaved(false);
   };
 
   const handleCopyLidarrUrl = async () => {
@@ -304,6 +336,41 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   disabled: Number(stats?.done || 0) === 0,
                   onSelect: handleConvertToStatic,
                 },
+                optionMenuItem({
+                  id: "auto-download",
+                  label: "Download automatically",
+                  checked: flow.autoDownload !== false,
+                  separatorBefore: true,
+                  onSelect: () =>
+                    flow.autoDownload === false
+                      ? enableAutoDownload()
+                      : updateSetting(
+                          { autoDownload: false },
+                          "New tracks will wait for you to download them",
+                        ),
+                }),
+                optionMenuItem({
+                  id: "scrobble",
+                  label: "Scrobble tracks",
+                  checked: flow.recordHistory !== false,
+                  onSelect: () =>
+                    updateSetting(
+                      { recordHistory: flow.recordHistory === false },
+                      flow.recordHistory === false
+                        ? "Scrobbling turned on"
+                        : "Scrobbling turned off",
+                    ),
+                }),
+                optionMenuItem({
+                  id: "show-in-library",
+                  label: "Show in library",
+                  checked: flow.showInLibrary === true,
+                  onSelect: () =>
+                    updateSetting(
+                      { showInLibrary: flow.showInLibrary !== true },
+                      flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
+                    ),
+                }),
                 ...(lidarrConnected
                   ? [
                       {
@@ -360,6 +427,18 @@ function FlowDetail({ flow }: { flow: Flow }) {
         busy={deleting}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
+      />
+      <ConfirmModal
+        open={confirmDownloadSaved}
+        title={`Download ${formatTrackTotal(savedCount)} already in this flow?`}
+        body="New tracks will download automatically from now on."
+        confirmLabel="Download now"
+        cancelLabel="Not now"
+        tone="primary"
+        busyLabel="Downloading"
+        busy={downloadingSaved}
+        onCancel={() => setConfirmDownloadSaved(false)}
+        onConfirm={downloadSavedNow}
       />
     </CollectionPage>
   );
