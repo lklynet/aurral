@@ -47,6 +47,7 @@ const SIDEBAR_MIN = 56;
 const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 208;
 const MOBILE_SHEET_EXIT_MS = 180;
+const PLAYER_MINIMIZED_KEY = "playerMinimized";
 
 const SettingsModal = lazy(() => import("../pages/Settings/SettingsModal"));
 
@@ -94,6 +95,19 @@ function Layout({ children, headerActions }: LayoutProps) {
     }
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [playerMinimized, setPlayerMinimized] = useState(() => {
+    try {
+      return localStorage.getItem(PLAYER_MINIMIZED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const changePlayerMinimized = useCallback((minimized: boolean) => {
+    setPlayerMinimized(minimized);
+    try {
+      localStorage.setItem(PLAYER_MINIMIZED_KEY, String(minimized));
+    } catch {}
+  }, []);
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
@@ -444,7 +458,12 @@ function Layout({ children, headerActions }: LayoutProps) {
       data-resizing={isResizing || undefined}
       style={{ "--sidebar-width": `${sidebarWidth}px` }}
     >
-      <Sidebar mode={sidebarMode} width={sidebarWidth} onToggle={toggleSidebarPin} />
+      <Sidebar
+        mode={sidebarMode}
+        width={sidebarWidth}
+        onToggle={toggleSidebarPin}
+        onRestorePlayer={playerMinimized ? () => changePlayerMinimized(false) : null}
+      />
 
       <div
         className={`sidebar-resize-handle${isResizing ? " is-active" : ""}`}
@@ -471,7 +490,9 @@ function Layout({ children, headerActions }: LayoutProps) {
             : sidebarMode === "icons"
               ? " app-content--sidebar-icons"
               : ""
-        }${isPlayerActive ? " app-content--player-active" : ""}`}
+        }${isPlayerActive ? " app-content--player-active" : ""}${
+          playerMinimized ? "" : " app-content--player-docked"
+        }`}
       >
         <header className="app-topbar">
           {!sectionNav ? (
@@ -516,9 +537,7 @@ function Layout({ children, headerActions }: LayoutProps) {
           data-scrolled={isMainScrolled || undefined}
         >
           <main
-            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}${
-              isPlayerActive ? " app-main--player-active" : ""
-            }`}
+            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}`}
             ref={mainScrollRef}
             onScroll={(event) => {
               scrollPositionsRef.current.set(location.key, event.currentTarget.scrollTop);
@@ -551,7 +570,7 @@ function Layout({ children, headerActions }: LayoutProps) {
           </div>
         </div>
 
-        <GlobalPlayerBar />
+        <GlobalPlayerBar minimized={playerMinimized} onMinimizedChange={changePlayerMinimized} />
 
         {mobileMenuPresence !== "closed" && (
           <div

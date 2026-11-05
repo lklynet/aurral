@@ -9,14 +9,12 @@ import {
   Library,
   Menu,
   Newspaper,
-  Settings,
   Sparkles,
   Ticket,
   type IconComponent,
 } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
-import { SettingsLink } from "../pages/Settings/settingsRoute";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
 import {
   ACTIVITY_VIEWS,
@@ -28,9 +26,9 @@ import {
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { lastRecommendedPath, RECOMMENDED_PATH } from "../navigation/recommendedPath";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
-import { useStorageHealth } from "../hooks/useStorageHealth";
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import TooltipButton from "./TooltipButton";
+import SidebarPlayer from "./SidebarPlayer";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -41,6 +39,7 @@ type SidebarProps = {
   mode: "hidden" | "icons" | "full";
   width?: number;
   onToggle: () => void;
+  onRestorePlayer: (() => void) | null;
 };
 
 type SidebarNavView = { id: string; label: string; path?: string };
@@ -55,7 +54,7 @@ type SidebarNavItem = {
   subnav?: SidebarNavView[];
 };
 
-function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
+function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
   const logo = useSiteLogo();
@@ -64,12 +63,8 @@ function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
-  const canManageServer = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
-  });
-  const { hasFailure: hasStorageFailure } = useStorageHealth({
-    enabled: canManageServer,
   });
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
@@ -419,35 +414,15 @@ function Sidebar({ mode, width = 208, onToggle }: SidebarProps) {
             </nav>
           </div>
 
-          <div className="sidebar-settings-group">
-            <SettingsLink
-              to={hasStorageFailure ? "status" : ""}
-              onMouseEnter={isIcons ? positionSidebarTooltip : undefined}
-              onFocus={isIcons ? positionSidebarTooltip : undefined}
-              className={`sidebar-link sidebar-link--${isIcons ? "icons" : "full"}`}
-              aria-label={
-                isIcons ? (hasStorageFailure ? "Settings (storage issues)" : "Settings") : undefined
-              }
-            >
-              <span className="sidebar-link__icon-wrap">
-                <Settings className="sidebar-link__icon" aria-hidden="true" />
-                {hasStorageFailure ? (
-                  <span
-                    className="sidebar-link__activity sidebar-link__activity--alert"
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </span>
-              {isIcons ? (
-                <span className="sidebar-tooltip">Settings</span>
-              ) : (
-                <span className="sidebar-link__label">
-                  Settings
-                  {hasStorageFailure ? <span className="sr-only"> (storage issues)</span> : null}
-                </span>
-              )}
-            </SettingsLink>
-          </div>
+          {onRestorePlayer ? (
+            <div className="sidebar-player-group">
+              <SidebarPlayer
+                iconsOnly={isIcons}
+                onRestore={onRestorePlayer}
+                onTooltip={isIcons ? positionSidebarTooltip : undefined}
+              />
+            </div>
+          ) : null}
         </div>
       </aside>
     </>
