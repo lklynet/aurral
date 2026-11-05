@@ -31,6 +31,7 @@ import {
   denyBlockedJob,
 } from "../../../services/downloadJobs/blockedJobReview.ts";
 import { invalidateRequestsCache } from "../../requests.ts";
+import { getLibraryMediaFile } from "../../../services/libraryMediaStore.ts";
 import {
   decorateJobQuality,
   getQualityProfile,
@@ -92,7 +93,7 @@ function getAccessibleManualSearchJob(
   { mode = "missing", playlistId = null }: { mode?: ManualSearchMode; playlistId?: unknown } = {},
 ) {
   const job = downloadTracker.getJob(jobId);
-  if (!job || !canAccessJobThroughPlaylist(user, job, playlistId)) return null;
+  if (!job) return null;
   if (mode === "replacement") {
     if (
       job.status !== "done" ||
@@ -103,8 +104,12 @@ function getAccessibleManualSearchJob(
     ) {
       return null;
     }
-    return job;
+    const replacesLibraryFile =
+      hasPermission(user, "addAlbum") &&
+      getLibraryMediaFile({ source: "aurral", path: job.finalPath! })?.available === 1;
+    return replacesLibraryFile || canAccessJobThroughPlaylist(user, job, playlistId) ? job : null;
   }
+  if (!canAccessJobThroughPlaylist(user, job, playlistId)) return null;
   if (job.status !== "failed" || job.upgradeForJobId) return null;
   return job;
 }
@@ -456,9 +461,9 @@ export default new Hono<AppEnv>()
     if (result === "already-queued") {
       return c.json({ success: true, queued: 0, alreadyQueued: true, jobId }, 200);
     }
-    if (result === "kept") {
+    if (result === "unmonitored") {
       return c.json(
-        { error: "This file is kept. Allow upgrades for it first.", code: "kept_file" },
+        { error: "This track is not monitored. Monitor it first.", code: "unmonitored_track" },
         409,
       );
     }

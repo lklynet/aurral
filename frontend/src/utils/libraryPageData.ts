@@ -34,7 +34,6 @@ type PlaylistSongFields =
   | "createdAt"
   | "metadata"
   | "monitored"
-  | "keepFile"
   | "sources"
   | "available";
 export type LibraryTrack = Omit<BackendLibraryTrack, "files" | PlaylistSongFields> &

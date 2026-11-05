@@ -87,7 +87,6 @@ type LibraryCanonicalRow = {
   track_title: LibraryTracksRow["title"];
   track_artist_name: LibraryTracksRow["artist_name"];
   track_monitored: LibraryTracksRow["monitored"];
-  track_keep_file: LibraryTracksRow["keep_file"];
   track_created_at: LibraryTracksRow["created_at"];
   disc_number: LibraryAlbumTracksRow["disc_number"];
   track_number: LibraryAlbumTracksRow["track_number"];
@@ -189,7 +188,6 @@ const CANONICAL_SELECT = `SELECT
   track.title AS track_title,
   track.artist_name AS track_artist_name,
   track.monitored AS track_monitored,
-  track.keep_file AS track_keep_file,
   track.created_at AS track_created_at,
   album_track.disc_number,
   album_track.track_number,
@@ -259,7 +257,6 @@ export interface LibraryTrack {
   metadata: Record<string, unknown> | null;
   providerId?: string | number | null;
   monitored: boolean;
-  keepFile: boolean;
   albums: LibraryTrackAlbumRef[];
   files: LibraryTrackFile[];
   sources: string[];
@@ -382,7 +379,6 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
         metadata: trackMetadata,
         providerId: trackMetadata?.id ?? null,
         monitored: row.track_monitored !== 0,
-        keepFile: row.track_keep_file === 1,
         albums: [],
         files: [],
         sources: [],

@@ -53,7 +53,6 @@ type LibraryTrackRecord = {
   artistName: string | null;
   metadata: LibraryMetadata | null;
   monitored: boolean;
-  keepFile: boolean;
   albums: { albumId: number; discNumber: number; trackNumber: number }[];
   files: LibraryTrackFile[];
   sources: string[];
@@ -212,7 +211,6 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
     managedBy: album.managedBy ?? null,
     monitorMode: album.monitorMode ?? null,
     monitored: track.monitored !== false,
-    keepFile: track.keepFile === true,
     available: Boolean(file?.available),
     sources: track.sources,
   };

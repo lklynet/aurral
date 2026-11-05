@@ -1502,7 +1502,18 @@ db.transaction(() => {
 }).immediate();
 
 tryAddColumn("ALTER TABLE library_management ADD COLUMN monitor_rules TEXT");
-tryAddColumn("ALTER TABLE library_tracks ADD COLUMN keep_file INTEGER NOT NULL DEFAULT 0");
+db.transaction(() => {
+  const columns = db
+    .prepare<[], TableColumnRow>("PRAGMA table_info(library_tracks)")
+    .all()
+    .map((column) => column.name);
+  if (columns.includes("keep_file")) {
+    db.exec(`
+      UPDATE library_tracks SET monitored = 0 WHERE keep_file = 1;
+      ALTER TABLE library_tracks DROP COLUMN keep_file;
+    `);
+  }
+})();
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN artist_tag TEXT");
 db.exec(`
   CREATE TABLE IF NOT EXISTS library_monitoring_exclusions (

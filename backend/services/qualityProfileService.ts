@@ -198,19 +198,6 @@ function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
-const keptFilePathsStmt = db
-  .prepare<[], string>(`
-  SELECT media.path FROM library_media_files AS media
-  JOIN library_tracks AS track ON track.id = media.track_id
-  WHERE track.keep_file = 1
-`)
-  .pluck();
-
-const isKeptFile = (filePath: string) => {
-  const resolved = path.resolve(filePath);
-  return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
-};
-
 async function readUpgradeSearchContext(job: QualityJob) {
   try {
     const { resolveTrackSearchContext } = await import("./downloadJobs/trackSearchContext.ts");
@@ -224,12 +211,15 @@ async function readUpgradeSearchContext(job: QualityJob) {
   }
 }
 
-function upgradeBlocker(job: QualityJob | null | undefined) {
+function upgradeBlocker(
+  job: QualityJob | null | undefined,
+  isUnmonitored = indexUnmonitoredJobs(),
+) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) return "ineligible";
   if (getQualityState({ tier: job.qualityTier }, getQualityProfile()) === "preferred")
     return "ineligible";
   if (!hasUpgradeSource()) return "ineligible";
-  if (isKeptFile(job.finalPath!)) return "kept";
+  if (isUnmonitored(job)) return "unmonitored";
   if (downloadTracker.findActiveUpgradeJob(job)) return "already-queued";
   const playlistId = job.playlistId || job.playlistType;
   if (!isPipelinePayloadActive({ playlistId, playlistGeneration: job.playlistGeneration }))
@@ -255,9 +245,10 @@ async function addUpgradesAtOnce(
 ) {
   const { recordTrackJobQueued } = await import("./aurralHistoryService.ts");
   const queuedIds: string[] = [];
+  const isUnmonitored = indexUnmonitoredJobs();
   const statuses = prepared.map(({ sourceJobId, context }) => {
     const source = downloadTracker.getJob(sourceJobId);
-    const blocker = upgradeBlocker(source);
+    const blocker = upgradeBlocker(source, isUnmonitored);
     if (blocker) return blocker;
     const upgradeJobId = downloadTracker.addUpgradeJob(source);
     if (!upgradeJobId) return "ineligible";
@@ -317,7 +308,7 @@ function listLibraryUpgradeCandidates(profile: QualityProfile) {
      JOIN library_tracks AS track ON track.id = media.track_id
      LEFT JOIN library_albums AS album ON album.id = media.album_id
      WHERE media.source = 'aurral' AND media.available = 1
-       AND track.monitored = 1 AND track.keep_file = 0
+       AND track.monitored = 1
      ORDER BY media.id`,
     )
     .iterate()) {
@@ -348,7 +339,6 @@ async function listUpgradeCandidatesByAlbum({
 }) {
   const dueBefore = Date.now() - profile.intervalDays * DAY_MS;
   const isUnmonitored = indexUnmonitoredJobs();
-  const keptFiles = new Set(keptFilePathsStmt.all().map((filePath) => path.resolve(filePath)));
   const albums = new Map<string, UpgradeCandidate[]>();
   const collect = (albumKey: string, candidate: UpgradeCandidate) =>
     albums.set(albumKey, [...(albums.get(albumKey) || []), candidate]);
@@ -360,7 +350,7 @@ async function listUpgradeCandidatesByAlbum({
     const filePath = path.resolve(job.finalPath);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
-    if (!isAurralOwnedPath(filePath) || isUnmonitored(job) || keptFiles.has(filePath)) continue;
+    if (!isAurralOwnedPath(filePath) || isUnmonitored(job)) continue;
     collect(job.albumMbid || `job:${job.id}`, {
       owner: job.playlistType,
       add: async () => {

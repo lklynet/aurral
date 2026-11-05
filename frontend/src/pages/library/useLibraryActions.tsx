@@ -11,6 +11,7 @@ import {
   Play,
   Radio,
   RefreshCw,
+  Search,
   Share,
   Shuffle,
   Trash2,
@@ -43,6 +44,7 @@ import {
   getLibraryCustomArtworkUrl,
   getLibraryPage,
   downloadTrackToLibrary,
+  getLibraryTrackReplacementJob,
   reSearchLibraryTrack,
   updateLibraryFavorites,
   type AurralMonitoringResult,
@@ -79,6 +81,9 @@ import { DeleteAlbumModal } from "../ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "../ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "../ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "../LibraryInfoModal";
+import ManualMissingSearchModal, {
+  type ManualSearchJob,
+} from "../activity/ManualMissingSearchModal.tsx";
 import {
   buildStaticPlaylistTrackPayload,
   getApiErrorMessage,
@@ -213,6 +218,7 @@ export function useLibraryActions({
     Record<string, TrackDownloadState>
   >({});
   const [trackResearchStates, setTrackResearchStates] = useState<Record<string, boolean>>({});
+  const [manualReplacement, setManualReplacement] = useState<ManualSearchJob | null>(null);
   const [libraryRemoval, setLibraryRemoval] = useState<LibraryRemoval | null>(null);
   const [libraryInfo, setLibraryInfo] = useState<LibraryInfoState | null>(null);
   const [artworkEditor, setArtworkEditor] = useState<ArtworkEditorState | null>(null);
@@ -470,6 +476,7 @@ export function useLibraryActions({
   const canDeleteAlbum = hasPermission("deleteAlbum");
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canAddTracks = hasPermission("addAlbum");
+  const canSearchManually = canAddTracks && hasPermission("accessFlow");
   const canChangeMonitoring = hasPermission("changeMonitoring");
   const canEditArtwork = !isPreviewLibrary && (canAddTracks || canChangeMonitoring);
   const libraryDestination = useLibraryDestination();
@@ -695,15 +702,24 @@ export function useLibraryActions({
   );
 
   const handleReSearchLibraryTrack = useCallback(
-    async (track: LibraryPageTrack, album: LibraryAlbum) => {
+    async (track: LibraryPageTrack, album: LibraryAlbum, { manual = false } = {}) => {
       if (!track?.id || !album?.id || isPreviewLibrary || !canAddTracks) return;
       const key = `${track.id}:${album.id}`;
       setTrackResearchStates((current) => ({ ...current, [key]: true }));
       try {
-        await reSearchLibraryTrack(track.id, { albumId: album.id });
-        showSuccess(`Queued a replacement search for ${track.title || "track"}`);
+        if (manual) {
+          setManualReplacement(
+            await getLibraryTrackReplacementJob(track.id, { albumId: album.id }),
+          );
+        } else {
+          await reSearchLibraryTrack(track.id, { albumId: album.id });
+          showSuccess(`Queued a replacement search for ${track.title || "track"}`);
+        }
       } catch (requestError) {
-        showError(getApiErrorMessage(requestError) || "Failed to queue a replacement search");
+        showError(
+          getApiErrorMessage(requestError) ||
+            (manual ? "Failed to start a manual search" : "Failed to queue a replacement search"),
+        );
       } finally {
         setTrackResearchStates((current) => {
           const { [key]: _, ...rest } = current;
@@ -764,8 +780,6 @@ export function useLibraryActions({
   const trackMonitoring = useAurralTrackMonitoring({
     canChange: canChangeMonitoring,
     onChanged: updateTrackMonitoringState,
-    onKeepFileChanged: (trackId, result) =>
-      patchLibraryTrack(trackId, { keepFile: result?.keepFile === true }),
   });
 
   const buildPlayableTrack = useCallback(
@@ -1178,6 +1192,9 @@ export function useLibraryActions({
     const researchAlbum = researchAlbumRelation
       ? albumsById.get(String(researchAlbumRelation.albumId))
       : null;
+    const researchDisabled =
+      isPreviewLibrary ||
+      (researchAlbum != null && trackResearchStates[`${track.id}:${researchAlbum.id}`] === true);
     const awaitingRelease =
       !file &&
       isAwaitingRelease({
@@ -1210,10 +1227,6 @@ export function useLibraryActions({
         downloadPending,
       hasFile: Boolean(file),
       downloadPending,
-    });
-    const keepFileItem = trackMonitoring.getKeepFileItem(track, {
-      aurral: hasAurralTrackFile(track),
-      hasFile: Boolean(file),
     });
     const downloadTrack = () =>
       downloadMissingTrack(track).then((result) => {
@@ -1272,17 +1285,34 @@ export function useLibraryActions({
             {
               id: "research",
               label: "Re-search",
-              icon: RefreshCw,
+              icon: canSearchManually ? Search : RefreshCw,
               separatorBefore: true,
-              disabled:
-                isPreviewLibrary || trackResearchStates[`${track.id}:${researchAlbum.id}`] === true,
+              disabled: researchDisabled,
               onSelect: () => handleReSearchLibraryTrack(track, researchAlbum),
+              ...(canSearchManually && {
+                submenuItems: [
+                  {
+                    id: "automatic",
+                    label: "Automatic",
+                    icon: RefreshCw,
+                    disabled: researchDisabled,
+                    onSelect: () => handleReSearchLibraryTrack(track, researchAlbum),
+                  },
+                  {
+                    id: "manual",
+                    label: "Manual",
+                    icon: Search,
+                    disabled: researchDisabled,
+                    onSelect: () =>
+                      handleReSearchLibraryTrack(track, researchAlbum, { manual: true }),
+                  },
+                ],
+              }),
             },
           ]
         : []),
       ...pluginMenuItems("track", { trackIds: [track.id] }),
       ...(monitoringItem ? [monitoringItem] : []),
-      ...(keepFileItem ? [{ ...keepFileItem, separatorBefore: !monitoringItem }] : []),
       ...(canDeleteTrack && (hasDeletableTrackFile(track) || hasAurralTrackFile(track))
         ? [
             {
@@ -1383,6 +1413,15 @@ export function useLibraryActions({
   const renderModals = () => (
     <>
       {trackMonitoring.dialog}
+      <ManualMissingSearchModal
+        job={manualReplacement}
+        mode="replacement"
+        onClose={() => setManualReplacement(null)}
+        onQueued={(job) => {
+          showSuccess(`Replacing ${job.trackName || "selected track"}`);
+          refreshLibraryActivity();
+        }}
+      />
       <DeleteArtistModal
         show={libraryRemoval?.kind === "artist"}
         artistName={libraryRemoval?.kind === "artist" ? libraryRemoval.entity.name : undefined}

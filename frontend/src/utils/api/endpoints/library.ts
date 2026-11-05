@@ -635,6 +635,17 @@ export const downloadTrackToLibrary = async (
   return result;
 };
 
+export const getLibraryTrackReplacementJob = (
+  trackId: string | number,
+  { albumId }: { albumId?: string | number } = {},
+) =>
+  parseResponse(
+    libraryDownloadsClient.downloads.tracks[":trackId"]["replacement-job"].$post({
+      param: { trackId: encodeURIComponent(trackId) },
+      json: { albumId },
+    }),
+  );
+
 export const reSearchLibraryTrack = (
   trackId: string | number,
   { albumId }: { albumId?: string | number } = {},
@@ -701,30 +712,18 @@ export const setAurralAlbumMonitoring = (
     ),
   );
 
-const updateAurralTrack = (
-  canonicalId: string | number,
-  json: { monitored?: boolean; keepFile?: boolean },
-) =>
-  refreshActiveDownloadsAfter(
-    parseResponse(
-      libraryTracksClient.tracks.aurral[":canonicalId"].$put({
-        param: { canonicalId: encodeURIComponent(canonicalId) },
-        json,
-      }),
-    ),
-  );
-
 export const setAurralTrackMonitoring = async (
   canonicalId: string | number,
   monitored: boolean,
 ): Promise<AurralMonitoringResult> => {
-  const result = await updateAurralTrack(canonicalId, { monitored });
+  const result = await refreshActiveDownloadsAfter(
+    parseResponse(
+      libraryTracksClient.tracks.aurral[":canonicalId"].$put({
+        param: { canonicalId: encodeURIComponent(canonicalId) },
+        json: { monitored },
+      }),
+    ),
+  );
   if (!("monitored" in result)) throw new Error("Track monitoring did not change");
-  return result;
-};
-
-export const setAurralTrackKeepFile = async (canonicalId: string | number, keepFile: boolean) => {
-  const result = await updateAurralTrack(canonicalId, { keepFile });
-  if (!("keepFile" in result)) throw new Error("Track upgrades did not change");
   return result;
 };

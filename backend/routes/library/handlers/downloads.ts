@@ -427,6 +427,23 @@ export default new Hono<AppEnv>()
     },
   )
   .post(
+    "/downloads/tracks/:trackId/replacement-job",
+    requireAuth,
+    requirePermission("addAlbum"),
+    validate("json", researchInput),
+    (c) => {
+      const { albumId } = c.req.valid("json");
+      const job = resolveAurralOwnedTrackJob({ trackId: c.req.param("trackId"), albumId });
+      if (!job) {
+        return c.json({ error: "Track is not an available Aurral-managed library track" }, 404);
+      }
+      if (downloadTracker.findActiveUpgradeJob(job)) {
+        return c.json({ error: "A search for this track is already running" }, 409);
+      }
+      return c.json({ id: job.id, trackName: job.trackName, artistName: job.artistName }, 200);
+    },
+  )
+  .post(
     "/downloads/track",
     requireAuth,
     requirePermission("addAlbum"),

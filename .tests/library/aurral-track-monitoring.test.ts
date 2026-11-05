@@ -73,7 +73,6 @@ async function createAlbum({
     created_at: number;
     updated_at: number;
     monitored: number;
-    keep_file: number;
   }[] = [];
   for (const [index, state] of tracks.entries()) {
     const trackMbid = `dddddddd-dddd-4ddd-8ddd-${suffix.slice(2)}${String(index).padStart(2, "0")}`;

@@ -361,7 +361,6 @@ export interface LibraryTracksRow {
   created_at: number;
   updated_at: number;
   monitored: number;
-  keep_file: number;
 }
 
 export interface LidarrArtistIdMapRow {

@@ -68,7 +68,6 @@ const tracksForAlbum = (
     createdAt: yearTimestamp(seed.year),
     metadata: { genres: seed.genres },
     monitored: false,
-    keepFile: false,
     albums: [{ albumId, discNumber: 1, trackNumber: trackIndex + 1 }],
     files: [
       {
