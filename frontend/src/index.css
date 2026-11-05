@@ -1254,9 +1254,11 @@ textarea:disabled {
 }
 
 .app-main {
+  --page-gutter: var(--aurral-space-page);
+
   width: 100%;
   height: 100%;
-  padding: var(--aurral-space-page);
+  padding: var(--page-gutter);
   border-radius: var(--aurral-radius) 0 0 0;
   background: var(--aurral-surface);
   overflow-y: auto;
@@ -1745,7 +1747,9 @@ textarea:disabled {
   }
 
   .app-main {
-    padding: 1rem 1rem 2rem;
+    --page-gutter: 1rem;
+
+    padding: var(--page-gutter) var(--page-gutter) 2rem;
     scroll-padding-bottom: 1rem;
   }
 
@@ -3656,7 +3660,9 @@ textarea:disabled {
   }
 
   .app-main {
-    padding: var(--aurral-space-page-lg);
+    --page-gutter: var(--aurral-space-page-lg);
+
+    padding: var(--page-gutter);
   }
 
   .app-main--artist-details {
@@ -3674,7 +3680,9 @@ textarea:disabled {
 
 @media (min-width: 1024px) {
   .app-main {
-    padding: 1.5rem;
+    --page-gutter: 1.5rem;
+
+    padding: var(--page-gutter);
   }
 
   .app-main--artist-details {
@@ -6676,8 +6684,9 @@ textarea:disabled {
   display: flex;
   gap: 1rem;
   overflow-x: auto;
-  margin-inline-start: -0.5rem;
+  margin-inline: -0.5rem calc(-1 * var(--page-gutter, 0px));
   padding: 0.25rem;
+  padding-inline-end: calc(var(--page-gutter, 0px) + 0.25rem);
   scrollbar-width: none;
 }
 
@@ -9965,20 +9974,9 @@ button.native-library-genre-row:focus-visible {
 .artist-discover-page,
 .recommended-page,
 .trending-page {
-  --collection-tint-bleed: 1rem;
-
   position: relative;
   isolation: isolate;
   transition: --collection-tint var(--aurral-duration-slow) var(--aurral-ease-in-out);
-}
-
-@media (min-width: 1024px) {
-  .collection-page,
-  .artist-discover-page,
-  .recommended-page,
-  .trending-page {
-    --collection-tint-bleed: 1.5rem;
-  }
 }
 
 .collection-page::before,
@@ -9987,9 +9985,9 @@ button.native-library-genre-row:focus-visible {
 .trending-page::before {
   position: absolute;
   z-index: var(--aurral-z-below);
-  top: calc(-1 * var(--collection-tint-bleed, 0px));
-  right: calc(-1 * var(--collection-tint-bleed, 0px));
-  left: calc(-1 * var(--collection-tint-bleed, 0px));
+  top: calc(-1 * var(--page-gutter, 0px));
+  right: calc(-1 * var(--page-gutter, 0px));
+  left: calc(-1 * var(--page-gutter, 0px));
   height: 26rem;
   background: linear-gradient(
     180deg,
