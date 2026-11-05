@@ -67,6 +67,7 @@ import { canRemoveLibraryArtist } from "../utils/libraryDestination.ts";
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import {
+  HOME_ALBUM_RAILS,
   LIBRARY_DEFAULT_SORT,
   LIBRARY_PAGE_SIZE,
   LIBRARY_SORT_OPTIONS,
@@ -77,6 +78,8 @@ import {
   type LibraryViewLibrary,
 } from "./libraryViewQuery.ts";
 import ArtistMbidModal from "./ArtistMbidModal";
+import { DiscoverRail } from "../components/DiscoverRail";
+import { LibraryHomePlaylists } from "./library/LibraryHomePlaylists";
 import { getApiErrorMessage, getApiErrorText } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryKeys } from "../queryClient.ts";
@@ -441,11 +444,17 @@ function LibraryPage() {
   const pageData = useMemo(() => {
     if (!queryData || isPreviewLibrary || isDetail || section === "favorites") return null;
     if (section === "home") {
-      const { pageResults } = queryData;
-      if (!Array.isArray(pageResults)) return null;
+      const { nextData } = queryData;
+      if (!Array.isArray(nextData)) return null;
       return {
         kind: "home",
-        total: pageResults.reduce((count, page) => count + Number(page?.total || 0), 0),
+        total: nextData.reduce(
+          (count, page, index) =>
+            page.kind === "tracks" || HOME_ALBUM_RAILS[index]?.sort === "newest"
+              ? count + page.total
+              : count,
+          0,
+        ),
       };
     }
     const { nextData } = queryData;
@@ -621,7 +630,7 @@ function LibraryPage() {
   }, [filteredArtists, sortDirection, sortMode]);
 
   const sortedAlbums = useMemo(() => {
-    if (sortMode === "newest") return filteredAlbums;
+    if (sortMode !== LIBRARY_DEFAULT_SORT && sortMode !== "artist") return filteredAlbums;
     const items = [...filteredAlbums];
     items.sort((left, right) => {
       if (sortMode === "artist") {
@@ -653,10 +662,22 @@ function LibraryPage() {
     return sortDirection === "asc" ? items : items.reverse();
   }, [sortDirection, visibleGenreStats]);
 
-  const homeAlbums = useMemo(
-    () => library.albums.slice(0, Math.max(2, homeAlbumColumns) * 2),
-    [homeAlbumColumns, library.albums],
-  );
+  const homeRails = useMemo(() => {
+    if (section !== "home") return [];
+    if (isPreviewLibrary) return [{ ...HOME_ALBUM_RAILS[2], albums: library.albums }];
+    const albumsById = new Map(library.albums.map((album) => [String(album.id), album]));
+    const pages = Array.isArray(queryData?.nextData) ? queryData.nextData : [];
+    return HOME_ALBUM_RAILS.map((rail, index) => {
+      const page = pages[index];
+      const items = page?.kind === "albums" ? page.items : [];
+      return {
+        ...rail,
+        albums: items
+          .map((item) => albumsById.get(String(item.id)))
+          .filter((album) => album !== undefined),
+      };
+    });
+  }, [isPreviewLibrary, library.albums, queryData?.nextData, section]);
   const homeGenres = useMemo(
     () =>
       [...genreStats]
@@ -669,7 +690,6 @@ function LibraryPage() {
         .slice(0, 12),
     [genreStats],
   );
-  const homeTracks = ownedLibraryTracks.slice(0, 12);
   const libraryArtist = routeArtistId
     ? actions.artistsById.get(String(routeArtistId)) || null
     : null;
@@ -1104,20 +1124,22 @@ function LibraryPage() {
           </div>
         </section>
       )}
-      {homeAlbums.length > 0 && (
-        <section className="native-library-section">
-          {renderSectionHeader("Recently added", homeAlbums.length, "/library/albums")}
-          <div ref={homeAlbumsGridRef} className="native-library-grid">
-            {homeAlbums.map(renderAlbumCard)}
-          </div>
-        </section>
+      {homeRails.map((rail) =>
+        rail.albums.length > 0 ? (
+          <DiscoverRail
+            key={rail.title}
+            title={rail.title}
+            viewAllTo={"path" in rail ? rail.path + (forcePreview ? "&preview=1" : "") : undefined}
+          >
+            {rail.albums.map((album) => (
+              <div key={album.id} className="artist-discover-shelf-card">
+                {renderAlbumCard(album)}
+              </div>
+            ))}
+          </DiscoverRail>
+        ) : null,
       )}
-      {homeTracks.length > 0 && (
-        <section className="native-library-section">
-          {renderSectionHeader("Tracks", ownedLibraryTracks.length, "/library/tracks")}
-          {renderTrackList(homeTracks, "Library tracks")}
-        </section>
-      )}
+      {isPreviewLibrary ? null : <LibraryHomePlaylists />}
     </div>
   );
 
@@ -1355,15 +1377,8 @@ function LibraryPage() {
                   </div>
                 </section>
                 <section className="native-library-section">
-                  {renderSectionHeader("Recently added")}
-                  <SkeletonLibraryGrid
-                    ref={homeAlbumsGridRef}
-                    count={Math.max(2, homeAlbumColumns) * 2}
-                  />
-                </section>
-                <section className="native-library-section">
-                  {renderSectionHeader("Tracks")}
-                  <SkeletonTrackList count={10} />
+                  {renderSectionHeader(HOME_ALBUM_RAILS[0].title)}
+                  <SkeletonLibraryGrid ref={homeAlbumsGridRef} count={homeAlbumColumns} />
                 </section>
               </div>
             ) : section === "favorites" ? (

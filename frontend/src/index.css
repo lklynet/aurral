@@ -8788,6 +8788,7 @@ textarea:disabled {
 .native-library-home,
 .native-library-favorites {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2.5rem;
 }
 
@@ -13951,6 +13952,12 @@ a.blocklist-page__name:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.player-queue__section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .player-queue__heading {

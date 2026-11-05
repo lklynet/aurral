@@ -34,6 +34,7 @@ import {
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { userOps } from "../../backend/db/helpers/index.ts";
 
 const metadata = {
   common: {
@@ -709,7 +710,7 @@ test("album reads prefer an album-specific file over an earlier unscoped file", 
   assert.equal(readModel.tracks[0]?.path, "/music/01-album.flac");
 });
 
-test("library newest ordering follows library arrival time", () => {
+test("library album sorts follow arrival, plays, and release date", () => {
   const key = `query-newest-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Newest Fixture" });
   const oldAlbum = upsertLibraryAlbum({
@@ -728,6 +729,8 @@ test("library newest ordering follows library arrival time", () => {
     title: "Recently Added",
     releaseDate: "1990-01-01",
   });
+  const listener = requireFixture(userOps.createUser(`${key}-listener`, "unused-hash", "user"));
+  const otherListener = requireFixture(userOps.createUser(`${key}-other`, "unused-hash", "user"));
   const oldTrack = upsertLibraryTrack({
     identityKey: `${key}:old-track`,
     title: "Old Track",
@@ -785,7 +788,29 @@ test("library newest ordering follows library arrival time", () => {
       artists.items.map((item) => item.name),
       ["Zed Newest Fixture", "Newest Fixture"],
     );
+
+    const albumTitles = (sort: string, userId: number | null = listener.id) =>
+      getLibraryPage({
+        source: "aurral",
+        kind: "albums",
+        page: 1,
+        pageSize: 5,
+        sort,
+        userId,
+      }).items.map((item) => item.title);
+    const recordPlays = db.prepare(
+      "INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at) VALUES (?, ?, ?, ?)",
+    );
+    recordPlays.run(listener.id, oldAlbum.identity_key, 9, now - 60_000);
+    recordPlays.run(listener.id, newAlbum.identity_key, 2, now);
+    recordPlays.run(otherListener.id, oldAlbum.identity_key, 1, now + 60_000);
+    assert.deepEqual(albumTitles("played"), ["Recently Added", "Old Album"]);
+    assert.deepEqual(albumTitles("plays"), ["Old Album", "Recently Added"]);
+    assert.deepEqual(albumTitles("played", otherListener.id), ["Old Album"]);
+    assert.deepEqual(albumTitles("played", null), []);
+    assert.deepEqual(albumTitles("released"), ["Old Album", "Recently Added"]);
   } finally {
+    db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(listener.id, otherListener.id);
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
       oldAlbum.id,

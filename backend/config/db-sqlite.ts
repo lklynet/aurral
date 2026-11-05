@@ -200,6 +200,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS audio_loudness (
+    path TEXT PRIMARY KEY NOT NULL,
+    size INTEGER NOT NULL,
+    mtime_ms INTEGER NOT NULL,
+    lufs REAL NOT NULL,
+    measured_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS plugins (
     id TEXT PRIMARY KEY NOT NULL,
     manifest TEXT,

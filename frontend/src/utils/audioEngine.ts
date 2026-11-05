@@ -28,6 +28,8 @@ type AudioEntry = {
   loaded: boolean;
   failed: boolean;
   handlers: AudioHandlers | null;
+  gain: number | null;
+  gainRequest: AbortController | null;
   howl: Howl;
   node: HTMLAudioElement | null;
   onMediaEvent: () => void;
@@ -42,6 +44,21 @@ const IDLE_SNAPSHOT: AudioSnapshot = {
   isStarting: false,
   duration: 0,
 };
+
+const LEVELING_TARGET_LUFS = -14;
+const LOUDNESS_HEADER = "X-Aurral-Loudness";
+
+export function levelingGain(lufs: number) {
+  return Math.min(1, 10 ** ((LEVELING_TARGET_LUFS - lufs) / 20));
+}
+
+function isOwnStream(src: string) {
+  try {
+    return new URL(src, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
 
 const HOWL_EVENTS = ["load", "loaderror", "play", "playerror", "pause", "stop", "end", "seek"];
 const MEDIA_EVENTS = ["playing", "pause", "waiting", "seeked", "canplay", "durationchange"];
@@ -76,6 +93,7 @@ export function createAudioEngine() {
   let preloaded: AudioEntry | null = null;
   let volume = 1;
   let muted = false;
+  let leveling = true;
   let snapshot: AudioSnapshot = IDLE_SNAPSHOT;
   const listeners = new Set<() => void>();
 
@@ -84,6 +102,26 @@ export function createAudioEngine() {
     if (sameSnapshot(next, snapshot)) return;
     snapshot = next;
     for (const listener of listeners) listener();
+  };
+
+  const volumeFor = (entry: AudioEntry) => volume * (leveling ? (entry.gain ?? 1) : 1);
+
+  const applyVolume = (entry: AudioEntry | null) => {
+    entry?.howl.volume(volumeFor(entry));
+  };
+
+  const requestGain = (entry: AudioEntry) => {
+    if (!leveling || entry.gainRequest || !isOwnStream(entry.src)) return;
+    const request = new AbortController();
+    entry.gainRequest = request;
+    fetch(entry.src, { method: "HEAD", credentials: "same-origin", signal: request.signal })
+      .then((response) => {
+        const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
+        if (!Number.isFinite(lufs) || request.signal.aborted) return;
+        entry.gain = levelingGain(lufs);
+        applyVolume(entry);
+      })
+      .catch(() => {});
   };
 
   const createEntry = ({ src, format }: { src: string; format: string[] }) => {
@@ -95,6 +133,8 @@ export function createAudioEngine() {
       loaded: false,
       failed: false,
       handlers: null,
+      gain: null,
+      gainRequest: null,
     } as AudioEntry;
     entry.howl = new Howl({
       src: [src],
@@ -105,6 +145,7 @@ export function createAudioEngine() {
       volume,
       mute: muted,
     });
+    requestGain(entry);
     entry.howl.once("load", () => {
       entry.loaded = true;
     });
@@ -149,6 +190,7 @@ export function createAudioEngine() {
   const release = (entry: AudioEntry | null) => {
     if (!entry) return;
     entry.handlers = null;
+    entry.gainRequest?.abort();
     entry.node?.removeEventListener("ended", entry.onEnded);
     entry.node?.removeEventListener("timeupdate", entry.onTimeUpdate);
     entry.node?.removeEventListener("seeking", entry.onSeeking);
@@ -241,8 +283,16 @@ export function createAudioEngine() {
     },
     setVolume(nextVolume: number) {
       volume = nextVolume;
-      current?.howl.volume(nextVolume);
-      preloaded?.howl.volume(nextVolume);
+      applyVolume(current);
+      applyVolume(preloaded);
+    },
+    setLeveling(enabled: boolean) {
+      leveling = enabled;
+      for (const entry of [current, preloaded]) {
+        if (!entry) continue;
+        requestGain(entry);
+        applyVolume(entry);
+      }
     },
     setMuted(nextMuted: boolean) {
       muted = nextMuted;

@@ -11,8 +11,30 @@ const audio = Buffer.from(Array.from({ length: 100 }, (_, index) => index));
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-audio-file-"));
 let server: Awaited<ReturnType<typeof createMockHttpServer>>;
 
+function sineWav(amplitude: number, seconds = 3, rate = 44100) {
+  const samples = Int16Array.from({ length: rate * seconds }, (_, index) =>
+    Math.round(Math.sin((2 * Math.PI * 1000 * index) / rate) * amplitude * 32767),
+  );
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + samples.byteLength, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(samples.byteLength, 40);
+  return Buffer.concat([header, Buffer.from(samples.buffer)]);
+}
+
 beforeAll(async () => {
   await fs.writeFile(path.join(dir, "track.flac"), audio);
+  await fs.writeFile(path.join(dir, "loud.wav"), sineWav(0.5));
+  await fs.writeFile(path.join(dir, "quiet.wav"), sineWav(0.05));
   server = await createMockHttpServer(async (req, res) => {
     const filePath = path.join(dir, decodeURIComponent(req.url ?? ""));
     if (!(await sendAudioFile(req, res, filePath))) res.writeHead(404).end();
@@ -74,4 +96,16 @@ test("a malformed path is left for the caller to answer", async () => {
 test("a missing file or a directory is left for the caller to answer", async () => {
   assert.equal((await get("missing.flac")).response.status, 404);
   assert.equal((await get("")).response.status, 404);
+});
+
+test("a HEAD request reports the file's measured loudness, and a changed file is measured again", async () => {
+  const loudness = async (file: string) =>
+    Number((await get(file, { method: "HEAD" })).response.headers.get("x-aurral-loudness"));
+  const loud = await loudness("loud.wav");
+  const quiet = await loudness("quiet.wav");
+  assert.ok(Math.abs(loud - quiet - 20) < 0.5, `loud ${loud}, quiet ${quiet}`);
+  assert.equal((await get("loud.wav")).response.headers.get("x-aurral-loudness"), null);
+
+  await fs.writeFile(path.join(dir, "quiet.wav"), sineWav(0.5, 4));
+  assert.ok(Math.abs((await loudness("quiet.wav")) - loud) < 0.5);
 });
