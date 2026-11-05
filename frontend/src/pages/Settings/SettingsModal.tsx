@@ -123,6 +123,9 @@ export default function SettingsModal() {
             <input
               ref={searchRef}
               type="search"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={query}
               placeholder="Search settings"
               aria-label="Search settings"

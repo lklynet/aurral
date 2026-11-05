@@ -173,6 +173,9 @@ export default function BlocklistPage() {
             <Search className="artist-icon-sm" aria-hidden="true" />
             <input
               type="search"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {

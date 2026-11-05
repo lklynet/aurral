@@ -13,6 +13,7 @@ import { albumPath } from "../../../lib/albumPath.ts";
 import {
   ChevronDown,
   Download,
+  Ellipsis,
   ListMusic,
   Mic,
   Music,
@@ -31,6 +32,7 @@ import {
 } from "./icons";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
+import { LibraryItemMenu } from "./LibraryItemMenu";
 import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQueue";
 import PlayerLyrics from "./PlayerLyrics";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
@@ -136,6 +138,7 @@ function GlobalPlayerBar() {
   const dragRef = useRef<{ pointerId: number; startY: number; fromArt: boolean } | null>(null);
   const draggedRef = useRef(false);
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
+  const sheetQueueRef = useRef<HTMLDivElement>(null);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const sheetDialog = useModalDialog({
     open: sheetPresence !== "closed",
@@ -409,6 +412,7 @@ function GlobalPlayerBar() {
                 onPointerCancel={handleSheetPointerEnd}
               >
                 <div className="now-playing__header">
+                  <span className="now-playing__grabber" aria-hidden="true" />
                   <button
                     ref={sheetCloseRef}
                     type="button"
@@ -420,43 +424,32 @@ function GlobalPlayerBar() {
                   </button>
                   <span className="now-playing__eyebrow">Now playing</span>
                   <span className="now-playing__header-actions">
-                    <button
-                      type="button"
-                      className={`now-playing__icon-button now-playing__lyrics-toggle${sheetLyrics ? " is-active" : ""}`}
-                      onClick={() => setSheetLyrics((current) => !current)}
-                      aria-pressed={sheetLyrics}
-                      aria-label="Lyrics"
-                    >
-                      <Mic aria-hidden="true" />
-                    </button>
-                    {canStartRadio ? (
-                      <button
-                        type="button"
-                        className="now-playing__icon-button"
-                        onClick={startTrackRadio}
-                        aria-label="Start radio"
-                      >
-                        <Radio aria-hidden="true" />
-                      </button>
-                    ) : null}
-                    {canShareTrack ? (
-                      <button
-                        type="button"
-                        className="now-playing__icon-button"
-                        onClick={shareTrack}
-                        aria-label="Share track"
-                      >
-                        <Share aria-hidden="true" />
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="now-playing__icon-button"
-                      onClick={clearQueue}
-                      aria-label="Stop and clear queue"
-                    >
-                      <X aria-hidden="true" />
-                    </button>
+                    <LibraryItemMenu
+                      label={currentTrack.title || "Track"}
+                      contextMenu={false}
+                      triggerIcon={<Ellipsis aria-hidden="true" />}
+                      triggerLabel="More"
+                      triggerClassName="now-playing__icon-button"
+                      items={[
+                        ...(canShareTrack
+                          ? [
+                              {
+                                id: "share",
+                                label: "Share track",
+                                icon: Share,
+                                onSelect: shareTrack,
+                              },
+                            ]
+                          : []),
+                        {
+                          id: "stop",
+                          label: "Stop and clear queue",
+                          icon: X,
+                          danger: true,
+                          onSelect: clearQueue,
+                        },
+                      ]}
+                    />
                   </span>
                 </div>
 
@@ -554,7 +547,44 @@ function GlobalPlayerBar() {
                     </button>
                   </div>
 
-                  <UpNextQueue className="now-playing__queue" />
+                  <div className="now-playing__actions">
+                    <button
+                      type="button"
+                      className={`now-playing__icon-button now-playing__lyrics-toggle${sheetLyrics ? " is-active" : ""}`}
+                      onClick={() => setSheetLyrics((current) => !current)}
+                      aria-pressed={sheetLyrics}
+                      aria-label="Lyrics"
+                    >
+                      <Mic aria-hidden="true" />
+                    </button>
+                    {canStartRadio ? (
+                      <button
+                        type="button"
+                        className="now-playing__icon-button"
+                        onClick={startTrackRadio}
+                        aria-label="Start radio"
+                      >
+                        <Radio aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="now-playing__icon-button"
+                      onClick={() =>
+                        sheetQueueRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        })
+                      }
+                      aria-label="Up next"
+                    >
+                      <ListMusic aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div ref={sheetQueueRef}>
+                    <UpNextQueue className="now-playing__queue" />
+                  </div>
                 </div>
               </div>
             </div>,

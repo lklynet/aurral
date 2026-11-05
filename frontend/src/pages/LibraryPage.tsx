@@ -1556,6 +1556,9 @@ function LibraryPage() {
                   <Search aria-hidden="true" />
                   <input
                     type="search"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={query}
                     onChange={(event) => changeQuery(event.target.value)}
                     placeholder={"Search " + sectionLabel.toLocaleLowerCase()}

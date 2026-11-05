@@ -283,6 +283,9 @@ function StreamView({ fp, onClearFp }: { fp: string | null; onClearFp: () => voi
         )}
         <input
           type="search"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           className="input logs-filters__search"
           placeholder="Search"
           aria-label="Search the log"
