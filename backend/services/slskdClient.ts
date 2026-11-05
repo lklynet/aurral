@@ -62,6 +62,7 @@ const searchSchema = v.looseObject({
   id: v.optional(v.string()),
   state: v.optional(v.string()),
   isComplete: v.optional(v.boolean()),
+  endedAt: v.nullish(v.string()),
   fileCount: v.optional(v.number()),
   responseCount: v.optional(v.number()),
   responses: v.optional(v.array(searchResponseSchema)),
@@ -1145,8 +1146,32 @@ export class SlskdClient {
     const id = String(searchId || "").trim();
     if (!id) return false;
     const client = buildClient(this._config);
-    const response = await client.delete(`/api/v0/searches/${encodeURIComponent(id)}`, options);
-    return [200, 204, 404].includes(response.status);
+    const endpoint = `/api/v0/searches/${encodeURIComponent(id)}`;
+    const signal = untilDeadline(
+      Date.now() + Math.max(1, Number(options.timeout) || 20000),
+      options.signal,
+    );
+    try {
+      const cancelled = await client.put(endpoint, undefined, { signal });
+      if (cancelled.status === 404) return true;
+      if (cancelled.status >= 400) return false;
+      while (!signal?.aborted) {
+        const response = await client.get(endpoint, {
+          signal,
+          params: { includeResponses: false },
+        });
+        if (response.status === 404) return true;
+        if (response.status !== 200) return false;
+        if (readOne(searchSchema, response.data, { service: "slskd", endpoint }).endedAt) {
+          const deleted = await client.delete(endpoint, { signal });
+          return [200, 204, 404].includes(deleted.status);
+        }
+        await waitSearchDelay(250, signal);
+      }
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+    }
+    return false;
   }
 
   async removeCompletedDownloads() {
@@ -1214,7 +1239,10 @@ export class SlskdClient {
         ? transfersRemoved > 0
         : await this.removeCompletedDownloads();
 
-      if (typeof markCleaned === "function") {
+      if (
+        typeof markCleaned === "function" &&
+        cleanedSearchIds.length === new Set(searchIds).size
+      ) {
         markCleaned();
       }
       logger.info("slskd", "Cleaned up slskd after run", {

@@ -267,6 +267,7 @@ async function startSoulseek(t: import("vite-plus/test").TestContext) {
   const soulseek: {
     loggedIn: boolean;
     searches: { id: string }[];
+    cancelled: string[];
     enqueues: string[];
     deleted: string[];
     transferState: string;
@@ -274,6 +275,7 @@ async function startSoulseek(t: import("vite-plus/test").TestContext) {
   } = {
     loggedIn: false,
     searches: [],
+    cancelled: [],
     enqueues: [],
     deleted: [],
     transferState: "InProgress",
@@ -309,6 +311,22 @@ async function startSoulseek(t: import("vite-plus/test").TestContext) {
         return send(200, { id: JSON.parse(body).id });
       }
       assert.ok(req.url != null);
+      if (req.url.startsWith("/api/v0/searches/")) {
+        const id = req.url.split("?")[0]!.split("/").pop()!;
+        const search = soulseek.searches.find((entry) => entry.id === id);
+        if (!search) return send(404, "");
+        if (req.method === "PUT") {
+          soulseek.cancelled.push(id);
+          return send(200, "");
+        }
+        if (req.method === "GET") {
+          const cancelled = soulseek.cancelled.includes(id);
+          return send(200, {
+            state: cancelled ? "Completed, Cancelled" : "Queued",
+            endedAt: cancelled ? new Date().toISOString() : null,
+          });
+        }
+      }
       if (req.method === "POST" && req.url.startsWith("/api/v0/transfers/downloads/")) {
         if (!soulseek.loggedIn) return send(500, loggedOut("fetch user endpoint"));
         assert.ok(req.url != null);
@@ -534,6 +552,7 @@ test("a restart that drops an upgrade deletes the upgrade's running search from 
   assert.equal(restarted.getJob(upgradeId), null);
 
   assert.equal(await processPipelinePayload(searching), null);
+  assert.deepEqual(soulseek.cancelled, [searchId]);
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${searchId}`]);
   assert.equal(trackedSearches(), 0);
 });

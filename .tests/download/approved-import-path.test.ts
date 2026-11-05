@@ -531,6 +531,11 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
   let providerStatus = 503;
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
+    if (providerStatus < 400 && request.method === "GET") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
+      return;
+    }
     response.writeHead(providerStatus);
     response.end();
   });

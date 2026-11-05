@@ -407,8 +407,10 @@ test("playlist deletion cancels durably recorded slskd searches", async () => {
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
     deleteRequests.push(`${request.method} ${request.url}`);
-    response.writeHead(204);
-    response.end();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      request.method === "GET" ? JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }) : "",
+    );
   });
 
   dbOps.updateSettings({
@@ -437,7 +439,11 @@ test("playlist deletion cancels durably recorded slskd searches", async () => {
       playlistId,
       downloadTracker.getByPlaylistId(playlistId),
     );
-    assert.deepEqual(deleteRequests, ["DELETE /api/v0/searches/search-durable"]);
+    assert.deepEqual(deleteRequests, [
+      "PUT /api/v0/searches/search-durable",
+      "GET /api/v0/searches/search-durable?includeResponses=false",
+      "DELETE /api/v0/searches/search-durable",
+    ]);
     assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 0);
   } finally {
     dbOps.updateSettings(originalSettings);
