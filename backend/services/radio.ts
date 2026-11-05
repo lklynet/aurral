@@ -279,16 +279,24 @@ function listeningSignals(userId: number | null, now: number) {
   if (userId == null) {
     return { recent: new Set<number>(), songs: new Set<string>(), artists: new Set<string>() };
   }
-  const recent = new Set(
-    positiveIds(
-      db
-        .prepare<[number, number], { trackId: string }>(
-          "SELECT DISTINCT track_id AS trackId FROM play_events WHERE user_id = ? AND played_at >= ?",
-        )
-        .all(userId, now - RECENT_PLAY_MS)
-        .map((row) => row.trackId),
-    ),
+  const played = db
+    .prepare<[number, number], { trackId: string }>(
+      "SELECT DISTINCT track_id AS trackId FROM play_events WHERE user_id = ? AND played_at >= ?",
+    )
+    .all(userId, now - RECENT_PLAY_MS)
+    .map((row) => row.trackId);
+  const songKeys = played.flatMap((id) =>
+    id.startsWith("song:") ? [decodeURIComponent(id.slice(5))] : [],
   );
+  const recent = new Set([
+    ...positiveIds(played),
+    ...db
+      .prepare<string[], { id: number }>(
+        `SELECT id FROM library_tracks WHERE identity_key IN (${placeholders(songKeys)})`,
+      )
+      .all(...songKeys)
+      .map((row) => row.id),
+  ]);
   const stars = db
     .prepare<[number], { kind: string; key: string }>(
       `SELECT entity_kind AS kind, entity_key AS key FROM subsonic_stars
