@@ -21,7 +21,6 @@ import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
 import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
 
 export type DiscoverCardArtist = Partial<DiscoverArtist> & {
-  canonicalId?: string | null;
   libraryPath?: string | null;
   imageUrl?: string | null;
   metaText?: string;
@@ -80,7 +79,7 @@ export const ArtistCard = memo(
   }: {
     artist: DiscoverCardArtist;
     isInLibrary: boolean;
-    getLibraryLink: (artist: DiscoverCardArtist) => { to: string } | null;
+    getLibraryLink?: (artist: DiscoverCardArtist) => { to: string } | null;
     onFeedback?: DiscoverFeedbackHandler;
     feedbackUsed?: Partial<Record<"more_like_this" | "less_like_this" | "block_artist", boolean>>;
     hideLibraryCheck?: boolean;
@@ -163,7 +162,6 @@ export const ArtistCard = memo(
       prevProps.artist.name === nextProps.artist.name &&
       prevProps.artist.navigateTo === nextProps.artist.navigateTo &&
       prevProps.artist.libraryPath === nextProps.artist.libraryPath &&
-      prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       prevProps.artist.subtitleDetail === nextProps.artist.subtitleDetail &&
       prevProps.artist.metaText === nextProps.artist.metaText &&

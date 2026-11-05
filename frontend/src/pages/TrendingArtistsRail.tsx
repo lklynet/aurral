@@ -6,16 +6,11 @@ import { resolveArtistPath, resolveLibraryArtistPath } from "../navigation/resol
 import type { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { libraryLookupBatchQuery } from "../utils/api/endpoints/library.ts";
 import { formatCompactNumber } from "../utils/numberFormat.ts";
-import { ArtistCard, ViewAllCard, type DiscoverCardArtist } from "./DiscoverCards";
+import { ArtistCard, ViewAllCard } from "./DiscoverCards";
 
 type TrendingArtist = NonNullable<
   InferResponseType<typeof discoveryClient.trending.$get, 200>["artists"]
 >[number];
-
-const getLibraryLink = (artist: DiscoverCardArtist) => {
-  const to = resolveLibraryArtistPath({ mbid: artist.id, name: artist.name });
-  return to ? { to } : null;
-};
 
 export function TrendingArtistsRail({
   title,
@@ -37,24 +32,30 @@ export function TrendingArtistsRail({
   if (artists.length === 0) return null;
   return (
     <DiscoverRail title={title} viewAllTo={viewAllTo}>
-      {artists.map((artist) => (
-        <div key={artist.key} className="artist-discover-shelf-card">
-          <ArtistCard
-            artist={{
-              id: artist.mbid,
-              name: artist.name,
-              imageUrl: artist.imageUrl,
-              libraryPath: artist.mbid ? null : resolveArtistPath({ name: artist.name }),
-              metaText: "",
-              subtitle: artist.fans
-                ? `No. ${artist.position} · ${formatCompactNumber(artist.fans)} fans`
-                : `No. ${artist.position}`,
-            }}
-            isInLibrary={Boolean(artist.mbid && libraryLookup[artist.mbid])}
-            getLibraryLink={getLibraryLink}
-          />
-        </div>
-      ))}
+      {artists.map((artist) => {
+        const isInLibrary = Boolean(artist.mbid && libraryLookup[artist.mbid]);
+        return (
+          <div key={artist.key} className="artist-discover-shelf-card">
+            <ArtistCard
+              artist={{
+                id: artist.mbid,
+                name: artist.name,
+                imageUrl: artist.imageUrl,
+                libraryPath: isInLibrary
+                  ? resolveLibraryArtistPath({ mbid: artist.mbid, name: artist.name })
+                  : artist.mbid
+                    ? null
+                    : resolveArtistPath({ name: artist.name }),
+                metaText: "",
+                subtitle: artist.fans
+                  ? `No. ${artist.position} · ${formatCompactNumber(artist.fans)} fans`
+                  : `No. ${artist.position}`,
+              }}
+              isInLibrary={isInLibrary}
+            />
+          </div>
+        );
+      })}
       {viewAllTo ? (
         <div className="artist-discover-shelf-card">
           <ViewAllCard to={viewAllTo} />

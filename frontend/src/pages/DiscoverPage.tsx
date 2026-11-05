@@ -237,9 +237,6 @@ function DiscoverPage() {
   );
 
   const getArtistLibraryLink = useCallback((artist: DiscoverCardArtist) => {
-    if (artist.canonicalId) {
-      return { to: `/library/artist/${encodeURIComponent(artist.canonicalId)}` };
-    }
     const to = resolveLibraryArtistPath({ mbid: getArtistId(artist), name: artist.name });
     return to ? { to } : null;
   }, []);
@@ -327,20 +324,15 @@ function DiscoverPage() {
         <DiscoverRail key="recentlyAdded" title="Recently added">
           <>
             {recentlyAdded.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => {
-              const artistId = artist.mbid || null;
               const addedAt = new Date(artist.added || artist.addedAt || "");
               return (
                 <div key={`artist-${artist.id}`} className="artist-discover-shelf-card">
                   <ArtistCard
                     hideLibraryCheck
                     isInLibrary={true}
-                    getLibraryLink={getArtistLibraryLink}
                     artist={{
-                      id: artistId,
-                      canonicalId: artist.canonicalId || artist.id,
-                      libraryPath: artistId
-                        ? null
-                        : `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
+                      id: artist.mbid || null,
+                      libraryPath: `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
                       name: artist.artistName,
                       image: getLibraryArtistImage(artist),
                       type: "Artist",
