@@ -246,11 +246,6 @@ export async function processSystemTask(
       await checkForUpdates();
       return;
     }
-    case "telemetry-report": {
-      const { sendTelemetryReport } = await import("./telemetryReport.ts");
-      await sendTelemetryReport();
-      return;
-    }
     case "trending-charts-refresh": {
       const { getChartStarterArtists, refreshTrendingCharts } =
         await import("./discovery/trendingCharts.ts");

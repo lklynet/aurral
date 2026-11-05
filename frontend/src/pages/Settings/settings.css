@@ -700,8 +700,3 @@ button:is(.settings-dialog__link, .settings-service) {
     width: 100%;
   }
 }
-
-.usage-stats-report {
-  margin: 0;
-  white-space: pre-wrap;
-}

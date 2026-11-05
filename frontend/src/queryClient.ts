@@ -263,7 +263,6 @@ export const queryKeys = {
   pluginImportLists: ["plugins", "import-lists"],
   pluginActions: (userId: MaybeId): QueryKey => ["plugins", "actions", userId || null],
   apiKey: ["auth", "api-key"],
-  telemetry: ["settings", "telemetry"],
   myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [

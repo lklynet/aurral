@@ -179,10 +179,7 @@ export async function readLogEntries(dir: string, query: LogQuery) {
   return entries;
 }
 
-export async function readLogProblems(
-  dir: string,
-  { since, limit = MAX_PROBLEMS }: { since: number; limit?: number },
-) {
+export async function readLogProblems(dir: string, { since }: { since: number }) {
   const problems = new Map<string, LogProblem>();
   const warnRank = levelRank("warn");
   for await (const line of linesNewestFirst(dir)) {
@@ -200,7 +197,7 @@ export async function readLogProblems(
     if (known) {
       known.count += 1;
       known.firstAt = entry.ts;
-    } else if (problems.size < limit) {
+    } else if (problems.size < MAX_PROBLEMS) {
       problems.set(entry.fp, {
         fp: entry.fp,
         level: entry.level,

@@ -252,16 +252,6 @@ export const getNewsSettings = () => {
   };
 };
 
-export const isNewsConfigured = () => {
-  const news = getNewsSettings();
-  return (
-    news.enabled &&
-    news.feeds.some(
-      (feed) => feed.enabled && (feed.group === "custom" || news.groups[feed.group] !== false),
-    )
-  );
-};
-
 export const getMusicbrainzApiBaseUrl = () => {
   return getMetadataBaseUrl();
 };
