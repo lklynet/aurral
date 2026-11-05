@@ -13405,17 +13405,6 @@ a.blocklist-page__name:focus-visible {
   background-color: var(--aurral-chrome);
 }
 
-.global-player::before {
-  content: "";
-  position: absolute;
-  z-index: var(--aurral-z-below);
-  inset: 0;
-  background-color: color-mix(in srgb, var(--player-tint, transparent) 32%, transparent);
-  mask-image: linear-gradient(90deg, #000, transparent 55%);
-  pointer-events: none;
-  transition: background-color var(--aurral-duration-slower) var(--aurral-ease-standard);
-}
-
 .global-player__inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 2fr) minmax(0, 1fr);
@@ -14159,22 +14148,8 @@ a.blocklist-page__name:focus-visible {
     --app-bottom: calc(var(--global-player-height) + var(--app-gutter));
   }
 
-  .app-shell::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background-color: color-mix(in srgb, var(--player-tint, transparent) 28%, transparent);
-    mask-image: radial-gradient(circle at 0 100%, #000, transparent 36rem);
-    pointer-events: none;
-    transition: background-color var(--aurral-duration-slower) var(--aurral-ease-standard);
-  }
-
   .app-shell :is(.sidebar-shell, .app-topbar, .global-player) {
     background: none;
-  }
-
-  .global-player::before {
-    display: none;
   }
 
   .app-shell :is(.sidebar-shell, .sidebar-resize-handle) {
@@ -15981,8 +15956,6 @@ a.blocklist-page__name:focus-visible {
   .app-toast,
   .reload-prompt,
   .global-player,
-  .global-player::before,
-  .app-shell::before,
   .global-player__mini-progress span,
   .global-player__progress-fill,
   .global-player__progress-thumb,
