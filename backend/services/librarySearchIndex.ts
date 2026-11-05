@@ -26,11 +26,9 @@ export function parseLibrarySearch(value: unknown) {
       trigrams.add(`"${term.slice(index, index + 3).replaceAll('"', '""')}"`);
     }
   }
-  const indexedTerms = query.terms.filter((term) => term.length >= 3);
   return {
     ...query,
     indexed: indexAvailable,
-    indexedTerms,
     match: indexAvailable && trigrams.size ? [...trigrams].join(" AND ") : null,
   };
 }

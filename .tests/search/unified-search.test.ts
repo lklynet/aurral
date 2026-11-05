@@ -8,14 +8,17 @@ import {
   searchDocument,
 } from "../../backend/services/searchText.ts";
 
-test("parseSearchQuery joins short words to their neighbours", () => {
+test("parseSearchQuery keeps words separate unless every word is short", () => {
   assert.deepEqual(parseSearchQuery("AC/DC")?.terms, ["acdc"]);
   assert.deepEqual(parseSearchQuery("as long as you love me")?.terms, [
-    "aslongas",
+    "as",
+    "long",
     "you",
-    "loveme",
+    "love",
+    "me",
   ]);
-  assert.deepEqual(parseSearchQuery("Beyoncé & Jay-Z")?.terms, ["beyonce", "and", "jayz"]);
+  assert.deepEqual(parseSearchQuery("U2 One")?.terms, ["u2", "one"]);
+  assert.deepEqual(parseSearchQuery("Beyoncé & Jay-Z")?.terms, ["beyonce", "and", "jay", "z"]);
   assert.equal(parseSearchQuery(" -- "), null);
 });
 

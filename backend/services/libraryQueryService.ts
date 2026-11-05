@@ -2434,7 +2434,7 @@ const SEARCH_ENTITIES = {
 } as const;
 
 const searchTermsSql = (search: LibrarySearch) =>
-  search.indexedTerms.map(() => "instr(search_document.search_text, ?) > 0").join(" AND ");
+  search.terms.map(() => "instr(search_document.search_text, ?) > 0").join(" AND ");
 
 type SearchCandidate = { id: number; title: string };
 
@@ -2477,7 +2477,7 @@ function searchLibraryIds(
              AND ${media.sql}
            LIMIT ?`,
         )
-        .all(search.match, entity.kind, ...search.indexedTerms, ...media.parameters, wanted)
+        .all(search.match, entity.kind, ...search.terms, ...media.parameters, wanted)
     : [];
   const seen = new Set<number>();
   return [...byTitle, ...byText]
@@ -2562,7 +2562,9 @@ export function getLibrarySearchPage({
   const tracks = getLibraryForTrackIds({ source: sourceFilter, availableOnly, ids: trackIds });
   return {
     artists: artistIds.length
-      ? getLibraryArtistPage({ source: sourceFilter, availableOnly, artistIds }).artists
+      ? inOrder(artistIds, [
+          ...getLibraryArtistPage({ source: sourceFilter, availableOnly, artistIds }).artists,
+        ])
       : [],
     albums: { ...albums, albums: inOrder(albumIds, albums.albums) },
     tracks: { ...tracks, tracks: inOrder(trackIds, tracks.tracks) },
@@ -2773,7 +2775,7 @@ function buildPageQuery({
         AND library_search_fts MATCH ?`;
     parameters.unshift(searchMatch.match);
     where.push(searchTermsSql(searchMatch));
-    parameters.push(...searchMatch.indexedTerms);
+    parameters.push(...searchMatch.terms);
   } else if (query) {
     const pattern = `%${escapeLike(query)}%`;
     where.push(

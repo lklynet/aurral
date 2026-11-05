@@ -214,7 +214,7 @@ function seedLibraryArtist(name: string) {
 
 test("library search ranks exact names first and matches terms across fields", async () => {
   seedLibraryAlbum();
-  for (const name of ["ACDC Tribute Band", "The ACDC Experience", "AC/DC", "Sigur Rós"]) {
+  for (const name of ["ACDC Tribute Band", "The ACDC Experience", "AC/DC", "Sigur Rós", "U2"]) {
     seedLibraryArtist(name);
   }
   const search = async (q: string, limit = 1) => {
@@ -238,6 +238,10 @@ test("library search ranks exact names first and matches terms across fields", a
   assert.deepEqual(
     (await search("lantern harbor")).tracks.map((item) => item.title),
     ["Lantern Song"],
+  );
+  assert.deepEqual(
+    (await search("u2 opener", 5)).tracks.map((item) => item.artistName),
+    ["U2"],
   );
 });
 
@@ -372,13 +376,13 @@ const unifiedSearch = async (q: string) => {
 
 test("unified search folds Deezer songs into the results with their catalog album", async () => {
   stubDeezerSongs([
+    { title: "As Long As You Love Me", artist: "Justin Bieber", album: "Believe", rank: 415068 },
     {
       title: "As Long As You Love Me",
       artist: "Backstreet Boys",
       album: "Backstreet's Back",
       rank: 717064,
     },
-    { title: "As Long As You Love Me", artist: "Justin Bieber", album: "Believe", rank: 415068 },
   ]);
   serveCatalogAlbums([
     {
@@ -398,8 +402,8 @@ test("unified search folds Deezer songs into the results with their catalog albu
   assert.deepEqual(
     body.tracks.map((track) => [track.artistName, track.coverUrl]),
     [
-      ["Backstreet Boys", "https://cdn.test/1.jpg"],
-      ["Justin Bieber", "https://cdn.test/2.jpg"],
+      ["Justin Bieber", "https://cdn.test/1.jpg"],
+      ["Backstreet Boys", "https://cdn.test/2.jpg"],
     ],
   );
 });

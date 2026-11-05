@@ -21,26 +21,11 @@ export function searchDocument(...values: unknown[]) {
 
 export type SearchQuery = { key: string; bare: string; words: string[]; terms: string[] };
 
-// Short words join their neighbours so "ac dc" searches for "acdc" and "as
-// long as you" for "aslongas you". Keys drop spaces, so a term still matches
-// wherever the words sit next to each other.
 export function parseSearchQuery(value: unknown): SearchQuery | null {
   const words = searchWords(value);
   if (!words.length) return null;
-  const terms: string[] = [];
-  let pending = "";
-  for (const word of words) {
-    if (word.length >= 3) {
-      terms.push(pending + word);
-      pending = "";
-    } else if (terms.length) {
-      terms[terms.length - 1] += word;
-    } else {
-      pending += word;
-    }
-  }
-  if (pending) terms.push(pending);
   const key = words.join("");
+  const terms = words.some((word) => word.length >= 3) ? [...new Set(words)] : [key];
   return { key, bare: withoutArticle(words), words, terms };
 }
 

@@ -225,7 +225,10 @@ function pickTop(
 ): UnifiedSearchItem | null {
   const [artist] = artists;
   const [album] = albums;
-  const [song] = songs ?? [];
+  const [firstSong] = songs ?? [];
+  const [song] = (songs ?? [])
+    .filter((entry) => entry.quality === MATCH.exact)
+    .sort((left, right) => right.popularity - left.popularity);
   if (
     artist &&
     artist.quality >= MATCH.prefix &&
@@ -234,7 +237,7 @@ function pickTop(
     return artist.item;
   }
   const exactAlbum = album?.quality === MATCH.exact ? album : null;
-  if (song?.quality === MATCH.exact) {
+  if (song) {
     const albumIsBigger =
       exactAlbum &&
       exactAlbum.popularity > song.popularity &&
@@ -243,7 +246,7 @@ function pickTop(
   }
   if (exactAlbum) return exactAlbum.item;
   if (artist && artist.quality >= MATCH.prefix) return artist.item;
-  return artist?.item ?? album?.item ?? song?.item ?? null;
+  return artist?.item ?? album?.item ?? firstSong?.item ?? null;
 }
 
 async function settle<T>(source: string, request: Promise<T>, signal: AbortSignal | undefined) {
