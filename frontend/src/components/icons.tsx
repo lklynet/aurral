@@ -105,6 +105,7 @@ export const Plus = createIcon(icons.Plus);
 export const RefreshCw = createIcon(icons.RefreshCw01);
 export const Repeat = createIcon(icons.Repeat01);
 export const RotateCcw = createIcon(icons.RefreshCcw01);
+export const Radio = createIcon(icons.Signal01);
 export const Rss = createIcon(icons.Rss01);
 export const Save = createIcon(icons.Save01);
 export const ScanSearch = createIcon(icons.Scan);

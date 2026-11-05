@@ -13703,6 +13703,14 @@ a.blocklist-page__name:focus-visible {
   min-width: 0;
 }
 
+.player-queue__autoplay-toggle {
+  margin-inline-end: 0.375rem;
+}
+.player-queue__upcoming {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+}
 .player-queue__section-header {
   display: flex;
   min-height: 1.75rem;
@@ -13822,6 +13830,12 @@ a.blocklist-page__name:focus-visible {
   color: var(--aurral-text);
   font-size: var(--aurral-font-sm);
   font-weight: 600;
+}
+.player-queue__list--autoplay .player-queue__name {
+  color: var(--aurral-text-muted);
+}
+.player-queue__list--autoplay .player-queue__artist {
+  color: var(--aurral-text-subtle);
 }
 
 .player-queue__artist {

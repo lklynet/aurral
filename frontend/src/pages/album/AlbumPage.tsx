@@ -505,7 +505,10 @@ function AlbumPage() {
   );
   const menuItems: LibraryMenuItem[] = libraryAlbum
     ? [
-        ...actions.collectionQueueItems(loadAlbumDetail, !albumPlayable),
+        ...actions.collectionQueueItems(loadAlbumDetail, !albumPlayable, {
+          seed: { albumIds: [String(libraryAlbum.id)] },
+          label: libraryAlbum.title || "Album",
+        }),
         ...actions.albumMenuItems(libraryAlbum, libraryArtist, {
           lidarrConnected: albumState.activeManager === "lidarr",
           extra: albumMonitoringMenuItem ? [albumMonitoringMenuItem] : [],

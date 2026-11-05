@@ -23,6 +23,7 @@ import {
   getGenres,
   getMusicDirectory,
   getRandomSongs,
+  getSimilarSongs,
   getSong,
   getSongsByGenre,
   getStarred,
@@ -612,8 +613,14 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     return ok({ podcasts: { channel: [] } });
   }
   if (method === "getsimilarsongs" || method === "getsimilarsongs2") {
-    const key = method === "getsimilarsongs" ? "similarSongs" : "similarSongs2";
-    return ok({ [key]: { song: [] } });
+    const id = getParameter(params, "id");
+    if (!id) return fail(10, "Required parameter is missing: id");
+    const song = await getSimilarSongs(
+      id,
+      { count: getParameter(params, "count"), artistOnly: method === "getsimilarsongs2" },
+      user,
+    );
+    return ok({ [method === "getsimilarsongs" ? "similarSongs" : "similarSongs2"]: { song } });
   }
   if (method === "getalbum") {
     const album = getAlbum(getParameter(params, "id"), user);

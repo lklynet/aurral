@@ -18,6 +18,7 @@ import {
   Music,
   Pause,
   Play,
+  Radio,
   Repeat,
   Repeat1,
   Share,
@@ -44,6 +45,8 @@ import { DotLoader } from "./DotLoader";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
 import { trackDownloadActionLabel } from "../pages/library/libraryShared.tsx";
+import { useStartRadio } from "../hooks/useQueueTrackActions";
+import { radioSeedFor } from "../utils/audioQueue";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
@@ -111,6 +114,7 @@ function GlobalPlayerBar() {
   } = useAudioQueue();
   const sharePlain = useShareAction();
   const shareLibrary = useLibraryShareAction();
+  const startRadio = useStartRadio();
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLyrics, setSheetLyrics] = useState(false);
@@ -251,6 +255,12 @@ function GlobalPlayerBar() {
       },
       currentTrack.title!,
     );
+  const canStartRadio = !currentTrack.isPreview;
+  const startTrackRadio = () =>
+    startRadio(radioSeedFor([currentTrack]), {
+      label: currentTrack.title || "Track",
+      first: currentTrack,
+    });
   const metaLink = (label: string, path: string) =>
     label ? (
       path ? (
@@ -419,6 +429,16 @@ function GlobalPlayerBar() {
                     >
                       <Mic aria-hidden="true" />
                     </button>
+                    {canStartRadio ? (
+                      <button
+                        type="button"
+                        className="now-playing__icon-button"
+                        onClick={startTrackRadio}
+                        aria-label="Start radio"
+                      >
+                        <Radio aria-hidden="true" />
+                      </button>
+                    ) : null}
                     {canShareTrack ? (
                       <button
                         type="button"
@@ -650,6 +670,16 @@ function GlobalPlayerBar() {
               className="btn btn-ghost btn-icon btn-xs"
               tooltipPlacement="top"
             />
+          ) : null}
+          {canStartRadio ? (
+            <TooltipButton
+              tooltipPlacement="top"
+              label="Start radio"
+              onClick={startTrackRadio}
+              className="btn btn-ghost btn-icon btn-xs"
+            >
+              <Radio className="artist-icon-sm" />
+            </TooltipButton>
           ) : null}
           {canShareTrack ? (
             <TooltipButton

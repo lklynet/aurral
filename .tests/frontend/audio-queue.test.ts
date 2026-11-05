@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
 import {
+  AUTOPLAY_SOURCE,
   getFormatLoadAttempts,
   getHowlerFormat,
   getUpcomingTracks,
@@ -280,6 +281,7 @@ test("shuffle stays on for every queue played next and the order always matches 
   assert.equal(cleared.queue.length, 0);
   assert.equal(cleared.isShuffleEnabled, true);
   assert.equal(cleared.repeatMode, "all");
+  assert.ok(cleared.queueRevision > shuffleOn.queueRevision);
 
   const shuffleButton = startQueue({ shuffle: true });
   assert.equal(shuffleButton.isShuffleEnabled, true);
@@ -322,6 +324,42 @@ test("with shuffle on, play next is next in the shuffle and stays next when shuf
   const unshuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: false });
   assert.equal(currentId(unshuffled), "t2");
   assert.deepEqual(upcomingIds(unshuffled), ["x", "t3", "t4", "t5", "t6", "t7", "y"]);
+});
+
+test("autoplay tracks stay after everything you queue and leave when autoplay or shuffle changes", () => {
+  const playing = startQueue({ startTrackId: "t6" });
+  const autoplayed = queueReducer(playing, {
+    type: "EXTEND_QUEUE",
+    tracks: ["a1", "a2"].map((id) => ({ ...extra(id), queueSource: AUTOPLAY_SOURCE })),
+  });
+  assert.equal(autoplayed.queueRevision, playing.queueRevision);
+  assert.deepEqual(upcomingIds(autoplayed), ["t7", "a1", "a2"]);
+
+  const queued = insert(autoplayed, ["y"], "end");
+  assert.deepEqual(upcomingIds(queued), ["t7", "y", "a1", "a2"]);
+  assert.deepEqual(upcomingIds(queueReducer(queued, { type: "CLEAR_UPCOMING" })), ["a1", "a2"]);
+  assert.deepEqual(upcomingIds(queueReducer(queued, { type: "REMOVE_AUTOPLAY" })), ["t7", "y"]);
+
+  const shuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: true });
+  assert.equal(currentId(shuffled), "t6");
+  assert.ok(!upcomingIds(shuffled).some((id) => id === "a1" || id === "a2"));
+  assert.ok(upcomingIds(shuffled).includes("y"));
+});
+
+test("clearing up next ends a radio station so autoplay takes over", () => {
+  const station = { type: "radio", id: "r", label: "Tricky radio", seed: { trackIds: ["1"] } };
+  const playing = queueReducer(
+    queueReducer(initialQueueState, { type: "PLAY_QUEUE", tracks: [extra("r0")], source: station }),
+    {
+      type: "EXTEND_QUEUE",
+      tracks: ["r1", "r2"].map((id) => ({ ...extra(id), queueSource: station })),
+    },
+  );
+  const cleared = queueReducer(queueReducer(playing, { type: "NEXT" }), { type: "CLEAR_UPCOMING" });
+  assert.deepEqual(upcomingIds(cleared), []);
+  assert.equal(cleared.source?.label, "Tricky radio");
+  assert.equal(cleared.source?.seed, undefined);
+  assert.ok(cleared.queue.every((entry) => entry.queueSource?.seed === undefined));
 });
 
 test("adding to an empty queue starts playing the added track", () => {

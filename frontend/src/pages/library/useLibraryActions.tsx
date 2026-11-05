@@ -9,6 +9,7 @@ import {
   ListStart,
   Pause,
   Play,
+  Radio,
   RefreshCw,
   Share,
   Shuffle,
@@ -26,7 +27,8 @@ import { useLibraryShareAction } from "../../hooks/useShareAction";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
-import { useQueueTrackActions } from "../../hooks/useQueueTrackActions";
+import { useQueueTrackActions, useStartRadio } from "../../hooks/useQueueTrackActions";
+import type { RadioSeed } from "../../utils/audioQueue";
 import {
   useHiddenPlaylistTracks,
   usePlaylistBulkActions,
@@ -201,6 +203,7 @@ export function useLibraryActions({
   } = useAudioQueue();
   const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
+  const startRadio = useStartRadio();
 
   const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
   const favoriteMutationInFlightRef = useRef(false);
@@ -1052,7 +1055,11 @@ export function useLibraryActions({
       : []),
   ];
 
-  const collectionQueueItems = (load: () => Promise<LibraryCollection>, disabled = false) => [
+  const collectionQueueItems = (
+    load: () => Promise<LibraryCollection>,
+    disabled = false,
+    radio?: { seed: RadioSeed; label: string },
+  ) => [
     {
       id: "queue-next",
       label: "Play next",
@@ -1067,9 +1074,24 @@ export function useLibraryActions({
       disabled,
       onSelect: () => queueCollection(load, "end"),
     },
+    ...(radio
+      ? [
+          {
+            id: "radio",
+            label: "Start radio",
+            icon: Radio,
+            disabled,
+            onSelect: () => startRadio(radio.seed, { label: radio.label }),
+          },
+        ]
+      : []),
   ];
 
-  const collectionPlayItems = (load: () => Promise<LibraryCollection>, disabled = false) => [
+  const collectionPlayItems = (
+    load: () => Promise<LibraryCollection>,
+    disabled = false,
+    radio?: { seed: RadioSeed; label: string },
+  ) => [
     { id: "play", label: "Play", icon: Play, disabled, onSelect: () => playCollection(load) },
     {
       id: "shuffle",
@@ -1078,7 +1100,7 @@ export function useLibraryActions({
       disabled,
       onSelect: () => playCollection(load, true),
     },
-    ...collectionQueueItems(load, disabled),
+    ...collectionQueueItems(load, disabled, radio),
   ];
 
   const collectionPlaylistMenu = ({
@@ -1092,7 +1114,7 @@ export function useLibraryActions({
     defaultName: string;
     load: () => Promise<LibraryCollection>;
   }) => ({
-    additionalItemsAfter: "queue-add",
+    additionalItemsAfter: "radio",
     onMenuOpen: loadStaticPlaylists,
     renderAdditionalItems: ({ closeMenu }: { closeMenu: () => void }) => (
       <>
