@@ -675,8 +675,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     if (!radio && !(autoplayEnabled && upcoming.every(({ track }) => isAutoplayEntry(track)))) {
       return;
     }
-    if (refillRef.current === currentTrack.entryId) return;
-    refillRef.current = currentTrack.entryId;
+    const refill = `${currentTrack.entryId}:${state.queue.length}`;
+    if (refillRef.current === refill) return;
+    refillRef.current = refill;
     const played = state.playbackOrder
       .slice(Math.max(0, state.currentIndex - AUTOPLAY_SEED_TRACKS + 1), state.currentIndex + 1)
       .flatMap((queueIndex) => state.queue[queueIndex] ?? [])
@@ -686,10 +687,12 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     const queueSource = radio ?? AUTOPLAY_SOURCE;
     const entryId = currentTrack.entryId;
     const revision = state.queueRevision;
+    const { length } = state.queue;
     fetchRadio(seed, state.queue)
       .then((tracks) => {
         const latest = stateRef.current;
         if (!ownsQueueRef.current || tracks.length === 0) return;
+        if (latest.queue.length !== length) return;
         if (!latest.queue.some((entry) => entry.entryId === entryId)) return;
         if (!radio && !autoplayRef.current) return;
         const ranOut = !latest.autoplay && latest.queueRevision !== revision;
