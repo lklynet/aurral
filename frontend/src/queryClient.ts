@@ -102,6 +102,7 @@ export const queryKeys = {
   inbox: (userId: MaybeId): QueryKey => ["inbox", userId || null],
   shareLinks: (userId: MaybeId): QueryKey => ["share-links", userId || null],
   lyrics: (track: Record<string, string | undefined>): QueryKey => ["lyrics", track],
+  trackPulse: (albumId: MaybeId, trackId: MaybeId): QueryKey => ["track-pulse", albumId, trackId],
   listeningHistory: (userId: MaybeId): QueryKey => ["auth", "listening-history", userId || null],
   lidarrPreferences: (userId: MaybeId): QueryKey => ["auth", "lidarr-preferences", userId || null],
   libraryPrefix: ["library"],

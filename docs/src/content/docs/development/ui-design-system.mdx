@@ -124,7 +124,7 @@ Account sections show for everyone. Server sections show only to people who can 
 
 ## Motion
 
-Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The exceptions are the now-playing equalizer, `DotLoader`, and the Wrapped record, which spins only while its song plays. All three animate only transform or opacity and stop when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
+Use the `--aurral-duration-*` and `--aurral-ease-*` tokens. Nothing loops forever. The exceptions are the now-playing equalizer, `DotLoader`, and the Wrapped record, which spins only while its song plays. All three animate only transform or opacity and stop when the user prefers reduced motion. The full screen player's visualizer is a WebGL shader capped at 30 fps. It draws only while music plays and the player is open, and holds a still frame when the user prefers reduced motion. Do not add pulses, shimmers, or spinners that keep running.
 
 ## Run the UI checks
 

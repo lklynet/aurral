@@ -11,12 +11,13 @@ import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import { albumPath } from "../../../lib/albumPath.ts";
 import {
-  ArrowDownLeft,
   ChevronDown,
+  ChevronLeft,
   Download,
   Ellipsis,
   Heart,
   ListMusic,
+  Maximize,
   Mic,
   Music,
   Pause,
@@ -40,6 +41,7 @@ import TooltipButton from "./TooltipButton";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQueue";
 import PlayerLyrics from "./PlayerLyrics";
+import FullscreenPlayer from "./FullscreenPlayer";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.ts";
@@ -132,6 +134,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLyrics, setSheetLyrics] = useState(false);
+  const [stageOpen, setStageOpen] = useState(false);
   const [panel, setPanel] = useState<PlayerPanelView | null>(null);
   const queuePanelId = useId();
   const queueTriggerRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +170,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     if (isActive) return;
     setSheetOpen(false);
     setPanel(null);
+    setStageOpen(false);
   }, [isActive]);
 
   const queueOpen = panel !== null;
@@ -218,6 +222,13 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     };
   }, [sheetOpen]);
 
+  const openStage = () => {
+    setSheetOpen(false);
+    setPanel(null);
+    setStageOpen(true);
+  };
+  const closeStage = useCallback(() => setStageOpen(false), []);
+
   const seekBy = (offset: number) => {
     if (!duration) return;
     const nextPosition = Math.min(Math.max(getPosition() + offset, 0), duration);
@@ -232,7 +243,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
     mute: toggleMute,
     lyrics: () => {
-      if (!window.matchMedia("(min-width: 768px)").matches) return;
+      if (stageOpen || !window.matchMedia("(min-width: 768px)").matches) return;
       if (!minimized) {
         togglePanel("lyrics");
         return;
@@ -240,6 +251,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       onMinimizedChange(false);
       setPanel("lyrics");
     },
+    fullscreen: () => (stageOpen ? closeStage() : openStage()),
   });
 
   useNowPlayingTitle(
@@ -263,12 +275,11 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const minimizedClass = minimized ? " global-player--minimized" : "";
   const minimizeButton = (
     <TooltipButton
-      tooltipPlacement="top"
       label="Minimize player"
       onClick={minimize}
-      className="btn btn-ghost btn-icon btn-xs"
+      className="btn btn-ghost global-player__collapse"
     >
-      <ArrowDownLeft className="artist-icon-sm" />
+      <ChevronLeft />
     </TooltipButton>
   );
 
@@ -279,6 +290,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
         role="region"
         aria-label="Global audio player"
       >
+        {minimizeButton}
         <div className="global-player__inner">
           <div className="global-player__track">
             <span className="global-player__art global-player__art--bar" aria-hidden="true">
@@ -316,7 +328,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
               </TooltipButton>
             </div>
           </div>
-          <div className="global-player__side">{minimizeButton}</div>
+          <div className="global-player__side" />
         </div>
       </div>
     );
@@ -436,6 +448,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       role="region"
       aria-label="Global audio player"
     >
+      {minimizeButton}
       <div className="global-player__mini">
         <PlayerMiniProgress />
         <button
@@ -512,6 +525,14 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                   </button>
                   <span className="now-playing__eyebrow">Now playing</span>
                   <span className="now-playing__header-actions">
+                    <button
+                      type="button"
+                      className="now-playing__icon-button"
+                      onClick={openStage}
+                      aria-label="Full screen"
+                    >
+                      <Maximize aria-hidden="true" />
+                    </button>
                     <LibraryItemMenu
                       label={currentTrack.title || "Track"}
                       contextMenu={false}
@@ -696,6 +717,8 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
             document.body,
           )
         : null}
+
+      {stageOpen ? <FullscreenPlayer track={currentTrack} onClose={closeStage} /> : null}
 
       {panel ? (
         <PlayerQueuePanel
@@ -896,7 +919,16 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
             style={{ "--volume-percent": `${volumePercent}%` }}
             aria-label="Volume"
           />
-          {minimizeButton}
+          <TooltipButton
+            tooltipPlacement="top"
+            title={`Full screen (${PLAYER_SHORTCUTS.fullscreen.label})`}
+            aria-label="Full screen"
+            aria-keyshortcuts={PLAYER_SHORTCUTS.fullscreen.keys}
+            onClick={openStage}
+            className="btn btn-ghost btn-icon btn-xs"
+          >
+            <Maximize className="artist-icon-sm" />
+          </TooltipButton>
         </div>
       </div>
     </div>
