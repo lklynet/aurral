@@ -5,6 +5,7 @@ import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseFile } from "music-metadata";
+import taglib from "node-taglib-sharp";
 
 import {
   readAurralIdentity,
@@ -167,6 +168,28 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
     repaired: 0,
     failed: 0,
   });
+});
+
+test("startup repair keeps the guest artists in a track's credit", async () => {
+  const filePath = createUntaggedM4a("guest-credit.m4a");
+  const jobs = [
+    {
+      status: "done",
+      downloadClient: "ytdlp",
+      finalPath: filePath,
+      trackName: "Dead And Lovely",
+      artistName: "Tom Waits",
+      albumName: "Real Gone (Original Version)",
+    },
+  ];
+  await repairYtdlpMetadata(jobs);
+  const file = taglib.File.createFromPath(filePath);
+  file.tag.performers = ["Tom Waits & Kathleen Brennan"];
+  file.save();
+  file.dispose();
+
+  assert.deepEqual(await repairYtdlpMetadata(jobs), { scanned: 1, repaired: 0, failed: 0 });
+  assert.equal((await parseFile(filePath)).common.artist, "Tom Waits & Kathleen Brennan");
 });
 
 test("startup repair leaves a file that a yt-dlp job later reused from outside Aurral", async () => {

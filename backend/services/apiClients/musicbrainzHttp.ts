@@ -9,22 +9,25 @@ import createRateLimiter from "./rateLimiter.ts";
 const MUSICBRAINZ_BUSY_BACKOFF_MS = 2000;
 const musicbrainzLimiter = createRateLimiter(1000);
 
+export const artistCreditSchema = v.optional(
+  v.array(
+    v.looseObject({
+      name: v.optional(v.string()),
+      joinphrase: v.optional(v.string()),
+      artist: v.optional(
+        v.looseObject({ id: v.optional(v.string()), name: v.optional(v.string()) }),
+      ),
+    }),
+  ),
+);
+
 export const releaseGroupSchema = v.looseObject({
   id: v.string(),
   title: v.optional(v.string()),
   "primary-type": v.nullish(v.string()),
   "secondary-types": v.optional(v.array(v.string())),
   "first-release-date": v.optional(v.string()),
-  "artist-credit": v.optional(
-    v.array(
-      v.looseObject({
-        name: v.optional(v.string()),
-        artist: v.optional(
-          v.looseObject({ id: v.optional(v.string()), name: v.optional(v.string()) }),
-        ),
-      }),
-    ),
-  ),
+  "artist-credit": artistCreditSchema,
 });
 
 const userAgent = () => {

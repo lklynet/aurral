@@ -6,11 +6,12 @@ import {
   listArtistAlbums as listMetadataArtistAlbums,
 } from "../providers/brainzmashProvider.ts";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
-import { musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
+import { artistCreditSchema, musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
 import { readMany } from "../integrationData.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import type { ArtistCredit } from "../../../lib/artistCredit.ts";
 
 type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
 
@@ -18,6 +19,8 @@ const musicbrainzArtistNameCache = createCache(3600);
 const musicbrainzReleaseGroupsCache = createCache(300);
 const musicbrainzAppearsOnCache = createCache(6 * 60 * 60, 200);
 const musicbrainzTagArtistsCache = createCache(6 * 60 * 60, 200);
+const musicbrainzReleaseCreditsCache = createCache(24 * 60 * 60, 500);
+const RELEASE_CREDITS_RETRY_SECONDS = 5 * 60;
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 const APPEARS_ON_PAGE_SIZE = 100;
 const APPEARS_ON_MAX_RELEASES = 1000;
@@ -55,7 +58,26 @@ const releaseSchema = v.looseObject({
   "release-group": releaseGroupSchema,
 });
 
-type MusicBrainzArtistCredit = v.InferOutput<typeof releaseGroupSchema>["artist-credit"];
+const releaseTracksSchema = v.looseObject({
+  media: v.optional(
+    v.array(
+      v.looseObject({
+        tracks: v.optional(
+          v.array(
+            v.looseObject({
+              "artist-credit": artistCreditSchema,
+              recording: v.optional(
+                v.looseObject({ id: v.optional(v.string()), "artist-credit": artistCreditSchema }),
+              ),
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+});
+
+type MusicBrainzArtistCredit = v.InferOutput<typeof artistCreditSchema>;
 
 type MusicBrainzRelease = v.InferOutput<typeof releaseSchema>;
 
@@ -312,6 +334,59 @@ export const getMusicbrainzAppearsOnScanState = (mbid: string) => {
   };
 };
 
+const toArtistCredit = (raw: MusicBrainzArtistCredit): ArtistCredit =>
+  (raw ?? []).flatMap((entry) => {
+    const name = (entry.name || entry.artist?.name || "").trim();
+    return name
+      ? [{ name, mbid: entry.artist?.id || null, joinPhrase: entry.joinphrase ?? "" }]
+      : [];
+  });
+
+async function fetchReleaseTrackCredits(releaseMbid: string, signal: AbortSignal) {
+  const release = await musicbrainzGet(
+    releaseTracksSchema,
+    `/release/${releaseMbid}`,
+    { inc: "recordings+artist-credits" },
+    { signal },
+  );
+  const credits = new Map<string, ArtistCredit>();
+  for (const track of (release.media ?? []).flatMap((medium) => medium.tracks ?? [])) {
+    const recordingMbid = track.recording?.id;
+    const credit = toArtistCredit(track["artist-credit"] ?? track.recording?.["artist-credit"]);
+    if (recordingMbid && credit.length && !credits.has(recordingMbid)) {
+      credits.set(recordingMbid, credit);
+    }
+  }
+  return credits;
+}
+
+// Each track's own credit on a release, by recording MBID, so guests such as
+// SZA on "All the Stars" keep their credit. A failed lookup is empty and is
+// retried after a few minutes, so tagging an album asks once.
+export async function musicbrainzGetReleaseTrackCredits(
+  releaseMbid: string,
+): Promise<Map<string, ArtistCredit>> {
+  const cached = musicbrainzReleaseCreditsCache.get(releaseMbid);
+  if (cached) return cached;
+  try {
+    const credits = await runSharedInflight(
+      musicbrainzInflightRequests,
+      `release-credits:${releaseMbid}`,
+      (signal: AbortSignal) => fetchReleaseTrackCredits(releaseMbid, signal),
+    );
+    musicbrainzReleaseCreditsCache.set(releaseMbid, credits);
+    return credits;
+  } catch (error) {
+    const credits = new Map<string, ArtistCredit>();
+    musicbrainzReleaseCreditsCache.set(releaseMbid, credits, RELEASE_CREDITS_RETRY_SECONDS);
+    logger.warn("musicbrainz", "Release track credits lookup failed", {
+      releaseMbid,
+      message: asAppError(error)?.message,
+    });
+    return credits;
+  }
+}
+
 export async function musicbrainzGetArtistNameByMbid(
   mbid: string,
   { signal }: { signal?: AbortSignal } = {},
@@ -353,6 +428,7 @@ export {
   PRIMARY_RELEASE_TYPES,
   SECONDARY_RELEASE_TYPES,
   musicbrainzArtistNameCache,
+  musicbrainzReleaseCreditsCache,
   musicbrainzReleaseGroupsCache,
   musicbrainzTagArtistsCache,
 };
