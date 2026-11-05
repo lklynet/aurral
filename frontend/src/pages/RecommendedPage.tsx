@@ -46,7 +46,6 @@ type FeedbackProps = Pick<Recommendations, "artistFeedbackLookup" | "handleDisco
 const BASED_ON_PREVIEW = 10;
 const TASTE_GENRES = 8;
 const listFormat = new Intl.ListFormat(undefined, { style: "long", type: "conjunction" });
-const noLibraryLink = () => null;
 const artistPath = (artist: DiscoverArtist) => {
   const id = artist.navigateTo || artist.id;
   return id ? `/artist/${id}` : null;
@@ -75,7 +74,6 @@ function RecommendedRail({
           <ArtistCard
             artist={{ ...artist, metaText: meta(artist) }}
             isInLibrary={false}
-            getLibraryLink={noLibraryLink}
             onFeedback={handleDiscoveryFeedback}
             feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
           />
