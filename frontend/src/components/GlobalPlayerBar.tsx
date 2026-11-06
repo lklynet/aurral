@@ -379,7 +379,12 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const albumMbid = String(currentTrack.albumMbid || "").trim();
   const artistLabel = currentTrack.artist || "";
   const albumLabel = currentTrack.album || "";
-  const artistPath = artistMbid ? `/artist/${artistMbid}` : "";
+  const libraryArtistId = String(currentTrack.libraryArtistId ?? "").trim();
+  const artistPath = libraryArtistId
+    ? `/library/artist/${encodeURIComponent(libraryArtistId)}`
+    : artistMbid
+      ? `/artist/${artistMbid}`
+      : "";
   const albumRef = albumMbid || String(currentTrack.libraryAlbumId ?? "").trim();
   const albumLink = albumRef ? albumPath(albumRef) : "";
   const canShareTrack = Boolean(currentTrack.title && artistLabel);
