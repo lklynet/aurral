@@ -1,5 +1,8 @@
 import { selectCanonicalFile } from "../../../services/canonicalFileSelector.ts";
-import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
+import {
+  getLibraryForArtistReferences,
+  getLibraryForTrackIds,
+} from "../../../services/libraryQueryService.ts";
 import { buildPublicLibrary } from "./libraryIndex.ts";
 
 export function toQueueTracks(trackIds: number[]) {
@@ -39,4 +42,33 @@ export function toQueueTracks(trackIds: number[]) {
       },
     ];
   });
+}
+
+export function artistQueueTracks(reference: string) {
+  const { albums, tracks } = getLibraryForArtistReferences({
+    references: [reference],
+    source: "all",
+    availableOnly: true,
+  });
+  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const trackIds = albums
+    .toSorted(
+      (left, right) =>
+        (left.releaseDate ?? "").localeCompare(right.releaseDate ?? "") ||
+        left.title.localeCompare(right.title),
+    )
+    .flatMap((album) =>
+      album.trackIds
+        .map((id) => ({
+          id,
+          position: tracksById.get(id)?.albums.find((entry) => entry.albumId === album.id),
+        }))
+        .toSorted(
+          (left, right) =>
+            (left.position?.discNumber ?? 0) - (right.position?.discNumber ?? 0) ||
+            (left.position?.trackNumber ?? 0) - (right.position?.trackNumber ?? 0),
+        )
+        .map(({ id }) => id),
+    );
+  return toQueueTracks([...new Set(trackIds)]);
 }

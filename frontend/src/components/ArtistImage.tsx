@@ -287,15 +287,16 @@ const ArtistImage = ({
     await playArtistPreview();
   };
 
+  const playLabel = `Play ${artistName || "artist"}${isInLibrary ? "" : " top tracks"}`;
   const previewButton = canPlayArtistPreview ? (
-    <Tooltip content={`Play ${artistName || "artist"} top tracks`}>
+    <Tooltip content={playLabel}>
       <button
         type="button"
         tabIndex={isLoadingPreview ? -1 : undefined}
         className={`artist-image-preview-button${isArtistPreviewActive ? " is-active" : ""}${isLoadingPreview ? " is-loading" : ""}`}
         onClick={handlePreviewClick}
         aria-disabled={isLoadingPreview}
-        aria-label={`Play ${artistName || "artist"} top tracks`}
+        aria-label={playLabel}
       >
         {isLoadingPreview ? (
           <DotLoader size="md" label={null} className="artist-image-preview-button__icon" />

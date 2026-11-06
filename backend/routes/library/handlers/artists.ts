@@ -9,6 +9,7 @@ import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
+import { artistQueueTracks } from "./queueTracks.ts";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.ts";
 import {
   getArtistByMbid,
@@ -100,6 +101,11 @@ export default new Hono<AppEnv>()
         500,
       );
     }
+  })
+  .get("/artists/:mbid/queue", noCache, (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+    return c.json({ tracks: artistQueueTracks(mbid) }, 200);
   })
   .get("/artists/:mbid", cacheFor(120), async (c) => {
     try {
