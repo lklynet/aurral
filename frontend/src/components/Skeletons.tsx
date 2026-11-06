@@ -96,60 +96,26 @@ export function SkeletonDiscoverCard({
   );
 }
 
-export function SkeletonShowCard({ index = 0 }: { index?: number }) {
+export function SkeletonFeedPage({ label }: { label: string }) {
   return (
-    <article className="artist-show-card--discover">
-      <SkeletonShape as="div" className="artist-show-card__image-wrap--discover" />
-      <div className="artist-show-card__body--discover">
-        <div className="artist-show-card__body-heading">
-          {isTallCard(index) ? (
-            <p className="artist-show-card__body-artist--discover artist-truncate">
-              <SkeletonText width="50%" />
-            </p>
-          ) : null}
-          <h3 className="artist-show-card__body-title--discover">
-            <SkeletonText width={textWidth(index)} />
-          </h3>
-        </div>
-        <div className="artist-show-card__body-details--discover">
-          <p className="artist-show-card__detail--discover">
-            <SkeletonText width="45%" />
-          </p>
-          <p className="artist-show-card__detail--discover artist-show-card__detail--discover-location">
-            <SkeletonText width={textWidth(index, 1)} />
-          </p>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-export function SkeletonNewsCard() {
-  return (
-    <article className="discover-news-card-shell">
-      <div className="discover-news-card">
-        <div className="discover-news-card__link">
-          <SkeletonShape as="div" className="discover-news-card__image-wrap" />
-          <div className="discover-news-card__content">
-            <h3 className="discover-news-card__title">
-              <SkeletonText width="100%" />
-              <SkeletonText width="65%" />
-            </h3>
-            <p className="discover-news-card__description">
-              <SkeletonText width="100%" />
-              <SkeletonText width="100%" />
-              <SkeletonText width="80%" />
-            </p>
-          </div>
-        </div>
-        <div className="discover-news-card__footer">
-          <span className="discover-news-card__block" />
-          <span className="discover-news-card__meta">
-            <SkeletonText width="45%" />
+    <SkeletonStatus label={label} className="feed-page__content">
+      <div className="feed-lead">
+        <SkeletonShape className="feed-lead__art" />
+        <div className="feed-lead__body">
+          <span className="feed-lead__title">
+            <SkeletonText width="80%" />
+          </span>
+          <span className="feed-lead__meta">
+            <SkeletonText width="55%" />
           </span>
         </div>
       </div>
-    </article>
+      <div className="feed-page__list">
+        {range(5).map((index) => (
+          <SkeletonFeedTile key={index} feedStyle="list" />
+        ))}
+      </div>
+    </SkeletonStatus>
   );
 }
 

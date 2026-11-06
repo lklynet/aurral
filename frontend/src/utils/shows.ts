@@ -31,7 +31,7 @@ export const parseShowDate = (value: string | null) => {
 export const getShowDay = (show: NearbyShow) =>
   parseShowDate(show.date) || parseShowDate(show.dateTime);
 
-const formatShowTime = (value: string | null) => {
+export const formatShowTime = (value: string | null) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (!match) return value;

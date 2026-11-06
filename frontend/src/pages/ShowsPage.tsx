@@ -3,10 +3,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { SettingsLink } from "./Settings/settingsRoute";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "../components/icons";
-import { SkeletonShowCard, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonFeedPage } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
-import ShowCard from "../components/ShowCard";
-import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
+import RouteLink from "../components/RouteLink";
+import { DiscoverRail } from "../components/DiscoverRail";
+import { ShowFeedTile, ShowLead } from "../components/DiscoverFeed";
 import { useNearbyShows } from "../hooks/useNearbyShows";
 import {
   DEFAULT_SHOWS_FILTER,
@@ -15,18 +16,23 @@ import {
   type ShowsFilterId,
 } from "../navigation/showsNavConfig";
 import StatePanel from "../components/StatePanel";
+import { splitFeed } from "../utils/feedSections.ts";
+import { getShowDay, type NearbyShow } from "../utils/shows.ts";
 
 const SHOWS_PAGE_LIMIT = 60;
 
 type ShowSourceType = "library" | "recommended" | "trending";
-type NearbyShow = { sourceTypes?: ShowSourceType[] };
+type FilterableShow = { sourceTypes?: ShowSourceType[] };
 
 const SHOW_FILTER_MATCHERS: Partial<
-  Record<ShowsFilterId, (show: NearbyShow) => boolean | undefined>
+  Record<ShowsFilterId, (show: FilterableShow) => boolean | undefined>
 > = {
-  library: (show: NearbyShow) => show.sourceTypes?.includes("library"),
-  discover: (show: NearbyShow) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
+  library: (show) => show.sourceTypes?.includes("library"),
+  discover: (show) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
 };
+
+const showMonth = (show: NearbyShow) =>
+  getShowDay(show)?.toLocaleDateString(undefined, { month: "long" }) ?? "Date to be announced";
 
 function ShowsPage() {
   const { hasPermission } = useAuth();
@@ -60,6 +66,7 @@ function ShowsPage() {
     0,
     SHOWS_PAGE_LIMIT,
   );
+  const { lead, shelf, groups } = splitFeed(shows, showMonth);
   const hasAnyShows = allShows.length > 0;
   const emptyMessage =
     showFilter === "library"
@@ -76,13 +83,13 @@ function ShowsPage() {
     return <Navigate to={`/shows/${showFilter}`} replace />;
   }
 
+  const configured = showsData?.configured !== false;
+
   return (
-    <div className="shows-page">
-      <header className="shows-page__header">
-        <div className="shows-page__title-row">
-          <div className="shows-page__title-wrap">
-            <h1 className="page-title">Shows near you</h1>
-          </div>
+    <div className="feed-page shows-page">
+      <header className="feed-page__header">
+        <div className="feed-page__title-row">
+          <h1 className="page-title">Shows</h1>
           <NearbyLocationControl
             locationMode={locationMode}
             appliedZip={appliedZip}
@@ -93,16 +100,23 @@ function ShowsPage() {
             onApplyZip={setAppliedZip}
           />
         </div>
+        {configured ? (
+          <nav className="artist-tabs shows-page__filters" aria-label="Show filters">
+            {SHOWS_FILTERS.map((entry) => (
+              <RouteLink
+                key={entry.id}
+                to={`/shows/${entry.id}`}
+                className={`artist-tab${entry.id === showFilter ? " is-active" : ""}`}
+                aria-current={entry.id === showFilter ? "page" : undefined}
+              >
+                {entry.label}
+              </RouteLink>
+            ))}
+          </nav>
+        ) : null}
       </header>
 
-      <PageSectionMobileNav
-        basePath="/shows"
-        sections={SHOWS_FILTERS}
-        activeId={showFilter}
-        label="Shows"
-      />
-
-      {showsData?.configured === false ? (
+      {!configured ? (
         <StatePanel
           icon={<MapPin className="artist-icon-lg" />}
           title="Ticketmaster not configured"
@@ -119,15 +133,7 @@ function ShowsPage() {
           ) : null}
         </StatePanel>
       ) : showsLoading ? (
-        <SkeletonStatus label="Loading shows">
-          <div className="shows-page__grid">
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="shows-page__grid-item">
-                <SkeletonShowCard index={index} />
-              </div>
-            ))}
-          </div>
-        </SkeletonStatus>
+        <SkeletonFeedPage label="Loading shows" />
       ) : showsError ? (
         <StatePanel
           role="alert"
@@ -141,28 +147,31 @@ function ShowsPage() {
           title="Enter a ZIP or postal code"
           message="Enter a ZIP or postal code."
         />
-      ) : hasAnyShows ? (
-        <section className="shows-page__content">
-          {shows.length > 0 ? (
-            <div className="shows-page__grid">
-              {shows.map((show) => (
-                <div key={show.id} className="shows-page__grid-item">
-                  <ShowCard show={show} />
-                </div>
+      ) : lead ? (
+        <section className="feed-page__content">
+          <ShowLead show={lead} />
+          {shelf.length > 0 ? (
+            <DiscoverRail title="Coming up">
+              {shelf.map((show) => (
+                <ShowFeedTile key={show.id} show={show} feedStyle="square" />
               ))}
-            </div>
-          ) : (
-            <StatePanel
-              icon={<Music className="artist-icon-lg" />}
-              title="No matches in this filter"
-              message={emptyMessage}
-            />
-          )}
+            </DiscoverRail>
+          ) : null}
+          {groups.map((group) => (
+            <section key={group.label} className="feed-page__group">
+              <h2 className="artist-section-title--discover">{group.label}</h2>
+              <div className="feed-page__list">
+                {group.items.map((show) => (
+                  <ShowFeedTile key={show.id} show={show} feedStyle="list" />
+                ))}
+              </div>
+            </section>
+          ))}
         </section>
       ) : (
         <StatePanel
           icon={<Music className="artist-icon-lg" />}
-          title="No upcoming nearby matches"
+          title={hasAnyShows ? "No matches in this filter" : "No upcoming nearby matches"}
           message={emptyMessage}
         />
       )}
