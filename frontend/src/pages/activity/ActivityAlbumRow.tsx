@@ -70,10 +70,17 @@ export default function ActivityAlbumRow({ request, ...actions }: ActivityAlbumR
   const timelineAt = request.completedAt || request.requestedAt;
   const multiDisc = request.children.some((track) => Number(track.discNumber || 1) > 1);
   const { onInfo } = actions;
+  const toggle = () => setExpanded((value) => !value);
 
   return (
     <section className="activity-album" aria-label={`${title}, ${request.artistName}`}>
-      <article className="activity-row">
+      <article
+        className="activity-row"
+        onClick={(event) => {
+          if (event.target instanceof Element && event.target.closest("a, button")) return;
+          toggle();
+        }}
+      >
         <ActivityStatusIcon request={request} />
         <div className="activity-row__details">
           <h2 className="activity-row__title">
@@ -125,7 +132,7 @@ export default function ActivityAlbumRow({ request, ...actions }: ActivityAlbumR
           </TooltipButton>
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={toggle}
             label={expanded ? "Hide tracks" : "Show tracks"}
             aria-expanded={expanded}
             aria-controls={tracksId}
