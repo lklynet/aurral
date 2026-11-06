@@ -10924,13 +10924,9 @@ button.native-library-genre-row:focus-visible {
   .activity-row__time {
     justify-self: end;
   }
-
-  .activity-album__tracks .activity-row__details {
-    padding-inline-start: 1.5rem;
-  }
 }
 
-.activity-row:focus-within {
+.activity-row:has(:focus-visible) {
   background: var(--aurral-surface-selected);
 }
 
@@ -10940,38 +10936,94 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
-.activity-row__title-button.activity-album__toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.75rem;
+.activity-album:has(.activity-album__tracks) > .activity-row {
+  border-bottom: 0;
 }
 
-.activity-album__toggle svg {
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
-}
-
-.activity-album__toggle span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.activity-album .activity-row__hint {
-  color: var(--aurral-text-muted);
+.activity-album__tracks {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--aurral-border);
 }
 
 .activity-album__notice {
-  padding-block: 0.75rem;
+  margin: 0;
+  padding: 0.25rem 0.25rem 0.5rem 2.75rem;
   color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-sm);
+  font-size: var(--aurral-font-xs);
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 767px) {
-  .activity-album__tracks {
-    margin-inline-start: 0.75rem;
+.activity-album__progress {
+  display: flex;
+  gap: 2px;
+  max-width: 14rem;
+  margin-top: 0.45rem;
+}
+
+.activity-album__segment {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--aurral-radius-xs);
+  background: color-mix(in srgb, var(--aurral-text) 18%, transparent);
+}
+
+.activity-album__segment--success {
+  background: var(--aurral-success);
+}
+
+.activity-album__segment--failed {
+  background: var(--aurral-danger);
+}
+
+.activity-album__segment--review {
+  background: var(--aurral-review);
+}
+
+.activity-album__segment--active {
+  background: var(--aurral-info);
+}
+
+.activity-album-track {
+  min-height: 2.25rem;
+  padding-block: 0.15rem;
+  border-bottom: 0;
+  contain-intrinsic-block-size: auto 2.25rem;
+}
+
+.activity-album-track__number {
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-album-track__title {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--aurral-font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-album-track .activity-row__status-label svg {
+  display: block;
+  width: var(--aurral-icon-xs);
+  height: var(--aurral-icon-xs);
+}
+
+@media (min-width: 768px) {
+  .activity-album-track .activity-row__actions {
+    grid-column: -2 / -1;
+  }
+}
+
+.activity-album-track .activity-row__actions .native-library-icon-button {
+  width: 2rem;
+  height: 2rem;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-album-track:has(.activity-row__status-label--success) .activity-row__actions {
+    opacity: 0;
   }
 }
 
@@ -11486,6 +11538,31 @@ button.native-library-genre-row:focus-visible {
 
   .activity-row__title {
     font-size: var(--aurral-font-sm);
+  }
+
+  .activity-album-track {
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto auto;
+    grid-template-areas: "status details time actions";
+    align-items: center;
+    min-height: 2.25rem;
+    padding-block: 0.15rem;
+  }
+
+  .activity-album-track:has(.activity-row__actions > :nth-child(4)) {
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "status details time"
+      "status actions actions";
+  }
+
+  .activity-album-track .activity-row__status-label {
+    display: inline-flex;
+    grid-area: time;
+    justify-self: end;
+  }
+
+  .activity-album__notice {
+    padding-inline-start: 2.25rem;
   }
 
   .activity-row__meta,

@@ -44,7 +44,6 @@ export type ActivityRequest = {
     downloadClient?: string | null;
     progressLabel?: string | null;
     sourceSummary?: string | null;
-    activeStatusLabel?: string | null;
     downloadMethodLabel?: string | null;
   };
 
@@ -167,7 +166,6 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       completedAt,
       progressLabel,
       sourceSummary,
-      activeStatusLabel: blocked && (processing || pending) ? activeLabel : null,
       downloadMethodLabel: albumFiles
         ? fallback
           ? "Album download with track fallback"
