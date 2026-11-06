@@ -42,9 +42,13 @@ const lastfmHttpsAgent = new https.Agent({
 const LASTFM_TIMEOUT_MS =
   Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;
 const LASTFM_MAX_RETRIES = 2;
+const LASTFM_PAUSE_AFTER_FAILURES = 3;
+const LASTFM_PAUSE_MS = 60_000;
 
 const lastfmInflightRequests = new Map();
 const lastfmErrorLogAt = new Map();
+let lastfmFailuresInARow = 0;
+let lastfmPausedUntil = 0;
 
 const signedLastfmRequest = async (
   method: string,
@@ -129,17 +133,18 @@ export async function lastfmRequest(
       };
       const getLogKey = (details: LastfmErrorDetails) =>
         `${details.method}:${details.status || "none"}:${details.code || "none"}`;
-      const logError = (message: string, details: LastfmErrorDetails) => {
+      const logFailure = (message: string, details: LastfmErrorDetails) => {
         const key = getLogKey(details);
         const now = Date.now();
         const last = lastfmErrorLogAt.get(key) || 0;
         if (now - last < 15000) return;
         lastfmErrorLogAt.set(key, now);
-        logger.error("api", message, details);
+        logger.warn("api", message, details);
       };
       let lastError: unknown = null;
       for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
         sharedSignal.throwIfAborted?.();
+        if (Date.now() < lastfmPausedUntil) return null;
         try {
           const response = await lastfmLimiter.schedule(() =>
             axios.get(LASTFM_API, {
@@ -154,6 +159,7 @@ export async function lastfmRequest(
               signal: sharedSignal,
             }),
           );
+          lastfmFailuresInARow = 0;
           lastfmCache.set(cacheKey, response.data);
           return response.data;
         } catch (error) {
@@ -182,10 +188,15 @@ export async function lastfmRequest(
         message: failure?.message || "Unknown Last.fm error",
         error: payloadError,
       };
-      if (details.code === "ECONNABORTED") {
-        logError(`Last.fm API timeout (${method})`, details);
+      lastfmFailuresInARow = status === null ? lastfmFailuresInARow + 1 : 0;
+      if (lastfmFailuresInARow >= LASTFM_PAUSE_AFTER_FAILURES) {
+        lastfmFailuresInARow = 0;
+        lastfmPausedUntil = Date.now() + LASTFM_PAUSE_MS;
+        logger.warn("api", "Last.fm is not responding, pausing requests for a minute", details);
+      } else if (details.code === "ECONNABORTED") {
+        logFailure(`Last.fm API timeout (${method})`, details);
       } else {
-        logError(`Last.fm API error (${method})`, details);
+        logFailure(`Last.fm API error (${method})`, details);
       }
       return null;
     },
