@@ -171,6 +171,16 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS subsonic_ratings (
+    user_id INTEGER NOT NULL,
+    entity_kind TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, entity_kind, entity_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   -- Unstarring deletes rows, so MAX(subsonic_stars.created_at) can move backwards. This stamp
   -- only ever advances, which is what getIndexes needs to answer ifModifiedSince honestly.
   CREATE TABLE IF NOT EXISTS subsonic_star_changes (

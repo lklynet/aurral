@@ -620,6 +620,14 @@ export interface SubsonicPlayQueuesRow {
   changed_by: string;
 }
 
+export interface SubsonicRatingsRow {
+  user_id: number;
+  entity_kind: string;
+  entity_key: string;
+  rating: number;
+  updated_at: number;
+}
+
 export interface SubsonicStarChangesRow {
   user_id: number;
   changed_at: number;

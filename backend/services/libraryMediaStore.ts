@@ -205,29 +205,47 @@ export function finishLibraryScan(
   );
 }
 
-const copyLibraryStars = (entityKind: string, fromKey: string, toKey: string | null) =>
-  db
+const copyLibraryMarks = (entityKind: string, fromKey: string, toKey: string | null) => {
+  const stars = db
     .prepare<[string | null, string, string]>(
       `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
-   SELECT user_id, entity_kind, ?, created_at
-   FROM subsonic_stars
-   WHERE entity_kind = ? AND entity_key = ?`,
+       SELECT user_id, entity_kind, ?, created_at
+       FROM subsonic_stars
+       WHERE entity_kind = ? AND entity_key = ?`,
     )
-    .run(toKey, entityKind, fromKey).changes > 0;
+    .run(toKey, entityKind, fromKey).changes;
+  const ratings = db
+    .prepare<[string | null, string, string]>(
+      `INSERT OR IGNORE INTO subsonic_ratings (user_id, entity_kind, entity_key, rating, updated_at)
+       SELECT user_id, entity_kind, ?, rating, updated_at
+       FROM subsonic_ratings
+       WHERE entity_kind = ? AND entity_key = ?`,
+    )
+    .run(toKey, entityKind, fromKey).changes;
+  return stars + ratings > 0;
+};
 
-function moveLibraryStars(entityKind: string, fromKey: string, toKey: string | null) {
-  const copied = copyLibraryStars(entityKind, fromKey, toKey);
-  const deleted =
-    db
-      .prepare<[string, string]>(
-        "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
-      )
-      .run(entityKind, fromKey).changes > 0;
-  return copied || deleted;
+const deleteLibraryMarks = (entityKind: string, key: string) => {
+  const stars = db
+    .prepare<[string, string]>(
+      "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
+    )
+    .run(entityKind, key).changes;
+  const ratings = db
+    .prepare<[string, string]>(
+      "DELETE FROM subsonic_ratings WHERE entity_kind = ? AND entity_key = ?",
+    )
+    .run(entityKind, key).changes;
+  return stars + ratings > 0;
+};
+
+function moveLibraryMarks(entityKind: string, fromKey: string, toKey: string | null) {
+  const copied = copyLibraryMarks(entityKind, fromKey, toKey);
+  return deleteLibraryMarks(entityKind, fromKey) || copied;
 }
 
-const moveLibraryArtistStars = (fromKey: string, toKey: string | null) =>
-  moveLibraryStars("artist", fromKey, toKey);
+const moveLibraryArtistMarks = (fromKey: string, toKey: string | null) =>
+  moveLibraryMarks("artist", fromKey, toKey);
 
 export const subsonicId = (kind: string, key: unknown) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -267,7 +285,7 @@ function mergeLibraryArtistInto(
         )
         .all(fallback.id)
     : [];
-  let changed = moveLibraryArtistStars(fallback.identity_key, resolved.identity_key);
+  let changed = moveLibraryArtistMarks(fallback.identity_key, resolved.identity_key);
   changed =
     db
       .prepare<[number, number]>(
@@ -361,7 +379,7 @@ export function assignLibraryArtistMbid(artistId: number, mbid: string) {
       mergeLibraryArtistInto(fallback, resolved, { syncSearch: false });
       return resolved;
     }
-    moveLibraryArtistStars(fallback.identity_key, key);
+    moveLibraryArtistMarks(fallback.identity_key, key);
     db.prepare<[string, string, number, number]>(
       "UPDATE library_artists SET identity_key = ?, mbid = ?, updated_at = ? WHERE id = ?",
     ).run(key, mbid, now(), fallback.id);
@@ -412,7 +430,7 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
         mergedArtistId: artist.id,
       };
     }
-    moveLibraryArtistStars(artist.identity_key, key);
+    moveLibraryArtistMarks(artist.identity_key, key);
     db.prepare<[string | null, string | null, string | null, number, number]>(
       `UPDATE library_artists
        SET identity_key = ?, mbid = ?, metadata_json = ?, updated_at = ?
@@ -500,7 +518,7 @@ export function upsertLibraryArtist({
         .get(key);
       const fallback = fallbackKey === key ? null : findFallbackArtist();
       if (fallback && !resolved) {
-        libraryChanged = moveLibraryArtistStars(fallback.identity_key, key) || libraryChanged;
+        libraryChanged = moveLibraryArtistMarks(fallback.identity_key, key) || libraryChanged;
         libraryChanged =
           db
             .prepare<[string, number, number]>(
@@ -971,7 +989,7 @@ export function rekeyLibraryTrack(trackId: number, identityKey: string | null) {
         .get(id);
       if (!track) return null;
       if (track.identity_key === key) return { id, changed: false };
-      moveLibraryStars("song", track.identity_key, key);
+      moveLibraryMarks("song", track.identity_key, key);
       moveQueuedLibrarySong(track.identity_key, key);
       const target = db
         .prepare<[string], LibraryTracksRow>("SELECT * FROM library_tracks WHERE identity_key = ?")
@@ -1021,7 +1039,7 @@ export function rekeyLibraryAlbum(albumId: number, identityKey: string | null) {
         .get(id);
       if (!album) return null;
       if (album.identity_key === key) return { id, changed: false };
-      moveLibraryStars("album", album.identity_key, key);
+      moveLibraryMarks("album", album.identity_key, key);
       db.prepare<[string, string]>(
         `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
        SELECT user_id, ?, play_count, last_played_at FROM play_album_stats WHERE album_key = ?
@@ -1956,14 +1974,7 @@ export function mergeReleaseKeyedLibraryAlbums() {
       db.prepare<[number, number]>(
         "UPDATE library_media_files SET album_id = ? WHERE album_id = ?",
       ).run(pair.albumId, pair.duplicateId);
-      db.prepare<[string, string]>(
-        `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
-         SELECT user_id, entity_kind, ?, created_at FROM subsonic_stars
-         WHERE entity_kind = 'album' AND entity_key = ?`,
-      ).run(pair.albumKey, pair.duplicateKey);
-      db.prepare<[string]>(
-        "DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?",
-      ).run(pair.duplicateKey);
+      moveLibraryMarks("album", pair.duplicateKey, pair.albumKey);
       db.prepare<[number]>("DELETE FROM library_album_tracks WHERE album_id = ?").run(
         pair.duplicateId,
       );
@@ -2268,7 +2279,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       const [firstTarget] = targets;
       if (!track || !firstTarget) continue;
       for (const target of targets)
-        copyLibraryStars("song", track.identity_key, target.identity_key);
+        copyLibraryMarks("song", track.identity_key, target.identity_key);
       if (track.monitored === 1) {
         for (const target of targets) {
           db.prepare<[number]>("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(
@@ -2285,9 +2296,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       )
         continue;
       moveQueuedLibrarySong(track.identity_key, firstTarget.identity_key);
-      db.prepare<[string]>(
-        "DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?",
-      ).run(track.identity_key);
+      deleteLibraryMarks("song", track.identity_key);
       db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(track.id);
       removed.track.push(track.id);
     }
@@ -2295,7 +2304,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       const { row: album, targets } = rows("library_albums", fromId, toIds);
       if (!album || !targets.length) continue;
       for (const target of targets)
-        copyLibraryStars("album", album.identity_key, target.identity_key);
+        copyLibraryMarks("album", album.identity_key, target.identity_key);
       const final = !db
         .prepare<[number, number], { 1: number }>(
           `SELECT 1 FROM library_media_files WHERE album_id = ?
@@ -2328,9 +2337,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
         }
       }
       if (!final) continue;
-      db.prepare<[string]>(
-        "DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?",
-      ).run(album.identity_key);
+      deleteLibraryMarks("album", album.identity_key);
       clearLibraryManagement("album", album.id);
       db.prepare<[number]>("DELETE FROM library_albums WHERE id = ?").run(album.id);
       removed.album.push(album.id);
@@ -2339,7 +2346,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       const { row: artist, targets } = rows("library_artists", fromId, toIds);
       if (!artist || !targets.length) continue;
       for (const target of targets)
-        copyLibraryStars("artist", artist.identity_key, target.identity_key);
+        copyLibraryMarks("artist", artist.identity_key, target.identity_key);
       const metadata = readRawLibraryMetadata(artist.metadata_json);
       for (const target of targets) {
         const targetMetadata = readRawLibraryMetadata(target.metadata_json);
@@ -2372,9 +2379,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
           .get(artist.id)
       )
         continue;
-      db.prepare<[string]>(
-        "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
-      ).run(artist.identity_key);
+      deleteLibraryMarks("artist", artist.identity_key);
       clearLibraryManagement("artist", artist.id);
       db.prepare<[number]>("DELETE FROM library_artists WHERE id = ?").run(artist.id);
       removed.artist.push(artist.id);
