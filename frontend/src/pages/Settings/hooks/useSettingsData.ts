@@ -121,6 +121,7 @@ const defaultSettings = {
       enabled: true,
       priority: 50,
       stagingPath: "",
+      cookiesPath: "",
     },
     deemix: {
       enabled: false,
@@ -499,7 +500,8 @@ export function useSettingsData(
         }
         return true;
       } catch (err) {
-        showError("Failed to save settings: " + readApiError(err).text);
+        const failure = readApiError(err);
+        showError(failure.error || "Failed to save settings: " + failure.text);
         return false;
       }
     },

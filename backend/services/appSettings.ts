@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
@@ -150,6 +151,15 @@ export function readAppSettings() {
       },
     },
   };
+}
+
+function isReadableFile(filePath: string) {
+  try {
+    fs.accessSync(filePath, fs.constants.R_OK);
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function normalizeIntegrationPatch(
@@ -379,6 +389,15 @@ function normalizeIntegrationPatch(
     const validation = validateDownloadFolderPath(stagingPath, undefined, { create: true });
     if (!validation.valid) return `Invalid yt-dlp staging path: ${validation.error}`;
     nextYtdlp.stagingPath = validation.path;
+    const cookiesPath = String(nextYtdlp.cookiesPath || "").trim();
+    nextYtdlp.cookiesPath = cookiesPath;
+    if (
+      cookiesPath &&
+      cookiesPath !== currentSettings.integrations?.ytdlp?.cookiesPath &&
+      !isReadableFile(cookiesPath)
+    ) {
+      return `Cannot read the yt-dlp cookies file ${nextYtdlp.cookiesPath}`;
+    }
     Reflect.deleteProperty(nextYtdlp, "binaryPath");
     Reflect.deleteProperty(nextYtdlp, "audioFormat");
     integrations.ytdlp = nextYtdlp;

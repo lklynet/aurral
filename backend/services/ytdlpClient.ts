@@ -1,6 +1,8 @@
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
+import os from "os";
 import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -64,8 +66,16 @@ export const ytdlpSettings = Object.freeze({
       section: "Downloads",
       hint: "Temporary downloads stay here until imported.",
     }),
+    Object.freeze({
+      key: "cookiesPath",
+      label: "Cookies file",
+      type: "text",
+      section: "Downloads",
+      placeholder: "/config/cookies.txt",
+      hint: "A cookies.txt for YouTube when it asks to confirm you are not a bot.",
+    }),
   ]),
-  defaults: Object.freeze({ enabled: true, priority: 50, stagingPath: "" }),
+  defaults: Object.freeze({ enabled: true, priority: 50, stagingPath: "", cookiesPath: "" }),
   validation: Object.freeze({ required: [], url: [] }),
   testConnection: true,
 });
@@ -110,14 +120,36 @@ function isConfiguredFor(config: YtdlpSettings | null = null) {
   return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
-function runYtdlp(
+type RunOptions = {
+  timeoutMs?: number;
+  cwd?: string;
+  shouldCancel?: () => boolean;
+  signal?: AbortSignal;
+};
+
+// yt-dlp rewrites its cookies file on exit, which fails on a read-only mount
+// and races between parallel runs, so each run gets its own copy.
+async function runYtdlp(
   args: string[],
-  {
-    timeoutMs = 120000,
-    cwd,
-    shouldCancel,
-    signal,
-  }: { timeoutMs?: number; cwd?: string; shouldCancel?: () => boolean; signal?: AbortSignal } = {},
+  { config = null, ...options }: RunOptions & { config?: YtdlpSettings | null } = {},
+) {
+  const source = String(getSettings(config).cookiesPath || "").trim();
+  if (!source) return spawnYtdlp(args, options);
+  const cookies = await fsPromises.readFile(source).catch((error: Error) => {
+    throw new Error(`Could not read the yt-dlp cookies file: ${error.message}`);
+  });
+  const copy = path.join(os.tmpdir(), `aurral-ytdlp-cookies-${randomUUID()}.txt`);
+  try {
+    await fsPromises.writeFile(copy, cookies, { mode: 0o600, flag: "wx" });
+    return await spawnYtdlp(["--cookies", copy, ...args], options);
+  } finally {
+    await fsPromises.rm(copy, { force: true });
+  }
+}
+
+function spawnYtdlp(
+  args: string[],
+  { timeoutMs = 120000, cwd, shouldCancel, signal }: RunOptions = {},
 ) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const isolatedProcessGroup = process.platform !== "win32";
@@ -231,7 +263,7 @@ async function testConnectionFor(
     };
   }
   try {
-    const { stdout } = await runYtdlp(["--version"], { timeoutMs: 15000 });
+    const { stdout } = await runYtdlp(["--version"], { config, timeoutMs: 15000 });
     const version =
       String(stdout || "")
         .trim()
@@ -294,6 +326,7 @@ function readSong(stdout: string, { id, title }: SongEntry) {
 // the songs in hand are returned. A song that cannot be read (age-gated,
 // removed) is left out.
 async function searchSongs(
+  config: YtdlpSettings | null,
   query: string,
   {
     limit,
@@ -316,7 +349,7 @@ async function searchSongs(
         String(SONG_SEARCH_LIMIT),
         `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
       ],
-      { signal: stop.signal },
+      { config, signal: stop.signal },
     );
     const listed = readJsonLines(stdout)
       .map((entry) => ({
@@ -330,6 +363,7 @@ async function searchSongs(
       await Promise.all(
         listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) =>
           runYtdlp(["--skip-download", "--dump-json", "--no-warnings", "--", songUrl(entry.id)], {
+            config,
             signal: stop.signal,
           }).then(
             ({ stdout: read }) => {
@@ -359,7 +393,7 @@ async function searchSongs(
 }
 
 async function searchFor(
-  _config: YtdlpSettings | null = null,
+  config: YtdlpSettings | null = null,
   query: string,
   {
     limit = SEARCH_LIMIT,
@@ -378,7 +412,7 @@ async function searchFor(
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
   const capped = Math.min(Math.max(Number(limit) || SEARCH_LIMIT, 1), 10);
-  if (songs) return searchSongs(trimmed, { limit: capped, wanted, decided });
+  if (songs) return searchSongs(config, trimmed, { limit: capped, wanted, decided });
   const { stdout } = await runYtdlp(
     [
       "--flat-playlist",
@@ -387,7 +421,7 @@ async function searchFor(
       "--no-warnings",
       `ytsearch${capped}:${trimmed}`,
     ],
-    { timeoutMs },
+    { config, timeoutMs },
   );
   return readJsonLines(stdout).flatMap((entry) => {
     const id = String(entry.id || entry.url || "").trim();
@@ -461,12 +495,22 @@ async function downloadAudioFor(
   ];
   try {
     try {
-      await runYtdlp(args, { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel });
+      await runYtdlp(args, {
+        config,
+        timeoutMs: DOWNLOAD_TIMEOUT_MS,
+        cwd: stagingDir,
+        shouldCancel,
+      });
     } catch (error) {
       // YouTube often refuses one signed media URL with 403; a new run
       // extracts fresh URLs and usually succeeds.
       if (!/HTTP Error 403/u.test(asAppError(error)?.message || "")) throw error;
-      await runYtdlp(args, { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel });
+      await runYtdlp(args, {
+        config,
+        timeoutMs: DOWNLOAD_TIMEOUT_MS,
+        cwd: stagingDir,
+        shouldCancel,
+      });
     }
   } catch (error) {
     await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});

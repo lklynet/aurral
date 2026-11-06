@@ -41,6 +41,7 @@ curl -H "X-Api-Key: YOUR_API_KEY" -o aurral-logs.txt \
 
 - Configure one or more download sources in **Settings > Downloads**. For Usenet, also connect **Prowlarr** there.
 - For yt-dlp, select **Test connection**. Outside Docker, make sure that the host has `yt-dlp` and `ffmpeg`. The Docker image includes both.
+- If yt-dlp fails with "Sign in to confirm you're not a bot", give it a cookies file. See [YouTube sign-in](/integrations/ytdlp/#youtube-sign-in).
 - For slskd, check the connection and the Soulseek sign-in status.
 - For Usenet, turn on the Prowlarr indexers, and make sure that Aurral can read the completed files.
 - If few FLAC files are found, turn on MP3 or M4A tiers in **Settings > Downloads > Quality profile**.

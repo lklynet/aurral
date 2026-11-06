@@ -271,3 +271,46 @@ test(
     }
   },
 );
+
+test(
+  "yt-dlp rewrites a private copy of a read-only cookies file",
+  {
+    skip: process.platform === "win32",
+  },
+  async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-cookies-"));
+    const binaryPath = path.join(tempDir, "yt-dlp");
+    const cookiesPath = path.join(tempDir, "cookies.txt");
+    const seenPath = path.join(tempDir, "seen.json");
+    const previousPath = process.env.PATH;
+    await writeFile(cookiesPath, "# Netscape HTTP Cookie File\n");
+    await chmod(cookiesPath, 0o444);
+    await writeFile(
+      binaryPath,
+      [
+        `#!${process.execPath}`,
+        "const fs = require('node:fs');",
+        "const args = process.argv.slice(2);",
+        "const cookies = args[args.indexOf('--cookies') + 1];",
+        `fs.writeFileSync(${JSON.stringify(seenPath)}, JSON.stringify({ cookies, content: fs.readFileSync(cookies, 'utf8') }));`,
+        "fs.writeFileSync(cookies, 'rewritten');",
+        "fs.writeFileSync(args[args.indexOf('-o') + 1].replace('%(id)s', 'video').replace('%(ext)s', 'm4a'), 'audio');",
+      ].join("\n"),
+    );
+    await chmod(binaryPath, 0o755);
+    process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
+    try {
+      const client = new YtdlpClient({ enabled: true, stagingPath: tempDir, cookiesPath });
+      await client.downloadAudio("https://example.test/video", { jobId: "cookies" });
+      const seen = JSON.parse(await readFile(seenPath, "utf8"));
+      assert.notEqual(seen.cookies, cookiesPath);
+      assert.equal(seen.content, "# Netscape HTTP Cookie File\n");
+      assert.equal(existsSync(seen.cookies), false);
+      assert.equal(await readFile(cookiesPath, "utf8"), "# Netscape HTTP Cookie File\n");
+      await client.cleanupStaging("cookies");
+    } finally {
+      process.env.PATH = previousPath;
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  },
+);
