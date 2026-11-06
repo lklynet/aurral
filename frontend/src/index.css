@@ -3788,10 +3788,80 @@ textarea:disabled {
     scrollbar-width: none;
   }
 
+  .app-shell[data-nav="beta"] .app-topbar {
+    container: topbar / inline-size;
+  }
+
   .app-shell[data-nav="beta"] .app-topbar > .global-search {
-    min-width: 12rem;
-    flex: 0 1000 22rem;
     margin-inline: auto 0;
+  }
+
+  @container topbar (width >= 64rem) {
+    .global-search {
+      min-width: 12rem;
+      flex: 0 1000 22rem;
+    }
+  }
+
+  @container topbar (width < 64rem) {
+    .global-search:not(.is-active) {
+      width: 2.5rem;
+      min-width: 0;
+      flex: none;
+    }
+
+    .global-search:not(.is-active) .global-search__box.global-search__box--unified {
+      background: none;
+    }
+
+    .global-search:not(.is-active) .global-search__input {
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .global-search:not(.is-active) .global-search__placeholder {
+      display: none;
+    }
+
+    .global-search:not(.is-active) .global-search__icon {
+      left: 50%;
+      color: var(--aurral-text);
+      translate: -50%;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .global-search:not(.is-active) .global-search__box.global-search__box--unified:hover {
+        background: var(--aurral-surface-raised);
+      }
+    }
+
+    .global-search.is-active {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 0.75rem;
+      max-width: none;
+    }
+
+    .global-search.is-active .global-search__box {
+      flex: 1;
+    }
+
+    .app-topbar-tabs:has(~ .global-search.is-active) {
+      display: none;
+    }
+
+    .global-search.is-active .global-search__cancel {
+      display: inline-flex;
+      align-items: center;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--aurral-text);
+      font: inherit;
+      font-size: var(--aurral-font-sm);
+      font-weight: 600;
+    }
   }
 }
 

@@ -503,7 +503,8 @@ function GlobalSearch() {
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
-      closeAutocomplete();
+      if (searchQuery && suggestionsOpen) closeAutocomplete();
+      else cancelSearch();
       return;
     }
     if (suggestionKeyboardRows.length === 0) return;
