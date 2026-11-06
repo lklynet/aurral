@@ -17,6 +17,7 @@ import {
   getHowlerFormat,
   initialQueueState,
   normalizeQueueTrack,
+  normalizeStreamQueueTrack,
   queueReducer,
   shouldRestartTrack,
 } from "../utils/audioQueue";
@@ -31,11 +32,7 @@ import type {
 } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
-import {
-  buildAuthenticatedApiUrl,
-  getRequestToken,
-  resolveAuthenticatedApiAssetUrl,
-} from "../utils/api/core";
+import { getRequestToken } from "../utils/api/core";
 import {
   QUEUE_STORAGE_KEY,
   parseStoredQueue,
@@ -171,18 +168,6 @@ function readDevice() {
   return created;
 }
 
-const toQueueTrack = ({
-  streamPath,
-  artworkUrl,
-  ...track
-}: QueueTrackInput & { streamPath: string; artworkUrl?: string | null }) =>
-  normalizeQueueTrack({
-    ...track,
-    src: buildAuthenticatedApiUrl(streamPath),
-    artwork: resolveAuthenticatedApiAssetUrl(artworkUrl),
-    recordHistory: true,
-  });
-
 async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
   const exclude = queue
     .flatMap((entry) => (entry.libraryTrackId == null ? [] : [String(entry.libraryTrackId)]))
@@ -190,7 +175,7 @@ async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
   const { tracks } = await parseResponse(
     libraryRadioClient.radio.$post({ json: { ...seed, exclude } }),
   );
-  return tracks.map(toQueueTrack);
+  return tracks.map(normalizeStreamQueueTrack);
 }
 
 function trackAt(state: QueueState, playbackIndex: number) {
@@ -710,7 +695,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       return;
     }
     remoteSeenRef.current = queue.changed;
-    const tracks = queue.tracks.map(toQueueTrack);
+    const tracks = queue.tracks.map(normalizeStreamQueueTrack);
     const action: QueueAction = {
       type: "RESTORE_QUEUE",
       queue: tracks,

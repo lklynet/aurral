@@ -1,5 +1,9 @@
 import type { InferRequestType } from "hono/client";
-import { resolveApiPath } from "./api/core.ts";
+import {
+  buildAuthenticatedApiUrl,
+  resolveApiPath,
+  resolveAuthenticatedApiAssetUrl,
+} from "./api/core.ts";
 import type { libraryRadioClient } from "./api/clients/libraryRadio.ts";
 import type { LibraryTrack } from "./libraryPageData.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
@@ -158,6 +162,18 @@ export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrac
 }
 
 type QueueTrack = ReturnType<typeof normalizeQueueTrack>;
+
+export const normalizeStreamQueueTrack = ({
+  streamPath,
+  artworkUrl,
+  ...track
+}: QueueTrackInput & { streamPath: string; artworkUrl?: string | null }) =>
+  normalizeQueueTrack({
+    ...track,
+    src: buildAuthenticatedApiUrl(streamPath),
+    artwork: resolveAuthenticatedApiAssetUrl(artworkUrl),
+    recordHistory: true,
+  });
 
 export function normalizePlaylistQueueTrack(
   track: QueueTrackInput,
