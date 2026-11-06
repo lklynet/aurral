@@ -387,14 +387,14 @@ test("returns top songs only for the requested artist, most played first", () =>
     ["New Song", "Old Song"],
   );
   const listener = createTestUser("subsonic-top-songs-listener");
+  const topTitles = () =>
+    getTopSongs("Artist A", { count: "10" }, listener).map((song) => song.title);
   try {
+    assert.deepEqual(topTitles(), ["Old Song", "New Song"]);
     db.prepare(
-      "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, 'x', 'Old Song', 'Artist A', 1, 'subsonic', 1)",
+      "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, 'x', 'New Song', 'Artist A', 1, 'subsonic', 1)",
     ).run(listener.id);
-    assert.deepEqual(
-      getTopSongs("Artist A", { count: "10" }, listener).map((song) => song.title),
-      ["Old Song", "New Song"],
-    );
+    assert.deepEqual(topTitles(), ["New Song", "Old Song"]);
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(listener.id);
   }

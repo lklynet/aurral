@@ -2403,7 +2403,9 @@ export function getLibraryTrackPage({
   const playRanking = rankByPlaysFor === null ? [] : [rankByPlaysFor];
   const orderBy = random
     ? "random()"
-    : `${playRanking.length ? `${TRACK_PLAY_COUNT} DESC, ` : ""}artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number, track.title COLLATE NOCASE`;
+    : playRanking.length
+      ? `${TRACK_PLAY_COUNT} DESC, ${recentMediaOrder("tracks", sourceFilter, availableOnly, "asc")}, track.id`
+      : "artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number, track.title COLLATE NOCASE";
   const ids = db
     .prepare<unknown[], { id: number }>(
       `SELECT track.id
