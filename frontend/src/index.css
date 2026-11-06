@@ -13200,7 +13200,7 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   gap: 1rem;
   min-height: 4.25rem;
-  padding: 0.25rem 0.875rem 0.35rem 1.75rem;
+  padding: 0.25rem 0.875rem 0.35rem 2.5rem;
 }
 
 .btn.global-player__collapse {
@@ -13208,7 +13208,7 @@ button.native-library-genre-row:focus-visible {
   z-index: var(--aurral-z-raised);
   inset-block: 0;
   left: 0;
-  width: 0.875rem;
+  width: 1.75rem;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -13221,8 +13221,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .global-player__collapse svg {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .global-player__track {
