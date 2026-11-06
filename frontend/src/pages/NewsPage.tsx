@@ -7,6 +7,7 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { NewsFeedRow, NewsFeedTile, NewsLead } from "../components/DiscoverFeed";
 import { DotLoader } from "../components/DotLoader";
+import { useArtistTint } from "../components/CollectionHeader";
 import { SkeletonFeedPage } from "../components/Skeletons";
 import StatePanel from "../components/StatePanel";
 import { newsDayLabel, splitFeed } from "../utils/feedSections.ts";
@@ -38,6 +39,8 @@ export default function NewsPage() {
     (article) => newsDayLabel(article.publishedAt),
     (article, index) => index < NEWS_PAGE_SIZE && article.artists.length > 0,
   );
+  const leadArtist = lead?.artists.find((artist) => artist.artistMbid);
+  const tint = useArtistTint(lead?.imageUrl, leadArtist?.artistMbid, leadArtist?.artistName);
 
   useEffect(() => {
     if (!hasMore || !loadMoreRef.current) return undefined;
@@ -52,7 +55,7 @@ export default function NewsPage() {
   }, [hasMore, loadMore]);
 
   return (
-    <div className="feed-page news-page">
+    <div className="feed-page news-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="feed-page__header">
         <div className="feed-page__title-row">
           <h1 className="page-title">News</h1>
