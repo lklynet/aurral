@@ -809,6 +809,27 @@ test("library album sorts follow arrival, plays, and release date", () => {
     assert.deepEqual(albumTitles("played", otherListener.id), ["Old Album"]);
     assert.deepEqual(albumTitles("played", null), []);
     assert.deepEqual(albumTitles("released"), ["Old Album", "Recently Added"]);
+
+    const trackTitles = (userId: number | null) =>
+      getLibraryPage({
+        source: "aurral",
+        kind: "tracks",
+        page: 1,
+        pageSize: 5,
+        sort: "plays",
+        userId,
+      }).items.map((item) => item.title);
+    const recordPlay = db.prepare(
+      "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, ?, ?, ?, ?, 'test', ?)",
+    );
+    recordPlay.run(listener.id, "a", "old track", "NEWEST FIXTURE", now, now);
+    recordPlay.run(listener.id, "navidrome:b", "Old Track", "Newest Fixture", now, now);
+    recordPlay.run(listener.id, "c", "New Track", "Zed Newest Fixture", now, now);
+    recordPlay.run(listener.id, "d", "New Track", "Someone Else", now, now);
+    recordPlay.run(otherListener.id, "e", "New Track", "Newest Fixture", now, now);
+    assert.deepEqual(trackTitles(listener.id), ["Old Track", "New Track"]);
+    assert.deepEqual(trackTitles(otherListener.id), ["New Track", "Old Track"]);
+    assert.deepEqual(trackTitles(null), ["New Track", "Old Track"]);
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(listener.id, otherListener.id);
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);

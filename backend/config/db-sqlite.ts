@@ -200,6 +200,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE INDEX IF NOT EXISTS idx_play_events_user_title
+    ON play_events(user_id, title COLLATE NOCASE);
+
   CREATE TABLE IF NOT EXISTS discovery_playlists (
     user_id INTEGER NOT NULL,
     id TEXT NOT NULL,

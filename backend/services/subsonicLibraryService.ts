@@ -1782,6 +1782,7 @@ export function getTopSongs(
       availableOnly: true,
       artist: target,
       limit: normalizeLimit(options.count),
+      userId: user?.id ?? null,
     }),
     starredAtFor(user),
   );

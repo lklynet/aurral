@@ -1766,6 +1766,13 @@ const recentMediaFilter = (
   return conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
 };
 
+const TRACK_PLAY_COUNT = `(
+  SELECT COUNT(*) FROM play_events AS play
+  WHERE play.user_id = ?
+    AND play.title = track.title COLLATE NOCASE
+    AND (play.artist = track.artist_name COLLATE NOCASE OR play.artist = artist.name COLLATE NOCASE)
+)`;
+
 const recentMediaOrder = (
   kind: string,
   sourceFilter: string | null,
@@ -2296,6 +2303,7 @@ export function getLibraryTrackPage({
   offset = 0,
   limit = 20,
   random = false,
+  rankByPlaysFor = null,
 }: LibraryScope & {
   query?: string;
   genre?: string;
@@ -2307,6 +2315,7 @@ export function getLibraryTrackPage({
   offset?: number | string;
   limit?: number | string;
   random?: boolean;
+  rankByPlaysFor?: number | null;
 } = {}) {
   const sourceFilter = normalizeSource(source);
   const media = pageMediaExists("tracks", sourceFilter, availableOnly);
@@ -2391,9 +2400,10 @@ export function getLibraryTrackPage({
     library.tracks = ids.map((id) => tracksById.get(id)).filter((track) => track !== undefined);
     return library;
   }
+  const playRanking = rankByPlaysFor === null ? [] : [rankByPlaysFor];
   const orderBy = random
     ? "random()"
-    : "artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number, track.title COLLATE NOCASE";
+    : `${playRanking.length ? `${TRACK_PLAY_COUNT} DESC, ` : ""}artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number, track.title COLLATE NOCASE`;
   const ids = db
     .prepare<unknown[], { id: number }>(
       `SELECT track.id
@@ -2406,7 +2416,7 @@ export function getLibraryTrackPage({
      ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
     )
-    .all(...parameters, boundedLimit, pageOffset(offset))
+    .all(...parameters, ...playRanking, boundedLimit, pageOffset(offset))
     .map((row) => row.id);
   const library = getLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
   const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
@@ -2581,8 +2591,9 @@ export function getLibraryTopTracks({
   availableOnly = false,
   artist,
   limit = 20,
-}: LibraryScope & { artist?: string; limit?: number | string } = {}) {
-  return getLibraryTrackPage({ source, availableOnly, artist, limit });
+  userId = null,
+}: LibraryScope & { artist?: string; limit?: number | string; userId?: number | null } = {}) {
+  return getLibraryTrackPage({ source, availableOnly, artist, limit, rankByPlaysFor: userId });
 }
 
 export function getLibraryGenres({ source = null, availableOnly = false }: LibraryScope = {}) {
@@ -2700,6 +2711,7 @@ function buildPageQuery({
   const where: string[] = [];
   const parameters: unknown[] = [];
   const joinParameters: unknown[] = [];
+  const orderParameters: unknown[] = [];
   const media = pageMediaExists(kind, sourceFilter, availableOnly);
   where.push(media.sql);
   parameters.push(...media.parameters);
@@ -2752,7 +2764,8 @@ function buildPageQuery({
   } else {
     entityKind = "track";
     const needsRelations =
-      Boolean(artistId || albumId || genre || sort === "artist") || Boolean(query && !searchMatch);
+      Boolean(artistId || albumId || genre || sort === "artist" || sort === "plays") ||
+      Boolean(query && !searchMatch);
     from = needsRelations
       ? `FROM library_tracks AS track
         JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
@@ -2812,6 +2825,9 @@ function buildPageQuery({
     orderBy = `played.last_played_at ${latestFirst}, album.id`;
   } else if (kind === "albums" && sort === "plays") {
     orderBy = `played.play_count ${latestFirst}, played.last_played_at ${latestFirst}, album.id`;
+  } else if (kind === "tracks" && sort === "plays") {
+    orderBy = `${TRACK_PLAY_COUNT} ${latestFirst}, ${recentMediaOrder(kind, sourceFilter, availableOnly, direction)}, track.id`;
+    orderParameters.push(userId ?? -1);
   } else if (kind === "albums" && sort === "released") {
     orderBy = `coalesce(album.release_date, '') = '', album.release_date ${latestFirst}, album.id`;
   } else if (kind === "albums" && sort === "random") {
@@ -2839,6 +2855,7 @@ function buildPageQuery({
     where: where.join(" AND "),
     parameters: [...joinParameters, ...parameters],
     orderBy,
+    orderParameters,
     groupBy,
   };
 }
@@ -3397,7 +3414,12 @@ export function getLibraryPage({
       `${pageQuery}
      LIMIT ? OFFSET ?`,
     )
-    .all(...queryDefinition.parameters, currentPageSize, currentOffset)
+    .all(
+      ...queryDefinition.parameters,
+      ...queryDefinition.orderParameters,
+      currentPageSize,
+      currentOffset,
+    )
     .map((row) => row.page_id);
   if (normalizedKind === "artists") {
     const library = getLibraryArtistPage({
