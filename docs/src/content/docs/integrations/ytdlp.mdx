@@ -46,6 +46,16 @@ If the file matches the requested track except for its length or part of its tit
 
 YouTube audio is usually lossy. For higher quality, prefer slskd, Usenet, or deemix. yt-dlp can supply the first file for a track, but Aurral does not use yt-dlp for upgrades.
 
+## YouTube sign-in
+
+YouTube sometimes refuses yt-dlp with "Sign in to confirm you're not a bot". yt-dlp then needs the cookies of a signed-in YouTube session.
+
+1. Export the cookies for `youtube.com` to a `cookies.txt` file in the Netscape format. Follow [yt-dlp's guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies), which uses a private browser window so YouTube does not replace the cookies right away.
+2. Put the file where Aurral can read it, such as `/config/cookies.txt`.
+3. Enter its path in **Settings > Downloads > yt-dlp > Cookies file**, and select **Test connection**.
+
+Aurral gives each yt-dlp run its own copy of the file, so the file can be read-only. YouTube can limit an account that downloads a lot, so use an account that you do not depend on. When the cookies expire, export them again.
+
 ## Download source priority
 
 See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

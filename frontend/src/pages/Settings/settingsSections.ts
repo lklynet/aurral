@@ -147,7 +147,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     NZBGet: { item: "nzbget", keywords: "Usenet download client" },
     SABnzbd: { item: "sabnzbd", keywords: "Usenet download client" },
     Tidarr: { item: "tidarr", keywords: "Tidal download client" },
-    "yt-dlp": { item: "ytdlp", keywords: "YouTube download client staging" },
+    "yt-dlp": { item: "ytdlp", keywords: "YouTube download client staging cookies" },
     deemix: { item: "deemix", keywords: "Deezer download client bitrate" },
     Prowlarr: { item: "prowlarr", keywords: "indexers indexer manager search usenet categories" },
     "Quality profile": {

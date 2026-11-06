@@ -171,6 +171,7 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         enabled: true,
         priority: 50,
         stagingPath: "",
+        cookiesPath: "",
         ...(savedSettings.integrations?.ytdlp || {}),
       },
       deemix: {

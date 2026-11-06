@@ -84,6 +84,7 @@ export const defaultData = {
         enabled: true,
         priority: 50,
         stagingPath: "",
+        cookiesPath: "",
       },
       deemix: {
         enabled: false,
