@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { apiFetchWithin } from "../core.ts";
+import { apiFetchWithin, resolveAuthenticatedApiAssetUrl } from "../core.ts";
 import { searchClient } from "../clients/search.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
@@ -22,13 +22,28 @@ export const unifiedSearchQuery = (query: string, limit: number) =>
 export const librarySearchQuery = (query: string, limit: number) =>
   queryOptions({
     queryKey: queryKeys.searchLibrary(query, limit),
-    queryFn: ({ signal }) =>
-      parseResponse(
+    queryFn: async ({ signal }) => {
+      const result = await parseResponse(
         searchClient.library.$get(
           { query: { q: query, limit: String(limit) } },
           { init: { signal } },
         ),
-      ),
+      );
+      const withCover = <T extends { coverUrl?: string | null }>(item: T) =>
+        item.coverUrl
+          ? { ...item, coverUrl: resolveAuthenticatedApiAssetUrl(item.coverUrl) }
+          : item;
+      return {
+        ...result,
+        artists: result.artists.map((artist) =>
+          artist.image
+            ? { ...artist, image: resolveAuthenticatedApiAssetUrl(artist.image) }
+            : artist,
+        ),
+        albums: result.albums.map(withCover),
+        tracks: result.tracks.map(withCover),
+      };
+    },
     staleTime: 15_000,
   });
 
