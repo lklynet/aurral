@@ -47,6 +47,22 @@ export const PLAYLIST_COVER_TEMPLATES = [
   "k2",
   "k3",
   "k4",
+  "l1",
+  "l2",
+  "l3",
+  "l4",
+  "m1",
+  "m2",
+  "m3",
+  "m4",
+  "n1",
+  "n2",
+  "n3",
+  "n4",
+  "o1",
+  "o2",
+  "o3",
+  "o4",
 ] as const;
 export type PlaylistCoverTemplate = (typeof PLAYLIST_COVER_TEMPLATES)[number];
 
@@ -114,6 +130,22 @@ const PALETTES = {
   k2: ["#be333f", "#f7b9d6"],
   k3: ["#000000", "#ffffff"],
   k4: ["#d9c6ec", "#362251"],
+  l1: ["#f2efe6", "#111111"],
+  l2: ["#ff5a1f", "#111111"],
+  l3: ["#1a3cff", "#ffffff"],
+  l4: ["#e8e4d8", "#141414"],
+  m1: ["#ffffff", "#000000"],
+  m2: ["#d9ff3c", "#000000"],
+  m3: ["#ff3d7f", "#120c0c"],
+  m4: ["#f4ede1", "#d7261e"],
+  n1: ["#2b2bff", "#ffe600"],
+  n2: ["#ffe14d", "#e3122c"],
+  n3: ["#ff8a00", "#2a0f4a"],
+  n4: ["#ff2e88", "#120024"],
+  o1: ["#e8231a", "#ffffff"],
+  o2: ["#0f5e4b", "#f3e6c8"],
+  o3: ["#f6c9d6", "#2d1b5e"],
+  o4: ["#fff1d6", "#ff4b2b"],
 } satisfies Record<PlaylistCoverTemplate, [string, string]>;
 
 type Box = [x: number, y: number, width: number, height: number];
@@ -164,10 +196,21 @@ export async function renderPlaylistCover({
   let nextId = 0;
   const rect = ([x, y, width, height]: Box, fill: string, radius = 0) =>
     `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${fill}"/>`;
-  const photo = (box: Box = [0, 0, 1000, 1000], shape = "", zoom = 1, position = 0.5) => {
+  const channel = (hex: string, index: number) =>
+    (parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255).toFixed(3);
+  const photo = (
+    box: Box = [0, 0, 1000, 1000],
+    shape = "",
+    zoom = 1,
+    position = 0.5,
+    tone?: [dark: string, light: string],
+  ) => {
     const [x, y, w, h] = box;
     const id = `p${nextId++}`;
-    return `<defs><clipPath id="${id}">${shape || rect(box, "white")}</clipPath></defs><g clip-path="url(#${id})"><image href="data:image/jpeg;base64,${source}" x="${x - (w * zoom - w) * position}" y="${y - (h * zoom - h) * position}" width="${w * zoom}" height="${h * zoom}" preserveAspectRatio="xMidYMin slice"/></g>`;
+    const filter = tone
+      ? `<filter id="${id}f" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer>${(["R", "G", "B"] as const).map((name, index) => `<feFunc${name} type="table" tableValues="${channel(tone[0], index)} ${channel(tone[1], index)}"/>`).join("")}</feComponentTransfer></filter>`
+      : "";
+    return `<defs><clipPath id="${id}">${shape || rect(box, "white")}</clipPath>${filter}</defs><g clip-path="url(#${id})"><image${tone ? ` filter="url(#${id}f)"` : ""} href="data:image/jpeg;base64,${source}" x="${x - (w * zoom - w) * position}" y="${y - (h * zoom - h) * position}" width="${w * zoom}" height="${h * zoom}" preserveAspectRatio="xMidYMin slice"/></g>`;
   };
   const ellipse = ([x, y, w, h]: Box) =>
     `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}"/>`;
@@ -214,7 +257,7 @@ export async function renderPlaylistCover({
   const halfway = Math.max(1, Math.ceil(words.length / 2));
   const first = words.slice(0, halfway).join(" ");
   const last = words.slice(halfway).join(" ");
-  const split = words.join("\n");
+  const split = words.length <= 3 ? words.join("\n") : displayTitle;
   let art = "";
   if (!imageBuffer) art = await text([90, 110, 820, 780]);
   else
@@ -464,11 +507,18 @@ export async function renderPlaylistCover({
       case "i4": {
         art = photo([230, 230, 540, 540], ellipse([230, 230, 540, 540]));
         const letters = Array.from(displayTitle);
-        const glyphWidth = Math.min(90, 1000 / letters.length);
-        for (const start of [-165, 15]) {
+        const arcs: [start: number, sweep: number][] =
+          letters.length > 16
+            ? [[-165, 330]]
+            : [
+                [-165, 150],
+                [15, 150],
+              ];
+        for (const [start, sweep] of arcs) {
+          const glyphWidth = Math.min(90, (sweep * 7) / letters.length);
           for (const [index, letter] of letters.entries()) {
             if (!letter.trim()) continue;
-            const angle = start + ((index + 0.5) * 150) / letters.length;
+            const angle = start + ((index + 0.5) * sweep) / letters.length;
             const radians = (angle * Math.PI) / 180;
             const x = 500 + Math.cos(radians) * 400;
             const y = 500 + Math.sin(radians) * 400;
@@ -538,6 +588,139 @@ export async function renderPlaylistCover({
           photo([250, 310, 720, 660], '<path d="M610 310L970 640 610 970 250 640Z"/>') +
           (await text([40, 35, 920, 200], { text: first })) +
           (last ? await text([40, 245, 920, 200], { text: last, outline: true }) : "");
+        break;
+      case "l1":
+        art =
+          photo([700, 90, 210, 210], ellipse([700, 90, 210, 210]), 1.3) +
+          (await text([50, 700, 560, 250], { font: "condensed" }));
+        break;
+      case "l2":
+        art =
+          photo([0, 0, 1000, 1000], rect([0, 250, 1000, 230], "white")) +
+          (await text([50, 740, 620, 210], { font: "heavy" }));
+        break;
+      case "l3":
+        art =
+          photo([520, 0, 480, 480], "", 1.2) + (await text([50, 600, 560, 350], { font: "heavy" }));
+        break;
+      case "l4":
+        art =
+          photo([0, 0, 1000, 1000], rect([700, 0, 70, 1000], "white")) +
+          (await text([60, 800, 520, 140], { font: "italic", text: displayTitle.toLowerCase() }));
+        break;
+      case "m1":
+        art =
+          photo([0, 0, 640, 560], "", 1, 0.5, ["#000000", "#ffffff"]) +
+          (await text([40, 575, 1150, 400], {
+            font: "condensed",
+            text: displayTitle.toUpperCase(),
+          }));
+        break;
+      case "m2":
+        art =
+          photo([0, 0, 680, 680], "", 1, 0.5, [ink, paper]) +
+          rect([680, 0, 320, 680], ink) +
+          rect([0, 680, 1000, 14], ink) +
+          rect([680, 0, 14, 1000], ink) +
+          (await text([30, 715, 620, 255], {
+            font: "condensed",
+            text: displayTitle.toUpperCase(),
+          }));
+        break;
+      case "m3":
+        art =
+          rect([340, 110, 600, 480], "#ffffff") +
+          photo([300, 70, 600, 480]) +
+          (await text([40, 615, 780, 340], { font: "heavy" }));
+        break;
+      case "m4": {
+        const size = Math.ceil(words.length / 3);
+        const lines =
+          words.length <= 3
+            ? words
+            : [0, 1, 2]
+                .map((row) => words.slice(row * size, row * size + size).join(" "))
+                .filter(Boolean);
+        for (const [index, line] of lines.entries())
+          art += await text([40 + index * 140, 50 + index * 210, 820 - index * 140, 200], {
+            font: "condensed",
+            text: line.toUpperCase(),
+          });
+        art += photo([560, 700, 400, 260], "", 1.4);
+        break;
+      }
+      case "n1":
+        art =
+          photo([0, 0, 1000, 1000], "", 1, 0.5, ["#0a0a5c", "#7fd0ff"]) +
+          (await text([64, 614, 900, 330], { font: "heavy", color: "#000000" })) +
+          (await text([50, 600, 900, 330], { font: "heavy" }));
+        break;
+      case "n2":
+        art =
+          photo() +
+          rotate(
+            `<ellipse cx="720" cy="280" rx="240" ry="240" fill="${paper}"/>` +
+              (await text([550, 160, 340, 240], { font: "heavy", align: "centre" })),
+            -12,
+            720,
+            280,
+          );
+        break;
+      case "n3": {
+        let rays = "";
+        for (let angle = 0; angle < 360; angle += 30) {
+          const point = (degrees: number) =>
+            `${500 + Math.cos((degrees * Math.PI) / 180) * 1500} ${560 + Math.sin((degrees * Math.PI) / 180) * 1500}`;
+          rays += `<path d="M500 560L${point(angle)}L${point(angle + 15)}Z" fill="#ffc23a"/>`;
+        }
+        art =
+          rays +
+          photo([270, 330, 460, 460], ellipse([270, 330, 460, 460]), 1.3) +
+          (await text([50, 40, 900, 250], { font: "heavy" }));
+        break;
+      }
+      case "n4":
+        for (let i = 0; i < 6; i++)
+          art += await text([-40 + (i % 2) * 120, i * 170 - 20, 1100, 160], {
+            font: "condensed",
+            text: displayTitle.toUpperCase(),
+            color: "#d81b72",
+          });
+        art +=
+          rotate(rect([210, 170, 580, 520], ink) + photo([235, 195, 530, 470], "", 1.2), 4) +
+          rect([0, 770, 1000, 230], ink) +
+          (await text([40, 790, 920, 190], {
+            font: "condensed",
+            text: displayTitle.toUpperCase(),
+            color: paper,
+          }));
+        break;
+      case "o1":
+        art =
+          (await text([-30, -90, 1060, 1180], {
+            font: "heavy",
+            text: Array.from(displayTitle)[0]?.toUpperCase() ?? "",
+            color: "#ffffff",
+            photo: true,
+            align: "centre",
+          })) + (await text([520, 850, 440, 110], { font: "condensed", align: "right" }));
+        break;
+      case "o2":
+        art =
+          `<circle cx="820" cy="180" r="380" fill="${ink}"/><circle cx="120" cy="1000" r="230" fill="#ff6a3d"/>` +
+          photo([160, 300, 420, 420], ellipse([160, 300, 420, 420]), 1.3) +
+          (await text([470, 760, 490, 200], { font: "heavy", align: "right", color: ink }));
+        break;
+      case "o3":
+        art =
+          rect([500, 0, 500, 1000], ink) +
+          photo([250, 330, 500, 500], ellipse([250, 330, 500, 500]), 1.3) +
+          (await text([40, 40, 440, 300], { font: "heavy" }));
+        break;
+      case "o4":
+        art =
+          photo([0, 0, 1000, 1000], '<path d="M0 1000V250H250V450H500V650H750V850H1000V1000Z"/>') +
+          (await text([400, 60, 560, 300], { font: "heavy", align: "right" }));
         break;
     }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="1000" viewBox="0 0 1000 1000">${rect([0, 0, 1000, 1000], paper)}${art}</svg>`;
