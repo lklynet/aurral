@@ -49,7 +49,7 @@ afterAll(async () => {
   delete process.env.BRAINZMASH_BASE_URL;
 });
 
-test("failed cover metadata requests log the MBID and remain retryable", async () => {
+test("failed cover metadata requests log the MBID once and remain retryable", async () => {
   replies.set(`/album/${mbid}`, { status: 503, body: {} });
   const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -66,10 +66,11 @@ test("failed cover metadata requests log the MBID and remain retryable", async (
     reason: `Request to ${new URL(providerServer.url).host} failed with status code 503`,
   });
 
-  await fetchReleaseGroupCoverUrl(mbid);
+  const retried = await fetchReleaseGroupCoverUrl(mbid);
 
   assert.deepEqual(requests, [`/album/${mbid}`]);
-  assert.match(JSON.stringify(warnings.mock.calls[1]), /cooling down/);
+  assert.equal(retried.transientError, true);
+  assert.equal(warnings.mock.calls.length, 1);
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
 });
 
