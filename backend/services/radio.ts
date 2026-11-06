@@ -131,14 +131,17 @@ function resolveSeed(seed: RadioSeed) {
   ];
   const trackIds = [...new Set(seedTracks.map((track) => track.trackId))];
   const albumIds = [...new Set([...seedTracks, ...seedAlbums].map((entry) => entry.albumId))];
+  const seedArtistIds = matchedArtists.map((artist) => artist.id);
   const genres = db
     .prepare<number[], { genre: string }>(
       `SELECT DISTINCT lower(name) AS genre FROM library_entity_genres
        WHERE (entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (${placeholders(albumIds)}))
+          OR (entity_kind = 'albums' AND entity_id IN (
+            SELECT id FROM library_albums WHERE artist_id IN (${placeholders(seedArtistIds)})))
           OR (entity_kind = 'tracks' AND entity_id IN (${placeholders(trackIds)}))`,
     )
-    .all(...artistIds, ...albumIds, ...trackIds)
+    .all(...artistIds, ...albumIds, ...seedArtistIds, ...trackIds)
     .map((row) => row.genre);
   const artists = artistIds.length
     ? db

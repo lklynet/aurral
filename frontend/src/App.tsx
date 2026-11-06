@@ -18,7 +18,7 @@ import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.t
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "./queryClient";
+import { queryClient, queryKeys } from "./queryClient";
 import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { ShareProvider } from "./contexts/ShareContext";
@@ -31,6 +31,7 @@ import StarPrompt from "./components/StarPrompt";
 import { DotLoader } from "./components/DotLoader";
 import { SkeletonPageTitle } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
+import { useWebSocketChannel } from "./hooks/useWebSocket";
 import { usePluginActionResults } from "./hooks/usePluginActions.ts";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.ts";
@@ -127,12 +128,20 @@ function AppContent() {
   const [healthIssue, setHealthIssue] = useState<HealthIssue | null>(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
   const healthCheckInFlightRef = useRef(false);
-  const { isAuthenticated, bootstrap, refreshAuth } = useAuth();
+  const { isAuthenticated, bootstrap, refreshAuth, user } = useAuth();
   const { showSuccess, showError } = useToast();
 
   const { status: discoveryStatus, isConnected: appSocketConnected } = useDiscoveryStatus({
     enabled: isAuthenticated,
   });
+  useWebSocketChannel(
+    "discovery",
+    (message) => {
+      if (message.type !== "discovery_update" || message.phase !== "completed") return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.madeForYou(user?.id) });
+    },
+    { enabled: isAuthenticated },
+  );
 
   useEffect(() => {
     if (!discoveryStatus || discoveryStatus.isUpdating) return;
