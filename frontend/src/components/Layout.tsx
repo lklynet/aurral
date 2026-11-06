@@ -40,6 +40,7 @@ import {
 } from "../pages/Settings/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
+import { useNavBeta } from "../navigation/navBeta.ts";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 
 const SIDEBAR_THRESHOLD = 100;
@@ -114,6 +115,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   const scrollPositionsRef = useRef(new Map<string, number>());
   const scrolledPageRef = useRef<{ pathname: string; search: string } | null>(null);
   const sectionNav = useSectionNav();
+  const navBeta = useNavBeta();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef<HTMLElement>(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
@@ -166,7 +168,9 @@ function Layout({ children, headerActions }: LayoutProps) {
 
   const isActive = useCallback(
     (path: string) => {
-      if (path === "/") return isDiscoverSectionActive;
+      if (path === "/") {
+        return isDiscoverSectionActive || (navBeta && location.pathname === "/discover/news");
+      }
       if (path.startsWith("/shows")) {
         return location.pathname.startsWith("/shows");
       }
@@ -174,14 +178,17 @@ function Layout({ children, headerActions }: LayoutProps) {
         return location.pathname.startsWith("/flows");
       }
       if (path.startsWith("/activity")) {
-        return location.pathname.startsWith("/activity");
+        return (
+          location.pathname.startsWith("/activity") ||
+          (navBeta && location.pathname === "/blocklist")
+        );
       }
       if (path === "/library") {
         return isLibrarySectionPath(location.pathname, isDiscoverSectionActive);
       }
       return location.pathname === path;
     },
-    [isDiscoverSectionActive, location.pathname],
+    [isDiscoverSectionActive, location.pathname, navBeta],
   );
 
   const mobilePrimaryItems = [
@@ -201,13 +208,13 @@ function Layout({ children, headerActions }: LayoutProps) {
       ...(bootstrap?.ticketmasterConfigured
         ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]
         : []),
-      { path: "/blocklist", label: "Blocklist", icon: Ban },
+      ...(navBeta ? [] : [{ path: "/blocklist", label: "Blocklist", icon: Ban }]),
     ];
     return items.filter(
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [bootstrap?.ticketmasterConfigured, user]);
+  }, [bootstrap?.ticketmasterConfigured, navBeta, user]);
 
   const handleMobileBack = useCallback(() => {
     if ((window.history.state?.idx ?? 0) > 0) {
@@ -373,6 +380,29 @@ function Layout({ children, headerActions }: LayoutProps) {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!navBeta || !sectionNav) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const step = event.key === "[" ? -1 : event.key === "]" ? 1 : 0;
+      if (!step || event.defaultPrevented || event.isComposing) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
+      ) {
+        return;
+      }
+      if (document.querySelector("[aria-modal='true']")) return;
+      const { items } = sectionNav;
+      const next = items[items.findIndex((item) => item.active) + step];
+      if (!next) return;
+      event.preventDefault();
+      navigate(next.path, { replace: true });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navBeta, navigate, sectionNav]);
+
+  useEffect(() => {
     const activeChip = sectionBarRef.current?.querySelector('[aria-current="page"]');
     activeChip?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [location.pathname, location.search, sectionNav?.id]);
@@ -457,6 +487,7 @@ function Layout({ children, headerActions }: LayoutProps) {
       data-sidebar-mode={sidebarMode}
       data-resizing={isResizing || undefined}
       data-player-docked={!playerMinimized || undefined}
+      data-nav={navBeta ? "beta" : undefined}
       style={{
         "--sidebar-width": `${sidebarWidth}px`,
       }}
@@ -505,6 +536,23 @@ function Layout({ children, headerActions }: LayoutProps) {
             >
               <ChevronLeft aria-hidden="true" />
             </button>
+          ) : null}
+
+          {navBeta && sectionNav ? (
+            <nav className="app-topbar-tabs" aria-label={sectionNav.label}>
+              <span className="app-topbar-tabs__title">{sectionNav.title}</span>
+              {sectionNav.items.map((item) => (
+                <RouteLink
+                  key={item.id}
+                  to={item.path}
+                  replace
+                  className={`app-topbar-tabs__tab${item.active ? " is-active" : ""}`}
+                  aria-current={item.active ? "page" : undefined}
+                >
+                  {item.label}
+                </RouteLink>
+              ))}
+            </nav>
           ) : null}
 
           <GlobalSearch />

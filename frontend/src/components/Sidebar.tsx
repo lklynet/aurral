@@ -29,6 +29,8 @@ import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRec
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import TooltipButton from "./TooltipButton";
 import SidebarPlayer from "./SidebarPlayer";
+import SidebarPlaylists from "./SidebarPlaylists";
+import { useNavBeta } from "../navigation/navBeta.ts";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -62,8 +64,9 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
     getSidebarStageBackdropEnabled(user?.id),
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
+  const navBeta = useNavBeta();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
-  const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
+  const { hasReview: hasReviewAlert, status: playlistStatus } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
   });
   const [isDesktop, setIsDesktop] = useState(() =>
@@ -90,6 +93,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnWanted = location.pathname.startsWith("/activity/missing");
   const isOnActivity = !isOnWanted && location.pathname.startsWith("/activity");
+  const isOnBlocklist = location.pathname === "/blocklist";
 
   const activeShowsFilter = useMemo(() => {
     if (!isOnShows) return null;
@@ -148,27 +152,57 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   const isNavItemActive = useCallback(
     (item: SidebarNavItem) => {
       if (item.section === "discover") {
-        return isDiscoverSectionActive;
+        return isDiscoverSectionActive || (navBeta && isOnNews);
       }
       if (item.section === "library") return isOnLibrary;
       if (item.section === "shows") return isOnShows;
       if (item.section === "news") return isOnNews;
-      if (item.section === "activity") return isOnActivity;
+      if (item.section === "activity") {
+        return navBeta ? isOnActivity || isOnWanted || isOnBlocklist : isOnActivity;
+      }
       if (item.section === "wanted") return isOnWanted;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
     [
       isDiscoverSectionActive,
       isOnActivity,
+      isOnBlocklist,
       isOnLibrary,
       isOnNews,
       isOnShows,
       isOnWanted,
       location.pathname,
+      navBeta,
     ],
   );
 
   const navItems = useMemo(() => {
+    const allowed = (item: SidebarNavItem) =>
+      !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission];
+    if (navBeta) {
+      const items: SidebarNavItem[] = [
+        { path: "/", label: "Discover", icon: Sparkles, section: "discover" },
+        { path: "/library", label: "Library", icon: Library, section: "library" },
+        { path: "/flows", label: "Flows", icon: AudioWaveform, permission: "accessFlow" },
+        ...(ticketmasterConfigured
+          ? [
+              {
+                path: `/shows/${DEFAULT_SHOWS_FILTER}`,
+                label: "Shows",
+                icon: Ticket,
+                section: "shows",
+              },
+            ]
+          : []),
+        {
+          path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
+          label: "Activity",
+          icon: Activity,
+          section: "activity",
+        },
+      ];
+      return items.filter(allowed);
+    }
     const libraryViews = LIBRARY_VIEWS.filter(
       (view) =>
         !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
@@ -233,16 +267,13 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       },
       { path: "/blocklist", label: "Blocklist", icon: Ban },
     ];
-    return items.filter(
-      (item) =>
-        !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
-    );
-  }, [newsConfigured, ticketmasterConfigured, user]);
+    return items.filter(allowed);
+  }, [navBeta, newsConfigured, ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 
   const renderSubnav = (item: SidebarNavItem, activeId: string | null) => {
-    if (isIcons || !isNavItemActive(item)) {
+    if (navBeta || isIcons || !isNavItemActive(item)) {
       return null;
     }
     if (!item.subnav?.length && item.section !== "discover") {
@@ -313,10 +344,11 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
 
   const getNavGroupClassName = (item: SidebarNavItem, active: boolean) => {
     const classes = ["sidebar-nav-group"];
+    const hasSubnav = !navBeta && (item.subnav?.length || item.section === "discover");
     if (item.section === "discover") {
       classes.push("sidebar-nav-group--discover");
     }
-    if (active && (item.subnav?.length || item.section === "discover") && !isIcons) {
+    if (active && hasSubnav && !isIcons) {
       classes.push("is-expanded");
     } else if (active) {
       classes.push("is-active-row");
@@ -344,7 +376,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         </RouteLink>
       </div>
       <aside
-        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"} ${translateClass}`}
+        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"}${navBeta ? " sidebar-shell--beta" : ""} ${translateClass}`}
         aria-label="Primary navigation"
         style={{
           width: `${width}px`,
@@ -413,6 +445,14 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
               })}
             </nav>
           </div>
+
+          {navBeta && playlistStatus ? (
+            <SidebarPlaylists
+              status={playlistStatus}
+              iconsOnly={isIcons}
+              onTooltip={isIcons ? positionSidebarTooltip : undefined}
+            />
+          ) : null}
 
           {onRestorePlayer ? (
             <div className="sidebar-player-group">

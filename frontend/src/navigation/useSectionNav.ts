@@ -5,6 +5,7 @@ import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavCo
 import { LIBRARY_VIEWS } from "./libraryNavConfig";
 import { lastRecommendedPath, RECOMMENDED_PATH } from "./recommendedPath";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "./showsNavConfig";
+import { useNavBeta } from "./navBeta.ts";
 
 function firstSegment(pathname: string, prefix: string) {
   return pathname.slice(prefix.length).replace(/^\//, "").split("/")[0];
@@ -13,6 +14,7 @@ function firstSegment(pathname: string, prefix: string) {
 export function useSectionNav() {
   const { pathname, search } = useLocation();
   const { user, bootstrap } = useAuth();
+  const navBeta = useNavBeta();
 
   return useMemo(() => {
     const allowed = (permission: string | undefined) =>
@@ -55,7 +57,7 @@ export function useSectionNav() {
           active: pathname === "/discover/news",
         });
       }
-      return { id: "discover", label: "Discover views", items };
+      return { id: "discover", title: "Discover", label: "Discover views", items };
     }
 
     if (pathname === "/library" || /^\/library\/[^/]+$/.test(pathname)) {
@@ -69,11 +71,12 @@ export function useSectionNav() {
           active: segment === view.id,
         })),
       ];
-      return { id: "library", label: "Library views", items };
+      return { id: "library", title: "Library", label: "Library views", items };
     }
 
-    if (pathname.startsWith("/activity/")) {
-      const segment = firstSegment(pathname, "/activity");
+    const isBlocklist = navBeta && pathname === "/blocklist";
+    if (pathname.startsWith("/activity/") || isBlocklist) {
+      const segment = isBlocklist ? "" : firstSegment(pathname, "/activity");
       const wantedTab = new URLSearchParams(search).get("tab") === "cutoff" ? "cutoff" : "missing";
       const items = ACTIVITY_VIEWS.filter((view) => view.id !== "missing").map((view) => ({
         id: view.id,
@@ -91,7 +94,15 @@ export function useSectionNav() {
           })),
         );
       }
-      return { id: "activity", label: "Activity views", items };
+      if (navBeta) {
+        items.push({
+          id: "blocklist",
+          label: "Blocklist",
+          path: "/blocklist",
+          active: isBlocklist,
+        });
+      }
+      return { id: "activity", title: "Activity", label: "Activity views", items };
     }
 
     if (pathname.startsWith("/shows")) {
@@ -102,9 +113,9 @@ export function useSectionNav() {
         path: `/shows/${filter.id}`,
         active: segment === filter.id,
       }));
-      return { id: "shows", label: "Show filters", items };
+      return { id: "shows", title: "Shows", label: "Show filters", items };
     }
 
     return null;
-  }, [bootstrap?.newsConfigured, pathname, search, user]);
+  }, [bootstrap?.newsConfigured, navBeta, pathname, search, user]);
 }
