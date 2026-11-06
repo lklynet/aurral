@@ -49,6 +49,7 @@ const jobQueueTrack = (job: DownloadJob) => ({
   trackMbid: job.trackMbid ?? null,
   libraryTrackId: null,
   libraryAlbumId: null,
+  libraryArtistId: null,
   artworkUrl: null,
   artworkSource: null,
 });

@@ -787,6 +787,7 @@ export function useLibraryActions({
         trackMbid: track.mbid || null,
         libraryTrackId: file && album ? track.id : null,
         libraryAlbumId: file && album ? album.id : null,
+        libraryArtistId: isAlbumArtistCredit(track, artist) ? (artist?.id ?? null) : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
         artwork: track.artworkUrl || album?.coverUrl || "",

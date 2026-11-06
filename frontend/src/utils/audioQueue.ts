@@ -69,6 +69,7 @@ export type QueueTrackInput = {
   trackMbid?: string | null;
   libraryTrackId?: string | number | null;
   libraryAlbumId?: string | number | null;
+  libraryArtistId?: string | number | null;
   favoriteId?: string | null;
 };
 
@@ -145,6 +146,7 @@ export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrac
     trackMbid: track?.trackMbid ?? overrides.trackMbid ?? null,
     libraryTrackId: track?.libraryTrackId ?? null,
     libraryAlbumId: track?.libraryAlbumId ?? null,
+    libraryArtistId: track?.libraryArtistId ?? null,
     favoriteId: track?.favoriteId ?? null,
     ...overrides,
   };
