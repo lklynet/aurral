@@ -13,8 +13,7 @@ import { logger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { releasedSince, utcDay } from "../../lib/releaseDate.ts";
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type CandidateAlbum = Pick<LibraryAlbumsRow, "id" | "title"> & {
   mbid: string;
@@ -101,7 +100,7 @@ function hasSearchableMissingTrack(album: CandidateAlbum, jobs: DownloadJob[]) {
 // even when the scheduled missing-track search is off.
 function selectDueAlbums(intervalDays: number | null) {
   const now = Date.now();
-  const dueBefore = intervalDays === null ? null : now - intervalDays * DAY_MS + HOUR_MS;
+  const dueBefore = intervalDays === null ? null : now - intervalDays * DAY_MS;
   const albums = candidateAlbumsStmt.all({ dueBefore, today: utcDay(now) });
   const jobsForAlbum = indexAurralAlbumJobs(
     albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]),
