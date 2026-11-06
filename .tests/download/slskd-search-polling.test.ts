@@ -199,6 +199,29 @@ test("final hydration merges equal-sized partial status and response snapshots",
   ]);
 });
 
+test("final hydration ends once every response arrived, even when a peer repeats a file", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 1000 });
+  const repeated = { username: "peer", files: [{ filename: "Song.flac" }] };
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
+    state: "Completed",
+    responseCount: 2,
+    fileCount: 2,
+    responses: [repeated, repeated],
+  }));
+  const fetched = vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () => {
+    vi.setSystemTime(61000);
+    return [repeated, repeated];
+  });
+  const files = slskdClient.flattenSearchResults(
+    await slskdClient.waitForSearch("repeated-file", 60000),
+  );
+  assert.deepEqual(
+    files.map((file) => file.file),
+    ["Song.flac"],
+  );
+  assert.equal(fetched.mock.calls.length, 0);
+});
+
 test("a search waiting in slskd's queue gets its full windows once it runs", async () => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
   vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
@@ -246,4 +269,69 @@ test("a search still queued in slskd at the caller's deadline reports slskd as b
     deleted.mock.calls.map((call) => call[0]),
     ["busy-search"],
   );
+});
+
+test("a search still answering at the deadline is stopped and keeps its responses", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
+  let stopped = false;
+  const stop = vi.spyOn(slskdClient, "stopSearch").mockImplementation(async () => {
+    stopped = true;
+    return true;
+  });
+  const deleted = vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () =>
+    stopped
+      ? {
+          state: "Completed, Cancelled",
+          fileCount: 1,
+          responses: [{ username: "peer", files: [{ filename: "Song.flac" }] }],
+        }
+      : { state: "InProgress", fileCount: 1, responseCount: 1, responses: [] },
+  );
+  vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () =>
+    stopped ? [{ username: "peer", files: [{ filename: "Song.flac" }] }] : [],
+  );
+  const pending = slskdClient.waitForSearch("still-answering", 10000, { gracePeriodMs: 0 });
+  for (let step = 0; step < 14; step += 1) {
+    await new Promise(setImmediate);
+    vi.advanceTimersByTime(1000);
+  }
+  const files = slskdClient.flattenSearchResults(await pending);
+  assert.deepEqual(
+    files.map((file) => file.file),
+    ["Song.flac"],
+  );
+  assert.deepEqual(
+    stop.mock.calls.map((call) => call[0]),
+    ["still-answering"],
+  );
+  assert.equal(deleted.mock.calls.length, 0);
+});
+
+test("a search cancelled while it is stopped at the deadline returns nothing", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
+  const controller = new AbortController();
+  vi.spyOn(slskdClient, "stopSearch").mockImplementation(async () => {
+    controller.abort();
+    return true;
+  });
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
+    state: "InProgress",
+    fileCount: 1,
+    responseCount: 1,
+    responses: [],
+  }));
+  vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () => [
+    { username: "peer", files: [{ filename: "Song.flac" }] },
+  ]);
+  const pending = slskdClient.waitForSearch("cancelled-at-deadline", 10000, {
+    gracePeriodMs: 0,
+    signal: controller.signal,
+  });
+  for (let step = 0; step < 14; step += 1) {
+    await new Promise(setImmediate);
+    vi.advanceTimersByTime(1000);
+  }
+  assert.equal(await pending, null);
 });
