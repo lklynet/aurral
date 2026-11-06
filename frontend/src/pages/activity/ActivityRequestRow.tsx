@@ -16,6 +16,7 @@ import {
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
 import {
+  downloadClientLabel,
   isCancelableDownload,
   formatReviewReasonSummary,
   formatTimelineTime,
@@ -163,6 +164,7 @@ export default function ActivityRequestRow({
   const jobError = request.jobId ? jobErrors[request.jobId] : undefined;
   const reviewReasonSummary = isBlockedTrack ? formatReviewReasonSummary(request.subtitle) : null;
   const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
+  const client = downloadClientLabel(request);
   const upgradeLabel = request.upgrade
     ? request.upgrade.fromQuality
       ? `Upgrade from ${request.upgrade.fromQuality}`
@@ -245,6 +247,11 @@ export default function ActivityRequestRow({
           <span className="activity-row__kind" role="img" aria-label={upgradeLabel}>
             <TrendUp aria-hidden="true" />
           </span>
+        </Tooltip>
+      ) : null}
+      {client ? (
+        <Tooltip content={client}>
+          <span className="activity-row__client">{client}</span>
         </Tooltip>
       ) : null}
       <span className={`activity-row__status-label activity-row__status-label--${status.tone}`}>

@@ -11107,10 +11107,9 @@ button.native-library-genre-row:focus-visible {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) 1rem minmax(6.5rem, auto) minmax(
-      4.5rem,
-      auto
-    ) max-content;
+  grid-template-columns:
+    1.75rem minmax(0, 1fr) 1rem fit-content(8rem) minmax(6.5rem, auto) minmax(4.5rem, auto)
+    max-content;
   align-items: center;
   gap: 0.75rem;
   min-height: 3.5rem;
@@ -11126,8 +11125,8 @@ button.native-library-genre-row:focus-visible {
   .activity-list {
     display: grid;
     grid-template-columns:
-      [icon] auto [details] minmax(0, 1fr) [kind] auto [status] fit-content(10rem)
-      [time] auto [actions] auto [end];
+      [icon] auto [details] minmax(0, 1fr) [kind] auto [client] fit-content(8rem)
+      [status] fit-content(10rem) [time] auto [actions] auto [end];
     column-gap: 0.75rem;
   }
 
@@ -11297,6 +11296,15 @@ button.native-library-genre-row:focus-visible {
   height: 1rem;
 }
 
+.activity-row__client {
+  grid-column: 4;
+  overflow: hidden;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .activity-row__status-label,
 .activity-row__time {
   color: var(--aurral-text-muted);
@@ -11305,7 +11313,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .activity-row__status-label {
-  grid-column: 4;
+  grid-column: 5;
 }
 
 .activity-row__status-label--success {
@@ -11647,6 +11655,28 @@ button.native-library-genre-row:focus-visible {
     grid-template-areas:
       "status details time"
       "status actions actions";
+  }
+
+  .activity-row:has(.activity-row__client) {
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto fit-content(0);
+    grid-template-areas:
+      "status details client time"
+      "status details actions actions";
+  }
+
+  .activity-row:has(.activity-row__client):has(.activity-row__actions > :nth-child(4)) {
+    grid-template-areas:
+      "status details client time"
+      "status actions actions actions";
+  }
+
+  .activity-row__client {
+    grid-area: client;
+    justify-self: end;
+    max-width: 6rem;
+    padding-top: 0.15rem;
+    color: var(--aurral-text-subtle);
+    font-size: var(--aurral-font-2xs);
   }
 
   .activity-row__status {

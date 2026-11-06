@@ -5,9 +5,12 @@ import type {
 } from "../../../../backend/services/aurralHistoryService.ts";
 import { formatDate, formatTime } from "../../utils/dateTime.ts";
 
-const SOURCE_NAMES: Partial<Record<string, string>> = {
-  slskd: "Soulseek",
+const DOWNLOAD_CLIENTS: Partial<Record<string, string>> = {
+  slskd: "slskd",
   usenet: "Usenet",
+  nzbget: "NZBGet",
+  sabnzbd: "SABnzbd",
+  tidarr: "Tidarr",
   deemix: "deemix",
   ytdlp: "yt-dlp",
   share: "Aurral share",
@@ -49,6 +52,9 @@ export type AlbumActivityRequest = ActivityRequest & {
   children: ActivityRequest[];
   albumGrab: AurralAlbumGrab;
 };
+
+export const downloadClientLabel = (request: ActivityRequest) =>
+  request.sourceSummary || lookupLabel(DOWNLOAD_CLIENTS, request.source) || null;
 
 export const isCancelableDownload = (request: ActivityRequest) =>
   request.kind === "track_download" &&
@@ -137,10 +143,10 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       ),
     ];
     const sourceSummary = sources.length
-      ? sources.map((source) => lookupLabel(SOURCE_NAMES, source) || source).join(", ")
+      ? sources.map((source) => lookupLabel(DOWNLOAD_CLIENTS, source) || source).join(", ")
       : active && grab.source
-        ? lookupLabel(SOURCE_NAMES, grab.source) || grab.source
-        : "Unknown";
+        ? lookupLabel(DOWNLOAD_CLIENTS, grab.source) || grab.source
+        : null;
     const progressLabel =
       `${ready} of ${total} tracks ready` +
       (missing ? ` · ${missing} track detail${missing === 1 ? "" : "s"} unavailable` : "");
