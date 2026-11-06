@@ -128,44 +128,9 @@ const hasGenre = (genre: string, ...entities: (GenreSource | null | undefined)[]
   return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
 };
 
-const TOP_ARTIST_TRACK_LIMIT = 10;
-
 const QUERY_DEBOUNCE_MS = 250;
 
 const wait = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs));
-
-const trackRating = (track: LibraryPageTrack) => {
-  const value = track?.metadata?.rating ?? nestedField(track?.metadata?.tags, "rating");
-  const rating: unknown = Array.isArray(value) ? value[0] : value;
-  const score = rating && typeof rating === "object" ? nestedField(rating, "rating") : rating;
-  return Number.isFinite(Number(score)) ? Number(score) : null;
-};
-
-const trackRecency = (track: LibraryPageTrack, albumsById: Map<string, LibraryAlbum>) => {
-  const fileTimes = (track?.files || [])
-    .filter((file) => file.available)
-    .map((file) => Number(file.mtimeMs))
-    .filter(Number.isFinite);
-  const albumTimes = (track?.albums || [])
-    .map((relation) => albumsById.get(String(relation.albumId))?.releaseDate)
-    .map((releaseDate) => Date.parse(String(releaseDate || "")))
-    .filter(Number.isFinite);
-  return Math.max(...fileTimes, ...albumTimes, 0);
-};
-
-const topArtistTracks = (tracks: LibraryPageTrack[], albumsById: Map<string, LibraryAlbum>) => {
-  const hasRatings = tracks.some((track) => trackRating(track) !== null);
-  return [...tracks]
-    .sort((left, right) => {
-      if (hasRatings) {
-        const ratingDifference = (trackRating(right) ?? -1) - (trackRating(left) ?? -1);
-        if (ratingDifference) return ratingDifference;
-      }
-      const recencyDifference = trackRecency(right, albumsById) - trackRecency(left, albumsById);
-      return recencyDifference || text(left?.title).localeCompare(text(right?.title));
-    })
-    .slice(0, TOP_ARTIST_TRACK_LIMIT);
-};
 
 const artistAlbumTotal = (artist: LibraryArtist) =>
   ("albumCount" in artist ? artist.albumCount : undefined) ?? artist.albumIds?.length ?? 0;
@@ -679,6 +644,14 @@ function LibraryPage() {
       };
     });
   }, [isPreviewLibrary, library.albums, queryData?.nextData, section]);
+  const artistTopTracks = useMemo(() => {
+    const page = Array.isArray(queryData?.nextData) && routeArtistId ? queryData.nextData[2] : null;
+    if (page?.kind !== "tracks") return [];
+    const tracksById = new Map(library.tracks.map((track) => [String(track.id), track]));
+    return page.tracks
+      .map((item) => tracksById.get(String(item.id)))
+      .filter((track) => track !== undefined);
+  }, [library.tracks, queryData?.nextData, routeArtistId]);
   const homeGenres = useMemo(
     () =>
       [...genreStats]
@@ -1221,7 +1194,7 @@ function LibraryPage() {
       : [];
     const artistAlbums = [...ownedAlbums, ...sharedAlbums];
     const artistTracks = ownedAlbums.flatMap(getAlbumTracks);
-    const artistTopTracks = topArtistTracks(artistTracks, actions.albumsById);
+    const topTracks = isPreviewLibrary ? artistTracks : artistTopTracks;
     const artistTrackTotal = ownedAlbums.reduce(
       (total, album) => total + Number(albumAvailability(album).total || 0),
       0,
@@ -1333,10 +1306,10 @@ function LibraryPage() {
         <section className="native-library-detail__section">
           <div className="native-library-detail__section-heading">
             <h3>Top tracks</h3>
-            <span>{artistTopTracks.length}</span>
+            <span>{topTracks.length}</span>
           </div>
-          {artistTopTracks.length ? (
-            renderTrackList(artistTopTracks, libraryArtist.name + " top tracks")
+          {topTracks.length ? (
+            renderTrackList(topTracks, libraryArtist.name + " top tracks")
           ) : (
             <EmptyState title="No tracks" message="No tracks for this artist." />
           )}

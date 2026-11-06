@@ -42,6 +42,7 @@ export const LIBRARY_SORT_OPTIONS: Partial<Record<LibraryViewId, (typeof NAME_SO
 };
 
 const HOME_RAIL_SIZE = 20;
+const ARTIST_TOP_TRACKS = 10;
 
 export const HOME_ALBUM_RAILS = [
   { title: "Most played", sort: "plays", path: "/library/albums?sort=plays" },
@@ -142,6 +143,17 @@ const fetchLibraryPages = async (
       fetchLibraryPage({ kind: "albums", artistId, page: 1, pageSize }, { signal }),
       fetchLibraryPage(
         { kind: "tracks", artistId, page: 1, pageSize, availableOnly: true },
+        { signal },
+      ),
+      fetchLibraryPage(
+        {
+          kind: "tracks",
+          artistId,
+          page: 1,
+          pageSize: ARTIST_TOP_TRACKS,
+          sort: "plays",
+          availableOnly: true,
+        },
         { signal },
       ),
     ]);

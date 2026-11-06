@@ -372,7 +372,7 @@ test("recent albums follow each user's latest plays of available albums", () => 
   }
 });
 
-test("returns top songs only for the requested artist", () => {
+test("returns top songs only for the requested artist, most played first", () => {
   const songs = getTopSongs("Artist A", { count: "10" });
   assert.deepEqual(
     songs.map((song) => song.title),
@@ -386,6 +386,18 @@ test("returns top songs only for the requested artist", () => {
     getTopSongs("  test-artist:artist-a  ", { count: "10" }).map((song) => song.title),
     ["New Song", "Old Song"],
   );
+  const listener = createTestUser("subsonic-top-songs-listener");
+  const topTitles = () =>
+    getTopSongs("Artist A", { count: "10" }, listener).map((song) => song.title);
+  try {
+    assert.deepEqual(topTitles(), ["Old Song", "New Song"]);
+    db.prepare(
+      "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, 'x', 'New Song', 'Artist A', 1, 'subsonic', 1)",
+    ).run(listener.id);
+    assert.deepEqual(topTitles(), ["New Song", "Old Song"]);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(listener.id);
+  }
 });
 
 test("marks album entries as directories in artist music directories", () => {
