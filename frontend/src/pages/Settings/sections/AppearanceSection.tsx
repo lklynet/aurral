@@ -7,6 +7,7 @@ import {
 } from "../../../components/SidebarStageBackdrop";
 import { useAuth } from "../../../contexts/AuthContext";
 import { setNavBeta, useNavBeta } from "../../../navigation/navBeta.ts";
+import { setArtistVideos, useArtistVideos } from "../../ArtistDetails/artistVideosSetting.ts";
 import { useToast } from "../../../contexts/ToastContext";
 import { ThemeSettings } from "../components/ThemeSettings";
 import { SettingsGroup, SettingsPage, SettingsRow } from "../SettingsLayout";
@@ -16,6 +17,7 @@ export function AppearanceSection() {
   const { showSuccess, showError } = useToast();
   const [sidebarArt, setSidebarArt] = useState(() => getSidebarStageBackdropEnabled(user?.id));
   const navBeta = useNavBeta();
+  const artistVideos = useArtistVideos();
 
   return (
     <SettingsPage title="Appearance">
@@ -35,6 +37,20 @@ export function AppearanceSection() {
             checked={navBeta}
             aria-label="New navigation"
             onChange={(event) => setNavBeta(user?.id, event.target.checked)}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title="Artist pages">
+        <SettingsRow
+          label="YouTube videos"
+          help="Music videos for an artist's popular tracks."
+          htmlFor="appearance-artist-videos"
+        >
+          <PillToggle
+            id="appearance-artist-videos"
+            checked={artistVideos}
+            aria-label="YouTube videos"
+            onChange={(event) => setArtistVideos(user?.id, event.target.checked)}
           />
         </SettingsRow>
       </SettingsGroup>
