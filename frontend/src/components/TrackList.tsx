@@ -15,6 +15,7 @@ import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import RouteLink from "./RouteLink";
+import { DiscSection } from "./DiscSection.tsx";
 
 const SORTABLE_HEADINGS = {
   number: "index",
@@ -49,6 +50,8 @@ type TrackCoverField = TrackLinkField & { src?: string | null };
 
 export type TrackListRow = {
   key: string | number;
+  // A heading shown above this row, such as a disc of a box set.
+  section?: ReactNode;
   title: string;
   number: ReactNode;
   year?: string | null;
@@ -299,13 +302,16 @@ export function TrackList({
         <span />
       </div>
       <div role="list" aria-label={label}>
-        {rows.map((row) => {
+        {rows.flatMap((row) => {
           const playLabel = row.playing
             ? `Pause ${row.title}`
             : row.previewOnly
               ? `Preview ${row.title}`
               : `Play ${row.title}`;
-          return (
+          return [
+            row.section ? (
+              <DiscSection key={`section-${row.key}`}>{row.section}</DiscSection>
+            ) : null,
             <div
               key={row.key}
               ref={(node) => {
@@ -434,8 +440,8 @@ export function TrackList({
               ) : (
                 <span />
               )}
-            </div>
-          );
+            </div>,
+          ];
         })}
       </div>
     </div>
