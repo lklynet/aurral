@@ -335,15 +335,6 @@ export function getReleaseTypeLabel(item: SearchItem | null | undefined) {
   return item?.primaryType === "Single" || item?.primaryType === "EP" ? item.primaryType : "Album";
 }
 
-function normalizeSearchText(value: unknown) {
-  return String(value || "")
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function dedupe<Item extends SearchItem>(items: Item[], seen: Set<string>) {
   return items.filter((item) => {
     const key = item.id ? `${item.type}:${item.id}` : item.key ? String(item.key) : null;
@@ -381,26 +372,14 @@ export function buildUnifiedSuggestionSections<Item extends SearchItem>({
   catalog?: CatalogBuckets<Item> | null;
 }) {
   const seen = new Set<string>();
-  const libraryItems = dedupe(
-    [...(library?.artists ?? []), ...(library?.albums ?? []), ...(library?.tracks ?? [])],
-    seen,
-  );
-  const libraryArtistNames = new Set(
-    libraryItems.flatMap((item) =>
-      item.type === "artist" ? [normalizeSearchText(item.name)] : [],
-    ),
-  );
-  const notLibraryArtist = (item: Item) =>
-    item.type !== "artist" || !libraryArtistNames.has(normalizeSearchText(item.name));
-  const top = catalog?.top && notLibraryArtist(catalog.top) ? [catalog.top] : [];
+  const libraryItems = [
+    ...dedupe(library?.artists ?? [], new Set()),
+    ...dedupe([...(library?.albums ?? []), ...(library?.tracks ?? [])], seen),
+  ];
   return [
     { key: "library", label: "Your Library", items: libraryItems },
-    { key: "top", label: "Search", items: dedupe(top, seen) },
-    {
-      key: "artists",
-      label: "Artists",
-      items: dedupe((catalog?.artists ?? []).filter(notLibraryArtist), seen),
-    },
+    { key: "top", label: "Search", items: dedupe(catalog?.top ? [catalog.top] : [], seen) },
+    { key: "artists", label: "Artists", items: dedupe(catalog?.artists ?? [], seen) },
     { key: "tracks", label: "Songs", items: dedupe(catalog?.tracks ?? [], seen) },
     { key: "playlists", label: "Playlists", items: dedupe(library?.playlists ?? [], seen) },
     { key: "albums", label: "Albums", items: dedupe(catalog?.albums ?? [], seen) },
