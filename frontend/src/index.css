@@ -5501,7 +5501,6 @@ textarea:disabled {
 }
 
 .artist-modal-select {
-  display: block;
   width: 100%;
   height: 2.5rem;
   padding: 0 0.75rem;
