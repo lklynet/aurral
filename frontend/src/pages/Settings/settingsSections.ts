@@ -101,6 +101,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     "Color scheme": "dark light system mode",
     Theme: "presets custom colors import immersive mode artwork tint",
     Navigation: "new beta sidebar tabs top bar playlists",
+    "Artist pages": "YouTube music videos hide",
     Sidebar: { keywords: "environment art backdrop", when: "sidebarArt" },
   },
   "shared-links": {

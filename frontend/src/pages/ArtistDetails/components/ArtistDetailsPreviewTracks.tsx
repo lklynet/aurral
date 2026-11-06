@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { ArtistDetailsVideos } from "./ArtistDetailsVideos";
+import { useArtistVideos } from "../artistVideosSetting.ts";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 import type { PlaylistSelection, PlaylistTrackIdentity } from "./TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
@@ -48,6 +49,7 @@ export function ArtistDetailsPreviewTracks({
 }) {
   const popularTracks = useMemo(() => (previewTracks || []).slice(0, 6), [previewTracks]);
   const getQueueItems = useQueueTrackActions();
+  const showVideos = useArtistVideos();
 
   if (!loadingPreview && (!previewTracks || previewTracks.length === 0)) {
     return null;
@@ -139,7 +141,7 @@ export function ArtistDetailsPreviewTracks({
           </div>
         )}
       </section>
-      {!loadingPreview && popularTracks.length > 0 ? (
+      {showVideos && !loadingPreview && popularTracks.length > 0 ? (
         <ArtistDetailsVideos mbid={mbid} artistName={artistName} tracks={popularTracks} />
       ) : null}
     </>
