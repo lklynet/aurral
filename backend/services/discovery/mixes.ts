@@ -130,16 +130,13 @@ function pick(
 function resolvePlays(plays: TrackPlays[]) {
   const byId = new Map<number, TrackPlays>();
   const byIdentity = new Map<string, TrackPlays>();
-  const byName = new Map<string, TrackPlays>();
   for (const play of plays) {
     if (/^\d+$/.test(play.trackId)) byId.set(Number(play.trackId), play);
     else if (play.trackId.startsWith("song:")) {
       try {
         byIdentity.set(decodeURIComponent(play.trackId.slice(5)), play);
-      } catch {
-        byName.set(playKey(play.artist, play.title), play);
-      }
-    } else byName.set(playKey(play.artist, play.title), play);
+      } catch {}
+    }
   }
   const resolved = new Map<TrackPlays, number>();
   const ids = [...byId.keys()];
@@ -166,6 +163,11 @@ function resolvePlays(plays: TrackPlays[]) {
     const play = byIdentity.get(row.identityKey);
     if (play) resolved.set(play, row.id);
   }
+  const byName = new Map(
+    plays
+      .filter((play) => !resolved.has(play))
+      .map((play) => [playKey(play.artist, play.title), play]),
+  );
   const titles = [...new Set([...byName.values()].map((play) => play.title.toLowerCase()))];
   if (titles.length) {
     const rows = db

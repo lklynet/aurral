@@ -404,6 +404,7 @@ test("the shelf keeps categories that loaded, lists each playlist once, and drop
           summary(3, "Rock Essentials"),
           summary(5, "Rock Ballads"),
           summary(6, "Classic Rock"),
+          summary(7, "Rap Bangers"),
         ],
       },
     },
@@ -434,7 +435,7 @@ test("the shelf keeps categories that loaded, lists each playlist once, and drop
     ]),
     [
       ["genre", "Popular", ["80s Hits", "Today's Hits", "Viral Hits"]],
-      ["genre", "Rock", ["Rock Essentials", "Rock Ballads", "Classic Rock"]],
+      ["genre", "Rock", ["Rock Essentials", "Rock Ballads", "Classic Rock", "Rap Bangers"]],
       ["mood", "Chill", ["Chill Vibes", "Evening Chill", "Chill Lofi"]],
     ],
   );

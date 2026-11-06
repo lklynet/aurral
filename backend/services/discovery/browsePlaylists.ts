@@ -21,7 +21,7 @@ import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseC
 import { BROWSE_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
 import type { ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
-import type { LibraryArtistsRow } from "../../db/rows.ts";
+import type { LibraryArtistsRow, LibraryMediaFilesRow } from "../../db/rows.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
@@ -66,6 +66,11 @@ function withOwnedTracks(tracks: CatalogTrack[]) {
     return { ...track, owned: (match && owned.get(match.track.id)) || null };
   });
 }
+
+const ownedFileStmt = db.prepare<[number, number], Pick<LibraryMediaFilesRow, "path">>(
+  `SELECT path FROM library_media_files
+   WHERE track_id = ? AND album_id = ? AND available = 1 AND source != 'flow' LIMIT 1`,
+);
 
 const artistStmt = db.prepare<[number], Pick<LibraryArtistsRow, "name" | "mbid">>(
   "SELECT name, mbid FROM library_artists WHERE id = ?",
@@ -198,7 +203,10 @@ export async function saveBrowsePlaylist(user: RequestUser, provider: BrowseProv
   const playlistId = randomUUID();
   const tracks = playlist.tracks.flatMap((track) => {
     const normalized = normalizePlaylistTrack(track);
-    return normalized ? [normalized] : [];
+    if (!normalized) return [];
+    const file =
+      track.owned && ownedFileStmt.get(track.owned.libraryTrackId, track.owned.libraryAlbumId);
+    return [file ? { ...normalized, path: file.path } : normalized];
   });
   await playlistOperationQueue.enqueuePayload({
     kind: "shared-playlist-create",

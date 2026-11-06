@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { beforeEach, test } from "vite-plus/test";
+import { beforeEach, test, vi } from "vite-plus/test";
 import { resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 
-const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic, browse, covers] =
+const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic, browse, covers, operations] =
   await setupIsolatedBackend(
     "discovery-mixes",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -13,6 +13,7 @@ const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic, browse, cove
     () => import("../../backend/services/subsonicLibraryService.ts"),
     () => import("../../backend/services/discovery/browsePlaylists.ts"),
     () => import("../../backend/services/discovery/browseCovers.ts"),
+    () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   );
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -91,7 +92,9 @@ test("listening mixes rank Library tracks by when and how often they were played
           : `plex:${index}`;
     play(id, track.title, "Boards", 14 - index, 3);
   });
-  caribou.tracks.forEach((track) => play(String(track.id), track.title, "Caribou", 3, 120));
+  caribou.tracks.forEach((track, index) =>
+    play(index === 0 ? "999999" : String(track.id), track.title, "Caribou", 3, 120),
+  );
   daft.tracks.forEach((track) => play(String(track.id), track.title, "Daft", 4, 400));
   play("lastfm:gone", "Not In Library", "Boards", 20, 2);
 
@@ -129,6 +132,17 @@ test("listening mixes rank Library tracks by when and how often they were played
   await assert.rejects(
     subsonic.updateSubsonicPlaylist(testUser(userId), { playlistId: "mix:on-repeat", name: "x" }),
     { code: "SUBSONIC_PLAYLIST_READ_ONLY" },
+  );
+
+  const enqueue = vi.spyOn(operations.playlistOperationQueue, "enqueuePayload");
+  await browse.saveBrowsePlaylist(testUser(userId), "mix", "on-repeat");
+  const saved = enqueue.mock.calls[0]?.[0]?.tracks;
+  assert.ok(Array.isArray(saved));
+  assert.deepEqual(
+    saved
+      .slice(0, 2)
+      .map((track) => (track && typeof track === "object" && "path" in track ? track.path : null)),
+    ["/music/Boards/0.flac", "/music/Boards/1.flac"],
   );
 });
 

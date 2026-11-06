@@ -374,16 +374,12 @@ export async function getEditorialShelf(scope: ShelfScope = "all") {
   for (const [index, result] of results.entries()) {
     const source = sources[index];
     if (!source || !result.ok) continue;
-    const playlists = [];
-    for (const playlist of result.playlists) {
-      if (seen.has(playlist.id)) continue;
-      seen.add(playlist.id);
-      playlists.push(playlist);
-      if (playlists.length >= SHELF_PLAYLISTS_PER_CATEGORY) break;
-    }
-    if (playlists.length >= SHELF_MIN_PLAYLISTS) {
-      categories.push({ id: source.id, name: source.name, group: source.group, playlists });
-    }
+    const playlists = result.playlists
+      .filter((playlist) => !seen.has(playlist.id))
+      .slice(0, SHELF_PLAYLISTS_PER_CATEGORY);
+    if (playlists.length < SHELF_MIN_PLAYLISTS) continue;
+    for (const playlist of playlists) seen.add(playlist.id);
+    categories.push({ id: source.id, name: source.name, group: source.group, playlists });
   }
   return categories;
 }
