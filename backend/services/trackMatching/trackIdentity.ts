@@ -107,6 +107,7 @@ export function recordingRequest(
     recordingMbidAliases: request.recordingMbidAliases,
     albumName: request.albumName,
     trackNumber: request.trackNumber,
+    discNumber: request.discNumber,
     albumTrackTitles: request.albumTrackTitles,
     releaseTracks: importedRelease?.tracks || [],
     secondaryTypes: request.secondaryTypes,
