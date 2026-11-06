@@ -114,6 +114,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   const scrollPositionsRef = useRef(new Map<string, number>());
   const scrolledPageRef = useRef<{ pathname: string; search: string } | null>(null);
   const sectionNav = useSectionNav();
+  const sectionRoot = sectionNav?.root ? sectionNav : null;
   const navBeta = useNavBeta();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef<HTMLElement>(null);
@@ -220,7 +221,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   }, [navigate]);
 
   useEdgeSwipeBack(mainWrapRef, {
-    enabled: !sectionNav,
+    enabled: !sectionRoot,
     onBack: handleMobileBack,
     resetKey: location.key,
   });
@@ -375,7 +376,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!navBeta || !sectionNav) return undefined;
+    if (!navBeta || !sectionRoot) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       const step = event.key === "[" ? -1 : event.key === "]" ? 1 : 0;
       if (!step || event.defaultPrevented || event.isComposing) return;
@@ -387,7 +388,7 @@ function Layout({ children, headerActions }: LayoutProps) {
         return;
       }
       if (document.querySelector("[aria-modal='true']")) return;
-      const { items } = sectionNav;
+      const { items } = sectionRoot;
       const next = items[items.findIndex((item) => item.active) + step];
       if (!next) return;
       event.preventDefault();
@@ -395,12 +396,12 @@ function Layout({ children, headerActions }: LayoutProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navBeta, navigate, sectionNav]);
+  }, [navBeta, navigate, sectionRoot]);
 
   useEffect(() => {
     const activeChip = sectionBarRef.current?.querySelector('[aria-current="page"]');
     activeChip?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [location.pathname, location.search, sectionNav?.id]);
+  }, [location.pathname, location.search, sectionRoot?.id]);
 
   useEffect(() => {
     let frameId: number | undefined;
@@ -522,7 +523,7 @@ function Layout({ children, headerActions }: LayoutProps) {
         }${isPlayerActive ? " app-content--player-active" : ""}`}
       >
         <header className="app-topbar">
-          {!sectionNav ? (
+          {!sectionRoot ? (
             <button
               type="button"
               className="app-mobile-back"
@@ -540,7 +541,7 @@ function Layout({ children, headerActions }: LayoutProps) {
                 <RouteLink
                   key={item.id}
                   to={item.path}
-                  replace
+                  replace={sectionNav.root}
                   className={`app-topbar-tabs__tab${item.active ? " is-active" : ""}`}
                   aria-current={item.active ? "page" : undefined}
                 >
@@ -559,9 +560,9 @@ function Layout({ children, headerActions }: LayoutProps) {
           </div>
         </header>
 
-        {sectionNav ? (
-          <nav ref={sectionBarRef} className="app-section-bar" aria-label={sectionNav.label}>
-            {sectionNav.items.map((item) => (
+        {sectionRoot ? (
+          <nav ref={sectionBarRef} className="app-section-bar" aria-label={sectionRoot.label}>
+            {sectionRoot.items.map((item) => (
               <RouteLink
                 key={item.id}
                 to={item.path}
