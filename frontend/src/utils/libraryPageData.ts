@@ -154,19 +154,21 @@ export const mergeAlbumTrackPageIntoLibrary = (
   albumId: string | number,
   tracks: LibraryTrack[],
 ) => {
-  const merge = <Kind extends "artists" | "albums" | "tracks">(kind: Kind): LibraryData[Kind] => {
-    const existing = current[kind] || [];
-    const merged = [...existing, ...(Array.isArray(page?.[kind]) ? page[kind] : [])].filter(
-      (entity, index, values) =>
-        values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
-    );
-    return merged.length === existing.length &&
-      merged.every((entity, index) => entity === existing[index])
-      ? existing
-      : merged;
+  const merge = <Entity extends { id: string | number }>(
+    existing: Entity[],
+    incoming: Entity[] | undefined,
+  ) => {
+    const seen = new Set(existing.map((entity) => String(entity.id)));
+    const added = (incoming || []).filter((entity) => {
+      const id = String(entity.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    return added.length ? [...existing, ...added] : existing;
   };
-  const artists = merge("artists");
-  const mergedAlbums = merge("albums");
+  const artists = merge(current.artists, page?.artists);
+  const mergedAlbums = merge(current.albums, page?.albums);
   const availableTrackCount = tracks.filter((track) => firstAvailableFile(track)).length;
   let albumsChanged = mergedAlbums !== current.albums;
   const albums = mergedAlbums.map((entity) => {
@@ -181,7 +183,7 @@ export const mergeAlbumTrackPageIntoLibrary = (
       availableTrackCount,
     };
   });
-  const nextTracks = merge("tracks");
+  const nextTracks = merge(current.tracks, tracks);
   if (artists === current.artists && !albumsChanged && nextTracks === current.tracks) {
     return current;
   }
