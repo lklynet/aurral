@@ -8,10 +8,11 @@ import { searchAlbums, searchArtists, searchTags } from "../services/searchServi
 import { resolveStreamingLink } from "../services/streamingLinks.ts";
 import { logger, safeLogDiagnostic } from "../services/logger.ts";
 import {
-  searchDeezerPlaylists,
+  searchCatalogPlaylists,
   searchLibrary,
   searchUnified,
 } from "../services/unifiedSearchService.ts";
+import { getMadeForYou } from "../services/discovery/browsePlaylists.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { errorStatus } from "./shared/errorStatus.ts";
 
@@ -65,7 +66,19 @@ export default new Hono<AppEnv>()
     const { q = "" } = c.req.valid("query");
     if (!q.trim()) return c.json(missingQuery, 400);
     try {
-      return c.json({ playlists: await searchDeezerPlaylists(q) }, 200);
+      const user = c.var.user;
+      const generated = user
+        ? getMadeForYou(user).then(
+            ({ discovery, mixes }) => [...discovery, ...mixes],
+            () => [],
+          )
+        : [];
+      return c.json(
+        {
+          playlists: await searchCatalogPlaylists(q, generated),
+        },
+        200,
+      );
     } catch (error) {
       logger.info("search", "Playlist search failed", { reason: safeLogDiagnostic(error) });
       return c.json(

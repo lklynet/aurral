@@ -23,7 +23,9 @@ export const canPlayTrack = (track: PlaylistTrack) =>
   (track.status === "done" || track.status === "saved") && Boolean(track.streamUrl);
 
 export const queueTrackOverrides = (track: PlaylistTrack, recordHistory: boolean) =>
-  track.status === "saved" ? { recordHistory: false, streamFormat: "mp3" } : { recordHistory };
+  track.status === "saved"
+    ? { recordHistory: false, streamFormat: "mp3" }
+    : { recordHistory: recordHistory && !track.isPreview };
 
 export function countAvailableTracks(tracks: PlaylistTrack[]) {
   return tracks.filter((track) => track.status === "done" && track.streamUrl).length;

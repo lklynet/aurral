@@ -2,7 +2,7 @@ import { hasPermission } from "../middleware/auth.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { searchDeezerTracks } from "./apiClients/deezer.ts";
-import { searchEditorialPlaylists } from "./importLists/deezerPlaylists.ts";
+import { searchDeezerPlaylists } from "./importLists/deezerPlaylists.ts";
 import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylistConfig.ts";
 import { buildCustomArtworkUrl, getCustomArtworkMap } from "./customArtworkService.ts";
 import { selectBestArtistImage } from "./imageService.ts";
@@ -27,7 +27,8 @@ const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 30;
 const CATALOG_WINDOW = 30;
 const SONG_WINDOW = 10;
-const DEEZER_PLAYLIST_LIMIT = 12;
+const CATALOG_PLAYLIST_LIMIT = 12;
+const MIN_USER_PLAYLIST_TRACKS = 20;
 
 const catalogCache = createCache(60, 200);
 
@@ -68,7 +69,7 @@ export type AlbumSearchResult = {
 
 export type TrackSearchResult = {
   type: "track";
-  source: "library" | "deezer";
+  source: "library" | "deezer" | "mix" | "discovery";
   id: string;
   key: string;
   title: string;
@@ -88,7 +89,7 @@ export type TrackSearchResult = {
 
 export type PlaylistSearchResult = {
   type: "playlist";
-  source: "library" | "deezer";
+  source: "library" | "deezer" | "mix" | "discovery";
   id: string;
   key: string;
   name: string;
@@ -432,26 +433,62 @@ function searchPlaylists(
     .map(({ item }) => item);
 }
 
-export async function searchDeezerPlaylists(rawQuery: unknown): Promise<PlaylistSearchResult[]> {
+type CatalogPlaylist = {
+  provider: "deezer" | "mix" | "discovery";
+  id: string;
+  name: string;
+  trackCount: number;
+  artworkUrl: string | null;
+};
+
+const toPlaylistResult = (playlist: CatalogPlaylist): PlaylistSearchResult => ({
+  type: "playlist",
+  source: playlist.provider,
+  id: playlist.id,
+  key: `${playlist.provider}-playlist:${playlist.id}`,
+  name: playlist.name,
+  trackCount: playlist.trackCount,
+  sourceFlowId: null,
+  coverUrl: playlist.artworkUrl,
+  trackMatch: null,
+});
+
+export async function searchCatalogPlaylists(
+  rawQuery: unknown,
+  generated: CatalogPlaylist[] | Promise<CatalogPlaylist[]> = [],
+): Promise<PlaylistSearchResult[]> {
   const text = providerQuery(String(rawQuery ?? ""));
   const query = parseSearchQuery(text);
   if (!query) return [];
-  return (await searchEditorialPlaylists(text))
-    .map((playlist) => ({ playlist, quality: matchQuality(query, playlist.name) }))
-    .filter(({ quality }) => quality > MATCH.none)
-    .sort((left, right) => right.quality - left.quality)
-    .slice(0, DEEZER_PLAYLIST_LIMIT)
-    .map(({ playlist }) => ({
-      type: "playlist",
-      source: "deezer",
-      id: playlist.id,
-      key: `deezer-playlist:${playlist.id}`,
-      name: playlist.name,
-      trackCount: playlist.trackCount,
-      sourceFlowId: null,
-      coverUrl: playlist.artworkUrl,
-      trackMatch: null,
-    }));
+  const byName = (playlists: CatalogPlaylist[]) =>
+    playlists
+      .map((playlist) => ({ playlist, quality: matchQuality(query, playlist.name) }))
+      .filter(({ quality }) => quality > MATCH.none)
+      .sort((left, right) => right.quality - left.quality)
+      .map(({ playlist }) => playlist);
+  const [generatedPlaylists, searched] = await Promise.all([
+    generated,
+    searchDeezerPlaylists(text).then(
+      (playlists) => ({ ok: true as const, playlists }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
+  ]);
+  const own = byName(generatedPlaylists);
+  if (!searched.ok && !own.length) throw searched.error;
+  const deezer = searched.ok ? searched.playlists : { editors: [], others: [] };
+  const fromDeezer = (playlist: Omit<CatalogPlaylist, "provider">): CatalogPlaylist => ({
+    ...playlist,
+    provider: "deezer",
+  });
+  return [
+    ...own,
+    ...byName(deezer.editors.map(fromDeezer)),
+    ...deezer.others
+      .filter((playlist) => playlist.trackCount >= MIN_USER_PLAYLIST_TRACKS)
+      .map(fromDeezer),
+  ]
+    .slice(0, CATALOG_PLAYLIST_LIMIT)
+    .map(toPlaylistResult);
 }
 
 export function searchLibrary(

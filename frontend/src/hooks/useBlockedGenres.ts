@@ -33,7 +33,7 @@ export function useBlockedGenres() {
     onSuccess: ({ tags }) => {
       queryClient.setQueryData(queryKey, tags);
       void queryClient.invalidateQueries({ queryKey: queryKeys.discovery(user?.id) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.editorialShelf(user?.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.playlistShelf(user?.id) });
     },
   });
 

@@ -1,4 +1,5 @@
 import { QueryClient, type QueryKey } from "@tanstack/react-query";
+import type { ShelfScope } from "../../backend/services/importLists/deezerPlaylists.ts";
 
 type MaybeId = string | number | null | undefined;
 type MaybeText = string | null | undefined;
@@ -40,17 +41,22 @@ export const queryKeys = {
   discovery: (userId: MaybeId): QueryKey => ["discovery", "home", userId || null],
   discoveryStatusPrefix: ["discovery", "status"],
   discoveryStatus: (userId: MaybeId): QueryKey => ["discovery", "status", userId || null],
-  editorialShelf: (userId: MaybeId): QueryKey => [
+  playlistShelf: (userId: MaybeId, scope?: ShelfScope): QueryKey =>
+    scope
+      ? ["discovery", "playlists", "shelf", userId || null, scope]
+      : ["discovery", "playlists", "shelf", userId || null],
+  madeForYou: (userId: MaybeId): QueryKey => [
     "discovery",
-    "editorial",
-    "shelf",
+    "playlists",
+    "made-for-you",
     userId || null,
   ],
-  editorialPlaylist: (userId: MaybeId, playlistId: MaybeId): QueryKey => [
+  browsePlaylist: (userId: MaybeId, provider: string, playlistId: MaybeId): QueryKey => [
     "discovery",
-    "editorial",
+    "playlists",
     "playlist",
     userId || null,
+    provider,
     playlistId,
   ],
   trendingPrefix: ["discovery", "trending"],

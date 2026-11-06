@@ -2,7 +2,8 @@ import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { enqueueImportedPlaylist } from "../importLists/importPlaylist.ts";
 import {
   getDeezerPlaylist,
-  getEditorialShelf as getGenreShelf,
+  getEditorialShelf as getCategoryShelf,
+  type ShelfScope,
   searchEditorialPlaylists,
   validateDeezerPlaylistId,
 } from "../importLists/deezerPlaylists.ts";
@@ -26,7 +27,7 @@ export const findLibraryPlaylist = (userId: number, deezerPlaylistId: string) =>
         playlist.importSource.externalId === deezerPlaylistId,
     ) || null;
 
-const pickAvailableName = (userId: number, name: string) => {
+export const pickAvailableName = (userId: number, name: string, sourceName = "Deezer") => {
   const taken = new Set(
     [
       ...flowPlaylistConfig.getStaticPlaylistsOwnedByUser(userId),
@@ -39,7 +40,11 @@ const pickAvailableName = (userId: number, name: string) => {
   );
   for (let attempt = 1; ; attempt += 1) {
     const candidate =
-      attempt === 1 ? name : attempt === 2 ? `${name} (Deezer)` : `${name} (Deezer ${attempt - 1})`;
+      attempt === 1
+        ? name
+        : attempt === 2
+          ? `${name} (${sourceName})`
+          : `${name} (${sourceName} ${attempt - 1})`;
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
 };
@@ -75,12 +80,12 @@ async function getForYouPlaylists(userId: number) {
   return playlists.slice(0, FOR_YOU_LIMIT);
 }
 
-export async function getEditorialShelf(user: RequestUser) {
-  const [genres, forYou] = await Promise.all([
-    getGenreShelf(),
+export async function getEditorialShelf(user: RequestUser, scope?: ShelfScope) {
+  const [categories, forYou] = await Promise.all([
+    getCategoryShelf(scope),
     getForYouPlaylists(user.id).catch(() => []),
   ]);
-  return { forYou, genres };
+  return { forYou, categories };
 }
 
 export async function resolveEditorialTrackLinks({

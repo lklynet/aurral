@@ -17,6 +17,8 @@ import {
   getAlbumList,
   getArtist,
   getArtistInfo,
+  getSubsonicMixPlaylist,
+  getSubsonicMixPlaylists,
   getSubsonicPlaylist,
   getSubsonicPlaylists,
   getLibraryLastModified,
@@ -677,7 +679,9 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   }
   if (method === "getplaylists") {
     return ok({
-      playlists: { playlist: getSubsonicPlaylists(user) },
+      playlists: {
+        playlist: [...getSubsonicPlaylists(user), ...(await getSubsonicMixPlaylists(user))],
+      },
     });
   }
   if (method === "createplaylist") {
@@ -739,7 +743,8 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     });
   }
   if (method === "getplaylist") {
-    const playlist = getSubsonicPlaylist(getParameter(params, "id"), user);
+    const id = getParameter(params, "id");
+    const playlist = getSubsonicPlaylist(id, user) ?? (await getSubsonicMixPlaylist(id, user));
     return playlist ? ok({ playlist }) : fail(70, "Requested data was not found");
   }
   if (method === "updateplaylist") {

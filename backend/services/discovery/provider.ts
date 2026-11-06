@@ -2,7 +2,7 @@ import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { lastfmRequest, listenbrainzRequest } from "../apiClients/index.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { asAppError } from "../../../lib/errors.ts";
-import { logger } from "../logger.ts";
+import { logger, safeLogDiagnostic } from "../logger.ts";
 import {
   getListenHistory,
   LISTEN_HISTORY_PROVIDERS,
@@ -58,6 +58,7 @@ import { buildRecommendationsFromSeeds } from "./recommendations.ts";
 import { getTopPlayedArtists } from "../playEventService.ts";
 import { getTopSpotifyImportArtists } from "../spotify/spotifyImport.ts";
 import { getTopFavoriteArtists } from "./favoriteArtists.ts";
+import { buildDiscoveryPlaylists } from "./discoveryPlaylists.ts";
 
 const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
@@ -602,6 +603,12 @@ export const updateUserDiscoveryCache = async (
       "discovery",
       `[Discovery] User ${userId} refresh complete: ${recommendations.length} recommendations from ${seeds.length} seeds.`,
     );
+    await buildDiscoveryPlaylists(userId).catch((error: unknown) => {
+      logger.warn("discovery", "Discovery playlists failed to save", {
+        userId,
+        reason: safeLogDiagnostic(error),
+      });
+    });
     emitUserDiscoveryUpdate(userId, {
       isUpdating: false,
       phase: "completed",

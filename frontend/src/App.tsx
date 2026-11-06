@@ -66,7 +66,7 @@ const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
 const RecommendedPage = lazy(routeModules.recommended);
 const TrendingPage = lazy(routeModules.trending);
 const TrendingGenrePage = lazy(routeModules.trendingGenre);
-const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
+const BrowsePlaylistDetailPage = lazy(routeModules.browsePlaylist);
 const NewsPage = lazy(routeModules.news);
 const ResolveLinkPage = lazy(routeModules.resolveLink);
 const ShareImportPage = lazy(routeModules.shareImport);
@@ -305,8 +305,8 @@ const appRoutes = createRoutesFromElements(
         <Route path="/shows/:filter" element={<ShowsPage />} />
         <Route path="/search" element={<SearchResultsPage />} />
         <Route
-          path="/discover/playlists/deezer/:playlistId"
-          element={<EditorialPlaylistDetailPage />}
+          path="/discover/playlists/:provider/:playlistId"
+          element={<BrowsePlaylistDetailPage />}
         />
         <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
         <Route path="/discover/news" element={<NewsPage />} />

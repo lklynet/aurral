@@ -41,14 +41,14 @@ test("hovering a playlist link fetches it once and the page reuses the result", 
     prefetchRoute("/discover/playlists/deezer/42", { userId: 1 }),
     prefetchRoute("/discover/playlists/deezer/42", { userId: 1 }),
   ]);
-  assert.equal(apiRequests(requests, "/discover/editorial/42").length, 1);
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 
   await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
   const pageData = await queryClient.fetchQuery(
-    queryOptions.editorialPlaylistQueryOptions(1, "42"),
+    queryOptions.browsePlaylistQueryOptions(1, "deezer", "42"),
   );
   assert.deepEqual(pageData, playlist);
-  assert.equal(apiRequests(requests, "/discover/editorial/42").length, 1);
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 });
 
 test("a failed prefetch is not retried on the next hover", async (t) => {

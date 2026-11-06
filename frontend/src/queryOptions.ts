@@ -3,6 +3,8 @@ import { parseResponse } from "hono/client";
 import { queryKeys } from "./queryClient.ts";
 import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
+import type { BrowseProvider } from "../../lib/browsePlaylists.ts";
+import type { ShelfScope } from "../../backend/services/importLists/deezerPlaylists.ts";
 import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import { pluginsClient } from "./utils/api/clients/plugins.ts";
@@ -70,21 +72,35 @@ export const appSettingsQueryOptions = () =>
     staleTime: 30_000,
   });
 
-export const editorialShelfQueryOptions = (userId: MaybeId) =>
+export const playlistShelfQueryOptions = (userId: MaybeId, scope: ShelfScope = "all") =>
   queryOptions({
-    queryKey: queryKeys.editorialShelf(userId),
+    queryKey: queryKeys.playlistShelf(userId, scope),
     queryFn: ({ signal }) =>
-      parseResponse(discoveryClient.editorial.$get(undefined, { init: { signal } })),
+      parseResponse(discoveryClient.playlists.$get({ query: { scope } }, { init: { signal } })),
     staleTime: 60 * 60 * 1000,
   });
 
-export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: string) =>
+export const madeForYouQueryOptions = (userId: MaybeId) =>
   queryOptions({
-    queryKey: queryKeys.editorialPlaylist(userId, playlistId),
+    queryKey: queryKeys.madeForYou(userId),
     queryFn: ({ signal }) =>
       parseResponse(
-        discoveryClient.editorial[":playlistId"].$get(
-          { param: { playlistId: encodeURIComponent(playlistId) } },
+        discoveryClient.playlists["made-for-you"].$get(undefined, { init: { signal } }),
+      ),
+    staleTime: 10 * 60 * 1000,
+  });
+
+export const browsePlaylistQueryOptions = (
+  userId: MaybeId,
+  provider: BrowseProvider,
+  playlistId: string,
+) =>
+  queryOptions({
+    queryKey: queryKeys.browsePlaylist(userId, provider, playlistId),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        discoveryClient.playlists[":provider"][":playlistId"].$get(
+          { param: { provider, playlistId: encodeURIComponent(playlistId) } },
           { init: { signal } },
         ),
       ),

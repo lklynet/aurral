@@ -88,7 +88,7 @@ const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
 const deezerPreviewLinkCache = createCache(5 * 60);
 const deezerInflightRequests = new Map();
-const deezerLimiter = createRateLimiter(110);
+export const deezerLimiter = createRateLimiter(110);
 
 type DeezerRequest = {
   params?: Record<string, string | number>;
@@ -372,10 +372,14 @@ export async function deezerGetArtistTopTrackList(
         .filter((track) => track.title.trim())
         .map((track) => ({
           name: track.title.trim(),
+          artistName: String(track.artist?.name || "").trim() || artistName,
           albumName: String(track.album?.title || "").trim() || null,
           mbid: null,
           durationMs: track.duration ? track.duration * 1000 : null,
           popularity: Number(track.rank) || 0,
+          previewUrl: track.preview ? deezerPreviewPath(track.id) : null,
+          artworkUrl: track.album?.cover_medium ?? null,
+          deezerAlbumId: track.album?.id ? String(track.album.id) : null,
         }));
       deezerTopTrackCache.set(`dz-list:${artistId}:${safeLimit}`, tracks);
       return tracks;

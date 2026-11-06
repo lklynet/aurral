@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { AriaRole, ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "../components/icons";
 import { parseResponse } from "hono/client";
@@ -8,9 +8,10 @@ import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { asApiError } from "../utils/api/core.ts";
+import { asApiError, resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import { editorialPlaylistQueryOptions } from "../queryOptions.ts";
+import { browsePlaylistQueryOptions } from "../queryOptions.ts";
+import { isBrowseProvider, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
 import {
   CollectionHeader,
   CollectionPage,
@@ -37,14 +38,59 @@ import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.
 import { useTrackSaveActions } from "./useTrackSaveActions";
 import { mapPreviewTracks, type PreviewTrack } from "./deezerPreviewTracks.ts";
 
-export default function EditorialPlaylistDetailPage() {
-  const playlistId = useParams().playlistId!;
+const SAVE_COPY: Record<
+  BrowseProvider,
+  { add: string; open: string; added: (name: string) => string; unavailable: string }
+> = {
+  deezer: {
+    add: "Add synced playlist",
+    open: "Open synced playlist",
+    added: (name) => `Added ${name} to your playlists. It syncs with Deezer daily.`,
+    unavailable: "Deezer no longer has this playlist.",
+  },
+  discovery: {
+    add: "Add to Library",
+    open: "Open playlist",
+    added: (name) => `Added ${name} to your playlists. Missing songs will download.`,
+    unavailable: "This playlist was replaced by a newer one.",
+  },
+  mix: {
+    add: "Save as playlist",
+    open: "Open playlist",
+    added: (name) => `Saved ${name} to your playlists.`,
+    unavailable: "This mix was replaced by a newer one.",
+  },
+};
+
+export default function BrowsePlaylistDetailPage() {
+  const { provider, playlistId } = useParams();
+  if (!isBrowseProvider(provider) || !playlistId) {
+    return <Navigate to="/discover/playlists" replace />;
+  }
+  return (
+    <BrowsePlaylistDetail
+      key={`${provider}:${playlistId}`}
+      provider={provider}
+      playlistId={playlistId}
+    />
+  );
+}
+
+function BrowsePlaylistDetail({
+  provider,
+  playlistId,
+}: {
+  provider: BrowseProvider;
+  playlistId: string;
+}) {
+  const copy = SAVE_COPY[provider];
   const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
+  const [savedPlaylistId, setSavedPlaylistId] = useState<string | null>(null);
   const [failedArtwork, setFailedArtwork] = useState(false);
-  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId);
+  const playlistQueryOptions = browsePlaylistQueryOptions(user?.id, provider, playlistId);
   const { queryKey } = playlistQueryOptions;
 
   const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
@@ -58,12 +104,12 @@ export default function EditorialPlaylistDetailPage() {
   );
   const playbackSource = useMemo(
     () => ({
-      type: "editorial-playlist-preview",
+      type: `${provider}-playlist`,
       id: playlistId,
       label: playlist?.name || "Playlist",
-      recordHistory: false,
+      recordHistory: true,
     }),
-    [playlist?.name, playlistId],
+    [playlist?.name, playlistId, provider],
   );
   const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const trackSaveActions = useTrackSaveActions();
@@ -88,18 +134,17 @@ export default function EditorialPlaylistDetailPage() {
     setAdding(true);
     try {
       const result = await parseResponse(
-        discoveryClient.editorial[":playlistId"].library.$post({
-          param: { playlistId: encodeURIComponent(playlistId) },
+        discoveryClient.playlists[":provider"][":playlistId"].library.$post({
+          param: { provider, playlistId: encodeURIComponent(playlistId) },
         }),
       );
-      queryClient.setQueryData(queryKey, (current) =>
-        current ? { ...current, libraryPlaylistId: result.playlistId } : current,
-      );
+      setSavedPlaylistId(result.playlistId);
+      void queryClient.invalidateQueries({ queryKey });
       void queryClient.invalidateQueries({ queryKey: queryKeys.trendingPrefix });
       showSuccess(
         result.alreadyAdded
           ? `${result.name} is already in your playlists`
-          : `Added ${result.name} to your playlists. It syncs with Deezer daily.`,
+          : copy.added(result.name),
       );
     } catch (err) {
       showError(
@@ -138,8 +183,8 @@ export default function EditorialPlaylistDetailPage() {
         <strong>{notFound ? "Playlist not found" : "Playlist unavailable"}</strong>
         <span>
           {notFound
-            ? "Deezer no longer has this playlist."
-            : getApiErrorMessage(error, "Deezer didn't respond. Try again.")}
+            ? copy.unavailable
+            : getApiErrorMessage(error, "This playlist didn't load. Try again.")}
         </span>
         {notFound ? (
           <Link className="native-library-state__action" to="/discover/playlists">
@@ -156,21 +201,22 @@ export default function EditorialPlaylistDetailPage() {
   }
 
   const ready = Boolean(playlist);
-  const inLibrary = Boolean(playlist?.libraryPlaylistId);
+  const libraryPlaylistId = playlist?.libraryPlaylistId ?? savedPlaylistId;
   const canAdd = hasPermission("accessFlow");
-  const addLabel = inLibrary ? "Open synced playlist" : "Add synced playlist";
-  const showArtwork = Boolean(shown.artworkUrl) && !failedArtwork;
+  const addLabel = libraryPlaylistId ? copy.open : copy.add;
+  const artworkUrl = resolveAuthenticatedApiAssetUrl(shown.artworkUrl) || null;
+  const showArtwork = Boolean(artworkUrl) && !failedArtwork;
   const trackTotal = ready
     ? tracks.length
     : Number("trackCount" in shown ? shown.trackCount : undefined);
 
   return (
-    <CollectionPage tintSrc={showArtwork ? shown.artworkUrl : null}>
+    <CollectionPage tintSrc={showArtwork ? artworkUrl : null}>
       <CollectionHeader
         cover={
           showArtwork ? (
             <img
-              src={shown.artworkUrl ?? undefined}
+              src={artworkUrl ?? undefined}
               alt=""
               loading="eager"
               onError={() => setFailedArtwork(true)}
@@ -187,17 +233,17 @@ export default function EditorialPlaylistDetailPage() {
         actions={
           <>
             <CollectionPlayButtons
-              label={`${shown.name} previews`}
+              label={shown.name || "Playlist"}
               disabled={!ready || playback.disabled}
               isPlaying={playback.isListPlaying}
               isShuffleEnabled={playback.isShuffleEnabled}
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            {canAdd && inLibrary ? (
+            {canAdd && libraryPlaylistId ? (
               <Tooltip content={addLabel}>
                 <RouteLink
-                  to={playlistPath(playlist!.libraryPlaylistId!)}
+                  to={playlistPath(libraryPlaylistId)}
                   state={{ created: true }}
                   className="native-library-favorite is-active"
                   aria-label={addLabel}

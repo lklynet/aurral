@@ -2,21 +2,26 @@ import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
   deezerErrorSchema,
+  deezerLimiter,
   deezerPageSchema,
   deezerPreviewPath,
   deezerTrackSchema,
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
+import { mapWithConcurrency } from "../discovery/helpers.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;
 const TRACK_PAGE_SIZE = 500;
 const MAX_TRACKS = 2_000;
-const SHELF_PLAYLISTS_PER_GENRE = 8;
+const SHELF_PLAYLISTS_PER_CATEGORY = 12;
+const SHELF_MIN_PLAYLISTS = 3;
+const SHELF_CONCURRENCY = 6;
 const SHELF_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_RESULTS_PER_TAG = 25;
 const MAX_CACHED_SEARCHES = 200;
-const PARTIAL_SHELF_TTL_MS = 15 * 60 * 1000;
+const FAILED_SOURCE_RETRY_MS = 15 * 60 * 1000;
+const FEATURED_SOURCE_ID = "genre-0";
 const PLAYLIST_ID_PATTERN = /^\d{1,20}$/;
 const DEEZER_NO_DATA_CODE = 800;
 const DEEZER_QUOTA_CODE = 4;
@@ -34,6 +39,47 @@ export const EDITORIAL_GENRES = [
   { id: 464, name: "Metal" },
 ];
 
+const SHELF_GENRES = [
+  ...EDITORIAL_GENRES,
+  { id: 169, name: "Soul & Funk" },
+  { id: 466, name: "Folk" },
+  { id: 84, name: "Country" },
+  { id: 153, name: "Blues" },
+  { id: 98, name: "Classical" },
+  { id: 144, name: "Reggae" },
+  { id: 122, name: "Reggaeton" },
+  { id: 197, name: "Latin" },
+  { id: 2, name: "African" },
+  { id: 16, name: "Asian" },
+  { id: 75, name: "Brazilian" },
+  { id: 65, name: "Mexican" },
+  { id: 67, name: "Salsa" },
+  { id: 71, name: "Cumbia" },
+  { id: 81, name: "Indian" },
+  { id: 173, name: "Film & Games" },
+  { id: 186, name: "Christian" },
+  { id: 95, name: "Kids" },
+];
+
+const SHELF_MOODS = [
+  "Chill",
+  "Focus",
+  "Workout",
+  "Party",
+  "Feel good",
+  "Sad",
+  "Love",
+  "Sleep",
+  "Road trip",
+  "Dinner",
+  "Gaming",
+  "Acoustic",
+];
+
+const SHELF_DECADES = ["60s", "70s", "80s", "90s", "2000s", "2010s"];
+
+const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
 export const deezerPlaylistSchema = v.looseObject({
   id: v.number(),
   title: v.optional(v.string()),
@@ -47,11 +93,12 @@ export const deezerPlaylistSchema = v.looseObject({
 
 type DeezerPlaylist = v.InferOutput<typeof deezerPlaylistSchema>;
 
-type EditorialGenres = Awaited<ReturnType<typeof loadShelf>>["genres"];
+type SearchedPlaylists = { editors: PlaylistSummary[]; others: PlaylistSummary[] };
+type CachedSource = { playlists: PlaylistSummary[] | null; error: unknown; expiresAt: number };
 
-let shelfCache: { genres: EditorialGenres; expiresAt: number } | null = null;
-let shelfRequest: Promise<EditorialGenres> | null = null;
-const tagSearchCache = new Map<string, { playlists: PlaylistSummary[]; expiresAt: number }>();
+const sourceCache = new Map<string, CachedSource>();
+const sourceRequests = new Map<string, Promise<PlaylistSummary[]>>();
+const tagSearchCache = new Map<string, SearchedPlaylists & { expiresAt: number }>();
 
 const providerError = (message: string, statusCode: number, code: string) => {
   const error: Error & { statusCode?: number; code?: string } = new Error(message);
@@ -75,10 +122,12 @@ export async function deezerRequest<Schema extends v.GenericSchema>(
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
   let response;
   try {
-    response = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    response = await deezerLimiter.schedule(() =>
+      fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
+    );
   } catch {
     throw providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
   }
@@ -227,75 +276,144 @@ export async function getDeezerPlaylist(value: unknown) {
   return { ...summary, ...normalizeTracks(rows.slice(0, MAX_TRACKS)) };
 }
 
-async function loadShelf() {
-  const results = await Promise.allSettled(
-    EDITORIAL_GENRES.map((genre) =>
-      deezerList(deezerPlaylistSchema, `/chart/${genre.id}/playlists`, {
-        limit: SHELF_PLAYLISTS_PER_GENRE * 2,
-      }),
-    ),
-  );
-  if (results.every((result) => result.status === "rejected")) throw results[0]?.reason;
-  const seen = new Set();
-  const genres = [];
-  for (const [index, result] of results.entries()) {
-    const genre = EDITORIAL_GENRES[index];
-    if (!genre || result.status !== "fulfilled") continue;
-    const playlists = [];
-    for (const entry of result.value.items) {
-      const playlist = normalizePlaylistSummary(entry);
-      if (!playlist || seen.has(playlist.id)) continue;
-      seen.add(playlist.id);
-      playlists.push(playlist);
-      if (playlists.length >= SHELF_PLAYLISTS_PER_GENRE) break;
-    }
-    if (playlists.length > 0) genres.push({ ...genre, playlists });
-  }
-  const complete = results.every((result) => result.status === "fulfilled");
-  return { genres, ttlMs: complete ? SHELF_TTL_MS : PARTIAL_SHELF_TTL_MS };
+type ShelfSource = {
+  id: string;
+  name: string;
+  group: "genre" | "mood" | "decade";
+  load: () => Promise<PlaylistSummary[]>;
+};
+
+const SHELF_SOURCES: ShelfSource[] = [
+  ...SHELF_GENRES.map((genre) => ({
+    id: `genre-${genre.id}`,
+    name: genre.name,
+    group: "genre" as const,
+    load: async () =>
+      (
+        await deezerList(deezerPlaylistSchema, `/chart/${genre.id}/playlists`, {
+          limit: SHELF_PLAYLISTS_PER_CATEGORY * 2,
+        })
+      ).items
+        .map(normalizePlaylistSummary)
+        .filter((playlist) => playlist !== null),
+  })),
+  ...SHELF_MOODS.map((name) => ({
+    id: `mood-${slug(name)}`,
+    name,
+    group: "mood" as const,
+    load: () => searchEditorialPlaylists(name),
+  })),
+  ...SHELF_DECADES.map((name) => ({
+    id: `decade-${slug(name)}`,
+    name,
+    group: "decade" as const,
+    load: () => searchEditorialPlaylists(name),
+  })),
+];
+
+function refreshSource(source: ShelfSource) {
+  const pending = sourceRequests.get(source.id);
+  if (pending) return pending;
+  const request = source
+    .load()
+    .then(
+      (playlists) => {
+        sourceCache.set(source.id, {
+          playlists,
+          error: null,
+          expiresAt: Date.now() + SHELF_TTL_MS,
+        });
+        return playlists;
+      },
+      (error: unknown) => {
+        sourceCache.set(source.id, {
+          playlists: sourceCache.get(source.id)?.playlists ?? null,
+          error,
+          expiresAt: Date.now() + FAILED_SOURCE_RETRY_MS,
+        });
+        throw error;
+      },
+    )
+    .finally(() => sourceRequests.delete(source.id));
+  sourceRequests.set(source.id, request);
+  return request;
 }
 
-export async function getEditorialShelf() {
-  if (shelfCache && shelfCache.expiresAt > Date.now()) return shelfCache.genres;
-  if (!shelfRequest) {
-    shelfRequest = loadShelf()
-      .then(({ genres, ttlMs }) => {
-        shelfCache = { genres, expiresAt: Date.now() + ttlMs };
-        return genres;
-      })
-      .catch((error) => {
-        if (shelfCache) return shelfCache.genres;
-        throw error;
-      })
-      .finally(() => {
-        shelfRequest = null;
-      });
+async function loadSource(source: ShelfSource) {
+  const cached = sourceCache.get(source.id);
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.playlists) return cached.playlists;
+    throw cached.error;
   }
-  return shelfRequest;
+  if (cached?.playlists) {
+    refreshSource(source).catch(() => {});
+    return cached.playlists;
+  }
+  return refreshSource(source);
+}
+
+export type ShelfScope = "featured" | "all";
+
+export async function getEditorialShelf(scope: ShelfScope = "all") {
+  const sources =
+    scope === "featured"
+      ? SHELF_SOURCES.filter((source) => source.id === FEATURED_SOURCE_ID)
+      : SHELF_SOURCES;
+  const results = await mapWithConcurrency(sources, SHELF_CONCURRENCY, (source) =>
+    loadSource(source).then(
+      (playlists) => ({ ok: true as const, playlists }),
+      (reason: unknown) => ({ ok: false as const, reason }),
+    ),
+  );
+  const firstFailure = results.find((result) => !result.ok);
+  if (firstFailure && !firstFailure.ok && results.every((result) => !result.ok)) {
+    throw firstFailure.reason;
+  }
+  const seen = new Set<string>();
+  const categories = [];
+  for (const [index, result] of results.entries()) {
+    const source = sources[index];
+    if (!source || !result.ok) continue;
+    const playlists = [];
+    for (const playlist of result.playlists) {
+      if (seen.has(playlist.id)) continue;
+      seen.add(playlist.id);
+      playlists.push(playlist);
+      if (playlists.length >= SHELF_PLAYLISTS_PER_CATEGORY) break;
+    }
+    if (playlists.length >= SHELF_MIN_PLAYLISTS) {
+      categories.push({ id: source.id, name: source.name, group: source.group, playlists });
+    }
+  }
+  return categories;
 }
 
 const isEditorPlaylist = (playlist: DeezerPlaylist) =>
   /deezer/i.test(String(playlist.user?.name || playlist.creator?.name || ""));
 
-export async function searchEditorialPlaylists(tag: unknown) {
-  const key = String(tag || "")
+export async function searchDeezerPlaylists(term: unknown): Promise<SearchedPlaylists> {
+  const key = String(term || "")
     .trim()
     .toLowerCase();
-  if (!key) return [];
+  if (!key) return { editors: [], others: [] };
   const cached = tagSearchCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.playlists;
+  if (cached && cached.expiresAt > Date.now()) return cached;
   const { items } = await deezerList(deezerPlaylistSchema, "/search/playlist", {
     q: key,
     limit: SEARCH_RESULTS_PER_TAG,
   });
-  const playlists = items
-    .filter(isEditorPlaylist)
-    .map(normalizePlaylistSummary)
-    .filter((playlist): playlist is PlaylistSummary => playlist !== null);
-  tagSearchCache.set(key, { playlists, expiresAt: Date.now() + SHELF_TTL_MS });
+  const searched: SearchedPlaylists = { editors: [], others: [] };
+  for (const item of items) {
+    const playlist = normalizePlaylistSummary(item);
+    if (playlist) searched[isEditorPlaylist(item) ? "editors" : "others"].push(playlist);
+  }
+  tagSearchCache.set(key, { ...searched, expiresAt: Date.now() + SHELF_TTL_MS });
   const [oldest] = tagSearchCache.keys();
   if (oldest !== undefined && tagSearchCache.size > MAX_CACHED_SEARCHES) {
     tagSearchCache.delete(oldest);
   }
-  return playlists;
+  return searched;
 }
+
+export const searchEditorialPlaylists = async (term: unknown) =>
+  (await searchDeezerPlaylists(term)).editors;

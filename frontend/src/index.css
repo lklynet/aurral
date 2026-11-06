@@ -14760,6 +14760,13 @@ a.blocklist-page__name:focus-visible {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+.discover-playlists-page__header .artist-segmented {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 .discover-playlist-detail__cover-fallback {
   width: 100%;
   height: 100%;
