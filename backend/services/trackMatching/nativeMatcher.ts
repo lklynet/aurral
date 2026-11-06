@@ -58,6 +58,7 @@ type RecordingRequest = {
   releaseTracks?: ReleaseTrack[] | null;
   albumTrackTitles?: string[] | null;
   trackNumber?: unknown;
+  discNumber?: unknown;
   durationMs?: unknown;
   duration_ms?: unknown;
   pressingDurationsMs?: unknown;
@@ -594,16 +595,30 @@ export function isSiblingTrackPosition(
   );
 }
 
+// Without a length, the place on the requested album tells a song from its
+// demo or remix, which keep the title and sit on a bonus disc or elsewhere.
+function isRequestedTrackPosition(
+  request: RecordingRequest,
+  actualTrackNumber: unknown,
+  actualDiscNumber: unknown,
+) {
+  const expected = Number(request.trackNumber || 0);
+  return (
+    expected > 0 &&
+    Number(actualTrackNumber) === expected &&
+    (Number(request.discNumber) || 1) === (Number(actualDiscNumber) || 1)
+  );
+}
+
 export function verifyDownloadedRecording(
   request: RecordingRequest,
   observed: RecordingCandidate & { album?: string | null },
   policy: MatchPolicy = MATCH_POLICY,
 ) {
-  const result = compareRecording(request, observed, policy);
-  if (
-    isSameAlbumTitle(request.albumName, observed.album) &&
-    isSiblingTrackPosition(request, observed.trackNumber, observed.discNumber)
-  ) {
+  const prepared = prepareRecordingRequest(request);
+  const result = compareRecording(request, observed, policy, prepared);
+  const sameAlbum = isSameAlbumTitle(request.albumName, observed.album);
+  if (sameAlbum && isSiblingTrackPosition(request, observed.trackNumber, observed.discNumber)) {
     result.contradictions.push("sibling-track-index");
   }
   if (
@@ -631,8 +646,11 @@ export function verifyDownloadedRecording(
   else if (
     result.evidence.includes("title") &&
     result.evidence.includes("artist") &&
-    result.durationGapMs != null &&
-    result.durationGapMs <= policy.selectedDurationGapMs
+    (result.durationGapMs != null
+      ? result.durationGapMs <= policy.selectedDurationGapMs
+      : prepared.durations.length === 0 &&
+        sameAlbum &&
+        isRequestedTrackPosition(request, observed.trackNumber, observed.discNumber))
   )
     decision = "matched";
   return { decision, ...result, policyVersion: policy.version };

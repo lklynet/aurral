@@ -488,6 +488,32 @@ test("strong tags with a near duration go to review, a far one is another record
   assert.ok(far.contradictions?.includes("duration"));
 });
 
+test("without a requested length, the requested album and track position verify", async () => {
+  const validate = (request: ValidationInput["request"], tags: Tags) =>
+    validateDownloadedTrackFile({
+      request,
+      filePath: "/staging/Get Lucky.flac",
+      source: "soulseek",
+      options: {
+        parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", ...tags })),
+      },
+    });
+  const lengthless = { ...GET_LUCKY, durationMs: null };
+  const sameAlbum = { album: "Random Access Memories", track: 8 };
+
+  assert.equal((await validate(lengthless, sameAlbum)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  for (const [request, tags] of [
+    [lengthless, { ...sameAlbum, disc: 2 }],
+    [lengthless, { ...sameAlbum, track: 3 }],
+    [lengthless, { ...sameAlbum, album: "Get Lucky" }],
+    [{ ...lengthless, trackNumber: null }, sameAlbum],
+  ] satisfies [ValidationInput["request"], Tags][]) {
+    const outcome = await validate(request, tags);
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS, JSON.stringify(tags));
+    assert.equal(outcome.reason, "downloaded file has no comparable length");
+  }
+});
+
 test("an exact title and artist allow another edition's length, a partial title does not", async () => {
   const validate = (
     tags: { title: string; artist: string } | { artist: string; album: string },
