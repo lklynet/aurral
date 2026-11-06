@@ -10316,6 +10316,10 @@ button.native-library-genre-row:focus-visible {
   contain-intrinsic-block-size: auto 3rem;
 }
 
+.native-library-track-list--release .native-library-track__title > small {
+  display: block;
+}
+
 @media (max-width: 760px) {
   .native-library-track-list--release .native-library-track__number {
     display: block;
