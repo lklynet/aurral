@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { env } from "./github.ts";
 
 const DESCRIPTION_LIMIT = 3500;
+const STABLE_ROLE_ID = "1568278696350056470";
 
 const webhook = process.env.DISCORD_WEBHOOK_ANNOUNCEMENTS;
 if (webhook) {
@@ -20,6 +21,8 @@ ${notes.trim() || `[Read the release notes on GitHub](${url}).`}`;
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      content: `<@&${STABLE_ROLE_ID}>`,
+      allowed_mentions: { roles: [STABLE_ROLE_ID] },
       embeds: [
         {
           title: `Aurral ${version} is out!`,
