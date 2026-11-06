@@ -1,6 +1,9 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { groupAlbumGrabRequests } from "../../frontend/src/pages/activity/activityListUtils.ts";
+import {
+  downloadClientLabel,
+  groupAlbumGrabRequests,
+} from "../../frontend/src/pages/activity/activityListUtils.ts";
 import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
@@ -55,6 +58,7 @@ test("an album grab keeps completed tracks inside its queue row until every trac
   assert.equal(row.albumName, "Everything Now");
   assert.equal(row.statusLabel, "Downloading album");
   assert.equal(row.progressLabel, "1 of 3 tracks ready");
+  assert.equal(downloadClientLabel(row), "slskd");
   assert.deepEqual(
     row.children?.map((child) => child.trackName),
     ["Song 1", "Song 2", "Song 3"],
@@ -130,6 +134,7 @@ test("album rows follow disc order and distinguish failed and cancelled terminal
     ["Song 3", "Song 2", "Song 1"],
   );
   assert.equal(cancelled.statusLabel, "Cancelled");
+  assert.equal(downloadClientLabel(cancelled), null);
   const [failed] = groupAlbumGrabRequests(
     tracks.map((track, index) => (index === 1 ? { ...track, status: "failed" } : track)),
   );
