@@ -117,7 +117,7 @@ export function createAudioEngine() {
     fetch(entry.src, { method: "HEAD", credentials: "same-origin", signal: request.signal })
       .then((response) => {
         const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
-        if (!Number.isFinite(lufs) || request.signal.aborted) return;
+        if (!Number.isFinite(lufs) || request.signal.aborted || entry.node?.played.length) return;
         entry.gain = levelingGain(lufs);
         applyVolume(entry);
       })
