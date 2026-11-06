@@ -305,6 +305,7 @@ export function TrackList({
             : row.previewOnly
               ? `Preview ${row.title}`
               : `Play ${row.title}`;
+          const playable = Boolean(row.onPlay && !row.playDisabled && !selection);
           return (
             <div
               key={row.key}
@@ -369,38 +370,29 @@ export function TrackList({
                   indicator={row.active ? <PlayingIndicator row={row} /> : null}
                 />
               ) : null}
-              <Tooltip content={row.title}>
-                {row.onPlay && !row.playDisabled && !selection ? (
-                  <button
-                    type="button"
-                    className="native-library-track__title"
-                    onClick={row.onPlay}
-                    aria-label={row.previewOnly ? playLabel : undefined}
-                  >
-                    <span>
-                      {row.previewOnly ? <PreviewChip /> : null}
-                      {row.badge}
-                      {row.title}
-                    </span>
-                    {row.subtitle ? <small>{row.subtitle}</small> : null}
-                    {row.detail ? (
-                      <small className="native-library-track__detail">{row.detail}</small>
-                    ) : null}
-                  </button>
-                ) : (
-                  <span className="native-library-track__title">
-                    <span>
-                      {row.previewOnly ? <PreviewChip /> : null}
-                      {row.badge}
-                      {row.title}
-                    </span>
-                    {row.subtitle ? <small>{row.subtitle}</small> : null}
-                    {row.detail ? (
-                      <small className="native-library-track__detail">{row.detail}</small>
-                    ) : null}
+              <span className="native-library-track__title">
+                {playable ? (
+                  <Tooltip content={row.title}>
+                    <button
+                      type="button"
+                      className="native-library-track__title-action"
+                      onClick={row.onPlay ?? undefined}
+                      aria-label={row.previewOnly ? playLabel : row.title}
+                    />
+                  </Tooltip>
+                ) : null}
+                <Tooltip content={playable ? null : row.title}>
+                  <span>
+                    {row.previewOnly ? <PreviewChip /> : null}
+                    {row.badge}
+                    {row.title}
                   </span>
-                )}
-              </Tooltip>
+                </Tooltip>
+                {row.subtitle ? <small>{row.subtitle}</small> : null}
+                {row.detail ? (
+                  <small className="native-library-track__detail">{row.detail}</small>
+                ) : null}
+              </span>
               {isCollection ? (
                 <TrackLink link={row.artist} className="native-library-track__artist" />
               ) : null}

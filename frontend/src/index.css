@@ -9764,6 +9764,7 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track__title {
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10314,6 +10315,36 @@ button.native-library-genre-row:focus-visible {
   min-height: 3rem;
   padding-block: 0.125rem;
   contain-intrinsic-block-size: auto 3rem;
+}
+
+.native-library-track__title-action {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.native-library-track__title-action:focus-visible {
+  outline-offset: -2px;
+}
+
+.native-library-track__title > small a {
+  position: relative;
+  z-index: var(--aurral-z-raised);
+  color: inherit;
+}
+
+.native-library-track__title > small a:focus-visible {
+  color: var(--aurral-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .native-library-track__title > small a:hover {
+    color: var(--aurral-text);
+    text-decoration: underline;
+  }
 }
 
 @media (max-width: 760px) {
