@@ -536,7 +536,9 @@ function Layout({ children, headerActions }: LayoutProps) {
 
           {navBeta && sectionNav ? (
             <nav className="app-topbar-tabs" aria-label={sectionNav.label}>
-              <span className="app-topbar-tabs__title">{sectionNav.title}</span>
+              {sidebarMode === "icons" ? (
+                <span className="app-topbar-tabs__title">{sectionNav.title}</span>
+              ) : null}
               {sectionNav.items.map((item) => (
                 <RouteLink
                   key={item.id}
