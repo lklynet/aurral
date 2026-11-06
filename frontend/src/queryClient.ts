@@ -164,6 +164,7 @@ export const queryKeys = {
     limit,
   ],
   playlistStatus: ["playlists", "status"],
+  playlistsContaining: (track: object | null): QueryKey => ["playlists", "containing", track],
   flowTemplates: (userId: MaybeId): QueryKey => ["playlists", "flow-templates", userId || null],
   playlistJobs: (flowId?: MaybeId): QueryKey => ["playlists", "jobs", flowId || "all"],
   playlistArtworkRevisions: ["playlists", "artwork-revisions"],

@@ -161,7 +161,7 @@ async function createPendingOidcLogin(
         issuer,
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
-        ...(userInfo ? { userinfo_endpoint: `${issuer}userinfo` } : {}),
+        ...(userInfo && { userinfo_endpoint: `${issuer}userinfo` }),
         jwks_uri: `${issuer}jwks`,
       }),
     );

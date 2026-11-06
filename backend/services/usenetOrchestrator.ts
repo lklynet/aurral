@@ -578,7 +578,7 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
       releaseAdmissible: entry.releaseAdmissible === true,
       // A release title cannot show the tracklist, so the download is judged
       // against the release before anything is imported.
-      ...(albumGrab ? { releaseVerified: false } : {}),
+      ...(albumGrab && { releaseVerified: false }),
     }),
   );
   if (candidates.length === 0) {

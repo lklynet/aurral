@@ -21,7 +21,7 @@ const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule]
     () => import("../../backend/services/playlists/playlistStatusSnapshot.ts"),
   );
 
-const { getPlaylistStatusSnapshot } = snapshotModule;
+const { getPlaylistStatusSnapshot, getPlaylistsContainingTrack } = snapshotModule;
 
 beforeEach(() => {
   resetDatabase(db);
@@ -59,8 +59,10 @@ test("status snapshot includes static playlist summaries without embedding track
   assert.equal(shared.trackCount, 421);
   assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 421);
   assert.equal("tracks" in shared, false);
-  assert.ok(Array.isArray(shared.trackIdentities));
-  assert.equal(shared.trackIdentities.length, 421);
+  assert.equal("trackIdentities" in shared, false);
+  assert.deepEqual(getPlaylistsContainingTrack(null, tracks[420]!), [
+    { id: playlist.id, jobId: null },
+  ]);
   assert.equal(shared.sourceName, "Exported JSON");
 
   const serialized = JSON.stringify(status);
@@ -79,10 +81,10 @@ test("status snapshot includes empty manual playlists", () => {
   assert.ok(shared);
   assert.equal(shared.name, "Manual Empty");
   assert.equal(shared.trackCount, 0);
-  assert.deepEqual([...shared.trackIdentities], []);
+  assert.deepEqual(getPlaylistsContainingTrack(null, { artistName: "A", trackName: "B" }), []);
 });
 
-test("status snapshot trackIdentities includes pending download jobs", async () => {
+test("playlists containing a track include pending download jobs", async () => {
   const { downloadTracker } =
     await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const playlist = flowPlaylistConfig.createStaticPlaylist({
@@ -98,17 +100,13 @@ test("status snapshot trackIdentities includes pending download jobs", async () 
   );
   assert.ok(jobId);
 
-  const status = getPlaylistStatusSnapshot();
-  const shared = (status.sharedPlaylists || []).find((p) => p.id === playlist.id);
-  const job = downloadTracker.getJob(jobId);
-
-  assert.ok(shared);
-  assert.equal(job?.status, "pending");
-  assert.equal(shared.trackIdentities.length, 1);
-  assert.ok(
-    shared.trackIdentities[0]?.includes("radiohead"),
-    "expected pending job identity in snapshot",
-  );
+  assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+  const track = { artistName: "radiohead", trackName: "Karma Police" };
+  assert.deepEqual(getPlaylistsContainingTrack(null, track), [{ id: playlist.id, jobId }]);
+  assert.deepEqual(getPlaylistsContainingTrack(null, { ...track, albumName: "The Bends" }), [
+    { id: playlist.id, jobId },
+  ]);
+  assert.deepEqual(getPlaylistsContainingTrack(null, { ...track, trackName: "Airbag" }), []);
 });
 
 test("status snapshot trackCount includes failed download jobs", async () => {

@@ -93,7 +93,7 @@ export default new Hono<AppEnv>()
     const { hours: window, ...query } = c.req.valid("query");
     const entries = await queryLogs({
       ...query,
-      ...(window ? { since: since(window) } : {}),
+      ...(window && { since: since(window) }),
     });
     return c.json({ entries, debug: isDebugLoggingOn() }, 200);
   })

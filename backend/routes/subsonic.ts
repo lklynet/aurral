@@ -576,7 +576,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
       indexes: {
         ignoredArticles: IGNORED_ARTICLES,
         lastModified,
-        ...(unchanged ? {} : { index: groupArtists(listArtists(user).map(toIndexArtist)) }),
+        ...(!unchanged && { index: groupArtists(listArtists(user).map(toIndexArtist)) }),
       },
     });
   }
@@ -613,7 +613,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     const lyrics = song ? await getLyricsBySongId(song.id, user) : [];
     return ok({
       lyrics: {
-        ...(song && lyrics.length ? { artist: song.artist, title: song.title } : {}),
+        ...(song && lyrics.length && { artist: song.artist, title: song.title }),
         value: lyrics[0]?.line.map((line) => line.value).join("\n") || "",
       },
     });

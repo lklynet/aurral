@@ -55,7 +55,7 @@ export function brainzmashGroup({
       id: release.id,
       title: release.title || title,
       status: release.status || "Official",
-      ...(release.trackCount ? { track_count: release.trackCount } : {}),
+      ...(release.trackCount && { track_count: release.trackCount }),
       tracks: release.tracks.map((entry, index) => {
         const track = typeof entry === "string" ? { title: entry } : entry;
         return {

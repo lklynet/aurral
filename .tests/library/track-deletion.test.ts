@@ -19,7 +19,10 @@ import { dbOps } from "../../backend/db/helpers/index.ts";
 import { clearTrackMonitoringExclusion } from "../../backend/services/aurralMonitoringStore.ts";
 import { flowPlaylistConfig } from "../../backend/services/playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "../../backend/services/playlists/playlistManager.ts";
-import { getPlaylistStatusSnapshot } from "../../backend/services/playlists/playlistStatusSnapshot.ts";
+import {
+  getPlaylistStatusSnapshot,
+  getPlaylistsContainingTrack,
+} from "../../backend/services/playlists/playlistStatusSnapshot.ts";
 import {
   clearDownloadProviderWork,
   isDownloadJobCancelled,
@@ -220,9 +223,9 @@ test("deleting a library track removes it from playlists that referenced its dow
     );
     assert.ok(status != null);
     assert.equal(status.trackCount, 2);
-    assert.equal(
-      status.trackIdentities.some((entry: string) => entry.startsWith("artist\u0001track\u0001")),
-      false,
+    assert.deepEqual(
+      getPlaylistsContainingTrack(null, { artistName: "Artist", trackName: "Track" }),
+      [],
     );
     assert.deepEqual(
       playlistSync.mock.calls.map((call) => call[0]),

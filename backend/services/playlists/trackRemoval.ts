@@ -265,7 +265,7 @@ export async function removeStaticPlaylistSelectionsLocked({
       outcomes.push({
         jobId: selection.jobId,
         status: job ? "failed" : "alreadyAbsent",
-        ...(job ? { message: "The selected membership changed. Select the track again." } : {}),
+        ...(job && { message: "The selected membership changed. Select the track again." }),
       });
       continue;
     }

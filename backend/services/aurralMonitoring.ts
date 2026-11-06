@@ -247,7 +247,7 @@ export function nextArtistMonitoring(
   const keepNewSince = previous?.rules.newReleases && nextRules.newReleases;
   return {
     default: useDefault,
-    ...(useDefault ? {} : { rules: nextRules }),
+    ...(!useDefault && { rules: nextRules }),
     catalogAt: unchanged ? previous.catalogAt : now,
     newSince: unchanged || keepNewSince ? previous.newSince : now,
   };

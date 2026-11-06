@@ -367,7 +367,7 @@ export async function refreshInboxForUser(
       status: "running",
       stale: false,
       error: null,
-      ...(jobId ? { jobId } : {}),
+      ...(jobId && { jobId }),
     });
     const preferences = getInboxPreferences();
     const libraryArtists = preferences.shows ? getLibraryArtistNames() : [];
@@ -412,8 +412,8 @@ export async function refreshInboxForUser(
       status: refreshStatus,
       stale: failures.length > 0,
       error: errorMessage,
-      ...(jobId ? { jobId } : {}),
-      ...(failures.length === 0 ? { lastSuccessAt: now } : {}),
+      ...(jobId && { jobId }),
+      ...(failures.length === 0 && { lastSuccessAt: now }),
     });
     if (failures.length > 0 && throwOnFailure) {
       const error: Error & { inboxStatusWritten?: boolean } = new Error(errorMessage!);
@@ -433,7 +433,7 @@ export async function refreshInboxForUser(
           status: "failed",
           stale: true,
           error: error.message,
-          ...(jobId ? { jobId } : {}),
+          ...(jobId && { jobId }),
         });
       }
       if (throwOnFailure) throw error;

@@ -249,7 +249,7 @@ export const listenbrainzPlaylistClient = {
     const artworkUrl = unwrapPlaylist(payload)?.image;
     return {
       ...parseListenBrainzPlaylist(payload),
-      ...(typeof artworkUrl === "string" && /^https?:\/\//i.test(artworkUrl) ? { artworkUrl } : {}),
+      ...(typeof artworkUrl === "string" && /^https?:\/\//i.test(artworkUrl) && { artworkUrl }),
     };
   },
 };

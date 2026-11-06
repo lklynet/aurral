@@ -79,7 +79,8 @@ test("a library artist link falls back to a name match when the ID lookup misses
     if (url.pathname.endsWith("/library/canonical")) {
       return {
         body: {
-          items: [
+          kind: "artists",
+          artists: [
             { id: 3, name: "Other" },
             { id: 9, canonicalId: "c-9", name: "Wanted Artist" },
           ],

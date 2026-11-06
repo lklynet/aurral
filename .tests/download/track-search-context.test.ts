@@ -598,23 +598,21 @@ const albumEntry = (
   type: "Album",
   artistid: artist.id,
   artists: [artist],
-  ...(tracks
-    ? {
-        releases: [
-          {
-            id: `${id}-release`,
-            status: "Official",
-            tracks: tracks.map((name, index) => ({
-              trackname: name,
-              trackposition: index + 1,
-              mediumnumber: 1,
-              durationms: 200000,
-              recordingid: `${id}-${index + 1}`,
-            })),
-          },
-        ],
-      }
-    : {}),
+  ...(tracks && {
+    releases: [
+      {
+        id: `${id}-release`,
+        status: "Official",
+        tracks: tracks.map((name, index) => ({
+          trackname: name,
+          trackposition: index + 1,
+          mediumnumber: 1,
+          durationms: 200000,
+          recordingid: `${id}-${index + 1}`,
+        })),
+      },
+    ],
+  }),
 });
 
 test("a download credited to an artist and a guest takes the lead artist, and not another artist's album of the same title", async (t) => {
@@ -650,14 +648,12 @@ test("a download credited to an artist and a guest takes the lead artist, and no
       trackName: "Afterburner",
       albumName: "Afterburner",
       albumMbid: "other-afterburner",
-      ...(complete
-        ? {
-            trackMbid: "other-afterburner-1",
-            durationMs: 200000,
-            trackNumber: 1,
-            albumTrackTitles: ["Afterburner"],
-          }
-        : {}),
+      ...(complete && {
+        trackMbid: "other-afterburner-1",
+        durationMs: 200000,
+        trackNumber: 1,
+        albumTrackTitles: ["Afterburner"],
+      }),
     });
     assert.equal(existing.artistMbid, "dance-gavin-dance");
     assert.equal(existing.albumMbid, null);

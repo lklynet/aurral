@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { clientAddress } from "./middleware/clientAddress.ts";
 import { authenticate } from "./middleware/guards.ts";
 import { rateLimit } from "./middleware/rateLimit.ts";
@@ -22,6 +23,7 @@ const signInLimit = rateLimit({
 
 export const app = new Hono<AppEnv>({ strict: false })
   .use((_c, next) => withLogContext({ req: randomUUID().slice(0, 8) }, next))
+  .use(compress())
   .use(async (c, next) => {
     const incoming = c.env.incoming.headers;
     if (incoming["transfer-encoding"]) {

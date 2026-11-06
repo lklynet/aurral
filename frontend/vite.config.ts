@@ -1,7 +1,11 @@
-import { defineConfig, loadEnv } from "vite-plus";
+import { defineConfig, loadEnv, type Plugin } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { cwd } from "process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { brotliCompress, constants, gzip } from "node:zlib";
 import { resolveAppVersion } from "../lib/app-version.ts";
 import { normalizeBasePathWithTrailingSlash } from "./src/utils/basePath.ts";
 
@@ -10,6 +14,42 @@ const appVersion = resolveAppVersion({
   cwd: process.cwd(),
 });
 const releaseChannel = globalThis?.process?.env?.VITE_RELEASE_CHANNEL || "stable";
+
+const COMPRESSIBLE = /\.(?:js|css|html|svg|json|webmanifest)$/;
+const brotli = promisify(brotliCompress);
+const gzipAsync = promisify(gzip);
+
+const precompress = (): Plugin => {
+  let outDir = "";
+  return {
+    name: "aurral-precompress",
+    apply: "build",
+    configResolved: (config) => {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: "post",
+      sequential: true,
+      handler: async () => {
+        const files = await fs.readdir(outDir, { recursive: true });
+        await Promise.all(
+          files
+            .filter((file) => COMPRESSIBLE.test(file))
+            .map(async (file) => {
+              const full = path.join(outDir, file);
+              const source = await fs.readFile(full);
+              if (source.byteLength < 1024) return;
+              const params = { [constants.BROTLI_PARAM_QUALITY]: 11 };
+              await Promise.all([
+                brotli(source, { params }).then((out) => fs.writeFile(`${full}.br`, out)),
+                gzipAsync(source, { level: 9 }).then((out) => fs.writeFile(`${full}.gz`, out)),
+              ]);
+            }),
+        );
+      },
+    },
+  };
+};
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, cwd(), "");
@@ -66,13 +106,22 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
+      precompress(),
     ],
     build: {
       outDir: "dist",
       emptyOutDir: true,
-      // Avoid speculative modulepreload requests that Chrome reports as unused
-      // when a service worker controls the page and routes load on demand.
-      modulePreload: false,
+      modulePreload: { polyfill: false },
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              { name: "startup-vendor", tags: ["$initial"], test: /node_modules/ },
+              { name: "startup", tags: ["$initial"] },
+            ],
+          },
+        },
+      },
     },
     server: {
       port: 3000,

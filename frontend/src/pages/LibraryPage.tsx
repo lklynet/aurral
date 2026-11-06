@@ -669,7 +669,7 @@ function LibraryPage() {
     const pages = Array.isArray(queryData?.nextData) ? queryData.nextData : [];
     return HOME_ALBUM_RAILS.map((rail, index) => {
       const page = pages[index];
-      const items = page?.kind === "albums" ? page.items : [];
+      const items = page?.kind === "albums" ? page.albums : [];
       return {
         ...rail,
         albums: items
@@ -785,7 +785,7 @@ function LibraryPage() {
         };
       };
       const tracks = pages
-        .flatMap((page) => (Array.isArray(page?.items) ? page.items : []))
+        .flatMap((page) => (Array.isArray(page?.tracks) ? page.tracks : []))
         .map((track) => ({ track, position: position(track) }))
         .sort(
           (left, right) =>

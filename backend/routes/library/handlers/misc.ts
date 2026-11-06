@@ -58,9 +58,9 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
   monitored: album.monitored,
   managedBy: album.managedBy || null,
   trackListComplete: album.trackListComplete !== false,
-  ...(album.trackListComplete === false
-    ? {}
-    : { percentOfTracks: Number(album.statistics?.percentOfTracks || 0) }),
+  ...(album.trackListComplete !== false && {
+    percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
+  }),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),
   trackFileCount: Number(album.statistics?.trackFileCount || 0),

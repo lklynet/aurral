@@ -242,7 +242,7 @@ function StreamView({ fp, onClearFp }: { fp: string | null; onClearFp: () => voi
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const filters = { level: fp ? "debug" : level, ...(q ? { q } : {}), ...(fp ? { fp } : {}) };
+  const filters = { level: fp ? "debug" : level, ...(q && { q }), ...(fp && { fp }) };
   const logs = useInfiniteQuery({
     queryKey: queryKeys.logs(filters),
     initialPageParam: "",
@@ -253,7 +253,7 @@ function StreamView({ fp, onClearFp }: { fp: string | null; onClearFp: () => voi
             query: {
               ...filters,
               limit: String(PAGE_SIZE),
-              ...(pageParam ? { before: pageParam } : {}),
+              ...(pageParam && { before: pageParam }),
             },
           },
           { init: { signal } },

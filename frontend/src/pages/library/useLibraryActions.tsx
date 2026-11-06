@@ -30,10 +30,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import { useQueueTrackActions, useStartRadio } from "../../hooks/useQueueTrackActions";
 import type { RadioSeed } from "../../utils/audioQueue";
-import {
-  useHiddenPlaylistTracks,
-  usePlaylistBulkActions,
-} from "../playlists/usePlaylistBulkActions.ts";
+import { usePlaylistBulkActions } from "../playlists/usePlaylistBulkActions.ts";
 import { libraryAlbumsClient } from "../../utils/api/clients/libraryAlbums.ts";
 import { libraryArtistsClient } from "../../utils/api/clients/libraryArtists.ts";
 import { libraryArtworkClient } from "../../utils/api/clients/libraryArtwork.ts";
@@ -291,10 +288,10 @@ export function useLibraryActions({
               { signal },
             );
             pages.push(page);
-            if (!page?.hasMore || !page?.items?.length) break;
+            if (!page?.hasMore || !page?.tracks?.length) break;
           }
           return {
-            tracks: pages.flatMap((page) => (Array.isArray(page?.items) ? page.items : [])),
+            tracks: pages.flatMap((page) => (Array.isArray(page?.tracks) ? page.tracks : [])),
             page: {
               ...pages[0],
               artists: pages.flatMap((page) => page?.artists || []),
@@ -444,22 +441,6 @@ export function useLibraryActions({
   );
 
   const { removeTracks: removePlaylistTracks } = usePlaylistBulkActions();
-  const hiddenPlaylistTracks = useHiddenPlaylistTracks();
-  const removablePlaylists = useMemo(
-    () =>
-      hiddenPlaylistTracks.size
-        ? staticPlaylists.map((playlist) => {
-            const hiddenIds = hiddenPlaylistTracks.get(playlist.id);
-            return hiddenIds && Array.isArray(playlist.trackEntries)
-              ? {
-                  ...playlist,
-                  trackEntries: playlist.trackEntries.filter((entry) => !hiddenIds.has(entry.id)),
-                }
-              : playlist;
-          })
-        : staticPlaylists,
-    [hiddenPlaylistTracks, staticPlaylists],
-  );
 
   const removeLibraryTrackFromPlaylist = useCallback(
     (track: LibraryPageTrack, target: PlaylistRemoveTarget | null | undefined) => {
@@ -1390,7 +1371,7 @@ export function useLibraryActions({
             />
             <TrackPlaylistRemoveSubmenu
               track={track}
-              playlists={removablePlaylists}
+              playlists={staticPlaylists}
               saving={playlistSavingKey === String(track.id)}
               error={playlistsError}
               onSelect={(target: PlaylistRemoveTarget) =>

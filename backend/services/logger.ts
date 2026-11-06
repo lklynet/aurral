@@ -128,8 +128,8 @@ function describeError(error: Error): LogError {
   return {
     name: safeLogDiagnostic(error.name),
     message: safeLogDiagnostic(error),
-    ...(typeof code === "string" || typeof code === "number" ? { code: String(code) } : {}),
-    ...(stack ? { stack } : {}),
+    ...((typeof code === "string" || typeof code === "number") && { code: String(code) }),
+    ...(stack && { stack }),
   };
 }
 
@@ -235,8 +235,8 @@ function record(
       ? fingerprint(level, cat, msg)
       : fingerprint(...[level, cat, msg, reason ?? ""].map(normalizedForFingerprint)),
     ...context.getStore(),
-    ...(safeData === undefined ? {} : { data: safeData }),
-    ...(err ? { err } : {}),
+    ...(safeData !== undefined && { data: safeData }),
+    ...(err && { err }),
   });
 }
 

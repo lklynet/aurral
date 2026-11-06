@@ -673,7 +673,7 @@ async function findLibraryFolderSource(
     return {
       sourceType: source,
       sourcePath,
-      ...(external ? { externalPath: matchedTrack.path } : {}),
+      ...(external && { externalPath: matchedTrack.path }),
       albumName: album.albumName || track.albumName || null,
     };
   }

@@ -118,7 +118,7 @@ function backfillSlskdSettings(db: Database.Database, dbHelpers: JsonHelpers) {
   const integrations = readSettingObject(db, dbHelpers, "integrations");
   if (!integrations) return;
   const weeklyFlowWorker = readSettingObject(db, dbHelpers, "weeklyFlowWorker");
-  const slskd = { ...(v.is(settingObject, integrations.slskd) ? integrations.slskd : {}) };
+  const slskd = { ...(v.is(settingObject, integrations.slskd) && integrations.slskd) };
   let changed = false;
   if (!slskd.preferredFormat) {
     slskd.preferredFormat =

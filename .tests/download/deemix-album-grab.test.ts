@@ -59,7 +59,7 @@ async function serveRelease(
           tracks: tracks.map(([trackTitle, durationMs, trackArtist]) => ({
             title: trackTitle,
             durationMs,
-            ...(trackArtist ? { artistId: `${trackArtist}-artist` } : {}),
+            ...(trackArtist && { artistId: `${trackArtist}-artist` }),
           })),
         },
       ],

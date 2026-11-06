@@ -201,7 +201,7 @@ async function pluginLogs(pluginId: string, limit: number) {
     at: entry.ts,
     level: entry.level,
     message: entry.msg,
-    ...(entry.data ? { data: entry.data } : {}),
+    ...(!!entry.data && { data: entry.data }),
   }));
 }
 
@@ -218,8 +218,8 @@ async function testPlugin(input: v.InferOutput<(typeof toolInputs)["test_plugin"
   if (downloads) await fs.mkdir(directory, { recursive: true });
   const call = {
     ...pluginInput(installed),
-    ...(input.path.startsWith("actions.") ? { user: SAMPLE_USER } : {}),
-    ...(downloads ? { directory } : {}),
+    ...(input.path.startsWith("actions.") && { user: SAMPLE_USER }),
+    ...(downloads && { directory }),
     ...input.input,
   };
   let result: { ok: true; answer: unknown } | { ok: false; error: string };
@@ -249,7 +249,7 @@ async function testPlugin(input: v.InferOutput<(typeof toolInputs)["test_plugin"
     : undefined;
   return {
     ...result,
-    ...(files ? { directory, files } : {}),
+    ...(files && { directory, files }),
     logs,
   };
 }

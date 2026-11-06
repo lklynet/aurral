@@ -154,12 +154,12 @@ export function updatePlugin(
 ) {
   const plugin = installedPlugin(id);
   savePlugin(plugin, {
-    ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
-    ...(patch.priority === undefined ? {} : { priority: patch.priority }),
-    ...(patch.settings
-      ? { settings: readSettingsInput(plugin.manifest, { ...plugin.settings, ...patch.settings }) }
-      : {}),
-    ...(patch.capabilities ? { disabled: readCapabilitiesInput(plugin, patch.capabilities) } : {}),
+    ...(patch.enabled !== undefined && { enabled: patch.enabled }),
+    ...(patch.priority !== undefined && { priority: patch.priority }),
+    ...(patch.settings && {
+      settings: readSettingsInput(plugin.manifest, { ...plugin.settings, ...patch.settings }),
+    }),
+    ...(patch.capabilities && { disabled: readCapabilitiesInput(plugin, patch.capabilities) }),
   });
   if (patch.enabled === false) stopPlugin(id);
   logger.info(

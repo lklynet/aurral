@@ -87,7 +87,7 @@ export default new Hono<AppEnv>()
         {
           error: "Failed to resolve link",
           message: failure?.message || "Unknown error",
-          ...(failure?.code ? { code: failure.code } : {}),
+          ...(failure?.code && { code: failure.code }),
         },
         status,
       );

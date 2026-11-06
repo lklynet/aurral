@@ -439,9 +439,7 @@ export function PlaylistImportModal({
             ? importApi.listenbrainz.preview.$post({
                 json: {
                   playlistId: pickedPlaylist!.id,
-                  ...(pickedPlaylist!.sourceType
-                    ? { playlistType: pickedPlaylist!.sourceType }
-                    : {}),
+                  ...(pickedPlaylist!.sourceType && { playlistType: pickedPlaylist!.sourceType }),
                 },
               })
             : importApi.lastfm.preview.$post({
@@ -708,9 +706,9 @@ export function PlaylistImportModal({
                   json: {
                     ...payload,
                     externalName,
-                    ...(selectedPlaylist.sourceType
-                      ? { playlistType: selectedPlaylist.sourceType }
-                      : {}),
+                    ...(selectedPlaylist.sourceType && {
+                      playlistType: selectedPlaylist.sourceType,
+                    }),
                   },
                 })
               : isLastfm

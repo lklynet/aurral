@@ -1396,7 +1396,7 @@ export class LidarrClient {
       addOptions: {
         monitor: monitoring.monitor,
         searchForMissingAlbums: albumOnly ? options.triggerSearch === true : searchOnAdd,
-        ...(albumsToMonitor.length > 0 ? { albumsToMonitor } : {}),
+        ...(albumsToMonitor.length > 0 && { albumsToMonitor }),
       },
     };
 

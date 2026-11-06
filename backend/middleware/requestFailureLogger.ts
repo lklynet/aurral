@@ -34,7 +34,7 @@ export function createRequestFailureLogger(log: Pick<typeof logger, "error"> = l
       method: c.req.method,
       endpoint: logValue(path),
       status,
-      ...(reason ? { reason } : {}),
+      ...(reason && { reason }),
     });
   });
 }

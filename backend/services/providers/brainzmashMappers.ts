@@ -259,7 +259,7 @@ export function toLegacyReleaseGroupSummary(
       ? [
           {
             name: artistName,
-            artist: { ...(artistId ? { id: artistId } : {}), name: artistName },
+            artist: { ...(artistId && { id: artistId }), name: artistName },
           },
         ]
       : [],

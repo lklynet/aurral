@@ -43,8 +43,8 @@ async function apiFetch(token: string, path: string, options: RequestInit = {}) 
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
     ...options,
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(options.body && { "Content-Type": "application/json" }),
     },
   });
   const text = await response.text();

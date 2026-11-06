@@ -236,9 +236,7 @@ export default function register(dbOps: DiscoveryCacheOps) {
         const existingMetadata = readMetadata(prefix);
         const nextMetadata = {
           ...existingMetadata,
-          ...(discovery.metadata && typeof discovery.metadata === "object"
-            ? discovery.metadata
-            : {}),
+          ...(discovery.metadata && typeof discovery.metadata === "object" && discovery.metadata),
         };
         for (const field of DISCOVERY_METADATA_FIELDS) {
           if (Object.prototype.hasOwnProperty.call(discovery, field)) {

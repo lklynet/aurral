@@ -42,17 +42,15 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
       identifier: `https://listenbrainz.org/playlist/${id}`,
       title,
       date,
-      ...(sourcePatch
-        ? {
-            extension: {
-              [playlistExtension]: {
-                additional_metadata: {
-                  algorithm_metadata: { source_patch: sourcePatch },
-                },
-              },
+      ...(sourcePatch && {
+        extension: {
+          [playlistExtension]: {
+            additional_metadata: {
+              algorithm_metadata: { source_patch: sourcePatch },
             },
-          }
-        : {}),
+          },
+        },
+      }),
     },
   });
   scrobbleConnectionStore.saveConnection(7, "listenbrainz", {

@@ -1,3 +1,4 @@
+import { noChainedTypeAssertion, noEmptyConditionalSpread } from "./anti-slop-rules.js";
 import { noNativeTooltipRules } from "./native-tooltip-rules.js";
 import { sharedControlRules } from "./shared-control-rules.js";
 import { singleMainRule } from "./single-main-rule.js";
@@ -11,5 +12,7 @@ export default {
     "shared-control-patterns": sharedControlRules,
     "no-native-tooltip": noNativeTooltipRules,
     "single-main": singleMainRule,
+    "no-empty-conditional-spread": noEmptyConditionalSpread,
+    "no-chained-type-assertion": noChainedTypeAssertion,
   },
 };

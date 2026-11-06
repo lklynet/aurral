@@ -2746,7 +2746,7 @@ export class LibraryManager {
             monitorOption: legacyMode,
             monitorStartedAt: effective?.newSince ?? null,
             addOptions: {
-              ...(typeof addOptions === "object" ? addOptions : {}),
+              ...(typeof addOptions === "object" && addOptions),
               monitor: legacyMode,
             },
           },
@@ -3638,7 +3638,7 @@ export class LibraryManager {
             durationMs: track.durationMs,
             mediumNumber: track.mediumNumber,
             trackNumber: track.trackPosition || track.trackNumber || 0,
-            ...(aliases?.length ? { artistAliases: aliases } : {}),
+            ...(aliases?.length && { artistAliases: aliases }),
           },
         });
         linkLibraryAlbumTrack({

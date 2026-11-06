@@ -245,7 +245,7 @@ function normalizeIntegrationPatch(
               {
                 enabled: entry?.enabled !== false,
                 priority: clampedInteger(entry?.priority, 1, 1000, 25),
-                ...(isUsenetClientKey(downloadClient) ? { downloadClient } : {}),
+                ...(isUsenetClientKey(downloadClient) && { downloadClient }),
               },
             ];
           },

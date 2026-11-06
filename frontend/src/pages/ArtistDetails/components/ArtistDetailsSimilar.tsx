@@ -183,9 +183,9 @@ export function ArtistDetailsSimilar({
                       state={{
                         artistName: similar.name,
                         artistImage: similar.image || undefined,
-                        ...(typeof libraryLookup[artistKey] === "boolean"
-                          ? { inLibrary: libraryLookup[artistKey] }
-                          : {}),
+                        ...(typeof libraryLookup[artistKey] === "boolean" && {
+                          inLibrary: libraryLookup[artistKey],
+                        }),
                       }}
                       className="artist-similar-name-block card-link"
                       aria-label={`Open ${similar.name}`}

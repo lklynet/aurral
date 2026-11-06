@@ -545,7 +545,7 @@ function toPlaylistSong(
     return {
       ...toSong(indexFocusedLibrary(owned.library, starredAt), owned.track),
       parent: idFor(kind, playlist.id),
-      ...(customCoverArt ? { coverArt: customCoverArt } : {}),
+      ...(customCoverArt && { coverArt: customCoverArt }),
     };
   }
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
@@ -1864,7 +1864,7 @@ export function getSubsonicPlaylist(value: string, user: SubsonicUser) {
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
-    ...(playlist.description ? { comment: playlist.description } : {}),
+    ...(playlist.description && { comment: playlist.description }),
     owner: userOps.getUserById(playlist.ownerUserId)?.username || "",
     coverArt: playlistCoverArt(kind, playlist.id, coverRevision),
     songCount: jobs.length,

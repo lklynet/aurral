@@ -76,6 +76,19 @@ const publicEntity = <T extends { identityKey: string }>(
     ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
     : { ...entity };
 
+const summaryMetadata = <M extends Record<string, unknown>>(metadata: M | null) => {
+  if (!metadata) return null;
+  const { trackList, tags, ...rest } = metadata;
+  if (!tags || typeof tags !== "object") return rest;
+  return {
+    ...rest,
+    tags: {
+      ...("genre" in tags && { genre: tags.genre }),
+      ...("releasetype" in tags && { releasetype: tags.releasetype }),
+    },
+  };
+};
+
 const publicAlbum = (
   album: LibraryCollections["albums"][number],
   favoriteKeys: Set<string> | null,
@@ -88,9 +101,10 @@ const publicAlbum = (
     : null;
   return {
     ...album,
+    metadata: summaryMetadata(album.metadata),
     coverUrl: customArtworkUrl ?? defaultCoverUrl,
-    ...(customArtworkUrl ? { defaultCoverUrl, customArtworkUrl } : {}),
-    ...(favoriteKeys ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) } : {}),
+    ...(customArtworkUrl && { defaultCoverUrl, customArtworkUrl }),
+    ...(favoriteKeys && { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }),
   };
 };
 
@@ -117,6 +131,7 @@ export function buildPublicLibrary(
   return {
     artists: library.artists.map((artist) => ({
       ...publicEntity("artist", artist, favoriteKeys),
+      metadata: summaryMetadata(artist.metadata),
       coverUrl: buildLibraryArtworkUrl("artist", artist.id, artistVersions.get(String(artist.id))),
     })),
     albums: library.albums.map((album) =>
@@ -199,6 +214,7 @@ const pageQuery = v.object({
   direction: v.optional(v.string()),
   artistId: v.optional(v.string()),
   albumId: v.optional(v.string()),
+  compact: v.optional(v.string()),
 });
 
 const favoritesInput = v.object({
@@ -239,26 +255,26 @@ export default new Hono<AppEnv>()
       if (!kind || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
         return c.json({ error: "kind and pageSize (1-100) are required" }, 400);
       }
-      return c.json(
-        toPublicLibraryPage(
-          getLibraryPage({
-            source: query.source,
-            availableOnly: resolveAvailableOnly(query.availableOnly),
-            kind,
-            page: query.page,
-            pageSize,
-            query: query.query,
-            genre: query.genre,
-            sort: query.sort,
-            direction: query.direction,
-            artistId: query.artistId,
-            albumId: query.albumId,
-            userId: user?.id ?? null,
-          }),
-          favoriteKeys,
-        ),
-        200,
+      const page = toPublicLibraryPage(
+        getLibraryPage({
+          source: query.source,
+          availableOnly: resolveAvailableOnly(query.availableOnly),
+          kind,
+          page: query.page,
+          pageSize,
+          query: query.query,
+          genre: query.genre,
+          sort: query.sort,
+          direction: query.direction,
+          artistId: query.artistId,
+          albumId: query.albumId,
+          userId: user?.id ?? null,
+        }),
+        favoriteKeys,
       );
+      if (query.compact !== "true" || page.kind === "genres") return c.json(page, 200);
+      const { items, genres, ...compactPage } = page;
+      return c.json(compactPage, 200);
     } catch (error) {
       const failure = asAppError(error);
       if (

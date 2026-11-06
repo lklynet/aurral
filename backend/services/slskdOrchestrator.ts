@@ -1442,7 +1442,7 @@ async function handlePoll(payload: SlskdPayload, helpers: SlskdHelpers) {
     return {
       ...basePayload,
       phase: "finalize",
-      batch: { transfers: transfer ? [transfer] : [], ...(localFilename ? { localFilename } : {}) },
+      batch: { transfers: transfer ? [transfer] : [], ...(localFilename && { localFilename }) },
       pollAttempts,
       candidate,
     };

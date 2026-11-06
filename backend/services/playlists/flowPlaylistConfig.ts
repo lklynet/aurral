@@ -269,9 +269,9 @@ export function normalizeImportSource(value: StoredImportSource | null | undefin
   return {
     provider,
     externalId: String(value.externalId || "").trim() || null,
-    ...(provider === "lastfm-station"
-      ? { externalUsername: String(value.externalUsername || "").trim() || null }
-      : {}),
+    ...(provider === "lastfm-station" && {
+      externalUsername: String(value.externalUsername || "").trim() || null,
+    }),
     externalName: String(value.externalName || "").trim() || null,
     artworkUrl:
       typeof value.artworkUrl === "string" && /^https?:\/\//i.test(value.artworkUrl)

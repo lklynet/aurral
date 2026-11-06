@@ -114,7 +114,7 @@ async function syncStaticPlaylistImportHere({
       forceRefresh: true,
     });
     const syncImportSource = {
-      ...(artworkUrl ? { artworkUrl } : {}),
+      ...(artworkUrl && { artworkUrl }),
       lastSyncAt: Date.now(),
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,
@@ -168,9 +168,7 @@ async function syncStaticPlaylistImportHere({
       provider: playlist.importSource.provider,
       playlistName: playlist.name,
       playlistId: playlist.id,
-      ...(playlist.importSource.provider === "youtube-music-playlist"
-        ? {}
-        : { externalPlaylistId }),
+      ...(playlist.importSource.provider !== "youtube-music-playlist" && { externalPlaylistId }),
       sourceEntryCount,
       acceptedTrackCount: tracks.length,
       spotifyItemOnlyCount: Number(stats.itemOnly || 0),

@@ -57,7 +57,7 @@ const optimisticState = (existing: MonitoringData | undefined, request: Monitori
     ...existing,
     added: true,
     monitored,
-    ...(monitored ? { useDefault: useDefault !== false } : {}),
+    ...(monitored && { useDefault: useDefault !== false }),
   };
 };
 

@@ -122,6 +122,6 @@ export function buildArtistBase(
     links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
     relations: toLegacyRelations(metadataArtist),
     rating: metadataArtist?.rating || null,
-    ...(metadataArtist?.overview ? { bio: metadataArtist.overview } : {}),
+    ...(metadataArtist?.overview && { bio: metadataArtist.overview }),
   };
 }

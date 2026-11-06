@@ -186,10 +186,10 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
     setSaving(true);
     const apply = () =>
       updateUser(user.id, {
-        ...(password ? { password } : {}),
+        ...(password && { password }),
         permissions,
         status: isUserStatus(status) ? status : undefined,
-        ...(claimable ? { allowIdentityAdoption: allowAdoption } : {}),
+        ...(claimable && { allowIdentityAdoption: allowAdoption }),
       });
     try {
       try {

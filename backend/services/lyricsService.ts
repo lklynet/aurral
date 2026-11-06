@@ -54,7 +54,7 @@ function embeddedLyrics(tag: ILyricsTag): Omit<Lyrics, "lang"> | null {
       tag.timeStampFormat === 2 &&
       synchronized.every((entry) => Number.isFinite(entry.timestamp) && entry.timestamp! >= 0);
     const line = synchronized.map((entry) => ({
-      ...(synced ? { start: entry.timestamp } : {}),
+      ...(synced && { start: entry.timestamp }),
       value: entry.text,
     }));
     if (synced) line.sort((a, b) => a.start! - b.start!);

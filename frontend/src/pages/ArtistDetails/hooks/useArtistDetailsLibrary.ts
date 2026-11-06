@@ -488,7 +488,7 @@ export function useArtistDetailsLibrary({
           quality: appSettings?.quality || "standard",
           managedBy,
           lidarrOptions,
-          ...(monitorOption ? { monitorOption } : {}),
+          ...(monitorOption && { monitorOption }),
         }),
       );
       let fullArtist = await resolveArtistFromAddResponse(result, {

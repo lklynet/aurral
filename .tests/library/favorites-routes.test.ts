@@ -6,7 +6,7 @@ import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 type LibraryRoutes = ReturnType<typeof hc<typeof libraryIndex>>["library"];
 type LibraryPage = InferResponseType<LibraryRoutes["canonical"]["$get"], 200>;
-type Page<Kind extends LibraryPage["kind"]> = Extract<LibraryPage, { kind: Kind }>;
+type Page<Kind extends LibraryPage["kind"]> = Extract<LibraryPage, { kind: Kind; items: unknown }>;
 type Favorites = InferResponseType<LibraryRoutes["favorites"]["$get"], 200>;
 type FavoritesUpdate = InferResponseType<LibraryRoutes["favorites"]["$post"], 200>;
 
@@ -55,6 +55,10 @@ beforeAll(() => {
     artistId: artist.id,
     title: "Favorite Album",
     albumArtist: artist.name,
+    metadata: {
+      trackList: { release: "55555555-5555-4555-8555-555555555555", recordings: [] },
+      tags: { genre: ["Indie Rock"], releasetype: "ep", barcode: "0123456789" },
+    },
   });
   const track = upsertLibraryTrack({
     identityKey: "favorite-track",
@@ -202,6 +206,23 @@ test("library pages return bounded collection responses", async () => {
   assert.equal(String(available.items[0].canonicalId), String(available.items[0].id));
   assert.equal(available.items[0]?.source, "aurral");
   assert.equal(available.items[0]?.available, true);
+  assert.equal("trackList" in (available.items[0]?.metadata ?? {}), false);
+  assert.deepEqual(available.items[0]?.metadata?.tags, {
+    genre: ["Indie Rock"],
+    releasetype: "ep",
+  });
+
+  const compact: LibraryPage = await (
+    await getPage({ kind: "albums", page: "1", pageSize: "1", compact: "true" })
+  ).json();
+  assert.equal("items" in compact, false);
+  assert.equal("genres" in compact, false);
+  assert.equal(compact.albums[0]?.title, "Favorite Album");
+  const compactGenres: Page<"genres"> = await (
+    await getPage({ kind: "genres", page: "1", pageSize: "1", compact: "true" })
+  ).json();
+  assert.equal(compactGenres.items.length, 1);
+  assert.equal(compactGenres.genres.length, 2);
 
   const artists: Page<"artists"> = await (
     await getPage({ kind: "artists", page: "1", pageSize: "1" })

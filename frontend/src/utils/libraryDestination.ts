@@ -129,7 +129,7 @@ export const buildArtistAddPayload = ({
   foreignArtistId: artistMbid,
   artistName,
   managedBy,
-  ...(managedBy === "lidarr" ? lidarrOptions : {}),
+  ...(managedBy === "lidarr" && lidarrOptions),
 });
 
 export const buildAlbumRequestPayload = ({

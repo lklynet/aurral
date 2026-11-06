@@ -3088,7 +3088,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       providerId: albumMetadata?.id ?? null,
       monitored: albumMetadata?.monitored === true,
       monitorOption: albumMetadata?.monitor || albumMetadata?.addOptions?.monitor || "none",
-      ...(albumCredits.length ? { creditedArtistMbids: albumCredits } : {}),
+      ...(albumCredits.length && { creditedArtistMbids: albumCredits }),
       trackIds: [],
       managedBy: albumManagement?.managedBy ?? null,
       monitorMode: albumManagement?.monitorMode ?? null,

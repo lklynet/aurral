@@ -275,7 +275,7 @@ test("an agent with a developer key writes and tests a plugin over MCP, and it s
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+        ...(key && { Authorization: `Bearer ${key}` }),
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: (id += 1), method, params }),
     });

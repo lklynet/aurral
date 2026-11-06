@@ -86,10 +86,10 @@ export const lastfmScrobble = (event: LastfmScrobbleEvent, sessionKey: string | 
     artist: event.artist,
     track: event.title,
     timestamp: Math.floor(Number(event.playedAt) / 1000),
-    ...(event.album ? { album: event.album } : {}),
-    ...(event.artistMbid ? { artist_mbid: event.artistMbid } : {}),
-    ...(event.trackMbid ? { mbid: event.trackMbid } : {}),
-    ...(event.durationMs ? { duration: Math.round(event.durationMs / 1000) } : {}),
+    ...(event.album && { album: event.album }),
+    ...(event.artistMbid && { artist_mbid: event.artistMbid }),
+    ...(event.trackMbid && { mbid: event.trackMbid }),
+    ...(event.durationMs && { duration: Math.round(event.durationMs / 1000) }),
   });
 
 export async function lastfmRequest(

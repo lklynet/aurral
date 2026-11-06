@@ -398,26 +398,25 @@ function AlbumPage() {
       subtitle:
         (!hasFile && entry.releaseTrack && creditFor(entry.releaseTrack)) ||
         (isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle),
-      ...(hasFile && hasMissingTracks ? { trailing: <OwnedTrackMark /> } : {}),
+      ...(hasFile && hasMissingTracks && { trailing: <OwnedTrackMark /> }),
       time: hasFile
         ? row.time
         : formatDuration(trackDurationMs(track)) ||
           formatDuration(entry.releaseTrack?.length) ||
           "—",
       timeMissing: false,
-      ...(previewPlayback?.onPlay ? previewPlayback : {}),
-      ...(previewQueueItems.length && row.menu
-        ? {
-            menu: {
-              ...row.menu,
-              items: [
-                ...previewQueueItems,
-                ...(row.menu.items || []).filter((item) => item.id !== "play"),
-              ],
-              additionalItemsAfter: previewQueueItems.at(-1)?.id,
-            },
-          }
-        : {}),
+      ...(previewPlayback?.onPlay && previewPlayback),
+      ...(previewQueueItems.length &&
+        row.menu && {
+          menu: {
+            ...row.menu,
+            items: [
+              ...previewQueueItems,
+              ...(row.menu.items || []).filter((item) => item.id !== "play"),
+            ],
+            additionalItemsAfter: previewQueueItems.at(-1)?.id,
+          },
+        }),
     };
   });
   const trackParam = searchParams.get("track") || "";

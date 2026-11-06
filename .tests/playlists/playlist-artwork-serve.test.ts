@@ -92,7 +92,7 @@ test("a new flow or static playlist has its cover as soon as it is created, with
   const request = async (route: string, body?: Record<string, unknown>) => {
     const response = await fetch(`${server.url}/api/playlists${route}`, {
       method: body ? "POST" : "GET",
-      headers: { authorization, ...(body ? { "content-type": "application/json" } : {}) },
+      headers: { authorization, ...(body && { "content-type": "application/json" }) },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: response.status, type: response.headers.get("content-type"), body: response };

@@ -89,7 +89,7 @@ export function ProwlarrDetail() {
     return {
       enabled: override.enabled !== false,
       priority: override.priority ?? indexer.priority ?? 25,
-      ...(override.downloadClient ? { downloadClient: override.downloadClient } : {}),
+      ...(override.downloadClient && { downloadClient: override.downloadClient }),
     };
   };
 
@@ -279,7 +279,7 @@ export function ProwlarrDetail() {
                             updateIndexer(indexer.id, {
                               enabled: state.enabled,
                               priority: state.priority,
-                              ...(downloadClient ? { downloadClient } : {}),
+                              ...(downloadClient && { downloadClient }),
                             })
                           }
                           options={[{ value: "", label: "Automatic" }, ...DOWNLOAD_CLIENT_OPTIONS]}

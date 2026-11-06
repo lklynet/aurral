@@ -20,8 +20,6 @@ export interface StaticPlaylist {
   recordHistory: boolean;
   showTrackAvailability: boolean;
   importSource: PlaylistStatusSnapshot["sharedPlaylists"][number]["importSource"];
-  trackEntries: { id: string; identity: string }[];
-  trackIdentities: string[];
 }
 
 export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "sharedPlaylists"> & {

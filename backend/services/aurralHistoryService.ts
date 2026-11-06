@@ -309,7 +309,7 @@ export const recordArtistAdded = ({
 const requesterFromUser = (user: RequesterUser | null | undefined): HistoryRequester | null => {
   if (user?.id == null) return null;
   const username = String(user.username || "").trim();
-  return { userId: user.id, ...(username ? { username } : {}) };
+  return { userId: user.id, ...(username && { username }) };
 };
 
 const requesterFromMetadata = (
@@ -319,7 +319,7 @@ const requesterFromMetadata = (
   const username = String(metadata.username || "").trim();
   return {
     userId: metadata.userId,
-    ...(username ? { username } : {}),
+    ...(username && { username }),
   };
 };
 
@@ -393,9 +393,9 @@ export const recordAlbumRequested = ({
       albumName: name,
       artistName: artist,
       artistMbid,
-      ...(managedBy ? { managedBy } : {}),
-      ...(managedBy === "aurral" && albumId != null ? { canonicalAlbumId: String(albumId) } : {}),
-      ...(requestGroupId ? { requestGroupId } : {}),
+      ...(managedBy && { managedBy }),
+      ...(managedBy === "aurral" && albumId != null && { canonicalAlbumId: String(albumId) }),
+      ...(requestGroupId && { requestGroupId }),
       ...requester,
     },
   });
@@ -1108,16 +1108,16 @@ export const recordTrackJobActivity = ({
       jobId: id,
       trackName: track,
       artistName: artist,
-      ...(album ? { albumName: album } : {}),
+      ...(album && { albumName: album }),
       playlistId,
       downloadSource: downloadSource || null,
       downloadClient: downloadClient || null,
-      ...(albumMbid ? { albumMbid } : {}),
-      ...(groupId ? { requestGroupId: groupId } : {}),
+      ...(albumMbid && { albumMbid }),
+      ...(groupId && { requestGroupId: groupId }),
       ...requester,
-      ...(filename ? { sourceFilename: filename } : {}),
-      ...(release ? { releaseTitle: release } : {}),
-      ...(trackUpgrade ? { upgrade: trackUpgrade } : {}),
+      ...(filename && { sourceFilename: filename }),
+      ...(release && { releaseTitle: release }),
+      ...(trackUpgrade && { upgrade: trackUpgrade }),
     },
   });
 };
@@ -1314,17 +1314,15 @@ export const toHistoryRequestItem = (
     status: entry.status || "completed",
     statusLabel: entry.statusLabel || null,
     requestedAt: entry.metadata?.requestedAt || toIso(entry.createdAt),
-    ...(options.albumGrab ? { albumGrab: options.albumGrab } : {}),
-    ...(options.albumGrab
-      ? {
-          completedAt: entry.metadata?.completedAt || null,
-          actualDownloadSource: entry.metadata?.actualDownloadSource || null,
-          downloadMethod: entry.metadata?.downloadMethod || null,
-          previousErrors: entry.metadata?.previousErrors || [],
-          trackNumber: entry.metadata?.trackNumber || null,
-          discNumber: entry.metadata?.discNumber || null,
-        }
-      : {}),
+    ...(options.albumGrab && { albumGrab: options.albumGrab }),
+    ...(options.albumGrab && {
+      completedAt: entry.metadata?.completedAt || null,
+      actualDownloadSource: entry.metadata?.actualDownloadSource || null,
+      downloadMethod: entry.metadata?.downloadMethod || null,
+      previousErrors: entry.metadata?.previousErrors || [],
+      trackNumber: entry.metadata?.trackNumber || null,
+      discNumber: entry.metadata?.discNumber || null,
+    }),
     href: entry.href || null,
     kind,
     playlistId: entry.metadata?.playlistId || null,
@@ -1391,7 +1389,7 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
       jobId: job?.id,
       trackName: job?.trackName,
       artistName: job?.artistName,
-      ...(job?.albumName ? { albumName: job.albumName } : {}),
+      ...(job?.albumName && { albumName: job.albumName }),
       playlistId,
       downloadSource: job?.downloadSource || null,
       downloadClient: job?.downloadClient || null,

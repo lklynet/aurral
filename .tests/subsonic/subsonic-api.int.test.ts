@@ -169,7 +169,7 @@ async function apiFetch(pathname: string, options: RequestInit = {}) {
     ...options,
     headers: {
       Authorization: `Bearer ${authToken}`,
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && { "Content-Type": "application/json" }),
       ...Object.fromEntries(new Headers(options.headers)),
     },
   });
