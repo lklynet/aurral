@@ -169,6 +169,6 @@ test("Daily Mixes group the most played artists by shared genre", async () => {
   const built = await getUserMixes(userId, NOW);
   const later = NOW + 31 * 60_000;
   assert.equal(await getUserMixes(userId, later), built);
-  insertPlay.run(userId, "lastfm:new", "New Song", "Avalon", later);
+  insertPlay.run(userId, "lastfm:old", "Old Song", "Avalon", NOW - 90 * DAY);
   assert.notEqual(await getUserMixes(userId, later + 31 * 60_000), built);
 });

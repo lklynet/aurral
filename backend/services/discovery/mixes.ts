@@ -74,8 +74,8 @@ const playsStmt = db.prepare<[number, number, number, number, number, number], T
   GROUP BY lower(artist), lower(title)
 `);
 
-const latestPlayStmt = db.prepare<[number], { at: number | null }>(
-  "SELECT MAX(played_at) AS at FROM play_events WHERE user_id = ?",
+const latestPlayStmt = db.prepare<[number], { id: number | null }>(
+  "SELECT MAX(id) AS id FROM play_events WHERE user_id = ?",
 );
 
 const decadesStmt = db.prepare<[number, number], { decade: number; tracks: number }>(`
@@ -457,7 +457,7 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
   return mixes.filter((mix) => mix.trackIds.length >= MIN_MIX_TRACKS);
 }
 
-type CachedMixes = { expiresAt: number; day: number; lastPlayedAt: number; mixes: Promise<Mix[]> };
+type CachedMixes = { expiresAt: number; day: number; lastPlayId: number; mixes: Promise<Mix[]> };
 
 const cache = new BoundedMap<number, CachedMixes>(500);
 
@@ -465,13 +465,13 @@ export function getUserMixes(userId: number, now = Date.now()) {
   const day = Math.floor(now / DAY_MS);
   const cached = cache.get(userId);
   if (cached && cached.day === day && cached.expiresAt > now) return cached.mixes;
-  const lastPlayedAt = latestPlayStmt.get(userId)?.at ?? 0;
-  if (cached && cached.day === day && cached.lastPlayedAt === lastPlayedAt) {
+  const lastPlayId = latestPlayStmt.get(userId)?.id ?? 0;
+  if (cached && cached.day === day && cached.lastPlayId === lastPlayId) {
     cached.expiresAt = now + CACHE_TTL_MS;
     return cached.mixes;
   }
   const mixes = buildMixes(userId, now);
-  cache.set(userId, { expiresAt: now + CACHE_TTL_MS, day, lastPlayedAt, mixes });
+  cache.set(userId, { expiresAt: now + CACHE_TTL_MS, day, lastPlayId, mixes });
   mixes.catch(() => cache.delete(userId));
   return mixes;
 }
