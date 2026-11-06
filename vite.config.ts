@@ -38,6 +38,8 @@ export default defineConfig({
       ],
       "typescript/no-floating-promises": "error",
       "typescript/no-explicit-any": "error",
+      "aurral/no-empty-conditional-spread": "error",
+      "aurral/no-chained-type-assertion": "error",
       "typescript/ban-ts-comment": [
         "error",
         { "ts-expect-error": true, "ts-ignore": true, "ts-nocheck": true },
@@ -114,6 +116,10 @@ export default defineConfig({
       {
         files: ["backend/**", "lib/**", "scripts/**", ".tests/**"],
         rules: { "import/extensions": ["error", "always", { ignorePackages: true }] },
+      },
+      {
+        files: [".tests/**"],
+        rules: { "aurral/no-chained-type-assertion": "off" },
       },
       {
         files: [

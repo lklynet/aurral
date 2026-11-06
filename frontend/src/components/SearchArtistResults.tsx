@@ -90,9 +90,7 @@ function SearchArtistResults({
   const artistLinkState = (artist: SearchArtist, artistKey: string) => ({
     artistName: artist.name,
     artistImage: artist.image || artist.imageUrl || undefined,
-    ...(typeof libraryLookup[artistKey] === "boolean"
-      ? { inLibrary: libraryLookup[artistKey] }
-      : {}),
+    ...(typeof libraryLookup[artistKey] === "boolean" && { inLibrary: libraryLookup[artistKey] }),
   });
 
   const isList = variant === "list";

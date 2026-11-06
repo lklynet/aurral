@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import {
   fetchLibraryPage,
   getLibraryFavorites,
+  getLibraryPage,
   type LibraryFavoritesResponse,
   type LibraryPageResponse,
 } from "../utils/api/endpoints/library.ts";
@@ -252,12 +253,15 @@ export function libraryViewQueryOptions({
           favoriteIds: favoriteIdsFromFavorites(favorites),
         });
       }
-      const nextData = await fetchLibraryPages(view, signal);
+      const [nextData, genres] = await Promise.all([
+        fetchLibraryPages(view, signal),
+        getLibraryPage({ kind: "genres", page: 1, pageSize: 1 }),
+      ]);
       const pageResults = Array.isArray(nextData) ? nextData : [nextData];
       return finishLibraryView(view, {
         nextData,
         pageResults,
-        library: normalizeLibraryPages(pageResults),
+        library: normalizeLibraryPages([...pageResults, genres]),
         favoriteIds: favoriteIdsFromPages(pageResults),
       });
     },

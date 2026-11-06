@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, Trash2 } from "../../../components/icons";
 import type { IconComponent } from "../../../components/icons";
 import AddActionButton from "../../../components/AddActionButton";
@@ -10,8 +11,9 @@ import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
 import type { StaticPlaylist } from "../../playlists/playlistStats.ts";
+import { playlistsContainingQueryOptions } from "../../../queryOptions.ts";
+import { useHiddenPlaylistTracks } from "../../playlists/usePlaylistBulkActions.ts";
 
-type PlaylistTrackEntry = { id: string; identity: string };
 export type SharedPlaylist = StaticPlaylist;
 
 export type PlaylistTrackIdentity = {
@@ -41,7 +43,7 @@ export type PlaylistSelection =
   | { mode: "new"; name: string }
   | { mode: "existing"; playlistId: string };
 
-export type PlaylistRemoval = { playlistId: string; jobId: PlaylistTrackEntry["id"] };
+export type PlaylistRemoval = { playlistId: string; jobId: string };
 
 export type QueueMenuItem = {
   id: string;
@@ -94,57 +96,6 @@ function normalizeTrackForSharedIdentity(track: PlaylistTrackIdentity | null | u
   };
 }
 
-function buildPlaylistTrackIdentity(track: PlaylistTrackIdentity | null | undefined) {
-  const normalized = normalizeTrackForSharedIdentity(track);
-  if (!normalized) return "";
-  return [
-    normalized.artistName.toLowerCase(),
-    normalized.trackName.toLowerCase(),
-    normalized.albumName.toLowerCase(),
-    normalized.artistMbid,
-    normalized.albumMbid,
-    normalized.trackMbid,
-    normalized.releaseYear,
-  ].join("\u0001");
-}
-
-function buildCoreTrackIdentity(track: PlaylistTrackIdentity | null | undefined) {
-  const normalized = normalizeTrackForSharedIdentity(track);
-  if (!normalized) return "";
-  return `${normalized.artistName.toLowerCase()}\u0001${normalized.trackName.toLowerCase()}`;
-}
-
-function coreIdentityFromStoredIdentity(identity: string) {
-  const parts = String(identity || "").split("\u0001");
-  if (parts.length < 2) return "";
-  return `${parts[0]}\u0001${parts[1]}`;
-}
-
-function trackMatchesStoredIdentity(
-  storedIdentity: string,
-  track: PlaylistTrackIdentity | null | undefined,
-) {
-  const normalized = normalizeTrackForSharedIdentity(track);
-  if (!normalized) return false;
-  const targetFull = buildPlaylistTrackIdentity(track);
-  if (targetFull && storedIdentity === targetFull) return true;
-  const targetCore = buildCoreTrackIdentity(track);
-  if (!targetCore) return false;
-  return coreIdentityFromStoredIdentity(storedIdentity) === targetCore;
-}
-
-function playlistContainsTrack(
-  playlist: SharedPlaylist | null | undefined,
-  track: PlaylistTrackIdentity | null | undefined,
-) {
-  if (!track) return false;
-  const identities: string[] = Array.isArray(playlist?.trackIdentities)
-    ? playlist.trackIdentities
-    : [];
-  if (identities.length === 0) return false;
-  return identities.some((identity) => trackMatchesStoredIdentity(identity, track));
-}
-
 function useAvailablePlaylists(playlists: SharedPlaylist[], excludedPlaylistIds: string[]) {
   return useMemo(() => {
     const excluded = new Set(
@@ -169,6 +120,9 @@ export function TrackPlaylistPickerContent({
   onSelect,
 }: TrackPlaylistPickerProps) {
   const availablePlaylists = useAvailablePlaylists(playlists, excludedPlaylistIds);
+  const { data: containing } = useQuery(
+    playlistsContainingQueryOptions(normalizeTrackForSharedIdentity(track)),
+  );
 
   if (loading) {
     return (
@@ -198,7 +152,7 @@ export function TrackPlaylistPickerContent({
       {availablePlaylists.length > 0 ? (
         <div className="artist-playlist-menu__scroll">
           {availablePlaylists.map((playlist) => {
-            const alreadyAdded = playlistContainsTrack(playlist, track);
+            const alreadyAdded = containing?.has(playlist.id) ?? false;
             return (
               <Tooltip
                 key={playlist.id}
@@ -330,18 +284,18 @@ export function TrackPlaylistRemoveSubmenu({
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
-  const removablePlaylists = playlists
-    .map((playlist) => {
-      const entry = (Array.isArray(playlist?.trackEntries) ? playlist.trackEntries : []).find(
-        (candidate: PlaylistTrackEntry) => trackMatchesStoredIdentity(candidate?.identity, track),
-      );
-      return entry ? { playlist, jobId: entry.id } : null;
-    })
-    .filter((removable) => removable !== null);
+  const { data: containing } = useQuery(
+    playlistsContainingQueryOptions(normalizeTrackForSharedIdentity(track)),
+  );
+  const hidden = useHiddenPlaylistTracks();
+  const removablePlaylists = playlists.flatMap((playlist) => {
+    const jobId = containing?.get(playlist.id);
+    return jobId && !hidden.get(playlist.id)?.has(jobId) ? [{ playlist, jobId }] : [];
+  });
 
   if (!removablePlaylists.length) return null;
 
-  const handleSelect = async (playlistId: string, jobId: PlaylistTrackEntry["id"]) => {
+  const handleSelect = async (playlistId: string, jobId: string) => {
     await onSelect?.({ playlistId, jobId });
     onClose?.();
   };

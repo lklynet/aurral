@@ -44,7 +44,7 @@ export default function ManualMissingSearchModal({
         manualSearch.sources.$get(
           {
             param: { jobId: encodeURIComponent(job!.id) },
-            query: { mode, ...(playlistId ? { playlistId } : {}) },
+            query: { mode, ...(playlistId && { playlistId }) },
           },
           { init: { signal } },
         ),
@@ -90,7 +90,7 @@ export default function ManualMissingSearchModal({
         manualSearch.$post(
           {
             param: { jobId: encodeURIComponent(jobId) },
-            json: { sourceId, mode, ...(playlistId ? { playlistId } : {}) },
+            json: { sourceId, mode, ...(playlistId && { playlistId }) },
           },
           { fetch: searchFetch },
         ),

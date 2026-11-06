@@ -53,7 +53,7 @@ function parseThemeFile(value: Record<string, unknown>) {
   }
   if (value?.version === 1) {
     const { name, light, dark } = convertLegacyTheme(value);
-    return { name, ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
+    return { name, ...(light && { light }), ...(dark && { dark }) };
   }
   throw new Error("This theme file uses a version Aurral can't read.");
 }
@@ -82,8 +82,8 @@ export function serializeThemeFile(theme: { name: string; light?: unknown; dark?
     {
       version: THEME_DOCUMENT_VERSION,
       name: theme.name,
-      ...(theme.light ? { light: theme.light } : {}),
-      ...(theme.dark ? { dark: theme.dark } : {}),
+      ...(!!theme.light && { light: theme.light }),
+      ...(!!theme.dark && { dark: theme.dark }),
     },
     null,
     2,

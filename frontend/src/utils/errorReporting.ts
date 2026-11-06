@@ -18,7 +18,7 @@ export function reportClientError(source: Source, problem: unknown, componentSta
         source,
         name: error.name.slice(0, 200),
         message: error.message.slice(0, 2000),
-        ...(stack ? { stack: stack.slice(0, 8000) } : {}),
+        ...(stack && { stack: stack.slice(0, 8000) }),
         page: window.location.pathname.slice(0, 500),
       },
     })

@@ -31,13 +31,11 @@ export function resolveShareManifest(
         durationMs: track.durationMs,
         trackNumber: track.trackNumber,
         discNumber: track.discNumber,
-        ...(file
-          ? {
-              path: `tracks/${file.albumId}/${file.trackId}`,
-              size: file.file.size,
-              format: file.file.format,
-            }
-          : {}),
+        ...(file && {
+          path: `tracks/${file.albumId}/${file.trackId}`,
+          size: file.file.size,
+          format: file.file.format,
+        }),
       };
     });
     return parseShareManifest({ kind: "playlist", title: playlist.name, tracks });

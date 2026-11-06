@@ -17,7 +17,7 @@ function readHistory(state: unknown): SettingsHistory {
 }
 
 const withHistory = (state: unknown, history: SettingsHistory) => ({
-  ...(typeof state === "object" && state !== null ? state : {}),
+  ...(typeof state === "object" && state !== null && state),
   settingsDepth: history.depth,
   settingsFrom: history.from,
 });

@@ -23,7 +23,7 @@ const sendEditorialError = <E extends AppEnv>(c: Context<E>, error: unknown, fal
     {
       error: fallback,
       message: failure?.message || "Unknown error",
-      ...(failure?.code ? { code: failure.code } : {}),
+      ...(failure?.code && { code: failure.code }),
     },
     status,
   );

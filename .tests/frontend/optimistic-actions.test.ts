@@ -74,7 +74,7 @@ test("undoing an unfavorite sends the removed stars back and reverts if the rest
   const capture = (message: ToastMessage, error: boolean = false) => {
     toasts.push({
       ...(typeof message === "string" ? { message } : message),
-      ...(error ? { error: true } : {}),
+      ...(error && { error: true }),
     });
     return String(toasts.length);
   };

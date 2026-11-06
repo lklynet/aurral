@@ -134,7 +134,7 @@ function normalizeAlbumItem(item: ProviderAlbum, lookup: AlbumLibraryLookupEntry
     libraryAlbumId: lookup?.libraryAlbumId || null,
     libraryArtistId: lookup?.libraryArtistId || null,
     status: lookup?.status || "missing",
-    ...(lookup ? { monitored: Boolean(lookup.monitored) } : {}),
+    ...(lookup && { monitored: Boolean(lookup.monitored) }),
     score: item.score || 0,
   };
 }

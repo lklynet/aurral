@@ -131,11 +131,10 @@ function applyTransfer<Payload extends OwnedPayload>(payload: Payload, transfer:
     downloadAttemptId: transfer.toAttemptId,
     destination: transfer.destination,
     track: transfer.track,
-    ...(Array.isArray(payload.albumGroupJobIds) && transfer.fromJobId !== transfer.toJobId
-      ? {
-          albumGroupJobIds: payload.albumGroupJobIds.filter((id) => id !== transfer.fromJobId),
-        }
-      : {}),
+    ...(Array.isArray(payload.albumGroupJobIds) &&
+      transfer.fromJobId !== transfer.toJobId && {
+        albumGroupJobIds: payload.albumGroupJobIds.filter((id) => id !== transfer.fromJobId),
+      }),
   };
 }
 

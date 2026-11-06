@@ -52,7 +52,7 @@ export function logOutgoingFailures() {
       level,
       "http",
       `${method} ${host} ${status ? `returned ${status}` : "failed"}`,
-      { path: safePath(pathname), ms, ...(code ? { code } : {}), reason: message },
+      { path: safePath(pathname), ms, ...(code && { code }), reason: message },
       { groupByMessage: true },
     );
   });

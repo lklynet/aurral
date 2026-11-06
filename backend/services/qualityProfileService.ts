@@ -104,7 +104,7 @@ function getJobQuality(job: QualityJob, profile: QualityProfile) {
 }
 
 export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQualityProfile()) {
-  return { ...job, ...(job.upgradeForJobId ? {} : getJobQuality(job, profile)) };
+  return { ...job, ...(!job.upgradeForJobId && getJobQuality(job, profile)) };
 }
 
 export function validateParsedQuality(

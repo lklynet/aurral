@@ -141,7 +141,7 @@ async function planTags(
   if (!fill.tags) return { reason: fill.reason || null, unmatched: fill.unmatched };
   const fileStat = await fs.stat(file.path).catch(() => null);
   const hardlinked = fileStat !== null && fileStat.nlink > 1;
-  return { tags: fill.tags, tagFields: fill.fields, ...(hardlinked ? { hardlinked } : {}) };
+  return { tags: fill.tags, tagFields: fill.fields, ...(hardlinked && { hardlinked }) };
 }
 
 // The album's numbering wins. A file the album has no number for keeps the

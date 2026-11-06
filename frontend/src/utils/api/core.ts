@@ -233,8 +233,8 @@ export const lidarrCredentialParams = (
   apiKey: string | undefined,
   { trimUrl = false }: { trimUrl?: boolean } = {},
 ) => ({
-  ...(url ? { url: trimUrl ? url.replace(/\/+$/, "") : url } : {}),
-  ...(apiKey ? { apiKey } : {}),
+  ...(url && { url: trimUrl ? url.replace(/\/+$/, "") : url }),
+  ...(apiKey && { apiKey }),
 });
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();

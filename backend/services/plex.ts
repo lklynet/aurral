@@ -35,7 +35,7 @@ const plexHeaders = (token?: string, clientId = "aurral") => ({
   Accept: "application/json",
   "X-Plex-Client-Identifier": clientId,
   "X-Plex-Product": "Aurral",
-  ...(token ? { "X-Plex-Token": token } : {}),
+  ...(token && { "X-Plex-Token": token }),
 });
 
 export function getPlexServer(): PlexServer | null {

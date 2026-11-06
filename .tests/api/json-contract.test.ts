@@ -96,10 +96,10 @@ async function call(
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     headers: {
-      ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(authenticated && token && { Authorization: `Bearer ${token}` }),
+      ...(body && { "Content-Type": "application/json" }),
     },
-    ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(body && { body: JSON.stringify(body) }),
   });
   const payload = await response.json();
   assert.equal(response.status, status, `${method} ${route}`);

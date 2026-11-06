@@ -10,7 +10,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  { getPlaylistStatusSnapshot },
+  { getPlaylistStatusSnapshot, getPlaylistsContainingTrack },
 ] = await setupIsolatedBackend(
   "status-snapshot-process",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -51,32 +51,23 @@ test("production snapshots refresh persisted membership and access changes witho
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
   try {
-    const read = () =>
-      getPlaylistStatusSnapshot({
-        user: { id: 1, role: "user", username: "test", permissions: {} },
-      });
+    const user = { id: 1, role: "user", username: "test", permissions: {} };
+    const read = () => getPlaylistStatusSnapshot({ user });
+    const containing = (trackName: string, artistName = "Artist") =>
+      getPlaylistsContainingTrack(user, { artistName, trackName });
     const first = read().sharedPlaylists.find((entry) => entry.id === playlist.id);
     assert.ok(first != null);
     assert.equal(first.name, "Original");
-    assert.equal(first.trackEntries.length, 1);
     assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
-    requireFixture(first.trackEntries[0]).identity = "caller mutation";
-    first.trackIdentities.push("caller mutation");
-    assert.equal(read().sharedPlaylists[0]?.trackIdentities.length, 1);
-    assert.notEqual(
-      requireFixture(requireFixture(read().sharedPlaylists[0]).trackEntries[0]).identity,
-      "caller mutation",
-    );
+    assert.deepEqual(containing("Original track"), [{ id: playlist.id, jobId }]);
 
     writeFromAnotherProcess(
       "UPDATE playlist_download_jobs SET track_name = ?, status = ? WHERE id = ?",
       ["Changed track", "failed", jobId],
     );
     const updated = read();
-    assert.notEqual(
-      requireFixture(updated.sharedPlaylists[0]).trackIdentities[0],
-      first.trackIdentities[0],
-    );
+    assert.deepEqual(containing("Original track"), []);
+    assert.deepEqual(containing("Changed track"), [{ id: playlist.id, jobId }]);
     assert.equal(updated.sharedPlaylistStats[playlist.id]?.failed, 1);
 
     const stored = JSON.parse(
@@ -96,11 +87,15 @@ test("production snapshots refresh persisted membership and access changes witho
     ]);
     const renamed = requireFixture(read().sharedPlaylists[0]);
     assert.equal(renamed.name, "Renamed elsewhere");
-    assert.equal(renamed.trackIdentities.length, 2);
+    assert.deepEqual(containing("Manual track", "Manual artist"), [
+      { id: playlist.id, jobId: null },
+    ]);
 
     writeFromAnotherProcess("DELETE FROM playlist_download_jobs WHERE id = ?", [jobId]);
-    assert.equal(read().sharedPlaylists[0]?.trackIdentities.length, 1);
-    assert.deepEqual([...requireFixture(read().sharedPlaylists[0]).trackEntries], []);
+    assert.deepEqual(containing("Changed track"), []);
+    assert.deepEqual(containing("Manual track", "Manual artist"), [
+      { id: playlist.id, jobId: null },
+    ]);
 
     stored[0].ownerUserId = 2;
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [

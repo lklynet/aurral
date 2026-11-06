@@ -167,7 +167,7 @@ export async function enqueueImportedPlaylist({
     playlistId: safePlaylistId,
     operationId: result.operationId,
     trackCount: tracks.length,
-    ...(sourceStats ? { skipped: sourceStats } : {}),
+    ...(sourceStats && { skipped: sourceStats }),
   });
   return { ...result, playlistId: safePlaylistId, tracksQueued: tracks.length };
 }

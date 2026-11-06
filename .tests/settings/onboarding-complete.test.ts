@@ -83,7 +83,7 @@ for (const [name, body] of [
     const result = await complete({
       ...admin,
       ...body,
-      ...("downloadFolderPath" in body ? { downloadFolderPath: notAFolder } : {}),
+      ...("downloadFolderPath" in body && { downloadFolderPath: notAFolder }),
     });
 
     assert.equal(result.status, 400);

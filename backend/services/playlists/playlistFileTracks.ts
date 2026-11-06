@@ -36,9 +36,9 @@ export async function collectPlaylistFileTracks(
       path: resolved.path,
       title: String(job.trackName || "").trim() || "Unknown Track",
       artist: String(job.artistName || "").trim() || "Unknown Artist",
-      ...(job.albumName ? { album: job.albumName } : {}),
-      ...(job.durationMs != null ? { durationMs: job.durationMs } : {}),
-      ...(job.trackMbid ? { mbid: job.trackMbid } : {}),
+      ...(job.albumName && { album: job.albumName }),
+      ...(job.durationMs != null && { durationMs: job.durationMs }),
+      ...(job.trackMbid && { mbid: job.trackMbid }),
     });
   }
   return tracks;

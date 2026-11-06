@@ -26,8 +26,8 @@ export function lrclibGetLyrics({
   const params = {
     artist_name: artist.trim(),
     track_name: title.trim(),
-    ...(album?.trim() ? { album_name: album.trim() } : {}),
-    ...(durationSec && durationSec > 0 ? { duration: Math.round(durationSec) } : {}),
+    ...(album?.trim() && { album_name: album.trim() }),
+    ...(durationSec && durationSec > 0 && { duration: Math.round(durationSec) }),
   };
   if (!params.artist_name || !params.track_name) return Promise.resolve(null);
   const key = JSON.stringify(params).toLowerCase();

@@ -136,7 +136,7 @@ function createAlbum({
     releaseDate,
     metadata: {
       monitored,
-      ...(managedBy === "aurral" && requested ? { librarySource: "aurral" } : {}),
+      ...(managedBy === "aurral" && requested && { librarySource: "aurral" }),
     },
   });
   managementStore.setLibraryManagement({

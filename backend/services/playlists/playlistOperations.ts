@@ -783,8 +783,8 @@ async function updateStaticPlaylistLocked({
           ? { ...lockedImportSource, ...(importSourcePatch || {}) }
           : importSourcePatch;
       playlist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
-        ...(hasNameUpdate ? { name: safeName } : {}),
-        ...(hasImportSourceUpdate ? { importSource: importSourceToStore } : {}),
+        ...(!!hasNameUpdate && { name: safeName }),
+        ...(!!hasImportSourceUpdate && { importSource: importSourceToStore }),
       });
     });
   } else {
@@ -853,9 +853,9 @@ async function updateStaticPlaylistLocked({
           requireAll: true,
           onCommitted: () => {
             playlist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
-              ...(hasNameUpdate ? { name: safeName } : {}),
+              ...(!!hasNameUpdate && { name: safeName }),
               tracks: normalizedTracks,
-              ...(hasImportSourceUpdate ? { importSource: importSourceToStore } : {}),
+              ...(!!hasImportSourceUpdate && { importSource: importSourceToStore }),
             });
           },
         });

@@ -156,14 +156,12 @@ export function pluginInput(plugin: InstalledPlugin) {
     },
     libraryFolder: resolveDownloadRoot(),
     dataFolder: pluginDataFolder(plugin.id),
-    ...(hasApiAccess(plugin)
-      ? {
-          api: {
-            url: `http://127.0.0.1:${process.env.PORT || 3001}/api`,
-            key: apiKeyFor(plugin.id),
-          },
-        }
-      : {}),
+    ...(hasApiAccess(plugin) && {
+      api: {
+        url: `http://127.0.0.1:${process.env.PORT || 3001}/api`,
+        key: apiKeyFor(plugin.id),
+      },
+    }),
   };
 }
 

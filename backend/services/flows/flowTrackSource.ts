@@ -360,7 +360,7 @@ export class FlowTrackSource {
         ? artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
         : [],
       reason: String(reason || "").trim() || "Flow selection",
-      ...(releaseMbid ? { releaseMbid, trackNumber, discNumber } : {}),
+      ...(releaseMbid && { releaseMbid, trackNumber, discNumber }),
     };
   }
 

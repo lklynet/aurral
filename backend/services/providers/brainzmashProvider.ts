@@ -598,7 +598,7 @@ async function request<Schema extends v.GenericSchema>(
   }
   return refreshMetadata(schema, cacheKey, path, params, {
     signal,
-    ...(cached ? { fallbackValue: cached.value } : {}),
+    ...(cached && { fallbackValue: cached.value }),
   });
 }
 
@@ -783,7 +783,7 @@ export async function searchAlbums(
       {
         query,
         limit: requestedLimit,
-        ...(artistName ? { artist: artistName } : {}),
+        ...(artistName && { artist: artistName }),
       },
       { signal },
     );

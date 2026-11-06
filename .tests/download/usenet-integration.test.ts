@@ -1225,7 +1225,7 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
     requests.push(req.url);
     if (req.url?.startsWith("/1/")) {
       res.writeHead(429, {
-        ...(req.url?.includes("Three") ? {} : { "Retry-After": "600" }),
+        ...(!req.url?.includes("Three") && { "Retry-After": "600" }),
         "Content-Type": "text/xml",
       });
       res.end(

@@ -24,7 +24,8 @@ const playlistSettingsStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: 
   "SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key",
 );
 type MembershipSummary = {
-  trackIdentities: ReturnType<typeof collectPlaylistTrackIdentities>;
+  trackIdentities: Set<string>;
+  coreIdentities: Set<string>;
   trackEntries: ReturnType<typeof collectPlaylistTrackEntries>;
 };
 const membershipCache = new Map<string, MembershipSummary>();
@@ -68,12 +69,16 @@ function refreshMembershipCache() {
   cachedDatabaseRevision = databaseRevision;
 }
 
+const coreIdentity = (identity: string) => identity.split("\u0001", 2).join("\u0001");
+
 function getMembershipSummary(playlist: StaticPlaylist) {
   let summary = membershipCache.get(playlist.id);
   if (!summary) {
     const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    const identities = collectPlaylistTrackIdentities(playlist, jobs);
     summary = {
-      trackIdentities: collectPlaylistTrackIdentities(playlist, jobs),
+      trackIdentities: new Set(identities),
+      coreIdentities: new Set(identities.map(coreIdentity)),
       trackEntries: collectPlaylistTrackEntries(jobs),
     };
   }
@@ -82,10 +87,28 @@ function getMembershipSummary(playlist: StaticPlaylist) {
   if (membershipCache.size > MEMBERSHIP_CACHE_LIMIT) {
     membershipCache.delete(membershipCache.keys().next().value!);
   }
-  return {
-    trackIdentities: [...summary.trackIdentities],
-    trackEntries: summary.trackEntries.map((entry) => ({ ...entry })),
-  };
+  return summary;
+}
+
+export function getPlaylistsContainingTrack(
+  user: RequestUser | null,
+  track: Parameters<typeof buildPlaylistTrackIdentity>[0],
+) {
+  const identity = buildPlaylistTrackIdentity(track);
+  const core = coreIdentity(identity);
+  if (core.split("\u0001").some((part) => !part)) return [];
+  refreshMembershipCache();
+  const playlists = user
+    ? flowPlaylistConfig.getStaticPlaylistsForUser(user)
+    : flowPlaylistConfig.getStaticPlaylists();
+  return playlists.flatMap((playlist) => {
+    const summary = getMembershipSummary(playlist);
+    if (!summary.trackIdentities.has(identity) && !summary.coreIdentities.has(core)) return [];
+    const job = summary.trackEntries.find(
+      (entry) => entry.identity === identity || coreIdentity(entry.identity) === core,
+    );
+    return [{ id: playlist.id, jobId: job?.id ?? null }];
+  });
 }
 
 function getCountdown(nextRunAt: unknown): ["soon" | "minute" | "hour" | "day", number] | null {
@@ -254,13 +277,12 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
       trackCount: Math.max(jobTotal, Number(playlist.trackCount || 0)),
       recordHistory: playlist.recordHistory !== false,
       showTrackAvailability: playlist.showTrackAvailability === true,
-      ...getMembershipSummary(playlist),
       importSource: playlist.importSource
         ? {
             provider: playlist.importSource.provider,
-            ...(playlist.importSource.artworkUrl
-              ? { artworkUrl: playlist.importSource.artworkUrl }
-              : {}),
+            ...(playlist.importSource.artworkUrl && {
+              artworkUrl: playlist.importSource.artworkUrl,
+            }),
             syncEnabled: playlist.importSource.syncEnabled === true,
             syncIntervalHours: playlist.importSource.syncEnabled
               ? playlist.importSource.syncIntervalHours

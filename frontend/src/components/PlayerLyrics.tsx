@@ -17,14 +17,12 @@ function lyricsLookup(track: PlayerTrack) {
   return {
     artist: track.artist || "",
     title: track.title || "",
-    ...(track.album ? { album: track.album } : {}),
-    ...(track.durationMs ? { durationMs: String(track.durationMs) } : {}),
-    ...(hasLibraryFile
-      ? {
-          libraryAlbumId: String(track.libraryAlbumId),
-          libraryTrackId: String(track.libraryTrackId),
-        }
-      : {}),
+    ...(track.album && { album: track.album }),
+    ...(track.durationMs && { durationMs: String(track.durationMs) }),
+    ...(hasLibraryFile && {
+      libraryAlbumId: String(track.libraryAlbumId),
+      libraryTrackId: String(track.libraryTrackId),
+    }),
   };
 }
 

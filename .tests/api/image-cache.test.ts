@@ -48,7 +48,7 @@ function cacheImage(src: string, { authenticated = true }: { authenticated?: boo
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(authenticated ? { Authorization: `Bearer ${token}` } : {}),
+      ...(authenticated && { Authorization: `Bearer ${token}` }),
     },
     body: JSON.stringify({ src }),
   });

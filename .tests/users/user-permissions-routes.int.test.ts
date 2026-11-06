@@ -39,7 +39,7 @@ async function apiFetch(token: string, path: string, options: RequestInit = {}) 
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && { "Content-Type": "application/json" }),
     },
   });
   return response.status;

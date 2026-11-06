@@ -28,7 +28,7 @@ export function mediaSessionArtwork(src: string | null | undefined, baseUrl: str
     : coverArtSize
       ? `${coverArtSize}x${coverArtSize}`
       : null;
-  return [{ src: url.href, ...(sizes ? { sizes } : {}), ...(type ? { type } : {}) }];
+  return [{ src: url.href, ...(sizes && { sizes }), ...(type && { type }) }];
 }
 
 export function mediaSessionPosition(duration: number, position: number) {

@@ -865,7 +865,7 @@ db.transaction(() => {
     return {
       ...flow,
       recentListening: true,
-      ...(generated ? { relatedArtists: [], description: null } : {}),
+      ...(generated && { relatedArtists: [], description: null }),
     };
   });
   db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));

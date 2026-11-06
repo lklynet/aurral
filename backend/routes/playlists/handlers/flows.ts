@@ -180,8 +180,8 @@ export default new Hono<AppEnv>()
       const updated = await withPlaylistMutationLock(flowId, () =>
         flowPlaylistConfig.updateFlow(flowId, {
           ...updates,
-          ...(Object.hasOwn(body, "yearFrom") ? { yearFrom: body.yearFrom } : {}),
-          ...(Object.hasOwn(body, "yearTo") ? { yearTo: body.yearTo } : {}),
+          ...(Object.hasOwn(body, "yearFrom") && { yearFrom: body.yearFrom }),
+          ...(Object.hasOwn(body, "yearTo") && { yearTo: body.yearTo }),
         }),
       );
       if (!updated) {

@@ -409,14 +409,12 @@ async function planItem(
     details: {
       ...details,
       action: "file",
-      ...(fill!.tags
-        ? {
-            actions: ["file", "tags"],
-            tags: fill!.tags,
-            tagFields: fill!.fields,
-            albumId: match.album?.id || null,
-          }
-        : {}),
+      ...(fill!.tags && {
+        actions: ["file", "tags"],
+        tags: fill!.tags,
+        tagFields: fill!.fields,
+        albumId: match.album?.id || null,
+      }),
     },
   };
 }
@@ -723,8 +721,8 @@ export async function finishIngest(operation: LibraryFileOperation) {
     updateLibraryFileOperation(operation.id, {
       summary: {
         removingSources: null,
-        ...(monitor ? { monitor: "pending" } : {}),
-        ...(doubles ? { doubles: "pending" } : {}),
+        ...(monitor && { monitor: "pending" }),
+        ...(doubles && { doubles: "pending" }),
       },
     });
   }

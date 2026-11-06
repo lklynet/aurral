@@ -76,11 +76,11 @@ export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefi
     durationMs,
     artistAliases,
     reason: reason || null,
-    ...(UUID_REGEX.test(releaseMbid) ? { releaseMbid } : {}),
-    ...(trackNumber ? { trackNumber } : {}),
-    ...(discNumber ? { discNumber } : {}),
-    ...(canonicalJobId ? { canonicalJobId } : {}),
-    ...(membershipId ? { membershipId } : {}),
+    ...(UUID_REGEX.test(releaseMbid) && { releaseMbid }),
+    ...(trackNumber && { trackNumber }),
+    ...(discNumber && { discNumber }),
+    ...(canonicalJobId && { canonicalJobId }),
+    ...(membershipId && { membershipId }),
   };
 };
 

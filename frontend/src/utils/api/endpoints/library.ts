@@ -120,16 +120,16 @@ const withAuthenticatedArtwork = <T extends object>(entity: T & ArtworkEntity): 
   entity && typeof entity === "object"
     ? {
         ...entity,
-        ...(entity.coverUrl ? { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) } : {}),
-        ...(entity.defaultCoverUrl
-          ? { defaultCoverUrl: resolveAuthenticatedApiAssetUrl(entity.defaultCoverUrl) }
-          : {}),
-        ...(entity.artworkUrl
-          ? { artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl) }
-          : {}),
-        ...(entity.customArtworkUrl
-          ? { customArtworkUrl: resolveAuthenticatedApiAssetUrl(entity.customArtworkUrl) }
-          : {}),
+        ...(entity.coverUrl && { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) }),
+        ...(entity.defaultCoverUrl && {
+          defaultCoverUrl: resolveAuthenticatedApiAssetUrl(entity.defaultCoverUrl),
+        }),
+        ...(entity.artworkUrl && {
+          artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl),
+        }),
+        ...(entity.customArtworkUrl && {
+          customArtworkUrl: resolveAuthenticatedApiAssetUrl(entity.customArtworkUrl),
+        }),
       }
     : entity;
 
@@ -145,57 +145,15 @@ const authenticatedCollections = <
   albums?: Album[];
   tracks?: Track[];
 }) => ({
-  ...(Array.isArray(library.artists)
-    ? { artists: withAuthenticatedArtworkList(library.artists) }
-    : {}),
-  ...(Array.isArray(library.albums)
-    ? { albums: withAuthenticatedArtworkList(library.albums) }
-    : {}),
-  ...(Array.isArray(library.tracks)
-    ? { tracks: withAuthenticatedArtworkList(library.tracks) }
-    : {}),
+  ...(Array.isArray(library.artists) && { artists: withAuthenticatedArtworkList(library.artists) }),
+  ...(Array.isArray(library.albums) && { albums: withAuthenticatedArtworkList(library.albums) }),
+  ...(Array.isArray(library.tracks) && { tracks: withAuthenticatedArtworkList(library.tracks) }),
 });
 
-const withAuthenticatedLibraryArtwork = (library: LibraryPageResponse): LibraryPageResponse => {
-  if (!library || typeof library !== "object") return library;
-  const collections = authenticatedCollections(library);
-  switch (library.kind) {
-    case "artists":
-      return {
-        ...library,
-        ...collections,
-        ...(Array.isArray(library.items)
-          ? { items: withAuthenticatedArtworkList(library.items) }
-          : {}),
-      };
-    case "albums":
-      return {
-        ...library,
-        ...collections,
-        ...(Array.isArray(library.items)
-          ? { items: withAuthenticatedArtworkList(library.items) }
-          : {}),
-      };
-    case "tracks":
-      return {
-        ...library,
-        ...collections,
-        ...(Array.isArray(library.items)
-          ? { items: withAuthenticatedArtworkList(library.items) }
-          : {}),
-      };
-    case "genres":
-      return {
-        ...library,
-        ...collections,
-        ...(Array.isArray(library.items)
-          ? { items: withAuthenticatedArtworkList(library.items) }
-          : {}),
-      };
-    default:
-      return library;
-  }
-};
+const withAuthenticatedLibraryArtwork = (library: LibraryPageResponse): LibraryPageResponse => ({
+  ...library,
+  ...authenticatedCollections(library),
+});
 
 type LibraryPageKind = LibraryPageResponse["kind"];
 type LibraryPageOf<Kind extends LibraryPageKind> = Extract<LibraryPageResponse, { kind: Kind }>;
@@ -214,7 +172,7 @@ export function fetchLibraryPage(
 ): Promise<LibraryPageResponse> {
   return parseResponse(
     libraryClient.canonical.$get(
-      { query: asQuery(libraryPageParams(options)) },
+      { query: { ...asQuery(libraryPageParams(options)), compact: "true" } },
       { init: { signal } },
     ),
   ).then(withAuthenticatedLibraryArtwork);
@@ -528,7 +486,7 @@ const fetchLibraryAlbums = async (
 ) => {
   const albums = await parseResponse(
     libraryAlbumsClient.albums.$get(
-      { query: { artistId: String(artistId), ...(managedBy ? { managedBy } : {}) } },
+      { query: { artistId: String(artistId), ...(managedBy && { managedBy }) } },
       { init: { signal } },
     ),
   );

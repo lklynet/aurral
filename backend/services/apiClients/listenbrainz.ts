@@ -122,7 +122,7 @@ export const listenbrainzSubmit = async ({
         track_metadata: {
           artist_name: event.artist,
           track_name: event.title,
-          ...(event.album ? { release_name: event.album } : {}),
+          ...(event.album && { release_name: event.album }),
           additional_info: {
             submission_client: "Aurral",
             duration_ms: event.durationMs || undefined,
@@ -195,7 +195,7 @@ export async function listenbrainzRequest(
             params,
             headers: {
               "User-Agent": LISTENBRAINZ_USER_AGENT,
-              ...(isAuthenticated ? { Authorization: `Token ${String(token).trim()}` } : {}),
+              ...(isAuthenticated && { Authorization: `Token ${String(token).trim()}` }),
             },
             timeout: timeoutMs,
             validateStatus: (status: number) => (status >= 200 && status < 300) || status === 204,

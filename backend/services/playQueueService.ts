@@ -115,7 +115,7 @@ export function getPlayQueue(user: RequestUser) {
   const current = queue.entry[currentIndex];
   return {
     ...queue,
-    ...(current ? { current: current.id, ...(position == null ? {} : { position }) } : {}),
+    ...(current && { current: current.id, ...(position != null && { position }) }),
   };
 }
 
@@ -123,6 +123,6 @@ export function getPlayQueueByIndex(user: RequestUser) {
   const { queue, currentIndex, position } = readSubsonicQueue(user);
   return {
     ...queue,
-    ...(currentIndex >= 0 ? { currentIndex, ...(position == null ? {} : { position }) } : {}),
+    ...(currentIndex >= 0 && { currentIndex, ...(position != null && { position }) }),
   };
 }

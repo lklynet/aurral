@@ -111,7 +111,7 @@ export default function createHonkerWorker<Payload>({
           kind: typeof kind === "string" ? kind : null,
           attempt: job.attempts,
           reason: message,
-          ...(error instanceof Error ? { error } : {}),
+          ...(error instanceof Error && { error }),
         },
       );
     };
@@ -285,7 +285,7 @@ export default function createHonkerWorker<Payload>({
       const restartAllowed = typeof shouldRestart === "function" ? shouldRestart() : true;
       markHonkerWorkerLoopEnded(name, restartAllowed ? start : null, {
         intentional,
-        ...(typeof shouldRestart === "function" ? { shouldRestart } : {}),
+        ...(typeof shouldRestart === "function" && { shouldRestart }),
       });
     }
   }

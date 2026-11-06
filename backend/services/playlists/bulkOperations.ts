@@ -151,9 +151,8 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
             ...rejected,
             ...outcomes.map((outcome): BulkOperationOutcome => ({
               ...outcome,
-              ...(target && outcome.status === "removed"
-                ? { status: "moved", targetPlaylistId: target.id }
-                : {}),
+              ...(target &&
+                outcome.status === "removed" && { status: "moved", targetPlaylistId: target.id }),
             })),
           );
           for (const id of affectedPlaylistIds) record.synchronization[id] = false;

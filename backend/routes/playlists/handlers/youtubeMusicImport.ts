@@ -28,7 +28,7 @@ const sendProviderError = <E extends AppEnv>(c: Context<E>, error: unknown, fall
     {
       error: fallback,
       message: failure?.message || "Unknown error",
-      ...(failure?.code ? { code: failure.code } : {}),
+      ...(failure?.code && { code: failure.code }),
     },
     errorStatus(failure),
   );

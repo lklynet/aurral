@@ -8,9 +8,10 @@ import { handleOidcCallback } from "../services/oidcAuth.ts";
 
 const callbackFailure = (error: unknown) => ({
   message: asAppError(error)?.message,
-  ...(error instanceof ResponseBodyError || error instanceof AuthorizationResponseError
-    ? { error: error.error, description: error.error_description }
-    : {}),
+  ...((error instanceof ResponseBodyError || error instanceof AuthorizationResponseError) && {
+    error: error.error,
+    description: error.error_description,
+  }),
 });
 
 export default new Hono<AppEnv>()

@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, skipToken } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { queryKeys } from "./queryClient.ts";
 import { artistsClient } from "./utils/api/clients/artists.ts";
@@ -141,6 +141,20 @@ export const playlistStatusQueryOptions = () =>
     queryFn: ({ signal }) =>
       parseResponse(playlistJobsClient.status.$get(undefined, { init: { signal } })),
     staleTime: 4_000,
+  });
+
+type ContainingTrack = Parameters<typeof playlistJobsClient.containing.$get>[0]["query"];
+
+export const playlistsContainingQueryOptions = (track: ContainingTrack | null) =>
+  queryOptions({
+    queryKey: queryKeys.playlistsContaining(track),
+    queryFn: track
+      ? ({ signal }) =>
+          parseResponse(
+            playlistJobsClient.containing.$get({ query: track }, { init: { signal } }),
+          ).then((result) => new Map(result.playlists.map((entry) => [entry.id, entry.jobId])))
+      : skipToken,
+    staleTime: 0,
   });
 
 export const playlistJobsQueryOptions = (playlistId: MaybeText) =>

@@ -229,7 +229,7 @@ let adminUserId: number;
 async function apiFetch(path: string, options: RequestInit = {}) {
   const headers = {
     Authorization: `Bearer ${authToken}`,
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(options.body && { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {

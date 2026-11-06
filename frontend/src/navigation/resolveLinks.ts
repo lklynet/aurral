@@ -119,7 +119,7 @@ async function resolveLibraryArtist(params: URLSearchParams, signal: AbortSignal
       { kind: "artists", page: 1, pageSize: 100, query: name, availableOnly: false },
       { signal },
     ).catch(() => null);
-    canonicalId = libraryRecordId(findLibraryArtistByName(page?.items, name));
+    canonicalId = libraryRecordId(findLibraryArtistByName(page?.artists, name));
   }
   if (!canonicalId) throw notFound(`Couldn't find ${name || "this artist"} in your library`);
   return { to: `/library/artist/${encodeURIComponent(canonicalId)}` };
@@ -136,7 +136,7 @@ async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal 
       { signal },
     ).catch(() => null);
     canonicalId = libraryRecordId(
-      findLibraryAlbumByName(page?.items, name, text(params.get("artist"))),
+      findLibraryAlbumByName(page?.albums, name, text(params.get("artist"))),
     );
   }
   if (!canonicalId) throw notFound(`Couldn't find ${name || "this album"} in your library`);

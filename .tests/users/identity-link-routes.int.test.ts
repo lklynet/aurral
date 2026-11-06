@@ -42,8 +42,8 @@ async function login(username: string, password: string) {
 
 async function apiFetch(token: string | null, path: string, options: RequestInit = {}) {
   const headers = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(options.body && { "Content-Type": "application/json" }),
     ...Object.fromEntries(new Headers(options.headers)),
   };
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
