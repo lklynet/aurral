@@ -223,7 +223,7 @@ function createMetadataCooldownError(remainingMs: number) {
   return error;
 }
 
-function isMetadataCircuitError(error: unknown) {
+export function isMetadataCircuitError(error: unknown) {
   const failure = asAppError(error);
   return (
     failure?.code === "ERR_METADATA_FORBIDDEN" ||
