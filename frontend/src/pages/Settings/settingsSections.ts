@@ -108,7 +108,6 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   general: {
     Display: "date and time format all users",
-    Subsonic: "favorite flow tracks keep clients",
     "API access": "API key X-Api-Key api_key admin authentication copy rotate",
     Backup: "back up restore export import download upload config database migrate move server",
   },
@@ -120,7 +119,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     "Default permissions": { item: "defaults", keywords: "new users permissions SSO register" },
   },
   library: {
-    "Library folder": "downloads path media root",
+    "Library folder": "downloads path media root favorite flow tracks keep",
     "Playlist files": "M3U Navidrome Plex Jellyfin media server playlists owner",
     "Read-only folders": "existing music never changes",
     "Import a folder": "ingest existing music move copy hardlink fill in missing tags",

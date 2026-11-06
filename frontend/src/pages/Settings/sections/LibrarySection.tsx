@@ -88,6 +88,23 @@ function LibraryFolderGroup() {
           }
         />
       </SettingsRow>
+      <SettingsRow
+        label="Favorite flow tracks"
+        htmlFor="library-favorite-flow-tracks"
+        help="Favoriting a flow track adds it to the Library."
+      >
+        <PillToggle
+          id="library-favorite-flow-tracks"
+          checked={settings.subsonic?.favoriteAutoKeep !== false}
+          onChange={(event) =>
+            updateSettings({
+              ...settings,
+              subsonic: { ...settings.subsonic, favoriteAutoKeep: event.target.checked },
+            })
+          }
+          aria-label="Favorite flow tracks"
+        />
+      </SettingsRow>
     </SettingsGroup>
   );
 }

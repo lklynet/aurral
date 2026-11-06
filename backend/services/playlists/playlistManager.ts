@@ -331,7 +331,9 @@ export class PlaylistManager {
       .catch(() => {});
 
     const flowsRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR);
+    const { keepPlaylistStarsInLibrary } = await import("../subsonicLibraryService.ts");
     for (const playlistType of targets) {
+      keepPlaylistStarsInLibrary(playlistType);
       const flowDir = path.join(flowsRoot, playlistType);
       const jobs = downloadTracker.getByPlaylistId(playlistType);
       for (const job of jobs) {
