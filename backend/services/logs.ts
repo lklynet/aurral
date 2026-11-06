@@ -5,6 +5,7 @@ import { onRequestFailure } from "../../lib/axiosFetch.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import { getLastfmApiKey, getTicketmasterApiKey } from "./apiClients/config.ts";
 import {
   createLogWriter,
   readLogEntries,
@@ -81,15 +82,19 @@ export const listLogProblems = (since: number) =>
   readLogProblems(LOG_DIR, { since: afterFresh(since) });
 
 function enabledIntegrations() {
-  return Object.entries(dbOps.getSettings().integrations ?? {})
-    .filter(([, service]) => {
-      if (!service || typeof service !== "object") return false;
-      const enabled = Reflect.get(service, "enabled");
-      const url = Reflect.get(service, "url");
-      return enabled === true || (enabled !== false && typeof url === "string" && url.length > 0);
-    })
-    .map(([name]) => name)
-    .sort();
+  const names = new Set(
+    Object.entries(dbOps.getSettings().integrations ?? {})
+      .filter(([, service]) => {
+        if (!service || typeof service !== "object") return false;
+        const enabled = Reflect.get(service, "enabled");
+        const url = Reflect.get(service, "url");
+        return enabled === true || (enabled !== false && typeof url === "string" && url.length > 0);
+      })
+      .map(([name]) => name),
+  );
+  if (getLastfmApiKey()) names.add("lastfm");
+  if (getTicketmasterApiKey()) names.add("ticketmaster");
+  return [...names].sort();
 }
 
 function formatEntry(entry: StoredLogEntry) {

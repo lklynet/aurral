@@ -92,6 +92,14 @@ test("an API key reads entries, problems, and the export", async () => {
   assert.match(text, /INFO {2}\[library\] Scan finished/);
 });
 
+test("the export lists integrations set up with only an API key", async () => {
+  dbOps.updateSettings({
+    integrations: { ...dbOps.getSettings().integrations, lastfm: { apiKey: "lastfm-key" } },
+  });
+  const text = await (await withKey("/logs/export")).text();
+  assert.match(text, /^Integrations: .*\blastfm\b/m);
+});
+
 test("only admins read logs or change debug logging", async () => {
   assert.equal((await fetch(`${baseUrl}/api/logs`)).status, 401);
   const asMember = signedInAs(member).route("/", api);
