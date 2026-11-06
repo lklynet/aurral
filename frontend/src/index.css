@@ -9908,6 +9908,7 @@ button.native-library-genre-row:focus-visible {
 .artist-discover-page,
 .recommended-page,
 .trending-page,
+.feed-page,
 .discover-playlists-page,
 .artist-details-page {
   --aurral-surface-raised: var(--aurral-wash-raised);
@@ -9919,6 +9920,7 @@ button.native-library-genre-row:focus-visible {
 .artist-discover-page,
 .recommended-page,
 .trending-page,
+.feed-page,
 .discover-playlists-page {
   position: relative;
   isolation: isolate;
@@ -9929,6 +9931,7 @@ button.native-library-genre-row:focus-visible {
 .artist-discover-page::before,
 .recommended-page::before,
 .trending-page::before,
+.feed-page::before,
 .discover-playlists-page::before {
   position: absolute;
   z-index: var(--aurral-z-below);
@@ -9948,6 +9951,7 @@ button.native-library-genre-row:focus-visible {
 .artist-discover-page::before,
 .recommended-page::before,
 .trending-page::before,
+.feed-page::before,
 .discover-playlists-page::before {
   height: 34rem;
   background: radial-gradient(

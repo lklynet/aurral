@@ -9,6 +9,7 @@ import RouteLink from "../components/RouteLink";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { ShowFeedTile, ShowLead } from "../components/DiscoverFeed";
 import { useNearbyShows } from "../hooks/useNearbyShows";
+import { useCollectionTint } from "../components/CollectionHeader";
 import {
   DEFAULT_SHOWS_FILTER,
   normalizeShowsFilter,
@@ -67,6 +68,7 @@ function ShowsPage() {
     SHOWS_PAGE_LIMIT,
   );
   const { lead, shelf, groups } = splitFeed(shows, showMonth);
+  const tint = useCollectionTint(lead?.image);
   const hasAnyShows = allShows.length > 0;
   const emptyMessage =
     showFilter === "library"
@@ -86,7 +88,7 @@ function ShowsPage() {
   const configured = showsData?.configured !== false;
 
   return (
-    <div className="feed-page shows-page">
+    <div className="feed-page shows-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="feed-page__header">
         <div className="feed-page__title-row">
           <h1 className="page-title">Shows</h1>
