@@ -215,10 +215,7 @@ function DiscoverPage() {
     const forYou = playlistShelf?.forYou || [];
     return forYou.length > 0 ? forYou : playlistShelf?.categories?.[0]?.playlists || [];
   }, [playlistShelf]);
-  const madeForYou = useMemo(
-    () => [...(madeForYouData?.discovery ?? []), ...(madeForYouData?.mixes ?? [])],
-    [madeForYouData],
-  );
+  const madeForYou = useMemo(() => madeForYouData?.discovery ?? [], [madeForYouData]);
 
   const sectionAvailability = useMemo(
     () => ({
@@ -365,7 +362,7 @@ function DiscoverPage() {
           key="madeForYou"
           title="Made for you"
           playlists={madeForYou}
-          viewAllTo="/discover/playlists?filter=made-for-you"
+          viewAllTo="/discover/playlists/made-for-you"
         />
       );
     }

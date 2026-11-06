@@ -26,6 +26,7 @@ export const routeModules = {
   flow: trackLoad(() => import("../pages/playlists/FlowDetailPage")),
   playlistRedirect: trackLoad(() => import("../pages/playlists/PlaylistRedirect")),
   discoverPlaylists: trackLoad(() => import("../pages/DiscoverPlaylistsPage")),
+  discoverPlaylistCategory: trackLoad(() => import("../pages/DiscoverPlaylistCategoryPage")),
   browsePlaylist: trackLoad(() => import("../pages/BrowsePlaylistDetailPage")),
   news: trackLoad(() => import("../pages/NewsPage")),
   recommended: trackLoad(() => import("../pages/RecommendedPage")),

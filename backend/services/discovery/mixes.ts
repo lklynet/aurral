@@ -20,7 +20,13 @@ const REWIND_MS = 365 * DAY_MS;
 const TOP_ARTIST_MS = 90 * DAY_MS;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
-export type Mix = { id: string; name: string; description: string; trackIds: number[] };
+export type Mix = {
+  id: string;
+  name: string;
+  description: string;
+  trackIds: number[];
+  artistId?: number;
+};
 
 type TrackPlays = {
   trackId: string;
@@ -311,6 +317,7 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
       name: `Daily Mix ${index + 1}`,
       description: listNames(seeds.map((artist) => artist.name)),
       trackIds,
+      artistId: seeds[0]?.id,
     });
   }
 
@@ -336,6 +343,7 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
         name: `${artist.name} Radio`,
         description: `${artist.name} and similar artists from your Library`,
         trackIds,
+        artistId: artist.id,
       };
     }),
   );
@@ -411,6 +419,7 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
       name: `Best of ${artist.name}`,
       description: `${artist.name}, from your Library`,
       trackIds,
+      artistId: artist.id,
     });
   }
 

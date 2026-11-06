@@ -66,6 +66,15 @@ const ROUTES = [
         : [],
   },
   {
+    path: "/discover/playlists/:categoryId",
+    module: routeModules.discoverPlaylistCategory,
+    queries: ({ categoryId }: Params<string>, { userId }: RouteContext) => [
+      categoryId === "made-for-you"
+        ? prefetchable(madeForYouQueryOptions(userId))
+        : prefetchable(playlistShelfQueryOptions(userId)),
+    ],
+  },
+  {
     path: "/discover/playlists",
     module: routeModules.discoverPlaylists,
     queries: (_params: Params<string>, { userId }: RouteContext) => [

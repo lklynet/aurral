@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Hono } from "hono";
 import { afterAll, beforeAll, test } from "vite-plus/test";
 import {
   cleanupIsolatedState,
@@ -7,6 +8,7 @@ import {
 } from "./helpers/backendTestHarness.ts";
 import { signedInAs } from "./helpers/honoApp.ts";
 import { testUser } from "./helpers/userFixtures.ts";
+import type { AppEnv } from "../backend/middleware/requestUser.ts";
 
 const [isolatedState, { db }, { userOps }, { createSession }, guards] = await setupIsolatedBackend(
   "hono-guards",
@@ -60,4 +62,19 @@ test("recent-auth guard needs a fresh bearer session", async () => {
     headers: { Authorization: `Bearer ${token}` },
   });
   assert.equal(fresh.status, 200);
+});
+
+test("a link token signs in browse playlist cover images and nothing else under Discover", async () => {
+  const created = userOps.createUser("hono-guards-covers", "password-hash");
+  assert.ok(created);
+  const { token } = createSession(created.id);
+  const app = new Hono<AppEnv>()
+    .use(guards.authenticate)
+    .get("/api/discover/playlists/:provider/:id/cover", (c) => c.text(String(c.var.user?.id)))
+    .get("/api/discover/playlists/:provider/:id", (c) => c.text(String(c.var.user?.id)));
+
+  const cover = await app.request(`/api/discover/playlists/mix/daily-1/cover?token=${token}`);
+  assert.equal(await cover.text(), String(created.id));
+  const detail = await app.request(`/api/discover/playlists/mix/daily-1?token=${token}`);
+  assert.notEqual(await detail.text(), String(created.id));
 });

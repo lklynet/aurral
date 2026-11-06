@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import { beforeEach, test } from "vite-plus/test";
 import { resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 
-const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic] = await setupIsolatedBackend(
-  "discovery-mixes",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/discovery/mixes.ts"),
-  () => import("../../backend/services/subsonicLibraryService.ts"),
-);
+const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic, browse, covers] =
+  await setupIsolatedBackend(
+    "discovery-mixes",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/discovery/mixes.ts"),
+    () => import("../../backend/services/subsonicLibraryService.ts"),
+    () => import("../../backend/services/discovery/browsePlaylists.ts"),
+    () => import("../../backend/services/discovery/browseCovers.ts"),
+  );
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 10, 5, 12);
@@ -105,6 +109,20 @@ test("listening mixes rank Library tracks by when and how often they were played
     mixes.filter((mix) => mix.id.startsWith("radio-")).map((mix) => mix.name),
     ["Boards Radio"],
   );
+
+  const radio = mixes.find((mix) => mix.id.startsWith("radio-"))!;
+  const cover = await browse.getBrowseCover(testUser(userId), "mix", radio.id);
+  assert.deepEqual(cover, {
+    title: "Boards Radio",
+    template: "d1",
+    artist: { artistName: "Boards", artistMbid: null },
+  });
+  const [drawn, reused] = await Promise.all([
+    covers.browseCoverFile(cover),
+    covers.browseCoverFile(cover),
+  ]);
+  assert.equal(drawn, reused);
+  assert.ok((await fs.stat(drawn)).size > 0);
 
   const repeat = await subsonic.getSubsonicMixPlaylist("mix:on-repeat", testUser(userId));
   assert.equal(repeat?.entry[0]?.title, "Boards 0");

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import * as v from "valibot";
+import { db } from "../../config/db-sqlite.ts";
 import { toQueueTracks } from "../../routes/library/handlers/queueTracks.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
@@ -16,9 +17,11 @@ import {
   pickAvailableName,
 } from "./editorialPlaylists.ts";
 import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
+import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import { BROWSE_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
 import type { ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
+import type { LibraryArtistsRow } from "../../db/rows.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
@@ -64,33 +67,75 @@ function withOwnedTracks(tracks: CatalogTrack[]) {
   });
 }
 
-function mixPlaylists(mixes: Mix[]): BrowsePlaylist[] {
-  const covers = new Map(
+const artistStmt = db.prepare<[number], Pick<LibraryArtistsRow, "name" | "mbid">>(
+  "SELECT name, mbid FROM library_artists WHERE id = ?",
+);
+
+function mixCovers(mixes: Mix[]) {
+  const leads = new Map(
     toQueueTracks(mixes.flatMap((mix) => mix.trackIds.slice(0, 1))).map((track) => [
       track.libraryTrackId,
-      track.artworkUrl,
+      track,
     ]),
   );
-  return mixes.map((mix) => ({
-    provider: "mix",
-    id: mix.id,
-    name: mix.name,
-    description: mix.description,
-    curator: AURRAL,
-    artworkUrl: covers.get(mix.trackIds[0] ?? -1) ?? null,
-    trackCount: mix.trackIds.length,
-  }));
+  return mixes.map((mix): BrowseCover => {
+    const seed = mix.artistId ? artistStmt.get(mix.artistId) : undefined;
+    const lead = leads.get(mix.trackIds[0] ?? -1);
+    return {
+      title: mix.name,
+      template: browseCoverTemplate("mix", mix.id),
+      artist: seed
+        ? { artistName: seed.name, artistMbid: seed.mbid }
+        : lead
+          ? { artistName: lead.artist, artistMbid: lead.artistMbid }
+          : null,
+    };
+  });
+}
+
+const discoveryCover = (playlist: { id: string; name: string; tracks: CatalogTrack[] }) => {
+  const lead = playlist.tracks[0]?.artistName;
+  return {
+    title: playlist.name,
+    template: browseCoverTemplate("discovery", playlist.id),
+    artist: lead ? { artistName: lead, artistMbid: null } : null,
+  } satisfies BrowseCover;
+};
+
+export async function getBrowseCover(user: RequestUser, provider: BrowseProvider, id: string) {
+  if (provider === "discovery") {
+    const playlist = getDiscoveryPlaylist(user.id, id);
+    return playlist && discoveryCover(playlist);
+  }
+  if (provider === "mix") {
+    const mix = await getUserMix(user.id, id);
+    return mix && (mixCovers([mix])[0] ?? null);
+  }
+  return null;
 }
 
 export async function getMadeForYou(user: RequestUser) {
-  const mixes = mixPlaylists(await getUserMixes(user.id));
+  const userMixes = await getUserMixes(user.id);
+  const covers = mixCovers(userMixes);
+  const mixes = userMixes.map((mix, index): BrowsePlaylist => {
+    const cover = covers[index];
+    return {
+      provider: "mix",
+      id: mix.id,
+      name: mix.name,
+      description: mix.description,
+      curator: AURRAL,
+      artworkUrl: cover ? browseCoverUrl("mix", mix.id, cover) : null,
+      trackCount: mix.trackIds.length,
+    };
+  });
   const discovery = getDiscoveryPlaylists(user.id).map((playlist): BrowsePlaylist => ({
     provider: "discovery",
     id: playlist.id,
     name: playlist.name,
     description: playlist.description,
     curator: AURRAL,
-    artworkUrl: playlist.tracks.find((track) => track.artworkUrl)?.artworkUrl ?? null,
+    artworkUrl: browseCoverUrl("discovery", playlist.id, discoveryCover(playlist)),
     trackCount: playlist.tracks.length,
   }));
   return { discovery, mixes };
@@ -125,7 +170,7 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
       name: playlist.name,
       description: playlist.description,
       curator: AURRAL,
-      artworkUrl: playlist.tracks.find((track) => track.artworkUrl)?.artworkUrl ?? null,
+      artworkUrl: browseCoverUrl(provider, playlist.id, discoveryCover(playlist)),
       tracks: withOwnedTracks(playlist.tracks),
       libraryPlaylistId: null,
     };
@@ -133,13 +178,14 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
   const mix = await getUserMix(user.id, id);
   if (!mix) throw notFound("This mix isn't available anymore");
   const tracks = toQueueTracks(mix.trackIds).map(fromQueueTrack);
+  const [cover] = mixCovers([mix]);
   return {
     provider,
     id: mix.id,
     name: mix.name,
     description: mix.description,
     curator: AURRAL,
-    artworkUrl: tracks[0]?.artworkUrl ?? null,
+    artworkUrl: cover ? browseCoverUrl(provider, mix.id, cover) : null,
     tracks,
     libraryPlaylistId: null,
   };
