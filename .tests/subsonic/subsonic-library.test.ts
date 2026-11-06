@@ -592,7 +592,19 @@ test("keeping a flow track moves its file into the Library, even under another p
     ),
   );
   downloadTracker.setDone(flowJobId, flowPath, "Keep Album");
-  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {});
+  const otherFlow = flowPlaylistConfig.createFlow({
+    name: "Other Keep Flow",
+    size: 1,
+    ownerUserId: user.id,
+  });
+  const otherJobId = requireFixture(
+    downloadTracker.addJob(
+      { artistName: "Keep Artist", albumName: "Keep Album", trackName: "Keep" },
+      otherFlow.id,
+    ),
+  );
+  downloadTracker.setDone(otherJobId, flowPath, "Keep Album");
+  const synced = vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {});
   const scanned = new Promise<void>((resolve) => {
     vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {
       resolve();
@@ -612,12 +624,14 @@ test("keeping a flow track moves its file into the Library, even under another p
   assert.equal(existsSync(flowPath), false);
   assert.equal(existsSync(libraryPath), true);
   assert.equal(downloadTracker.getJob(flowJobId)?.finalPath, libraryPath);
+  assert.equal(downloadTracker.getJob(otherJobId)?.finalPath, libraryPath);
   assert.equal(
     downloadTracker
       .getAll()
       .find((job) => job.playlistType === "library" && job.trackName === "Keep")?.finalPath,
     libraryPath,
   );
+  assert.deepEqual(synced.mock.calls.at(-1)?.[0]?.toSorted(), [flow.id, otherFlow.id].toSorted());
 });
 
 test("keeping a favorited playlist song carries over its album track count and titles", async (t: import("vite-plus/test").TestContext) => {

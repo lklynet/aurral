@@ -1226,7 +1226,11 @@ const moveFlowFileToLibrary = (source: DownloadJob, track: PlaylistTrack) => {
         { track },
       );
       if (!libraryPath || libraryPath === path.resolve(sourcePath)) return;
-      playlistManager.requestPlaylistSync([flowId]);
+      const sharing = downloadTracker
+        .getAll()
+        .filter((job) => job.finalPath === libraryPath && job.playlistType !== "library")
+        .map((job) => job.playlistType);
+      playlistManager.requestPlaylistSync([...new Set([flowId, ...sharing])]);
       playlistManager.scheduleScanLibrary();
     }),
   ).catch((error) => {
