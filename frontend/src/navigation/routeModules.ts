@@ -15,7 +15,6 @@ export const routeModules = {
   discover: trackLoad(() => import("../pages/DiscoverPage")),
   shows: trackLoad(() => import("../pages/ShowsPage")),
   library: trackLoad(() => import("../pages/LibraryPage")),
-  blocklist: trackLoad(() => import("../pages/BlocklistPage")),
   artist: trackLoad(() => import("../pages/ArtistDetails/ArtistDetailsPage")),
   artistReleases: trackLoad(() => import("../pages/ArtistDetails/ArtistReleaseListPage")),
   album: trackLoad(() => import("../pages/album/AlbumPage")),

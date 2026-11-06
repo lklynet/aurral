@@ -23,7 +23,6 @@ import {
   Workflow,
   Settings,
   LogOut,
-  Ban,
   ChevronLeft,
 } from "./icons";
 import Sidebar from "./Sidebar";
@@ -178,10 +177,7 @@ function Layout({ children, headerActions }: LayoutProps) {
         return location.pathname.startsWith("/flows");
       }
       if (path.startsWith("/activity")) {
-        return (
-          location.pathname.startsWith("/activity") ||
-          (navBeta && location.pathname === "/blocklist")
-        );
+        return location.pathname.startsWith("/activity");
       }
       if (path === "/library") {
         return isLibrarySectionPath(location.pathname, isDiscoverSectionActive);
@@ -208,13 +204,12 @@ function Layout({ children, headerActions }: LayoutProps) {
       ...(bootstrap?.ticketmasterConfigured
         ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]
         : []),
-      ...(navBeta ? [] : [{ path: "/blocklist", label: "Blocklist", icon: Ban }]),
     ];
     return items.filter(
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [bootstrap?.ticketmasterConfigured, navBeta, user]);
+  }, [bootstrap?.ticketmasterConfigured, user]);
 
   const handleMobileBack = useCallback(() => {
     if ((window.history.state?.idx ?? 0) > 0) {
