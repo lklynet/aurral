@@ -10940,6 +10940,17 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
+.activity-album > .activity-row {
+  cursor: pointer;
+}
+
+.activity-album .activity-row__title-button {
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+  vertical-align: top;
+}
+
 .activity-album:has(.activity-album__tracks) > .activity-row {
   border-bottom: 0;
 }
