@@ -30,6 +30,7 @@ import TooltipButton from "./TooltipButton";
 import SidebarPlayer from "./SidebarPlayer";
 import SidebarPlaylists from "./SidebarPlaylists";
 import { useNavBeta } from "../navigation/navBeta.ts";
+import { useSectionNav } from "../navigation/useSectionNav.ts";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -64,6 +65,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
   const navBeta = useNavBeta();
+  const sectionId = useSectionNav()?.id;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
   const { hasReview: hasReviewAlert, status: playlistStatus } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
@@ -149,15 +151,12 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
 
   const isNavItemActive = useCallback(
     (item: SidebarNavItem) => {
-      if (item.section === "discover") {
-        return isDiscoverSectionActive || (navBeta && isOnNews);
-      }
+      if (navBeta && item.section) return item.section === sectionId;
+      if (item.section === "discover") return isDiscoverSectionActive;
       if (item.section === "library") return isOnLibrary;
       if (item.section === "shows") return isOnShows;
       if (item.section === "news") return isOnNews;
-      if (item.section === "activity") {
-        return navBeta ? isOnActivity || isOnWanted : isOnActivity;
-      }
+      if (item.section === "activity") return isOnActivity;
       if (item.section === "wanted") return isOnWanted;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
@@ -170,6 +169,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       isOnWanted,
       location.pathname,
       navBeta,
+      sectionId,
     ],
   );
 
