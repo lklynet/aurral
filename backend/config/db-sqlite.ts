@@ -200,6 +200,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_events_user_played_at
     ON play_events(user_id, played_at DESC);
 
+  CREATE TABLE IF NOT EXISTS discovery_playlists (
+    user_id INTEGER NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    tracks_json TEXT NOT NULL,
+    built_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS audio_loudness (
     path TEXT PRIMARY KEY NOT NULL,
     size INTEGER NOT NULL,

@@ -176,6 +176,8 @@ export function normalizePlaylistQueueTrack(
       albumMbid: track.albumMbid,
       trackMbid: track.trackMbid || track.mbid,
       durationMs: track.durationMs,
+      libraryTrackId: track.libraryTrackId,
+      libraryAlbumId: track.libraryAlbumId,
       recordHistory: track?.recordHistory !== false,
     },
     overrides,

@@ -3,8 +3,9 @@ import type { FetchQueryOptions, QueryKey } from "@tanstack/react-query";
 import { queryClient } from "../queryClient.ts";
 import {
   discoveryQueryOptions,
-  editorialPlaylistQueryOptions,
-  editorialShelfQueryOptions,
+  browsePlaylistQueryOptions,
+  madeForYouQueryOptions,
+  playlistShelfQueryOptions,
   playlistJobsQueryOptions,
   playlistStatusQueryOptions,
   releaseGroupDetailsQueryOptions,
@@ -15,6 +16,7 @@ import { canPrefetchInBackground } from "../utils/requestScheduling.ts";
 import { resolveLinkQueryOptions } from "./resolveLinks.ts";
 import { routeModules } from "./routeModules.ts";
 import { parseAlbumRef } from "../../../lib/albumPath.ts";
+import { isBrowseProvider } from "../../../lib/browsePlaylists.ts";
 
 const FAILURE_COOLDOWN_MS = 30_000;
 
@@ -56,17 +58,28 @@ const libraryView = async (
 const ROUTES = [
   { path: "/", module: routeModules.discover },
   {
-    path: "/discover/playlists/deezer/:playlistId",
-    module: routeModules.editorialPlaylist,
-    queries: ({ playlistId }: Params<string>, { userId }: RouteContext) => [
-      prefetchable(editorialPlaylistQueryOptions(userId, playlistId!)),
+    path: "/discover/playlists/:provider/:playlistId",
+    module: routeModules.browsePlaylist,
+    queries: ({ provider, playlistId }: Params<string>, { userId }: RouteContext) =>
+      isBrowseProvider(provider) && playlistId
+        ? [prefetchable(browsePlaylistQueryOptions(userId, provider, playlistId))]
+        : [],
+  },
+  {
+    path: "/discover/playlists/:categoryId",
+    module: routeModules.discoverPlaylistCategory,
+    queries: ({ categoryId }: Params<string>, { userId }: RouteContext) => [
+      categoryId === "made-for-you"
+        ? prefetchable(madeForYouQueryOptions(userId))
+        : prefetchable(playlistShelfQueryOptions(userId)),
     ],
   },
   {
     path: "/discover/playlists",
     module: routeModules.discoverPlaylists,
     queries: (_params: Params<string>, { userId }: RouteContext) => [
-      prefetchable(editorialShelfQueryOptions(userId)),
+      prefetchable(madeForYouQueryOptions(userId)),
+      prefetchable(playlistShelfQueryOptions(userId)),
     ],
   },
   { path: "/discover/news", module: routeModules.news },

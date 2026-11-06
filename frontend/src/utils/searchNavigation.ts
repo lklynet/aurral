@@ -1,4 +1,4 @@
-import { editorialPlaylistPath, flowPath, playlistPath } from "../navigation/playlistPaths.ts";
+import { browsePlaylistPath, flowPath, playlistPath } from "../navigation/playlistPaths.ts";
 import { albumPath } from "../../../lib/albumPath.ts";
 import { resolveAlbumPath } from "../navigation/resolveLinks.ts";
 import type { toNormalizedAlbum } from "../../../backend/services/providers/brainzmashMappers.ts";
@@ -285,9 +285,9 @@ export function getSearchResultLink(item: SearchItem | null | undefined, { query
   }
 
   if (item.type === "playlist" && item.id) {
-    if (item.source === "deezer") {
+    if (item.source === "deezer" || item.source === "mix" || item.source === "discovery") {
       return {
-        to: editorialPlaylistPath(String(item.id)),
+        to: browsePlaylistPath(item.source, String(item.id)),
         state: {
           seed: { name: item.name, artworkUrl: item.coverUrl || null, trackCount: item.trackCount },
         },
@@ -307,7 +307,13 @@ export function getPlaylistResultDetail(item: SearchItem) {
   }
   const tracks =
     item.trackCount != null ? `${item.trackCount} track${item.trackCount === 1 ? "" : "s"}` : null;
-  return [item.source === "deezer" ? "Deezer" : null, tracks].filter(Boolean).join(" · ") || null;
+  const source =
+    item.source === "deezer"
+      ? "Deezer"
+      : item.source === "mix" || item.source === "discovery"
+        ? "Made for you"
+        : null;
+  return [source, tracks].filter(Boolean).join(" · ") || null;
 }
 
 export function navigateFromSearchResult(

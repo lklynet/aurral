@@ -1,8 +1,12 @@
 import { DiscoverRail } from "../components/DiscoverRail";
 import PlaylistCard from "../components/PlaylistCard";
-import { editorialPlaylistPath } from "../navigation/playlistPaths.ts";
+import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
+import { formatTrackTotal } from "./playlists/playlistPageUtils";
+import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
 
-export interface EditorialShelfPlaylist {
+export interface BrowseShelfPlaylist {
+  provider: BrowseProvider;
   id: string;
   name: string;
   artworkUrl: string | null;
@@ -12,32 +16,31 @@ export interface EditorialShelfPlaylist {
 export function DiscoverPlaylistSection({
   title,
   playlists = [],
-  showViewAll = false,
+  viewAllTo,
 }: {
   title: string;
-  playlists?: EditorialShelfPlaylist[];
-  showViewAll?: boolean;
+  playlists?: BrowseShelfPlaylist[];
+  viewAllTo?: string;
 }) {
   if (playlists.length === 0) return null;
   return (
-    <DiscoverRail title={title} viewAllTo={showViewAll ? "/discover/playlists" : undefined}>
+    <DiscoverRail title={title} viewAllTo={viewAllTo}>
       <div className="discover-playlist-cards">
-        {playlists.map((playlist) => (
-          <PlaylistCard
-            key={playlist.id}
-            to={editorialPlaylistPath(playlist.id)}
-            state={{
-              seed: {
-                name: playlist.name,
-                artworkUrl: playlist.artworkUrl || null,
-                trackCount: playlist.trackCount,
-              },
-            }}
-            name={playlist.name}
-            artworkUrl={playlist.artworkUrl}
-            meta={`${playlist.trackCount} tracks`}
-          />
-        ))}
+        {playlists.map((playlist) => {
+          const artworkUrl = resolveAuthenticatedApiAssetUrl(playlist.artworkUrl) || null;
+          return (
+            <PlaylistCard
+              key={`${playlist.provider}:${playlist.id}`}
+              to={browsePlaylistPath(playlist.provider, playlist.id)}
+              state={{
+                seed: { name: playlist.name, artworkUrl, trackCount: playlist.trackCount },
+              }}
+              name={playlist.name}
+              artworkUrl={artworkUrl}
+              meta={formatTrackTotal(playlist.trackCount)}
+            />
+          );
+        })}
       </div>
     </DiscoverRail>
   );

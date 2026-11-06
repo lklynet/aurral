@@ -126,6 +126,15 @@ export interface DiscoveryCacheRow {
   last_updated: string;
 }
 
+export interface DiscoveryPlaylistsRow {
+  user_id: number;
+  id: string;
+  name: string;
+  description: string;
+  tracks_json: string;
+  built_at: number;
+}
+
 export interface HistoryServersRow {
   user_id: number;
   provider: string;

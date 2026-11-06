@@ -18,9 +18,10 @@ export function useSectionNav() {
     const allowed = (permission: string | undefined) =>
       !permission || user?.role === "admin" || !!user?.permissions?.[permission];
 
+    const isPlaylistBrowse = /^\/discover\/playlists(\/[^/]+)?$/.test(pathname);
     const isDiscoverBrowse =
       pathname === "/" ||
-      pathname === "/discover/playlists" ||
+      isPlaylistBrowse ||
       pathname === "/discover/news" ||
       pathname.startsWith("/discover/trending") ||
       pathname.startsWith(RECOMMENDED_PATH);
@@ -31,7 +32,7 @@ export function useSectionNav() {
           id: "playlists",
           label: "Playlists",
           path: "/discover/playlists",
-          active: pathname === "/discover/playlists",
+          active: isPlaylistBrowse,
         },
         {
           id: "recommended",

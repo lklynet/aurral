@@ -10,6 +10,15 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
+vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
+});
+
 const [
   isolatedState,
   { db },
@@ -23,6 +32,8 @@ const [
   persistenceModule,
   flowTemplatesModule,
   { FlowTrackSource },
+  libraryStore,
+  { getBrowsePlaylist },
 ] = await setupIsolatedBackend(
   "editorial-playlists",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -36,6 +47,8 @@ const [
   () => import("../../backend/services/discovery/persistence.ts"),
   () => import("../../backend/services/flows/flowTemplates.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/discovery/browsePlaylists.ts"),
 );
 
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
@@ -246,6 +259,46 @@ test("a Deezer playlist keeps tracks whose album has no cover", async (t) => {
   );
 });
 
+test("songs already in the Library play in full and the rest stay previews", async (t) => {
+  stubDeezer(
+    t,
+    rockEssentials([deezerTrack("Owned Song", "Owned Band"), deezerTrack("New Song", "Someone")]),
+  );
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "artist:owned",
+    name: "Owned Band",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "album:owned",
+    artistId: artist.id,
+    title: "Album",
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "track:owned",
+    title: "Owned Song",
+    artistName: "Owned Band",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: "/music/owned.flac",
+    format: "flac",
+  });
+
+  const { tracks } = await getBrowsePlaylist(OWNER, "deezer", "1306931615");
+
+  assert.deepEqual(
+    tracks.map((entry) => [entry.trackName, entry.owned?.libraryTrackId ?? null]),
+    [
+      ["Owned Song", track.id],
+      ["New Song", null],
+    ],
+  );
+  assert.match(tracks[0]?.owned?.streamPath ?? "", /^\/library\/canonical-stream\//);
+});
+
 test("adding the same Deezer playlist twice at once queues it only once", async (t: import("vite-plus/test").TestContext) => {
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
   const payloads = captureEnqueues();
@@ -336,25 +389,71 @@ test("syncing a Deezer library playlist follows the editor's changes", async (t:
   );
 });
 
-test("the shelf keeps genres that loaded and lists each playlist once", async (t: import("vite-plus/test").TestContext) => {
-  stubDeezer(t, {
-    "/chart/0/playlists": { body: { data: [summary(1, "80s Hits"), summary(2, "Today's Hits")] } },
-    "/chart/152/playlists": {
-      body: { data: [summary(1, "80s Hits"), summary(3, "Rock Essentials")] },
+test("the shelf keeps categories that loaded, lists each playlist once, and drops thin ones", async (t: import("vite-plus/test").TestContext) => {
+  const moods = "Rudy - Deezer Moods Editor";
+  const requests = stubDeezer(t, {
+    "/chart/0/playlists": {
+      body: {
+        data: [summary(1, "80s Hits"), summary(2, "Today's Hits"), summary(4, "Viral Hits")],
+      },
     },
+    "/chart/152/playlists": {
+      body: {
+        data: [
+          summary(1, "80s Hits"),
+          summary(3, "Rock Essentials"),
+          summary(5, "Rock Ballads"),
+          summary(6, "Classic Rock"),
+          summary(7, "Rap Bangers"),
+        ],
+      },
+    },
+    "/chart/116/playlists": { body: { data: [summary(7, "Rap Bangers")] } },
     "/chart/132/playlists": { status: 500, body: {} },
+    "/search/playlist": (url: URL) => ({
+      body: {
+        data:
+          url.searchParams.get("q") === "chill"
+            ? [
+                summary(8, "Chill Vibes", moods),
+                summary(9, "Evening Chill", moods),
+                summary(10, "my chill mix", "someone"),
+                summary(11, "Chill Lofi", moods),
+              ]
+            : [],
+      },
+    }),
   });
 
-  const { genres, forYou } = await getEditorialShelf(OWNER);
+  const { categories, forYou } = await getEditorialShelf(OWNER);
 
   assert.deepEqual(
-    genres.map((genre) => [genre.name, genre.playlists.map((playlist) => playlist.name)]),
+    categories.map((category) => [
+      category.group,
+      category.name,
+      category.playlists.map((playlist) => playlist.name),
+    ]),
     [
-      ["Popular", ["80s Hits", "Today's Hits"]],
-      ["Rock", ["Rock Essentials"]],
+      ["genre", "Popular", ["80s Hits", "Today's Hits", "Viral Hits"]],
+      ["genre", "Rock", ["Rock Essentials", "Rock Ballads", "Classic Rock", "Rap Bangers"]],
+      ["mood", "Chill", ["Chill Vibes", "Evening Chill", "Chill Lofi"]],
     ],
   );
   assert.deepEqual([...forYou], []);
+
+  const loaded = requests.length;
+  const featured = await getEditorialShelf(OWNER, "featured");
+  assert.deepEqual(
+    featured.categories.map((category) => category.name),
+    ["Popular"],
+  );
+  assert.equal(requests.length, loaded);
+
+  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 25 * 60 * 60 * 1000);
+  const stale = await getEditorialShelf(OWNER, "featured");
+  clock.mockRestore();
+  assert.deepEqual(stale.categories, featured.categories);
+  assert.deepEqual(requests.slice(loaded), ["/chart/0/playlists?limit=24"]);
 });
 
 test("For you matches Deezer editor playlists to the user's top genres and tags", async (t: import("vite-plus/test").TestContext) => {
@@ -382,14 +481,14 @@ test("For you matches Deezer editor playlists to the user's top genres and tags"
     },
   });
 
-  const { forYou, genres } = await getEditorialShelf(OWNER);
+  const { forYou, categories } = await getEditorialShelf(OWNER);
 
   assert.deepEqual(searches.sort(), ["post-punk", "shoegaze"]);
   assert.deepEqual(
     forYou.map((playlist) => playlist.name),
     ["Shoegaze Essentials", "Dream Pop & Shoegaze"],
   );
-  assert.ok(genres.length > 0);
+  assert.ok(categories.length > 0);
 });
 
 test("an album link without a Deezer album ID still finds the album", async () => {

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 import admin from "./handlers/admin.ts";
 import blockedTags from "./handlers/blockedTags.ts";
-import editorial from "./handlers/editorial.ts";
+import playlists from "./handlers/playlists.ts";
 import feedback from "./handlers/feedback.ts";
 import main from "./handlers/main.ts";
 import preferences from "./handlers/preferences.ts";
@@ -18,7 +18,7 @@ export default new Hono<AppEnv>()
   .route("/", tags)
   .route("/", feedback)
   .route("/", blockedTags)
-  .route("/", editorial)
+  .route("/", playlists)
   .route("/", trending)
   .route("/", shows)
   .route("/", spotifyImport)

@@ -302,16 +302,16 @@ test("library search finds the user's playlists by name, then by tracklist", asy
   );
 });
 
-test("playlist search keeps Deezer editorial playlists whose names match", async () => {
+test("playlist search lists matching editor playlists before full user playlists", async () => {
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     if (!String(input).startsWith("https://api.deezer.com/search/playlist")) {
       return realFetch(input, init);
     }
-    const playlist = (id: number, title: string, curator: string) => ({
+    const playlist = (id: number, title: string, curator: string, tracks = 50) => ({
       id,
       title,
-      nb_tracks: 50,
+      nb_tracks: tracks,
       picture_xl: `https://cdn.test/${id}.jpg`,
       user: { name: curator },
     });
@@ -321,6 +321,7 @@ test("playlist search keeps Deezer editorial playlists whose names match", async
           playlist(1, "Michael (Movie Soundtrack)", "Deezer Soundtracks Editor"),
           playlist(2, "100% Michael Jackson", "Deezer Artist Editor"),
           playlist(3, "michael jackson mix", "someone"),
+          playlist(4, "mj", "someone", 5),
         ],
       }),
     );
@@ -331,7 +332,10 @@ test("playlist search keeps Deezer editorial playlists whose names match", async
   const body: { playlists: SearchItem[] } = await response.json();
   assert.deepEqual(
     body.playlists.map((playlist) => [playlist.source, playlist.id, playlist.name]),
-    [["deezer", "2", "100% Michael Jackson"]],
+    [
+      ["deezer", "2", "100% Michael Jackson"],
+      ["deezer", "3", "michael jackson mix"],
+    ],
   );
 });
 

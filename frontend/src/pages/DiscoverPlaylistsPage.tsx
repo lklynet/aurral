@@ -1,60 +1,133 @@
-import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
+import { useState } from "react";
+import ArtworkImage from "../components/ArtworkImage";
+import { useCollectionTint } from "../components/CollectionHeader";
+import { AlertCircle } from "../components/icons";
+import RouteLink from "../components/RouteLink";
+import { SkeletonShape, SkeletonStatus } from "../components/Skeletons";
+import StatePanel from "../components/StatePanel";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { DiscoverPlaylistSection, type EditorialShelfPlaylist } from "./DiscoverPlaylistSection";
-import { useEditorialShelf } from "./useEditorialShelf";
+import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
+import { useArtworkWash } from "../utils/imageColors.ts";
+import { DiscoverPlaylistSection, type BrowseShelfPlaylist } from "./DiscoverPlaylistSection";
+import { playlistCategoryPath, usePlaylistCategories } from "./usePlaylistShelf";
 
-type EditorialGenre = { id: number; name: string; playlists: EditorialShelfPlaylist[] };
+const FEATURED_TILES = [
+  ["mood", 0, 4],
+  ["decade", 0, 2],
+  ["genre", 0, 2],
+  ["mood", 4, 5],
+  ["genre", 2, 3],
+] as const;
+
+function CategoryTile({
+  id,
+  name,
+  playlists,
+}: {
+  id: string;
+  name: string;
+  playlists: BrowseShelfPlaylist[];
+}) {
+  const cover = resolveAuthenticatedApiAssetUrl(playlists[0]?.artworkUrl) || null;
+  const wash = useArtworkWash(cover);
+  return (
+    <RouteLink
+      to={playlistCategoryPath(id)}
+      className="playlist-category-tile"
+      style={wash ? { "--tile-wash": `light-dark(${wash.light}, ${wash.dark})` } : undefined}
+    >
+      <span className="playlist-category-tile__name">{name}</span>
+      {cover && (
+        <ArtworkImage src={cover} alt="" className="playlist-category-tile__cover" loading="lazy" />
+      )}
+    </RouteLink>
+  );
+}
 
 export default function DiscoverPlaylistsPage() {
   useDocumentTitle("Playlists");
-  const { data, error, isPending, isFetching, refetch } = useEditorialShelf();
-
-  const renderShelf = () => {
-    if (isPending) {
-      return (
-        <SkeletonStatus label="Loading playlists">
-          <SkeletonRail kind="playlist" />
-          <SkeletonRail kind="playlist" />
-          <SkeletonRail kind="playlist" />
-        </SkeletonStatus>
-      );
-    }
-    if (error) {
-      return (
-        <div className="search-empty-panel" role="alert">
-          <h2 className="search-empty-panel__title">Playlists didn&rsquo;t load</h2>
-          <p className="search-empty-panel__message">
-            Deezer didn&rsquo;t respond. Try again in a moment.
-          </p>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={isFetching}
-            onClick={() => refetch()}
-          >
-            Try again
-          </button>
-        </div>
-      );
-    }
-    return (
-      <>
-        <DiscoverPlaylistSection title="For you" playlists={data?.forYou || []} />
-        {(data?.genres || []).map((genre: EditorialGenre) => (
-          <DiscoverPlaylistSection key={genre.id} title={genre.name} playlists={genre.playlists} />
-        ))}
-      </>
-    );
-  };
+  const { browse, madeForYou, shelf } = usePlaylistCategories();
+  const [showAll, setShowAll] = useState(false);
+  const featured = FEATURED_TILES.flatMap(([group, start, end]) =>
+    browse.filter((category) => category.group === group).slice(start, end),
+  );
+  const tiles = showAll ? browse : featured;
+  const moods = browse.filter((category) => category.group === "mood").slice(0, 2);
+  const throwbacks = browse
+    .filter((category) => category.group === "decade")
+    .flatMap((category) => category.playlists.slice(0, 1));
+  const loading = madeForYou.isPending || shelf.isPending;
+  const lead = madeForYou.data?.discovery[0] ?? shelf.data?.forYou[0] ?? browse[0]?.playlists[0];
+  const tint = useCollectionTint(resolveAuthenticatedApiAssetUrl(lead?.artworkUrl));
 
   return (
-    <div className="discover-playlists-page">
-      <header className="discover-playlists-page__header">
-        <div className="discover-playlists-page__title-row">
-          <h1 className="page-title">Playlists</h1>
-        </div>
-      </header>
-      {renderShelf()}
+    <div
+      className="discover-playlists-page"
+      style={tint ? { "--collection-tint": tint } : undefined}
+    >
+      <h1 className="page-title discover-playlists-page__title">Playlists</h1>
+      <DiscoverPlaylistSection title="Made for you" playlists={madeForYou.data?.discovery} />
+      <DiscoverPlaylistSection
+        title="Your genres"
+        playlists={shelf.data?.forYou}
+        viewAllTo={playlistCategoryPath("for-you")}
+      />
+      {loading && browse.length === 0 ? (
+        <SkeletonStatus
+          label="Loading playlists"
+          className="playlist-category-grid playlist-category-grid--featured"
+        >
+          {Array.from({ length: 10 }, (_, index) => (
+            <SkeletonShape key={index} className="playlist-category-tile" />
+          ))}
+        </SkeletonStatus>
+      ) : (
+        browse.length > 0 && (
+          <section className="playlist-browse" aria-labelledby="playlist-browse-title">
+            <div className="artist-discover-rail__header">
+              <h2 id="playlist-browse-title" className="artist-section-title--discover">
+                Browse
+              </h2>
+              {browse.length > featured.length && (
+                <button
+                  type="button"
+                  className="section-show-all"
+                  aria-expanded={showAll}
+                  onClick={() => setShowAll(!showAll)}
+                >
+                  {showAll ? "Fewer categories" : "All categories"}
+                </button>
+              )}
+            </div>
+            <div
+              className={`playlist-category-grid${showAll ? "" : " playlist-category-grid--featured"}`}
+            >
+              {tiles.map((category) => (
+                <CategoryTile key={category.id} {...category} />
+              ))}
+            </div>
+          </section>
+        )
+      )}
+      {shelf.error && (
+        <StatePanel
+          role="alert"
+          icon={<AlertCircle />}
+          title="Couldn’t load playlists"
+          message="Deezer didn’t respond. Try again in a moment."
+          retrying={shelf.isFetching}
+          onRetry={() => shelf.refetch()}
+        />
+      )}
+      {moods.map((category) => (
+        <DiscoverPlaylistSection
+          key={category.id}
+          title={category.name}
+          playlists={category.playlists}
+          viewAllTo={playlistCategoryPath(category.id)}
+        />
+      ))}
+      <DiscoverPlaylistSection title="Throwbacks" playlists={throwbacks} />
     </div>
   );
 }

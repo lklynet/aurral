@@ -79,6 +79,7 @@ import {
 } from "./libraryViewQuery.ts";
 import ArtistMbidModal from "./ArtistMbidModal";
 import { DiscoverRail } from "../components/DiscoverRail";
+import { LibraryHomeMixes } from "./library/LibraryHomeMixes";
 import { LibraryHomePlaylists } from "./library/LibraryHomePlaylists";
 import { getApiErrorMessage, getApiErrorText } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
@@ -1139,7 +1140,12 @@ function LibraryPage() {
           </DiscoverRail>
         ) : null,
       )}
-      {isPreviewLibrary ? null : <LibraryHomePlaylists />}
+      {isPreviewLibrary ? null : (
+        <>
+          <LibraryHomeMixes />
+          <LibraryHomePlaylists />
+        </>
+      )}
     </div>
   );
 

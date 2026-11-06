@@ -84,7 +84,7 @@ async function resolveCatalog(
   const artistName = text(kind === "artist" ? params.get("name") : params.get("artist"));
   const albumName = kind === "album" ? text(params.get("name")) : "";
   const { artistMbid, albumMbid } = await parseResponse(
-    discoveryClient.editorial.links.$get(
+    discoveryClient.playlists.links.$get(
       {
         query: {
           artist: artistName || undefined,

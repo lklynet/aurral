@@ -29,7 +29,7 @@ import { DiscoverRail } from "../components/DiscoverRail";
 import { DiscoverHistoryPrompt } from "./DiscoverHistoryPrompt";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
-import { useEditorialShelf } from "./useEditorialShelf";
+import { useMadeForYou, usePlaylistShelf } from "./usePlaylistShelf";
 import { TrendingArtistsRail } from "./TrendingArtistsRail";
 import { trendingChartsQueryOptions } from "../queryOptions.ts";
 import { AlbumCard, ArtistCard, ViewAllCard, type DiscoverCardArtist } from "./DiscoverCards";
@@ -75,6 +75,7 @@ const SECTION_CARD_KINDS = new Map<
   string,
   NonNullable<ComponentProps<typeof SkeletonRail>["kind"]>
 >([
+  ["madeForYou", "playlist"],
   ["playlists", "playlist"],
   ["recentReleases", "album"],
 ]);
@@ -201,7 +202,8 @@ function DiscoverPage() {
 
   const { recommendations = [], topGenres = [], basedOn = [] } = data || {};
   const seeds = useMemo(() => seedNameSet(basedOn), [basedOn]);
-  const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
+  const { data: playlistShelf, isPending: playlistShelfPending } = usePlaylistShelf("featured");
+  const { data: madeForYouData, isPending: madeForYouPending } = useMadeForYou();
   const { data: trending } = useQuery(trendingChartsQueryOptions(authUser?.id));
   const trendingArtists = trending?.artists;
 
@@ -210,13 +212,15 @@ function DiscoverPage() {
   const nearbyLocationLabel =
     nearbyShowsData?.location?.label || nearbyShowsData?.location?.postalCode || "your area";
   const featuredPlaylists = useMemo(() => {
-    const forYou = editorialShelf?.forYou || [];
-    return forYou.length > 0 ? forYou : editorialShelf?.genres?.[0]?.playlists || [];
-  }, [editorialShelf]);
+    const forYou = playlistShelf?.forYou || [];
+    return forYou.length > 0 ? forYou : playlistShelf?.categories?.[0]?.playlists || [];
+  }, [playlistShelf]);
+  const madeForYou = useMemo(() => madeForYouData?.discovery ?? [], [madeForYouData]);
 
   const sectionAvailability = useMemo(
     () => ({
       recentlyAdded: recentlyAdded.length > 0,
+      madeForYou: madeForYou.length > 0,
       playlists: featuredPlaylists.length > 0,
       recentReleases: recentReleases.length > 0,
       news: newsConfigured,
@@ -227,6 +231,7 @@ function DiscoverPage() {
     }),
     [
       recentlyAdded,
+      madeForYou,
       featuredPlaylists,
       recentReleases,
       newsConfigured,
@@ -305,7 +310,8 @@ function DiscoverPage() {
 
   const sectionPending = new Map([
     ["recentlyAdded", recentlyAddedPending],
-    ["playlists", editorialShelfPending],
+    ["madeForYou", madeForYouPending],
+    ["playlists", playlistShelfPending],
     ["recentReleases", recentReleasesPending],
   ]);
 
@@ -349,6 +355,18 @@ function DiscoverPage() {
       );
     }
 
+    if (id === "madeForYou") {
+      if (!sectionAvailability.madeForYou) return null;
+      return (
+        <DiscoverPlaylistSection
+          key="madeForYou"
+          title="Made for you"
+          playlists={madeForYou}
+          viewAllTo="/discover/playlists/made-for-you"
+        />
+      );
+    }
+
     if (id === "playlists") {
       if (!sectionAvailability.playlists) return null;
       return (
@@ -356,7 +374,7 @@ function DiscoverPage() {
           key="playlists"
           title="Playlists"
           playlists={featuredPlaylists}
-          showViewAll
+          viewAllTo="/discover/playlists"
         />
       );
     }

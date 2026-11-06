@@ -6,6 +6,15 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
+vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
+});
+
 const [
   isolatedState,
   { db },

@@ -111,6 +111,7 @@ const tokenArtworkPaths = [
   /^\/api\/weekly-flow\/artwork\/[^/]+$/i,
   /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i,
   /^\/api\/playlists\/track-artwork\/[^/]+$/i,
+  /^\/api\/discover\/playlists\/(?:mix|discovery)\/[^/]+\/cover$/i,
 ];
 
 const acceptsLinkToken = (method: string, path: string) =>

@@ -56,6 +56,7 @@ import { libraryNameKey, subsonicId as idFor } from "./libraryMediaStore.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import { buildRadio, type RadioSeed } from "./radio.ts";
+import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withHonkerLock } from "./honkerDb.ts";
 import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.ts";
@@ -98,7 +99,8 @@ type ParsedKind =
   | "art-album"
   | "art-track"
   | "art-playlist"
-  | "art-playlist-track";
+  | "art-playlist-track"
+  | "mix";
 type ParsedId = { [K in ParsedKind]: { kind: K; key: string } }[ParsedKind];
 type StarredResult = { artist: SubsonicArtist[]; album: SubsonicAlbum[]; song: SubsonicSong[] };
 type SubsonicQuery = {
@@ -185,7 +187,7 @@ type SubsonicPlaylist = {
 
 const parseId = (value: unknown): ParsedId | null => {
   const match =
-    /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist|art-playlist-track):(.+)$/.exec(
+    /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist|art-playlist-track|mix):(.+)$/.exec(
       String(value || ""),
     );
   const [, kind, key] = match ?? [];
@@ -1401,6 +1403,9 @@ export async function updateSubsonicPlaylist(
     if (parseId(playlistId)?.kind === "flow" && playlistFromId(user, playlistId)) {
       throw playlistEditError("SUBSONIC_PLAYLIST_READ_ONLY", "Flows are read-only");
     }
+    if (parseId(playlistId)?.kind === "mix") {
+      throw playlistEditError("SUBSONIC_PLAYLIST_READ_ONLY", "Mixes are read-only");
+    }
     const playlist = flowPlaylistConfig.getStaticPlaylistForUser(
       user,
       normalizeStaticPlaylistId(playlistId),
@@ -1896,6 +1901,59 @@ export function getSubsonicPlaylist(value: string, user: SubsonicUser) {
       ),
     ),
   };
+}
+
+const userMixes = async (user: SubsonicUser) => (user && user.id > 0 ? getUserMixes(user.id) : []);
+
+function toMixPlaylists(user: SubsonicUser, mixes: Mix[]) {
+  const library = indexFocusedLibrary(
+    getLibraryForTrackIds({
+      ids: mixes.flatMap((mix) => mix.trackIds),
+      source: "all",
+      availableOnly: true,
+    }),
+    starredAtFor(user),
+  );
+  const changed = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000).toISOString();
+  return mixes.map((mix) => {
+    const entry = mix.trackIds.flatMap((trackId) => {
+      const track = library.tracksById.get(trackId);
+      return track ? [toSong(library, track)] : [];
+    });
+    const playlist: SubsonicPlaylist = {
+      id: idFor("mix", mix.id),
+      name: mix.name,
+      comment: mix.description,
+      owner: user?.username || "",
+      coverArt: entry[0]?.coverArt || idFor("mix", mix.id),
+      songCount: entry.length,
+      duration: entry.reduce((total, song) => total + song.duration, 0),
+      public: false,
+      created: changed,
+      changed,
+    };
+    return { playlist, entry };
+  });
+}
+
+const mixPlaylistSummaries = new WeakMap<Mix[], SubsonicPlaylist[]>();
+
+export async function getSubsonicMixPlaylists(user: SubsonicUser) {
+  const mixes = await userMixes(user);
+  const cached = mixPlaylistSummaries.get(mixes);
+  if (cached) return cached;
+  const playlists = toMixPlaylists(user, mixes).map(({ playlist }) => playlist);
+  mixPlaylistSummaries.set(mixes, playlists);
+  return playlists;
+}
+
+export async function getSubsonicMixPlaylist(value: string, user: SubsonicUser) {
+  const parsed = parseId(value);
+  if (parsed?.kind !== "mix" || !user || user.id <= 0) return null;
+  const mix = await getUserMix(user.id, parsed.key);
+  if (!mix) return null;
+  const [found] = toMixPlaylists(user, [mix]);
+  return found ? { ...found.playlist, entry: found.entry } : null;
 }
 
 export function resolveStreamPath(value: string, user: SubsonicUser) {

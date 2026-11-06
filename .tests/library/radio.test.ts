@@ -17,7 +17,12 @@ const seeded = (seed: number) => () => {
   return seed / 2147483648;
 };
 
-function addArtist(name: string, trackCount: number, genres: string[] = []) {
+function addArtist(
+  name: string,
+  trackCount: number,
+  genres: string[] = [],
+  albumGenres: string[] = [],
+) {
   const artist = store.upsertLibraryArtist({
     identityKey: `artist:${name}`,
     name,
@@ -27,6 +32,7 @@ function addArtist(name: string, trackCount: number, genres: string[] = []) {
     identityKey: `album:${name}`,
     artistId: artist.id,
     title: `${name} LP`,
+    metadata: albumGenres.length ? { genres: albumGenres } : null,
   });
   const tracks = Array.from({ length: trackCount }, (_, index) => {
     const track = store.upsertLibraryTrack({
@@ -121,7 +127,7 @@ test("a blocked similar artist with a big catalog doesn't leave the station empt
 });
 
 test("an artist radio still plays when similar artists can't be reached", async () => {
-  addArtist("Massive Attack", 8, ["trip hop"]);
+  addArtist("Massive Attack", 8, [], ["trip hop"]);
   addArtist("Portishead", 4);
   addArtist("Tricky", 4, ["trip hop"]);
 

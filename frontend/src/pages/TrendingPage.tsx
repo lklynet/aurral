@@ -21,11 +21,11 @@ import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { normalizePlaylistQueueTrack } from "../utils/audioQueue.ts";
 import { formatRelativeTime } from "../utils/dateTime.ts";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
-import { editorialPlaylistPath } from "../navigation/playlistPaths.ts";
+import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
 import { mapPreviewTracks } from "./deezerPreviewTracks.ts";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { TrendingArtistsRail } from "./TrendingArtistsRail";
-import { useEditorialShelf } from "./useEditorialShelf";
+import { usePlaylistShelf } from "./usePlaylistShelf";
 import { useTrackSaveActions } from "./useTrackSaveActions";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import "./TrendingPage.css";
@@ -156,7 +156,7 @@ export default function TrendingPage() {
   const { showSuccess, showError } = useToast();
   const chartsQuery = trendingChartsQueryOptions(user?.id);
   const { data, error, isPending, isFetching, refetch } = useQuery(chartsQuery);
-  const { data: shelf } = useEditorialShelf();
+  const { data: shelf } = usePlaylistShelf("featured");
   const trackSaveActions = useTrackSaveActions();
   const { playQueue, togglePlayPause, currentTrack, isPlaying, matchesSource } = useAudioQueue();
   const [savingPlaylist, setSavingPlaylist] = useState(false);
@@ -202,8 +202,8 @@ export default function TrendingPage() {
     setSavingPlaylist(true);
     try {
       const result = await parseResponse(
-        discoveryClient.editorial[":playlistId"].library.$post({
-          param: { playlistId: encodeURIComponent(songs.playlistId) },
+        discoveryClient.playlists[":provider"][":playlistId"].library.$post({
+          param: { provider: "deezer", playlistId: encodeURIComponent(songs.playlistId) },
         }),
       );
       queryClient.setQueryData(chartsQuery.queryKey, (current) =>
@@ -212,7 +212,7 @@ export default function TrendingPage() {
           : current,
       );
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.editorialPlaylist(user?.id, songs.playlistId),
+        queryKey: queryKeys.browsePlaylist(user?.id, "deezer", songs.playlistId),
       });
       showSuccess(
         result.alreadyAdded
@@ -228,7 +228,8 @@ export default function TrendingPage() {
 
   const region = regionName(data?.region ?? null);
   const updated = data?.updatedAt ? formatRelativeTime(new Date(data.updatedAt)) : null;
-  const popularPlaylists = shelf?.genres.find((genre) => genre.id === 0)?.playlists ?? [];
+  const popularPlaylists =
+    shelf?.categories.find((category) => category.id === "genre-0")?.playlists ?? [];
   const hasCharts = Boolean(
     data && (data.songs || data.albums || data.artists || data.genres.length > 0),
   );
@@ -363,7 +364,7 @@ export default function TrendingPage() {
                   </button>
                 ) : null}
                 <RouteLink
-                  to={editorialPlaylistPath(songs.playlistId)}
+                  to={browsePlaylistPath("deezer", songs.playlistId)}
                   className="section-show-all"
                 >
                   Show all {songs.items.length}
@@ -498,7 +499,7 @@ export default function TrendingPage() {
             <DiscoverPlaylistSection
               title="Popular playlists"
               playlists={popularPlaylists}
-              showViewAll
+              viewAllTo="/discover/playlists"
             />
           </div>
         ) : null}

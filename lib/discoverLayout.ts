@@ -1,5 +1,6 @@
 export const DISCOVER_SECTION_IDS = [
   "recentlyAdded",
+  "madeForYou",
   "playlists",
   "recommendedShows",
   "recentReleases",

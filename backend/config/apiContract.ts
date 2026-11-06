@@ -17,5 +17,6 @@ export const API_CONTRACT = {
     "playQueue",
     "loudness",
     "albumPlaySorts",
+    "browsePlaylists",
   ],
 };

@@ -85,13 +85,23 @@ Artist pages show up to six **Popular** tracks, followed by up to three YouTube 
 
 ## Playlists
 
-**Discover > Playlists** shows playlists made by Deezer's editors, grouped by genre. They need no account or API key. When Aurral knows your top genres and tags, **For you** shows the editor playlists that match them. The Discover page shows a few of these playlists too. Open one to play the Deezer previews for its tracks.
+**Discover > Playlists** starts with Made for you and Your genres, then a few category tiles for Deezer editor playlists by mood, decade, and genre. **All categories** shows every tile. Open a tile to see its playlists. The Discover page shows a few of each, and global search finds them by name.
 
-Select **Add synced playlist** to save it as a synced playlist. Aurral checks Deezer for changes every 24 hours. When the editor removes a track, it leaves your playlist but its file stays in your Library. See [Sync schedule and removed tracks](/using/playlist-imports/#sync-schedule-and-removed-tracks).
+- **Made for you** has New to You, New Releases, and Deep Cuts. Aurral builds them from your recommendations, new releases by your Library artists, and lesser-known tracks by the artists you play most. It rebuilds them after each discovery refresh. If Deezer doesn't answer, the previous version stays.
+- **Your mixes** are built from your Library and listening history and change each day. Daily Mixes group your most played artists by genre. On Repeat, Rewind, and Rediscover follow what you play now, played a few months ago, and stopped playing over a year ago. Radio mixes start from the artists you've played most this month and add similar artists from your Library. There are also mixes for your top artists and decades, and Unplayed for Library tracks you haven't played yet. Mixes need some listening history first. They show on **Library** and in Subsonic clients as read-only playlists.
+- **Your genres** shows the Deezer editor playlists that match your top genres and tags.
+
+Songs already in your Library play in full and count toward your listening history. Other songs play Deezer's preview.
+
+The save button differs by playlist:
+
+- **Add synced playlist** saves a Deezer playlist. Aurral checks Deezer for changes every 24 hours. When the editor removes a track, it leaves your playlist but its file stays in your Library. See [Sync schedule and removed tracks](/using/playlist-imports/#sync-schedule-and-removed-tracks).
+- **Add to Library** saves a Made for you playlist as it is now and downloads the songs you don't have.
+- **Save as playlist** saves a mix as a playlist of your Library tracks.
 
 To keep only some tracks, use a track's menu to add it to your Library or to a playlist. To add several at once, select the tracks first. Selecting an artist or album name looks it up in MusicBrainz and opens its page.
 
-Earlier versions built their own playlists, such as Discover Weekly and Release Radar, during each discovery refresh. Those are now flow templates. See [Flows](/using/flows/#start-from-a-template). Flows you created from editorial Last.fm playlists are now playlists with the same name and tracks.
+For a playlist that downloads new tracks on a schedule, start a flow from the Discover Weekly or Release Radar template. See [Flows](/using/flows/#start-from-a-template). Flows you created from editorial Last.fm playlists are now playlists with the same name and tracks.
 
 ## Recommended
 

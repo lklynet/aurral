@@ -51,6 +51,7 @@ const DISCOVER_RECENT_RELEASES_KEY = "discoverRecentReleases";
 
 const DISCOVER_SECTION_LABELS: Record<DiscoverSectionId, string> = {
   recentlyAdded: "Recently added",
+  madeForYou: "Made for you",
   playlists: "Playlists",
   recommendedShows: "Shows near you",
   recentReleases: "Recent releases",
