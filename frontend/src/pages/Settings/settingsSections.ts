@@ -88,7 +88,8 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   listening: {
     Services: "scrobbling listening history recommendations",
-    "Discovery tastes": "reset more like this less like this blocklist",
+    "Discovery tastes": "reset more like this less like this",
+    Blocklist: { item: "blocklist", keywords: "block unblock blocked artists genres hide" },
     "Last.fm": { item: "lastfm", keywords: "scrobbling listening history" },
     ListenBrainz: { item: "listenbrainz", keywords: "scrobbling user token listening history" },
     Koito: { item: "koito", keywords: "scrobbling API key URL listening history" },

@@ -126,6 +126,6 @@ test("a route counts as ready only after its page code has loaded", async (t) =>
   assert.equal(isRouteModuleLoaded("/discover/news"), false);
   await prefetchRoute("/discover/news");
   assert.equal(isRouteModuleLoaded("/discover/news"), true);
-  assert.equal(isRouteModuleLoaded("/blocklist"), false);
+  assert.equal(isRouteModuleLoaded("/search"), false);
   assert.equal(isRouteModuleLoaded("https://example.com/discover/news"), false);
 });

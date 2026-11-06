@@ -157,7 +157,6 @@ const ROUTES = [
   { path: "/activity/:view", module: routeModules.activity },
   { path: "/search", module: routeModules.search },
   { path: "/shows/:filter", module: routeModules.shows },
-  { path: "/blocklist", module: routeModules.blocklist },
   {
     path: "/go/:kind",
     module: routeModules.resolveLink,

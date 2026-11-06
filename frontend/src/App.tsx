@@ -53,7 +53,6 @@ const ShowsPage = lazy(routeModules.shows);
 const LibraryPage = lazy(routeModules.library);
 const WrappedPage = lazy(routeModules.wrapped);
 const WrappedAnnouncement = lazy(() => import("./components/WrappedAnnouncement.tsx"));
-const BlocklistPage = lazy(routeModules.blocklist);
 const ArtistDetailsPage = lazy(routeModules.artist);
 const ArtistReleaseListPage = lazy(routeModules.artistReleases);
 const AlbumPage = lazy(routeModules.album);
@@ -378,7 +377,10 @@ const appRoutes = createRoutesFromElements(
         />
         <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
         <Route path="/wrapped" element={<WrappedPage />} />
-        <Route path="/blocklist" element={<BlocklistPage />} />
+        <Route
+          path="/blocklist"
+          element={<Navigate to="/?settings=listening/blocklist" replace />}
+        />
         <Route path="/go/:kind" element={<ResolveLinkPage />} />
         <Route path="/share/import" element={<ShareImportPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

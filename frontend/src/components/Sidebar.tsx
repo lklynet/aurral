@@ -5,7 +5,6 @@ import {
   Activity,
   AudioWaveform,
   AlertTriangle,
-  Ban,
   Library,
   Menu,
   Newspaper,
@@ -93,7 +92,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnWanted = location.pathname.startsWith("/activity/missing");
   const isOnActivity = !isOnWanted && location.pathname.startsWith("/activity");
-  const isOnBlocklist = location.pathname === "/blocklist";
 
   const activeShowsFilter = useMemo(() => {
     if (!isOnShows) return null;
@@ -158,7 +156,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       if (item.section === "shows") return isOnShows;
       if (item.section === "news") return isOnNews;
       if (item.section === "activity") {
-        return navBeta ? isOnActivity || isOnWanted || isOnBlocklist : isOnActivity;
+        return navBeta ? isOnActivity || isOnWanted : isOnActivity;
       }
       if (item.section === "wanted") return isOnWanted;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
@@ -166,7 +164,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
     [
       isDiscoverSectionActive,
       isOnActivity,
-      isOnBlocklist,
       isOnLibrary,
       isOnNews,
       isOnShows,
@@ -265,7 +262,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         subnav: WANTED_VIEWS,
         permission: "accessFlow",
       },
-      { path: "/blocklist", label: "Blocklist", icon: Ban },
     ];
     return items.filter(allowed);
   }, [navBeta, newsConfigured, ticketmasterConfigured, user]);

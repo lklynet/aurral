@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -25,6 +24,7 @@ import {
   useHistoryServers,
 } from "./listening/HistoryServers";
 import { PlexDetail, usePlex } from "./listening/PlexDetail";
+import { BlocklistDetail, useBlocklistStatus } from "./listening/Blocklist";
 import {
   SettingsActions,
   SettingsGroup,
@@ -352,9 +352,9 @@ function ResetTastesRow() {
       help={
         <>
           Clears More like this and Less like this. Your{" "}
-          <Link to="/blocklist" className="settings-link">
+          <SettingsLink to="listening/blocklist" className="settings-link">
             Blocklist
-          </Link>{" "}
+          </SettingsLink>{" "}
           stays.
         </>
       }
@@ -496,6 +496,7 @@ export function ListeningSection() {
   const historyServers = useHistoryServers();
   const plex = usePlex();
   const historyServer = HISTORY_SERVERS.find((id) => id === item);
+  const blocklistStatus = useBlocklistStatus();
   const shownHistoryServers = HISTORY_SERVERS.filter(
     (id) =>
       hasPermission("accessSettings") ||
@@ -507,6 +508,7 @@ export function ListeningSection() {
   if (item === "spotify") return <SpotifyDetail />;
   if (historyServer === "plex") return <PlexDetail />;
   if (historyServer) return <HistoryServerDetail provider={historyServer} />;
+  if (item === "blocklist") return <BlocklistDetail />;
 
   return (
     <SettingsPage title="Listening">
@@ -570,6 +572,7 @@ export function ListeningSection() {
         ))}
       </SettingsGroup>
       <SettingsGroup title="Discovery tastes">
+        <SettingsServiceRow to="listening/blocklist" name="Blocklist" status={blocklistStatus} />
         <ResetTastesRow />
       </SettingsGroup>
     </SettingsPage>

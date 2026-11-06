@@ -5,7 +5,6 @@ import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavCo
 import { LIBRARY_VIEWS } from "./libraryNavConfig";
 import { lastRecommendedPath, RECOMMENDED_PATH } from "./recommendedPath";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "./showsNavConfig";
-import { useNavBeta } from "./navBeta.ts";
 
 function firstSegment(pathname: string, prefix: string) {
   return pathname.slice(prefix.length).replace(/^\//, "").split("/")[0];
@@ -14,7 +13,6 @@ function firstSegment(pathname: string, prefix: string) {
 export function useSectionNav() {
   const { pathname, search } = useLocation();
   const { user, bootstrap } = useAuth();
-  const navBeta = useNavBeta();
 
   return useMemo(() => {
     const allowed = (permission: string | undefined) =>
@@ -74,9 +72,8 @@ export function useSectionNav() {
       return { id: "library", title: "Library", label: "Library views", items };
     }
 
-    const isBlocklist = navBeta && pathname === "/blocklist";
-    if (pathname.startsWith("/activity/") || isBlocklist) {
-      const segment = isBlocklist ? "" : firstSegment(pathname, "/activity");
+    if (pathname.startsWith("/activity/")) {
+      const segment = firstSegment(pathname, "/activity");
       const wantedTab = new URLSearchParams(search).get("tab") === "cutoff" ? "cutoff" : "missing";
       const items = ACTIVITY_VIEWS.filter((view) => view.id !== "missing").map((view) => ({
         id: view.id,
@@ -94,14 +91,6 @@ export function useSectionNav() {
           })),
         );
       }
-      if (navBeta) {
-        items.push({
-          id: "blocklist",
-          label: "Blocklist",
-          path: "/blocklist",
-          active: isBlocklist,
-        });
-      }
       return { id: "activity", title: "Activity", label: "Activity views", items };
     }
 
@@ -117,5 +106,5 @@ export function useSectionNav() {
     }
 
     return null;
-  }, [bootstrap?.newsConfigured, navBeta, pathname, search, user]);
+  }, [bootstrap?.newsConfigured, pathname, search, user]);
 }
