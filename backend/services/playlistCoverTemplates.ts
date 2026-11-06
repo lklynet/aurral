@@ -167,7 +167,7 @@ export async function renderPlaylistCover({
   const photo = (box: Box = [0, 0, 1000, 1000], shape = "", zoom = 1, position = 0.5) => {
     const [x, y, w, h] = box;
     const id = `p${nextId++}`;
-    return `<defs><clipPath id="${id}">${shape || rect(box, "white")}</clipPath></defs><g clip-path="url(#${id})"><image href="data:image/jpeg;base64,${source}" x="${x - (w * zoom - w) * position}" y="${y - (h * zoom - h) * position}" width="${w * zoom}" height="${h * zoom}" preserveAspectRatio="xMidYMid slice"/></g>`;
+    return `<defs><clipPath id="${id}">${shape || rect(box, "white")}</clipPath></defs><g clip-path="url(#${id})"><image href="data:image/jpeg;base64,${source}" x="${x - (w * zoom - w) * position}" y="${y - (h * zoom - h) * position}" width="${w * zoom}" height="${h * zoom}" preserveAspectRatio="xMidYMin slice"/></g>`;
   };
   const ellipse = ([x, y, w, h]: Box) =>
     `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}"/>`;
