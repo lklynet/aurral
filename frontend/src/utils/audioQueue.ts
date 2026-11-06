@@ -65,6 +65,7 @@ export type QueueTrackInput = {
   trackMbid?: string | null;
   libraryTrackId?: string | number | null;
   libraryAlbumId?: string | number | null;
+  favoriteId?: string | null;
 };
 
 function extensionFromPath(value: unknown) {
@@ -140,6 +141,7 @@ export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrac
     trackMbid: track?.trackMbid ?? overrides.trackMbid ?? null,
     libraryTrackId: track?.libraryTrackId ?? null,
     libraryAlbumId: track?.libraryAlbumId ?? null,
+    favoriteId: track?.favoriteId ?? null,
     ...overrides,
   };
   return {
@@ -178,6 +180,7 @@ export function normalizePlaylistQueueTrack(
       durationMs: track.durationMs,
       libraryTrackId: track.libraryTrackId,
       libraryAlbumId: track.libraryAlbumId,
+      favoriteId: track.favoriteId,
       recordHistory: track?.recordHistory !== false,
     },
     overrides,

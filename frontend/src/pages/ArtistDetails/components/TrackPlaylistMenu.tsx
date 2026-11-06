@@ -9,6 +9,7 @@ import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
+import { useSubmenuPanelPosition } from "../../../components/LibraryItemMenu";
 import Tooltip from "../../../components/Tooltip";
 import type { StaticPlaylist } from "../../playlists/playlistStats.ts";
 import { playlistsContainingQueryOptions } from "../../../queryOptions.ts";
@@ -214,6 +215,10 @@ export function TrackPlaylistSubmenu({
 }: TrackPlaylistSubmenuProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
+  const { panelRef, panelTop, keepPanelInViewport } = useSubmenuPanelPosition(
+    submenuOpen,
+    `${loading}:${playlists.length}`,
+  );
 
   const handleSelect = async (target: PlaylistSelection) => {
     await onSelect?.(target);
@@ -227,7 +232,11 @@ export function TrackPlaylistSubmenu({
   };
 
   return (
-    <div className={`artist-menu-submenu${toggleOnClick && submenuOpen ? " is-open" : ""}`}>
+    <div
+      className={`artist-menu-submenu${toggleOnClick && submenuOpen ? " is-open" : ""}`}
+      onPointerEnter={keepPanelInViewport}
+      onFocusCapture={keepPanelInViewport}
+    >
       <button
         type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
@@ -245,7 +254,7 @@ export function TrackPlaylistSubmenu({
           aria-hidden="true"
         />
       </button>
-      <div className="artist-menu-submenu__panel">
+      <div className="artist-menu-submenu__panel" ref={panelRef} style={{ top: panelTop }}>
         <TrackPlaylistPickerContent
           track={track}
           playlists={playlists}

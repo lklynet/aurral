@@ -1,6 +1,7 @@
 import { audioContentType } from "./audioFileStream.ts";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
@@ -59,8 +60,12 @@ import { buildRadio, type RadioSeed } from "./radio.ts";
 import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withHonkerLock } from "./honkerDb.ts";
-import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.ts";
-import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
+import {
+  adoptFileIntoPlaylist,
+  jobDownloadedItsFile,
+  removePlaylistFileIfUnshared,
+} from "./downloadJobs/fileReuse.ts";
+import { outsideDownloadLocks, withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
 import { transferDownloadOwnershipInTransaction } from "./downloadJobs/downloadOwnership.ts";
 import {
   isDownloadJobCancelled,
@@ -1152,6 +1157,43 @@ export function resolveLibraryTracks(descriptors: (PlaylistTrackInput | null | u
   });
 }
 
+const playlistSongKind = (playlistId: string) =>
+  flowPlaylistConfig.getFlow(playlistId) ? "flow-song" : "shared-song";
+
+export function playlistTrackFavoriteIds(playlistId: string, jobs: DownloadJob[]) {
+  const kind = playlistSongKind(playlistId);
+  const owned = resolveLibraryTracks(jobs.map(trackFromJob));
+  return jobs.map((job, index) => {
+    const libraryTrack = owned[index]?.track;
+    return libraryTrack
+      ? idFor("song", libraryTrack.identityKey)
+      : idFor(kind, `${playlistId}:${job.id}`);
+  });
+}
+
+const copyPlaylistSongStarsStmt = db.prepare<[string, string, string]>(
+  `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+   SELECT user_id, 'song', ?, created_at FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?`,
+);
+const deletePlaylistSongStarsStmt = db.prepare<[string, string]>(
+  "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
+);
+
+export function keepPlaylistStarsInLibrary(playlistId: string) {
+  const kind = playlistSongKind(playlistId);
+  const jobs = downloadTracker.getByPlaylistId(playlistId);
+  const owned = resolveLibraryTracks(jobs.map(trackFromJob));
+  db.transaction(() => {
+    jobs.forEach((job, index) => {
+      const identityKey = owned[index]?.track?.identityKey;
+      if (!identityKey) return;
+      const key = `${playlistId}:${job.id}`;
+      copyPlaylistSongStarsStmt.run(identityKey, kind, key);
+      deletePlaylistSongStarsStmt.run(kind, key);
+    });
+  })();
+}
+
 const findAvailableLibraryTrack = (track: PlaylistTrackInput | null | undefined) =>
   resolveLibraryTracks([track])[0];
 
@@ -1168,6 +1210,34 @@ const libraryStarRows = <T extends StarKey>(user: SubsonicUser, rows: T[]) => {
     return libraryTrack
       ? { ...row, entity_kind: "song", entity_key: libraryTrack.identityKey }
       : row;
+  });
+};
+
+const moveFlowFileToLibrary = (source: DownloadJob, track: PlaylistTrack) => {
+  const flowId = source.playlistType;
+  if (!source.finalPath || !flowPlaylistConfig.getFlow(flowId)) return;
+  const sourcePath = source.finalPath;
+  outsideDownloadLocks(() =>
+    withPlaylistMutationLock([flowId, "library"], async () => {
+      const libraryPath = await adoptFileIntoPlaylist(
+        sourcePath,
+        "library",
+        downloadWorker.downloadRoot,
+        { track },
+      );
+      if (!libraryPath || libraryPath === path.resolve(sourcePath)) return;
+      const sharing = downloadTracker
+        .getAll()
+        .filter((job) => job.finalPath === libraryPath && job.playlistType !== "library")
+        .map((job) => job.playlistType);
+      playlistManager.requestPlaylistSync([...new Set([flowId, ...sharing])]);
+      playlistManager.scheduleScanLibrary();
+    }),
+  ).catch((error) => {
+    logger.error("subsonic", "Could not move a kept flow track into the Library", {
+      jobId: source.id,
+      reason: asAppError(error)?.message,
+    });
   });
 };
 
@@ -1204,6 +1274,7 @@ const ensureLibraryJob = (track: PlaylistTrack, createdJobIds: string[] | null =
       reusableSource.albumName || track.albumName || null,
       reusableSource.externalPath || null,
     );
+    moveFlowFileToLibrary(reusableSource, track);
     return jobId;
   }
   recordTrackJobQueued(downloadTracker.getJob(jobId));
@@ -1744,12 +1815,22 @@ export function getStarredWithLibrary(
   user: SubsonicUser,
   { availableOnly = false }: { availableOnly?: boolean } = {},
 ) {
+  const stored = starredRows(user);
+  const resolved = libraryStarRows(user, stored);
   // Several playlist-song stars can resolve to the same library track; render it once.
   const seen = new Set();
-  const rows = libraryStarRows(user, starredRows(user)).filter((row) => {
+  const rows = resolved.filter((row) => {
     const key = `${row.entity_kind}:${row.entity_key}`;
     return seen.has(key) ? false : seen.add(key);
   });
+  // A playlist song stays favorited under the id it was starred with after it resolves to the Library.
+  const songIds = [
+    ...new Set(
+      [...stored, ...resolved]
+        .filter((row) => ["song", "flow-song", "shared-song"].includes(row.entity_kind))
+        .map((row) => idFor(row.entity_kind, row.entity_key)),
+    ),
+  ];
   const libraryRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getLibrary({
     availableOnly,
@@ -1757,6 +1838,7 @@ export function getStarredWithLibrary(
   });
   return {
     starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user),
+    songIds,
     library,
   };
 }

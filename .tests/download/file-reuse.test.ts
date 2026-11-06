@@ -112,6 +112,37 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
 });
 
+test("adding a flow track to a shared playlist moves its file into the Library folder", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Source Flow", size: 10 });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Keepers", tracks: [] });
+  const track = {
+    artistName: "Julia Holter",
+    trackName: "Betsy on the Roof",
+    albumName: "Wilderness",
+  };
+  const flowPath = path.join(
+    downloadRoot,
+    "_flows",
+    flow.id,
+    "Julia Holter",
+    "Wilderness",
+    "Betsy.flac",
+  );
+  await fs.mkdir(path.dirname(flowPath), { recursive: true });
+  await fs.writeFile(flowPath, "audio");
+  const flowJobId = createTrackedJob(downloadTracker, track, flow.id);
+  assert.ok(flowJobId != null);
+  downloadTracker.setDone(flowJobId, flowPath, track.albumName);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+
+  const result = await reuseTrackForPlaylist(track, playlist.id, { downloadRoot });
+
+  const libraryPath = path.join(downloadRoot, "Julia Holter", "Wilderness", "Betsy.flac");
+  assert.equal(result.finalPath, libraryPath);
+  assert.equal(downloadTracker.getJob(flowJobId)?.finalPath, libraryPath);
+  await assert.rejects(fs.access(flowPath));
+});
+
 test("reusing an existing track for a flow does not schedule a full library scan", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Reuse Flow", size: 10 });
   const track = {
