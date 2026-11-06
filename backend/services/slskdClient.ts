@@ -12,6 +12,7 @@ const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
 const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
 const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
+const DEFAULT_SEARCH_IDLE_TIMEOUT_MS = 15000;
 const DEFAULT_FILE_LIMIT = 1000;
 const DEFAULT_RESPONSE_LIMIT = 150;
 const DEFAULT_MAX_PEER_QUEUE = 150;
@@ -539,6 +540,25 @@ class SearchMonitor {
     }
   }
 
+  // slskd returns a running search's responses only once it ends, so a search
+  // cut off by its deadline is stopped and read instead of discarded.
+  async collect(signal?: AbortSignal) {
+    const latest = this.latest;
+    if (!latest || !this.hasSeenFiles || isSearchComplete(latest)) return this.finish(latest);
+    if (!(await this.client.stopSearch(this.searchId, { signal }).catch(() => false))) {
+      return this.finish(latest);
+    }
+    const hydrated = await this.client
+      .hydrateCompletedSearch(this.searchId, latest, { signal })
+      .catch(() => latest);
+    for (const file of this.client.flattenSearchResults(hydrated)) {
+      this.collected.set(`${file.user}\0${file.file}`, file);
+    }
+    const data = { ...hydrated };
+    Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...this.collected.values()] });
+    return this.finish(data);
+  }
+
   async finish(data: SlskdSearch | null): Promise<{ done: true; data: SlskdSearch | null }> {
     if (isSearchComplete(data) && !this.client.isCleanupAfterRunsEnabled()) {
       this.onSearchSettled?.(this.searchId);
@@ -565,7 +585,7 @@ class SearchMonitor {
       const cutoff = this.queued || !this.latest ? this.hardDeadline : this.cutoff();
       if (Date.now() >= cutoff) {
         if (this.queued) throw searchStillQueuedError();
-        return this.finish(this.latest);
+        return this.collect(signal);
       }
       let data: SlskdSearch;
       try {
@@ -579,7 +599,7 @@ class SearchMonitor {
         }
         if (Date.now() >= cutoff) {
           if (this.queued) throw searchStillQueuedError();
-          return this.finish(this.latest);
+          return this.collect(signal);
         }
         throw error;
       }
@@ -650,7 +670,7 @@ class SearchMonitor {
         return this.finish(hydrated);
       }
       const nextCutoff = this.cutoff();
-      if (Date.now() >= nextCutoff) return this.finish(this.latest);
+      if (Date.now() >= nextCutoff) return this.collect(signal);
       const progress = Math.min(1, this.totalFiles / DEFAULT_FILE_LIMIT);
       const grace = Date.now() >= this.graceStartsAt;
       return {
@@ -800,7 +820,7 @@ export class SlskdClient {
     const client = buildClient(this._config);
     const searchTimeoutMs = Math.max(
       5000,
-      Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)),
+      Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_IDLE_TIMEOUT_MS)),
     );
     const body = {
       id,
@@ -933,7 +953,14 @@ export class SlskdClient {
     const fileCount = data.fileCount ?? 0;
     if (responseCount <= 0 && fileCount <= 0) return data;
     const collectedCount = this.flattenSearchResults(data).length;
-    if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
+    const hasEveryResponse = (responses: number) => responseCount > 0 && responses >= responseCount;
+    if (
+      collectedCount > 0 &&
+      (fileCount <= 0 ||
+        collectedCount >= fileCount ||
+        hasEveryResponse(data.responses?.length ?? 0))
+    )
+      return data;
     const collected = new Map(
       this.flattenSearchResults(data).map((file) => [`${file.user}\0${file.file}`, file] as const),
     );
@@ -953,7 +980,15 @@ export class SlskdClient {
       }
       data = { ...refreshed };
       Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
-      if (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount)
+      if (
+        hasEveryResponse(
+          Math.max(
+            refreshed.responses?.length ?? 0,
+            payload.status === "fulfilled" ? payload.value.length : 0,
+          ),
+        ) ||
+        (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount)
+      )
         return data;
       if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
       const failed = [status, payload].find((result) => result.status === "rejected");
@@ -1029,14 +1064,7 @@ export class SlskdClient {
         ? Number(options.timeoutMs)
         : DEFAULT_SEARCH_TIMEOUT_MS + DEFAULT_SEARCH_GRACE_PERIOD_MS;
     const deadline = Number(options.deadline) || Date.now() + timeoutMs;
-    const created = await this.createSearch(searchText, {
-      ...options,
-      deadline,
-      searchTimeoutMs: Math.min(
-        Number(options.searchTimeoutMs) || timeoutMs,
-        deadline - Date.now(),
-      ),
-    });
+    const created = await this.createSearch(searchText, { ...options, deadline });
     const completed = await this.waitForSearch(created.id, timeoutMs, { ...options, deadline });
     return this.flattenSearchResults(completed);
   }
@@ -1140,6 +1168,14 @@ export class SlskdClient {
       service: "slskd",
       endpoint: "/api/v0/searches",
     });
+  }
+
+  async stopSearch(searchId: string, options: SlskdRequestOptions = {}) {
+    const endpoint = `/api/v0/searches/${encodeURIComponent(searchId)}`;
+    const response = await buildClient(this._config).put(endpoint, undefined, {
+      signal: untilDeadline(Date.now() + 10000, options.signal),
+    });
+    return response.status < 400;
   }
 
   async deleteSearch(searchId: string, options: SlskdRequestOptions = {}) {

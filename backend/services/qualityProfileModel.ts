@@ -179,6 +179,12 @@ export function getQualityTier(id: unknown) {
   return TIER_BY_ID.get(String(id || "")) || null;
 }
 
+function advertisedLossyFamily(text: string) {
+  if (/\.mp3\b|\bmp3\b/.test(text)) return "mp3";
+  if (/\.(?:m4a|aac)\b|\b(?:m4a|aac)\b/.test(text)) return "m4a";
+  return null;
+}
+
 export function classifyAdvertisedQuality(fileName: unknown, bitrate: unknown = null) {
   const text = String(fileName || "").toLowerCase();
   if (/\.flac\b|\bflac\b/.test(text)) {
@@ -186,11 +192,7 @@ export function classifyAdvertisedQuality(fileName: unknown, bitrate: unknown = 
       ? "flac-hires"
       : "flac-standard";
   }
-  const family = /\.mp3\b|\bmp3\b/.test(text)
-    ? "mp3"
-    : /\.(?:m4a|aac)\b|\b(?:m4a|aac)\b/.test(text)
-      ? "m4a"
-      : null;
+  const family = advertisedLossyFamily(text);
   if (!family) return null;
   const textBitrate = /\b(128|192|256|320)\s*k(?:bps)?\b/.exec(text);
   const measured = Number(bitrate);
@@ -217,7 +219,17 @@ export function isAdvertisedQualityEligible(
   const normalized = normalizeQualityProfile(profile);
   const tier = classifyAdvertisedQuality(fileName, bitrate);
   if (!tier) {
-    return !NEVER_TIERED_ADVERTISED_EXTENSION.test(String(fileName || "").trim());
+    const name = String(fileName || "").trim();
+    if (NEVER_TIERED_ADVERTISED_EXTENSION.test(name)) return false;
+    const family = advertisedLossyFamily(name.toLowerCase());
+    return (
+      !upgrade ||
+      !family ||
+      normalized.enabled.some(
+        (id) =>
+          id.startsWith(`${family}-`) && isQualityUpgrade({ tier: id }, currentTier, normalized),
+      )
+    );
   }
   return (
     normalized.enabled.includes(tier) &&

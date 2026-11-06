@@ -92,6 +92,15 @@ test("prefilters advertised candidates without trusting unknown metadata", () =>
     },
   );
   assert.deepEqual(ordered, ["Song.flac", "Song.mp3"]);
+  assert.deepEqual(
+    orderAdvertisedQualityCandidates(["Song.mp3", "Song.m4a", "Song.flac"], {
+      profile,
+      currentTier: "mp3-320",
+      upgrade: true,
+      readName: (entry) => entry,
+    }),
+    ["Song.flac"],
+  );
 });
 
 test("orderAdvertisedQualityCandidates drops formats that can never satisfy a tier", () => {

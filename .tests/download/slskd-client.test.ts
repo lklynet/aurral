@@ -811,7 +811,7 @@ test("searchQuery passes its operation deadline through creation and collection"
     });
     assert.equal(result.length, 1);
     assert.ok(postedBody != null);
-    assert.equal(postedBody.searchTimeout, 120000);
+    assert.equal(postedBody.searchTimeout, 15000);
     assert.ok(searchId);
     assert.ok(registered.includes(searchId));
     assert.deepEqual(settled, [searchId]);
