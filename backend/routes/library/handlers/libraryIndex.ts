@@ -287,8 +287,8 @@ export default new Hono<AppEnv>()
     }
   })
   .get("/favorites", requireAuth, noCache, (c) => {
-    const { starred, library } = getStarredWithLibrary(c.var.user);
-    return c.json({ ...starred, library: toPublicLibrary(library) }, 200);
+    const { starred, songIds, library } = getStarredWithLibrary(c.var.user);
+    return c.json({ ...starred, songIds, library: toPublicLibrary(library) }, 200);
   })
   .post(
     "/favorites",

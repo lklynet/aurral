@@ -55,27 +55,10 @@ const menuItemRole = (item: LibraryMenuItem) => {
     : "menuitem";
 };
 
-export function LibraryItemSubmenu({
-  label,
-  icon: Icon,
-  items = [],
-  isOpen = false,
-  onToggle,
-  onClose,
-}: {
-  label: string;
-  icon?: MenuIcon;
-  items?: LibraryMenuItem[];
-  isOpen?: boolean;
-  onToggle?: () => void;
-  onClose?: () => void;
-}) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState("");
+export function useSubmenuPanelPosition(open: boolean, contentKey: unknown = null) {
   const [panelTop, setPanelTop] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const correctionFrameRef = useRef<number | null>(null);
-  const open = typeof onToggle === "function" ? isOpen : internalOpen;
 
   const keepPanelInViewport = useCallback(() => {
     if (correctionFrameRef.current != null) {
@@ -100,7 +83,7 @@ export function LibraryItemSubmenu({
     if (!open) return;
     setPanelTop(0);
     keepPanelInViewport();
-  }, [keepPanelInViewport, open]);
+  }, [contentKey, keepPanelInViewport, open]);
 
   useEffect(
     () => () => {
@@ -110,6 +93,29 @@ export function LibraryItemSubmenu({
     },
     [],
   );
+
+  return { panelRef, panelTop, keepPanelInViewport };
+}
+
+export function LibraryItemSubmenu({
+  label,
+  icon: Icon,
+  items = [],
+  isOpen = false,
+  onToggle,
+  onClose,
+}: {
+  label: string;
+  icon?: MenuIcon;
+  items?: LibraryMenuItem[];
+  isOpen?: boolean;
+  onToggle?: () => void;
+  onClose?: () => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState("");
+  const open = typeof onToggle === "function" ? isOpen : internalOpen;
+  const { panelRef, panelTop, keepPanelInViewport } = useSubmenuPanelPosition(open);
 
   const handleAction = async (event: ReactMouseEvent<HTMLElement>, item: LibraryMenuItem) => {
     event.stopPropagation();

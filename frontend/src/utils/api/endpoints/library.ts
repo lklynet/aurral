@@ -1,3 +1,4 @@
+import { queryOptions } from "@tanstack/react-query";
 import { parseResponse, type InferRequestType, type InferResponseType } from "hono/client";
 import {
   apiFetchWithin,
@@ -251,6 +252,12 @@ const fetchLibraryFavorites = ({ signal }: SignalOptions = {}) =>
         }
       : favorites,
   );
+
+export const libraryFavoritesQueryOptions = queryOptions({
+  queryKey: queryKeys.libraryFavorites,
+  queryFn: ({ signal }) => fetchLibraryFavorites({ signal }),
+  staleTime: 30_000,
+});
 
 const waitForLibraryFavoritesRefresh = async () => {
   let waited = false;

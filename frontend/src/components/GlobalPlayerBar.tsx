@@ -16,12 +16,14 @@ import {
   Download,
   Ellipsis,
   Heart,
+  Library,
   ListMusic,
   Maximize,
   Mic,
   Music,
   Pause,
   Play,
+  Plus,
   Radio,
   Repeat,
   Repeat1,
@@ -35,10 +37,11 @@ import {
 } from "./icons";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext.tsx";
+import { useAuth } from "../contexts/AuthContext.tsx";
 import { usePlayerFavorite } from "../hooks/usePlayerFavorite.ts";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
-import { LibraryItemMenu } from "./LibraryItemMenu";
+import { LibraryItemMenu, type LibraryMenuItem } from "./LibraryItemMenu";
 import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQueue";
 import PlayerLyrics from "./PlayerLyrics";
 import FullscreenPlayer from "./FullscreenPlayer";
@@ -56,27 +59,28 @@ import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
 import { trackDownloadActionLabel } from "../pages/library/libraryShared.tsx";
 import { useStartRadio } from "../hooks/useQueueTrackActions";
 import { radioSeedFor } from "../utils/audioQueue";
+import { TrackPlaylistSubmenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
+import { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils";
+import { useTrackSaveActions } from "../pages/useTrackSaveActions.ts";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SHEET_TAP_DISTANCE = 8;
 const SEEK_SHORTCUT_SECONDS = 5;
-type PlayerTrack = NonNullable<ReturnType<typeof useAudioQueue>["currentTrack"]>;
 
 function PreviewDownloadButton({
-  track,
+  payload,
   className,
   tooltipPlacement,
 }: {
-  track: PlayerTrack;
+  payload: SavePayload;
   className: string;
   tooltipPlacement?: "top";
 }) {
   const { savingKeys, addTrackToLibrary } = useAddTrackToLibrary();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
-  const payload = track.download;
-  if (!payload?.artistName || !payload.trackName) return null;
-  const key = String(track.id);
+  if (!payload.artistName || !payload.trackName) return null;
+  const key = payload.id;
   const sending = savingKeys.has(key);
   const busy =
     sending || isTrackDownloading(payload) || isAlbumDownloading(payload.albumMbid || null);
@@ -90,12 +94,46 @@ function PreviewDownloadButton({
       onClick={() => void addTrackToLibrary(payload, key)}
       disabled={busy}
       label={label}
-      aria-label={`${label}: ${track.title}`}
+      aria-label={`${label}: ${payload.trackName}`}
     >
       {busy ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
     </TooltipButton>
   );
 }
+type SavePayload = ReturnType<typeof buildStaticPlaylistTrackPayload> & { id: string };
+
+function PlayerPlaylistSubmenu({
+  track,
+  separator,
+  onClose,
+}: {
+  track: SavePayload;
+  separator: boolean;
+  onClose: () => void;
+}) {
+  const save = useTrackSaveActions();
+  const addToPlaylist = save.onAddTrackToPlaylist;
+  if (!addToPlaylist) return null;
+  return (
+    <>
+      {separator ? <div className="native-library-item-menu__separator" /> : null}
+      <TrackPlaylistSubmenu
+        label="Add to playlist"
+        icon={Plus}
+        track={track}
+        playlists={save.playlists}
+        loading={save.playlistsLoading}
+        saving={save.playlistSavingKey === track.id}
+        error={save.playlistMenuError}
+        defaultNewPlaylistName={save.getDefaultPlaylistName(track)}
+        onSelect={(target) => addToPlaylist(track, target)}
+        onClose={onClose}
+        toggleOnClick
+      />
+    </>
+  );
+}
+
 type GlobalPlayerBarProps = {
   minimized: boolean;
   onMinimizedChange: (minimized: boolean) => void;
@@ -131,6 +169,8 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const startRadio = useStartRadio();
   const { addToast } = useToast();
   const favorite = usePlayerFavorite(isActive ? currentTrack : null);
+  const { hasPermission } = useAuth();
+  const { savingKeys, addTrackToLibrary } = useAddTrackToLibrary();
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLyrics, setSheetLyrics] = useState(false);
@@ -364,6 +404,53 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
       label: currentTrack.title || "Track",
       first: currentTrack,
     });
+  const savePayload: SavePayload = {
+    ...(currentTrack.download ??
+      buildStaticPlaylistTrackPayload({
+        artistName: artistLabel,
+        trackName: currentTrack.title || "",
+        albumName: albumLabel,
+        artistMbid,
+        albumMbid,
+        trackMbid: currentTrack.trackMbid || "",
+        durationMs: currentTrack.durationMs,
+      })),
+    id: String(currentTrack.id),
+  };
+  const inLibrary =
+    currentTrack.libraryTrackId != null || Boolean(currentTrack.favoriteId?.startsWith("song:"));
+  const canAddToLibrary =
+    !inLibrary &&
+    hasPermission("addAlbum") &&
+    Boolean(savePayload.artistName && savePayload.trackName);
+  const trackMenuItems: LibraryMenuItem[] = [
+    ...(canStartRadio
+      ? [{ id: "radio", label: "Start radio", icon: Radio, onSelect: startTrackRadio }]
+      : []),
+    ...(canShareTrack
+      ? [{ id: "share", label: "Share track", icon: Share, onSelect: shareTrack }]
+      : []),
+    ...(canAddToLibrary
+      ? [
+          {
+            id: "add-to-library",
+            label: "Add to library",
+            icon: Library,
+            separatorBefore: true,
+            disabled: savingKeys.has(savePayload.id),
+            onSelect: () => addTrackToLibrary(savePayload, savePayload.id),
+          },
+        ]
+      : []),
+  ];
+  const playlistItemAfter = trackMenuItems.at(-1)?.id;
+  const renderPlaylistItem = ({ closeMenu }: { closeMenu: () => void }) => (
+    <PlayerPlaylistSubmenu
+      track={savePayload}
+      separator={!canAddToLibrary && trackMenuItems.length > 0}
+      onClose={closeMenu}
+    />
+  );
   const metaLink = (label: string, path: string) =>
     label ? (
       path ? (
@@ -540,24 +627,18 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                       triggerLabel="More"
                       triggerClassName="now-playing__icon-button"
                       items={[
-                        ...(canShareTrack
-                          ? [
-                              {
-                                id: "share",
-                                label: "Share track",
-                                icon: Share,
-                                onSelect: shareTrack,
-                              },
-                            ]
-                          : []),
+                        ...trackMenuItems,
                         {
                           id: "stop",
                           label: "Stop and clear queue",
                           icon: Stop,
                           danger: true,
+                          separatorBefore: true,
                           onSelect: stop,
                         },
                       ]}
+                      additionalItemsAfter={playlistItemAfter}
+                      renderAdditionalItems={renderPlaylistItem}
                     />
                   </span>
                 </div>
@@ -602,7 +683,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                       <div className="global-player__title-row">
                         <PreviewChip />
                         <PreviewDownloadButton
-                          track={currentTrack}
+                          payload={savePayload}
                           className="global-player__preview-download"
                         />
                       </div>
@@ -826,49 +907,43 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
                 <Repeat className="artist-icon-sm" />
               )}
             </TooltipButton>
-            <TooltipButton
-              tooltipPlacement="top"
-              label={favorite ? favoriteLabel : "Only Library tracks can be favorites"}
-              aria-pressed={favorite?.active ?? false}
-              onClick={favorite ? () => void favorite.toggle() : undefined}
-              disabled={!favorite || favorite.pending}
-              className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__favorite${favorite?.active ? " is-active" : ""}`}
-            >
-              <Heart className="artist-icon-sm" fill={favorite?.active ? "currentColor" : "none"} />
-            </TooltipButton>
+            {currentTrack.isPreview ? (
+              <PreviewDownloadButton
+                payload={savePayload}
+                className="btn btn-secondary btn-sm btn-icon global-player__control"
+                tooltipPlacement="top"
+              />
+            ) : (
+              <TooltipButton
+                tooltipPlacement="top"
+                label={favorite ? favoriteLabel : "Only Library tracks can be favorites"}
+                aria-pressed={favorite?.active ?? false}
+                onClick={favorite ? () => void favorite.toggle() : undefined}
+                disabled={!favorite || favorite.pending}
+                className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__favorite${favorite?.active ? " is-active" : ""}`}
+              >
+                <Heart
+                  className="artist-icon-sm"
+                  fill={favorite?.active ? "currentColor" : "none"}
+                />
+              </TooltipButton>
+            )}
           </div>
 
           <PlayerSeek variant="bar" />
         </div>
 
         <div className="global-player__side">
-          {currentTrack.isPreview ? (
-            <PreviewDownloadButton
-              track={currentTrack}
-              className="btn btn-ghost btn-icon btn-xs"
-              tooltipPlacement="top"
-            />
-          ) : null}
-          {canStartRadio ? (
-            <TooltipButton
-              tooltipPlacement="top"
-              label="Start radio"
-              onClick={startTrackRadio}
-              className="btn btn-ghost btn-icon btn-xs"
-            >
-              <Radio className="artist-icon-sm" />
-            </TooltipButton>
-          ) : null}
-          {canShareTrack ? (
-            <TooltipButton
-              tooltipPlacement="top"
-              label="Share track"
-              onClick={shareTrack}
-              className="btn btn-ghost btn-icon btn-xs"
-            >
-              <Share className="artist-icon-sm" />
-            </TooltipButton>
-          ) : null}
+          <LibraryItemMenu
+            label={currentTrack.title || "Track"}
+            contextMenu={false}
+            triggerIcon={<Ellipsis aria-hidden="true" />}
+            triggerLabel="More"
+            triggerClassName="btn btn-ghost btn-icon btn-xs"
+            items={trackMenuItems}
+            additionalItemsAfter={playlistItemAfter}
+            renderAdditionalItems={renderPlaylistItem}
+          />
           <TooltipButton
             tooltipPlacement="top"
             ref={lyricsTriggerRef}

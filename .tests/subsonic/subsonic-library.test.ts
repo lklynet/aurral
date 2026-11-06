@@ -3,7 +3,8 @@ import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -519,7 +520,7 @@ test("playlist entries resolve a featured library track by its performer or albu
   assert.ok(libraryTrack != null);
   assert.equal(libraryTrack.artistName, "Featured Owner feat. Guest");
 
-  const user = testUser(75, { role: "admin" });
+  const user = createTestUser("subsonic-featured-resolution", "admin");
   const playlistId = "subsonic-featured-resolution";
   const jobIds = ["Featured Owner", "Featured Owner feat. Guest", "Another Artist"].map(
     (artistName) => {
@@ -543,6 +544,80 @@ test("playlist entries resolve a featured library track by its performer or albu
     idFor("song", libraryTrack.identityKey),
     idFor("song", libraryTrack.identityKey),
   ]);
+  const jobs = jobIds.map((jobId) => requireFixture(downloadTracker.getJob(jobId)));
+  assert.deepEqual(
+    subsonic.playlistTrackFavoriteIds(playlistId, jobs).sort(),
+    entries.map((entry) => entry.id).sort(),
+  );
+
+  const storedId = idFor("shared-song", `${playlistId}:${jobIds[0]}`);
+  assert.equal(starMany(user, [storedId]), true);
+  assert.deepEqual(
+    subsonic.getStarredWithLibrary(user).songIds.sort(),
+    [idFor("song", libraryTrack.identityKey), storedId].sort(),
+  );
+
+  const { playlistManager } = await import("../../backend/services/playlists/playlistManager.ts");
+  await playlistManager.weeklyReset([playlistId]);
+  assert.deepEqual(subsonic.getStarredWithLibrary(user).songIds, [
+    idFor("song", libraryTrack.identityKey),
+  ]);
+});
+
+test("keeping a flow track moves its file into the Library, even under another playlist's locks", async () => {
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const { downloadWorker } = await import("../../backend/services/downloadJobs/downloadWorker.ts");
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const { playlistManager } = await import("../../backend/services/playlists/playlistManager.ts");
+  const { AURRAL_FLOWS_DIR } = await import("../../backend/services/downloadPaths.ts");
+  const user = createTestUser("subsonic-flow-keep", "admin");
+  const flow = flowPlaylistConfig.createFlow({ name: "Keep Flow", size: 1, ownerUserId: user.id });
+  const root = downloadWorker.downloadRoot;
+  const flowPath = path.join(
+    root,
+    AURRAL_FLOWS_DIR,
+    flow.id,
+    "Keep Artist",
+    "Keep Album",
+    "Keep.flac",
+  );
+  await mkdir(path.dirname(flowPath), { recursive: true });
+  await writeFile(flowPath, "audio");
+  const flowJobId = requireFixture(
+    downloadTracker.addJob(
+      { artistName: "Keep Artist", albumName: "Keep Album", trackName: "Keep" },
+      flow.id,
+    ),
+  );
+  downloadTracker.setDone(flowJobId, flowPath, "Keep Album");
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {});
+  const scanned = new Promise<void>((resolve) => {
+    vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {
+      resolve();
+      return 0;
+    });
+  });
+
+  const { withPlaylistMutationLock } =
+    await import("../../backend/services/downloadJobs/mutationGuards.ts");
+  const kept = await withPlaylistMutationLock("subsonic-keep-playlist", () =>
+    starMany(user, [idFor("flow-song", `${flow.id}:${flowJobId}`)]),
+  );
+  assert.equal(kept, true);
+  await scanned;
+
+  const libraryPath = path.join(root, "Keep Artist", "Keep Album", "Keep.flac");
+  assert.equal(existsSync(flowPath), false);
+  assert.equal(existsSync(libraryPath), true);
+  assert.equal(downloadTracker.getJob(flowJobId)?.finalPath, libraryPath);
+  assert.equal(
+    downloadTracker
+      .getAll()
+      .find((job) => job.playlistType === "library" && job.trackName === "Keep")?.finalPath,
+    libraryPath,
+  );
 });
 
 test("keeping a favorited playlist song carries over its album track count and titles", async (t: import("vite-plus/test").TestContext) => {

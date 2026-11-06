@@ -11,11 +11,11 @@ import { getPlaylistTrackArtworkUrl } from "../../utils/api/playlistUrls.ts";
 import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.ts";
 import {
   downloadTrackToLibrary,
+  libraryFavoritesQueryOptions,
   updateLibraryFavorites,
   type CustomArtworkResult,
   type LibraryFavoritesResponse,
 } from "../../utils/api/endpoints/library.ts";
-import { libraryClient } from "../../utils/api/clients/library.ts";
 import {
   resolveLibraryAlbumPath,
   resolveLibraryArtistPath,
@@ -44,9 +44,7 @@ import { useShareAction } from "../../hooks/useShareAction.ts";
 const sharedPlaylists = staticPlaylistsClient["shared-playlists"];
 const trackArtwork = playlistArtworkClient["track-artwork"][":jobId"];
 
-type FavoriteSongs = {
-  song?: Pick<LibraryFavoritesResponse["song"][number], "id">[];
-};
+type FavoriteSongs = Partial<Pick<LibraryFavoritesResponse, "songIds">>;
 
 type ArtworkEditorState = {
   id: string;
@@ -112,19 +110,9 @@ export function PlaylistTracks({
   );
   const canEditArtwork = hasPermission("addAlbum") || hasPermission("changeMonitoring");
 
-  const favoriteQuery = useQuery({
-    queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal }) =>
-      parseResponse(libraryClient.favorites.$get(undefined, { init: { signal } })),
-    staleTime: 30_000,
-  });
+  const favoriteQuery = useQuery(libraryFavoritesQueryOptions);
   const favoriteTrackIds = useMemo(
-    () =>
-      new Set(
-        (Array.isArray(favoriteQuery.data?.song) ? favoriteQuery.data.song : [])
-          .map((favorite) => String(favorite?.id || "").trim())
-          .filter(Boolean),
-      ),
+    () => new Set(favoriteQuery.data?.songIds),
     [favoriteQuery.data],
   );
 
@@ -421,10 +409,7 @@ export function PlaylistTracks({
     }
   };
 
-  const getTrackFavoriteId = (track: PlaylistTrackRow) =>
-    entry?.id && track?.id
-      ? `${isFlow ? "flow-song" : "shared-song"}:${encodeURIComponent(`${entry.id}:${track.id}`)}`
-      : "";
+  const getTrackFavoriteId = (track: PlaylistTrackRow) => track.favoriteId ?? "";
 
   const handleToggleFavorite = async (track: PlaylistTrackRow) => {
     const id = getTrackFavoriteId(track);
@@ -435,9 +420,8 @@ export function PlaylistTracks({
     const name = track.trackName || "track";
     const setStarred = (starred: boolean) =>
       queryClient.setQueryData<FavoriteSongs>(favoriteQueryKey, (current = {}) => {
-        const songs = Array.isArray(current.song) ? current.song : [];
-        const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
-        return { ...current, song: starred ? [...withoutTrack, { id }] : withoutTrack };
+        const withoutTrack = (current.songIds ?? []).filter((songId) => songId !== id);
+        return { ...current, songIds: starred ? [...withoutTrack, id] : withoutTrack };
       });
     let previous: FavoriteSongs | undefined;
     let optimistic: FavoriteSongs | undefined;

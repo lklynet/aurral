@@ -1140,8 +1140,10 @@ export async function reuseTrackForPlaylist(
   if (!source) return { reused: false, reason };
 
   const finalPath =
-    targetPlaylistType === "library" && source.sourceType === "aurral"
-      ? (await adoptFileIntoPlaylist(source.sourcePath, "library", downloadRoot, { track }))!
+    source.sourceType === "aurral" && usesLibraryFolders(targetPlaylistType)
+      ? (await adoptFileIntoPlaylist(source.sourcePath, targetPlaylistType, downloadRoot, {
+          track,
+        }))!
       : path.resolve(source.sourcePath);
   if (!(await fileExists(finalPath))) {
     return { reused: false, reason: "Source file is missing" };

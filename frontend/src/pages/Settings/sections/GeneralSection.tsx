@@ -1,5 +1,4 @@
 import { parseResponse } from "hono/client";
-import PillToggle from "../../../components/PillToggle";
 import { authClient } from "../../../utils/api/clients/auth.ts";
 import { setDateTimeFormat } from "../../../utils/dateTime.ts";
 import { queryKeys } from "../../../queryClient.ts";
@@ -32,25 +31,6 @@ export function GeneralSection() {
               { value: "day-first", label: "14:30 09/08/2026" },
               { value: "year-first", label: "2026/08/09 14:30" },
             ]}
-          />
-        </SettingsRow>
-      </SettingsGroup>
-      <SettingsGroup title="Subsonic">
-        <SettingsRow
-          label="Favorite flow tracks"
-          htmlFor="subsonic-favorite-auto-keep"
-          help="Adds flow tracks to the Library when favorited in a Subsonic client."
-        >
-          <PillToggle
-            id="subsonic-favorite-auto-keep"
-            checked={settings.subsonic?.favoriteAutoKeep !== false}
-            onChange={(event) =>
-              updateSettings({
-                ...settings,
-                subsonic: { ...settings.subsonic, favoriteAutoKeep: event.target.checked },
-              })
-            }
-            aria-label="Keep flow tracks when favorited through Subsonic"
           />
         </SettingsRow>
       </SettingsGroup>
