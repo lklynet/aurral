@@ -307,3 +307,31 @@ test("a search still answering at the deadline is stopped and keeps its response
   );
   assert.equal(deleted.mock.calls.length, 0);
 });
+
+test("a search cancelled while it is stopped at the deadline returns nothing", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
+  const controller = new AbortController();
+  vi.spyOn(slskdClient, "stopSearch").mockImplementation(async () => {
+    controller.abort();
+    return true;
+  });
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
+    state: "InProgress",
+    fileCount: 1,
+    responseCount: 1,
+    responses: [],
+  }));
+  vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () => [
+    { username: "peer", files: [{ filename: "Song.flac" }] },
+  ]);
+  const pending = slskdClient.waitForSearch("cancelled-at-deadline", 10000, {
+    gracePeriodMs: 0,
+    signal: controller.signal,
+  });
+  for (let step = 0; step < 14; step += 1) {
+    await new Promise(setImmediate);
+    vi.advanceTimersByTime(1000);
+  }
+  assert.equal(await pending, null);
+});

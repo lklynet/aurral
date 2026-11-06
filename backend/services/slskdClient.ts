@@ -542,15 +542,19 @@ class SearchMonitor {
 
   // slskd returns a running search's responses only once it ends, so a search
   // cut off by its deadline is stopped and read instead of discarded.
-  async collect(signal?: AbortSignal) {
+  async collect(cancelled: () => boolean | undefined, signal?: AbortSignal) {
     const latest = this.latest;
     if (!latest || !this.hasSeenFiles || isSearchComplete(latest)) return this.finish(latest);
-    if (!(await this.client.stopSearch(this.searchId, { signal }).catch(() => false))) {
-      return this.finish(latest);
+    const stopped = await this.client.stopSearch(this.searchId, { signal }).catch(() => false);
+    const hydrated = stopped
+      ? await this.client
+          .hydrateCompletedSearch(this.searchId, latest, { signal })
+          .catch(() => latest)
+      : latest;
+    if (cancelled()) {
+      await this.stop();
+      return { done: true, data: null } as const;
     }
-    const hydrated = await this.client
-      .hydrateCompletedSearch(this.searchId, latest, { signal })
-      .catch(() => latest);
     for (const file of this.client.flattenSearchResults(hydrated)) {
       this.collected.set(`${file.user}\0${file.file}`, file);
     }
@@ -585,7 +589,7 @@ class SearchMonitor {
       const cutoff = this.queued || !this.latest ? this.hardDeadline : this.cutoff();
       if (Date.now() >= cutoff) {
         if (this.queued) throw searchStillQueuedError();
-        return this.collect(signal);
+        return this.collect(cancelled, signal);
       }
       let data: SlskdSearch;
       try {
@@ -599,7 +603,7 @@ class SearchMonitor {
         }
         if (Date.now() >= cutoff) {
           if (this.queued) throw searchStillQueuedError();
-          return this.collect(signal);
+          return this.collect(cancelled, signal);
         }
         throw error;
       }
@@ -670,7 +674,7 @@ class SearchMonitor {
         return this.finish(hydrated);
       }
       const nextCutoff = this.cutoff();
-      if (Date.now() >= nextCutoff) return this.collect(signal);
+      if (Date.now() >= nextCutoff) return this.collect(cancelled, signal);
       const progress = Math.min(1, this.totalFiles / DEFAULT_FILE_LIMIT);
       const grace = Date.now() >= this.graceStartsAt;
       return {
