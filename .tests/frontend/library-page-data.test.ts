@@ -25,6 +25,13 @@ test("album track hydration does not rewrite unchanged library state", () => {
   assert.equal(hydrated.albums[0]?.trackCount, 1);
   assert.equal(hydrated.albums[0]?.availableTrackCount, 1);
   assert.strictEqual(mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]), hydrated);
+
+  const laterPage = libraryTrack({ id: 9, files: [libraryFile()] });
+  const full = mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track, laterPage]);
+  assert.deepEqual(
+    full.tracks.map((entry) => entry.id),
+    [8, 9],
+  );
 });
 
 test("invalidated album track caches fall back to the current library tracks", (t: import("vite-plus/test").TestContext) => {
