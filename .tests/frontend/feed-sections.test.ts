@@ -43,6 +43,12 @@ test("splitFeed falls back to the first item and skips a shelf with too few item
     ],
   );
   assert.equal(splitFeed([], groupOf).lead, undefined);
+  const pastFirstPage = splitFeed(
+    [item("a", "Today"), item("b", "Today"), item("c", "Today", true)],
+    groupOf,
+    (entry, index) => index < 2 && entry.featured,
+  );
+  assert.equal(pastFirstPage.lead?.id, "a");
 });
 
 test("newsDayLabel buckets by calendar day", () => {

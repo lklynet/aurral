@@ -7,7 +7,7 @@ export type FeedGroup<T> = { label: string; items: T[] };
 export function splitFeed<T>(
   items: readonly T[],
   groupOf: (item: T) => string,
-  isLead: (item: T) => boolean = () => true,
+  isLead: (item: T, index: number) => boolean = () => true,
 ) {
   const leadIndex = Math.max(0, items.findIndex(isLead));
   const rest = items.filter((_, index) => index !== leadIndex);

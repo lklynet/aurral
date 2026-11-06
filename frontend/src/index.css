@@ -1806,7 +1806,7 @@ textarea:disabled {
   }
 
   .page-section-mobile-nav,
-  .shows-page__filters {
+  .shows-page .shows-page__filters {
     display: none;
   }
 

@@ -11,6 +11,8 @@ import { SkeletonFeedPage } from "../components/Skeletons";
 import StatePanel from "../components/StatePanel";
 import { newsDayLabel, splitFeed } from "../utils/feedSections.ts";
 
+const NEWS_PAGE_SIZE = 24;
+
 const NEWS_FILTERS = [
   { highlighted: false, label: "All" },
   { highlighted: true, label: "Your artists" },
@@ -26,7 +28,7 @@ export default function NewsPage() {
   const { articles, refresh, loading, loadingMore, hasMore, loadMore, error, disableFeed } =
     useLibraryNews({
       enabled: newsConfigured,
-      limit: 24,
+      limit: NEWS_PAGE_SIZE,
       mode: highlightedOnly ? "matched" : "top",
     });
   const refreshWarning = error || refresh?.warning || "";
@@ -34,7 +36,7 @@ export default function NewsPage() {
   const { lead, shelf, groups } = splitFeed(
     articles,
     (article) => newsDayLabel(article.publishedAt),
-    (article) => article.artists.length > 0,
+    (article, index) => index < NEWS_PAGE_SIZE && article.artists.length > 0,
   );
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function NewsPage() {
               {refreshWarning}
             </p>
           ) : null}
-          <NewsLead article={lead} onDisableFeed={onDisableFeed} />
+          <NewsLead key={lead.id} article={lead} onDisableFeed={onDisableFeed} />
           {shelf.length > 0 ? (
             <DiscoverRail title="Latest">
               {shelf.map((article) => (
