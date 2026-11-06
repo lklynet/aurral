@@ -36,6 +36,8 @@ Aurral works on its own, and every integration (Lidarr, Navidrome, Plex, slskd, 
 
 When it is unclear, say so and name what would tell the two apart.
 
+Failures that hit many unrelated hosts in the same few minutes, such as `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, or timeouts across news feeds, Last.fm, and BrainzMash at once, point to the network or DNS where Aurral runs, not to Aurral or any one service. On a host without IPv6, an `ENETUNREACH` to an IPv6 address is a side effect: the IPv4 attempt failed or got no address, so check DNS first.
+
 ## 5. Check upstream
 
 Search existing issues at https://github.com/lklynet/aurral/issues (use `gh` if it is installed and logged in). Check the releases at https://github.com/lklynet/aurral/releases for a newer version that already fixed it. If the user is behind and the fix shipped, tell them to update.
