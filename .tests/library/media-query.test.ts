@@ -653,8 +653,8 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       availableOnly: false,
       references: [ownedAlbum.identity_key, missingAlbum.identity_key],
     });
-    const owned = readModel.albums.find((album) => album.canonicalId === ownedAlbum.id);
-    const missing = readModel.albums.find((album) => album.canonicalId === missingAlbum.id);
+    const owned = readModel.albums.find((album) => album.id === ownedAlbum.id);
+    const missing = readModel.albums.find((album) => album.id === missingAlbum.id);
     assert.equal(owned?.identityKey, ownedAlbum.identity_key);
     assert.equal(missing?.identityKey, missingAlbum.identity_key);
     assert.equal(owned?.statistics.trackFileCount, 1);
@@ -997,7 +997,6 @@ test("library responses do not expose filesystem paths", () => {
             Parameters<typeof readArtist>[0]
           >["metadata"],
         }),
-        canonicalId: "1",
         providerId: null,
         managedBy: null,
         monitorMode: null,

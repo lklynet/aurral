@@ -224,7 +224,6 @@ export function buildPermissions(role: string, permissions?: UserPermissions) {
     return {
       accessSettings: true,
       accessPlaylists: true,
-      accessFlow: true,
       addArtist: true,
       addAlbum: true,
       changeMonitoring: true,
@@ -234,7 +233,7 @@ export function buildPermissions(role: string, permissions?: UserPermissions) {
     };
   }
   const resolved = { ...userOps.getDefaultPermissions(), ...permissions };
-  return { ...resolved, accessFlow: resolved.accessPlaylists, accessSettings: false };
+  return { ...resolved, accessSettings: false };
 }
 
 export function toResolvedUser(user: ResolvableUser | null) {

@@ -1,5 +1,5 @@
 export const API_CONTRACT = {
-  version: 1,
+  version: 2,
   features: [
     "discover",
     "flows",
@@ -18,7 +18,6 @@ export const API_CONTRACT = {
     "loudness",
     "albumPlaySorts",
     "browsePlaylists",
-    "currentNames",
     "playlistTrackArtwork",
   ],
 };

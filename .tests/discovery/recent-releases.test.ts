@@ -135,7 +135,7 @@ test("recent missing releases can exclude future releases for Release Radar", as
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: String(artist.id) }],
+      artists: [{ id: String(artist.id) }],
       includeFuture: false,
       now: "2026-06-15T12:00:00Z",
     });
@@ -177,7 +177,7 @@ test("recent missing releases can be scoped to library artists", async () => {
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: String(includedArtist.id) }],
+      artists: [{ id: String(includedArtist.id) }],
       now: "2026-06-15T12:00:00Z",
     });
 
@@ -222,7 +222,7 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
     Object.fromEntries(
       (
         await getRecentMissingReleases(100, {
-          artists: [{ canonicalId: String(artist.id) }],
+          artists: [{ id: String(artist.id) }],
           now,
         })
       ).map((album) => [album.title, album.releaseDate]),
@@ -713,7 +713,7 @@ test("an artist removed from the library during a refresh is skipped instead of 
     assert.deepEqual(
       (
         await getRecentMissingReleases(100, {
-          artists: [{ canonicalId: String(kept.id) }],
+          artists: [{ id: String(kept.id) }],
           now: "2026-09-27T12:00:00Z",
         })
       ).map((album) => album.title),

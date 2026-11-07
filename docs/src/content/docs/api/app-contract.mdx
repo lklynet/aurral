@@ -10,7 +10,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 ```json
 {
   "api": {
-    "version": 1,
+    "version": 2,
     "features": [
       "discover",
       "flows",
@@ -61,7 +61,6 @@ The feature list is the same before and after sign-in.
 | `loudness`               | A `HEAD` request on a track's `streamPath` returns `X-Aurral-Loudness`, the file's integrated loudness in LUFS. Aurral measures a file the first time it is asked and remembers it until the file changes. The header is absent when the file can't be measured.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `albumPlaySorts`         | Album pages from `GET /api/library` accept `sort=played` (the signed-in user's recently played first), `plays` (most played first), `released` (newest release date first), and `random`. Without a signed-in user, `played` and `plays` return no albums.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `browsePlaylists`        | Playlists to browse. `GET /api/discover/playlists/made-for-you` returns arrays `discovery` and `mixes`, built for the signed-in user. `GET /api/discover/playlists` returns arrays `forYou` and `categories`; each category has `id`, `name`, `group` (`genre`, `mood`, or `decade`), and `playlists`. Every playlist has `provider` (`deezer`, `mix`, or `discovery`), `id`, `name`, numeric `trackCount`, and nullable `description`, `curator`, and `artworkUrl`. `GET /api/discover/playlists/:provider/:playlistId` adds `tracks`, where a track in the Library has `owned` in the shape radio returns and other tracks play `preview_url`. `POST` to the same path plus `/library` saves it: a Deezer playlist syncs daily, a discovery playlist downloads its missing songs, and a mix saves its Library tracks. Mixes are also read-only Subsonic playlists with `mix:` ids. |
-| `currentNames`           | The names in [Renamed in version 1](#renamed-in-version-1). Servers without this feature only use the older names.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `playlistTrackArtwork`   | Every track from `GET /api/playlists/jobs/:playlistId` has nullable `artworkUrl`: the track's custom artwork, or else its album cover. A track with custom artwork also has `customArtworkUrl` and nullable `defaultArtworkUrl`, the album cover. Album covers come from `GET /api/artists/release-group/:mbid/cover/image`, which redirects to the image and returns `404` when the album has none.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Clients check for a feature before using its routes. An absent name means the
@@ -87,7 +86,7 @@ before interpreting a success response.
 
 ## Stable response fields
 
-The routes and fields below form version 1 of the app contract. Responses may
+The routes and fields below form version 2 of the app contract. Responses may
 contain additional fields. Arrays can be empty. Fields marked nullable can be
 `null`.
 
@@ -165,10 +164,14 @@ tracks have strings `title` and `artistName`, nullable string `mbid`, and array
 `files`. These IDs are different from MusicBrainz IDs and Subsonic IDs.
 
 Album lookup objects contain boolean `inLibrary` and `monitored`, nullable
-strings `providerAlbumId` and `providerArtistId`, string `status`, numeric
+strings `libraryAlbumId`, `libraryArtistId`, `providerAlbumId`, and
+`providerArtistId`, string `status`, numeric
 `trackCount` and `trackFileCount`, and array `ownedTrackMbids`. An absent key
 means that the server did not find the album. `ownedTrackMbids` identifies
 available tracks; it does not promise a complete album track list.
+`libraryAlbumId` and `libraryArtistId` are null when the album is not in the
+Library. `providerAlbumId` and `providerArtistId` are null when no service such
+as Lidarr manages it.
 
 Flow objects contain strings `id` and `name`, numeric `size` and `ownerUserId`,
 boolean `enabled`, and object `mix`. Existing legacy flows can have a nullable
@@ -183,12 +186,12 @@ Approval imports the held file and marks the job done. Denial removes the held
 file and returns the job to the download queue. A missing or no-longer-blocked
 job returns `404` with `error`.
 
-## Renamed in version 1
+## Changes from version 1
 
-A server with `currentNames` accepts and returns both names. Version 2 removes
-the older ones.
+Version 2 removed these version 1 names. Apps that still read them need the
+current names.
 
-| Older name                                                                  | Current name                                            |
+| Version 1                                                                   | Version 2                                               |
 | --------------------------------------------------------------------------- | ------------------------------------------------------- |
 | `GET /api/library/canonical`                                                | `GET /api/library`                                      |
 | `/api/library/canonical-stream/:albumId/:trackId`                           | `/api/library/stream/:albumId/:trackId`                 |
@@ -201,14 +204,10 @@ the older ones.
 | `canonicalId` on Library artists, albums, and tracks                        | `id`                                                    |
 | `canonicalId` on search results, artist lookups, and Aurral album responses | `libraryId`                                             |
 | `albumCanonicalId` on track search results, `canonicalAlbumId` on activity  | `libraryAlbumId`                                        |
+| `canonicalAlbumId`, `canonicalArtistId` on album lookups                    | `libraryAlbumId`, `libraryArtistId`                     |
 | `canonicalTrackId` in `POST /api/library/downloads/track`                   | `libraryTrackId`                                        |
 
-Track `streamPath` values use `/library/stream/`. A saved play queue accepts
-either stream path.
-
-Album lookup objects are the exception. Their `libraryAlbumId` and
-`libraryArtistId` hold the IDs of the service that manages the album. In
-version 2 they hold Library IDs and replace `canonicalAlbumId` and
-`canonicalArtistId`. Read `providerAlbumId` and `providerArtistId` for service
-IDs; they are null when no service manages the album. Artist lookups answered
-by the service directly have no `libraryId`.
+In version 1, `libraryAlbumId` and `libraryArtistId` on album lookups and
+album search results held the IDs of the service that manages the album. In
+version 2 they hold Library IDs on lookups, and `providerAlbumId` and
+`providerArtistId` hold the service's IDs on both.

@@ -135,15 +135,15 @@ test("library search answers from the local library without calling the metadata
   const body: Record<"artists" | "albums" | "tracks", SearchItem[]> = await response.json();
 
   assert.deepEqual(
-    body.artists.map((item) => [item.name, item.canonicalId]),
+    body.artists.map((item) => [item.name, item.libraryId]),
     [["Harbor Collective", String(artist.id)]],
   );
   assert.deepEqual(
-    body.albums.map((item) => [item.title, item.canonicalId, item.id, item.artistName]),
+    body.albums.map((item) => [item.title, item.libraryId, item.id, item.artistName]),
     [["Quiet Harbor", String(album.id), "search-routes-release-group", "Harbor Collective"]],
   );
   assert.deepEqual(
-    body.tracks.map((item) => [item.title, item.albumCanonicalId, item.albumMbid]),
+    body.tracks.map((item) => [item.title, item.libraryAlbumId, item.albumMbid]),
     [["Lantern Song", String(album.id), "search-routes-release-group"]],
   );
   assert.equal(metadataRequests.length, 0);

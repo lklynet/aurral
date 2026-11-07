@@ -5,7 +5,7 @@ import type libraryIndex from "../../backend/routes/library/handlers/libraryInde
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 type LibraryRoutes = ReturnType<typeof hc<typeof libraryIndex>>["library"];
-type LibraryPage = InferResponseType<LibraryRoutes["canonical"]["$get"], 200>;
+type LibraryPage = InferResponseType<LibraryRoutes["$get"], 200>;
 type Page<Kind extends LibraryPage["kind"]> = Extract<LibraryPage, { kind: Kind; items: unknown }>;
 type Favorites = InferResponseType<LibraryRoutes["favorites"]["$get"], 200>;
 type FavoritesUpdate = InferResponseType<LibraryRoutes["favorites"]["$post"], 200>;
@@ -186,7 +186,6 @@ test("library pages return bounded collection responses", async () => {
   assert.equal(tracks.total, 3);
   assert.equal(tracks.items.length, 1);
   assert.equal(tracks.items[0]?.artistName, "Favorite Artist");
-  assert.equal(String(tracks.items[0].canonicalId), String(tracks.items[0].id));
   assert.equal(tracks.items[0].providerId, null);
   assert.equal(tracks.items[0]?.source, "aurral");
   assert.equal(tracks.items[0]?.available, true);
@@ -202,7 +201,6 @@ test("library pages return bounded collection responses", async () => {
   ).json();
   assert.equal(available.items[0]?.trackCount, 2);
   assert.equal(available.items[0]?.availableTrackCount, 1);
-  assert.equal(String(available.items[0].canonicalId), String(available.items[0].id));
   assert.equal(available.items[0]?.source, "aurral");
   assert.equal(available.items[0]?.available, true);
   assert.equal("trackList" in (available.items[0]?.metadata ?? {}), false);

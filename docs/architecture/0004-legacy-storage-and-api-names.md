@@ -20,10 +20,7 @@ Code uses names that match the current model:
 
 Stored data uses the current names too. When Aurral moved to its own job queue, one startup migration renamed the tables, columns, queues, task kinds, and settings keys (`backend/config/job-queue-migration.ts`). An older build cannot read the renamed data, so the migration first writes a snapshot, `aurral.pre-job-queue.db`, to the data dir.
 
-The JSON API uses the current names too. Version 1 of the [app contract](../src/content/docs/api/app-contract.mdx#renamed-in-version-1) still accepts and returns the older ones beside them, so Aurral apps keep working until they move over, and `currentNames` tells an app the new names exist. Version 2 removes them. Two choices there are easy to undo by accident:
-
-- The websocket playlist status carries only `staticPlaylists`. Only the web app reads it, and the list includes every track, so sending both names doubles each update. `GET /api/playlists/status` adds the older names for apps.
-- Album lookup objects already used `libraryAlbumId` and `libraryArtistId` for the managing service's IDs. They keep that meaning in version 1, next to `providerAlbumId` and `providerArtistId`. Version 2 makes them Library IDs, so `library*Id` always means a Library ID.
+The JSON API uses the current names too. Version 2 of the [app contract](../src/content/docs/api/app-contract.mdx#changes-from-version-1) dropped the older names that version 1 returned beside them. `library*Id` always means a Library ID, and `provider*Id` means the ID in the service that manages the item, such as Lidarr.
 
 `LIBRARY_FOLDER` names the Library folder. `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` still work and log a warning.
 

@@ -133,11 +133,11 @@ test("recent artists combines both owners with artwork and library identities wh
     ["aurral", "lidarr"],
   );
   assert.equal(recent[0]?.mbid, mbid);
-  assert.equal(recent[0]?.canonicalId, String(aurral.id));
+  assert.equal(recent[0]?.id, String(aurral.id));
   assert.deepEqual(recent[0]?.images, images);
   assert.equal(requireFixture(recent[1]).mbid, null);
   assert.equal(recent[1]?.foreignArtistId, "123@deezer");
-  assert.equal(recent[1]?.canonicalId, String(lidarr.id));
+  assert.equal(recent[1]?.id, String(lidarr.id));
   assert.deepEqual(recent[1]?.images, lidarrImages);
 });
 
@@ -204,7 +204,7 @@ test("recent artists returns the twenty newest artists, including artists withou
     recent.map((artist) => artist.artistName),
     Array.from({ length: 20 }, (_, index) => `Artist ${String(index + 1).padStart(2, "0")}`),
   );
-  assert.ok(recent.every((artist) => artist.mbid === null && artist.canonicalId));
+  assert.ok(recent.every((artist) => artist.mbid === null && artist.id));
 });
 
 test("recent artists collapse duplicate canonical artist rows", async () => {
@@ -249,7 +249,7 @@ test("recent artists keep unidentified artists with the same name separate", asy
 
   assert.equal(recent.length, 2);
   assert.deepEqual(
-    recent.map((artist) => artist.canonicalId),
+    recent.map((artist) => artist.id),
     [String(second.id), String(first.id)],
   );
 });
@@ -303,7 +303,7 @@ test("file scans retain artist identity, artwork and added date while updating f
     assert.equal(scan.filesIndexed, 1);
     const [recent] = await getRecent();
     assert.ok(recent !== undefined);
-    assert.equal(recent.canonicalId, String(artist.id));
+    assert.equal(recent.id, String(artist.id));
     assert.equal(recent.mbid, mbid);
     assert.equal(recent.added, new Date(added).toISOString());
     assert.deepEqual(recent.images, images);

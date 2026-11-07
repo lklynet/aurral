@@ -96,7 +96,7 @@ const isOpen = (method: string, path: string) =>
       /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(path)));
 
 const tokenPaths = [
-  /^\/api\/library\/(?:canonical-)?stream\/[^/]+\/[^/]+$/i,
+  /^\/api\/library\/stream\/[^/]+\/[^/]+$/i,
   /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i,
   /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i,
   /^\/api\/playlists\/stream\/[^/]+$/i,

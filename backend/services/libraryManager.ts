@@ -489,7 +489,6 @@ function normalizeLibraryManager(value: unknown) {
 
 type AlbumConflictSource = {
   id?: string | number;
-  canonicalId?: string | number | null;
   providerId?: string | number | null;
   foreignAlbumId?: string | null;
   mbid?: string | null;
@@ -507,8 +506,7 @@ function buildAlbumConflict(album: AlbumConflictSource, message: string | null =
     manager: album?.managedBy || null,
     currentManager: album?.managedBy || null,
     sources: Array.isArray(album?.sources) ? album.sources : [],
-    libraryId: album?.canonicalId || album?.id || null,
-    canonicalId: album?.canonicalId || album?.id || null,
+    libraryId: album?.id || null,
     providerId: album?.providerId || album?.foreignAlbumId || album?.mbid || null,
     availability: {
       available: Boolean(album?.available),
@@ -570,7 +568,6 @@ function mapLibraryAlbum(
   const trackCount = albumTracks.length;
   return {
     id: String(album.id),
-    canonicalId: String(album.id),
     providerId: album.metadata?.id ?? null,
     artistId: String(album.artistId),
     artistName: artist?.name || album.albumArtist || null,
@@ -603,7 +600,6 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
   const relation = (track.albums || []).find((entry) => entry.albumId === album?.id);
   return {
     id: String(track.id),
-    canonicalId: String(track.id),
     providerId: track.metadata?.id ?? null,
     albumId: album ? String(album.id) : null,
     artistId: album ? String(album.artistId) : null,
@@ -1428,7 +1424,7 @@ export class LibraryManager {
     const allAlbums: AlbumMonitoringView[] = Array.isArray(albums)
       ? albums
       : await this.getAlbums(artist.id, null, { forceRefresh: true });
-    let eligibleAlbums = allAlbums.filter((album) => album.canonicalId == null);
+    let eligibleAlbums = allAlbums.filter((album) => !("managedBy" in album));
 
     if (lidarr && lidarr.isConfigured() && artist?.id) {
       try {
@@ -3123,8 +3119,7 @@ export class LibraryManager {
       failed(entry)
         ? entry
         : {
-            libraryId: entry.mappedAlbum.canonicalId,
-            canonicalId: entry.mappedAlbum.canonicalId,
+            libraryId: entry.mappedAlbum.id,
             ...this._summarizeAurralAlbum(entry.album, entry.library.tracks, jobsForAlbum),
           },
     );
@@ -3185,7 +3180,6 @@ export class LibraryManager {
         }
         return {
           libraryId: String(trackId),
-          canonicalId: String(trackId),
           monitored,
           cancelledJobIds,
           queuedJobIds,
@@ -3219,7 +3213,6 @@ export class LibraryManager {
       }
       return {
         libraryId: String(trackId),
-        canonicalId: String(trackId),
         monitored,
         cancelledJobIds,
         queuedJobIds,
@@ -3267,8 +3260,7 @@ export class LibraryManager {
     const { album, mappedAlbum } = resolved;
     const result = await cancelAurralAlbumJobs(albumJobKeys(album));
     return {
-      libraryId: mappedAlbum.canonicalId,
-      canonicalId: mappedAlbum.canonicalId,
+      libraryId: mappedAlbum.id,
       managedBy: "aurral",
       ...result,
     };
@@ -3291,8 +3283,7 @@ export class LibraryManager {
     if (!artistState) removeLibraryArtistIfEmpty(album.artistId);
     return {
       success: true,
-      libraryId: mappedAlbum.canonicalId,
-      canonicalId: mappedAlbum.canonicalId,
+      libraryId: mappedAlbum.id,
       excluded,
     };
   }

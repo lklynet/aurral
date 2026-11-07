@@ -75,7 +75,7 @@ const albumFiles = (track: LibraryTrackRecord, albumId: number) =>
 const recordMatches = (record: ReadArtist, reference: unknown) => {
   const value = String(reference ?? "").trim();
   if (!value) return false;
-  return [record.id, record.canonicalId, record.providerId, record.mbid, record.identityKey].some(
+  return [record.id, record.providerId, record.mbid, record.identityKey].some(
     (candidate) => String(candidate ?? "").trim() === value,
   );
 };
@@ -97,7 +97,6 @@ const buildArtist = (
   const management = managementByArtistId.get(Number(artist.id)) || null;
   return {
     id: artist.id,
-    canonicalId: artist.id,
     identityKey: artist.identityKey,
     providerId,
     lidarrManaged: artist.metadata?.librarySource === "lidarr",
@@ -148,7 +147,6 @@ const buildAlbum = (
   const management = managementByAlbumId.get(Number(album.id)) || null;
   return {
     id: album.id,
-    canonicalId: album.id,
     identityKey: album.identityKey,
     providerId,
     source: album.source || (album.sources?.length === 1 ? album.sources[0] : null),
@@ -188,7 +186,6 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,
-    canonicalId: track.id,
     providerId: track.metadata?.id ?? null,
     albumId: album.id,
     artistId: album.artistId,

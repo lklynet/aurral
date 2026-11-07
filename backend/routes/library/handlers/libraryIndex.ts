@@ -291,7 +291,6 @@ export default new Hono<AppEnv>()
     return c.json(status, 200);
   })
   .get("/", ...libraryPage)
-  .get("/canonical", ...libraryPage)
   .get("/favorites", requireAuth, noCache, (c) => {
     const { starred, songIds, library } = getStarredWithLibrary(c.var.user);
     return c.json({ ...starred, songIds, library: toPublicLibrary(library) }, 200);

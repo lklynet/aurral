@@ -623,9 +623,7 @@ test("the web player and Subsonic clients resume the same play queue", async () 
       body: JSON.stringify({ streamPaths, current, positionMs: 1500, device: "Aurral web" }),
     }).then((response) => response.json());
   const [librarySong, flowTrack] = queue.tracks;
-  const legacyStreamPath = librarySong.streamPath.replace("/stream/", "/canonical-stream/");
-  assert.equal((await apiFetch(`/api${legacyStreamPath}`)).status, 200);
-  const saved = await save([flowTrack.streamPath, "/artists/x/preview", legacyStreamPath], 2);
+  const saved = await save([flowTrack.streamPath, "/artists/x/preview", librarySong.streamPath], 2);
   assert.ok(saved.changed > 0);
   const resumed = responseJson(await request("getPlayQueue")).playQueue;
   assert.deepEqual(
@@ -2026,7 +2024,7 @@ test("streams library files through the authenticated native route", async () =>
   const library = await canonical.json();
   const albumId = library.tracks[0].albums[0].albumId;
   const tracks = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=canonical&source=lidarr&albumId=${albumId}`,
+    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=library&source=lidarr&albumId=${albumId}`,
     { headers },
   );
   const track = (await tracks.json())[0];
