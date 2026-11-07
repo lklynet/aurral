@@ -153,7 +153,7 @@ export function getCustomArtwork(kind: string, id: string | number) {
 export function getCustomArtworkMap(kind: string, ids: (string | number)[]) {
   const entityKind = normalizeTarget(kind, "placeholder").entityKind;
   const entityIds = [...new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))];
-  if (!entityIds.length) return new Map();
+  if (!entityIds.length) return new Map<string, number>();
   const placeholders = entityIds.map(() => "?").join(", ");
   const rows = db
     .prepare<(string | number)[], Pick<CustomArtworkRow, "entity_id" | "updated_at">>(

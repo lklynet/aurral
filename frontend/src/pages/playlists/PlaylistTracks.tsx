@@ -1,5 +1,5 @@
 import { usePlaylistBulkActions } from "./usePlaylistBulkActions.ts";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useNavigate } from "react-router";
@@ -8,7 +8,6 @@ import { playlistArtworkClient } from "../../utils/api/clients/playlistArtwork.t
 import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { getPlaylistTrackArtworkUrl } from "../../utils/api/playlistUrls.ts";
-import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.ts";
 import {
   downloadTrackToLibrary,
   libraryFavoritesQueryOptions,
@@ -105,9 +104,6 @@ export function PlaylistTracks({
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [trackArtworkByAlbumMbid, setTrackArtworkByAlbumMbid] = useState<Record<string, string>>(
-    {},
-  );
   const canEditArtwork = hasPermission("addAlbum") || hasPermission("changeMonitoring");
 
   const favoriteQuery = useQuery(libraryFavoritesQueryOptions);
@@ -115,38 +111,6 @@ export function PlaylistTracks({
     () => new Set(favoriteQuery.data?.songIds),
     [favoriteQuery.data],
   );
-
-  useEffect(() => {
-    const items = tracks
-      .map((track) => ({
-        mbid: track?.albumMbid,
-        artistName: track?.artistName,
-        albumTitle: track?.albumName,
-      }))
-      .filter((item) => item.mbid);
-    if (!items.length) {
-      setTrackArtworkByAlbumMbid({});
-      return undefined;
-    }
-    let cancelled = false;
-    getReleaseGroupCoversBatch(items)
-      .then((covers) => {
-        if (cancelled) return;
-        setTrackArtworkByAlbumMbid(
-          Object.fromEntries(
-            Object.entries(covers || {})
-              .map(([mbid, cover]) => [mbid, cover?.image || ""])
-              .filter(([, image]) => image),
-          ),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setTrackArtworkByAlbumMbid({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tracks]);
 
   const getNextPlaylistName = (baseName: string) =>
     reserveUniqueName(
@@ -163,10 +127,9 @@ export function PlaylistTracks({
     setArtworkEditor({
       id: track.id,
       title: track.trackName || "Track",
-      currentArtwork:
-        track.artworkUrl || trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
+      currentArtwork: track.artworkUrl || "",
       hasCustomArtwork: Boolean(track.customArtworkUrl),
-      fallbackArtwork: trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
+      fallbackArtwork: track.defaultArtworkUrl || "",
     });
   };
 
@@ -525,7 +488,6 @@ export function PlaylistTracks({
         onNavigateAlbum={handleNavigateAlbum}
         getArtistLink={getArtistLink}
         getAlbumLink={getAlbumLink}
-        artworkByAlbumMbid={trackArtworkByAlbumMbid}
         showTrackAvailability={showTrackAvailability}
       />
       <LibraryInfoModal item={trackInfo} onClose={() => setTrackInfo(null)} />

@@ -60,6 +60,7 @@ import {
   buildCustomArtworkUrl,
   getCustomArtworkMap,
 } from "../../../services/customArtworkService.ts";
+import { releaseGroupCoverImageUrl } from "../../../services/releaseGroupCoverService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
@@ -129,6 +130,18 @@ function toPublicJob(job: DownloadJob, profile: ReturnType<typeof getQualityProf
   } = decorateJobQuality(job, profile);
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
   return { ...publicJob, streamFormat: streamFormat || null };
+}
+
+function trackArtwork(
+  job: DownloadJob,
+  customArtwork: ReturnType<typeof getCustomArtworkMap>,
+  playlistId: string | null,
+) {
+  const defaultArtworkUrl = job.albumMbid ? releaseGroupCoverImageUrl(job.albumMbid) : null;
+  const custom = customArtwork.get(String(job.id));
+  if (!custom) return { artworkUrl: defaultArtworkUrl };
+  const customArtworkUrl = buildCustomArtworkUrl("playlist-track", job.id, custom, { playlistId });
+  return { artworkUrl: customArtworkUrl, customArtworkUrl, defaultArtworkUrl };
 }
 
 const reviewBlockedJob = async <E extends AppEnv>(
@@ -249,20 +262,7 @@ export default new Hono<AppEnv>()
           ...toPublicJob(job, profile),
           libraryOwned: libraryOwnership[index] === true,
           favoriteId: favoriteIds[index],
-          ...(customArtwork.has(String(job.id)) && {
-            artworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId },
-            ),
-            customArtworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId },
-            ),
-          }),
+          ...trackArtwork(job, customArtwork, playlistId),
         })),
         200,
       );
@@ -292,20 +292,7 @@ export default new Hono<AppEnv>()
         jobs.map((job) => ({
           ...toPublicJob(job, profile),
           monitored: !isUnmonitored(job),
-          ...(customArtwork.has(String(job.id)) && {
-            artworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId: job.playlistType || job.playlistId },
-            ),
-            customArtworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId: job.playlistType || job.playlistId },
-            ),
-          }),
+          ...trackArtwork(job, customArtwork, job.playlistType || job.playlistId),
         })),
         200,
       );
