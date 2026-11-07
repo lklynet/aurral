@@ -138,3 +138,30 @@ export function mergeAlbumTracks<
     number: row.number || index + 1,
   }));
 }
+
+const discSubtitle = (track: { metadata?: Record<string, unknown> | null } | null) => {
+  const tags = track?.metadata?.tags;
+  const [subtitle] = [
+    tags && typeof tags === "object" && "discsubtitle" in tags ? tags.discsubtitle : null,
+  ].flat();
+  return typeof subtitle === "string" ? subtitle.trim() : "";
+};
+
+export function albumDiscHeadings(
+  rows: readonly {
+    disc: number;
+    libraryTrack: { metadata?: Record<string, unknown> | null } | null;
+  }[],
+) {
+  if (new Set(rows.map((row) => row.disc)).size < 2) return rows.map(() => null);
+  const subtitles = new Map<number, Set<string>>();
+  for (const row of rows) {
+    const subtitle = discSubtitle(row.libraryTrack);
+    if (subtitle) subtitles.set(row.disc, (subtitles.get(row.disc) ?? new Set()).add(subtitle));
+  }
+  return rows.map(({ disc }, index) => {
+    if (rows[index - 1]?.disc === disc) return null;
+    const names = [...(subtitles.get(disc) ?? [])];
+    return names.length === 1 ? `Disc ${disc} · ${names[0]}` : `Disc ${disc}`;
+  });
+}

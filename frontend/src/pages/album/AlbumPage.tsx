@@ -21,7 +21,6 @@ import {
 } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { FavoriteButton, TrackList, type TrackListRow } from "../../components/TrackList";
-import { albumDiscHeadings, fileAlbumTitle } from "../../utils/albumDiscs.ts";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAudioQueue } from "../../contexts/audioQueueContext";
 import { useDiscoverRecent } from "../../contexts/DiscoverRecentProvider";
@@ -70,7 +69,7 @@ import {
   useLibraryViewData,
 } from "../library/libraryShared.tsx";
 
-import { mergeAlbumTracks } from "./mergeAlbumTracks.ts";
+import { albumDiscHeadings, mergeAlbumTracks } from "./mergeAlbumTracks.ts";
 import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./releaseTracks.tsx";
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
@@ -371,27 +370,18 @@ function AlbumPage() {
     onLibraryAlbumRequested: albumState.markAlbumRequested,
   });
 
-  // A heading above the first track of each disc, named after a box set's disc
-  // title when its files carry one.
-  const discSections = albumDiscHeadings(
-    merged.map((entry) => ({
-      disc: entry.disc,
-      title: entry.libraryTrack ? fileAlbumTitle(entry.libraryTrack) : "",
-    })),
-    title,
-  );
-  const rows: TrackListRow[] = merged.map((entry, mergedIndex): TrackListRow => {
-    const section = discSections[mergedIndex] ?? undefined;
-    const row = buildAlbumRow(entry);
-    return section ? { ...row, section } : row;
-  });
-  function buildAlbumRow(entry: (typeof merged)[number]): TrackListRow {
+  const discHeadings = albumDiscHeadings(merged);
+  const rows: TrackListRow[] = merged.map((entry, index) => {
     const { releaseIndex } = entry;
+    const section = discHeadings[index];
     if (!entry.libraryTrack) {
-      return releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
-        key: entry.key,
-        number: entry.number,
-      });
+      return {
+        ...releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
+          key: entry.key,
+          number: entry.number,
+        }),
+        section,
+      };
     }
     const track = entry.libraryTrack;
     const row = actions.buildLibraryTrackRow(track, albumTracks.indexOf(track), albumTracks);
@@ -408,6 +398,7 @@ function AlbumPage() {
         : [];
     return {
       ...row,
+      section,
       key: entry.key,
       number: entry.number,
       subtitle:
@@ -433,7 +424,7 @@ function AlbumPage() {
           },
         }),
     };
-  }
+  });
   const trackParam = searchParams.get("track") || "";
   const highlightKey = trackParam
     ? (merged.find(

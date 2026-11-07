@@ -9376,6 +9376,13 @@ button.native-library-card__artist:focus-visible {
   letter-spacing: 0;
 }
 
+.native-library-track-section {
+  padding: 1.25rem 0.5rem 0.35rem;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-sm);
+  font-weight: 600;
+}
+
 .native-library-track.is-active {
   background: var(--aurral-surface-selected);
 }

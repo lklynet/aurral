@@ -15,7 +15,6 @@ import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import RouteLink from "./RouteLink";
-import { DiscSection } from "./DiscSection.tsx";
 
 const SORTABLE_HEADINGS = {
   number: "index",
@@ -50,8 +49,7 @@ type TrackCoverField = TrackLinkField & { src?: string | null };
 
 export type TrackListRow = {
   key: string | number;
-  // A heading shown above this row, such as a disc of a box set.
-  section?: ReactNode;
+  section?: string | null;
   title: string;
   number: ReactNode;
   year?: string | null;
@@ -310,7 +308,13 @@ export function TrackList({
               : `Play ${row.title}`;
           return [
             row.section ? (
-              <DiscSection key={`section-${row.key}`}>{row.section}</DiscSection>
+              <div
+                key={`section-${row.key}`}
+                className="native-library-track-section"
+                role="presentation"
+              >
+                {row.section}
+              </div>
             ) : null,
             <div
               key={row.key}
