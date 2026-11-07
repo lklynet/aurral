@@ -8,6 +8,7 @@ import net from "net";
 import type Database from "better-sqlite3";
 import assert from "node:assert/strict";
 import { asAppError } from "../../lib/errors.ts";
+import { SCHEMA_VERSION } from "../../backend/config/upgrade-gate.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -111,6 +112,9 @@ export function resetDatabase(db: Database.Database) {
   for (const table of RESET_TABLES) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', ?)").run(
+    String(SCHEMA_VERSION),
+  );
 }
 
 export function listeningAddress(server: Pick<net.Server, "address">) {

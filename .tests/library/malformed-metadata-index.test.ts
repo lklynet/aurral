@@ -16,6 +16,7 @@ test("malformed artist metadata does not break startup or indexed reference look
   const seedDb = new Database(dbPath);
   seedDb.exec(`
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    INSERT INTO settings (key, value) VALUES ('schemaVersion', '5');
     CREATE TABLE library_artists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       identity_key TEXT NOT NULL UNIQUE,

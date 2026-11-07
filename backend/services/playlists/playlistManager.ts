@@ -19,12 +19,7 @@ import {
   type PlaylistArtworkStyle,
   type PlaylistArtworkState,
 } from "../playlistArtworkState.ts";
-import {
-  AURRAL_FLOWS_DIR,
-  LEGACY_PLAYLIST_DIR,
-  PLAYLIST_FILES_DIR,
-  resolveDownloadRoot,
-} from "../downloadPaths.ts";
+import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 import { withLock } from "../jobs/queue.ts";
 import { enqueueSystemTask } from "../jobs/queues.ts";
@@ -146,7 +141,7 @@ export class PlaylistManager {
         await this._ensureFlowArtwork(flow.id, names.get(id) ?? flow.name, "Flow");
       if (!entity || !fileName) continue;
       await this._ensureFlowArtwork(id, names.get(id) ?? entity.name, flow ? "Flow" : "Playlist");
-      const tracks = await collectPlaylistFileTracks(id, { downloadRoot: this.downloadRoot });
+      const tracks = await collectPlaylistFileTracks(id);
       const filePath = path.join(this.libraryRoot, fileName);
       if (await writePlaylistFile(filePath, buildPlaylistFile(tracks), { force: rewrite })) {
         changed.push(id);
@@ -343,14 +338,12 @@ export class PlaylistManager {
           await getDownloadClient("ytdlp").cleanupStaging(job.id);
         }
       }
-      const playlistDir = path.join(this.downloadRoot, LEGACY_PLAYLIST_DIR, playlistType);
       try {
         const { relocateSharedFilesBeforePlaylistRemoval } =
           await import("../downloadJobs/fileReuse.ts");
         await relocateSharedFilesBeforePlaylistRemoval(playlistType, {
           downloadRoot: this.downloadRoot,
         });
-        await fs.rm(playlistDir, { recursive: true, force: true });
         await fs.rm(flowDir, { recursive: true, force: true });
         console.log(`[PlaylistManager] Cleaned unused files for ${playlistType}`);
       } catch (error) {

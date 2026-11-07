@@ -473,7 +473,7 @@ export class DownloadWorker {
     if (Number.isFinite(result?.nextCursor)) {
       this.reuseRepairCursor = result.nextCursor;
     }
-    await moveHandedOverTracksToLidarr({ downloadRoot: this.downloadRoot });
+    await moveHandedOverTracksToLidarr();
     return result;
   }
 

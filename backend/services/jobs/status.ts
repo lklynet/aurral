@@ -145,18 +145,6 @@ const SYSTEM_TASK_LABELS = {
     label: "Inbox refresh",
     description: "Refreshes release, show, news, and discovery updates.",
   },
-  "stored-data-migration": {
-    label: "Stored settings update",
-    description: "Updates older settings, flows, and sign-in data.",
-  },
-  "identity-marker-migration": {
-    label: "Track identity tag update",
-    description: "Moves track identifiers from comment or grouping tags to a dedicated tag.",
-  },
-  "playlist-startup-migration": {
-    label: "Playlist startup migration",
-    description: "Migrates legacy playlist files and reconciles playlist folders.",
-  },
   "lidarr-files-release": {
     label: "Lidarr turned off",
     description: "Downloads Aurral copies of playlist and flow tracks that used Lidarr files.",

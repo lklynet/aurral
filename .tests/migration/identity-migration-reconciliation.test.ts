@@ -1,7 +1,5 @@
-import { requireFixture } from "../playlists/fixtures.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import Database from "better-sqlite3";
 
 import {
   createIsolatedStateDir,
@@ -13,87 +11,6 @@ function bootDb() {
   vi.resetModules();
   return import("../../backend/config/db-sqlite.ts");
 }
-
-test("identity upgrade protects the historical recovery admin, expires ambiguous sessions, and enables cascades", async () => {
-  const paths = await createIsolatedStateDir("identity-migration-security");
-  applyIsolatedBackendEnv(paths);
-
-  const legacyDb = new Database(paths.dbPath);
-  legacyDb.exec(`
-    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user',
-      permissions TEXT,
-      discover_layout TEXT
-    );
-    CREATE TABLE sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      token TEXT UNIQUE NOT NULL,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL,
-      ip_address TEXT,
-      user_agent TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-  `);
-  legacyDb.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?)").run(
-    JSON.stringify({
-      general: { authUser: "recovery-admin", authPassword: "encrypted-or-plain" },
-    }),
-  );
-  const userId = legacyDb
-    .prepare(
-      "INSERT INTO users (username, password_hash, role) VALUES ('recovery-admin', 'legacy-hash', 'admin')",
-    )
-    .run().lastInsertRowid;
-  legacyDb
-    .prepare(
-      "INSERT INTO sessions (user_id, token, created_at, expires_at) VALUES (?, 'legacy-session', ?, ?)",
-    )
-    .run(userId, Date.now(), Date.now() + 60_000);
-  legacyDb.close();
-
-  const { db } = await bootDb();
-  const migrated = db
-    .prepare<
-      unknown[],
-      {
-        is_protected: import("../../backend/db/rows.ts").UsersRow["is_protected"];
-        has_local_password: import("../../backend/db/rows.ts").UsersRow["has_local_password"];
-      }
-    >("SELECT is_protected, has_local_password FROM users WHERE id = ?")
-    .get(userId);
-  assert.ok(migrated != null);
-  assert.equal(migrated.is_protected, 1);
-  assert.ok(migrated != null);
-  assert.equal(migrated.has_local_password, 0);
-  assert.equal(
-    requireFixture(
-      db.prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get(),
-    ).count,
-    0,
-  );
-  assert.equal(db.pragma("foreign_keys", { simple: true }), 1);
-
-  db.prepare(
-    "INSERT INTO user_identities (user_id, provider_type, provider_key, subject, linked_at) VALUES (?, 'oidc', 'issuer', 'subject', ?)",
-  ).run(userId, Date.now());
-  db.prepare("DELETE FROM users WHERE id = ?").run(userId);
-  assert.equal(
-    requireFixture(
-      db
-        .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM user_identities")
-        .get(),
-    ).count,
-    0,
-  );
-  db.close();
-  await cleanupIsolatedState(paths);
-});
 
 test("reboot clears needs_identity_migration for a user whose identity was already linked before the flag existed", async () => {
   const paths = await createIsolatedStateDir("identity-migration-reconciliation");

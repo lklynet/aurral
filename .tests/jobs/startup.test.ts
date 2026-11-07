@@ -53,7 +53,7 @@ test("syncing schedules skips runs missed long ago without postponing recently d
   assert.equal(schedules.listSchedules().length, schedules.SCHEDULES.length);
 });
 
-test("startup only queues bootstrap work once, and a migration only while it is pending", () => {
+test("startup only queues bootstrap work once", () => {
   const queuedKinds = () =>
     db
       .prepare<[], { kind: string }>("SELECT kind FROM jobs ORDER BY id")
@@ -61,31 +61,6 @@ test("startup only queues bootstrap work once, and a migration only while it is 
       .map((row) => row.kind);
 
   startup.enqueueStartupTasks();
-  startup.enqueueStartupTasks();
-  assert.deepEqual(queuedKinds(), [
-    "playlist-startup-migration",
-    "stored-data-migration",
-    "identity-marker-migration",
-    "flow-startup-check",
-    "playlist-startup-publish",
-    "discovery-bootstrap",
-    "library-index-bootstrap",
-    "release-metadata-refresh",
-    "news-refresh",
-    "trending-charts-refresh",
-  ]);
-
-  dbOps.setJSONSetting(startup.PLAYLIST_STARTUP_MIGRATION_SETTING, {
-    version: startup.PLAYLIST_STARTUP_MIGRATION_VERSION,
-    rootPath: process.env.WEEKLY_FLOW_FOLDER,
-  });
-  dbOps.setJSONSetting(startup.STORED_DATA_MIGRATION_SETTING, {
-    version: startup.STORED_DATA_MIGRATION_VERSION,
-  });
-  dbOps.setJSONSetting(startup.IDENTITY_MARKER_MIGRATION_SETTING, {
-    version: startup.IDENTITY_MARKER_MIGRATION_VERSION,
-  });
-  db.prepare("DELETE FROM jobs").run();
   startup.enqueueStartupTasks();
   assert.deepEqual(queuedKinds(), [
     "flow-startup-check",

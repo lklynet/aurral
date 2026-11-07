@@ -43,7 +43,6 @@ export const SYSTEM_TASK_KINDS = [
   "flow-startup-check",
   "flow-startup-reuse-repair",
   "history-server-sync",
-  "identity-marker-migration",
   "import-list-sync",
   "inbox-refresh",
   "library-index-bootstrap",
@@ -54,7 +53,6 @@ export const SYSTEM_TASK_KINDS = [
   "playback-library-scan",
   "playback-playlist-sync",
   "playback-server-cleanup",
-  "playlist-startup-migration",
   "playlist-startup-publish",
   "plugin-schedules",
   "plugin-update-check",
@@ -65,10 +63,8 @@ export const SYSTEM_TASK_KINDS = [
   "review-timeout",
   "session-cleanup",
   "share-playlist-refresh",
-  "stored-data-migration",
   "trending-charts-refresh",
   "update-check",
-  "upgrade-readiness-check",
   "wrapped-build",
 ] as const;
 
@@ -118,7 +114,6 @@ const SYSTEM_TASK_QUEUES: Record<SystemTaskKind, Queue<SystemTask>> = {
   "flow-startup-check": systemTaskQueue,
   "flow-startup-reuse-repair": systemTaskQueue,
   "history-server-sync": systemTaskQueue,
-  "identity-marker-migration": systemTaskQueue,
   "import-list-sync": systemTaskQueue,
   "inbox-refresh": inboxTaskQueue,
   "library-index-bootstrap": systemTaskQueue,
@@ -129,7 +124,6 @@ const SYSTEM_TASK_QUEUES: Record<SystemTaskKind, Queue<SystemTask>> = {
   "playback-library-scan": playbackTaskQueue,
   "playback-playlist-sync": playbackTaskQueue,
   "playback-server-cleanup": systemTaskQueue,
-  "playlist-startup-migration": systemTaskQueue,
   "playlist-startup-publish": systemTaskQueue,
   "plugin-schedules": maintenanceTaskQueue,
   "plugin-update-check": maintenanceTaskQueue,
@@ -140,10 +134,8 @@ const SYSTEM_TASK_QUEUES: Record<SystemTaskKind, Queue<SystemTask>> = {
   "review-timeout": systemTaskQueue,
   "session-cleanup": maintenanceTaskQueue,
   "share-playlist-refresh": systemTaskQueue,
-  "stored-data-migration": systemTaskQueue,
   "trending-charts-refresh": maintenanceTaskQueue,
   "update-check": maintenanceTaskQueue,
-  "upgrade-readiness-check": systemTaskQueue,
   "wrapped-build": maintenanceTaskQueue,
 };
 
