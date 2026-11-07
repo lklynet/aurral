@@ -33,6 +33,7 @@ export interface EnqueueOptions<Payload> {
   maxAttempts?: number;
   dedupeKey?: string;
   mergeInto?: (waiting: JsonObject) => Payload | null;
+  mergeDelayMs?: number;
 }
 
 export type HeartbeatResult = "held" | "cancelled" | "lost";
@@ -287,7 +288,8 @@ export function defineQueue<Payload extends object>(config: QueueConfig<Payload>
           const current = parseJobPayload(waiting.payload);
           const merged = current && options.mergeInto(current);
           if (!merged) continue;
-          statements.merge.run(JSON.stringify(merged), runAt, waiting.id);
+          const mergeRunAt = options.mergeDelayMs == null ? runAt : now + options.mergeDelayMs;
+          statements.merge.run(JSON.stringify(merged), mergeRunAt, waiting.id);
           return waiting.id;
         }
       }

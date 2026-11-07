@@ -123,6 +123,17 @@ test("a later change pushes the pending rewrite out again", async () => {
   assert.ok(rewrite.delaySeconds >= 170);
 });
 
+test("more tracks joining a pending sync keep its deadline", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Busy" });
+  playlistManager.requestPlaylistSync([playlist.id]);
+  const deadline = Date.now() + 500;
+  db.prepare("UPDATE jobs SET run_at = ?").run(deadline);
+  playlistManager.requestPlaylistSync([playlist.id]);
+  const [merged, ...rest] = playbackTaskQueue.list();
+  assert.deepEqual(rest, []);
+  assert.equal(merged?.run_at, deadline);
+});
+
 test("renaming, disabling, or deleting removes the old file", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Morning", size: 10 });
   flowPlaylistConfig.setEnabled(flow.id, true);

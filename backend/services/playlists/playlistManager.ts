@@ -91,6 +91,7 @@ export class PlaylistManager {
       { kind: PLAYLIST_SYNC_KIND, entityIds: ids, rewrite },
       {
         delayMs: delaySeconds * 1000,
+        mergeDelayMs: rewrite ? undefined : 0,
         mergeInto: (waiting) =>
           (waiting.rewrite === true) === rewrite
             ? {
