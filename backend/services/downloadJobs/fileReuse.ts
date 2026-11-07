@@ -21,7 +21,7 @@ import {
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
-  PLAYLIST_FILES_DIR,
+  LEGACY_PLAYLIST_DIR,
   remapLegacyPath,
   resolveDownloadRoot,
 } from "../downloadPaths.ts";
@@ -224,7 +224,7 @@ async function findLocalExistingSource(
     // <root>/aurral-weekly-flow/<playlistId>/Artist/Album/
     candidateDirs.push(path.resolve(root, artistDir, albumDir));
     candidateDirs.push(
-      path.resolve(root, PLAYLIST_FILES_DIR, targetPlaylistType, artistDir, albumDir),
+      path.resolve(root, LEGACY_PLAYLIST_DIR, targetPlaylistType, artistDir, albumDir),
     );
   }
 
@@ -386,8 +386,8 @@ async function adoptFileIntoPlaylist(
     ? path.resolve(root, AURRAL_FLOWS_DIR, safeTarget)
     : currentLayout
       ? path.resolve(root)
-      : path.resolve(root, PLAYLIST_FILES_DIR, safeTarget);
-  const legacySource = [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR].some((directory) =>
+      : path.resolve(root, LEGACY_PLAYLIST_DIR, safeTarget);
+  const legacySource = [LEGACY_PLAYLIST_DIR, AURRAL_FLOWS_DIR].some((directory) =>
     isPathInsideRoot(resolvedSource, path.resolve(root, directory)),
   );
   if (
@@ -404,7 +404,7 @@ async function adoptFileIntoPlaylist(
         root,
         resolvedSource.includes(`${path.sep}${AURRAL_FLOWS_DIR}${path.sep}`)
           ? AURRAL_FLOWS_DIR
-          : PLAYLIST_FILES_DIR,
+          : LEGACY_PLAYLIST_DIR,
         sourcePlaylistId,
       )
     : null;
@@ -436,7 +436,7 @@ export async function relocateSharedFilesBeforePlaylistRemoval(
   if (!safePlaylistType) return { relocated: 0 };
 
   const removedDirs = [
-    path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistType),
+    path.resolve(downloadRoot, LEGACY_PLAYLIST_DIR, safePlaylistType),
     path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType),
   ];
   const byPath = new Map();
@@ -479,7 +479,7 @@ export async function removePlaylistFileIfUnshared(
 
   const playlistRoots = isFlowPlaylistType(safePlaylistId)
     ? [path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistId)]
-    : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
+    : [path.resolve(downloadRoot, LEGACY_PLAYLIST_DIR, safePlaylistId)];
   const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
   if (!playlistRoots.some((playlistRoot) => isPathInsideRoot(resolved, playlistRoot))) {
     return { action: "skipped" };
@@ -824,7 +824,7 @@ export async function repairJobsUnderRemovedPlaylistDir(
   }
 
   const removedDirs = [
-    path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistType),
+    path.resolve(downloadRoot, LEGACY_PLAYLIST_DIR, safePlaylistType),
     path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType),
   ];
   let repaired = 0;
@@ -873,7 +873,7 @@ export async function repairJobsUnderRemovedPlaylistDir(
 
 function parsePlaylistIdFromFinalPath(finalPath: string, downloadRoot: string) {
   const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
-  for (const directory of [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR]) {
+  for (const directory of [LEGACY_PLAYLIST_DIR, AURRAL_FLOWS_DIR]) {
     const marker = `${path.sep}${directory}${path.sep}`;
     const markerIndex = resolved.indexOf(marker);
     if (markerIndex < 0) continue;

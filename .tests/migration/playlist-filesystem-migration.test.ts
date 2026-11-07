@@ -5,13 +5,20 @@ import path from "path";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { ensurePlaylistFilesystemLayout }] = await setupIsolatedBackend(
+const [isolatedState, { movePlaylistFiles }] = await setupIsolatedBackend(
   "playlist-filesystem-migration",
   () => import("../../backend/services/playlistFilesystemMigration.ts"),
 );
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
 assert.ok(root != null);
+const legacyRoot = path.join(root, "aurral-weekly-flow");
+const target = path.join(root, "_playlists");
+
+const write = async (file: string, contents: string) => {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, contents);
+};
 
 beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -21,46 +28,32 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("keeps aurral-weekly-flow in place", async () => {
-  const playlistRoot = path.join(root, "aurral-weekly-flow");
-  const trackPath = path.join(playlistRoot, "playlist-id", "Artist", "Track.flac");
-  await fs.mkdir(path.dirname(trackPath), { recursive: true });
-  await fs.writeFile(trackPath, "audio");
+test("moves playlist files to _playlists and removes the emptied old folder", async () => {
+  await write(path.join(legacyRoot, "_playlists", "Road Trip.m3u"), "#EXTM3U\n");
+  await write(path.join(legacyRoot, "_playlists", "Road Trip.jpg"), "upload");
+  await write(path.join(legacyRoot, "[AS] Old.m3u"), "#EXTM3U\n");
 
-  const result = ensurePlaylistFilesystemLayout({ root });
+  assert.equal(movePlaylistFiles(root), 3);
 
-  assert.equal(result.renamed, false);
-  assert.equal(result.merged, 0);
-  assert.equal(result.playlistRoot, playlistRoot);
-  await assert.doesNotReject(() => fs.access(trackPath));
+  assert.deepEqual((await fs.readdir(target)).sort(), [
+    "Road Trip.jpg",
+    "Road Trip.m3u",
+    "[AS] Old.m3u",
+  ]);
+  assert.equal(await fs.readFile(path.join(target, "Road Trip.jpg"), "utf8"), "upload");
+  await assert.rejects(fs.access(legacyRoot));
+  assert.equal(movePlaylistFiles(root), 0);
 });
 
-test("does not merge or delete existing playlist directories", async () => {
-  const playlistRoot = path.join(root, "aurral-weekly-flow");
-  const previousV2Root = path.join(root, "aurral-playlists");
-  const playlistTrack = path.join(playlistRoot, "legacy-playlist", "Song.flac");
-  const previousTrack = path.join(previousV2Root, "existing-playlist", "Other.flac");
-  await fs.mkdir(path.dirname(playlistTrack), { recursive: true });
-  await fs.mkdir(path.dirname(previousTrack), { recursive: true });
-  await fs.writeFile(playlistTrack, "legacy");
-  await fs.writeFile(previousTrack, "existing");
+test("keeps old download folders and a file already at the new path", async () => {
+  const legacyTrack = path.join(legacyRoot, "playlist-id", "Artist", "Track.flac");
+  await write(legacyTrack, "audio");
+  await write(path.join(legacyRoot, "_playlists", "Mix.m3u"), "old");
+  await write(path.join(target, "Mix.m3u"), "new");
 
-  const result = ensurePlaylistFilesystemLayout({ root });
+  movePlaylistFiles(root);
 
-  assert.equal(result.merged, 0);
-  await assert.doesNotReject(() => fs.access(playlistTrack));
-  await assert.doesNotReject(() => fs.access(previousTrack));
-});
-
-test("moves playlist sidecars into _playlists", async () => {
-  const playlistRoot = path.join(root, "aurral-weekly-flow");
-  await fs.mkdir(playlistRoot, { recursive: true });
-  await fs.writeFile(path.join(playlistRoot, "[AS] Test.m3u"), "#EXTM3U\n");
-
-  const result = ensurePlaylistFilesystemLayout({ root });
-
-  assert.equal(result.sidecarsMoved, 1);
-  await assert.doesNotReject(() =>
-    fs.access(path.join(playlistRoot, "_playlists", "[AS] Test.m3u")),
-  );
+  assert.equal(await fs.readFile(path.join(target, "Mix.m3u"), "utf8"), "new");
+  assert.deepEqual(await fs.readdir(legacyRoot), ["playlist-id"]);
+  assert.equal(await fs.readFile(legacyTrack, "utf8"), "audio");
 });

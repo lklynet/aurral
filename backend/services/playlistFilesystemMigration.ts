@@ -1,39 +1,33 @@
 import fs from "fs";
 import path from "path";
-import { PLAYLIST_FILES_DIR, resolveDownloadRoot } from "./downloadPaths.ts";
+import { LEGACY_PLAYLIST_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "./downloadPaths.ts";
 
-const PLAYLIST_SIDECAR_EXT = new Set([".m3u", ".nsp", ".webp", ".png"]);
+const PLAYLIST_SIDECAR_EXT = new Set([".m3u", ".nsp", ".webp", ".png", ".jpg"]);
 
-function relocatePlaylistSidecars(playlistRoot: string) {
-  const playlistsDir = path.join(playlistRoot, "_playlists");
-  fs.mkdirSync(playlistsDir, { recursive: true });
-  let moved = 0;
-  if (!fs.existsSync(playlistRoot)) return moved;
-  for (const entry of fs.readdirSync(playlistRoot)) {
-    if (entry === "_playlists") continue;
-    const full = path.join(playlistRoot, entry);
-    if (!fs.statSync(full).isFile()) continue;
-    const ext = path.extname(entry).toLowerCase();
-    if (!PLAYLIST_SIDECAR_EXT.has(ext)) continue;
-    const dest = path.join(playlistsDir, entry);
-    if (fs.existsSync(dest)) {
-      fs.rmSync(full, { force: true });
-    } else {
-      fs.renameSync(full, dest);
-    }
-    moved += 1;
+const entries = (directory: string) =>
+  fs.existsSync(directory) ? fs.readdirSync(directory, { withFileTypes: true }) : [];
+
+export function movePlaylistFiles(root = resolveDownloadRoot()) {
+  const legacyRoot = path.join(root, LEGACY_PLAYLIST_DIR);
+  if (!fs.existsSync(legacyRoot)) return 0;
+  const legacyFiles = path.join(legacyRoot, "_playlists");
+  const sources = [
+    ...entries(legacyFiles).map((entry) => path.join(legacyFiles, entry.name)),
+    ...entries(legacyRoot)
+      .filter(
+        (entry) =>
+          entry.isFile() && PLAYLIST_SIDECAR_EXT.has(path.extname(entry.name).toLowerCase()),
+      )
+      .map((entry) => path.join(legacyRoot, entry.name)),
+  ];
+  const target = path.join(root, PLAYLIST_FILES_DIR);
+  fs.mkdirSync(target, { recursive: true });
+  for (const source of sources) {
+    const destination = path.join(target, path.basename(source));
+    if (fs.existsSync(destination)) fs.rmSync(source, { force: true });
+    else fs.renameSync(source, destination);
   }
-  return moved;
-}
-
-export function ensurePlaylistFilesystemLayout(options: { root?: string | null } = {}) {
-  const root = resolveDownloadRoot(options.root);
-  const playlistRoot = path.join(root, PLAYLIST_FILES_DIR);
-
-  if (!fs.existsSync(playlistRoot)) {
-    fs.mkdirSync(playlistRoot, { recursive: true });
-  }
-
-  const sidecarsMoved = relocatePlaylistSidecars(playlistRoot);
-  return { renamed: false, merged: 0, sidecarsMoved, playlistRoot, root };
+  if (fs.existsSync(legacyFiles)) fs.rmdirSync(legacyFiles);
+  if (!fs.readdirSync(legacyRoot).length) fs.rmdirSync(legacyRoot);
+  return sources.length;
 }

@@ -27,6 +27,8 @@ The JSON API uses the current names too. Version 1 of the [app contract](../src/
 
 `LIBRARY_FOLDER` names the Library folder. `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` still work and log a warning.
 
+Playlist files live in `_playlists` in the Library folder. At boot, before the server listens, Aurral moves them there from `aurral-weekly-flow/_playlists`. It must finish first: a playlist written at the new path while uploaded artwork still sits at the old one would replace that artwork. Media servers see the move as new files. Jellyfin replaces each playlist, and Navidrome keeps the old copy beside the new one until someone deletes it. `aurral-weekly-flow/` stays only to read download folders from older versions.
+
 These names stay, because something outside Aurral depends on them or renaming them would cost more than it explains:
 
 | Name                         | Where                       | Holds                                                   |
@@ -35,7 +37,6 @@ These names stay, because something outside Aurral depends on them or renaming t
 | `canonicalJobId`             | Static playlist track field | The Library job that the track references               |
 | `canonicalAlbumId`           | Stored activity metadata    | The Library album, read into `libraryAlbumId`           |
 | `shared`, `shared-song`      | Subsonic IDs                | Static playlists and their songs                        |
-| `aurral-weekly-flow/`        | Library folder              | Playlist artwork and sidecar files                      |
 | `downloadFolderPath`         | Settings key                | The Library folder                                      |
 
 Subsonic clients store `shared` and `shared-song` IDs for favorites, offline caches, and playlists, so a rename would make them treat existing items as new ones.
