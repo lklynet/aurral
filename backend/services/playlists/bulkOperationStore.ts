@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { SettingsRow } from "../../db/rows.ts";
-import { getHonkerDb, getPlaylistOperationQueue } from "../honkerDb.ts";
+import { playlistOperationQueue } from "../jobs/queues.ts";
 
 const PREFIX = "playlistBulkOperation:";
 const RETENTION_MS = 7 * 86400000;
@@ -73,12 +73,11 @@ export function getBulkOperation(operationId: unknown) {
   if (!row) return null;
   const record = dbHelpers.readJSON(bulkOperationSchema, row.value, `${PREFIX}${operationId}`);
   if (!record) return null;
+  const jobState = playlistOperationQueue.getJob(record.operationId)?.state;
   if (
     !["completed", "failed"].includes(record.state) &&
-    !getHonkerDb().query(
-      "SELECT state FROM _honker_live WHERE id = ? AND queue = 'weekly-flow-operation'",
-      [record.operationId],
-    ).length
+    jobState !== "pending" &&
+    jobState !== "running"
   ) {
     record.state = "failed";
     record.message =
@@ -94,16 +93,17 @@ export function saveBulkOperation(record: BulkOperationRecord) {
   return record;
 }
 
-export function enqueueBulkOperation(record: BulkOperationInput) {
-  const queue = getPlaylistOperationQueue();
-  const tx = getHonkerDb().transaction();
-  try {
-    const operationId = queue.enqueueTx(tx, {
-      kind: "shared-playlist-bulk",
-      label: `shared-playlist:${record.action}`,
-    });
-    const now = Date.now();
-    const result = {
+const insertStmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+
+export const enqueueBulkOperation = db.transaction((record: BulkOperationInput) => {
+  const operationId = playlistOperationQueue.enqueue({
+    kind: "static-playlist-bulk",
+    label: `static-playlist:${record.action}`,
+  });
+  const now = Date.now();
+  insertStmt.run(
+    `${PREFIX}${operationId}`,
+    JSON.stringify({
       ...record,
       operationId,
       state: "queued",
@@ -111,18 +111,10 @@ export function enqueueBulkOperation(record: BulkOperationInput) {
       synchronization: {},
       createdAt: now,
       updatedAt: now,
-    };
-    tx.execute("INSERT INTO settings (key, value) VALUES (?, ?)", [
-      `${PREFIX}${operationId}`,
-      JSON.stringify(result),
-    ]);
-    tx.commit();
-    return { queued: true, operationId };
-  } catch (error) {
-    tx.rollback();
-    throw error;
-  }
-}
+    }),
+  );
+  return { queued: true, operationId };
+});
 
 export function cleanupBulkOperations() {
   const owners = new Map<number, { key: string; updatedAt: number }[]>();

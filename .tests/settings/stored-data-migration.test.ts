@@ -18,7 +18,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/middleware/auth.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/startup.ts"),
 );
 
 const writeRaw = (key: string, value: unknown) =>
@@ -92,7 +92,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
     ["old-flow", "Old Discover", ["ambient", "drone"]],
   );
 
-  assert.equal(readJson("sharedPlaylists")[0].name, "Old Playlist");
+  assert.equal(readJson("staticPlaylists")[0].name, "Old Playlist");
   assert.equal(readJson("playlistWorker").concurrency, 2);
 
   const integrations = readJson("integrations");
@@ -109,7 +109,7 @@ test("stores older settings, flows, worker options, and sign-in in their current
 
 test("stores static playlists in their current form once, so reading them never writes", async () => {
   reset();
-  writeRaw("sharedPlaylists", [
+  writeRaw("staticPlaylists", [
     {
       id: "old-playlist",
       name: " Night Bus ",
@@ -119,14 +119,14 @@ test("stores static playlists in their current form once, so reading them never 
       ],
     },
   ]);
-  const raw = readRaw("sharedPlaylists");
+  const raw = readRaw("staticPlaylists");
 
   flowPlaylistConfig.getStaticPlaylists();
-  assert.equal(readRaw("sharedPlaylists"), raw);
+  assert.equal(readRaw("staticPlaylists"), raw);
 
   await runMigration();
 
-  const [stored] = readJson("sharedPlaylists");
+  const [stored] = readJson("staticPlaylists");
   assert.equal(stored.name, "Night Bus");
   assert.equal(stored.tracks.length, 1);
   assert.equal(typeof stored.tracks[0].membershipId, "string");

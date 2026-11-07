@@ -502,8 +502,8 @@ test("adding library search results to a new static playlist keeps their MusicBr
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => false);
-  const queuedOperations: import("../../backend/services/honkerDb.ts").HonkerPayload[] = [];
-  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload = {}) => {
+  const queuedOperations: { kind: string }[] = [];
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedOperations.push(payload);
     return { queued: true, operationId: queuedOperations.length };
   });

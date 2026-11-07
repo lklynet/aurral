@@ -12,7 +12,7 @@ import {
 import {
   IDENTITY_MARKER_MIGRATION_SETTING,
   IDENTITY_MARKER_MIGRATION_VERSION,
-} from "./honkerDb.ts";
+} from "./jobs/startup.ts";
 
 function listAurralDownloadedFiles(root: string) {
   const files = new Set<string>();

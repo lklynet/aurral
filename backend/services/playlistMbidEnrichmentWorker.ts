@@ -1,6 +1,6 @@
 import * as v from "valibot";
-import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getPlaylistMbidEnrichmentQueue } from "./honkerDb.ts";
+import { createJobWorker } from "./jobs/worker.ts";
+import { playlistMbidEnrichmentQueue } from "./jobs/queues.ts";
 import {
   enrichStaticPlaylistMbids,
   schedulePlaylistMbidEnrichmentForMissingPlaylists,
@@ -8,7 +8,7 @@ import {
 
 const reconcileArtistMbids = v.optional(v.boolean());
 
-const playlistMbidEnrichmentSchema = v.variant("kind", [
+export const playlistMbidEnrichmentSchema = v.variant("kind", [
   v.looseObject({
     kind: v.literal("playlist-mbid-enrichment"),
     playlistId: v.string(),
@@ -40,13 +40,9 @@ const {
   start: startPlaylistMbidEnrichmentWorker,
   stop: stopPlaylistMbidEnrichmentWorker,
   isRunning: isPlaylistMbidEnrichmentWorkerRunning,
-} = createHonkerWorker({
-  name: "playlist-mbid-enrichment",
+} = createJobWorker(playlistMbidEnrichmentQueue, {
   schema: playlistMbidEnrichmentSchema,
-  getQueue: getPlaylistMbidEnrichmentQueue,
   processJob: processPlaylistMbidEnrichment,
-  idlePollS: 10,
-  retryDelayS: 300,
 });
 
 export {

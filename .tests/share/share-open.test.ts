@@ -63,7 +63,7 @@ test("opening a share finds recipient Library IDs without importing or acquiring
     `/album/${albumMbid}?track=${track.id}`,
   ]);
   assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM library_tracks").get(), before);
-  assert.equal(db.prepare("SELECT 1 FROM playlist_download_jobs LIMIT 1").get(), undefined);
+  assert.equal(db.prepare("SELECT 1 FROM download_jobs LIMIT 1").get(), undefined);
 });
 
 test("name-only shares open the matching local artist, album and track", () => {

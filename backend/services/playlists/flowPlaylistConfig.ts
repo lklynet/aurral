@@ -352,8 +352,8 @@ const getStoredStaticPlaylists = () => {
     return cachedStaticPlaylists;
   }
   staticPlaylistsCachedAt = Date.now();
-  const stored = dbOps.getJSONSetting("sharedPlaylists", v.unknown());
-  if (!Array.isArray(stored)) dbOps.updateSettings({ sharedPlaylists: [] });
+  const stored = dbOps.getJSONSetting("staticPlaylists", v.unknown());
+  if (!Array.isArray(stored)) dbOps.updateSettings({ staticPlaylists: [] });
   cachedStaticPlaylists = Array.isArray(stored) ? stored.map(normalizeStaticPlaylist) : [];
   return cachedStaticPlaylists;
 };
@@ -362,7 +362,7 @@ const setStaticPlaylists = (playlists: StaticPlaylist[]) => {
   cachedStaticPlaylists = playlists;
   staticPlaylistsCachedAt = Date.now();
   try {
-    dbOps.updateSettings({ sharedPlaylists: playlists });
+    dbOps.updateSettings({ staticPlaylists: playlists });
   } catch (error) {
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();

@@ -1,16 +1,12 @@
-import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getReleaseMetadataQueue } from "./honkerDb.ts";
-import { prepareSystemTask, processSystemTask, systemTaskSchema } from "./systemTaskWorker.ts";
+import { createJobWorker } from "./jobs/worker.ts";
+import { releaseMetadataQueue, systemTaskSchema } from "./jobs/queues.ts";
+import { prepareSystemTask, processSystemTask } from "./systemTaskWorker.ts";
 
-const { start, stop, isRunning } = createHonkerWorker({
-  name: "release-metadata-refresh",
+const { start, stop, isRunning } = createJobWorker(releaseMetadataQueue, {
   schema: systemTaskSchema,
-  getQueue: getReleaseMetadataQueue,
   processJob: processSystemTask,
   prepareJob: prepareSystemTask,
   interruptible: true,
-  idlePollS: 10,
-  retryDelayS: 120,
 });
 
 export {

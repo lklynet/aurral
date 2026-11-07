@@ -4,11 +4,11 @@ import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-const [isolatedState, { db }, honkerDb, libraryManagerModule, systemTaskWorker] =
+const [isolatedState, { db }, { systemTaskQueue: queue }, libraryManagerModule, systemTaskWorker] =
   await setupIsolatedBackend(
     "lidarr-retry",
     () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/services/honkerDb.ts"),
+    () => import("../../backend/services/jobs/queues.ts"),
     () => import("../../backend/services/libraryManager.ts"),
     () => import("../../backend/services/systemTaskWorker.ts"),
   );
@@ -17,15 +17,13 @@ const { libraryManager } = libraryManagerModule;
 
 function getPendingRetryJobs() {
   return db
-    .prepare<unknown[], { id: number; payload: string }>(
+    .prepare<[], { id: number }>(
       `
-        SELECT id, payload
-        FROM _honker_live
-        WHERE queue = 'system-task' AND state = 'pending'
+        SELECT id FROM jobs
+        WHERE queue = 'system-task' AND kind = 'lidarr-retry' AND state = 'pending'
       `,
     )
-    .all()
-    .filter((row) => JSON.parse(row.payload)?.kind === "lidarr-retry");
+    .all();
 }
 
 async function settleRetryEnqueues() {
@@ -42,12 +40,6 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("provider unavailable");
   });
-  const queue = honkerDb.getSystemTaskQueue();
-  const backlogRunAt = Math.floor(Date.now() / 1000) + 3600;
-  for (let index = 0; index < 101; index += 1) {
-    queue.enqueue({ kind: `older-system-task-${index}` }, { runAt: backlogRunAt });
-  }
-
   await libraryManager.syncLidarrArtists();
   for (let index = 0; index < 5; index += 1) {
     await libraryManager.syncLidarrArtists();
@@ -58,20 +50,13 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   assert.equal(firstRetryJobs.length, 1);
   assert.equal(request.mock.calls.length, 1);
 
-  await systemTaskWorker.stopSystemTaskWorker();
   const firstRetryJob = requireFixture(firstRetryJobs[0]);
-  db.prepare("UPDATE _honker_live SET run_at = ? WHERE id = ?").run(
-    Math.floor(Date.now() / 1000) - 1,
-    firstRetryJob.id,
-  );
-  const claimedRetry = queue.claimOne(honkerDb.getWorkerId());
+  db.prepare("UPDATE jobs SET run_at = ? WHERE id = ?").run(Date.now() - 1, firstRetryJob.id);
+  const claimedRetry = queue.claim("lidarr-retry-test");
   assert.ok(claimedRetry != null);
   assert.equal(claimedRetry?.id, firstRetryJob.id);
 
-  await systemTaskWorker.processSystemTask(
-    { kind: "lidarr-retry" },
-    claimedRetry as Parameters<typeof systemTaskWorker.processSystemTask>[1],
-  );
+  await systemTaskWorker.processSystemTask({ kind: "lidarr-retry" });
   await settleRetryEnqueues();
 
   const successorJobs = getPendingRetryJobs();
@@ -81,5 +66,4 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
 
   claimedRetry.ack();
   queue.cancel(requireFixture(successorJobs[0]).id);
-  await systemTaskWorker.stopSystemTaskWorker();
 });

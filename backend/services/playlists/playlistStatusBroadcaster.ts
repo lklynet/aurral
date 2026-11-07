@@ -18,7 +18,7 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
   const broadcast = (force = false) => {
     try {
       const channels = websocket.getStats().channels;
-      if (!channels["weekly-flow"] && !channels.playlists && !channels["*"]) {
+      if (!channels.playlists && !channels["*"]) {
         if (interval) clearInterval(interval);
         interval = null;
         lastVersion = null;
@@ -53,7 +53,6 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
         client._lastPlaylistStatusHashByChannel.set(channel, cached.hash);
         return cached.message;
       };
-      websocket.broadcastPerClient("weekly-flow", buildPayload("weekly-flow"));
       websocket.broadcastPerClient("playlists", buildPayload("playlists"));
       lastVersion = version;
     } catch (error) {

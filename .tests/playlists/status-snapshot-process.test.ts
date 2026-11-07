@@ -42,7 +42,7 @@ function writeFromAnotherProcess(sql: string, parameters: (string | null)[]) {
 }
 
 test("production snapshots refresh persisted membership and access changes without IPC", () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Original", ownerUserId: 1 });
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Original track" },
@@ -61,10 +61,11 @@ test("production snapshots refresh persisted membership and access changes witho
     assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
     assert.deepEqual(containing("Original track"), [{ id: playlist.id, jobId }]);
 
-    writeFromAnotherProcess(
-      "UPDATE playlist_download_jobs SET track_name = ?, status = ? WHERE id = ?",
-      ["Changed track", "failed", jobId],
-    );
+    writeFromAnotherProcess("UPDATE download_jobs SET track_name = ?, status = ? WHERE id = ?", [
+      "Changed track",
+      "failed",
+      jobId,
+    ]);
     const updated = read();
     assert.deepEqual(containing("Original track"), []);
     assert.deepEqual(containing("Changed track"), [{ id: playlist.id, jobId }]);
@@ -74,7 +75,7 @@ test("production snapshots refresh persisted membership and access changes witho
       requireFixture(
         db
           .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
-            "SELECT value FROM settings WHERE key = 'sharedPlaylists'",
+            "SELECT value FROM settings WHERE key = 'staticPlaylists'",
           )
           .get(),
       ).value,
@@ -83,7 +84,7 @@ test("production snapshots refresh persisted membership and access changes witho
     stored[0].tracks = [{ artistName: "Manual artist", trackName: "Manual track" }];
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       JSON.stringify(stored),
-      "sharedPlaylists",
+      "staticPlaylists",
     ]);
     const renamed = requireFixture(read().sharedPlaylists[0]);
     assert.equal(renamed.name, "Renamed elsewhere");
@@ -91,7 +92,7 @@ test("production snapshots refresh persisted membership and access changes witho
       { id: playlist.id, jobId: null },
     ]);
 
-    writeFromAnotherProcess("DELETE FROM playlist_download_jobs WHERE id = ?", [jobId]);
+    writeFromAnotherProcess("DELETE FROM download_jobs WHERE id = ?", [jobId]);
     assert.deepEqual(containing("Changed track"), []);
     assert.deepEqual(containing("Manual track", "Manual artist"), [
       { id: playlist.id, jobId: null },
@@ -100,13 +101,13 @@ test("production snapshots refresh persisted membership and access changes witho
     stored[0].ownerUserId = 2;
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       JSON.stringify(stored),
-      "sharedPlaylists",
+      "staticPlaylists",
     ]);
     assert.deepEqual([...read().sharedPlaylists], []);
 
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       "[]",
-      "sharedPlaylists",
+      "staticPlaylists",
     ]);
     assert.deepEqual([...getPlaylistStatusSnapshot().sharedPlaylists], []);
   } finally {

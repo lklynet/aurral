@@ -131,8 +131,8 @@ async function createStaticPlaylist<E extends AppEnv>(
 
   const playlistId = randomUUID();
   const result = await playlistOperationQueue.enqueuePayload({
-    kind: "shared-playlist-create",
-    label: "shared-playlist:create",
+    kind: "static-playlist-create",
+    label: "static-playlist:create",
     playlistId,
     name: safeName,
     sourceName,
@@ -307,8 +307,8 @@ export default new Hono<AppEnv>()
         }
 
         const result = await playlistOperationQueue.enqueuePayload({
-          kind: "shared-playlist-append-tracks",
-          label: `shared-playlist:${playlistId}:tracks:add`,
+          kind: "static-playlist-append-tracks",
+          label: `static-playlist:${playlistId}:tracks:add`,
           playlistId,
           tracks: normalizedTracks,
         });
@@ -406,8 +406,8 @@ export default new Hono<AppEnv>()
         }
 
         const result = await playlistOperationQueue.enqueuePayload({
-          kind: "shared-playlist-update",
-          label: `shared-playlist:${playlistId}:update`,
+          kind: "static-playlist-update",
+          label: `static-playlist:${playlistId}:update`,
           playlistId,
           name: safeName,
           tracks: normalizedTracks,
@@ -449,8 +449,8 @@ export default new Hono<AppEnv>()
       let result;
       try {
         result = await playlistOperationQueue.enqueuePayload({
-          kind: "shared-playlist-delete-track",
-          label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
+          kind: "static-playlist-delete-track",
+          label: `static-playlist:${playlistId}:track:${jobId}:delete`,
           playlistId,
           jobId,
         });
@@ -485,7 +485,7 @@ export default new Hono<AppEnv>()
         c.var.user,
         c.req.param("playlistId"),
         c.req.param("jobId"),
-        "shared-playlist",
+        "static-playlist",
       );
     } catch (error) {
       return c.json(
@@ -511,8 +511,8 @@ export default new Hono<AppEnv>()
       let deleted;
       try {
         deleted = await playlistOperationQueue.enqueuePayload({
-          kind: "shared-playlist-delete",
-          label: `shared-playlist:${playlistId}:delete`,
+          kind: "static-playlist-delete",
+          label: `static-playlist:${playlistId}:delete`,
           playlistId,
         });
       } catch (error) {

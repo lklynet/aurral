@@ -30,7 +30,8 @@ import {
   isLidarrLibraryActive,
   readOnlyFolderPaths,
 } from "../libraryFolders.ts";
-import { listHonkerJobs, withHonkerLock } from "../honkerDb.ts";
+import { withLock } from "../jobs/queue.ts";
+import { downloadPipelineQueue } from "../jobs/queues.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
 import {
   getDownloadOwnerStatus,
@@ -58,8 +59,7 @@ const RELEASE_WAIT_REASON = "Waiting for metadata to read the album release";
 // concurrency are searching, so a large playlist does not start every
 // provider search at once.
 function countSearchingPipelineJobs() {
-  return listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search")
-    .length;
+  return downloadPipelineQueue.list().filter((entry) => entry.payload?.phase === "search").length;
 }
 
 type WorkerSettings = ReturnType<DownloadWorker["getWorkerSettings"]>;
@@ -772,7 +772,7 @@ export class DownloadWorker {
       }
       this.playlistFinalizing.add(playlistKey);
       try {
-        await withHonkerLock(
+        await withLock(
           `playlist-finalize:${playlistKey}`,
           async () => {
             console.log(
@@ -815,7 +815,7 @@ export class DownloadWorker {
               );
           },
           {
-            ttlSeconds: 180,
+            ttlMs: 180_000,
             waitTimeoutMs: 15 * 60 * 1000,
           },
         );

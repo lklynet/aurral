@@ -298,8 +298,8 @@ export default new Hono<AppEnv>()
   })
   .get("/tasks", requireAuth, requireAdmin, noCache, async (c) => {
     try {
-      const { getHonkerTaskStatus } = await import("../../services/honkerTaskStatus.ts");
-      return c.json(await getHonkerTaskStatus(), 200);
+      const { getTaskStatus } = await import("../../services/jobs/status.ts");
+      return c.json(await getTaskStatus(), 200);
     } catch (error) {
       return c.json(
         { error: "Failed to get task status", message: asAppError(error)?.message },
@@ -309,10 +309,8 @@ export default new Hono<AppEnv>()
   })
   .post("/tasks/clear-stale", requireAuth, requireAdmin, noCache, async (c) => {
     try {
-      const { clearStaleHonkerJobs, getHonkerTaskStatus } =
-        await import("../../services/honkerTaskStatus.ts");
-      const result = await clearStaleHonkerJobs();
-      return c.json({ ...result, tasks: await getHonkerTaskStatus() }, 200);
+      const { clearStaleJobs, getTaskStatus } = await import("../../services/jobs/status.ts");
+      return c.json({ ...clearStaleJobs(), tasks: await getTaskStatus() }, 200);
     } catch (error) {
       return c.json(
         { error: "Failed to clear stuck jobs", message: asAppError(error)?.message },

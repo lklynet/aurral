@@ -50,20 +50,20 @@ function storedMetadata(jobId: string | null) {
       .prepare<
         unknown[],
         {
-          downloadSource: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_source"];
-          downloadClient: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_client"];
-          downloadClientId: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_client_id"];
-          releaseGuid: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_guid"];
-          releaseTitle: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_title"];
-          indexerId: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["indexer_id"];
-          indexerName: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["indexer_name"];
-          remoteUsername: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["remote_username"];
-          remoteFilename: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["remote_filename"];
+          downloadSource: import("../../backend/db/rows.ts").DownloadJobsRow["download_source"];
+          downloadClient: import("../../backend/db/rows.ts").DownloadJobsRow["download_client"];
+          downloadClientId: import("../../backend/db/rows.ts").DownloadJobsRow["download_client_id"];
+          releaseGuid: import("../../backend/db/rows.ts").DownloadJobsRow["release_guid"];
+          releaseTitle: import("../../backend/db/rows.ts").DownloadJobsRow["release_title"];
+          indexerId: import("../../backend/db/rows.ts").DownloadJobsRow["indexer_id"];
+          indexerName: import("../../backend/db/rows.ts").DownloadJobsRow["indexer_name"];
+          remoteUsername: import("../../backend/db/rows.ts").DownloadJobsRow["remote_username"];
+          remoteFilename: import("../../backend/db/rows.ts").DownloadJobsRow["remote_filename"];
         }
       >(`SELECT download_source AS downloadSource, download_client AS downloadClient,
     download_client_id AS downloadClientId, release_guid AS releaseGuid, release_title AS releaseTitle,
     indexer_id AS indexerId, indexer_name AS indexerName, remote_username AS remoteUsername,
-    remote_filename AS remoteFilename FROM playlist_download_jobs WHERE id = ?`)
+    remote_filename AS remoteFilename FROM download_jobs WHERE id = ?`)
       .get(jobId),
   };
 }

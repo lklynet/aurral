@@ -2,21 +2,27 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, honkerDbModule, refreshScheduler, persistence, { getDiscoveryStatus }] =
-  await setupIsolatedBackend(
-    "discovery-refresh-scheduler",
-    () => import("../../backend/services/honkerDb.ts"),
-    () => import("../../backend/services/discovery/refreshScheduler.ts"),
-    () => import("../../backend/services/discovery/persistence.ts"),
-    () => import("../../backend/services/discovery/userDiscovery.ts"),
-  );
+const [
+  isolatedState,
+  jobQueue,
+  { discoveryRefreshQueue },
+  refreshScheduler,
+  persistence,
+  { getDiscoveryStatus },
+] = await setupIsolatedBackend(
+  "discovery-refresh-scheduler",
+  () => import("../../backend/services/jobs/queue.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/services/discovery/refreshScheduler.ts"),
+  () => import("../../backend/services/discovery/persistence.ts"),
+  () => import("../../backend/services/discovery/userDiscovery.ts"),
+);
 
 const {
   discoveryNeedsRefresh,
   bootstrapDiscoveryRefresh,
   enqueueDiscoveryRefresh,
   enqueueDiscoveryRefreshIfNeeded,
-  recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
 const { db } = await import("../../backend/config/db-sqlite.ts");
@@ -34,52 +40,26 @@ function clearLibraryArtists() {
   db.prepare("DELETE FROM library_artists").run();
 }
 
-let heldGlobalRefreshLock: ReturnType<ReturnType<typeof honkerDbModule.getHonkerDb>["tryLock"]> =
-  null;
+const LOCK_OWNER = "discovery-refresh-scheduler-test";
 
 function holdGlobalRefreshLock() {
-  heldGlobalRefreshLock = honkerDbModule
-    .getHonkerDb()
-    .tryLock("discovery-global-refresh", "discovery-refresh-scheduler-test", 3600);
-  assert.ok(heldGlobalRefreshLock);
+  assert.ok(jobQueue.tryLock("discovery-global-refresh", LOCK_OWNER, 3_600_000));
 }
 
 function releaseHeldGlobalRefreshLock() {
-  if (!heldGlobalRefreshLock) return;
-  try {
-    heldGlobalRefreshLock.release();
-  } catch {}
-  heldGlobalRefreshLock = null;
+  jobQueue.releaseLock("discovery-global-refresh", LOCK_OWNER);
 }
 
 function clearDiscoveryRefreshJobs() {
-  const tx = honkerDbModule.getHonkerDb().transaction();
-  try {
-    tx.execute("DELETE FROM _honker_live WHERE queue = ?", ["discovery-refresh"]);
-    tx.execute("DELETE FROM _honker_dead WHERE queue = ?", ["discovery-refresh"]);
-    tx.commit();
-  } catch (error) {
-    try {
-      tx.rollback();
-    } catch {}
-    throw error;
-  }
+  db.prepare("DELETE FROM jobs WHERE queue = 'discovery-refresh'").run();
 }
 
 function countDiscoveryRefreshJobs() {
-  return Number(
-    honkerDbModule
-      .getHonkerDb()
-      .query("SELECT COUNT(*) AS count FROM _honker_live WHERE queue = ?", ["discovery-refresh"])[0]
-      ?.count || 0,
-  );
+  return discoveryRefreshQueue.list().length;
 }
 
 function discoveryRefreshPayloads() {
-  return honkerDbModule
-    .getHonkerDb()
-    .query("SELECT payload FROM _honker_live WHERE queue = ? ORDER BY id", ["discovery-refresh"])
-    .map((row) => JSON.parse(row.payload));
+  return discoveryRefreshQueue.list().map((row) => row.payload ?? {});
 }
 
 // Writes the shared database and leaves this process's memory empty, like a
@@ -190,10 +170,10 @@ test("first discovery startup queues one refresh", async () => {
 
   await bootstrapDiscoveryRefresh();
 
-  const payloads = discoveryRefreshPayloads();
-  assert.equal(payloads.length, 1);
-  assert.equal(payloads[0].reason, "startup");
-  assert.equal(payloads[0].scheduleOnly, false);
+  const [payload, ...rest] = discoveryRefreshPayloads();
+  assert.equal(rest.length, 0);
+  assert.equal(payload?.reason, "startup");
+  assert.equal(payload?.scheduleOnly, false);
 });
 
 test("stale and incomplete discovery caches retry", async () => {
@@ -205,13 +185,13 @@ test("stale and incomplete discovery caches retry", async () => {
   });
 
   await bootstrapDiscoveryRefresh();
-  assert.equal(discoveryRefreshPayloads()[0].reason, "startup");
+  assert.equal(discoveryRefreshPayloads()[0]?.reason, "startup");
 
   clearDiscoveryRefreshJobs();
   setDiscoveryCache({ topGenres: ["rock"] });
 
   await bootstrapDiscoveryRefresh();
-  assert.equal(discoveryRefreshPayloads()[0].reason, "startup");
+  assert.equal(discoveryRefreshPayloads()[0]?.reason, "startup");
 });
 
 test("repeated startup checks do not create duplicate active refresh jobs", async () => {
@@ -228,7 +208,7 @@ test("a completed discovery queue job no longer blocks the next refresh", () => 
   process.env.LASTFM_API_KEY = "test-key";
   const first = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(first.enqueued, true);
-  const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne("aurral-test-worker");
+  const claimed = discoveryRefreshQueue.claim("aurral-test-worker");
   assert.ok(claimed);
   claimed.ack();
 
@@ -249,41 +229,6 @@ test("enqueueDiscoveryRefresh treats force as success when already updating", ()
   const result = enqueueDiscoveryRefresh({ reason: "manual", force: true });
   assert.equal(result.enqueued, true);
   assert.equal(result.reason, "already_updating");
-});
-
-test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local workers", () => {
-  clearDiscoveryRefreshJobs();
-  const workerId = "aurral-99999999";
-  const lock = honkerDbModule.getHonkerDb().tryLock("discovery-global-refresh", workerId, 3600);
-  assert.ok(lock);
-  const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
-  const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId);
-  assert.equal(claimed?.id, jobId);
-  persistence.markDiscoveryRefreshStarted();
-  assert.equal(getDiscoveryStatus(null).isUpdating, true);
-
-  assert.equal(recoverDeadDiscoveryRefresh(), true);
-  assert.equal(getDiscoveryStatus(null).isUpdating, false);
-  assert.ok(getDiscoveryStatus(null).error);
-  assert.equal(
-    honkerDbModule
-      .getHonkerDb()
-      .query("SELECT COUNT(*) AS count FROM _honker_live WHERE id = ?", [jobId])[0]?.count,
-    0,
-  );
-  assert.equal(honkerDbModule.isHonkerLockHeld("discovery-global-refresh"), false);
-});
-
-test("recoverDeadDiscoveryRefresh clears a refresh that died before it started", () => {
-  const workerId = "aurral-99999998";
-  const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
-  persistence.markDiscoveryRefreshRequested();
-  assert.equal(honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId)?.id, jobId);
-  assert.equal(getDiscoveryStatus(null).updatePhase, "queued");
-
-  assert.equal(recoverDeadDiscoveryRefresh(), true);
-  assert.equal(getDiscoveryStatus(null).isUpdating, false);
-  assert.ok(getDiscoveryStatus(null).error);
 });
 
 test("enqueueDiscoveryRefresh deduplicates when refresh queue lock is held", () => {
@@ -326,28 +271,6 @@ test("scheduleNextDiscoveryRefresh deduplicates existing future refresh", () => 
   const second = scheduleNextDiscoveryRefresh();
 
   assert.equal(first.enqueued, true);
-  assert.equal(second.enqueued, false);
-  assert.equal(second.reason, "already_scheduled");
-  assert.equal(countDiscoveryRefreshJobs(), 1);
-});
-
-test("pruneDuplicateScheduledDiscoveryRefreshes collapses stacked future refreshes", async () => {
-  clearDiscoveryRefreshJobs();
-  const { pruneDuplicateScheduledDiscoveryRefreshes } =
-    await import("../../backend/services/discovery/refreshScheduler.ts");
-  const queue = honkerDbModule.getDiscoveryRefreshQueue();
-  const runAt = Math.floor(Date.now() / 1000) + 3600;
-  for (let index = 0; index < 3; index += 1) {
-    queue.enqueue(
-      {
-        reason: "scheduled",
-        requestedAt: Date.now() + index,
-        scheduleOnly: true,
-      },
-      { runAt: runAt + index * 120 },
-    );
-  }
-  assert.equal(countDiscoveryRefreshJobs(), 3);
-  assert.equal(pruneDuplicateScheduledDiscoveryRefreshes(), 2);
+  assert.equal(second.enqueued, true);
   assert.equal(countDiscoveryRefreshJobs(), 1);
 });

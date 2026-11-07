@@ -18,7 +18,7 @@ const [
   { playlistManager },
   { lidarrClient },
   libraryScans,
-  honker,
+  { playbackTaskQueue, libraryScanQueue, systemTaskQueue, maintenanceTaskQueue },
 ] = await setupIsolatedBackend(
   "general-settings",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -27,10 +27,12 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 
 beforeEach(() => {
+  vi.spyOn(systemTaskQueue, "start").mockImplementation(async () => undefined);
+  vi.spyOn(maintenanceTaskQueue, "start").mockImplementation(async () => undefined);
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
 });
@@ -41,15 +43,15 @@ afterAll(async () => {
 });
 
 function pendingPlaylistSyncs() {
-  return honker
-    .listHonkerJobs("playback")
-    .filter(({ payload }) => payload?.kind === "playback-playlist-sync")
-    .map(({ payload }) => payload);
+  return playbackTaskQueue
+    .list()
+    .filter((job) => job.kind === "playback-playlist-sync")
+    .map((job) => job.payload);
 }
 
 function clearPendingPlaylistSyncs() {
-  for (const { id, payload } of honker.listHonkerJobs("playback")) {
-    if (payload?.kind === "playback-playlist-sync") honker.getPlaybackTaskQueue().cancel(id);
+  for (const job of playbackTaskQueue.list()) {
+    if (job.kind === "playback-playlist-sync") playbackTaskQueue.cancel(job.id);
   }
 }
 
@@ -206,15 +208,11 @@ test("turning Lidarr off or on starts a Library scan, and other saves do not", a
   });
   const scheduledScan = () => {
     const jobId = libraryScans.getScheduledLibraryScanJobId();
-    const job = jobId == null ? null : honker.getLibraryScanQueue().getJob(jobId);
+    const job = jobId == null ? null : libraryScanQueue.getJob(jobId);
     return job ? JSON.parse(job.payload) : null;
   };
   const releaseTask = () =>
-    honker.findActiveHonkerJob(
-      "system-task",
-      (payload) => payload?.kind === "lidarr-files-release",
-      { payloadKind: "lidarr-files-release" },
-    );
+    systemTaskQueue.list().find((job) => job.kind === "lidarr-files-release") ?? null;
   const clearScan = () => libraryScans.clearScheduledLibraryScan();
   clearScan();
   t.onTestFinished(clearScan);
@@ -424,13 +422,11 @@ test("saving an integration setting Aurral can't read is rejected", async () => 
 });
 
 test("queues a news refresh only when news settings change", async () => {
-  const { findActiveHonkerJob, getMaintenanceTaskQueue } =
-    await import("../../backend/services/honkerDb.ts");
   const queuedNewsRefresh = () =>
-    findActiveHonkerJob("system-task-maintenance", (payload) => payload?.kind === "news-refresh");
+    maintenanceTaskQueue.list().find((job) => job.kind === "news-refresh") ?? null;
   const clearNewsRefresh = () => {
-    for (let job = queuedNewsRefresh(); job; job = queuedNewsRefresh()) {
-      getMaintenanceTaskQueue().cancel(job.id);
+    for (const job of maintenanceTaskQueue.list()) {
+      if (job.kind === "news-refresh") maintenanceTaskQueue.cancel(job.id);
     }
   };
   const { getSettings, postSettings } = captureSettingsRoutes();

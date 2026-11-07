@@ -1,4 +1,5 @@
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import { insertJob } from "../helpers/jobs.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -13,7 +14,6 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  honker,
   ownership,
   cancellation,
 ] = await setupIsolatedBackend(
@@ -22,16 +22,13 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
   () => import("../../backend/services/downloadJobs/downloadOwnership.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
 );
 beforeEach(() => {
   resetDatabase(db);
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  honker.getPipelineQueue();
-  db.prepare("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'").run();
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
 });
 afterAll(() => cleanupIsolatedState(state));
 
@@ -56,7 +53,7 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
     queueUuid: "existing-provider-work",
     albumGroupJobIds: [jobId],
   };
-  const queueId = honker.getPipelineQueue().enqueue(payload);
+  const queueId = insertJob(db, "download-pipeline", payload);
   db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
   assert.equal(job.playlistType, source.id);
   downloadTracker.reconcileCommittedJobs();
@@ -70,7 +67,7 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
   assert.equal(
     JSON.parse(
       db
-        .prepare<[number], { payload: string }>("SELECT payload FROM _honker_live WHERE id = ?")
+        .prepare<[number], { payload: string }>("SELECT payload FROM jobs WHERE id = ?")
         .get(queueId)!.payload,
     ).playlistId,
     target.id,
@@ -119,7 +116,7 @@ test("rolled-back transfer leaves the continuing process and queued payload unch
   );
   assert.ok(jobId != null);
   const payload = { jobId, playlistId: source.id, playlistGeneration: 0, phase: "poll" };
-  const queueId = honker.getPipelineQueue().enqueue(payload);
+  const queueId = insertJob(db, "download-pipeline", payload);
   assert.throws(
     () =>
       db.transaction(() => {
@@ -134,7 +131,7 @@ test("rolled-back transfer leaves the continuing process and queued payload unch
   assert.deepEqual(
     JSON.parse(
       db
-        .prepare<[number], { payload: string }>("SELECT payload FROM _honker_live WHERE id = ?")
+        .prepare<[number], { payload: string }>("SELECT payload FROM jobs WHERE id = ?")
         .get(queueId)!.payload,
     ),
     payload,
@@ -155,7 +152,7 @@ test("album leadership moves to a held peer without cancelling shared provider w
     playlist.id,
   );
   assert.ok(peer != null);
-  db.prepare("UPDATE playlist_download_jobs SET request_group_id = ? WHERE id IN (?, ?)").run(
+  db.prepare("UPDATE download_jobs SET request_group_id = ? WHERE id IN (?, ?)").run(
     "album-request",
     leader,
     peer,
@@ -176,7 +173,7 @@ test("album leadership moves to a held peer without cancelling shared provider w
     albumGroupJobIds: [leader, peer],
     queueUuid: "existing-queue",
   };
-  honker.getPipelineQueue().enqueue(payload);
+  insertJob(db, "download-pipeline", payload);
   const redirect = db.transaction(() =>
     ownership.replaceAlbumDownloadLeaderInTransaction(leader, peer),
   )();
@@ -317,9 +314,9 @@ test("recording a transfer prunes transfer history for settled downloads only", 
     downloadTracker.reconcileCommittedJobs();
   };
   for (const jobId of [doneId, failedId, removedId, activeId]) move(jobId);
-  db.prepare("UPDATE playlist_download_jobs SET status = 'done' WHERE id = ?").run(doneId);
-  db.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(failedId);
-  db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(removedId);
+  db.prepare("UPDATE download_jobs SET status = 'done' WHERE id = ?").run(doneId);
+  db.prepare("UPDATE download_jobs SET status = 'failed' WHERE id = ?").run(failedId);
+  db.prepare("DELETE FROM download_jobs WHERE id = ?").run(removedId);
   move(nextId);
   const history = db
     .prepare<[], { key: string }>(

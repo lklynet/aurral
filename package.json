@@ -40,7 +40,6 @@
   },
   "devDependencies": {
     "@hono/node-server": "^2.1.5",
-    "@russellthehippo/honker-node": "^0.5.1",
     "@tanstack/react-query": "^5.104.3",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^9.6.0",

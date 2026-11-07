@@ -11,7 +11,6 @@ import { api, handleError } from "./routes/api.ts";
 import frontend from "./routes/frontend.ts";
 import sso from "./routes/sso.ts";
 import subsonic from "./routes/subsonic.ts";
-import { noteDeprecatedUsage } from "./services/deprecatedUsage.ts";
 import { withLogContext } from "./services/logger.ts";
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
@@ -53,12 +52,6 @@ export const app = new Hono<AppEnv>({ strict: false })
   .use("/api/auth/oidc/login", signInLimit)
   .use("/api/auth/oidc/exchange", signInLimit)
   .use("/api/users/me/password", signInLimit)
-  .all("/api/weekly-flow/*", (c) => {
-    noteDeprecatedUsage("weekly-flow-api");
-    const { pathname, search } = new URL(c.req.url);
-    const rest = pathname.slice("/api/weekly-flow".length) || "/";
-    return c.redirect(`/api/playlists${rest}${search}`, 308);
-  })
   .route("/api", api)
   .route("/", subsonic)
   .route("/", sso)

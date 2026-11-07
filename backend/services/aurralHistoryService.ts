@@ -10,7 +10,13 @@ import type {
   AurralHistoryMetadata,
   TrackUpgrade,
 } from "../db/helpers/history.ts";
-import type { HonkerLiveRow } from "../db/rows.ts";
+import type { AnyQueue, JsonObject } from "./jobs/queue.ts";
+import {
+  discoveryRefreshQueue,
+  downloadPipelineQueue,
+  flowRunQueue,
+  playlistOperationQueue,
+} from "./jobs/queues.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import type { LidarrClient } from "./lidarrClient.ts";
@@ -603,30 +609,8 @@ const normalizeAlbumMatchText = (value: unknown) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const isHonkerQueueActive = async (
-  queueName: string,
-  predicate: (payload: Record<string, unknown>) => boolean,
-) => {
-  try {
-    const { getHonkerDb, parseHonkerPayload } = await import("./honkerDb.ts");
-    const rows = getHonkerDb().query(
-      `
-        SELECT payload
-        FROM _honker_live
-        WHERE queue = ?
-          AND state IN ('pending', 'processing')
-      `,
-      [String(queueName || "").trim()],
-    );
-    for (const row of rows) {
-      const payload = parseHonkerPayload(row?.payload);
-      if (payload && predicate(payload)) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-};
+const isQueueActive = (queue: AnyQueue, predicate: (payload: JsonObject) => boolean) =>
+  queue.list().some(({ payload }) => payload !== null && predicate(payload));
 
 const canViewPlaylistActivity = (
   user: RequesterUser | null | undefined,
@@ -645,22 +629,12 @@ const canViewPlaylistActivity = (
   return playlist ? flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist) : false;
 };
 
-const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | undefined) => {
+const loadPendingPlaylistImportHistory = (user: RequesterUser | null | undefined) => {
   try {
-    const { getHonkerDb, parseHonkerPayload } = await import("./honkerDb.ts");
-    const rows = getHonkerDb().query(
-      `
-        SELECT id, payload, state, created_at
-        FROM _honker_live
-        WHERE queue = ?
-          AND state IN ('pending', 'processing')
-        ORDER BY created_at ASC, id ASC
-      `,
-      ["weekly-flow-operation"],
-    ) as Pick<HonkerLiveRow, "id" | "payload" | "state" | "created_at">[];
+    const rows = playlistOperationQueue.list();
     return rows.flatMap((row) => {
-      const payload = parseHonkerPayload(row?.payload);
-      if (payload?.kind !== "shared-playlist-create") return [];
+      const { payload } = row;
+      if (payload?.kind !== "static-playlist-create") return [];
       if (
         user &&
         user.role !== "admin" &&
@@ -672,9 +646,8 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
       const playlistName = String(payload.name || "Playlist").trim() || "Playlist";
       const sourceName = String(payload.sourceName || "Playlist import").trim();
       const trackCount = Array.isArray(payload.tracks) ? payload.tracks.length : 0;
-      const state = row.state === "processing" ? "processing" : "pending";
+      const state = row.state === "running" ? "processing" : "pending";
       const countLabel = `${trackCount} track${trackCount === 1 ? "" : "s"}`;
-      const createdAt = Number(row.created_at);
       return [
         {
           id: stableId("playlist_import", row.id),
@@ -693,12 +666,7 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
             ownerUserId: typeof payload.ownerUserId === "number" ? payload.ownerUserId : null,
             trackCount,
           },
-          createdAt:
-            Number.isFinite(createdAt) && createdAt > 0
-              ? createdAt > 1e12
-                ? createdAt
-                : createdAt * 1000
-              : Date.now(),
+          createdAt: row.created_at,
         },
       ];
     });
@@ -709,9 +677,9 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
 
 // A release attempt downloads for every track of its album, so a track it
 // holds is active while the attempt is.
-const isPipelineActiveForJob = async (jobId: string) =>
-  isHonkerQueueActive(
-    "slskd-pipeline",
+const isPipelineActiveForJob = (jobId: string) =>
+  isQueueActive(
+    downloadPipelineQueue,
     (payload) =>
       payload?.jobId === jobId ||
       (Array.isArray(payload?.albumGroupJobIds) && payload.albumGroupJobIds.includes(jobId)),
@@ -788,7 +756,7 @@ export const syncTrackDownloadHistory = async (
       Number(entry.createdAt || 0),
     );
     if (!anchorTime || Date.now() - anchorTime < STALE_TRACK_JOB_MS) continue;
-    if (await isPipelineActiveForJob(jobId)) continue;
+    if (isPipelineActiveForJob(jobId)) continue;
 
     const message = "Download timed out";
     downloadTracker.setFailed(jobId, message);
@@ -802,7 +770,7 @@ const syncDiscoveryRefreshHistory = async (historyEntries: AurralHistoryEntry[] 
   );
   if (!pendingEntries.length) return;
 
-  const discoveryActive = await isHonkerQueueActive("discovery-refresh", () => true);
+  const discoveryActive = isQueueActive(discoveryRefreshQueue, () => true);
   if (discoveryActive) return;
 
   for (const entry of pendingEntries) {
@@ -821,8 +789,8 @@ const syncFlowGenerationHistory = async (historyEntries: AurralHistoryEntry[] | 
     const flowId = String(entry.metadata?.flowId || "").trim();
     if (!flowId) continue;
     if (Date.now() - Number(entry.createdAt || 0) < STALE_AURRAL_JOB_MS) continue;
-    const flowActive = await isHonkerQueueActive(
-      "flow-run",
+    const flowActive = isQueueActive(
+      flowRunQueue,
       (payload) => String(payload?.flowId || payload?.playlistId || "").trim() === flowId,
     );
     if (flowActive) continue;
@@ -1404,7 +1372,7 @@ export const getAurralHistoryRequests = async (
 ) => {
   await syncActivityFeedHistory(lidarrClient);
   const entries: AurralHistoryEntry[] = [
-    ...(await loadPendingPlaylistImportHistory(user)),
+    ...loadPendingPlaylistImportHistory(user),
     ...loadRecentHistory(),
   ];
   const entryIds = new Set(entries.map((e) => e.id));

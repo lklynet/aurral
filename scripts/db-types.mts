@@ -49,9 +49,6 @@ if (check) {
 async function generate() {
   const { db } = await import("../backend/config/db-sqlite.ts");
   await import("../backend/services/metadataProviderBudget.ts");
-  const { getHonkerDb, closeHonkerDb } = await import("../backend/services/honkerDb.ts");
-  getHonkerDb();
-  closeHonkerDb();
   try {
     return render(db);
   } finally {

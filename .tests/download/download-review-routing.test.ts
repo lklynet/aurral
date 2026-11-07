@@ -37,7 +37,7 @@ const [
   { processPipelinePayload },
   { getDownloadClient },
   { getScheduledLibraryScanJobId, scanRegistrySchema },
-  { getLibraryScanQueue },
+  { libraryScanQueue },
 ] = await setupIsolatedBackend(
   "download-review-routing",
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -54,7 +54,7 @@ const [
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/download/downloadClientSettings.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
@@ -198,7 +198,7 @@ afterAll(async () => {
 });
 
 test("pipeline completion queues only committed files and settling does not expand the scan", async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const committedPaths: string[] = [];
   for (const playlistType of ["library", "flow-playlist", "static-playlist"]) {
     const jobId = createTrackedJob(
@@ -219,7 +219,7 @@ test("pipeline completion queues only committed files and settling does not expa
 
   const scanId = getScheduledLibraryScanJobId();
   assert.ok(scanId != null);
-  assert.ok(getLibraryScanQueue().getJob(scanId));
+  assert.ok(libraryScanQueue.getJob(scanId));
   const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.ok(registry != null);
   assert.deepEqual(registry.changedPaths, committedPaths);

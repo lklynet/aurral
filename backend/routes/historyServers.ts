@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, requireUserAccount } from "../middlewar
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
-import { enqueueSystemTaskJob } from "../services/honkerDb.ts";
+import { enqueueSystemTask } from "../services/jobs/queues.ts";
 import {
   connectHistoryServer,
   disconnectHistoryServer,
@@ -28,7 +28,7 @@ const connectBody = v.object({
 });
 
 const queueSync = (userId: number, provider: string) =>
-  enqueueSystemTaskJob({ kind: "history-server-sync", userId, provider });
+  enqueueSystemTask({ kind: "history-server-sync", userId, provider });
 
 const serverFailure = (provider: string, action: string, error: unknown) => {
   const failure = asAppError(error);

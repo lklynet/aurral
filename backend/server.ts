@@ -17,12 +17,9 @@ import {
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
 import { warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
-import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
+import { syncSchedules } from "./services/jobs/schedules.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
-import {
-  registerHonkerShutdownHandler,
-  shutdownHonkerInfrastructure,
-} from "./services/honkerWorkerRuntime.ts";
+import { registerShutdownHandler, shutdownJobWorkers } from "./services/jobs/worker.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { stopAllPlugins } from "./services/plugins/pluginHost.ts";
 import { refreshInstalledPlugins } from "./services/plugins/pluginService.ts";
@@ -121,7 +118,7 @@ const gracefulShutdown = async (signal: NodeJS.Signals) => {
   }
   stopPlaylistStatusBroadcasts();
   stopAllPlugins();
-  await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
+  await shutdownJobWorkers({ timeoutMs: 5000 });
   await stopShareListener();
   await new Promise<void>((resolve) => {
     httpServer.close(() => resolve());
@@ -129,7 +126,7 @@ const gracefulShutdown = async (signal: NodeJS.Signals) => {
   process.exit(0);
 };
 
-registerHonkerShutdownHandler(async () => {
+registerShutdownHandler(async () => {
   websocketService.close?.();
 });
 
@@ -143,7 +140,7 @@ process.once("SIGINT", () => {
 httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
   warnAboutConfigDeprecations();
-  bootstrapHonkerSchedules();
+  syncSchedules();
   initializeAppRuntime();
   void syncShareListener();
   refreshInstalledPlugins().catch((error) =>

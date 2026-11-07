@@ -2,7 +2,7 @@ import { withPlaylistMutation, withPlaylistMutationLock } from "../downloadJobs/
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import { listHonkerJobs } from "../honkerDb.ts";
+import { downloadPipelineQueue } from "../jobs/queues.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
@@ -125,7 +125,7 @@ export function getPlaylistRemovalLockIds(
   const owners: (string | null | undefined)[] = [playlistId, ...extraIds];
   const related = new Map(jobs.map((job) => [job.id, job] as const));
   const allJobs = downloadTracker.getAll();
-  const pipelineRows = listHonkerJobs("slskd-pipeline");
+  const pipelineRows = downloadPipelineQueue.list();
   for (const job of related.values()) {
     owners.push(
       job.playlistType,
@@ -209,9 +209,9 @@ export function isStaticPlaylistSelectionCurrent(
 }
 
 function replacementPeer(job: DownloadJob, removingIds: Set<string>): DownloadJob | null {
-  const row = listHonkerJobs("slskd-pipeline").find(
-    (entry) => entry.payload?.albumGrab === true && entry.payload.jobId === job.id,
-  );
+  const row = downloadPipelineQueue
+    .list()
+    .find((entry) => entry.payload?.albumGrab === true && entry.payload.jobId === job.id);
   if (!row) return null;
   return (
     payloadIds(row.payload?.albumGroupJobIds)
@@ -389,7 +389,7 @@ export async function removeStaticPlaylistSelectionsLocked({
                 finalPath: plan.relocation?.finalPath || job.finalPath,
               });
             }
-            db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(job.id);
+            db.prepare("DELETE FROM download_jobs WHERE id = ?").run(job.id);
           }
         }
       }

@@ -21,12 +21,14 @@ const RESET_TABLES = [
   "subsonic_play_queues",
   "play_album_stats",
   "play_events",
-  "honker_task_runs",
+  "jobs",
+  "job_locks",
+  "job_schedules",
   "slskd_transfer_history",
-  "playlist_download_jobs",
-  "weekly_flow_download_job_cancellations",
-  "weekly_flow_download_cancellations",
-  "weekly_flow_download_provider_work",
+  "download_jobs",
+  "download_job_cancellations",
+  "download_cancellations",
+  "download_provider_work",
   "share_links",
   "inbox_items",
   "news_articles",
@@ -85,12 +87,8 @@ export function applyIsolatedBackendEnv(paths: IsolatedStatePaths) {
 export async function cleanupIsolatedState(paths: IsolatedStatePaths) {
   if (!paths?.baseDir) return;
   try {
-    const honkerRuntime = await import("../../backend/services/honkerWorkerRuntime.ts");
-    await honkerRuntime.shutdownHonkerInfrastructure({ timeoutMs: 5000 });
-  } catch {}
-  try {
-    const honkerDb = await import("../../backend/services/honkerDb.ts");
-    honkerDb.closeHonkerDb();
+    const { shutdownJobWorkers } = await import("../../backend/services/jobs/worker.ts");
+    await shutdownJobWorkers({ timeoutMs: 5000 });
   } catch {}
   try {
     const { db } = await import("../../backend/config/db-sqlite.ts");

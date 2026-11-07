@@ -36,8 +36,8 @@ const [
   { downloadTracker },
   { downloadWorker },
   { lidarrClient },
-  { listHonkerJobs, getHonkerQueueByName },
-  { processSystemTask, systemTaskSchema },
+  { systemTaskQueue, systemTaskSchema },
+  { processSystemTask },
   { clearMetadataProviderCaches },
   { libraryManager },
   { scanMusicRoot },
@@ -53,7 +53,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/libraryManager.ts"),
@@ -269,7 +269,8 @@ async function callRoute<Body = RouteBody>(
 }
 
 function systemTasks(kind: string) {
-  return listHonkerJobs("system-task")
+  return systemTaskQueue
+    .list()
     .map((job) => job.payload)
     .filter((payload) => payload?.kind === kind);
 }
@@ -277,8 +278,7 @@ function systemTasks(kind: string) {
 const queuedMonitoringTasks = () => systemTasks("aurral-monitoring-apply");
 
 function clearMonitoringTasks() {
-  const queue = getHonkerQueueByName("system-task");
-  for (const job of listHonkerJobs("system-task")) queue?.cancel(job.id);
+  for (const job of systemTaskQueue.list()) systemTaskQueue.cancel(job.id);
 }
 
 async function runQueuedMonitoringTasks() {
@@ -364,6 +364,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  vi.spyOn(systemTaskQueue, "start").mockImplementation(async () => undefined);
   metadataState.artistFails = false;
   metadataState.extraReleases = [];
   metadataState.otherReleases = [];

@@ -14,7 +14,7 @@ const [
   { flowPlaylistConfig },
   { downloadTracker },
   { playlistManager },
-  { getPlaylistMbidEnrichmentQueue },
+  { playlistMbidEnrichmentQueue: queue },
   { enrichStaticPlaylistMbids, schedulePlaylistMbidEnrichmentForMissingPlaylists },
 ] = await setupIsolatedBackend(
   "playlist-mbid-enrichment",
@@ -23,7 +23,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/playlistMbidEnrichmentService.ts"),
 );
 
@@ -58,7 +58,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 
@@ -296,11 +296,9 @@ test("startup artist reconciliation is scheduled only once", () => {
     reconcileArtistMbids: true,
   });
 
-  const queue = getPlaylistMbidEnrichmentQueue();
   const getPlaylistId = (jobId: number) => {
     const payload = queue.getJob(jobId)?.payload;
-    const parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
-    return parsed?.playlistId;
+    return payload ? JSON.parse(payload).playlistId : undefined;
   };
   assert.ok(first.some((jobId) => getPlaylistId(jobId) === playlist.id));
   assert.ok(!second.some((jobId) => getPlaylistId(jobId) === playlist.id));

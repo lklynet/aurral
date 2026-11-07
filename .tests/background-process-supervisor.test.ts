@@ -4,66 +4,13 @@ import { execFileSync, fork, ChildProcess, type ForkOptions } from "node:child_p
 import { test, vi } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
-import { setupIsolatedBackend, cleanupIsolatedState } from "./helpers/backendTestHarness.ts";
-import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.ts";
 import {
-  ISOLATED_WORKER_GROUPS,
-  isQueueOwnedByGroup,
-  shouldStartQueueHere,
-} from "../backend/services/backgroundWorkerQueues.ts";
-
-test("only the owning process supervises isolated queues", () => {
-  assert.deepEqual(ISOLATED_WORKER_GROUPS, [
-    "release-metadata",
-    "library",
-    "discovery-refresh",
-    "discovery-user-refresh",
-    "maintenance",
-    "inbox",
-    "notifications",
-    "play-events",
-    "downloads",
-    "scheduler",
-  ]);
-  assert.equal(isQueueOwnedByGroup("library-scan"), false);
-  assert.equal(isQueueOwnedByGroup("library-scan", "library"), true);
-  assert.equal(isQueueOwnedByGroup("discovery-refresh", "library"), false);
-  assert.equal(isQueueOwnedByGroup("discovery-refresh", "discovery-refresh"), true);
-  assert.equal(isQueueOwnedByGroup("system-task-inbox", "inbox"), true);
-  assert.equal(isQueueOwnedByGroup("_outbox:notifications", "notifications"), true);
-  assert.equal(isQueueOwnedByGroup("_outbox:play-events", "play-events"), true);
-  assert.equal(isQueueOwnedByGroup("notification-outbox", "notifications"), true);
-  assert.equal(isQueueOwnedByGroup("system-task", "downloads"), true);
-  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "release-metadata"), true);
-  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "downloads"), false);
-  assert.equal(isQueueOwnedByGroup("weekly-flow-operation", "downloads"), true);
-  assert.equal(isQueueOwnedByGroup("slskd-pipeline", "downloads"), true);
-  assert.equal(isQueueOwnedByGroup("system-task"), false);
-  assert.equal(isQueueOwnedByGroup("system-task", "library"), false);
-  assert.equal(isQueueOwnedByGroup("playlist-mbid-enrichment", "downloads"), true);
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
-  try {
-    process.env.NODE_ENV = "production";
-    delete process.env.AURRAL_BACKGROUND_WORKER_GROUP;
-    assert.equal(shouldStartQueueHere("library-scan"), false);
-    assert.equal(shouldStartQueueHere("system-task"), false);
-    process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
-    assert.equal(shouldStartQueueHere("library-scan"), true);
-    assert.equal(shouldStartQueueHere("system-task"), false);
-    assert.equal(shouldStartQueueHere("discovery-refresh"), false);
-    process.env.AURRAL_BACKGROUND_WORKER_GROUP = "downloads";
-    assert.equal(shouldStartQueueHere("system-task"), true);
-    assert.equal(shouldStartQueueHere("weekly-flow-operation"), true);
-    assert.equal(shouldStartQueueHere("library-scan"), false);
-  } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
-    if (previousGroup === undefined) delete process.env.AURRAL_BACKGROUND_WORKER_GROUP;
-    else process.env.AURRAL_BACKGROUND_WORKER_GROUP = previousGroup;
-  }
-});
-
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  resetDatabase,
+} from "./helpers/backendTestHarness.ts";
+import { insertJob } from "./helpers/jobs.ts";
+import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.ts";
 const quietLogger = { warn() {}, error() {} };
 const heapFixture = fileURLToPath(
   new URL("./fixtures/heap-limit-background-child.mts", import.meta.url),
@@ -172,14 +119,18 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
   );
   assert.equal(supervisor.wake("discovery"), false);
   requireFixture(launches[1]).emit("message", { type: "ready" });
-  assert.equal(supervisor.wake("discovery"), true);
   assert.deepEqual(launches[1]?.sent, [{ type: "queue-wake" }]);
+  assert.equal(supervisor.wake("discovery"), true);
+  assert.deepEqual(launches[1]?.sent, [{ type: "queue-wake" }, { type: "queue-wake" }]);
   assert.equal(supervisor.wake("missing"), false);
 
   await supervisor.stop();
   assert.deepEqual(
     launches.map((child) => child.sent),
-    [[{ type: "shutdown" }], [{ type: "queue-wake" }, { type: "shutdown" }]],
+    [
+      [{ type: "shutdown" }],
+      [{ type: "queue-wake" }, { type: "queue-wake" }, { type: "shutdown" }],
+    ],
   );
   assert.deepEqual(supervisor.getGroups(), []);
   assert.deepEqual(supervisor.getWorkerStatuses(), []);
@@ -208,7 +159,7 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     requireFixture(launches[0]).emit("message", { type: "ready" });
     withWork = [];
     requireFixture(launches[0]).emit("message", { type: "idle" });
-    assert.deepEqual(launches[0]?.sent, [{ type: "retire" }]);
+    assert.deepEqual(launches[0]?.sent, [{ type: "queue-wake" }, { type: "retire" }]);
     exitIdle(launches[0]);
     await flush();
     vi.advanceTimersByTime(60000);
@@ -219,7 +170,7 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     assert.deepEqual([...warnings], []);
 
     withWork = ["library"];
-    vi.advanceTimersByTime(2000);
+    supervisor.wake("library");
     assert.equal(launches.length, 2);
   } finally {
     await supervisor.stop();
@@ -342,7 +293,9 @@ test("flow requests return replies and reject when their owner exits", async () 
     supervisor.start();
     const first = supervisor.request("downloads", "start");
     requireFixture(launches[0]).emit("message", { type: "ready" });
-    const request = requireFixture(launches[0]).sent.at(-1);
+    const request = requireFixture(launches[0]).sent.find(
+      (message) => message.type === "download-owner-command",
+    );
     assert.equal(requireFixture(request).type, "download-owner-command");
     assert.equal(requireFixture(request).method, "start");
     reply(requireFixture(launches[0]), true);
@@ -492,7 +445,7 @@ test("a worker that runs out of heap stops at the configured limit and the log n
     forkProcess: forkHeapFixture((child) =>
       child.send({
         type: "run-job",
-        queue: "_outbox:notifications",
+        queue: "notifications",
         jobId: 42,
         payload: '{"kind":"disposable"}',
         defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
@@ -503,7 +456,7 @@ test("a worker that runs out of heap stops at the configured limit and the log n
   supervisor.start();
   assert.match(
     await warned.promise,
-    /^\[BackgroundWorkers\] notifications exited \(SIGABRT\); running _outbox:notifications job 42 \{"kind":"disposable"\}; last memory \d+ MB RSS, \d+ MB heap; restarting$/,
+    /^\[BackgroundWorkers\] notifications exited \(SIGABRT\); running notifications job 42 \{"kind":"disposable"\}; last memory \d+ MB RSS, \d+ MB heap; restarting$/,
   );
 });
 
@@ -539,7 +492,6 @@ test("a failed deadline inspection retries without requiring another commit", as
     groups: ["library"],
     forkProcess,
     logger: quietLogger,
-    getWorkRevision: () => "unchanged",
     getNextWorkAt: () => (Date.now() < 1000 ? 1000 : null),
     findGroupsWithWork: () => {
       if (Date.now() < 1000) return [];
@@ -554,34 +506,31 @@ test("a failed deadline inspection retries without requiring another commit", as
     supervisor.start();
     vi.advanceTimersByTime(1000);
     assert.deepEqual([...launches], []);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(30000);
     assert.deepEqual(supervisor.getGroups(), ["library"]);
   } finally {
     await supervisor.stop();
   }
 });
 
-test("idle demand checks skip queue scans and discover unannounced commits", async () => {
-  const [state, { db }, honker] = await setupIsolatedBackend(
+test("an idle supervisor sleeps until the next due job and catches work that comes due mid-check", async () => {
+  const [state, { db }, jobQueue] = await setupIsolatedBackend(
     "idle-demand",
     () => import("../backend/config/db-sqlite.ts"),
-    () => import("../backend/services/honkerDb.ts"),
+    () => import("../backend/services/jobs/queue.ts"),
+    () => import("../backend/services/jobs/queues.ts"),
   );
-  const queue = honker.getMaintenanceTaskQueue();
-  const revision = db.prepare<unknown[], { data_version: unknown; changes: unknown }>(
-    "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
-  );
+  resetDatabase(db);
   const { launches, forkProcess } = createFakeFork();
   let inspections = 0;
   let crossDeadline = false;
   const supervisor = createBackgroundProcessSupervisor({
-    groups: ["maintenance", "scheduler"],
+    groups: ["maintenance"],
     forkProcess,
-    getWorkRevision: () => JSON.stringify(revision.get()),
-    getNextWorkAt: honker.getNextBackgroundWorkAt,
+    getNextWorkAt: jobQueue.getNextWorkAt,
     findGroupsWithWork: (now) => {
       inspections++;
-      const groups = honker.listBackgroundGroupsWithWork(now);
+      const groups = jobQueue.listGroupsWithWork(now);
       if (crossDeadline) {
         crossDeadline = false;
         vi.setSystemTime(Date.now() + 1100);
@@ -591,97 +540,49 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
   });
   vi.useFakeTimers({
     toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"],
-    now: Math.floor(Date.now() / 1000) * 1000,
+    now: Date.now(),
   });
+  const retire = async () => {
+    const child = requireFixture(launches.at(-1));
+    child.emit("message", { type: "ready" });
+    child.emit("message", { type: "idle" });
+    exitIdle(child);
+    await flush();
+    assert.deepEqual(supervisor.getGroups(), []);
+  };
+  const job = (runAt: number) =>
+    insertJob(db, "system-task-maintenance", { kind: "session-cleanup" }, { runAt });
+  const cancel = (id: number) =>
+    db.prepare("UPDATE jobs SET state = 'cancelled' WHERE id = ?").run(id);
   try {
     supervisor.start();
     vi.advanceTimersByTime(60000);
-    assert.equal(inspections, 1, "an unchanged database must not be repeatedly scanned");
+    assert.equal(inspections, 1);
     assert.deepEqual([...launches], []);
-    const delayedId = queue.enqueue(
-      { kind: "session-cleanup" },
-      { runAt: Math.floor(Date.now() / 1000) + 5 },
-    );
+
+    const delayed = job(Date.now() + 5000);
+    supervisor.wake("maintenance");
     vi.advanceTimersByTime(2000);
-    assert.deepEqual([...launches], [], "a future job must stay pending");
+    assert.deepEqual([...launches], []);
     vi.advanceTimersByTime(3000);
-    assert.deepEqual(
-      supervisor.getGroups(),
-      ["maintenance"],
-      "unchanged delayed work must wake at its deadline",
-    );
-    requireFixture(launches[0]).emit("message", { type: "ready" });
-    requireFixture(launches[0]).emit("message", { type: "idle" });
-    queue.cancel(delayedId);
-    exitIdle(requireFixture(launches[0]));
-    await flush();
-    vi.advanceTimersByTime(2000);
-    assert.deepEqual(supervisor.getGroups(), []);
-    const immediateId = queue.enqueue({ kind: "session-cleanup" });
-    vi.advanceTimersByTime(2000);
     assert.deepEqual(supervisor.getGroups(), ["maintenance"]);
-    queue.cancel(immediateId);
-    requireFixture(launches[1]).emit("message", { type: "ready" });
-    requireFixture(launches[1]).emit("message", { type: "idle" });
-    exitIdle(requireFixture(launches[1]));
-    await flush();
-    vi.advanceTimersByTime(2000);
-    for (const kind of ["pending", "processing", "schedule"]) {
-      const dueAt = Math.floor(Date.now() / 1000) + 1;
-      let crossingId: number | undefined;
-      let scheduler;
-      const name = "disposable-crossing-schedule";
-      if (kind === "schedule") {
-        scheduler = honker.getHonkerDb().scheduler();
-        scheduler.add({
-          name,
-          queue: "system-task-maintenance",
-          schedule: "@every 1h",
-          payload: { kind: "session-cleanup" },
-        });
-        const tx = honker.getHonkerDb().transaction();
-        tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [
-          dueAt,
-          name,
-        ]);
-        tx.commit();
-      } else {
-        crossingId = queue.enqueue(
-          { kind: "session-cleanup" },
-          { runAt: kind === "pending" ? dueAt : dueAt - 120 },
-        );
-        if (kind === "processing") {
-          assert.equal(queue.claimOne("disposable-crossing-owner")?.id, crossingId);
-          const tx = honker.getHonkerDb().transaction();
-          tx.execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [
-            dueAt,
-            crossingId,
-          ]);
-          tx.commit();
-        }
+    cancel(delayed);
+    await retire();
+
+    for (const kind of ["pending", "running"]) {
+      const dueAt = Date.now() + 1000;
+      const id = job(kind === "pending" ? dueAt : Date.now());
+      if (kind === "running") {
+        db.prepare(
+          "UPDATE jobs SET state = 'running', attempts = 1, worker_id = 'gone', lease_until = ? WHERE id = ?",
+        ).run(dueAt, id);
       }
       crossDeadline = true;
-      const group = kind === "schedule" ? "scheduler" : "maintenance";
-      supervisor.wake(group);
+      supervisor.wake("maintenance");
       vi.advanceTimersByTime(1);
-      assert.deepEqual(
-        supervisor.getGroups(),
-        [group],
-        `${kind} work crossed during inspection must still launch its owner`,
-      );
-      if (scheduler) scheduler.remove(name);
-      else {
-        assert.ok(crossingId != null);
-        queue.cancel(crossingId);
-      }
-      const child = launches.at(-1);
-      assert.ok(child);
-      child.emit("message", { type: "ready" });
-      child.emit("message", { type: "idle" });
-      exitIdle(child);
-      await flush();
-      vi.advanceTimersByTime(2000);
-      assert.deepEqual(supervisor.getGroups(), []);
+      assert.deepEqual(supervisor.getGroups(), ["maintenance"], `${kind} work came due mid-check`);
+      cancel(id);
+      await retire();
     }
   } finally {
     await supervisor.stop();

@@ -153,10 +153,10 @@ export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: JsonHel
     upsertSettingStmt.run("flows", dbHelpers.stringifyJSON(weeklyFlows));
   }
 
-  const sharedPlaylists = dbHelpers.parseJSON(getSettingStmt.get("sharedPlaylists")?.value);
+  const staticPlaylists = dbHelpers.parseJSON(getSettingStmt.get("staticPlaylists")?.value);
   const sharedFlowPlaylists = dbHelpers.parseJSON(getSettingStmt.get("sharedFlowPlaylists")?.value);
-  if (sharedPlaylists == null && sharedFlowPlaylists != null) {
-    upsertSettingStmt.run("sharedPlaylists", dbHelpers.stringifyJSON(sharedFlowPlaylists));
+  if (staticPlaylists == null && sharedFlowPlaylists != null) {
+    upsertSettingStmt.run("staticPlaylists", dbHelpers.stringifyJSON(sharedFlowPlaylists));
   }
 
   const playlistWorker = readSettingObject(db, dbHelpers, "playlistWorker");
@@ -173,7 +173,7 @@ export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: JsonHel
 
 function ensurePlaylistDownloadJobsTable(db: Database.Database) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS playlist_download_jobs (
+    CREATE TABLE IF NOT EXISTS download_jobs (
       id TEXT PRIMARY KEY,
       artist_name TEXT NOT NULL,
       track_name TEXT NOT NULL,
@@ -188,8 +188,8 @@ function ensurePlaylistDownloadJobsTable(db: Database.Database) {
       album_track_count INTEGER,
       album_track_titles TEXT,
       artist_aliases TEXT,
-      playlist_id TEXT NOT NULL,
-      playlist_type TEXT,
+      owner_id TEXT NOT NULL,
+      owner_type TEXT,
       status TEXT NOT NULL,
       staging_path TEXT,
       final_path TEXT,
@@ -278,15 +278,15 @@ function ensureLibraryManagementTable(db: Database.Database) {
 }
 
 function backfillJobOwnership(db: Database.Database) {
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN managed_by TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN request_group_id TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN managed_by TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN request_group_id TEXT");
   db.exec(`
-    UPDATE playlist_download_jobs
+    UPDATE download_jobs
     SET managed_by = 'aurral'
     WHERE managed_by IS NULL OR TRIM(managed_by) = '';
   `);
   db.exec(
-    "CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_request_group ON playlist_download_jobs(request_group_id)",
+    "CREATE INDEX IF NOT EXISTS idx_download_jobs_request_group ON download_jobs(request_group_id)",
   );
 }
 
@@ -348,7 +348,7 @@ function syncWeeklyFlowJobsToPlaylistDownloads(db: Database.Database) {
     : "NULL";
 
   db.exec(`
-    INSERT INTO playlist_download_jobs (
+    INSERT INTO download_jobs (
       id,
       artist_name,
       track_name,
@@ -363,8 +363,8 @@ function syncWeeklyFlowJobsToPlaylistDownloads(db: Database.Database) {
       album_track_count,
       album_track_titles,
       artist_aliases,
-      playlist_id,
-      playlist_type,
+      owner_id,
+      owner_type,
       status,
       staging_path,
       final_path,
@@ -410,8 +410,8 @@ function syncWeeklyFlowJobsToPlaylistDownloads(db: Database.Database) {
       release_year = excluded.release_year,
       duration_ms = excluded.duration_ms,
       artist_aliases = excluded.artist_aliases,
-      playlist_id = excluded.playlist_id,
-      playlist_type = excluded.playlist_type,
+      owner_id = excluded.owner_id,
+      owner_type = excluded.owner_type,
       status = excluded.status,
       staging_path = excluded.staging_path,
       final_path = excluded.final_path,
@@ -439,31 +439,31 @@ function migrateJobsTable(db: Database.Database) {
   ensurePlaylistDownloadJobsTable(db);
 
   const columns = db
-    .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], TableColumnRow>("PRAGMA table_info(download_jobs)")
     .all()
     .map((column) => column.name);
 
-  if (!columns.includes("playlist_id")) {
-    tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_id TEXT");
+  if (!columns.includes("owner_id")) {
+    tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN owner_id TEXT");
   }
-  if (!columns.includes("playlist_type")) {
-    tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_type TEXT");
+  if (!columns.includes("owner_type")) {
+    tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN owner_type TEXT");
   }
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_search_id TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_batch_id TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN remote_username TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN remote_filename TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN track_number INTEGER");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_count INTEGER");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_titles TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN artist_aliases TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_source TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_client TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_client_id TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN release_guid TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN release_title TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_id TEXT");
-  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_name TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN slskd_search_id TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN slskd_batch_id TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN remote_username TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN remote_filename TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN track_number INTEGER");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN album_track_count INTEGER");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN album_track_titles TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN artist_aliases TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN download_source TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN download_client TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN download_client_id TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN release_guid TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN release_title TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN indexer_id TEXT");
+  tryAddColumn(db, "ALTER TABLE download_jobs ADD COLUMN indexer_name TEXT");
   for (const [name, type] of [
     ["quality_tier", "TEXT"],
     ["quality_format", "TEXT"],
@@ -475,28 +475,28 @@ function migrateJobsTable(db: Database.Database) {
     ["upgrade_for_job_id", "TEXT"],
     ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ]) {
-    tryAddColumn(db, `ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
+    tryAddColumn(db, `ALTER TABLE download_jobs ADD COLUMN ${name} ${type}`);
   }
 
   dropLegacyWeeklyFlowJobTriggers(db);
   syncWeeklyFlowJobsToPlaylistDownloads(db);
 
   const latestColumns = db
-    .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], TableColumnRow>("PRAGMA table_info(download_jobs)")
     .all()
     .map((column) => column.name);
 
-  if (latestColumns.includes("playlist_type")) {
+  if (latestColumns.includes("owner_type")) {
     db.exec(`
-      UPDATE playlist_download_jobs
-      SET playlist_id = playlist_type
-      WHERE playlist_id IS NULL OR TRIM(playlist_id) = '';
+      UPDATE download_jobs
+      SET owner_id = owner_type
+      WHERE owner_id IS NULL OR TRIM(owner_id) = '';
     `);
   }
 
   if (latestColumns.includes("started_at")) {
     db.exec(`
-      UPDATE playlist_download_jobs
+      UPDATE download_jobs
       SET status = 'pending',
           started_at = NULL,
           staging_path = NULL
@@ -504,18 +504,14 @@ function migrateJobsTable(db: Database.Database) {
     `);
   } else {
     db.exec(`
-      UPDATE playlist_download_jobs
+      UPDATE download_jobs
       SET status = 'pending'
       WHERE status = 'downloading';
     `);
   }
 
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_status ON playlist_download_jobs(status)",
-  );
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_playlist_id ON playlist_download_jobs(playlist_id)",
-  );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_download_jobs_status ON download_jobs(status)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_download_jobs_owner_id ON download_jobs(owner_id)");
 
   dropLegacyWeeklyFlowJobs(db);
 }

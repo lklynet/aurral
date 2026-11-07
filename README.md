@@ -55,7 +55,7 @@ Run `docker compose up -d`, open `http://localhost:3001`, and create your admin 
 
 ## Thanks
 
-Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid), [Honker](https://github.com/russellromney/honker), and [MusicBrainz](https://musicbrainz.org). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
+Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid) and [MusicBrainz](https://musicbrainz.org). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
 
 ## Sponsors
 

@@ -3,10 +3,10 @@ import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, honker, store] = await setupIsolatedBackend(
+const [state, { db }, { playlistOperationQueue }, store] = await setupIsolatedBackend(
   "bulk-operation-lifecycle",
   () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/playlists/bulkOperationStore.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
@@ -41,13 +41,13 @@ test("bulk acceptance commits its queue job and durable progress together", () =
       jobCreatedAt: 1,
     },
   ]);
-  const claimed = honker.getPlaylistOperationQueue().claimOne("bulk-test");
+  const claimed = playlistOperationQueue.claim("bulk-test");
   assert.ok(claimed != null);
   assert.equal(claimed.id, result.operationId);
   assert.ok(
     claimed.payload && typeof claimed.payload === "object" && !Array.isArray(claimed.payload),
   );
-  assert.equal(claimed.payload.kind, "shared-playlist-bulk");
+  assert.equal(claimed.payload.kind, "static-playlist-bulk");
   store.saveBulkOperation({
     ...persisted,
     state: "completed",
@@ -58,7 +58,7 @@ test("bulk acceptance commits its queue job and durable progress together", () =
 });
 
 test("failed progress persistence rolls back queue acceptance", () => {
-  const before = honker.getHonkerQueueDepth("weekly-flow-operation");
+  const before = playlistOperationQueue.readyCount();
   db.exec(
     "CREATE TRIGGER reject_bulk_result BEFORE INSERT ON settings WHEN NEW.key LIKE 'playlistBulkOperation:%' BEGIN SELECT RAISE(ABORT, 'fixture persistence failure'); END",
   );
@@ -74,7 +74,7 @@ test("failed progress persistence rolls back queue acceptance", () => {
         }),
       /fixture persistence failure/,
     );
-    assert.equal(honker.getHonkerQueueDepth("weekly-flow-operation"), before);
+    assert.equal(playlistOperationQueue.readyCount(), before);
   } finally {
     db.exec("DROP TRIGGER reject_bulk_result");
   }

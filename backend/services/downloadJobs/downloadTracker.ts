@@ -3,8 +3,9 @@ import path from "node:path";
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { listOf } from "../../db/helpers/storedSchemas.ts";
-import type { PlaylistDownloadJobsRevisionRow, PlaylistDownloadJobsRow } from "../../db/rows.ts";
-import { enqueuePipelineJob, listHonkerJobs, type HonkerPayload } from "../honkerDb.ts";
+import type { DownloadJobsRevisionRow, DownloadJobsRow } from "../../db/rows.ts";
+import type { JsonValue } from "../jobs/queue.ts";
+import { downloadPipelineQueue } from "../jobs/queues.ts";
 import {
   getQuickSearchSources,
   isAlbumGrabSourceConfigured,
@@ -68,8 +69,8 @@ type AddJobOptions = {
   requestKind?: RequestKind;
   saved?: boolean;
 };
-type ManualCandidate = { raw: HonkerPayload[string] };
-type AlbumGrabAttempt = Omit<ReturnType<typeof listHonkerJobs>[number], "payload"> & {
+type ManualCandidate = { raw: JsonValue };
+type AlbumGrabAttempt = Omit<ReturnType<typeof downloadPipelineQueue.list>[number], "payload"> & {
   payload: PipelinePayload & { albumGroupJobIds: string[] };
 };
 type ManualSelection = {
@@ -105,56 +106,56 @@ const parseDeniedSources = (raw: string | null): DeniedRemoteSource[] =>
   dbHelpers.readJSON(listOf(v.tuple([v.string(), v.string()])), raw, "denied download sources") ??
   [];
 
-const JOBS_TABLE = "playlist_download_jobs";
+const JOBS_TABLE = "download_jobs";
 const dataVersionStmt = db.prepare<[], { data_version: number }>("PRAGMA data_version");
-const persistedRevisionStmt = db.prepare<[], Pick<PlaylistDownloadJobsRevisionRow, "revision">>(
-  "SELECT revision FROM playlist_download_jobs_revision WHERE id = 1",
+const persistedRevisionStmt = db.prepare<[], Pick<DownloadJobsRevisionRow, "revision">>(
+  "SELECT revision FROM download_jobs_revision WHERE id = 1",
 );
-const liveJobStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const liveJobStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE id = ?`,
 );
-const requestGroupStatusesStmt = db.prepare<[string], Pick<PlaylistDownloadJobsRow, "status">>(
+const requestGroupStatusesStmt = db.prepare<[string], Pick<DownloadJobsRow, "status">>(
   `SELECT status FROM ${JOBS_TABLE} WHERE request_group_id = ? AND upgrade_for_job_id IS NULL`,
 );
-const livePlaylistJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
-  `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id`,
+const livePlaylistJobsStmt = db.prepare<unknown[], DownloadJobsRow>(
+  `SELECT * FROM ${JOBS_TABLE} WHERE owner_type = ? ORDER BY created_at, id`,
 );
-const livePlaylistIdJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const livePlaylistIdJobsStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE}
-   WHERE playlist_id = ? OR playlist_type = ?
+   WHERE owner_id = ? OR owner_type = ?
    ORDER BY created_at, id`,
 );
-const livePlaylistJobsLimitedStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
-  `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id LIMIT ?`,
+const livePlaylistJobsLimitedStmt = db.prepare<unknown[], DownloadJobsRow>(
+  `SELECT * FROM ${JOBS_TABLE} WHERE owner_type = ? ORDER BY created_at, id LIMIT ?`,
 );
-const liveStatusJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const liveStatusJobsStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = ? ORDER BY created_at, id`,
 );
-const liveStatsStmt = db.prepare<[], { playlist_type: string; status: string; count: number }>(
-  `SELECT playlist_type, status, COUNT(*) AS count FROM ${JOBS_TABLE} GROUP BY playlist_type, status`,
+const liveStatsStmt = db.prepare<[], { owner_type: string; status: string; count: number }>(
+  `SELECT owner_type, status, COUNT(*) AS count FROM ${JOBS_TABLE} GROUP BY owner_type, status`,
 );
-const liveNextPendingStmt = db.prepare<[], PlaylistDownloadJobsRow>(
+const liveNextPendingStmt = db.prepare<[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending' AND upgrade_for_job_id IS NULL
    ORDER BY created_at, id LIMIT 1`,
 );
-const liveDoneWithPathStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const liveDoneWithPathStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'done' AND final_path IS NOT NULL
    ORDER BY created_at, id LIMIT ?`,
 );
-const livePendingStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const livePendingStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending' AND upgrade_for_job_id IS NULL
    ORDER BY created_at, id LIMIT ?`,
 );
 const liveActivePlaylistStmt = db.prepare(
-  `SELECT 1 FROM ${JOBS_TABLE} WHERE playlist_type = ?
+  `SELECT 1 FROM ${JOBS_TABLE} WHERE owner_type = ?
    AND status IN ('pending', 'downloading') LIMIT 1`,
 );
-const liveActivePlaylistJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+const liveActivePlaylistJobsStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status IN ('pending', 'downloading')
-   AND COALESCE(NULLIF(playlist_type, ''), playlist_id) = ?
+   AND COALESCE(NULLIF(owner_type, ''), owner_id) = ?
    ORDER BY created_at, id`,
 );
-const liveAlbumJobsStmt = db.prepare<[], PlaylistDownloadJobsRow & { album_mbid: string }>(
+const liveAlbumJobsStmt = db.prepare<[], DownloadJobsRow & { album_mbid: string }>(
   `SELECT * FROM ${JOBS_TABLE} WHERE album_mbid IS NOT NULL AND album_mbid != ''`,
 );
 
@@ -172,7 +173,7 @@ const heldForReviewSchema = v.custom<HeldForReview>((input) => v.is(storedHeldFi
 const parseHeldForReview = (value: string | null) =>
   dbHelpers.readJSON(heldForReviewSchema, value, "held download");
 
-function rowToJob(row: PlaylistDownloadJobsRow) {
+function rowToJob(row: DownloadJobsRow) {
   return {
     id: row.id!,
     artistName: row.artist_name,
@@ -193,9 +194,9 @@ function rowToJob(row: PlaylistDownloadJobsRow) {
     albumTrackCount: normalizePositiveInteger(row.album_track_count),
     albumTrackTitles: parseStringListJson(row.album_track_titles),
     artistAliases: parseStringListJson(row.artist_aliases),
-    playlistId: row.playlist_id || row.playlist_type,
+    playlistId: row.owner_id || row.owner_type,
     playlistGeneration: Number(row.playlist_generation ?? 0),
-    playlistType: row.playlist_type || row.playlist_id,
+    playlistType: row.owner_type || row.owner_id,
     managedBy: row.managed_by === "lidarr" ? ("lidarr" as const) : ("aurral" as const),
     requestGroupId: row.request_group_id || null,
     requestKind: row.request_kind === "album" ? ("album" as const) : ("track" as const),
@@ -284,9 +285,9 @@ const insertStmt = db.prepare(`
     album_track_count,
     album_track_titles,
     artist_aliases,
-    playlist_id,
+    owner_id,
     playlist_generation,
-    playlist_type,
+    owner_type,
     managed_by,
     request_group_id,
     status,
@@ -365,7 +366,7 @@ const updateAlbumGrabFailuresStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET album_grab_failures = ? WHERE id = ?`,
 );
 const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
-const selectAllStmt = db.prepare<[], PlaylistDownloadJobsRow>(
+const selectAllStmt = db.prepare<[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`,
 );
 const clearSlskdMetaStmt = db.prepare(`
@@ -566,7 +567,7 @@ export class DownloadTracker {
   declare externalJobsRevision: number | undefined;
 
   constructor({
-    enqueuePipeline = enqueuePipelineJob,
+    enqueuePipeline = (payload) => downloadPipelineQueue.enqueue(payload),
   }: { enqueuePipeline?: (payload: PipelinePayload) => unknown } = {}) {
     this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
@@ -738,7 +739,7 @@ export class DownloadTracker {
     const attemptId = getActiveDownloadAttemptId(jobId);
     if (!attemptId) return null;
     return (
-      (listHonkerJobs("slskd-pipeline") as AlbumGrabAttempt[]).find(
+      (downloadPipelineQueue.list() as AlbumGrabAttempt[]).find(
         (entry) =>
           entry.payload?.albumGrab === true &&
           entry.payload.downloadAttemptId === attemptId &&
@@ -2137,7 +2138,7 @@ export class DownloadTracker {
   }
 }
 
-const liveJobs = (rows: PlaylistDownloadJobsRow[]) => rows.map(rowToJob);
+const liveJobs = (rows: DownloadJobsRow[]) => rows.map(rowToJob);
 const emptyLiveStats = () => ({
   total: 0,
   pending: 0,
@@ -2205,7 +2206,7 @@ function readTrackerFromDatabase(name: string, args: unknown[]) {
     const totals = emptyLiveStats();
     for (const row of liveStatsStmt.all()) {
       const count = Number(row.count) || 0;
-      const playlistStats = (byPlaylist[row.playlist_type] ||= emptyLiveStats());
+      const playlistStats = (byPlaylist[row.owner_type] ||= emptyLiveStats());
       if (isLiveStatus(row.status)) {
         playlistStats[row.status] += count;
         playlistStats.total += count;

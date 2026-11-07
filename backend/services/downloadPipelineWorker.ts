@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
-import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getPipelineQueue } from "./honkerDb.ts";
+import { createJobWorker } from "./jobs/worker.ts";
+import { downloadPipelineQueue } from "./jobs/queues.ts";
 import {
   continuePipeline,
   processPipelinePayload,
@@ -26,7 +26,9 @@ const pipelineStepSchema = v.looseObject({
 });
 
 // Each source writes the rest of its step state and reads it back in its next step.
-const pipelinePayloadSchema = v.custom<PipelinePayload>((input) => v.is(pipelineStepSchema, input));
+export const pipelinePayloadSchema = v.custom<PipelinePayload>((input) =>
+  v.is(pipelineStepSchema, input),
+);
 
 interface PipelineDependencies {
   processPipelinePayload?: typeof processPipelinePayload;
@@ -74,12 +76,8 @@ const {
   start: startDownloadPipelineWorker,
   stop: stopDownloadPipelineWorker,
   isRunning: isDownloadPipelineWorkerRunning,
-} = createHonkerWorker({
-  name: "slskd-pipeline",
+} = createJobWorker(downloadPipelineQueue, {
   schema: pipelinePayloadSchema,
-  getQueue: getPipelineQueue,
-  idlePollS: 2,
-  retryDelayS: 30,
   shouldRestart: () => isAnyDownloadSourceConfigured() || hasShareDownloads(),
   onStart() {
     if (!isAnyDownloadSourceConfigured() && !hasShareDownloads()) return false;

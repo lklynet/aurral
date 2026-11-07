@@ -10,7 +10,7 @@ import {
   forgetPlexHistoryServer,
   HistoryServerError,
 } from "../services/historyServers.ts";
-import { enqueueSystemTaskJob } from "../services/honkerDb.ts";
+import { enqueueSystemTask } from "../services/jobs/queues.ts";
 import { logger } from "../services/logger.ts";
 import {
   connectPlexServer,
@@ -26,7 +26,7 @@ import {
 import { playlistManager } from "../services/playlists/playlistManager.ts";
 
 const queueHistorySync = (userId: number) =>
-  enqueueSystemTaskJob({ kind: "history-server-sync", userId, provider: "plex" });
+  enqueueSystemTask({ kind: "history-server-sync", userId, provider: "plex" });
 
 async function finishSignIn(userId: number, token: string, serverUrl: string | undefined) {
   if (serverUrl) {

@@ -38,7 +38,7 @@ test(
       integrations: {},
       onboardingComplete: true,
       flows: [],
-      sharedPlaylists: [],
+      staticPlaylists: [],
     });
     const user = userOps.createUser("test", bcrypt.hashSync("password", 4), "admin");
     assert.ok(user != null);
@@ -85,7 +85,7 @@ test(
       initial.status.sharedPlaylists.find((entry) => entry.id === playlist.id)?.name,
       "Before",
     );
-    dbOps.updateSettings({ sharedPlaylists: [{ ...playlist, name: "After" }] });
+    dbOps.updateSettings({ staticPlaylists: [{ ...playlist, name: "After" }] });
     const updated = await next(
       (message) =>
         message.type === "playlist_status" &&

@@ -43,7 +43,7 @@ const listen = (userId: number, playedAt: number, title = "Song") =>
 const pendingBuilds = () =>
   db
     .prepare<[], { count: number }>(
-      "SELECT COUNT(*) AS count FROM _honker_live WHERE json_extract(payload, '$.kind') = 'wrapped-build'",
+      "SELECT COUNT(*) AS count FROM jobs WHERE kind = 'wrapped-build' AND state IN ('pending', 'running')",
     )
     .get()?.count;
 

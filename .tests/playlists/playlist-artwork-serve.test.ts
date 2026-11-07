@@ -80,10 +80,7 @@ test("a new flow or static playlist has its cover as soon as it is created, with
   });
   userOps.createUser("curator", hashPassword("curator-password"), "admin");
   const authorization = `Basic ${Buffer.from("curator:curator-password").toString("base64")}`;
-  const queuedOperations: (
-    | import("../../backend/services/honkerDb.ts").HonkerPayload
-    | undefined
-  )[] = [];
+  const queuedOperations: { kind: string }[] = [];
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedOperations.push(payload);
     return { queued: true, operationId: queuedOperations.length };

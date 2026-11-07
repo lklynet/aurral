@@ -36,7 +36,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 
@@ -80,7 +80,7 @@ test("flow completion sends display name and track library path", async () => {
           url: `http://127.0.0.1:${port}/hook`,
           body: '{"name":"$flowName","path":"$flowPath"}',
           headers: [],
-          events: ["notifyWeeklyFlowDone"],
+          events: ["notifyFlowDone"],
         },
       ],
     },

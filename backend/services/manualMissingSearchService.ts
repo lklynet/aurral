@@ -9,7 +9,7 @@ import { USENET_CLIENT_KEYS } from "./usenetClientCommon.ts";
 import { getDownloadSourceStatus } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
-import type { HonkerPayload } from "./honkerDb.ts";
+import type { JsonObject } from "./jobs/queue.ts";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const MAX_RESULTS = 100;
@@ -35,7 +35,7 @@ type ManualSource = { id: string; label: string; source: string; downloadClient?
 type ManualSearchJob = Pick<DownloadJob, "id"> &
   Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName">>;
 type ManualWorkContext = { jobId: string; playlistId: string | null };
-type RawSearchResult = HonkerPayload;
+type RawSearchResult = JsonObject;
 type StoredCandidate = ReturnType<typeof toStoredCandidate>;
 type ManualSearchSession = {
   actorId: string;

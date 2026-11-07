@@ -108,7 +108,7 @@ export function commitRetainedPlaylistRelocationInTransaction(
     throw new Error("Retained media paths must change inside the membership transaction");
   const { key, intent } = prepared;
   db.prepare(
-    "UPDATE playlist_download_jobs SET final_path = ? WHERE status = 'done' AND final_path = ? AND external_path IS NULL",
+    "UPDATE download_jobs SET final_path = ? WHERE status = 'done' AND final_path = ? AND external_path IS NULL",
   ).run(intent.to, intent.from);
   dbOps.setJSONSetting(key, { ...intent, state: "paths-committed" });
 }
@@ -128,11 +128,7 @@ export async function finalizeRetainedPlaylistRelocations(
     if (intent?.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed")
       continue;
     if (!isPathInsideRoot(intent.from, root) || !isPathInsideRoot(intent.to, root)) continue;
-    if (
-      db
-        .prepare("SELECT 1 FROM playlist_download_jobs WHERE final_path = ? LIMIT 1")
-        .get(intent.from)
-    )
+    if (db.prepare("SELECT 1 FROM download_jobs WHERE final_path = ? LIMIT 1").get(intent.from))
       continue;
     const old = await fs.lstat(intent.from).catch((error) => {
       if (error.code === "ENOENT") return null;

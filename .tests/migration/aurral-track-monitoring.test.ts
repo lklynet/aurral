@@ -112,8 +112,8 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
       path: "/music/_flows/weekly/01.flac",
     });
     db.prepare(
-      `INSERT INTO playlist_download_jobs
-        (id, artist_name, track_name, playlist_id, status, final_path, created_at)
+      `INSERT INTO download_jobs
+        (id, artist_name, track_name, owner_id, status, final_path, created_at)
        VALUES ('job-downloaded', 'Upgrade Artist', 'track:downloaded', 'synced', 'done', ?, ?)`,
     ).run("/music/Upgrade Artist/Playlist/01.flac", now);
     db.prepare("DELETE FROM settings WHERE key LIKE 'migration:aurral-track-monitoring%'").run();

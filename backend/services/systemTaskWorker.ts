@@ -1,26 +1,26 @@
 import * as v from "valibot";
-import type { Job } from "@russellthehippo/honker-node";
 import { asAppError } from "../../lib/errors.ts";
 import type { libraryManager } from "./libraryManager.ts";
 import { acquireReleaseMetadataLease } from "./releaseMetadataLease.ts";
-import createHonkerWorker from "./honkerWorkerFactory.ts";
+import { createJobWorker, type TypedJob } from "./jobs/worker.ts";
 import {
-  getInboxTaskQueue,
-  getMaintenanceTaskQueue,
-  getPlaybackTaskQueue,
-  getSystemTaskQueue,
+  inboxTaskQueue,
+  maintenanceTaskQueue,
+  playbackTaskQueue,
+  systemTaskQueue,
+  systemTaskSchema,
+} from "./jobs/queues.ts";
+import {
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
-} from "./honkerDb.ts";
+} from "./jobs/startup.ts";
 import { cleanExpiredSessions } from "../config/session-helpers.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
-export const systemTaskSchema = v.looseObject({ kind: v.string() });
-
 type SystemTask = v.InferOutput<typeof systemTaskSchema>;
-type SystemTaskJob = Job & { payload: SystemTask };
+type SystemTaskJob = TypedJob<SystemTask>;
 type SystemTaskContext = { signal?: AbortSignal; lease?: ReleaseMetadataLease };
 type MonitoringApply = NonNullable<Parameters<typeof libraryManager.acquireAurralReleases>[0]>;
 
@@ -68,7 +68,7 @@ export async function processSystemTask(
       await processWrappedBuild(payload.userId, payload.timeZone);
       return;
     }
-    case "weekly-flow-refresh": {
+    case "flow-refresh": {
       const { runScheduledFlowRefresh } = await import("./flows/flowScheduler.ts");
       await runScheduledFlowRefresh();
       return;
@@ -91,7 +91,7 @@ export async function processSystemTask(
     case "session-cleanup":
       cleanExpiredSessions();
       return;
-    case "weekly-flow-reuse-repair": {
+    case "flow-reuse-repair": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
       downloadWorker.scheduleReuseLinkRepair(false);
       return;
@@ -119,7 +119,7 @@ export async function processSystemTask(
       await reclassifyQualityJobs({ enqueue: getQualityProfile().automaticUpgrades });
       return;
     }
-    case "weekly-flow-startup-reuse-repair": {
+    case "flow-startup-reuse-repair": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
       downloadWorker.scheduleReuseLinkRepair(true);
       return;
@@ -189,7 +189,7 @@ export async function processSystemTask(
       }
       return;
     }
-    case "weekly-flow-startup-check": {
+    case "flow-startup-check": {
       const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.ts");
       await startWorkerIfPending();
       const { stopOrphanedSlskdSearches } =
@@ -375,56 +375,26 @@ export async function processSystemTask(
   }
 }
 
-const {
-  start: startSystemTaskWorker,
-  stop: stopSystemTaskWorker,
-  isRunning: isSystemTaskWorkerRunning,
-} = createHonkerWorker({
-  name: "system-task",
-  schema: systemTaskSchema,
-  interruptible: (payload) => payload.kind === "release-metadata-refresh",
-  prepareJob: prepareSystemTask,
-  getQueue: getSystemTaskQueue,
-  processJob: processSystemTask,
-  idlePollS: 10,
-  retryDelayS: 120,
-});
+const notifyNewsRefreshed = (payload: SystemTask) => {
+  if (payload.kind === "news-refresh" && process.connected && process.send) {
+    process.send({ type: "cache-invalidate", cache: "news" });
+  }
+};
 
-export { startSystemTaskWorker, stopSystemTaskWorker, isSystemTaskWorkerRunning };
+const workers = new Map(
+  [systemTaskQueue, maintenanceTaskQueue, inboxTaskQueue, playbackTaskQueue].map((queue) => [
+    queue.name,
+    createJobWorker(queue, {
+      schema: systemTaskSchema,
+      processJob: processSystemTask,
+      onJobSuccess: notifyNewsRefreshed,
+    }),
+  ]),
+);
 
-const { start: startMaintenanceTaskWorker } = createHonkerWorker({
-  name: "system-task-maintenance",
-  schema: systemTaskSchema,
-  getQueue: getMaintenanceTaskQueue,
-  processJob: processSystemTask,
-  idlePollS: 10,
-  retryDelayS: 120,
-  onJobSuccess(payload) {
-    if (payload.kind === "news-refresh" && process.connected && process.send) {
-      process.send({ type: "cache-invalidate", cache: "news" });
-    }
-  },
-});
-
-const { start: startInboxTaskWorker } = createHonkerWorker({
-  name: "system-task-inbox",
-  schema: systemTaskSchema,
-  getQueue: getInboxTaskQueue,
-  processJob: processSystemTask,
-  idlePollS: 10,
-  retryDelayS: 120,
-});
-
-const { start: startPlaybackTaskWorker } = createHonkerWorker({
-  name: "playback",
-  schema: systemTaskSchema,
-  getQueue: getPlaybackTaskQueue,
-  processJob: processSystemTask,
-  idlePollS: 10,
-  retryDelayS: 120,
-});
-
-export { startMaintenanceTaskWorker, startInboxTaskWorker, startPlaybackTaskWorker };
+export function startSystemTaskWorker(name: string) {
+  return workers.get(name)?.start();
+}
 
 export async function prepareSystemTask(
   payload: SystemTask,

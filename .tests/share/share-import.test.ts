@@ -29,7 +29,7 @@ const [
   { flowPlaylistConfig },
   { downloadTracker },
   media,
-  honker,
+  { downloadPipelineQueue },
   { processPipelineJob },
 ] = await setupIsolatedBackend(
   "share-import",
@@ -39,7 +39,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
 );
 const owner = userOps.createUser("recipient", "hash", "admin");
@@ -89,7 +89,7 @@ assert.ok(manifest);
 
 beforeEach(() => {
   downloadTracker.clearAll();
-  dbOps.setJSONSetting("sharedPlaylists", []);
+  dbOps.setJSONSetting("staticPlaylists", []);
 });
 afterAll(async () => {
   await cleanupIsolatedState(paths);
@@ -171,8 +171,8 @@ test("file imports reuse local music and queue only files the share makes availa
     jobs.map((job) => job?.status),
     ["done", "pending", "saved", "saved"],
   );
-  const transfers = honker
-    .listHonkerJobs("slskd-pipeline")
+  const transfers = downloadPipelineQueue
+    .list()
     .filter((entry) => entry.payload?.jobId === jobs[1]?.id);
   assert.equal(transfers.length, 1);
   assert.equal(transfers[0]?.payload?.source, "share");
@@ -244,9 +244,7 @@ test("a failed shared file never falls back to configured search sources, includ
     .getByPlaylistType("offline-files")
     .find((entry) => entry.trackName === "Shared");
   assert.ok(job);
-  const entry = honker
-    .listHonkerJobs("slskd-pipeline")
-    .find((queued) => queued.payload?.jobId === job.id);
+  const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);
   assert.ok(entry?.payload);
   remoteShare({ online: false });
   await processPipelineJob({ ...entry.payload, jobId: job.id, phase: String(entry.payload.phase) });
@@ -254,9 +252,7 @@ test("a failed shared file never falls back to configured search sources, includ
   assert.ok(downloadTracker.getJob(job.id)?.error?.includes("sender's file"));
   downloadTracker.setPending(job.id);
   assert.equal(downloadTracker.enqueueDownloadPipeline(job.id), true);
-  const retries = honker
-    .listHonkerJobs("slskd-pipeline")
-    .filter((queued) => queued.payload?.jobId === job.id);
+  const retries = downloadPipelineQueue.list().filter((queued) => queued.payload?.jobId === job.id);
   assert.ok(retries.every((queued) => queued.payload?.source === "share"));
   assert.ok(requests.every((url) => url.startsWith("https://shares.example.com/")));
 });
@@ -333,9 +329,7 @@ for (const format of ["wav", "m4a"]) {
       .getByPlaylistType(`download-file-${format}`)
       .find((entry) => entry.trackName === `Shared ${format}`);
     assert.ok(job);
-    const entry = honker
-      .listHonkerJobs("slskd-pipeline")
-      .find((queued) => queued.payload?.jobId === job.id);
+    const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);
     assert.ok(entry?.payload);
     await processPipelineJob({
       ...entry.payload,

@@ -118,8 +118,8 @@ test("manual selection queues only the exact selected candidate", async () => {
   const candidate = { raw: { id: "chosen", url: "https://provider.invalid/chosen" } };
 
   assert.equal(tracker.enqueueManualSelection(jobId, { source: "deemix", candidate }), true);
-  const { listHonkerJobs } = await import("../../backend/services/honkerDb.ts");
-  const queued = listHonkerJobs("slskd-pipeline").find((entry) => entry.payload?.jobId === jobId);
+  const { downloadPipelineQueue } = await import("../../backend/services/jobs/queues.ts");
+  const queued = downloadPipelineQueue.list().find((entry) => entry.payload?.jobId === jobId);
   assert.ok(queued != null);
   assert.ok(queued);
   assert.ok(queued.payload != null);
@@ -187,10 +187,10 @@ test("manual replacement queues the exact candidate without changing the current
   const replacement = tracker.findActiveUpgradeJob(trackedJob(tracker, sourceJobId));
   assert.ok(replacement);
   assert.equal(replacement.manualReplacementSearch, true);
-  const { listHonkerJobs } = await import("../../backend/services/honkerDb.ts");
-  const queued = listHonkerJobs("slskd-pipeline").find(
-    (entry) => entry.payload?.jobId === replacement.id,
-  );
+  const { downloadPipelineQueue } = await import("../../backend/services/jobs/queues.ts");
+  const queued = downloadPipelineQueue
+    .list()
+    .find((entry) => entry.payload?.jobId === replacement.id);
   assert.ok(queued != null);
   assert.ok(queued);
   assert.ok(queued.payload != null);

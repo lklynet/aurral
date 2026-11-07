@@ -57,8 +57,7 @@ credential.
 
 The WebSocket accepts `subscribe`, `unsubscribe`, and `ping` JSON messages.
 Subscriptions use the `status`, `downloads`, `discovery`, `library`, and
-`playlists` channels. `weekly-flow` is an older name for `playlists`. The
-`library` channel sends a `library_scan_completed` message after Aurral
+`playlists` channels. The `library` channel sends a `library_scan_completed` message after Aurral
 refreshes the Library.
 
 For local password authentication, connect with the session token as
@@ -351,8 +350,7 @@ no feed could be refreshed.
 
 ## Playlists and flows
 
-The prefix is `/api/playlists`. The older `/api/weekly-flow` prefix
-redirects to it with status `308`.
+The prefix is `/api/playlists`.
 
 The routes call a static playlist a shared playlist.
 

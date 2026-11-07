@@ -38,7 +38,7 @@ const [
   },
   { prowlarrClient },
   { downloadWorker: workerInstance, DownloadWorker },
-  { getPipelineQueue, listHonkerJobs },
+  { downloadPipelineQueue },
   { clearReleaseManifests },
   { logger },
   { cancelDownloadWorkForJobs },
@@ -57,7 +57,7 @@ const [
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/prowlarrClient.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
   () => import("../../backend/services/logger.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
@@ -79,10 +79,10 @@ async function processPipelinePayload(
 
 function enqueuePipelineStep(
   payload: PipelinePayload | null,
-  options: Parameters<ReturnType<typeof getPipelineQueue>["enqueue"]>[1] = {},
+  options: Parameters<typeof downloadPipelineQueue.enqueue>[1] = {},
 ) {
   assert.ok(payload, "Expected a pipeline step to enqueue");
-  return getPipelineQueue().enqueue(JSON.parse(JSON.stringify(payload)), options);
+  return downloadPipelineQueue.enqueue(JSON.parse(JSON.stringify(payload)), options);
 }
 
 function soulseekReleaseCandidates(payload: PipelinePayload) {
@@ -122,6 +122,7 @@ beforeEach(() => {
   // A released track wakes the worker, and a queued step would start the
   // pipeline worker; these tests drive both themselves.
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
+  vi.spyOn(downloadPipelineQueue, "start").mockImplementation(async () => undefined);
   vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) =>
     enqueuePipelineStep(JSON.parse(JSON.stringify(payload)), {}),
   );
@@ -204,9 +205,9 @@ function albumAttempt(ids: string[], extra: Partial<PipelinePayload> = {}): Pipe
 }
 
 function queued(jobId: string) {
-  const payload = listHonkerJobs("slskd-pipeline").find(
-    (entry) => entry.payload?.jobId === jobId,
-  )?.payload;
+  const payload = downloadPipelineQueue
+    .list()
+    .find((entry) => entry.payload?.jobId === jobId)?.payload;
   if (payload == null) return undefined;
   assert.equal(typeof payload.jobId, "string");
   assert.equal(typeof payload.phase, "string");
@@ -218,17 +219,19 @@ function requireQueued(jobId: string) {
   return payload;
 }
 const queuedFor = (ids: string[]) =>
-  listHonkerJobs("slskd-pipeline").filter(
-    (entry) => typeof entry.payload?.jobId === "string" && ids.includes(entry.payload.jobId),
-  );
+  downloadPipelineQueue
+    .list()
+    .filter(
+      (entry) => typeof entry.payload?.jobId === "string" && ids.includes(entry.payload.jobId),
+    );
 
 // The step the worker queued for a track, taken off the queue as the
 // pipeline worker takes it.
 function claimQueued(jobId: string) {
-  const row = listHonkerJobs("slskd-pipeline").find((entry) => entry.payload?.jobId === jobId);
+  const row = downloadPipelineQueue.list().find((entry) => entry.payload?.jobId === jobId);
   assert.ok(row != null);
   const payload = queued(jobId);
-  getPipelineQueue().cancel(row.id);
+  downloadPipelineQueue.cancel(row.id);
   assert.ok(payload);
   return payload;
 }
@@ -361,7 +364,7 @@ async function runToEnd(payload: PipelinePayload | null, sources: { albumStep?: 
 const storedRequest = (jobId: string) =>
   db
     .prepare<[string], { request_kind: string; quick_searched_sources: string; status: string }>(
-      "SELECT request_kind, quick_searched_sources, status FROM playlist_download_jobs WHERE id = ?",
+      "SELECT request_kind, quick_searched_sources, status FROM download_jobs WHERE id = ?",
     )
     .get(jobId)!;
 
@@ -441,7 +444,7 @@ test("a track request asked for again after its search ended searches yt-dlp fir
 
   sources.clear();
   await processPlaylistOperation({
-    kind: "shared-playlist-research-track",
+    kind: "static-playlist-research-track",
     playlistId: "library",
     jobId: failed,
   });
@@ -655,7 +658,7 @@ test("a file the quick search holds waits with it while the release cannot be re
 
 test("a track waiting for its release after its quick search does not hold back another track's quick search", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
-  for (const entry of listHonkerJobs("slskd-pipeline")) getPipelineQueue().cancel(entry.id);
+  for (const entry of downloadPipelineQueue.list()) downloadPipelineQueue.cancel(entry.id);
   useQuickSources();
   const group = album("slot", "Slot Band", [{ id: "slot-release", tracks: ["First", "Second"] }]);
   let down = false;
@@ -721,7 +724,7 @@ const storedHold = (jobId: string) =>
   JSON.parse(
     db
       .prepare<[string], { held_for_review: string }>(
-        "SELECT held_for_review FROM playlist_download_jobs WHERE id = ?",
+        "SELECT held_for_review FROM download_jobs WHERE id = ?",
       )
       .get(jobId)!.held_for_review,
   )?.sourcePath;
@@ -1292,7 +1295,7 @@ test("a track known by its album's name waits while metadata cannot be read, kee
       .prepare<
         [string],
         { album_mbid: string | null; release_mbid: string | null; error: string | null }
-      >("SELECT album_mbid, release_mbid, error FROM playlist_download_jobs WHERE id = ?")
+      >("SELECT album_mbid, release_mbid, error FROM download_jobs WHERE id = ?")
       .get(id)!;
 
   for (const id of [named, listened])
@@ -1698,7 +1701,7 @@ test("a track's release is chosen once, pinned on every track of its attempt, an
   assert.deepEqual(
     db
       .prepare<[string, string, string], { release_mbid: string }>(
-        "SELECT release_mbid FROM playlist_download_jobs WHERE id IN (?, ?) ORDER BY id = ?",
+        "SELECT release_mbid FROM download_jobs WHERE id IN (?, ?) ORDER BY id = ?",
       )
       .all(sibling, leader, leader)
       .map((row) => row.release_mbid),
@@ -1806,7 +1809,7 @@ test("tracks pinned to a release MusicBrainz merged away share one attempt on th
       (id) =>
         db
           .prepare<[string], { release_mbid: string }>(
-            "SELECT release_mbid FROM playlist_download_jobs WHERE id = ?",
+            "SELECT release_mbid FROM download_jobs WHERE id = ?",
           )
           .get(id)!.release_mbid,
     ),
@@ -1829,7 +1832,7 @@ test("a track that can search by release, found mid-search with no queued step, 
   await serveGroups(t, [resolvedGroup]);
   const [interrupted] = resolvedJobs(["Second"]);
   assert.ok(interrupted !== undefined);
-  db.prepare("UPDATE playlist_download_jobs SET slskd_search_id = ? WHERE id = ?").run(
+  db.prepare("UPDATE download_jobs SET slskd_search_id = ? WHERE id = ?").run(
     "interrupted-search",
     interrupted,
   );

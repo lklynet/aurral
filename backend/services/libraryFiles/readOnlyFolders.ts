@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
-import { enqueueSystemTaskJob } from "../honkerDb.ts";
+import { enqueueSystemTask } from "../jobs/queues.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import {
   activeLidarrRoots,
@@ -122,6 +122,6 @@ export async function removeReadOnlyFolder(requested: unknown) {
     throw new ReadOnlyFolderError("This folder is not in the list.");
   }
   await applyFolderChange(folders.filter((entry) => entry !== folder));
-  enqueueSystemTaskJob({ kind: "read-only-folder-release", folders: [folder] });
+  enqueueSystemTask({ kind: "read-only-folder-release", folders: [folder] });
   return describeReadOnlyFolders();
 }

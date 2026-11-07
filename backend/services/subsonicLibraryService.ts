@@ -60,7 +60,7 @@ import { logger } from "./logger.ts";
 import { buildRadio, type RadioSeed } from "./radio.ts";
 import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
-import { withHonkerLock } from "./honkerDb.ts";
+import { withLock } from "./jobs/queue.ts";
 import {
   adoptFileIntoPlaylist,
   jobDownloadedItsFile,
@@ -1497,7 +1497,7 @@ export async function updateSubsonicPlaylist(
     songIndexesToRemove?: (string | number)[];
   } = {},
 ) {
-  return withHonkerLock("weekly-flow-operation", async () => {
+  return withLock("playlist-operation", async () => {
     if (parseId(playlistId)?.kind === "flow" && playlistFromId(user, playlistId)) {
       throw playlistEditError("SUBSONIC_PLAYLIST_READ_ONLY", "Flows are read-only");
     }
@@ -1573,7 +1573,7 @@ export async function deleteSubsonicPlaylist(user: SubsonicUser, playlistId: str
   );
   if (!playlist || !hasPermission(user, "accessFlow")) return false;
   return processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: playlist.id,
   });
 }

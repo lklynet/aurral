@@ -26,25 +26,21 @@ const { db } = await import("../../backend/config/db-sqlite.ts");
 const { beginLibraryScan, finishLibraryScan } =
   await import("../../backend/services/libraryMediaStore.ts");
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.ts");
-const { getLibraryScanQueue, bootstrapHonkerSchedules, getHonkerDb } =
-  await import("../../backend/services/honkerDb.ts");
+const { libraryScanQueue } = await import("../../backend/services/jobs/queues.ts");
+const { SCHEDULES } = await import("../../backend/services/jobs/schedules.ts");
 const { createLibraryFileWatcher, resolveLibraryWatchRoots } =
   await import("../../backend/services/libraryFileWatcher.ts");
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 
 test("library scans are not scheduled as a recurring background task", () => {
-  bootstrapHonkerSchedules();
   assert.equal(
-    getHonkerDb()
-      .scheduler()
-      .list()
-      .some((task) => task.queue === "library-scan"),
+    SCHEDULES.some((schedule) => schedule.queue === "library-scan"),
     false,
   );
 });
 
 test("library bootstrap runs until the first completed scan, and again while a turned-off Lidarr's music remains", async () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   db.prepare("DELETE FROM library_scan_runs").run();
   clearScheduledLibraryScan();
   let bootstrapJobId: number | null = null;
@@ -83,7 +79,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   const existingJobId = Number(
     dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)?.jobId,
   );
-  if (Number.isSafeInteger(existingJobId)) getLibraryScanQueue().cancel(existingJobId);
+  if (Number.isSafeInteger(existingJobId)) libraryScanQueue.cancel(existingJobId);
   clearScheduledLibraryScan();
 
   const app = signedInAs(testUser(1)).route("/", api);
@@ -106,7 +102,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   let refreshJobId: number | undefined;
 
   const queuedPayload = (jobId: number) =>
-    JSON.parse(requireValue(getLibraryScanQueue().getJob(jobId)).payload);
+    JSON.parse(requireValue(libraryScanQueue.getJob(jobId)).payload);
 
   try {
     assert.equal((await refresh({ mode: "bogus" })).statusCode, 400);
@@ -124,13 +120,13 @@ test("library refresh queues a quick or full scan and exposes its queue status",
       includeLidarr: true,
       changedPaths: null,
     });
-    getLibraryScanQueue().cancel(quick.body.jobId);
+    libraryScanQueue.cancel(quick.body.jobId);
     clearScheduledLibraryScan();
 
     const full = await refresh({ mode: "full" });
     assert.equal(full.statusCode, 202);
     assert.equal(queuedPayload(full.body.jobId).force, true);
-    getLibraryScanQueue().cancel(full.body.jobId);
+    libraryScanQueue.cancel(full.body.jobId);
     clearScheduledLibraryScan();
 
     const { jobId } = (await refresh({ mode: "quick" })).body;
@@ -146,7 +142,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
     const status: ScanStatus = await (await app.request(`/library/refresh/${jobId}`)).json();
     assert.equal(status.status, "queued");
   } finally {
-    if (refreshJobId) getLibraryScanQueue().cancel(refreshJobId);
+    if (refreshJobId) libraryScanQueue.cancel(refreshJobId);
     clearScheduledLibraryScan();
     await new Promise<void>((resolve) => setImmediate(resolve));
     await stopLibraryScanWorker();
@@ -154,13 +150,13 @@ test("library refresh queues a quick or full scan and exposes its queue status",
 });
 
 test("library scan scheduling keeps one live job and recovers stale registry entries", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let firstJob: number | undefined;
   let secondJob: number | undefined;
   try {
     firstJob = scheduleLibraryScan();
-    const claimed = queue.claimOne("library-scan-test");
+    const claimed = queue.claim("library-scan-test");
     assert.equal(claimed?.id, firstJob);
     assert.equal(claimScheduledLibraryScanJob(firstJob), true);
     assert.equal(scheduleLibraryScan(), firstJob);
@@ -176,38 +172,8 @@ test("library scan scheduling keeps one live job and recovers stale registry ent
   }
 });
 
-test("library refresh replaces a scan whose processing claim expired", () => {
-  const queue = getLibraryScanQueue();
-  clearScheduledLibraryScan();
-  let staleJobId: number | undefined;
-  let replacementJobId: number | undefined;
-  try {
-    staleJobId = scheduleLibraryScan();
-    const claimed = queue.claimOne("stale-library-scan-test");
-    assert.equal(claimed?.id, staleJobId);
-    db.prepare("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?").run(
-      Math.floor(Date.now() / 1000) - 1,
-      staleJobId,
-    );
-
-    replacementJobId = scheduleLibraryScan({ force: true });
-
-    assert.notEqual(replacementJobId, staleJobId);
-    assert.equal(queue.getJob(staleJobId), null);
-    assert.deepEqual(JSON.parse(requireValue(queue.getJob(replacementJobId)).payload), {
-      force: true,
-      includeLidarr: true,
-      changedPaths: null,
-    });
-  } finally {
-    if (staleJobId) queue.cancel(staleJobId);
-    if (replacementJobId) queue.cancel(replacementJobId);
-    clearScheduledLibraryScan();
-  }
-});
-
 test("a full refresh upgrades a pending local-only scan", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let jobId: number | undefined;
   try {
@@ -229,7 +195,7 @@ test("a full refresh upgrades a pending local-only scan", () => {
 });
 
 test("pending watcher scans merge changed paths into one job", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let jobId: number | undefined;
   try {
@@ -257,7 +223,7 @@ test("pending watcher scans merge changed paths into one job", () => {
 });
 
 test("watcher paths do not downgrade a queued full scan", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let jobId: number | undefined;
   try {
@@ -281,7 +247,7 @@ test("watcher paths do not downgrade a queued full scan", () => {
 });
 
 test("an oversized active watcher merge requests a full rescan", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let jobId: number | undefined;
   try {
@@ -289,7 +255,7 @@ test("an oversized active watcher merge requests a full rescan", () => {
       includeLidarr: false,
       changedPaths: ["/data/music/in-flight.flac"],
     });
-    assert.equal(queue.claimOne("overflow-library-scan-test")?.id, jobId);
+    assert.equal(queue.claim("overflow-library-scan-test")?.id, jobId);
     assert.equal(claimScheduledLibraryScanJob(jobId), true);
     dbOps.setJSONSetting("pendingLibraryScanJob", {
       jobId,
@@ -314,53 +280,8 @@ test("an oversized active watcher merge requests a full rescan", () => {
   }
 });
 
-test("stale targeted scans retain in-flight and pending paths", () => {
-  const queue = getLibraryScanQueue();
-  clearScheduledLibraryScan();
-  let staleJobId: number | undefined;
-  let replacementJobId: number | undefined;
-  try {
-    staleJobId = scheduleLibraryScan({
-      includeLidarr: false,
-      changedPaths: ["/data/music/initial.flac"],
-    });
-    assert.equal(queue.claimOne("stale-targeted-library-scan-test")?.id, staleJobId);
-    assert.equal(claimScheduledLibraryScanJob(staleJobId), true);
-    dbOps.setJSONSetting("pendingLibraryScanJob", {
-      jobId: staleJobId,
-      includeLidarr: false,
-      changedPaths: ["/data/music/pending.flac"],
-      inFlightActive: true,
-      inFlightPaths: ["/data/music/in-flight.flac"],
-      fullRescanPending: false,
-    });
-    db.prepare("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?").run(
-      Math.floor(Date.now() / 1000) - 1,
-      staleJobId,
-    );
-
-    replacementJobId = scheduleLibraryScan({
-      includeLidarr: false,
-      changedPaths: ["/data/music/new.flac"],
-    });
-
-    assert.deepEqual(
-      requireValue(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema)).changedPaths,
-      [
-        path.resolve("/data/music/in-flight.flac"),
-        path.resolve("/data/music/pending.flac"),
-        path.resolve("/data/music/new.flac"),
-      ],
-    );
-  } finally {
-    if (staleJobId) queue.cancel(staleJobId);
-    if (replacementJobId) queue.cancel(replacementJobId);
-    clearScheduledLibraryScan();
-  }
-});
-
 test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let jobId: number | undefined;
   try {
@@ -378,7 +299,7 @@ test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
 });
 
 test("an early replacement claim retains in-flight, pending, and new scan paths", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   let staleJobId: number | undefined;
   let replacementJobId: number | undefined;
@@ -399,7 +320,7 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
     const enqueue = queue.enqueue.bind(queue);
     vi.spyOn(queue, "enqueue").mockImplementation((payload, options) => {
       const id = enqueue(payload, options);
-      const claimed = queue.claimOne("early-replacement-library-scan-test");
+      const claimed = queue.claim("early-replacement-library-scan-test");
       assert.equal(claimed?.id, id);
       assert.equal(claimScheduledLibraryScanJob(id, claimed.payload), true);
       const begun = beginLibraryScanJob(id, claimed.payload);
@@ -417,7 +338,7 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
       changedPaths: ["/data/music/new.flac"],
     });
     assert.equal(getScheduledLibraryScanJobId(), replacementJobId);
-    assert.equal(queue.getJob(replacementJobId)?.state, "processing");
+    assert.equal(queue.getJob(replacementJobId)?.state, "running");
   } finally {
     if (staleJobId) queue.cancel(staleJobId);
     if (replacementJobId) queue.cancel(replacementJobId);
@@ -426,7 +347,7 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
 });
 
 test("an early first claim uses its targeted payload without stale Lidarr mode", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   clearScheduledLibraryScan();
   dbOps.setJSONSetting("pendingLibraryScanJob", { includeLidarr: true });
   let jobId: number | undefined;
@@ -434,7 +355,7 @@ test("an early first claim uses its targeted payload without stale Lidarr mode",
     const enqueue = queue.enqueue.bind(queue);
     vi.spyOn(queue, "enqueue").mockImplementation((payload, options) => {
       const id = enqueue(payload, options);
-      const claimed = queue.claimOne("early-first-library-scan-test");
+      const claimed = queue.claim("early-first-library-scan-test");
       assert.equal(claimed?.id, id);
       assert.equal(claimScheduledLibraryScanJob(id, claimed.payload), true);
       const begun = beginLibraryScanJob(id, claimed.payload);
@@ -454,7 +375,7 @@ test("an early first claim uses its targeted payload without stale Lidarr mode",
 });
 
 test("terminal library scan outcomes clear the persistent registry", () => {
-  const queue = getLibraryScanQueue();
+  const queue = libraryScanQueue;
   let successJob: number | undefined;
   let failedJob: number | undefined;
   try {

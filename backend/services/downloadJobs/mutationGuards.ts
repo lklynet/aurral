@@ -1,6 +1,6 @@
 import { downloadTracker } from "./downloadTracker.ts";
 import { downloadWorker } from "./downloadWorker.ts";
-import { withHonkerLock } from "../honkerDb.ts";
+import { withLock } from "../jobs/queue.ts";
 import { isDownloadOwnerProcess, requestDownloadOwner } from "./downloadOwnerClient.ts";
 import { logger } from "../logger.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -34,8 +34,8 @@ async function withOwnerLocks<T>(
     if (index >= sortedIds.length) {
       return operation();
     }
-    return withHonkerLock(`${lockKind}:${sortedIds[index]}`, () => runAtIndex(index + 1), {
-      ttlSeconds: 180,
+    return withLock(`${lockKind}:${sortedIds[index]}`, () => runAtIndex(index + 1), {
+      ttlMs: 180_000,
       waitTimeoutMs: 15 * 60 * 1000,
       retryDelayMs: 250,
     });

@@ -16,7 +16,5 @@ try {
   process.send?.({ error: error instanceof Error ? error.message : String(error) });
 } finally {
   mock.timers.reset();
-  const { closeHonkerDb } = await import("../../backend/services/honkerDb.ts");
-  closeHonkerDb();
   process.disconnect?.();
 }

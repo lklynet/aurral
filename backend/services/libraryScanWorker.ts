@@ -1,18 +1,16 @@
 import path from "node:path";
 import * as v from "valibot";
-import type { JsonValue } from "@russellthehippo/honker-node";
 import { asAppError } from "../../lib/errors.ts";
-import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.ts";
-import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.ts";
+import { parseJobPayload } from "./jobs/queue.ts";
+import { libraryScanQueue } from "./jobs/queues.ts";
+import { createJobWorker } from "./jobs/worker.ts";
 import { resolveLibraryScanChangedPaths, type LibraryScanRequest } from "./libraryScanRequest.ts";
-import type { HonkerTaskRunsRow, SettingsRow } from "../db/rows.ts";
+import type { SettingsRow } from "../db/rows.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { websocketService } from "./websocketService.ts";
 
-const WORKER_NAME = "library-scan";
 const LIBRARY_SCAN_REGISTRY_KEY = "pendingLibraryScanJob";
 const MAX_CHANGED_PATHS = 4096;
 const scanRegistryValueStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
@@ -97,7 +95,7 @@ function normalizeChangedPaths(paths: unknown) {
   return normalized.length > MAX_CHANGED_PATHS ? null : normalized;
 }
 
-const libraryScanSchema = v.looseObject({
+export const libraryScanSchema = v.looseObject({
   force: v.optional(v.boolean()),
   includeLidarr: v.optional(v.boolean()),
   changedPaths: v.nullish(v.array(v.string())),
@@ -128,16 +126,8 @@ function mergeChangedPaths(left: unknown, right: unknown) {
 }
 
 function hasLiveScanJob(jobId: number) {
-  const queue = getLibraryScanQueue();
-  const job = queue.getJob(jobId);
-  if (!job) return false;
-  if (job.state !== "processing") return true;
-  const claimExpiresAt = job.claim_expires_at == null ? Number.NaN : Number(job.claim_expires_at);
-  if (!Number.isFinite(claimExpiresAt) || claimExpiresAt > Math.floor(Date.now() / 1000)) {
-    return true;
-  }
-  queue.cancel(jobId);
-  return false;
+  const job = libraryScanQueue.getJob(jobId);
+  return !job?.cancel_requested && (job?.state === "pending" || job?.state === "running");
 }
 
 export function getScheduledLibraryScanJobId() {
@@ -229,7 +219,7 @@ function registerLibraryScan({
   const fullScan = mustRunFullScan || effectivePaths === null;
   const effectiveIncludeLidarr =
     includeLidarr === true || (existingJobId != null && registry.includeLidarr === true);
-  const jobId = enqueueLibraryScanJob({
+  const jobId = libraryScanQueue.enqueue({
     force: effectiveForce,
     includeLidarr: effectiveIncludeLidarr,
     changedPaths: fullScan ? null : effectivePaths,
@@ -241,25 +231,18 @@ function registerLibraryScan({
     if (getScheduledLibraryScanJobId() === jobId && hasLiveScanJob(jobId)) {
       return registerLibraryScan({ force, includeLidarr, changedPaths });
     }
-    getLibraryScanQueue().cancel(jobId);
+    libraryScanQueue.cancel(jobId);
     return registerLibraryScan({ force, includeLidarr, changedPaths });
   }
   return jobId;
 }
 
-export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonValue = null) {
+export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: unknown = null) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
-  const rawPayload = jobPayload ?? getLibraryScanQueue().getJob(normalizedJobId)?.payload;
-  let payload: unknown = rawPayload;
-  if (typeof rawPayload === "string") {
-    try {
-      payload = JSON.parse(rawPayload);
-    } catch {
-      payload = {};
-    }
-  }
-  const request = readScanRequest(payload);
+  const request = readScanRequest(
+    jobPayload ?? parseJobPayload(libraryScanQueue.getJob(normalizedJobId)?.payload),
+  );
   const scheduledJobId = normalizeJobId(getScanRegistry().jobId);
   if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
@@ -395,48 +378,32 @@ export function restoreLibraryScanAfterWorkerExit(jobId: number) {
   }).immediate();
 }
 
+const SCAN_STATUS = {
+  pending: "queued",
+  running: "running",
+  done: "completed",
+  failed: "failed",
+  cancelled: "failed",
+} as const;
+
 export function getLibraryScanStatus(jobId: string | number) {
   const normalizedJobId = Number(jobId);
   if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) return null;
-
-  const job = getLibraryScanQueue().getJob(normalizedJobId);
-  if (job) {
-    return {
-      jobId: normalizedJobId,
-      status: job.state === "processing" ? "running" : "queued",
-      error: null,
-    };
-  }
-
-  const run = db
-    .prepare<[number], Pick<HonkerTaskRunsRow, "status" | "error">>(
-      `SELECT status, error
-       FROM honker_task_runs
-       WHERE queue = 'library-scan' AND job_id = ?
-       ORDER BY id DESC
-       LIMIT 1`,
-    )
-    .get(normalizedJobId);
-  if (!run) return { jobId: normalizedJobId, status: "unknown", error: null };
+  const job = libraryScanQueue.getJob(normalizedJobId);
+  if (!job) return { jobId: normalizedJobId, status: "unknown", error: null };
   return {
     jobId: normalizedJobId,
-    status: run.status === "failed" ? "failed" : "completed",
-    error: run.error || null,
+    status: SCAN_STATUS[job.state],
+    error: job.state === "failed" || job.state === "cancelled" ? job.last_error : null,
   };
 }
-
-let databaseClosed = false;
 
 const {
   start: startLibraryScanWorker,
   stop: stopLibraryScanWorker,
   isRunning: isLibraryScanWorkerRunning,
-} = createHonkerWorker({
-  name: WORKER_NAME,
+} = createJobWorker(libraryScanQueue, {
   schema: libraryScanSchema,
-  getQueue: getLibraryScanQueue,
-  idlePollS: 10,
-  retryDelayS: 60,
   filterJob(job) {
     return claimScheduledLibraryScanJob(job.id, job.payload);
   },
@@ -473,16 +440,10 @@ const {
       return { action: "fail", message };
     }
     restoreLibraryScanAfterWorkerExit(job.id);
-    return { action: "retry", delayS: 60, message };
+    return { action: "retry", delayMs: 60_000, message };
   },
   onJobSuccess: onLibraryScanSuccess,
   onFinalFailure: onLibraryScanFinalFailure,
-  onLoopError(error) {
-    databaseClosed = isHonkerDatabaseClosedError(error);
-    if (!databaseClosed) {
-      console.error("[libraryScanWorker] loop error:", error);
-    }
-  },
 });
 
 export { startLibraryScanWorker, stopLibraryScanWorker, isLibraryScanWorkerRunning };

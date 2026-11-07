@@ -41,7 +41,7 @@ const dbHelpers = {
   stringifyJSON: (obj: unknown) => (obj === undefined ? null : JSON.stringify(obj)),
 };
 
-test("startup migration from v1 creates playlist_download_jobs table and stores schema version", async () => {
+test("startup migration from v1 creates the download_jobs table and stores schema version", async () => {
   const { dbPath } = createPreMigrationDb();
   const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.ts");
   const db = new Database(dbPath);
@@ -51,11 +51,11 @@ test("startup migration from v1 creates playlist_download_jobs table and stores 
 
   const tables = db
     .prepare<unknown[], { name: unknown }>(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'playlist_download_jobs')",
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'download_jobs')",
     )
     .all()
     .map((row) => row.name);
-  assert.ok(tables.includes("playlist_download_jobs"));
+  assert.ok(tables.includes("download_jobs"));
   assert.ok(
     db
       .prepare<unknown[], { name: unknown }>(
@@ -130,7 +130,7 @@ test("startup migration from v1 splits weeklyFlowWorker settings into playlistWo
   db.close();
 });
 
-test("startup migration from v1 copies existing jobs from weekly_flow_jobs to playlist_download_jobs", async () => {
+test("startup migration from v1 copies existing jobs from weekly_flow_jobs to download_jobs", async () => {
   const { dbPath } = createPreMigrationDb();
   const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.ts");
   const db = new Database(dbPath);
@@ -138,20 +138,19 @@ test("startup migration from v1 copies existing jobs from weekly_flow_jobs to pl
   initializeSchemaOnStartup(db, dbHelpers);
 
   const copiedJob = db
-    .prepare<unknown[], import("../../backend/db/rows.ts").PlaylistDownloadJobsRow>(
-      "SELECT * FROM playlist_download_jobs WHERE id = 'job-1'",
+    .prepare<[], { artist_name: string; owner_id: string }>(
+      "SELECT * FROM download_jobs WHERE id = 'job-1'",
     )
     .get();
   assert.ok(copiedJob != null);
   assert.equal(copiedJob.artist_name, "Artist");
-  assert.ok(copiedJob != null);
-  assert.equal(copiedJob.playlist_id, "discover");
+  assert.equal(copiedJob.owner_id, "discover");
 
   db.close();
 });
 
 test("startup migration from v1 survives legacy playlist_download_jobs sync triggers", async () => {
-  const { dbPath } = createPreMigrationDb();
+  const { dbPath, tempDir } = createPreMigrationDb();
   const db = new Database(dbPath);
   db.exec(`
     CREATE TABLE playlist_download_jobs (
@@ -197,7 +196,9 @@ test("startup migration from v1 survives legacy playlist_download_jobs sync trig
   db.close();
 
   const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.ts");
+  const { migrateToJobQueue } = await import("../../backend/config/job-queue-migration.ts");
   const reopened = new Database(dbPath);
+  migrateToJobQueue(reopened, tempDir);
   assert.doesNotThrow(() => initializeSchemaOnStartup(reopened, dbHelpers));
   assert.equal(
     reopened
@@ -208,11 +209,7 @@ test("startup migration from v1 survives legacy playlist_download_jobs sync trig
     undefined,
   );
   assert.ok(
-    reopened
-      .prepare<unknown[], { id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"] }>(
-        "SELECT id FROM playlist_download_jobs WHERE id = 'job-1'",
-      )
-      .get(),
+    reopened.prepare<[], { id: string }>("SELECT id FROM download_jobs WHERE id = 'job-1'").get(),
   );
   reopened.close();
 });

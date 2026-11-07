@@ -27,19 +27,13 @@ const {
 const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.ts");
 const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } =
   await import("../../backend/services/libraryMediaStore.ts");
-const { getHonkerDb } = await import("../../backend/services/honkerDb.ts");
+const { insertJob } = await import("../helpers/jobs.ts");
 const { dbOps } = await import("../../backend/db/helpers/index.ts");
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 
 beforeEach(() => {
   resetDatabase(db);
   db.prepare("DELETE FROM aurral_history").run();
-  const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE queue IN (?, ?)", [
-    "weekly-flow-operation",
-    "slskd-pipeline",
-  ]);
-  transaction.commit();
   downloadTracker.clearAll();
 });
 
@@ -385,16 +379,14 @@ test("pending tracker jobs without history appear in activity immediately", asyn
 });
 
 test("pending playlist imports appear in activity before the worker starts", async () => {
-  const operationId = getHonkerDb()
-    .queue("weekly-flow-operation")
-    .enqueue({
-      kind: "shared-playlist-create",
-      playlistId: "pending-playlist",
-      name: "Pending Playlist",
-      sourceName: "ListenBrainz",
-      ownerUserId: 42,
-      tracks: [{ artistName: "Artist", trackName: "Song" }],
-    });
+  const operationId = insertJob(db, "playlist-operation", {
+    kind: "static-playlist-create",
+    playlistId: "pending-playlist",
+    name: "Pending Playlist",
+    sourceName: "ListenBrainz",
+    ownerUserId: 42,
+    tracks: [{ artistName: "Artist", trackName: "Song" }],
+  });
 
   const entry = (await getAurralHistoryRequests()).find(
     (item) => item.id === `aurral-playlist_import-${operationId}`,
@@ -435,13 +427,11 @@ test("getAurralHistoryRequests fails stale active download history, but not a tr
   };
   const jobId = staleDownload("Stale Song");
   const waitingId = staleDownload("Waiting Song");
-  getHonkerDb()
-    .queue("slskd-pipeline")
-    .enqueue({
-      jobId: "lead-job",
-      albumGrab: true,
-      albumGroupJobIds: ["lead-job", waitingId],
-    });
+  insertJob(db, "download-pipeline", {
+    jobId: "lead-job",
+    albumGrab: true,
+    albumGroupJobIds: ["lead-job", waitingId],
+  });
 
   const entries = await getAurralHistoryRequests();
   const entry = entries.find((item) => item.jobId === jobId);

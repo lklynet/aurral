@@ -1,14 +1,14 @@
 import { fork, type ChildProcess, type ForkOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
-import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
-import type { getHonkerWorkerStatuses } from "./honkerWorkerRuntime.ts";
+import { WORKER_GROUPS } from "./jobs/groups.ts";
+import type { getWorkerStatuses } from "./jobs/worker.ts";
 import type { LogEntry } from "./logger.ts";
 import type { WebSocketChannelPayload } from "./websocketService.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 
-type HonkerWorkerStatus = ReturnType<typeof getHonkerWorkerStatuses>[number];
+type WorkerStatus = ReturnType<typeof getWorkerStatuses>[number];
 
 export type WorkerMessage =
   | { type: "ready"; group: string }
@@ -16,7 +16,7 @@ export type WorkerMessage =
       type: "heartbeat";
       group: string;
       memory: { rss: number; heapUsed: number };
-      workers: HonkerWorkerStatus[];
+      workers: WorkerStatus[];
       downloadOwnerStatus?: unknown;
     }
   | { type: "idle" }
@@ -46,23 +46,6 @@ const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.ts", import.meta.
 const RESTART_BASE_MS = 1000;
 const RESTART_MAX_MS = 30000;
 const UNRESPONSIVE_MS = 120000;
-const DEMAND_POLL_MS = 2000;
-const JOB_TIMEOUT_MS = Object.freeze({
-  library: 6 * 60 * 60 * 1000,
-  "discovery-refresh": 2 * 60 * 60 * 1000,
-  "discovery-user-refresh": 2 * 60 * 60 * 1000,
-  maintenance: 15 * 60 * 1000,
-  inbox: 15 * 60 * 1000,
-  notifications: 15 * 60 * 1000,
-  "play-events": 15 * 60 * 1000,
-  "release-metadata-refresh": 2 * 60 * 60 * 1000,
-  "system-task": 2 * 60 * 60 * 1000,
-  playback: 2 * 60 * 60 * 1000,
-  "weekly-flow-operation": 2 * 60 * 60 * 1000,
-  "flow-run": 2 * 60 * 60 * 1000,
-  "slskd-pipeline": 6 * 60 * 60 * 1000,
-  "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
-});
 const MB = 1024 * 1024;
 const DEFAULT_HEAP_LIMIT_MB = 2048;
 
@@ -85,26 +68,23 @@ function workerExecArgv() {
   return [...execArgv, `--max-old-space-size=${DEFAULT_HEAP_LIMIT_MB}`];
 }
 
-// A group's process runs only while it has work: queued jobs or a due schedule
-// reported by findGroupsWithWork, or flow requests. Idle processes exit.
+// A group's process runs only while it has work or download owner requests.
+// Idle processes exit, and a timer set to the next due job brings them back.
 export function createBackgroundProcessSupervisor({
-  groups = ISOLATED_WORKER_GROUPS,
+  groups = WORKER_GROUPS,
   findGroupsWithWork = () => [],
-  getWorkRevision = null,
   getNextWorkAt = () => null,
   forkProcess = fork,
   onMessage = () => {},
   onExit = () => {},
   logger = console,
-  jobTimeoutsMs = JOB_TIMEOUT_MS,
+  jobTimeoutsMs = {},
   unresponsiveMs = UNRESPONSIVE_MS,
   watchdogIntervalMs = 15000,
-  demandPollMs = DEMAND_POLL_MS,
 }: {
   groups?: readonly string[];
-  findGroupsWithWork?: (now: number) => string[];
-  getWorkRevision?: (() => unknown) | null;
-  getNextWorkAt?: (now: number) => unknown;
+  findGroupsWithWork?: (now: number) => readonly string[];
+  getNextWorkAt?: (now: number) => number | null;
   forkProcess?: (entry: string, args: readonly string[], options: ForkOptions) => ChildProcess;
   onMessage?: (message: WorkerMessage, group: string, child: ChildProcess) => void;
   onExit?: (
@@ -119,7 +99,6 @@ export function createBackgroundProcessSupervisor({
   jobTimeoutsMs?: Readonly<Record<string, number | undefined>>;
   unresponsiveMs?: number;
   watchdogIntervalMs?: number;
-  demandPollMs?: number;
 } = {}) {
   const children = new Map();
   const restartTimers = new Map();
@@ -137,9 +116,7 @@ export function createBackgroundProcessSupervisor({
   const relaunchGroups = new Set();
   let nextRequestId = 0;
   let watchdogInterval: NodeJS.Timeout | null = null;
-  let demandInterval: NodeJS.Timeout | null = null;
   let demandTimer: NodeJS.Timeout | null = null;
-  let lastWorkRevision: unknown = null;
   let started = false;
   let stopping = false;
 
@@ -232,6 +209,9 @@ export function createBackgroundProcessSupervisor({
       if (message?.type === "ready") {
         readyGroups.add(group);
         flushRequests(group);
+        try {
+          child.send({ type: "queue-wake" });
+        } catch {}
       }
       if (message?.type === "heartbeat" && Array.isArray(message.workers)) {
         workerStatuses.set(group, message.workers);
@@ -279,7 +259,6 @@ export function createBackgroundProcessSupervisor({
         if (watchdogInterval) clearInterval(watchdogInterval);
         watchdogInterval = null;
       }
-      lastWorkRevision = null;
       const retiring = retiringGroups.delete(group);
       readyGroups.delete(group);
       lastSeen.delete(group);
@@ -312,6 +291,7 @@ export function createBackgroundProcessSupervisor({
           const wanted = relaunchGroups.delete(group) || hasRequests(group);
           if (!retired) scheduleRestart(group);
           else if (wanted) launch(group);
+          launchGroupsWithWork();
         });
     };
     child.once("exit", handleExit);
@@ -340,39 +320,26 @@ export function createBackgroundProcessSupervisor({
 
   function launchGroupsWithWork() {
     if (!started || stopping) return;
+    if (demandTimer) clearTimeout(demandTimer);
+    demandTimer = null;
+    let nextWorkAt: number | null = null;
     try {
       const inspectedAt = Date.now();
-      const revision = getWorkRevision?.();
       for (const group of findGroupsWithWork(inspectedAt)) ensure(group);
-      const nextWorkAt = Number(getNextWorkAt(inspectedAt));
-      if (demandTimer) clearTimeout(demandTimer);
-      demandTimer = null;
-      if (nextWorkAt > 0) {
-        demandTimer = setTimeout(
-          launchGroupsWithWork,
-          Math.max(1, Math.min(nextWorkAt - Date.now(), 2147483647)),
-        );
-        demandTimer.unref?.();
-      }
-      lastWorkRevision = revision;
+      nextWorkAt = getNextWorkAt(inspectedAt);
     } catch (error) {
-      lastWorkRevision = null;
       logger.warn?.(
         "[BackgroundWorkers] Could not check for queued work:",
         asAppError(error)?.message || error,
       );
+      nextWorkAt = Date.now() + RESTART_MAX_MS;
     }
-  }
-
-  function checkDemand() {
-    try {
-      if (!getWorkRevision || getWorkRevision() !== lastWorkRevision) launchGroupsWithWork();
-    } catch (error) {
-      logger.warn?.(
-        "[BackgroundWorkers] Could not check database changes:",
-        asAppError(error)?.message || error,
+    if (nextWorkAt != null) {
+      demandTimer = setTimeout(
+        launchGroupsWithWork,
+        Math.max(1, Math.min(nextWorkAt - Date.now(), 2147483647)),
       );
-      launchGroupsWithWork();
+      demandTimer.unref?.();
     }
   }
 
@@ -412,15 +379,11 @@ export function createBackgroundProcessSupervisor({
     if (started) return false;
     started = true;
     launchGroupsWithWork();
-    demandInterval = setInterval(checkDemand, demandPollMs);
-    demandInterval.unref?.();
     return true;
   }
 
   async function stop({ timeoutMs = 3000 }: { timeoutMs?: number } = {}) {
     stopping = true;
-    if (demandInterval) clearInterval(demandInterval);
-    demandInterval = null;
     if (demandTimer) clearTimeout(demandTimer);
     demandTimer = null;
     if (watchdogInterval) clearInterval(watchdogInterval);

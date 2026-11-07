@@ -24,7 +24,7 @@ afterAll(() => cleanupIsolatedState(state));
 const deferred = () => Promise.withResolvers<void>();
 
 test("playlist mutation waits for the active provider stage before changing ownership", async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Owner" });
   const jobId = createTrackedJob(
     downloadTracker,
@@ -64,7 +64,7 @@ test(
   "a provider stage can import while a playlist mutation waits for it",
   { timeout: 2000 },
   async () => {
-    dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+    dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Import owner" });
     const jobId = createTrackedJob(
       downloadTracker,
@@ -135,7 +135,7 @@ test(
   "a provider stage that needs another playlist lock fails instead of running again",
   { timeout: 2000 },
   async () => {
-    dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+    dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Stage owner" });
     const jobId = createTrackedJob(
       downloadTracker,

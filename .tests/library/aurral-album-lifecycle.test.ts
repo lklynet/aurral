@@ -123,7 +123,7 @@ async function callRouteAsWebProcess<Body = RouteBody>(
     const response = await callRoute<Body>(...args);
     const jobReads = reads
       .flatMap((read) => read.mock.contexts)
-      .filter((statement) => /\bplaylist_download_jobs\b/.test(statement.source));
+      .filter((statement) => /\bdownload_jobs\b/.test(statement.source));
     return { response, jobReads: jobReads.length };
   } finally {
     process.env.NODE_ENV = previousMode;
@@ -496,7 +496,8 @@ test("cancelling an album leader keeps its held peer and shared transfer running
     downloadSource: "deemix",
     downloadClientId: "shared-transfer",
   });
-  const honker = await import("../../backend/services/honkerDb.ts");
+  const { insertJob } = await import("../helpers/jobs.ts");
+  const { downloadPipelineQueue } = await import("../../backend/services/jobs/queues.ts");
   const payload = {
     jobId: leader,
     playlistId: "library",
@@ -506,7 +507,7 @@ test("cancelling an album leader keeps its held peer and shared transfer running
     albumGroupJobIds: [leader, peer],
     queueUuid: "shared-transfer",
   };
-  honker.getPipelineQueue().enqueue(payload);
+  insertJob(db, "download-pipeline", payload);
   const response = await apiRequest(`/api/playlists/jobs/${leader}/cancel`, "POST");
   assert.equal(response.status, 200);
   assert.equal(response.body.status, "cancelled");
@@ -517,7 +518,7 @@ test("cancelling an album leader keeps its held peer and shared transfer running
   const continued = resolveTransferredDownloadPayload(payload);
   assert.equal(continued.jobId, peer);
   assert.equal(cancellation.isPipelinePayloadActive(continued), true);
-  assert.ok(honker.listHonkerJobs("slskd-pipeline").some((row) => row.payload?.jobId === peer));
+  assert.ok(downloadPipelineQueue.list().some((row) => row.payload?.jobId === peer));
 });
 
 test("restarting a held album track detaches it from the previous shared attempt", async () => {
@@ -530,7 +531,7 @@ test("restarting a held album track detaches it from the previous shared attempt
   downloadTracker.setDownloading(peer);
   const attempt = cancellation.beginDownloadAttempt(leader);
   cancellation.setActiveDownloadAttemptId(peer, attempt);
-  const honker = await import("../../backend/services/honkerDb.ts");
+  const { insertJob } = await import("../helpers/jobs.ts");
   const payload = {
     jobId: leader,
     playlistId: "library",
@@ -540,7 +541,7 @@ test("restarting a held album track detaches it from the previous shared attempt
     albumGrab: true,
     albumGroupJobIds: [leader, peer],
   };
-  honker.getPipelineQueue().enqueue(payload);
+  insertJob(db, "download-pipeline", payload);
 
   const retried = await apiRequest(`/api/playlists/jobs/${peer}/retry`, "POST");
   assert.deepEqual(retried.body, { jobId: peer, status: "pending", retried: true });
@@ -563,7 +564,7 @@ test("a cancelled single song can be searched again and the worker takes it", as
     await import("../../backend/services/playlists/playlistOperations.ts");
   try {
     const result = await processPlaylistOperation({
-      kind: "shared-playlist-research-track",
+      kind: "static-playlist-research-track",
       playlistId: "library",
       jobId: id,
     });
@@ -587,7 +588,7 @@ test("requeueing a Library job refreshes the cached activity response", async ()
   const { processPlaylistOperation } =
     await import("../../backend/services/playlists/playlistOperations.ts");
   const result = await processPlaylistOperation({
-    kind: "shared-playlist-research-track",
+    kind: "static-playlist-research-track",
     playlistId: "library",
     jobId: id,
   });
@@ -608,7 +609,7 @@ test("the web activity cache notices job changes committed by another process", 
     import { createRequire } from 'node:module';
     const Database = createRequire(import.meta.url)('better-sqlite3');
     const db = new Database(process.argv[1]);
-    db.prepare("UPDATE playlist_download_jobs SET status = 'done', completed_at = ? WHERE id = ?").run(Date.now(), process.argv[2]);
+    db.prepare("UPDATE download_jobs SET status = 'done', completed_at = ? WHERE id = ?").run(Date.now(), process.argv[2]);
     db.close();
   `;
   const previousMode = process.env.NODE_ENV;
@@ -938,10 +939,10 @@ test("a download status poll finds album jobs under either album ID in any spell
     untouched.jobFor(0, { managedBy: "lidarr" });
     untouched.jobFor(1, {}, "discover");
 
-    db.prepare(
-      "UPDATE playlist_download_jobs SET created_at = created_at - 60000 WHERE id IN (?, ?)",
-    ).run(...olderJobs);
-    db.prepare("UPDATE playlist_download_jobs SET album_mbid = ? WHERE id = ?").run(
+    db.prepare("UPDATE download_jobs SET created_at = created_at - 60000 WHERE id IN (?, ?)").run(
+      ...olderJobs,
+    );
+    db.prepare("UPDATE download_jobs SET album_mbid = ? WHERE id = ?").run(
       ` ${spelled.albumMbid.toUpperCase()}\t`,
       paddedJob,
     );

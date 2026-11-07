@@ -73,7 +73,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 afterAll(async () => {
@@ -233,7 +233,7 @@ test("a failed playlist-delete enqueue restores the active download generation",
 
 test("existing playlists without the preference start disabled after loading", async () => {
   dbOps.updateSettings({
-    sharedPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }],
+    staticPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }],
   });
   vi.resetModules();
   const { flowPlaylistConfig: reloaded } =
@@ -243,7 +243,7 @@ test("existing playlists without the preference start disabled after loading", a
 
 test("existing playlists without history preference start enabled after loading", async () => {
   dbOps.updateSettings({
-    sharedPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }],
+    staticPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }],
   });
   vi.resetModules();
   const { flowPlaylistConfig: reloaded } =

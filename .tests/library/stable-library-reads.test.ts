@@ -27,7 +27,7 @@ import {
   clearScheduledLibraryScan,
   getScheduledLibraryScanJobId,
 } from "../../backend/services/libraryScanWorker.ts";
-import { getLibraryScanQueue } from "../../backend/services/honkerDb.ts";
+import { libraryScanQueue } from "../../backend/services/jobs/queues.ts";
 import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.ts";
 import { api } from "../../backend/routes/api.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
@@ -277,7 +277,7 @@ test("artist monitoring mutations dedupe library reconciliation scans", async ()
     });
     jobId = getScheduledLibraryScanJobId();
     assert.ok(jobId);
-    assert.deepEqual(JSON.parse(requireValue(getLibraryScanQueue().getJob(jobId)).payload), {
+    assert.deepEqual(JSON.parse(requireValue(libraryScanQueue.getJob(jobId)).payload), {
       force: false,
       includeLidarr: true,
       changedPaths: null,
@@ -288,7 +288,7 @@ test("artist monitoring mutations dedupe library reconciliation scans", async ()
     });
     assert.equal(getScheduledLibraryScanJobId(), jobId);
   } finally {
-    if (jobId) getLibraryScanQueue().cancel(jobId);
+    if (jobId) libraryScanQueue.cancel(jobId);
     clearScheduledLibraryScan();
   }
 });
@@ -336,7 +336,7 @@ test("deleting a Lidarr artist clears library provider state for both IDs", asyn
     assert.equal(getLibraryLidarrArtist(foreignArtistId), null);
   } finally {
     const jobId = getScheduledLibraryScanJobId();
-    if (jobId) getLibraryScanQueue().cancel(jobId);
+    if (jobId) libraryScanQueue.cancel(jobId);
     clearScheduledLibraryScan();
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, resolvedArtist.id);
   }
@@ -685,7 +685,7 @@ test("explicit artist synchronization retains its Lidarr request", async () => {
     );
   } finally {
     const jobId = getScheduledLibraryScanJobId();
-    if (jobId) getLibraryScanQueue().cancel(jobId);
+    if (jobId) libraryScanQueue.cancel(jobId);
     clearScheduledLibraryScan();
     lidarrClient.isConfigured = originalConfigured;
   }

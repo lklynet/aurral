@@ -49,7 +49,7 @@ beforeEach(async () => {
   dbOps.updateSettings({
     integrations: {},
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     onboardingComplete: true,
   });
   dbOps.setJSONSetting("aurralDownloadFolderMigration", null);

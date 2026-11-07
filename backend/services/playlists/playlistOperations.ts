@@ -43,7 +43,7 @@ import {
   withPlaylistMutation,
   withPlaylistMutationLock,
 } from "../downloadJobs/mutationGuards.ts";
-import { withHonkerLock } from "../honkerDb.ts";
+import { withLock } from "../jobs/queue.ts";
 import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
@@ -73,7 +73,7 @@ import {
   withStaticPlaylistRemovalMutation,
 } from "./trackRemoval.ts";
 
-const OPERATION_TOKENS_KEY = "weeklyFlowOperationTokens";
+const OPERATION_TOKENS_KEY = "playlistOperationTokens";
 const operationTokenKey = (scope: string) => `${OPERATION_TOKENS_KEY}:${encodeURIComponent(scope)}`;
 
 export function createPlaylistOperationToken() {
@@ -155,8 +155,8 @@ interface FlowOutcome {
 }
 
 const withPlaylistOperationLock = <T>(operation: () => T) =>
-  withHonkerLock("weekly-flow-operation", operation, {
-    ttlSeconds: 180,
+  withLock("playlist-operation", operation, {
+    ttlMs: 180_000,
     waitTimeoutMs: 30 * 60 * 1000,
     retryDelayMs: 250,
   });
@@ -704,7 +704,7 @@ async function createStaticPlaylistLocked({
   playlistManager.requestPlaylistSync([safePlaylistId]);
   if (normalizedTracks.length > 0) {
     schedulePlaylistMbidEnrichment(safePlaylistId, {
-      reason: "shared-playlist-create",
+      reason: "static-playlist-create",
       priority: 5,
     });
   }
@@ -739,7 +739,7 @@ async function appendStaticPlaylistTracksLocked({
       : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
   if (tracksToAdd.length > 0) {
     schedulePlaylistMbidEnrichment(safePlaylistId, {
-      reason: "shared-playlist-append",
+      reason: "static-playlist-append",
       priority: 5,
     });
   }
@@ -879,7 +879,7 @@ async function updateStaticPlaylistLocked({
     recordPlaylistHistory(safePlaylistId, { tracksQueued });
   }
   schedulePlaylistMbidEnrichment(safePlaylistId, {
-    reason: hasTracksUpdate ? "shared-playlist-track-update" : "shared-playlist-update",
+    reason: hasTracksUpdate ? "static-playlist-track-update" : "static-playlist-update",
     priority: 5,
   });
   return { success: true, playlist, tracksQueued, tracksReused };
@@ -1153,23 +1153,23 @@ export async function processPlaylistOperation(
         return deleteFlow(payload);
       case "reset-playlists":
         return resetPlaylists(payload);
-      case "shared-playlist-create":
+      case "static-playlist-create":
         return createStaticPlaylist(payload);
-      case "shared-playlist-append-tracks":
+      case "static-playlist-append-tracks":
         return appendStaticPlaylistTracks(payload);
-      case "shared-playlist-update":
+      case "static-playlist-update":
         return updateStaticPlaylist(payload);
-      case "shared-playlist-bulk": {
+      case "static-playlist-bulk": {
         const { processStaticPlaylistBulkOperation } = await import("./bulkOperations.ts");
         return processStaticPlaylistBulkOperation(payload.operationId);
       }
-      case "shared-playlist-delete-track":
+      case "static-playlist-delete-track":
         return deleteStaticPlaylistTrack(payload);
-      case "shared-playlist-research-track":
+      case "static-playlist-research-track":
         return researchPlaylistTrack(payload);
       case "library-track-research":
         return researchLibraryTrack(payload);
-      case "shared-playlist-delete":
+      case "static-playlist-delete":
         return deleteStaticPlaylist(payload);
       default:
         throw new Error(`Unknown playlist operation: ${kind || "unknown"}`);

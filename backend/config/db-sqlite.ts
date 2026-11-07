@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup, type TableColumnRow } from "./schema-migration-v2.ts";
+import { JOB_TABLES_SQL, migrateToJobQueue } from "./job-queue-migration.ts";
 import { initializeLibrarySearchIndex } from "./library-search-index.ts";
 import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
@@ -59,6 +60,8 @@ function tryAddColumn(sql: string) {
     }
   }
 }
+
+migrateToJobQueue(db, DATA_DIR);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
@@ -149,7 +152,7 @@ db.exec(`
     job_id TEXT PRIMARY KEY,
     share_url TEXT NOT NULL,
     track_path TEXT NOT NULL,
-    FOREIGN KEY (job_id) REFERENCES playlist_download_jobs(id) ON DELETE CASCADE
+    FOREIGN KEY (job_id) REFERENCES download_jobs(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS subsonic_play_queues (
@@ -312,7 +315,7 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS playlist_download_jobs (
+  CREATE TABLE IF NOT EXISTS download_jobs (
     id TEXT PRIMARY KEY,
     artist_name TEXT NOT NULL,
     track_name TEXT NOT NULL,
@@ -329,9 +332,9 @@ db.exec(`
     album_track_count INTEGER,
     album_track_titles TEXT,
     artist_aliases TEXT,
-    playlist_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
     playlist_generation INTEGER NOT NULL DEFAULT 0,
-    playlist_type TEXT,
+    owner_type TEXT,
     status TEXT NOT NULL,
     staging_path TEXT,
     final_path TEXT,
@@ -366,24 +369,24 @@ db.exec(`
     held_for_review TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS weekly_flow_download_cancellations (
-    playlist_id TEXT PRIMARY KEY,
+  CREATE TABLE IF NOT EXISTS download_cancellations (
+    owner_id TEXT PRIMARY KEY,
     generation INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'active',
     changed_at INTEGER NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS weekly_flow_download_job_cancellations (
+  CREATE TABLE IF NOT EXISTS download_job_cancellations (
     job_id TEXT PRIMARY KEY,
     cancelled_at INTEGER NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_job_cancellations_time
-    ON weekly_flow_download_job_cancellations(cancelled_at);
+  CREATE INDEX IF NOT EXISTS idx_download_job_cancellations_time
+    ON download_job_cancellations(cancelled_at);
 
-  CREATE TABLE IF NOT EXISTS weekly_flow_download_provider_work (
+  CREATE TABLE IF NOT EXISTS download_provider_work (
     job_id TEXT NOT NULL,
-    playlist_id TEXT NOT NULL DEFAULT '',
+    owner_id TEXT NOT NULL DEFAULT '',
     provider TEXT NOT NULL,
     work_id TEXT NOT NULL,
     username TEXT NOT NULL DEFAULT '',
@@ -391,11 +394,11 @@ db.exec(`
     PRIMARY KEY (job_id, provider, work_id, username)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_provider_work_job
-    ON weekly_flow_download_provider_work(job_id, provider);
+  CREATE INDEX IF NOT EXISTS idx_download_provider_work_job
+    ON download_provider_work(job_id, provider);
 
-  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_provider_work_playlist
-    ON weekly_flow_download_provider_work(playlist_id, provider);
+  CREATE INDEX IF NOT EXISTS idx_download_provider_work_playlist
+    ON download_provider_work(owner_id, provider);
 
   CREATE TABLE IF NOT EXISTS deezer_mbid_cache (
     cache_key TEXT PRIMARY KEY,
@@ -715,26 +718,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_file_operation_items_status
     ON library_file_operation_items(operation_id, status, position);
 
-  CREATE TABLE IF NOT EXISTS honker_task_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id INTEGER NOT NULL,
-    queue TEXT NOT NULL,
-    name TEXT,
-    payload TEXT,
-    worker_id TEXT,
-    attempt INTEGER,
-    status TEXT NOT NULL,
-    error TEXT,
-    queued_at INTEGER,
-    run_at INTEGER,
-    started_at INTEGER NOT NULL,
-    ended_at INTEGER,
-    duration_ms INTEGER,
-    created_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_status ON playlist_download_jobs(status);
-  CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_playlist_id ON playlist_download_jobs(playlist_id);
+  CREATE INDEX IF NOT EXISTS idx_download_jobs_status ON download_jobs(status);
+  CREATE INDEX IF NOT EXISTS idx_download_jobs_owner_id ON download_jobs(owner_id);
   CREATE INDEX IF NOT EXISTS idx_images_cache_cache_age ON images_cache(cache_age);
   CREATE INDEX IF NOT EXISTS idx_musicbrainz_artist_mbid_cache_updated_at ON musicbrainz_artist_mbid_cache(updated_at);
   CREATE INDEX IF NOT EXISTS idx_metadata_response_cache_stale_until ON metadata_response_cache(stale_until);
@@ -755,10 +740,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_created_at ON slskd_transfer_history(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_status ON slskd_transfer_history(status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_cleanup ON slskd_transfer_history(cleaned_at, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_honker_task_runs_started_at ON honker_task_runs(started_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+db.exec(JOB_TABLES_SQL);
 
 tryAddColumn("ALTER TABLE share_links ADD COLUMN manifest TEXT");
 tryAddColumn("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
@@ -857,12 +840,7 @@ db.transaction(() => {
     .run(retiredDiscoverPlaylistsMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.prepare("DELETE FROM discovery_cache WHERE key LIKE '%discoverPlaylists'").run();
-  const hasHonkerQueue = db
-    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_honker_live'")
-    .get();
-  if (hasHonkerQueue) {
-    db.prepare("DELETE FROM _honker_live WHERE queue = 'discovery-playlist-build'").run();
-  }
+  db.prepare("DELETE FROM jobs WHERE queue = 'discovery-playlist-build'").run();
   fs.rmSync(path.join(DATA_DIR, "discover-artwork"), { recursive: true, force: true });
 }).immediate();
 
@@ -930,12 +908,9 @@ db.transaction(() => {
   db.prepare(
     "DELETE FROM discovery_cache WHERE key LIKE 'lfm:%' OR key LIKE 'lb:%' OR key LIKE 'koito:%'",
   ).run();
-  const hasHonkerQueue = db
-    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_honker_live'")
-    .get();
-  if (hasHonkerQueue) {
-    db.prepare("DELETE FROM _honker_live WHERE queue = 'discovery-user-refresh'").run();
-  }
+  db.prepare(
+    "DELETE FROM jobs WHERE queue = 'discovery-user-refresh' AND state IN ('pending', 'running')",
+  ).run();
 }).immediate();
 
 const unifiedDiscoverySourceMigrationKey = "migration:unified-discovery-source-v1";
@@ -1137,41 +1112,41 @@ db.exec(`
 ensureUniqueLidarrArtistIdIndex(db);
 
 const tableColumns = db
-  .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
+  .prepare<[], TableColumnRow>("PRAGMA table_info(download_jobs)")
   .all()
   .map((column) => column.name);
 
 if (!tableColumns.includes("playlist_generation")) {
   tryAddColumn(
-    "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_generation INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE download_jobs ADD COLUMN playlist_generation INTEGER NOT NULL DEFAULT 0",
   );
 }
 if (!tableColumns.includes("album_name")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN album_name TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN album_name TEXT");
 }
 if (!tableColumns.includes("reason")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN reason TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN reason TEXT");
 }
 if (!tableColumns.includes("artist_mbid")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN artist_mbid TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN artist_mbid TEXT");
 }
 if (!tableColumns.includes("album_mbid")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN album_mbid TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN album_mbid TEXT");
 }
 if (!tableColumns.includes("track_mbid")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN track_mbid TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN track_mbid TEXT");
 }
 if (!tableColumns.includes("release_year")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN release_year TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN release_year TEXT");
 }
 if (!tableColumns.includes("duration_ms")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN duration_ms INTEGER");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN duration_ms INTEGER");
 }
 if (!tableColumns.includes("external_path")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN external_path TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN external_path TEXT");
 }
 if (!tableColumns.includes("denied_remote_sources")) {
-  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN denied_remote_sources TEXT");
+  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN denied_remote_sources TEXT");
 }
 for (const [name, type] of [
   ["quality_tier", "TEXT"],
@@ -1192,21 +1167,21 @@ for (const [name, type] of [
   ["release_mbid", "TEXT"],
 ] as const) {
   if (!tableColumns.includes(name)) {
-    tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
+    tryAddColumn(`ALTER TABLE download_jobs ADD COLUMN ${name} ${type}`);
   }
 }
 if (!tableColumns.includes("reused_library_file")) {
   db.transaction(() => {
     tryAddColumn(
-      "ALTER TABLE playlist_download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0",
     );
     db.exec(`
-      UPDATE playlist_download_jobs SET reused_library_file = 1
+      UPDATE download_jobs SET reused_library_file = 1
       WHERE status = 'done' AND final_path IS NOT NULL AND (
         started_at IS NULL OR EXISTS (
           SELECT 1 FROM library_media_files AS media
-          WHERE media.path = playlist_download_jobs.final_path
-            AND media.created_at <= COALESCE(playlist_download_jobs.completed_at, playlist_download_jobs.created_at)
+          WHERE media.path = download_jobs.final_path
+            AND media.created_at <= COALESCE(download_jobs.completed_at, download_jobs.created_at)
         )
       )
     `);
@@ -1486,7 +1461,7 @@ db.transaction(() => {
     )
     AND NOT EXISTS (
       SELECT 1 FROM library_media_files AS media
-      JOIN playlist_download_jobs AS job ON job.final_path = media.path AND job.status = 'done'
+      JOIN download_jobs AS job ON job.final_path = media.path AND job.status = 'done'
       WHERE media.track_id = library_tracks.id AND media.source = 'aurral'
     );
 
@@ -1627,36 +1602,36 @@ db.transaction(() => {
 }).immediate();
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
+  CREATE TABLE IF NOT EXISTS download_jobs_revision (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     revision INTEGER NOT NULL DEFAULT 0
   );
-  INSERT OR IGNORE INTO playlist_download_jobs_revision (id, revision) VALUES (1, 0);
-  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_insert
-    AFTER INSERT ON playlist_download_jobs BEGIN
-      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+  INSERT OR IGNORE INTO download_jobs_revision (id, revision) VALUES (1, 0);
+  CREATE TRIGGER IF NOT EXISTS download_jobs_revision_insert
+    AFTER INSERT ON download_jobs BEGIN
+      UPDATE download_jobs_revision SET revision = revision + 1 WHERE id = 1;
     END;
-  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_update
-    AFTER UPDATE ON playlist_download_jobs BEGIN
-      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+  CREATE TRIGGER IF NOT EXISTS download_jobs_revision_update
+    AFTER UPDATE ON download_jobs BEGIN
+      UPDATE download_jobs_revision SET revision = revision + 1 WHERE id = 1;
     END;
-  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_delete
-    AFTER DELETE ON playlist_download_jobs BEGIN
-      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+  CREATE TRIGGER IF NOT EXISTS download_jobs_revision_delete
+    AFTER DELETE ON download_jobs BEGIN
+      UPDATE download_jobs_revision SET revision = revision + 1 WHERE id = 1;
     END;
 `);
 db.exec(`
-  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_delete
-    AFTER DELETE ON playlist_download_jobs BEGIN
+  CREATE TRIGGER IF NOT EXISTS download_attempt_delete
+    AFTER DELETE ON download_jobs BEGIN
       DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || OLD.id;
     END;
-  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_complete
-    AFTER UPDATE OF status ON playlist_download_jobs WHEN NEW.status = 'done' BEGIN
+  CREATE TRIGGER IF NOT EXISTS download_attempt_complete
+    AFTER UPDATE OF status ON download_jobs WHEN NEW.status = 'done' BEGIN
       DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || NEW.id;
     END;
   DELETE FROM settings WHERE key LIKE 'activeDownloadAttempt:%'
     AND NOT EXISTS (
-      SELECT 1 FROM playlist_download_jobs
+      SELECT 1 FROM download_jobs
       WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
     );
 `);
@@ -1697,6 +1672,14 @@ syncDownloadFolderPath(existingDownloadFolder?.value || null);
 const databaseRevisionStmt = db.prepare<[], { data_version: number; changes: number }>(
   "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
 );
+
+const dataVersionStmt = db.prepare<[], { data_version: number }>(
+  "SELECT data_version FROM pragma_data_version",
+);
+
+export function getDatabaseDataVersion() {
+  return dataVersionStmt.get()!.data_version;
+}
 
 export function getDatabaseRevision() {
   const { data_version, changes } = databaseRevisionStmt.get()!;

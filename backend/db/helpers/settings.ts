@@ -100,7 +100,7 @@ export interface SettingsUpdate {
   pathMappings?: unknown;
   releaseTypes?: string[];
   flows?: unknown;
-  sharedPlaylists?: unknown;
+  staticPlaylists?: unknown;
   subsonic?: { favoriteAutoKeep?: boolean };
   playlistWorker?: StoredPlaylistWorker;
   missingTrackSearch?: StoredMissingTrackSearch;
@@ -433,8 +433,8 @@ export const dbOps = {
       if (settings.flows !== undefined) {
         upsertSettingStmt.run("flows", dbHelpers.stringifyJSON(settings.flows));
       }
-      if (settings.sharedPlaylists !== undefined) {
-        upsertSettingStmt.run("sharedPlaylists", dbHelpers.stringifyJSON(settings.sharedPlaylists));
+      if (settings.staticPlaylists !== undefined) {
+        upsertSettingStmt.run("staticPlaylists", dbHelpers.stringifyJSON(settings.staticPlaylists));
       }
       if (settings.subsonic !== undefined) {
         upsertSettingStmt.run(

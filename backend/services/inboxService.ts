@@ -8,12 +8,8 @@ import { getUserDiscovery } from "./discovery/userDiscovery.ts";
 import { logger } from "./logger.ts";
 import type { InboxItemInput, InboxItemUpdates } from "../db/helpers/inbox.ts";
 import { getNewsForUser } from "./newsService.ts";
-import {
-  enqueueSystemTaskJob,
-  findActiveHonkerJob,
-  getSystemTaskQueueName,
-  withHonkerLock,
-} from "./honkerDb.ts";
+import { withLock } from "./jobs/queue.ts";
+import { enqueueSystemTask, inboxTaskQueue } from "./jobs/queues.ts";
 import { albumPath } from "../../lib/albumPath.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,17 +80,8 @@ const getStoredRefreshStatus = (userId: number): InboxRefreshStatus =>
     jobId: null,
   };
 
-const findActiveInboxRefreshJob = (userId: number, options: { recoverExpired?: boolean } = {}) =>
-  findActiveHonkerJob(
-    getSystemTaskQueueName("inbox-refresh"),
-    (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
-    options,
-  ) ||
-  findActiveHonkerJob(
-    "system-task",
-    (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
-    options,
-  );
+const findActiveInboxRefreshJob = (userId: number) =>
+  inboxTaskQueue.list().find((job) => Number(job.payload?.userId) === userId);
 
 const setStoredRefreshStatus = (userId: number, status: Partial<InboxRefreshStatus>) => {
   db.transaction(() => {
@@ -124,7 +111,7 @@ export function getInboxRefreshStatus(userId: number) {
   if (job) {
     return {
       ...stored,
-      status: job.state === "processing" ? "running" : "queued",
+      status: job.state === "running" ? "running" : "queued",
       stale: false,
       error: null,
       jobId: Number(job.id),
@@ -457,17 +444,17 @@ export async function enqueueInboxRefreshForUser(
 ) {
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) throw new Error("A valid user is required");
-  return withHonkerLock(`inbox-refresh:${normalizedUserId}`, async () => {
-    const existing = findActiveInboxRefreshJob(normalizedUserId, { recoverExpired: true });
+  return withLock(`inbox-refresh:${normalizedUserId}`, async () => {
+    const existing = findActiveInboxRefreshJob(normalizedUserId);
     if (existing) {
       return {
         queued: false,
         jobId: Number(existing.id),
-        status: existing.state === "processing" ? "running" : "queued",
+        status: existing.state === "running" ? "running" : "queued",
       };
     }
 
-    const jobId = enqueueSystemTaskJob(
+    const jobId = enqueueSystemTask(
       {
         kind: "inbox-refresh",
         userId: normalizedUserId,

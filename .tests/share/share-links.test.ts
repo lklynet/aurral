@@ -256,7 +256,7 @@ test("opening a share is available without import permissions or an account and 
     assert.equal(result.body.to, `/album/${FIRST_ALBUM_MBID}`);
   }
   assert.equal(db.prepare("SELECT 1 FROM share_links LIMIT 1").get(), undefined);
-  assert.equal(db.prepare("SELECT 1 FROM playlist_download_jobs LIMIT 1").get(), undefined);
+  assert.equal(db.prepare("SELECT 1 FROM download_jobs LIMIT 1").get(), undefined);
 });
 
 async function callApi(

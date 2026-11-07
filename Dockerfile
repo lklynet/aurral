@@ -38,8 +38,7 @@ COPY --chown=vp:vp docs/package.json ./docs/
 RUN --mount=type=cache,target=/home/vp/.local/share/pnpm/store,uid=1000,gid=1000 \
     vp install --frozen-lockfile --prod --filter aurral --filter aurral-backend && \
     cd backend && \
-    node -e "require('sharp')" && \
-    node --input-type=module -e "import honker from '@russellthehippo/honker-node'; honker.open('/tmp/honker-smoke.db'); console.log('honker ok')"
+    node -e "require('sharp')"
 
 FROM node-base AS runtime
 

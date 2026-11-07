@@ -2,7 +2,7 @@ import * as v from "valibot";
 import axios from "../../lib/axiosFetch.ts";
 import { randomUUID } from "crypto";
 import { dbOps } from "../db/helpers/index.ts";
-import { withHonkerLock } from "./honkerDb.ts";
+import { withLock } from "./jobs/queue.ts";
 import { logger } from "./logger.ts";
 import { readMany, readOne } from "./integrationData.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -449,7 +449,7 @@ async function withSearchLock<T>(
     const remaining = lockDeadline - Date.now();
     if (remaining <= 0) throw new Error("slskd search deadline expired");
     try {
-      return await withHonkerLock(
+      return await withLock(
         name,
         () => {
           if (signal.aborted) throw new Error("slskd search cancelled");
@@ -459,7 +459,7 @@ async function withSearchLock<T>(
         { waitTimeoutMs: Math.min(250, remaining) },
       );
     } catch (error) {
-      if (asAppError(error)?.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
+      if (asAppError(error)?.message !== `Timed out waiting for lock: ${name}`) throw error;
     }
   }
 }
@@ -1080,7 +1080,7 @@ export class SlskdClient {
     username: string;
     files: { filename?: string | null; file?: string | null; size?: number }[];
   }) {
-    return withHonkerLock("slskd-api", async () => {
+    return withLock("slskd-api", async () => {
       const client = buildClient(this._config);
       const normalizedUsername = String(username || "").trim();
       const requests = (Array.isArray(files) ? files : []).map((file) => ({
@@ -1226,7 +1226,7 @@ export class SlskdClient {
     if (!this.isConfigured()) {
       return { skipped: true, reason: "not configured" };
     }
-    return withHonkerLock("slskd-api", async () => {
+    return withLock("slskd-api", async () => {
       let searchesRemoved = 0;
       let transfersRemoved = 0;
       const cleanedSearchIds: string[] = [];

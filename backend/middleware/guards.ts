@@ -100,7 +100,6 @@ const tokenPaths = [
   /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i,
   /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i,
   /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i,
-  /^\/api\/weekly-flow\/stream\/[^/]+$/i,
   /^\/api\/playlists\/stream\/[^/]+$/i,
   /^\/api\/playlists\/staging-stream\/[^/]+$/i,
 ];
@@ -108,7 +107,6 @@ const tokenPaths = [
 const tokenArtworkPaths = [
   /^\/api\/library\/(?:albums|artists)\/[1-9]\d*\/cover$/i,
   /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i,
-  /^\/api\/weekly-flow\/artwork\/[^/]+$/i,
   /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i,
   /^\/api\/playlists\/track-artwork\/[^/]+$/i,
   /^\/api\/discover\/playlists\/(?:mix|discovery)\/[^/]+\/cover$/i,

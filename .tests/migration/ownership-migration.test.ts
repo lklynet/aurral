@@ -69,30 +69,27 @@ const dbHelpers = {
 };
 
 test("ownership migration adds manager table and job ownership columns", async () => {
-  const { dbPath } = createPreV4Db();
+  const { dbPath, tempDir } = createPreV4Db();
   const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.ts");
+  const { migrateToJobQueue } = await import("../../backend/config/job-queue-migration.ts");
   const db = new Database(dbPath);
 
+  migrateToJobQueue(db, tempDir);
   const result = initializeSchemaOnStartup(db, dbHelpers);
   assert.equal(result.migrated, true);
   assert.equal(result.schemaVersion, 4);
 
   const jobColumns = db
-    .prepare<[], { name: string }>("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], { name: string }>("PRAGMA table_info(download_jobs)")
     .all()
     .map((c) => c.name);
   assert.ok(jobColumns.includes("managed_by"));
   assert.ok(jobColumns.includes("request_group_id"));
 
   const jobs = db
-    .prepare<
-      unknown[],
-      {
-        id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"];
-        managed_by: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["managed_by"];
-        request_group_id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["request_group_id"];
-      }
-    >("SELECT id, managed_by, request_group_id FROM playlist_download_jobs ORDER BY id")
+    .prepare<[], { id: string; managed_by: string | null; request_group_id: string | null }>(
+      "SELECT id, managed_by, request_group_id FROM download_jobs ORDER BY id",
+    )
     .all();
   assert.deepEqual(jobs, [
     { id: "job-aurral", managed_by: "aurral", request_group_id: null },

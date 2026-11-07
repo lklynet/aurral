@@ -176,9 +176,6 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.13)
-      '@russellthehippo/honker-node':
-        specifier: ^0.5.1
-        version: 0.5.1
       '@tanstack/react-query':
         specifier: ^5.104.3
         version: 5.104.3(react@19.3.1)
@@ -266,9 +263,6 @@ importers:
       '@rowanmanning/feed-parser':
         specifier: ^2.1.5
         version: 2.1.5
-      '@russellthehippo/honker-node':
-        specifier: ^0.5.1
-        version: 0.5.1
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
@@ -329,19 +323,6 @@ importers:
       youtubei.js:
         specifier: ~18.1.0
         version: 18.1.0
-    optionalDependencies:
-      '@russellthehippo/honker-node-darwin-arm64':
-        specifier: 0.5.1
-        version: 0.5.1
-      '@russellthehippo/honker-node-darwin-x64':
-        specifier: 0.5.1
-        version: 0.5.1
-      '@russellthehippo/honker-node-linux-arm64-gnu':
-        specifier: 0.5.1
-        version: 0.5.1
-      '@russellthehippo/honker-node-linux-x64-gnu':
-        specifier: 0.5.1
-        version: 0.5.1
 
   docs:
     dependencies:
@@ -2002,58 +1983,6 @@ packages:
   '@rowanmanning/feed-parser@2.1.5':
     resolution: {integrity: sha512-E58/jBUxsNDEWnO8JGTczMpl3jBKDX5bDbrtQp71OskCCBjitRwbDf2efoyimApjI8SH5pEcWmxvpjT9KxVOAA==}
     engines: {node: 20.x || 22.x || 24.x || 26.x}
-
-  '@russellthehippo/honker-ext-darwin-arm64@0.4.6':
-    resolution: {integrity: sha512-WAGssCw2kA5Qlbv2c0PzNwpx9BLmB2Rmf4aovQjGXxP8kI496o2y5VnTnTKBgOi0TWvVLYVYa1PKfrng/UC8sg==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@russellthehippo/honker-ext-darwin-x64@0.4.6':
-    resolution: {integrity: sha512-gGlEGPgiFbysF/NFb88PYY8PMZjXI6T7oqH2O2FSRu5ktwkSQUyELID9G/zC9Wi5blw/Hx1iTsI3hQl1rcRfkQ==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@russellthehippo/honker-ext-linux-arm64-gnu@0.4.6':
-    resolution: {integrity: sha512-1SpEfmAlvG9dgIXFHkYWHdp8cyaqZdnEoupmVvuOe7ecXwQUzNCeBsATFGD737fE+BfrrV0yUPI3cfx07uB5AQ==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@russellthehippo/honker-ext-linux-x64-gnu@0.4.6':
-    resolution: {integrity: sha512-cqD9kAn01tTNdIM+DxJ1ZlNuCan7PM2hO1ZXxSmPkR5SZ93APz+4SKLvmnBkWtVKz4Z95W0yzUY6Lmag6uCG+g==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@russellthehippo/honker-node-darwin-arm64@0.5.1':
-    resolution: {integrity: sha512-s87nEcQh5/5ifwX/+c7eaQQslM6T0gHed7s1sd4p1l1Mv+PJcELOQKj6s+S2L/dck7u9FdmgNgbZ3lnH7UlXew==}
-    engines: {node: '>= 20'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@russellthehippo/honker-node-darwin-x64@0.5.1':
-    resolution: {integrity: sha512-ua8UeON4koctANlEiEJzrII/IWRjz6xFLfatzErfhtksOJhvqUSw+Gg3yMLmWRnd5dHmWctgTbcot6x/c8b23g==}
-    engines: {node: '>= 20'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@russellthehippo/honker-node-linux-arm64-gnu@0.5.1':
-    resolution: {integrity: sha512-LGB67rNLG8mNiOzuE79I3nYk4UmgBWioLBnUAd/47PjoKCnt5YrB7R+t+gGCUncW+PqEsdxET6uPHACMvs1S6w==}
-    engines: {node: '>= 20'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@russellthehippo/honker-node-linux-x64-gnu@0.5.1':
-    resolution: {integrity: sha512-IGo/hSI7bqJdrjAQXkvzhmuJ+UPMj/D4w+afKW7Ro9Hfj5AEUKPAf7184FlnNWlRyLIw0H6ZmXTAwxKOcOfb/A==}
-    engines: {node: '>= 20'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@russellthehippo/honker-node@0.5.1':
-    resolution: {integrity: sha512-aI2ztkzK+mY+YsLuxU1xAcs0mxsC2cnfKeGqZFjbmfQ2zF6IC4FYCwSWXCpiIVHPAnuwQ9Uot5s6Rp6TR3AU7w==}
-    engines: {node: '>= 20'}
 
   '@shikijs/core@4.5.0':
     resolution: {integrity: sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw==}
@@ -6258,41 +6187,6 @@ snapshots:
     dependencies:
       fast-xml-parser: 5.11.2
       html-entities: 2.6.0
-
-  '@russellthehippo/honker-ext-darwin-arm64@0.4.6':
-    optional: true
-
-  '@russellthehippo/honker-ext-darwin-x64@0.4.6':
-    optional: true
-
-  '@russellthehippo/honker-ext-linux-arm64-gnu@0.4.6':
-    optional: true
-
-  '@russellthehippo/honker-ext-linux-x64-gnu@0.4.6':
-    optional: true
-
-  '@russellthehippo/honker-node-darwin-arm64@0.5.1':
-    optional: true
-
-  '@russellthehippo/honker-node-darwin-x64@0.5.1':
-    optional: true
-
-  '@russellthehippo/honker-node-linux-arm64-gnu@0.5.1':
-    optional: true
-
-  '@russellthehippo/honker-node-linux-x64-gnu@0.5.1':
-    optional: true
-
-  '@russellthehippo/honker-node@0.5.1':
-    optionalDependencies:
-      '@russellthehippo/honker-ext-darwin-arm64': 0.4.6
-      '@russellthehippo/honker-ext-darwin-x64': 0.4.6
-      '@russellthehippo/honker-ext-linux-arm64-gnu': 0.4.6
-      '@russellthehippo/honker-ext-linux-x64-gnu': 0.4.6
-      '@russellthehippo/honker-node-darwin-arm64': 0.5.1
-      '@russellthehippo/honker-node-darwin-x64': 0.5.1
-      '@russellthehippo/honker-node-linux-arm64-gnu': 0.5.1
-      '@russellthehippo/honker-node-linux-x64-gnu': 0.5.1
 
   '@shikijs/core@4.5.0':
     dependencies:

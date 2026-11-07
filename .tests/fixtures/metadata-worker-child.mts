@@ -1,15 +1,16 @@
-import { shutdownHonkerInfrastructure } from "../../backend/services/honkerWorkerRuntime.ts";
+import { shutdownJobWorkers } from "../../backend/services/jobs/worker.ts";
 import { startSystemTaskWorker } from "../../backend/services/systemTaskWorker.ts";
 import { startReleaseMetadataWorker } from "../../backend/services/releaseMetadataWorker.ts";
-const start = process.env.AURRAL_BACKGROUND_WORKER_GROUP === "release-metadata"
-  ? startReleaseMetadataWorker : startSystemTaskWorker;
-type ParentMessage = { type: "queue-wake" | "sample" | "shutdown" };
 
-process.on("message", async (message: ParentMessage) => {
+const start =
+  process.env.AURRAL_BACKGROUND_WORKER_GROUP === "release-metadata"
+    ? () => startReleaseMetadataWorker()
+    : () => startSystemTaskWorker("system-task");
+
+process.on("message", async (message: { type: "queue-wake" | "shutdown" }) => {
   if (message.type === "queue-wake") void start();
-  if (message.type === "sample") process.send?.({ type: "sample", rss: process.memoryUsage().rss, cpu: process.cpuUsage() });
   if (message.type === "shutdown") {
-    await shutdownHonkerInfrastructure();
+    await shutdownJobWorkers();
     process.exit(0);
   }
 });

@@ -21,7 +21,7 @@ import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 
 const playlistSettingsStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
-  "SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key",
+  "SELECT key, value FROM settings WHERE key IN ('flows', 'staticPlaylists') ORDER BY key",
 );
 type MembershipSummary = {
   trackIdentities: Set<string>;
