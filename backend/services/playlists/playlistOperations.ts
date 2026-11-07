@@ -500,7 +500,7 @@ async function createStaticPlaylist({
     normalizeTrackList(await linkIndexedFiles(tracks, ownerUserId)),
   );
   const linked = await linkTracksToLibrary(allowedTracks, {
-    addedBy: safePlaylistId,
+    startedByPlaylist: safePlaylistId,
     download: downloadMissing !== false,
   });
   let playlist;
@@ -543,7 +543,7 @@ async function appendStaticPlaylistTracks({ playlistId, tracks = [] }: Operation
   if (tracksToAdd.length === 0) {
     return { success: true, playlist, tracksQueued: 0, tracksReused: 0, jobIds: [] };
   }
-  const linked = await linkTracksToLibrary(tracksToAdd, { addedBy: safePlaylistId });
+  const linked = await linkTracksToLibrary(tracksToAdd, { startedByPlaylist: safePlaylistId });
   const updatedPlaylist = await withPlaylistMutationLock(safePlaylistId, () =>
     flowPlaylistConfig.appendStaticPlaylistTracks(safePlaylistId, linked.tracks),
   );
@@ -601,7 +601,6 @@ async function updateStaticPlaylistLocked({
   hasTracksUpdate = false,
   hasImportSourceUpdate = false,
   importSource = null,
-  deleteUnsharedFiles = false,
   mergeImportSource = false,
 }: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
@@ -639,7 +638,7 @@ async function updateStaticPlaylistLocked({
     );
     const linked = await linkTracksToLibrary(
       normalizedTracks.filter((_, index) => !assigned.has(index)),
-      { addedBy: safePlaylistId },
+      { startedByPlaylist: safePlaylistId },
     );
     createdJobIds = linked.createdJobIds;
     const linkedTracks = [...linked.tracks];
@@ -657,10 +656,7 @@ async function updateStaticPlaylistLocked({
       linked,
       tracksReused: assigned.size + linked.reusedJobIds.length,
       removedJobIds: unusedJobIds.filter((jobId) => !keptJobIds.has(jobId)),
-      dropFiles: Boolean(
-        deleteUnsharedFiles ||
-        (mergeImportSource && lockedImportSource?.keepRemovedTracks === false),
-      ),
+      dropFiles: Boolean(mergeImportSource && lockedImportSource?.keepRemovedTracks === false),
     };
   }).catch(async (error: unknown) => {
     await discardLibraryJobs(createdJobIds);

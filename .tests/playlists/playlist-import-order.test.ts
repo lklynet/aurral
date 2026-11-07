@@ -237,16 +237,19 @@ beforeEach(async () => {
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-const libraryJob = (track: Parameters<typeof downloadTracker.addJob>[0], addedBy?: string) => {
-  const jobId = downloadTracker.addJob(track, "library", { addedBy });
+const libraryJob = (
+  track: Parameters<typeof downloadTracker.addJob>[0],
+  startedByPlaylist?: string,
+) => {
+  const jobId = downloadTracker.addJob(track, "library", { startedByPlaylist });
   assert.ok(jobId);
   return jobId;
 };
 
 const linkTracks = <T extends Parameters<typeof downloadTracker.addJob>[0]>(
   tracks: T[],
-  addedBy?: string,
-) => tracks.map((track) => ({ ...track, canonicalJobId: libraryJob(track, addedBy) }));
+  startedByPlaylist?: string,
+) => tracks.map((track) => ({ ...track, canonicalJobId: libraryJob(track, startedByPlaylist) }));
 
 const playlistJobs = (playlistId: string) =>
   staticPlaylistJobs(requireFixture(flowPlaylistConfig.getStaticPlaylist(playlistId)));
@@ -979,7 +982,7 @@ test("replacing a static playlist removes Spotify tracks and honors file retenti
       hasTracksUpdate: true,
       hasImportSourceUpdate: true,
       importSource: deletePlaylist.importSource,
-      deleteUnsharedFiles: true,
+      mergeImportSource: true,
     });
     assert.deepEqual(
       [...requireFixture(flowPlaylistConfig.getStaticPlaylist(deletePlaylist.id)).tracks],

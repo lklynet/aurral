@@ -115,7 +115,7 @@ test("static playlist downloads move to the Library, marked only when one playli
   assert.deepEqual(
     [downloaded, queued, orphan, libraryCopy].map((id) => {
       const migrated = downloadTracker.getJob(id);
-      return [migrated?.playlistType, migrated?.addedBy];
+      return [migrated?.playlistType, migrated?.startedByPlaylist];
     }),
     [
       ["library", null],
@@ -147,5 +147,19 @@ test("files a playlist reused from the Library are not marked as its own", () =>
   migrate();
 
   assert.equal(downloadTracker.getJob(reused)?.playlistType, "library");
-  assert.equal(downloadTracker.getJob(reused)?.addedBy, null);
+  assert.equal(downloadTracker.getJob(reused)?.startedByPlaylist, null);
+});
+
+test("unreadable stored data does not stop startup", () => {
+  db.prepare("UPDATE settings SET value = '{' WHERE key = 'staticPlaylists'").run();
+  assert.doesNotThrow(migrate);
+
+  flowPlaylistConfig.createStaticPlaylist({ id: "mix", name: "Mix", tracks: [] });
+  const queued = job("Queued", "mix");
+  db.prepare(
+    `INSERT INTO jobs (queue, kind, payload, state, run_at, max_attempts, created_at)
+     VALUES ('download-pipeline', 'download-pipeline', '{', 'pending', 0, 3, 0)`,
+  ).run();
+  assert.doesNotThrow(migrate);
+  assert.equal(downloadTracker.getJob(queued)?.playlistType, "library");
 });

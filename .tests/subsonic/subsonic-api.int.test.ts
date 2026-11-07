@@ -274,9 +274,11 @@ beforeAll(async () => {
   const libraryTrack = <T extends { artistName: string; trackName: string; albumName: string }>(
     track: T,
     finalPath: string | null,
-    addedBy: string | null = null,
+    startedByPlaylist: string | null = null,
   ) => {
-    const canonicalJobId = requireFixture(downloadTracker.addJob(track, "library", { addedBy }));
+    const canonicalJobId = requireFixture(
+      downloadTracker.addJob(track, "library", { startedByPlaylist }),
+    );
     if (finalPath) downloadTracker.setDone(canonicalJobId, finalPath, track.albumName);
     return { ...track, canonicalJobId };
   };
@@ -1868,7 +1870,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     downloadWorker.start = async () => false;
     const songId = `shared-song:${encodeURIComponent(`${playlist.id}:${jobId}`)}`;
     assert.equal(await star(userOps.getUserByUsername("alice"), songId), true);
-    assert.equal(downloadTracker.getJob(jobId)?.addedBy, null);
+    assert.equal(downloadTracker.getJob(jobId)?.startedByPlaylist, null);
 
     await updateStaticPlaylist({
       playlistId: playlist.id,

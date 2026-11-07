@@ -162,9 +162,9 @@ test("a playlist adds its tracks to the Library and deleting it keeps every file
   const { playlist, jobFor } = await createPlaylist([reused, fetched]);
   assert.equal(jobFor(reused).playlistType, "library");
   assert.equal(jobFor(reused).finalPath, libraryFile);
-  assert.equal(jobFor(reused).addedBy, null);
+  assert.equal(jobFor(reused).startedByPlaylist, null);
   assert.equal(jobFor(fetched).playlistType, "library");
-  assert.equal(jobFor(fetched).addedBy, playlist.id);
+  assert.equal(jobFor(fetched).startedByPlaylist, playlist.id);
   const fetchedFile = await finishDownload(jobFor(fetched));
 
   await operations.processPlaylistOperation({
@@ -293,7 +293,9 @@ test("removing a track cancels its download unless something else wants it", asy
 
 test("releasing one copy of a doubled track keeps the download the other copy uses", async () => {
   const track = { artistName: "Band", albumName: "Record", trackName: "Twice" };
-  const jobId = requireFixture(downloadTracker.addJob(track, "library", { addedBy: "doubled" }));
+  const jobId = requireFixture(
+    downloadTracker.addJob(track, "library", { startedByPlaylist: "doubled" }),
+  );
   config.flowPlaylistConfig.createStaticPlaylist({
     id: "doubled",
     name: "Doubled",

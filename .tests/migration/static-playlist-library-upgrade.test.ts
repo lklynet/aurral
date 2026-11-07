@@ -17,7 +17,7 @@ afterAll(async () => {
 test("an install already on the current schema gets the playlist mark column and migrates", async () => {
   const before = await import("../../backend/config/db-sqlite.ts");
   before.db.exec(`
-    ALTER TABLE download_jobs DROP COLUMN added_by;
+    ALTER TABLE download_jobs DROP COLUMN started_by_playlist;
     DELETE FROM settings WHERE key = 'migration:static-playlists-reference-library-v1';
     INSERT OR REPLACE INTO settings (key, value)
       VALUES ('staticPlaylists', '[{"id":"mix","name":"Mix","tracks":[]}]');
@@ -30,10 +30,10 @@ test("an install already on the current schema gets the playlist mark column and
   const { db } = await import("../../backend/config/db-sqlite.ts");
   assert.deepEqual(
     db
-      .prepare<[], { owner_id: string; added_by: string | null }>(
-        "SELECT owner_id, added_by FROM download_jobs WHERE id = 'queued'",
+      .prepare<[], { owner_id: string; started_by_playlist: string | null }>(
+        "SELECT owner_id, started_by_playlist FROM download_jobs WHERE id = 'queued'",
       )
       .get(),
-    { owner_id: "library", added_by: "mix" },
+    { owner_id: "library", started_by_playlist: "mix" },
   );
 });

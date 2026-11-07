@@ -63,7 +63,7 @@ export async function saveFlowAsStaticPlaylist(
 
   const linked = await linkTracksToLibrary(
     [...saved.values()].flatMap(({ job }) => normalizePlaylistTrack(trackFromJob(job)) ?? []),
-    { addedBy: null },
+    { startedByPlaylist: null },
   );
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name,

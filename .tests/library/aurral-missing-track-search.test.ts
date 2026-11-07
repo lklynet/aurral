@@ -591,12 +591,12 @@ test("searching an album leaves cancelled tracks alone, including an older cance
 
 test("searching an album keeps its tracks in the Library when a playlist started them", async () => {
   const { album, jobIds } = createAlbum({ tracks: ["blocked", "failed"] });
-  for (const jobId of jobIds) downloadTracker.setAddedBy(jobId, "playlist");
+  for (const jobId of jobIds) downloadTracker.setStartedByPlaylist(jobId, "playlist");
 
   await libraryManager.searchAurralAlbumMissingTracks(album.id);
 
   assert.deepEqual(
-    jobIds.map((jobId) => getJob(jobId).addedBy),
+    jobIds.map((jobId) => getJob(jobId).startedByPlaylist),
     [null, null],
   );
 });

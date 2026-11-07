@@ -188,12 +188,12 @@ export async function importShare(payload: Record<string, unknown>) {
         return input;
       const local = localFiles[index];
       if (queued) {
-        downloadTracker.setAddedBy(queued.id, null);
+        downloadTracker.setStartedByPlaylist(queued.id, null);
         downloadTracker.setPending(queued.id);
       }
       const jobId =
         queued?.id ??
-        downloadTracker.addJob(input, "library", { addedBy: local ? null : playlistId });
+        downloadTracker.addJob(input, "library", { startedByPlaylist: local ? null : playlistId });
       if (!jobId) throw new Error("The shared track is incomplete.");
       if (local)
         downloadTracker.setDone(jobId, local.path, track.albumTitle, null, {

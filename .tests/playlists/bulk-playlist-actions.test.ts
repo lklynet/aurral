@@ -59,7 +59,9 @@ function fixture(_t: import("vite-plus/test").TestContext, count: number = 3) {
   }));
   const jobs = tracks.map((track) =>
     requireFixture(
-      downloadTracker.getJob(downloadTracker.addJob(track, "library", { addedBy: "source" })),
+      downloadTracker.getJob(
+        downloadTracker.addJob(track, "library", { startedByPlaylist: "source" }),
+      ),
     ),
   );
   const source = config.flowPlaylistConfig.createStaticPlaylist({
@@ -71,9 +73,6 @@ function fixture(_t: import("vite-plus/test").TestContext, count: number = 3) {
   const selections = jobs.map((job, index) => ({
     jobId: job.id,
     membershipId: requireFixture(source.tracks[index]).membershipId,
-    jobPlaylistId: source.id,
-    jobGeneration: job.playlistGeneration,
-    jobCreatedAt: job.createdAt,
   }));
   const refreshes: unknown[] = [];
   let scans = 0;

@@ -160,10 +160,6 @@ export function withPlaylistMutationLock<T>(
   return withDownloadLocks(playlistTypes, { steps: true, imports: true }, operation);
 }
 
-export function outsideDownloadLocks<T>(operation: () => T) {
-  return downloadLeases.exit(operation);
-}
-
 export function withDownloadImportLock<T>(ownerIds: unknown, operation: () => T | Promise<T>) {
   return withDownloadLocks(ownerIds, { imports: true }, operation);
 }

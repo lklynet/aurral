@@ -63,8 +63,9 @@ const bestLibraryJob = (index: Map<string, DownloadJob[]>, track: PlaylistTrack)
     )
     .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))[0] ?? null;
 
-function keepFor(job: DownloadJob, addedBy: string | null) {
-  if (job.addedBy && job.addedBy !== addedBy) downloadTracker.setAddedBy(job.id, null);
+function keepFor(job: DownloadJob, startedByPlaylist: string | null) {
+  if (job.startedByPlaylist && job.startedByPlaylist !== startedByPlaylist)
+    downloadTracker.setStartedByPlaylist(job.id, null);
 }
 
 const requeue = (job: DownloadJob) =>
@@ -74,7 +75,7 @@ const requeue = (job: DownloadJob) =>
 
 async function createLibraryJob(
   track: PlaylistTrack,
-  { addedBy, download }: { addedBy: string | null; download: boolean },
+  { startedByPlaylist, download }: { startedByPlaylist: string | null; download: boolean },
 ) {
   const jobId = downloadTracker.addJob(track, LIBRARY, { saved: true });
   if (!jobId) return null;
@@ -93,7 +94,7 @@ async function createLibraryJob(
       error: asAppError(error)?.message,
     });
   }
-  if (addedBy) downloadTracker.setAddedBy(jobId, addedBy);
+  if (startedByPlaylist) downloadTracker.setStartedByPlaylist(jobId, startedByPlaylist);
   if (!download) return { jobId, outcome: "saved" as const };
   downloadTracker.setPending(jobId, null);
   recordTrackJobQueued(downloadTracker.getJob(jobId));
@@ -102,7 +103,8 @@ async function createLibraryJob(
 
 export function keepInLibrary(track: Parameters<typeof buildCoreTrackIdentity>[0]) {
   for (const job of libraryJobIndex().get(buildCoreTrackIdentity(track)) ?? []) {
-    if (job.addedBy && tracksShareMembership(job, track)) downloadTracker.setAddedBy(job.id, null);
+    if (job.startedByPlaylist && tracksShareMembership(job, track))
+      downloadTracker.setStartedByPlaylist(job.id, null);
   }
 }
 
@@ -110,14 +112,14 @@ export function keepSongsInLibrary(songKeys: string[]) {
   const paths = new Set(songKeys.flatMap((key) => songPathsStmt.all(key).map((row) => row.path)));
   if (!paths.size) return;
   for (const job of downloadTracker.getAll()) {
-    if (job.addedBy && job.finalPath && paths.has(job.finalPath))
-      downloadTracker.setAddedBy(job.id, null);
+    if (job.startedByPlaylist && job.finalPath && paths.has(job.finalPath))
+      downloadTracker.setStartedByPlaylist(job.id, null);
   }
 }
 
 export async function linkTracksToLibrary(
   tracks: PlaylistTrack[],
-  { addedBy, download = true }: { addedBy: string | null; download?: boolean },
+  { startedByPlaylist, download = true }: { startedByPlaylist: string | null; download?: boolean },
 ) {
   const index = libraryJobIndex();
   const linked: PlaylistTrack[] = [];
@@ -131,7 +133,7 @@ export async function linkTracksToLibrary(
         ? referenced
         : bestLibraryJob(index, track);
     if (existing) {
-      keepFor(existing, addedBy);
+      keepFor(existing, startedByPlaylist);
       if (download && existing !== referenced && requeue(existing)) {
         queuedJobIds.push(existing.id);
         recordTrackJobQueued(downloadTracker.getJob(existing.id));
@@ -140,7 +142,7 @@ export async function linkTracksToLibrary(
       linked.push({ ...track, canonicalJobId: existing.id });
       continue;
     }
-    const created = await createLibraryJob(track, { addedBy, download });
+    const created = await createLibraryJob(track, { startedByPlaylist, download });
     if (!created) {
       linked.push(track);
       continue;
@@ -160,7 +162,7 @@ export async function linkTracksToLibrary(
 }
 
 function wantedElsewhere(job: DownloadJob, playlistId: string) {
-  if (job.addedBy !== playlistId) return true;
+  if (job.startedByPlaylist !== playlistId) return true;
   return (
     flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([job.id]).length > 0 ||
     Boolean(job.finalPath && starredFileStmt.get(job.finalPath))

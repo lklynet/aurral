@@ -40,7 +40,7 @@ When a flow is created again with the same ID, Aurral advances the generation. P
 
 A static playlist is a list of references to Library downloads. Adding a track creates or reuses a Library job and stores its ID as the track's `canonicalJobId`. Static playlists own no jobs, files, or cancellation generations.
 
-- A Library job remembers the playlist that started its download in `added_by`. Aurral sets it only when the playlist created a job with no file. Adding the track to another playlist, favoriting it, or requesting it in the Library clears it. The mark never comes back.
+- A Library job remembers the playlist that started its download in `started_by_playlist`. Aurral sets it only when the playlist created a job with no file. Adding the track to another playlist, favoriting it, or requesting it in the Library clears it. The mark never comes back.
 - Removing a track or deleting a playlist commits the membership change first, under the playlist's lock. It then cancels each removed job that is still downloading, when this playlist started it and nothing else wants it: no other static playlist references it and no user starred its song. Cancellation takes the `library` locks, so it runs after the playlist lock is released.
 - Neither path deletes a finished file. The one exception is a synced playlist that does not keep removed tracks. When its source drops a track, Aurral deletes the file if the playlist downloaded it, the same rules leave it unwanted, and no other job uses the path.
 - If cancellation fails, the track still leaves the playlist and the download stays in the Library. Aurral logs a warning.

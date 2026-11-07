@@ -1224,7 +1224,7 @@ const replaceSubsonicPlaylistTracks = async (
   if (!playlist || !flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) return null;
   const linked = await linkTracksToLibrary(
     tracks.map(normalizePlaylistTrack).filter((track) => track !== null),
-    { addedBy: playlist.id },
+    { startedByPlaylist: playlist.id },
   );
   let removedJobIds: (string | undefined)[] = [];
   const updated = await withPlaylistMutationLock(playlist.id, () => {
@@ -1396,7 +1396,7 @@ export async function starMany(
   if (favoriteAutoKeepEnabled()) {
     const linked = await linkTracksToLibrary(
       playlistSongs.flatMap((song) => (song ? [song.track] : [])),
-      { addedBy: null },
+      { startedByPlaylist: null },
     );
     if (linked.tracks.some((track) => !track.canonicalJobId)) {
       await discardLibraryJobs(linked.createdJobIds);

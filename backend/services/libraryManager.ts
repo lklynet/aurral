@@ -2303,14 +2303,14 @@ export class LibraryManager {
     const uniqueTrackedJobIds = [...new Set(trackedJobIds)];
     for (const job of albumJobs) {
       if (
-        job.addedBy &&
+        job.startedByPlaylist &&
         albumTracks.some(
           (track) =>
             (!requestedTrackIds || requestedTrackIds.has(Number(track.id))) &&
             jobMatchesTrack(job, track),
         )
       )
-        downloadTracker.setAddedBy(job.id, null);
+        downloadTracker.setStartedByPlaylist(job.id, null);
     }
     const shouldStartWorker = uniqueTrackedJobIds.some((jobId) => {
       const status = downloadTracker.getJob(jobId)?.status;

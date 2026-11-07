@@ -56,7 +56,7 @@ const playlistWithTrack = (
   name: string,
   track: { artistName: string; trackName: string; albumName?: string },
 ) => {
-  const jobId = downloadTracker.addJob(track, "library", { addedBy: playlistId });
+  const jobId = downloadTracker.addJob(track, "library", { startedByPlaylist: playlistId });
   assert.ok(jobId != null);
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,

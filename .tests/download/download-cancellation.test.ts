@@ -282,7 +282,7 @@ test("deletion marks queued work cancelled before the background operation start
 test("static playlist deletion cancels the queued download it started", async () => {
   const playlistId = "deleted-playlist";
   const track = { artistName: "Artist", trackName: "Song" };
-  const jobId = downloadTracker.addJob(track, "library", { addedBy: playlistId });
+  const jobId = downloadTracker.addJob(track, "library", { startedByPlaylist: playlistId });
   assert.ok(jobId != null);
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -325,7 +325,7 @@ test("static playlist deletion cancels the queued download it started", async ()
 test("a synced playlist dropping a track it downloaded cancels that file's quality upgrade", async () => {
   const playlistId = "replaced-playlist";
   const track = { artistName: "Artist", trackName: "Song" };
-  const jobId = downloadTracker.addJob(track, "library", { addedBy: playlistId });
+  const jobId = downloadTracker.addJob(track, "library", { startedByPlaylist: playlistId });
   assert.ok(jobId != null);
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,

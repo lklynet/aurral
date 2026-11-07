@@ -39,6 +39,14 @@ const playlistTrack = (row: OwnedRow) => ({
   createdAt: row.created_at,
 });
 
+const readJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
 const ownFile = (row: OwnedRow) =>
   row.status === "done" && row.final_path && !row.upgrade_for_job_id ? row.final_path : null;
 
@@ -51,7 +59,7 @@ export function migrateStaticPlaylistsToLibrary(db: Database.Database) {
     const stored = db
       .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'staticPlaylists'")
       .get();
-    const parsed: unknown = stored ? JSON.parse(stored.value) : [];
+    const parsed = stored ? readJson(stored.value) : [];
     const playlists = (Array.isArray(parsed) ? parsed : []).filter(isRecord);
     const playlistIds = playlists
       .map((playlist) => playlist.id)
@@ -80,7 +88,7 @@ export function migrateStaticPlaylistsToLibrary(db: Database.Database) {
     );
     const moveStmt = db.prepare<[number, string | null, string]>(
       `UPDATE download_jobs
-       SET owner_id = 'library', owner_type = 'library', playlist_generation = ?, added_by = ?
+       SET owner_id = 'library', owner_type = 'library', playlist_generation = ?, started_by_playlist = ?
        WHERE id = ?`,
     );
     const deleteStmt = db.prepare<[string]>("DELETE FROM download_jobs WHERE id = ?");
@@ -147,7 +155,7 @@ export function migrateStaticPlaylistsToLibrary(db: Database.Database) {
       JSON.stringify(nextPlaylists),
     );
     const clearSharedMark = db.prepare<[string, string]>(
-      "UPDATE download_jobs SET added_by = NULL WHERE id = ? AND added_by != ?",
+      "UPDATE download_jobs SET started_by_playlist = NULL WHERE id = ? AND started_by_playlist != ?",
     );
     for (const [index, { tracks }] of nextPlaylists.entries()) {
       for (const { canonicalJobId } of tracks) {
@@ -163,7 +171,7 @@ export function migrateStaticPlaylistsToLibrary(db: Database.Database) {
         "SELECT id, payload FROM jobs WHERE queue = 'download-pipeline' AND state IN ('pending', 'running')",
       )
       .all()) {
-      const payload: unknown = JSON.parse(row.payload);
+      const payload = readJson(row.payload);
       if (!isRecord(payload) || !staticIds.has(String(payload.playlistId))) continue;
       const upgradeFor = redirect.get(String(payload.upgradeForJobId));
       rewritePayload.run(

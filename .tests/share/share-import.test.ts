@@ -372,7 +372,7 @@ test("a file import downloads a track an earlier details-only import saved", asy
   });
 
   assert.equal(downloadTracker.getJob(saved.id)?.status, "pending");
-  assert.equal(downloadTracker.getJob(saved.id)?.addedBy, null);
+  assert.equal(downloadTracker.getJob(saved.id)?.startedByPlaylist, null);
   assert.equal(
     downloadPipelineQueue.list().filter((entry) => entry.payload?.jobId === saved.id).length,
     1,

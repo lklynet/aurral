@@ -102,7 +102,7 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
     const destination = target;
     const linked = await linkTracksToLibrary(
       source.tracks.filter(selected).map(({ membershipId: _, ...track }) => track),
-      { addedBy: destination.id, download: false },
+      { startedByPlaylist: destination.id, download: false },
     );
     await withPlaylistMutationLock(destination.id, () =>
       persistMembership(() => {

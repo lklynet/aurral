@@ -50,9 +50,6 @@ export function captureStaticPlaylistSelection(
   return {
     jobId,
     membershipId: track?.membershipId || null,
-    jobPlaylistId: job.playlistType,
-    jobGeneration: job.playlistGeneration,
-    jobCreatedAt: job.createdAt,
   };
 }
 

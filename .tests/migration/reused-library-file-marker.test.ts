@@ -114,7 +114,9 @@ test("a synced playlist saved by an older version deletes only the files it down
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   assert.ok(playlist != null);
   assert.deepEqual(
-    playlist.tracks.map((track) => downloadTracker.getJob(track.canonicalJobId)?.addedBy ?? null),
+    playlist.tracks.map(
+      (track) => downloadTracker.getJob(track.canonicalJobId)?.startedByPlaylist ?? null,
+    ),
     [null, null, playlistId],
   );
 

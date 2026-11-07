@@ -68,7 +68,7 @@ type AddJobOptions = {
   playlistGeneration?: number;
   requestKind?: RequestKind;
   saved?: boolean;
-  addedBy?: string | null;
+  startedByPlaylist?: string | null;
 };
 type ManualCandidate = { raw: JsonValue };
 type AlbumGrabAttempt = Omit<ReturnType<typeof downloadPipelineQueue.list>[number], "payload"> & {
@@ -212,7 +212,7 @@ function rowToJob(row: DownloadJobsRow) {
     finalPath: row.final_path,
     externalPath: row.external_path || null,
     reusedLibraryFile: row.reused_library_file === 1,
-    addedBy: row.added_by || null,
+    startedByPlaylist: row.started_by_playlist || null,
     error: row.error,
     createdAt: row.created_at,
     downloadSource: row.download_source || null,
@@ -311,7 +311,7 @@ const insertStmt = db.prepare(`
     manual_replacement_search,
     request_kind,
     reused_library_file,
-    added_by
+    started_by_playlist
   )
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
@@ -355,8 +355,8 @@ const deleteStmt = db.prepare(`DELETE FROM ${JOBS_TABLE} WHERE id = ?`);
 const deleteJobRows = db.transaction((ids: string[]) => {
   for (const id of ids) deleteStmt.run(id);
 });
-const updateAddedByStmt = db.prepare<[string | null, string]>(
-  `UPDATE ${JOBS_TABLE} SET added_by = ? WHERE id = ?`,
+const updateStartedByPlaylistStmt = db.prepare<[string | null, string]>(
+  `UPDATE ${JOBS_TABLE} SET started_by_playlist = ? WHERE id = ?`,
 );
 const updateAlbumGrabAttemptedStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET album_grab_attempted = ? WHERE id = ?`,
@@ -641,11 +641,11 @@ export class DownloadTracker {
     return this.slskdDispatched.has(id) || !!job?.slskdBatchId || !!job?.slskdSearchId;
   }
 
-  setAddedBy(id: string, playlistId: string | null) {
+  setStartedByPlaylist(id: string, playlistId: string | null) {
     const job = this.jobs.get(id);
-    if (!job || job.addedBy === playlistId) return false;
-    job.addedBy = playlistId;
-    updateAddedByStmt.run(playlistId, id);
+    if (!job || job.startedByPlaylist === playlistId) return false;
+    job.startedByPlaylist = playlistId;
+    updateStartedByPlaylistStmt.run(playlistId, id);
     this._touchRevision();
     return true;
   }
@@ -1256,7 +1256,7 @@ export class DownloadTracker {
       job.manualReplacementSearch ? 1 : 0,
       job.requestKind === "album" ? "album" : "track",
       job.reusedLibraryFile ? 1 : 0,
-      job.addedBy ?? null,
+      job.startedByPlaylist ?? null,
     );
     this._touchRevision();
   }
@@ -1348,7 +1348,7 @@ export class DownloadTracker {
       finalPath: null,
       externalPath: null,
       reusedLibraryFile: false,
-      addedBy: options.addedBy ?? null,
+      startedByPlaylist: options.startedByPlaylist ?? null,
       error: null,
       createdAt: Date.now(),
       retryCycle: false,
