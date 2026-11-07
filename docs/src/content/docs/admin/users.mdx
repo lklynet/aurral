@@ -115,7 +115,7 @@ Each user then opens **Settings > Profile > Sign-in methods** and selects **Conn
 
 ### Plex sign-in was removed
 
-Aurral no longer offers Sign in with Plex. Users who signed in with Plex use their password, Google, or single sign-on instead. An admin can set a password for a user in **Settings > Users**.
+Aurral no longer offers Sign in with Plex. Users who signed in with Plex use their password, Google, or single sign-on instead. An admin can set a password for a user in **Settings > Users**. If the admin signed in with Plex too, [reset the admin password](#reset-the-admin-password) from the server.
 
 ### Manage connected accounts
 
@@ -184,16 +184,12 @@ An account created by the proxy has no local password until an admin sets one. A
 
 ## Reset the admin password
 
-Run this command from the repository root:
+Run this command next to your `docker-compose.yml`:
 
 ```bash
-pnpm run auth:reset-admin-password --password "new-password"
+docker compose exec aurral node backend/scripts/resetAdminPassword.ts --password "new-password"
 ```
 
-To generate a random password:
+To generate a random password, use `--generate` instead of `--password`. From a source checkout, run `pnpm run auth:reset-admin-password` with the same options.
 
-```bash
-pnpm run auth:reset-admin-password --generate
-```
-
-It resets the first admin account. Add `--username <name>` to reset another one.
+It resets the first admin account, or creates an `admin` account if there is none. Add `--username <name>` to reset another one.

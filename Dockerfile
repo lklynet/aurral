@@ -45,7 +45,6 @@ FROM node-base AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    gosu \
     fontconfig \
     fonts-dejavu-core \
     fonts-noto-color-emoji \

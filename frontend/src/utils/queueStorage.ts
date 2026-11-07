@@ -72,6 +72,9 @@ function storedTrack(track: QueueTrack) {
 
 function restoredTrack(track: Record<string, unknown>, token: string | null | undefined) {
   const { authFields, ...rest } = track;
+  if (typeof rest.src === "string") {
+    rest.src = rest.src.replace("/library/canonical-stream/", "/library/stream/");
+  }
   for (const key of Array.isArray(authFields) ? authFields : []) {
     if (typeof rest[key] === "string") rest[key] = withToken(rest[key], token);
   }
