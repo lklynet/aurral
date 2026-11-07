@@ -49,7 +49,7 @@ beforeEach(() => {
   dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
-  vi.spyOn(downloadWorker, "start").mockImplementation(async () => false);
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
 });
 afterAll(() => cleanupIsolatedState(state));
 

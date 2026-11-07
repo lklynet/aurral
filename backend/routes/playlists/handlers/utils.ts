@@ -1,4 +1,5 @@
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import { DEFAULT_FLOW_SIZE } from "../../../../lib/flows.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
@@ -160,7 +161,9 @@ export const queueFlowSideEffect = (kind: string, labelPrefix: string, flowId: s
     })
     .catch((error) => {
       restoreFlowMutationToken(mutation);
-      logger.error("flows", `Failed to ${labelPrefix} flow ${flowId}:`, { message: error.message });
+      logger.error("flows", `Failed to ${labelPrefix} flow ${flowId}:`, {
+        message: asAppError(error)?.message,
+      });
     });
 };
 

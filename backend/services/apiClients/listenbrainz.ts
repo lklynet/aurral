@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { http, isTransientNetworkError, type HttpOptions } from "../../../lib/http.ts";
-import { readOne } from "../integrationData.ts";
+import { lenient, lenientCount, lenientText, readOne } from "../integrationData.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
@@ -43,7 +43,7 @@ const LISTENBRAINZ_MAX_RETRIES = 2;
 
 const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 
-const listenbrainzInflightRequests = new Map();
+const listenbrainzInflightRequests = new Map<string, Promise<unknown>>();
 const listenbrainzErrorLogAt = new Map();
 
 const getRateLimitWaitMs = (error: unknown) => {
@@ -160,7 +160,7 @@ export async function listenbrainzRequest(
     timeoutMs = LISTENBRAINZ_TIMEOUT_MS,
     data,
   }: { token?: string | null; baseUrl?: string; timeoutMs?: number; data?: unknown } = {},
-) {
+): Promise<unknown> {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
   const cacheKey = isAuthenticated
@@ -289,15 +289,79 @@ export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids: string[]) 
     );
     if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");
     const listens = new Map<string, { listenCount: number; listenerCount: number }>();
-    for (const row of batches.flat()) {
-      const listenCount = toListenCount(row?.total_listen_count);
-      const listenerCount = toListenCount(row?.total_user_count);
-      if (listenCount && listenerCount) {
+    for (const row of batches.flatMap((batch) => v.parse(popularityRowsSchema, batch))) {
+      const listenCount = toListenCount(row.total_listen_count);
+      const listenerCount = toListenCount(row.total_user_count);
+      if (row.release_group_mbid && listenCount && listenerCount) {
         listens.set(row.release_group_mbid, { listenCount, listenerCount });
       }
     }
     return listens;
   });
+
+const listenbrainzMbids = lenient(v.array(v.nullable(v.string())));
+
+export const listenbrainzTopArtistsSchema = v.fallback(
+  v.looseObject({
+    payload: lenient(
+      v.looseObject({
+        artists: lenient(
+          v.array(
+            v.fallback(
+              v.looseObject({
+                artist_name: lenientText,
+                artist_mbid: lenient(v.nullable(v.string())),
+                artist_mbids: listenbrainzMbids,
+                listen_count: lenientCount,
+              }),
+              {},
+            ),
+          ),
+        ),
+      }),
+    ),
+  }),
+  {},
+);
+
+export const listenbrainzTopRecordingsSchema = v.fallback(
+  v.looseObject({
+    payload: lenient(
+      v.looseObject({
+        recordings: lenient(
+          v.array(
+            v.fallback(
+              v.looseObject({
+                artist_name: lenientText,
+                artist_mbids: listenbrainzMbids,
+                track_name: lenientText,
+                release_name: lenient(v.nullable(v.string())),
+              }),
+              {},
+            ),
+          ),
+        ),
+      }),
+    ),
+  }),
+  {},
+);
+
+const popularityRowsSchema = v.array(
+  v.fallback(
+    v.looseObject({
+      release_group_mbid: lenientText,
+      total_listen_count: lenient(v.nullable(v.number())),
+      total_user_count: lenient(v.nullable(v.number())),
+    }),
+    {},
+  ),
+);
+
+const releaseGroupMetadataSchema = v.record(
+  v.string(),
+  v.fallback(v.looseObject({ release_group: lenient(v.looseObject({ date: lenientText })) }), {}),
+);
 
 const isReleaseGroupMetadata = (batch: unknown) =>
   Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch!);
@@ -313,9 +377,11 @@ export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
       throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
     }
     const dates = new Map<string, string>();
-    for (const [mbid, metadata] of batches.flatMap(Object.entries)) {
-      const date = metadata?.release_group?.date;
-      if (typeof date === "string" && date) dates.set(mbid, date);
+    for (const batch of batches) {
+      for (const [mbid, metadata] of Object.entries(v.parse(releaseGroupMetadataSchema, batch))) {
+        const date = metadata.release_group?.date;
+        if (date) dates.set(mbid, date);
+      }
     }
     return dates;
   });

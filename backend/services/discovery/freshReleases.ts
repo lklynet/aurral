@@ -1,17 +1,27 @@
+import * as v from "valibot";
 import { listenbrainzRequest } from "../apiClients/index.ts";
+import { lenient } from "../integrationData.ts";
 
 const FRESH_RELEASES_TTL_MS = 6 * 60 * 60 * 1000;
 const FRESH_RELEASES_RETRY_MS = 15 * 60 * 1000;
 const FRESH_RELEASE_TYPES = new Set(["Album", "EP", "Single"]);
 
-type ListenbrainzFreshRelease = {
-  artist_credit_name?: string | null;
-  artist_mbids?: string[] | null;
-  release_date?: string | null;
-  release_group_mbid?: string | null;
-  release_group_primary_type?: string | null;
-  release_name?: string | null;
-};
+const nullableText = lenient(v.nullable(v.string()));
+const freshReleaseSchema = v.fallback(
+  v.looseObject({
+    artist_credit_name: nullableText,
+    artist_mbids: lenient(v.nullable(v.array(v.string()))),
+    release_date: nullableText,
+    release_group_mbid: nullableText,
+    release_group_primary_type: nullableText,
+    release_name: nullableText,
+  }),
+  {},
+);
+const freshReleasesSchema = v.looseObject({
+  payload: lenient(v.looseObject({ releases: lenient(v.array(freshReleaseSchema)) })),
+});
+type ListenbrainzFreshRelease = v.InferOutput<typeof freshReleaseSchema>;
 
 const slim = (release: ListenbrainzFreshRelease) => {
   const releaseGroupMbid = release.release_group_mbid?.trim();
@@ -41,8 +51,9 @@ export function refreshFreshReleases() {
     { days: 30, past: "true", future: "true" },
     { timeoutMs: 30_000 },
   )
-    .then((data: { payload?: { releases?: ListenbrainzFreshRelease[] } } | null) => {
-      snapshot = { fetchedAt: Date.now(), releases: (data?.payload?.releases || []).flatMap(slim) };
+    .then((data) => {
+      const releases = v.parse(freshReleasesSchema, data).payload?.releases ?? [];
+      snapshot = { fetchedAt: Date.now(), releases: releases.flatMap(slim) };
     })
     .catch(() => {
       snapshot = {

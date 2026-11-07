@@ -127,7 +127,7 @@ beforeEach(() => {
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
   spotifyClient.clearPlaylistTrackCache();
-  downloadWorker.start = async () => false;
+  downloadWorker.start = async () => {};
 });
 
 afterEach(() => {

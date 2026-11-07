@@ -1,4 +1,5 @@
 import { enqueueSystemTask, type SystemTaskKind } from "./queues.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 function enqueueOnce(kind: SystemTaskKind, delayMs: number, priority: number) {
   return enqueueSystemTask({ kind }, { delayMs, priority, dedupeKey: kind });
@@ -12,7 +13,7 @@ export function enqueueStartupTasks() {
     .catch((error) =>
       console.warn(
         "[Playback] Could not check for old media server data:",
-        error?.message || error,
+        asAppError(error)?.message || error,
       ),
     );
   enqueueOnce("flow-startup-check", 5000, 5);
@@ -20,7 +21,10 @@ export function enqueueStartupTasks() {
   import("../libraryFiles/operations.ts")
     .then(({ resumeLibraryFileOperations }) => resumeLibraryFileOperations())
     .catch((error) =>
-      console.warn("[LibraryFiles] Could not resume file operations:", error?.message || error),
+      console.warn(
+        "[LibraryFiles] Could not resume file operations:",
+        asAppError(error)?.message || error,
+      ),
     );
   enqueueOnce("discovery-bootstrap", 15_000, 5);
   enqueueOnce("library-index-bootstrap", 8000, 0);

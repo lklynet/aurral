@@ -269,7 +269,7 @@ async function removeUsenetItem(
     await remove().catch((error) => {
       logger.warn("usenet", `Could not remove the ${client.key} ${entry} item`, {
         jobId,
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
     });
   }

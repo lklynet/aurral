@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { asAppError } from "../../lib/errors.ts";
 import { db } from "../config/db-sqlite.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
@@ -377,7 +378,7 @@ export async function refreshInboxForUser(
     for (const { result, source } of failures) {
       logger.warn("inbox", "Inbox source refresh failed", {
         source,
-        error: result.reason?.message,
+        error: asAppError(result.reason)?.message,
       });
     }
     const items = results
@@ -392,7 +393,10 @@ export async function refreshInboxForUser(
     const errorMessage =
       failures.length > 0
         ? failures
-            .map(({ result, source }) => `${source}: ${result.reason?.message || "failed"}`)
+            .map(
+              ({ result, source }) =>
+                `${source}: ${asAppError(result.reason)?.message || "failed"}`,
+            )
             .join("; ")
         : null;
     setStoredRefreshStatus(normalizedUserId, {
@@ -410,16 +414,17 @@ export async function refreshInboxForUser(
     return failures.length === 0;
   })()
     .catch((error) => {
+      const failure = asAppError(error);
       logger.warn("inbox", "Inbox refresh failed", {
         userId: normalizedUserId,
-        error: error.message,
+        error: failure?.message,
       });
       refreshState.set(normalizedUserId, { at: Date.now(), hadLocation: hasLocation });
-      if (!error.inboxStatusWritten) {
+      if (!(failure && "inboxStatusWritten" in failure)) {
         setStoredRefreshStatus(normalizedUserId, {
           status: "failed",
           stale: true,
-          error: error.message,
+          error: failure?.message,
           ...(jobId && { jobId }),
         });
       }

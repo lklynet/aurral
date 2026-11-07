@@ -3,6 +3,13 @@ import { logger } from "./logger.ts";
 
 type Source = { service: string; endpoint: string };
 
+export const lenient = <Schema extends v.GenericSchema>(schema: Schema) =>
+  v.fallback(v.optional(schema), undefined);
+export const oneOrMany = <Schema extends v.GenericSchema>(item: Schema) =>
+  lenient(v.union([v.array(item), item]));
+export const lenientText = lenient(v.string());
+export const lenientCount = lenient(v.union([v.number(), v.string()]));
+
 const unreadable = ({ service, endpoint }: Source, reason: string) =>
   new Error(`${service} sent ${endpoint.split("?")[0]} data Aurral can't read: ${reason}`);
 

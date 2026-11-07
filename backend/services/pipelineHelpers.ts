@@ -1,4 +1,5 @@
 import { logger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { classifyAudioQuality } from "./qualityProfileModel.ts";
@@ -130,7 +131,7 @@ export function blockPipelineJobForReview({
     .catch((error) => {
       logger.warn("history", "Could not record blocked download job", {
         jobId: job.id,
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
     });
   return true;

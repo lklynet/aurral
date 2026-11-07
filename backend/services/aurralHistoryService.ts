@@ -1,4 +1,5 @@
 import path from "node:path";
+import { asAppError } from "../../lib/errors.ts";
 import crypto from "crypto";
 import { expandAlbumGrabHistory } from "./albumGrabActivity.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -347,7 +348,7 @@ const queueRequestNotification = (
       }),
     )
     .catch((err) => {
-      console.warn(`[AurralHistory] ${notifyName} failed:`, err?.message || err);
+      console.warn(`[AurralHistory] ${notifyName} failed:`, asAppError(err)?.message || err);
     });
 };
 

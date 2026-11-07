@@ -434,7 +434,7 @@ export async function planIngest(operation: LibraryFileOperation, deadline: numb
       .all(operation.id)
       .map(libraryPathKey),
   );
-  const albums = new Map();
+  const albums: TagFillAlbums = new Map();
   while (Date.now() < deadline) {
     const batch = listLibraryFileOperationItems(operation.id, { statuses: ["new"], limit: CHUNK });
     if (!batch.length) return true;
@@ -644,8 +644,8 @@ export function ingestScanRequest(
 export async function finishIngest(operation: LibraryFileOperation) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   restoreUnremovedDuplicates(operation.id);
-  const folders = new Map();
-  const unfiled = new Set();
+  const folders = new Map<string, Set<string>>();
+  const unfiled = new Set<string>();
   const items = db
     .prepare<
       [number],
@@ -657,7 +657,7 @@ export async function finishIngest(operation: LibraryFileOperation) {
       "SELECT position, source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
     )
     .all(operation.id);
-  const filedFrom = new Map();
+  const filedFrom = new Map<string, typeof items>();
   for (const item of items) {
     const folder = path.dirname(item.source_path);
     if (item.status === "done") filedFrom.set(folder, [...(filedFrom.get(folder) || []), item]);
@@ -670,13 +670,13 @@ export async function finishIngest(operation: LibraryFileOperation) {
       unfiled.add(folder);
       continue;
     }
-    const targets = folders.get(folder) || new Set();
+    const targets = folders.get(folder) || new Set<string>();
     targets.add(path.dirname(item.target_path));
     folders.set(folder, targets);
   }
   for (const [folder, targets] of folders) {
-    if (targets.size !== 1 || unfiled.has(folder)) continue;
     const [target] = targets;
+    if (!target || targets.size !== 1 || unfiled.has(folder)) continue;
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
     const art: string[] = [];
     for (const entry of entries) {
@@ -689,7 +689,7 @@ export async function finishIngest(operation: LibraryFileOperation) {
         async (error) => {
           if (
             mode === "move" &&
-            error?.code === "EEXIST" &&
+            asAppError(error)?.code === "EEXIST" &&
             (await filesIdentical(from, to).catch(() => false))
           ) {
             await fs.rm(from, { force: true });
@@ -877,14 +877,14 @@ async function settleIngest(operation: LibraryFileOperation) {
   if (operation.summary.doubles === "pending") {
     const removed = new Set<string>();
     const changed = [];
-    const art = new Map();
+    const art = new Map<string, Map<string, string>>();
     for (const entry of placed) {
       try {
         const taken = await takeBackDouble(operation, entry.item, entry.media, removed);
         if (!taken) continue;
         changed.push(...taken);
         const folder = path.dirname(entry.item.target_path);
-        const images = art.get(folder) || new Map();
+        const images = art.get(folder) || new Map<string, string>();
         for (const name of readItemDetails(entry.item.details_json)?.art || []) {
           images.set(name, path.dirname(entry.item.source_path));
         }

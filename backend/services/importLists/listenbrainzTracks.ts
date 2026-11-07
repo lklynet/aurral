@@ -1,3 +1,5 @@
+import * as v from "valibot";
+import { lenient, lenientCount, lenientText, oneOrMany } from "../integrationData.ts";
 import { dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 
 const PLAYLIST_TRACK_EXTENSION = "https://musicbrainz.org/doc/jspf#track";
@@ -5,26 +7,54 @@ const TRACK_URI_PREFIX = "https://musicbrainz.org/recording/";
 const ARTIST_URI_PREFIX = "https://musicbrainz.org/artist/";
 const RELEASE_URI_PREFIX = "https://musicbrainz.org/release/";
 
-interface ListenBrainzTrackExtension {
-  artist_identifiers?: string[];
-  release_identifier?: string;
-}
+const PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist";
 
-interface ListenBrainzPlaylistTrack {
-  identifier?: string | string[];
-  title?: string;
-  creator?: string;
-  album?: string;
-  duration?: number;
-  extension?: { [PLAYLIST_TRACK_EXTENSION]?: ListenBrainzTrackExtension };
-}
+const trackSchema = v.looseObject({
+  identifier: oneOrMany(v.string()),
+  title: lenientText,
+  creator: lenientText,
+  album: lenientText,
+  duration: lenientCount,
+  extension: lenient(
+    v.looseObject({
+      [PLAYLIST_TRACK_EXTENSION]: lenient(
+        v.looseObject({
+          artist_identifiers: lenient(v.array(v.string())),
+          release_identifier: lenientText,
+        }),
+      ),
+    }),
+  ),
+});
 
-interface ListenBrainzPlaylistPayload {
-  playlist?: { track?: ListenBrainzPlaylistTrack[] };
-}
+const playlistSchema = v.looseObject({
+  image: lenientText,
+  identifier: lenientText,
+  title: lenientText,
+  date: lenientText,
+  track: lenient(v.array(v.fallback(trackSchema, {}))),
+  extension: lenient(
+    v.looseObject({
+      [PLAYLIST_EXTENSION]: lenient(
+        v.looseObject({
+          last_modified_at: lenientText,
+          additional_metadata: lenient(
+            v.looseObject({
+              algorithm_metadata: lenient(v.looseObject({ source_patch: lenientText })),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+});
 
-const getExtension = (track: ListenBrainzPlaylistTrack) =>
-  track?.extension?.[PLAYLIST_TRACK_EXTENSION] || {};
+export const listenbrainzPlaylistEntrySchema = v.fallback(
+  v.looseObject({ ...playlistSchema.entries, playlist: lenient(playlistSchema) }),
+  {},
+);
+
+export type ListenBrainzPlaylist = v.InferOutput<typeof playlistSchema>;
 
 const getIdentifier = (value: string | string[] | undefined, prefix: string) => {
   const candidate = Array.isArray(value) ? value[0] : value;
@@ -32,17 +62,17 @@ const getIdentifier = (value: string | string[] | undefined, prefix: string) => 
   return text.startsWith(prefix) ? text.slice(prefix.length) : text || null;
 };
 
-export function parseListenBrainzPlaylist(payload: ListenBrainzPlaylistPayload) {
+export function parseListenBrainzPlaylist(payload: unknown) {
   const stats = { incomplete: 0, duplicate: 0 };
   const raw = [];
-  const tracks = Array.isArray(payload?.playlist?.track) ? payload.playlist.track : [];
+  const tracks = v.parse(listenbrainzPlaylistEntrySchema, payload).playlist?.track ?? [];
 
   for (const track of tracks) {
-    const extension = getExtension(track);
-    const creator = String(track?.creator || "").trim();
+    const extension = track.extension?.[PLAYLIST_TRACK_EXTENSION] ?? {};
+    const creator = String(track.creator || "").trim();
     const artistMbid = getIdentifier(extension.artist_identifiers, ARTIST_URI_PREFIX);
     const artistName = artistMbid ? (creator.split(";", 1)[0] ?? "").trim() : creator;
-    const trackName = String(track?.title || "").trim();
+    const trackName = String(track.title || "").trim();
     if (!artistName || !trackName) {
       stats.incomplete += 1;
       continue;
@@ -50,11 +80,11 @@ export function parseListenBrainzPlaylist(payload: ListenBrainzPlaylistPayload) 
     raw.push({
       artistName,
       trackName,
-      albumName: String(track?.album || "").trim() || null,
-      trackMbid: getIdentifier(track?.identifier, TRACK_URI_PREFIX),
+      albumName: String(track.album || "").trim() || null,
+      trackMbid: getIdentifier(track.identifier, TRACK_URI_PREFIX),
       artistMbid,
       releaseMbid: getIdentifier(extension.release_identifier, RELEASE_URI_PREFIX),
-      durationMs: Number.isFinite(Number(track?.duration)) ? Number(track.duration) : null,
+      durationMs: Number.isFinite(Number(track.duration)) ? Number(track.duration) : null,
     });
   }
 

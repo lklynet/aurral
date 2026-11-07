@@ -52,7 +52,7 @@ type FilePlaylist = { name: string; tracks: M3uTrack[]; skipped: number };
 type ImportPlaylist = {
   id: string;
   name: string;
-  trackCount?: number;
+  trackCount?: number | null;
   sourceType?: string | null;
 };
 const importApi = playlistImportsClient.import;
