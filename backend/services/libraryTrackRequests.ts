@@ -5,6 +5,7 @@ import { downloadTracker, type DownloadTrackInput } from "./downloadJobs/downloa
 import { asAppError } from "../../lib/errors.ts";
 import { getLibraryTrackOwnership } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
+import { keepInLibrary } from "./playlists/playlistLibrary.ts";
 
 const libraryTrackStmt = db.prepare("SELECT 1 FROM library_tracks WHERE mbid = ? LIMIT 1");
 
@@ -52,6 +53,7 @@ export async function requestLibraryTrack(
   } = {},
 ) {
   if (!automatic) {
+    keepInLibrary(track);
     clearTrackMonitoringExclusion({
       mbid: track.trackMbid,
       artistMbid: track.artistMbid,

@@ -19,7 +19,7 @@ Each provider import has a sync schedule. Choose **None** for a fixed tracklist.
 
 A sync reads the provider playlist again. Aurral removes the tracks that are gone and queues the new tracks.
 
-By default, a track that the provider removes leaves the Aurral playlist, but its file stays in the Library. To delete the file instead, turn off **Keep tracks Spotify removes** (named for the playlist's source) during the import or in the playlist menu. Aurral then deletes the file if no other playlist uses it. It never deletes Lidarr files or other external files. The setting applies to future syncs.
+By default, a track that the provider removes leaves the Aurral playlist, but its file stays in the Library. To delete the file instead, turn off **Keep tracks Spotify removes** (named for the playlist's source) during the import or in the playlist menu. Aurral then deletes the file if this playlist downloaded it and nothing else wants it: no other playlist has the track, nobody favorited it, and nobody added it to the Library directly. It never deletes Lidarr files or other external files. The setting applies to future syncs.
 
 ## Import from Spotify
 
@@ -143,9 +143,7 @@ Aurral queues each track as a separate job:
 One file can belong to several playlists. Aurral does not download a track again when a usable file exists.
 
 - Reuse does not change the track order. A track that you already have keeps its place while the missing tracks download.
-- If you add a flow track to a static playlist, both playlists use the same file. When the flow refreshes, Aurral keeps the file for the static playlist.
-- Aurral prefers files from static playlists and from Lidarr.
-- Before Aurral removes a playlist, it moves shared files to a playlist that still uses them, so media servers do not show duplicate files.
+- If you add a flow track to a static playlist, Aurral moves its file into the Library, so the flow keeps playing it and a refresh does not delete it.
 
 To reuse Lidarr files, Aurral must read them at the paths that Lidarr reports. Mount the same media root at the same container path in both services, for example `/data` with the Lidarr root folder `/data/music`. See [Filesystem and mounts](/getting-started/storage/).
 

@@ -37,6 +37,7 @@ const [
   { scanMusicRoot },
   { playbackTaskQueue, systemTaskSchema },
   { processSystemTask },
+  { refreshCompletedPipelinePlaylist },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -57,6 +58,7 @@ const [
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/pipelineHelpers.ts"),
 );
 
 function takePlaylistSyncs() {
@@ -75,6 +77,20 @@ const {
   listDownloadProviderWork,
   registerDownloadProviderWork,
 } = cancellationModule;
+
+function playlistWithJobs(
+  playlistId: string,
+  tracks: Parameters<typeof downloadTracker.addJob>[0][],
+  name = playlistId,
+) {
+  const jobIds = tracks.map((track) => requireFixture(downloadTracker.addJob(track, "library")));
+  flowPlaylistConfig.createStaticPlaylist({
+    id: playlistId,
+    name,
+    tracks: tracks.map((track, index) => ({ ...track, canonicalJobId: jobIds[index] })),
+  });
+  return jobIds;
+}
 
 type ListedJob = {
   id: string;
@@ -111,16 +127,6 @@ beforeEach(async () => {
 
 test("playlist jobs annotate tracks that are already in the library", async () => {
   const playlistId = "library-ownership-annotation";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Library ownership",
-    tracks: [
-      { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
-      { artistName: "Owned Artist", trackName: "Featured Track" },
-      { artistName: "Owned Artist feat. Guest", trackName: "Featured Track" },
-      { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
-    ],
-  });
   const ownedArtist = libraryStore.upsertLibraryArtist({
     identityKey: "owned-playlist-artist",
     name: "Owned Artist",
@@ -164,15 +170,12 @@ test("playlist jobs annotate tracks that are already in the library", async () =
         },
       }),
   });
-  downloadTracker.addJobs(
-    [
-      { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
-      { artistName: "Owned Artist", trackName: "Featured Track" },
-      { artistName: "Owned Artist feat. Guest", trackName: "Featured Track" },
-      { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
-    ],
-    playlistId,
-  );
+  playlistWithJobs(playlistId, [
+    { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
+    { artistName: "Owned Artist", trackName: "Featured Track" },
+    { artistName: "Owned Artist feat. Guest", trackName: "Featured Track" },
+    { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
+  ]);
 
   const response = await fetch(`${baseUrl}/jobs/${playlistId}`);
   const payload: ListedJob[] = await response.json();
@@ -191,11 +194,9 @@ test("playlist jobs annotate tracks that are already in the library", async () =
 
 test("playlist job file paths are only returned to admins", async (t: import("vite-plus/test").TestContext) => {
   const playlistId = "job-file-paths";
-  flowPlaylistConfig.createStaticPlaylist({ id: playlistId, name: "File paths", tracks: [] });
-  const [jobId] = downloadTracker.addJobs(
-    [{ artistName: "Path Artist", trackName: "Path Track" }],
-    playlistId,
-  );
+  const [jobId] = playlistWithJobs(playlistId, [
+    { artistName: "Path Artist", trackName: "Path Track" },
+  ]);
   assert.ok(jobId !== undefined);
   const finalPath = path.join(process.env.DOWNLOAD_FOLDER!, "Path Artist", "Path Track.FLAC");
   downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER!, "staging.flac"));
@@ -352,38 +353,22 @@ test("approving a library track does not wait for another library track's downlo
 
 test("a track committed after an approved review joins the same pending playlist sync", async () => {
   const playlistId = "reviewed-concurrent-commit";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Reviewed concurrent commit",
-    tracks: [
+  const [reviewedJobId, pipelineJobId] = playlistWithJobs(
+    playlistId,
+    [
       { artistName: "Artist", trackName: "Reviewed", albumName: "Album" },
       { artistName: "Artist", trackName: "Pipeline", albumName: "Album" },
       { artistName: "Artist", trackName: "Still pending", albumName: "Album" },
     ],
-  });
+    "Reviewed concurrent commit",
+  );
+  assert.ok(reviewedJobId != null && pipelineJobId != null);
   const sourcePath = path.join(isolatedState.baseDir, "review", "Reviewed.flac");
   const pipelinePath = path.join(process.env.DOWNLOAD_FOLDER!, "Artist", "Album", "Pipeline.flac");
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.mkdir(path.dirname(pipelinePath), { recursive: true });
   await fs.writeFile(sourcePath, "reviewed audio");
   await fs.writeFile(pipelinePath, "pipeline audio");
-  const reviewedJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "Artist", trackName: "Reviewed", albumName: "Album" },
-    playlistId,
-  );
-  assert.ok(reviewedJobId != null);
-  const pipelineJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "Artist", trackName: "Pipeline", albumName: "Album" },
-    playlistId,
-  );
-  assert.ok(pipelineJobId != null);
-  createTrackedJob(
-    downloadTracker,
-    { artistName: "Artist", trackName: "Still pending", albumName: "Album" },
-    playlistId,
-  );
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
 
   takePlaylistSyncs();
@@ -393,7 +378,7 @@ test("a track committed after an approved review joins the same pending playlist
   await waitForApprovalFollowUps();
   downloadTracker.setDownloading(pipelineJobId, pipelinePath);
   downloadTracker.setDone(pipelineJobId, pipelinePath, "Album");
-  playlistManager.requestPlaylistSync([playlistId]);
+  await refreshCompletedPipelinePlaylist(trackedJob(downloadTracker, pipelineJobId));
   const syncs = takePlaylistSyncs();
   assert.deepEqual(syncs, [
     { kind: "playback-playlist-sync", entityIds: [playlistId], rewrite: false },

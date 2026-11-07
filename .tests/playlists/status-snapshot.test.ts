@@ -87,18 +87,13 @@ test("status snapshot includes empty manual playlists", () => {
 test("playlists containing a track include pending download jobs", async () => {
   const { downloadTracker } =
     await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const pending = { artistName: "Radiohead", trackName: "Karma Police", albumName: "OK Computer" };
+  const jobId = downloadTracker.addJob(pending, "library");
+  assert.ok(jobId);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Pending Mix",
+    tracks: [{ ...pending, canonicalJobId: jobId }],
   });
-  const jobId = downloadTracker.addJob(
-    {
-      artistName: "Radiohead",
-      trackName: "Karma Police",
-      albumName: "OK Computer",
-    },
-    playlist.id,
-  );
-  assert.ok(jobId);
 
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
   const track = { artistName: "radiohead", trackName: "Karma Police" };
@@ -112,13 +107,14 @@ test("playlists containing a track include pending download jobs", async () => {
 test("status snapshot trackCount includes failed download jobs", async () => {
   const { downloadTracker } =
     await import("../../backend/services/downloadJobs/downloadTracker.ts");
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Failed Mix" });
-  const jobId = downloadTracker.addJob(
-    { artistName: "Radiohead", trackName: "Karma Police" },
-    playlist.id,
-  );
+  const failed = { artistName: "Radiohead", trackName: "Karma Police" };
+  const jobId = downloadTracker.addJob(failed, "library");
   assert.ok(jobId != null);
   downloadTracker.setFailed(jobId, "Not found");
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Failed Mix",
+    tracks: [{ ...failed, canonicalJobId: jobId }],
+  });
 
   const status = getPlaylistStatusSnapshot();
   const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
@@ -133,11 +129,7 @@ test("review count includes Library jobs and respects playlist ownership", async
     await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const ownFlow = flowPlaylistConfig.createFlow({ name: "Mine", ownerUserId: 1 });
   const otherFlow = flowPlaylistConfig.createFlow({ name: "Someone else's", ownerUserId: 2 });
-  const staticPlaylist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Mine too",
-    ownerUserId: 1,
-  });
-  const held = ["library", ownFlow.id, otherFlow.id, staticPlaylist.id].map((playlistId, index) => {
+  const held = ["library", ownFlow.id, otherFlow.id].map((playlistId, index) => {
     const id = downloadTracker.addJob(
       { artistName: "Artist", trackName: `Held ${index}` },
       playlistId,
@@ -149,14 +141,14 @@ test("review count includes Library jobs and respects playlist ownership", async
   assert.ok(held.every((value) => value != null));
   downloadTracker.addJob({ artistName: "Artist", trackName: "Pending" }, "library");
   const user = { id: 1, role: "user", username: "test", permissions: {} };
-  assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 3);
+  assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 2);
   assert.equal(
     getPlaylistStatusSnapshot({ user: { id: 1, role: "admin", username: "test", permissions: {} } })
       .reviewCount,
-    4,
+    3,
   );
   assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), true);
-  for (const id of [held[1], held[3]]) downloadTracker.setFailed(requireFixture(id), "Dismissed");
+  downloadTracker.setFailed(requireFixture(held[1]), "Dismissed");
   const libraryOnly = getPlaylistStatusSnapshot({ user });
   assert.equal(libraryOnly.stats.blocked + libraryOnly.sharedStats.blocked, 0);
   assert.equal(libraryOnly.reviewCount, 1);

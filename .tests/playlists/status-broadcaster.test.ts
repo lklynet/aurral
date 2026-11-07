@@ -149,7 +149,11 @@ test("local and external commits refresh status and reconnects receive an unchan
   const socket = new SocketTransport();
   const client = socket.connect("first", { id: 1, role: "user" });
   start(t, socket);
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Waiting" }, playlist.id);
+  const waiting = { artistName: "Artist", trackName: "Waiting" };
+  const jobId = downloadTracker.addJob(waiting, "library");
+  flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
+    { ...waiting, canonicalJobId: jobId },
+  ]);
   vi.advanceTimersByTime(4000);
   assert.equal(
     requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.pending,

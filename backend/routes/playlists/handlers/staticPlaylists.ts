@@ -4,13 +4,8 @@ import {
   cleanupBulkOperations,
   getBulkOperation,
 } from "../../../services/playlists/bulkOperationStore.ts";
-import {
-  captureStaticPlaylistSelection,
-  getSharedDownloadReferences,
-} from "../../../services/playlists/trackRemoval.ts";
+import { captureStaticPlaylistSelection } from "../../../services/playlists/trackRemoval.ts";
 import { randomUUID } from "crypto";
-import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import {
   flowPlaylistConfig,
   normalizeImportSource,
@@ -21,22 +16,7 @@ import {
 } from "../../../services/playlists/playlistTracks.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
-import { wakeDownloadWorker } from "../../../services/downloadJobs/mutationGuards.ts";
-import {
-  enqueueResearchTrack,
-  getAccessibleStaticPlaylist,
-  pauseStaticPlaylistRetryCycle,
-  requireFlowAccess,
-} from "./utils.ts";
-import {
-  markDownloadWorkCancelledForJobs,
-  markPlaylistDownloadWorkCancelled,
-  restoreMarkedPlaylistDownloadWork,
-} from "../../../services/downloadJobs/downloadCancellationService.ts";
-import {
-  isDownloadJobCancelled,
-  restoreDownloadJobCancellations,
-} from "../../../services/downloadJobs/downloadCancellation.ts";
+import { enqueueResearchTrack, getAccessibleStaticPlaylist, requireFlowAccess } from "./utils.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
@@ -433,33 +413,15 @@ export default new Hono<AppEnv>()
       if (!playlist) {
         return c.json({ error: "Playlist not found" }, 404);
       }
-      const job = downloadTracker.getJob(jobId);
-      const playlistReferencesJob = playlist.tracks?.some(
-        (track) => String(track?.canonicalJobId || "") === String(jobId || ""),
-      );
-      if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
+      if (!playlist.tracks.some((track) => track.canonicalJobId === jobId)) {
         return c.json({ error: "Track not found" }, 404);
       }
-      const shouldCancelJob =
-        !playlistReferencesJob && getSharedDownloadReferences(job.id, playlistId).length === 0;
-      const wasJobCancelled = isDownloadJobCancelled(job.id);
-      if (shouldCancelJob) {
-        markDownloadWorkCancelledForJobs([job]);
-      }
-      let result;
-      try {
-        result = await playlistOperationQueue.enqueuePayload({
-          kind: "static-playlist-delete-track",
-          label: `static-playlist:${playlistId}:track:${jobId}:delete`,
-          playlistId,
-          jobId,
-        });
-      } catch (error) {
-        if (shouldCancelJob && !wasJobCancelled) {
-          restoreDownloadJobCancellations([job.id]);
-        }
-        throw error;
-      }
+      const result = await playlistOperationQueue.enqueuePayload({
+        kind: "static-playlist-delete-track",
+        label: `static-playlist:${playlistId}:track:${jobId}:delete`,
+        playlistId,
+        jobId,
+      });
 
       return c.json(
         {
@@ -500,25 +462,11 @@ export default new Hono<AppEnv>()
       if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
         return c.json({ error: "Playlist not found" }, 404);
       }
-      const ownedJobs = downloadTracker.getByPlaylistId(playlistId);
-      const retainsDownloads = ownedJobs.some(
-        (job) => getSharedDownloadReferences(job.id, playlistId).length > 0,
-      );
-      const cancellation = retainsDownloads
-        ? null
-        : markPlaylistDownloadWorkCancelled(playlistId, ownedJobs);
-
-      let deleted;
-      try {
-        deleted = await playlistOperationQueue.enqueuePayload({
-          kind: "static-playlist-delete",
-          label: `static-playlist:${playlistId}:delete`,
-          playlistId,
-        });
-      } catch (error) {
-        if (cancellation) restoreMarkedPlaylistDownloadWork(playlistId, cancellation);
-        throw error;
-      }
+      const deleted = await playlistOperationQueue.enqueuePayload({
+        kind: "static-playlist-delete",
+        label: `static-playlist:${playlistId}:delete`,
+        playlistId,
+      });
       return c.json(
         { success: true, playlistId, queued: true, operationId: deleted.operationId },
         200,
@@ -549,30 +497,4 @@ export default new Hono<AppEnv>()
         errorStatus(failure),
       );
     }
-  })
-  .put(
-    "/playlists/:playlistId/retry-cycle",
-    requireFlowAccess,
-    validate("json", v.object({ paused: v.boolean() })),
-    async (c) => {
-      try {
-        const playlistId = c.req.param("playlistId");
-        const { paused } = c.req.valid("json");
-        if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
-          return c.json({ error: "Static playlist not found" }, 404);
-        }
-        if (paused) {
-          await pauseStaticPlaylistRetryCycle(playlistId);
-        } else {
-          await downloadWorker.setRetryCyclePaused(playlistId, false);
-          await wakeDownloadWorker();
-        }
-        return c.json({ success: true, playlistId, paused }, 200);
-      } catch (error) {
-        return c.json(
-          { error: "Failed to update retry cycle", message: asAppError(error)?.message },
-          500,
-        );
-      }
-    },
-  );
+  });

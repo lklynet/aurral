@@ -296,7 +296,7 @@ export default new Hono<AppEnv>()
     requireUserAccount,
     noCache,
     validate("json", favoritesInput),
-    (c) => {
+    async (c) => {
       const user = c.var.user;
       const { ids: rawIds = [], starred } = c.req.valid("json");
       const ids = rawIds.map((id) => id.trim()).filter(Boolean);
@@ -309,7 +309,7 @@ export default new Hono<AppEnv>()
         if (libraryIds.some((id) => !validTargets.has(id))) {
           return c.json({ error: "Invalid favorite target" }, 400);
         }
-        if (!starMany(user, ids, { skipLibraryValidation: true })) {
+        if (!(await starMany(user, ids, { skipLibraryValidation: true }))) {
           return c.json({ error: "Invalid favorite target" }, 400);
         }
       }

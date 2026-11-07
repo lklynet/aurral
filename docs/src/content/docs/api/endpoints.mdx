@@ -391,7 +391,6 @@ The routes call a static playlist a shared playlist.
 | `POST`   | `/api/playlists/quality-upgrades/:playlistId/:jobId`                 | Search for a track upgrade                                                                            |
 | `POST`   | `/api/playlists/quality-upgrades`                                    | Search for upgrades for every cutoff-unmet track in Wanted                                            |
 | `POST`   | `/api/playlists/shared-playlists/:playlistId/sync`                   | Sync a static playlist                                                                                |
-| `PUT`    | `/api/playlists/playlists/:playlistId/retry-cycle`                   | Pause or resume retries for a static playlist                                                         |
 | `POST`   | `/api/playlists/jobs/:jobId/approve`                                 | Approve a download held for review                                                                    |
 | `POST`   | `/api/playlists/jobs/:jobId/deny`                                    | Deny a download held for review                                                                       |
 | `DELETE` | `/api/playlists/jobs/completed`                                      | Delete completed jobs                                                                                 |
@@ -402,9 +401,6 @@ The routes call a static playlist a shared playlist.
 | `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                       |
 | `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                         |
 | `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a rewrite of every flow and static playlist file                                                |
-
-The repeated `playlists` segment in
-`/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
 
 Cancelling a song needs `accessFlow` and access to its playlist, or the user who
 requested the Library download. Other users get `403`. The track stays

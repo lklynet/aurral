@@ -73,21 +73,6 @@ const VALID_AUDIO_EXTENSIONS = new Set([
   ".ape",
 ]);
 
-export function sortJobsForTrackReuse<T extends DownloadJob>(jobs: T[]): T[] {
-  return [...jobs].sort((a, b) => {
-    const priority = (job: DownloadJob) => {
-      if (job?.status === "done") return 0;
-      if (job?.status === "failed") return 1;
-      if (job?.status === "downloading") return 2;
-      if (job?.status === "pending") return 3;
-      return 4;
-    };
-    const priorityDiff = priority(a) - priority(b);
-    if (priorityDiff !== 0) return priorityDiff;
-    return Number(a?.createdAt || 0) - Number(b?.createdAt || 0);
-  });
-}
-
 function normalizeText(value: unknown) {
   return String(value || "")
     .toLowerCase()
@@ -382,7 +367,7 @@ function retargetJobsToPath(
   }
 }
 
-export async function adoptFileIntoPlaylist(
+async function adoptFileIntoPlaylist(
   sourcePath: string,
   targetPlaylistType: string,
   downloadRoot: string,
@@ -494,12 +479,7 @@ export async function removePlaylistFileIfUnshared(
 
   const playlistRoots = isFlowPlaylistType(safePlaylistId)
     ? [path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistId)]
-    : flowPlaylistConfig.getStaticPlaylist(safePlaylistId)
-      ? [path.resolve(downloadRoot)]
-      : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
-  if (flowPlaylistConfig.getStaticPlaylist(safePlaylistId) && options.deleteIfUnshared !== true) {
-    return { action: "skipped" };
-  }
+    : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
   const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
   if (!playlistRoots.some((playlistRoot) => isPathInsideRoot(resolved, playlistRoot))) {
     return { action: "skipped" };
@@ -1086,12 +1066,12 @@ export async function moveHandedOverTracksToLidarr(options: { downloadRoot?: str
 }
 
 async function refreshPlaylistAfterReuse(
-  playlistType: string,
+  playlistTypes: string[],
   shouldScheduleLibraryScan = false,
   changedPaths: string[] | null = null,
 ) {
   const { playlistManager } = await import("../playlists/playlistManager.ts");
-  playlistManager.requestPlaylistSync([playlistType]);
+  playlistManager.requestPlaylistSync([...new Set(playlistTypes)]);
   if (!shouldScheduleLibraryScan) return;
   if (Array.isArray(changedPaths)) {
     scheduleLibraryScanJob({ includeLidarr: false, changedPaths });
@@ -1174,8 +1154,13 @@ export async function reuseTrackForPlaylist(
       )
       .catch(() => {});
   }
+  const movedFrom = finalPath === path.resolve(source.sourcePath) ? [] : downloadTracker.getAll();
   refreshPlaylistAfterReuse(
-    playlistType,
+    [
+      playlistType,
+      ...movedFrom.filter((job) => job.finalPath === finalPath).map((job) => job.playlistType),
+      ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([jobId]),
+    ],
     targetPlaylistType === "library",
     options.libraryScanChangedPaths || (options.allowLidarr === false ? [finalPath] : null),
   ).catch((error) => {

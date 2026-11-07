@@ -8,7 +8,8 @@ import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { remapLegacyPath } from "../downloadPaths.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { flowPlaylistConfig, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
-import { buildPlaylistTrackIdentity } from "../playlists/playlistTracks.ts";
+import { buildPlaylistTrackIdentity, normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
+import { linkTracksToLibrary } from "../playlists/playlistLibrary.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { processPlaylistOperation } from "../playlists/playlistOperations.ts";
 
@@ -50,30 +51,30 @@ export async function saveFlowAsStaticPlaylist(
     replacesFlow = false,
   }: { name: string; ownerUserId: number | null; replacesFlow?: boolean },
 ) {
-  const saved = new Map<string, { job: DownloadJob; filePath: string }>();
+  const saved = new Map<string, { job: DownloadJob }>();
   for (const job of downloadTracker.getByPlaylistType(flow.id)) {
     if (job.status !== "done" || typeof job.finalPath !== "string") continue;
     const identity = buildPlaylistTrackIdentity(job);
     if (saved.has(identity)) continue;
     const filePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
-    if (await isFile(filePath)) saved.set(identity, { job, filePath });
+    if (await isFile(filePath)) saved.set(identity, { job });
   }
   if (saved.size === 0) return null;
 
+  const linked = await linkTracksToLibrary(
+    [...saved.values()].flatMap(({ job }) => normalizePlaylistTrack(trackFromJob(job)) ?? []),
+    { addedBy: null },
+  );
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name,
     sourceName: flow.name,
     sourceFlowId: flow.id,
     recordHistory: flow.recordHistory,
-    tracks: [...saved.values()].map(({ job }) => trackFromJob(job)),
+    tracks: linked.tracks,
     ownerUserId,
     replacesFlowId: replacesFlow ? flow.id : null,
   });
   try {
-    for (const { job, filePath } of saved.values()) {
-      const jobId = downloadTracker.addJob(trackFromJob(job), playlist.id);
-      if (jobId) downloadTracker.setDone(jobId, filePath, job.albumName || null);
-    }
     await playlistManager.ensurePlaylistArtwork(playlist.id);
     playlistManager.requestPlaylistSync([playlist.id]);
     await playlistManager.scheduleScanLibrary(true);

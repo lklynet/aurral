@@ -789,7 +789,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   }
   if (method === "star" || method === "unstar") {
     const targets = getParameters(params, ["id", "albumId", "artistId"]);
-    const changed = method === "star" ? starMany(user, targets) : unstarMany(user, targets);
+    const changed = method === "star" ? await starMany(user, targets) : unstarMany(user, targets);
     return changed ? ok() : fail(70, "Requested data was not found");
   }
   if (method === "gettopsongs") {

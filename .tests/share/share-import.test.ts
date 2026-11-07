@@ -241,7 +241,7 @@ test("a failed shared file never falls back to configured search sources, includ
     includeFiles: true,
   });
   const job = downloadTracker
-    .getByPlaylistType("offline-files")
+    .getByPlaylistType("library")
     .find((entry) => entry.trackName === "Shared");
   assert.ok(job);
   const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);
@@ -326,7 +326,7 @@ for (const format of ["wav", "m4a"]) {
       includeFiles: true,
     });
     const job = downloadTracker
-      .getByPlaylistType(`download-file-${format}`)
+      .getByPlaylistType("library")
       .find((entry) => entry.trackName === `Shared ${format}`);
     assert.ok(job);
     const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);

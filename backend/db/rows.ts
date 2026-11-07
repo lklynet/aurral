@@ -122,6 +122,7 @@ export interface DownloadJobsRow {
   external_path: string | null;
   album_grab_failures: number;
   reused_library_file: number;
+  added_by: string | null;
   managed_by: string | null;
   request_group_id: string | null;
 }

@@ -1,7 +1,6 @@
 import { audioContentType } from "./audioFileStream.ts";
+import { playlistJobEntries, staticPlaylistJobs } from "./playlists/playlistJobs.ts";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
@@ -29,16 +28,10 @@ import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { StaticPlaylist, StaticPlaylistUpdates } from "./playlists/flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlists/playlistTracks.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
-import {
-  normalizePlaylistTrack,
-  playlistJobEntries,
-  tracksShareMembership,
-} from "./playlists/playlistTracks.ts";
+import { normalizePlaylistTrack, tracksShareMembership } from "./playlists/playlistTracks.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { getPlaylistArtworkRevisions, getPlaylistArtworkState } from "./playlistArtworkState.ts";
-import { downloadWorker } from "./downloadJobs/downloadWorker.ts";
 import { hasPermission } from "../middleware/auth.ts";
-import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import type {
   LibraryAlbum,
@@ -55,25 +48,18 @@ import type {
   SubsonicStarsRow,
 } from "../db/rows.ts";
 import { libraryNameKey, subsonicId as idFor } from "./libraryMediaStore.ts";
-import { asAppError } from "../../lib/errors.ts";
-import { logger } from "./logger.ts";
 import { buildRadio, type RadioSeed } from "./radio.ts";
 import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withLock } from "./jobs/queue.ts";
-import {
-  adoptFileIntoPlaylist,
-  jobDownloadedItsFile,
-  removePlaylistFileIfUnshared,
-} from "./downloadJobs/fileReuse.ts";
-import { outsideDownloadLocks, withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
-import { transferDownloadOwnershipInTransaction } from "./downloadJobs/downloadOwnership.ts";
-import {
-  isDownloadJobCancelled,
-  restoreDownloadJobCancellations,
-} from "./downloadJobs/downloadCancellation.ts";
+import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
 import { processPlaylistOperation } from "./playlists/playlistOperations.ts";
-import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
+import {
+  discardLibraryJobs,
+  keepSongsInLibrary,
+  linkTracksToLibrary,
+  releaseLibraryJobs,
+} from "./playlists/playlistLibrary.ts";
 import { getCachedArtistByMbid } from "./providers/brainzmashProvider.ts";
 import {
   getCustomArtwork,
@@ -1110,30 +1096,6 @@ const resolveSubsonicTrack = (user: SubsonicUser, value: string) => {
 
 const favoriteAutoKeepEnabled = () => dbOps.getSettings()?.subsonic?.favoriteAutoKeep !== false;
 
-const findLibraryJob = (track: PlaylistTrackInput) => {
-  const jobs = downloadTracker
-    .getAll()
-    .filter((job) => job.playlistType === "library" && isSameTrack(job, track));
-  return (
-    jobs.find((job) => job.status === "pending" || job.status === "downloading") ||
-    jobs.find((job) => job.status === "done") ||
-    jobs.find((job) => job.status === "failed") ||
-    null
-  );
-};
-
-const findReusableLibrarySource = (track: PlaylistTrackInput) =>
-  downloadTracker
-    .getAll()
-    .find(
-      (job) =>
-        job?.playlistType !== "library" &&
-        job?.status === "done" &&
-        typeof job.finalPath === "string" &&
-        existsSync(job.finalPath) &&
-        isSameTrack(job, track),
-    );
-
 // Resolve playlist track descriptors to available library tracks. All descriptors of a batch are
 // looked up in one library query (by recording MBID and by title), then matched in memory with
 // the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
@@ -1208,7 +1170,10 @@ const deletePlaylistSongStarsStmt = db.prepare<[string, string]>(
 
 export function keepPlaylistStarsInLibrary(playlistId: string) {
   const kind = playlistSongKind(playlistId);
-  const jobs = downloadTracker.getByPlaylistId(playlistId);
+  const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
+  const jobs = playlist
+    ? staticPlaylistJobs(playlist)
+    : downloadTracker.getByPlaylistId(playlistId);
   const owned = resolveLibraryTracks(jobs.map(trackFromJob));
   db.transaction(() => {
     jobs.forEach((job, index) => {
@@ -1240,93 +1205,6 @@ const libraryStarRows = <T extends StarKey>(user: SubsonicUser, rows: T[]) => {
   });
 };
 
-const moveFlowFileToLibrary = (source: DownloadJob, track: PlaylistTrack) => {
-  const flowId = source.playlistType;
-  if (!source.finalPath || !flowPlaylistConfig.getFlow(flowId)) return;
-  const sourcePath = source.finalPath;
-  outsideDownloadLocks(() =>
-    withPlaylistMutationLock([flowId, "library"], async () => {
-      const libraryPath = await adoptFileIntoPlaylist(
-        sourcePath,
-        "library",
-        downloadWorker.downloadRoot,
-        { track },
-      );
-      if (!libraryPath || libraryPath === path.resolve(sourcePath)) return;
-      const sharing = downloadTracker
-        .getAll()
-        .filter((job) => job.finalPath === libraryPath && job.playlistType !== "library")
-        .map((job) => job.playlistType);
-      playlistManager.requestPlaylistSync([...new Set([flowId, ...sharing])]);
-      playlistManager.scheduleScanLibrary();
-    }),
-  ).catch((error) => {
-    logger.error("subsonic", "Could not move a kept flow track into the Library", {
-      jobId: source.id,
-      reason: asAppError(error)?.message,
-    });
-  });
-};
-
-const ensureLibraryJob = (track: PlaylistTrack, createdJobIds: string[] | null = null) => {
-  const existing = findLibraryJob(track);
-  if (existing) {
-    if (existing.status === "failed") {
-      downloadTracker.setPending(existing.id, "Requested again", { asRetryCycle: true });
-    }
-    if (existing.status !== "done") {
-      downloadWorker.start().catch((error) => {
-        logger.error("subsonic", "Could not start download for a playlist track", {
-          jobId: existing.id,
-          reason: error?.message || String(error),
-        });
-      });
-    }
-    return existing.id;
-  }
-
-  const jobId = downloadTracker.addJob(track, "library");
-  if (!jobId) return null;
-  if (createdJobIds) createdJobIds.push(jobId);
-  const owned = findAvailableLibraryTrack(track);
-  if (owned?.file) {
-    downloadTracker.setDone(jobId, owned.file.path, owned.albumName || track.albumName || null);
-    return jobId;
-  }
-  const reusableSource = findReusableLibrarySource(track);
-  if (reusableSource) {
-    downloadTracker.setDone(
-      jobId,
-      reusableSource.finalPath!,
-      reusableSource.albumName || track.albumName || null,
-      reusableSource.externalPath || null,
-    );
-    moveFlowFileToLibrary(reusableSource, track);
-    return jobId;
-  }
-  recordTrackJobQueued(downloadTracker.getJob(jobId));
-  downloadWorker.start().catch((error) => {
-    logger.error("subsonic", "Could not start download for a playlist track", {
-      jobId,
-      reason: error?.message || String(error),
-    });
-  });
-  return jobId;
-};
-
-const toLibraryPlaylistTrack = (
-  track: PlaylistTrack,
-  canonicalJobId: string | null | undefined,
-) => ({
-  ...track,
-  canonicalJobId: String(canonicalJobId || "").trim() || null,
-});
-
-const cancelLegacyPlaylistJobs = async (jobs: DownloadJob[]) => {
-  if (jobs.length === 0) return;
-  await cancelDownloadWorkForJobs(jobs);
-};
-
 const refreshSubsonicPlaylist = (playlistId: string) => {
   playlistManager.requestPlaylistSync([playlistId]);
   playlistManager.scheduleScanLibrary();
@@ -1337,112 +1215,35 @@ const normalizeStaticPlaylistId = (value: unknown) => {
   return parsed?.kind === "shared" ? parsed.key : String(value || "").trim();
 };
 
-const linkPlaylistTracksToLibrary = (
-  tracks: PlaylistTrackInput[],
-  createdJobIds: string[] | null = null,
-) => {
-  const normalized = [];
-  for (const track of Array.isArray(tracks) ? tracks : []) {
-    const candidate = normalizePlaylistTrack(track);
-    if (!candidate) continue;
-    const existingJob = candidate.canonicalJobId
-      ? downloadTracker.getJob(candidate.canonicalJobId)
-      : null;
-    const jobId =
-      existingJob && isSameTrack(existingJob, candidate)
-        ? existingJob.id
-        : ensureLibraryJob(candidate, createdJobIds);
-    if (!jobId) return null;
-    normalized.push(toLibraryPlaylistTrack(candidate, jobId));
-  }
-  return normalized;
-};
-
 const replaceSubsonicPlaylistTracks = async (
   user: SubsonicUser,
   playlist: StaticPlaylist,
   tracks: PlaylistTrackInput[],
   updates: StaticPlaylistUpdates = {},
-  removedJobIds: Set<string> = new Set(),
 ) => {
   if (!playlist || !flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) return null;
-  const createdJobIds: string[] = [];
-  const libraryTracks = linkPlaylistTracksToLibrary(tracks, createdJobIds);
-  if (!libraryTracks) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    return null;
-  }
-  const retainedJobIds = new Set(
-    libraryTracks.map((track) => String(track.canonicalJobId || "").trim()).filter(Boolean),
+  const linked = await linkTracksToLibrary(
+    tracks.map(normalizePlaylistTrack).filter((track) => track !== null),
+    { addedBy: playlist.id },
   );
-  const releasedJobs = downloadTracker
-    .getByPlaylistId(playlist.id)
-    .filter((job) => !retainedJobIds.has(job.id));
-  const isRemovedSongFile = (job: DownloadJob) =>
-    removedJobIds.has(job.id) && job.playlistType === playlist.id && isPlayableJob(job);
-  const jobsToLibrary = releasedJobs.filter(isRemovedSongFile);
-  const jobsToRemove = releasedJobs.filter((job) => !isRemovedSongFile(job));
-  const jobIdsToRemove = jobsToRemove.map((job) => job.id);
-  const activeJobsToRemove = jobsToRemove.filter((job) => !isDownloadJobCancelled(job.id));
-  const restoreLegacyJobs = () => {
-    restoreDownloadJobCancellations(activeJobsToRemove.map((job) => job.id));
-    for (const job of activeJobsToRemove) {
-      if (downloadTracker.getJob(job.id)?.status === "downloading") {
-        downloadTracker.setFailed(job.id, "Playlist edit failed during download cancellation");
-      }
-    }
-  };
-  let updated;
-  try {
-    await cancelLegacyPlaylistJobs(jobsToRemove);
-    updated = await withPlaylistMutationLock(playlist.id, async () => {
-      const redirects: NonNullable<Parameters<typeof downloadTracker.reconcileCommittedJobs>[0]> =
-        [];
-      const replacement = db.transaction(() => {
-        if (!flowPlaylistConfig.getStaticPlaylist(playlist.id)) return null;
-        for (const job of jobsToLibrary) {
-          if (downloadTracker.getJob(job.id)?.playlistType !== playlist.id) continue;
-          redirects.push(transferDownloadOwnershipInTransaction(job.id, "library"));
-        }
-        return flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
-          ...updates,
-          tracks: libraryTracks,
-        });
-      })();
-      if (!replacement) return null;
-      if (redirects.length) downloadTracker.reconcileCommittedJobs(redirects);
-      for (const job of jobsToRemove) {
-        const current = downloadTracker.getJob(job.id);
-        if (!current) continue;
-        if (jobDownloadedItsFile(current)) {
-          try {
-            await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
-              downloadRoot: playlistManager.downloadRoot,
-              excludeJobIds: jobIdsToRemove,
-              deleteIfUnshared: true,
-            });
-          } catch (error) {
-            logger.warn("subsonic", "Kept a stale playlist file after cleanup failed", {
-              playlistId: playlist.id,
-              jobId: current.id,
-              reason: asAppError(error)?.message || String(error),
-            });
-          }
-        }
-        downloadTracker.removeJob(current.id);
-      }
-      return replacement;
+  let removedJobIds: (string | undefined)[] = [];
+  const updated = await withPlaylistMutationLock(playlist.id, () => {
+    const current = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+    if (!current) return null;
+    const kept = new Set(linked.tracks.map((track) => track.canonicalJobId));
+    removedJobIds = current.tracks
+      .map((track) => track.canonicalJobId)
+      .filter((jobId) => !kept.has(jobId));
+    return flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+      ...updates,
+      tracks: linked.tracks,
     });
-  } catch (error) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    restoreLegacyJobs();
-    throw error;
-  }
+  });
   if (!updated) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    restoreLegacyJobs();
+    await discardLibraryJobs(linked.createdJobIds);
     return null;
   }
+  await releaseLibraryJobs(playlist.id, removedJobIds);
   refreshSubsonicPlaylist(playlist.id);
   return updated;
 };
@@ -1527,42 +1328,14 @@ export async function updateSubsonicPlaylist(
           });
     const resolvedAdds = (songIds ?? songIdsToAdd).map((id) => resolveSubsonicTrack(user, id));
     if (!resolvedAdds.every((entry) => entry !== null)) return null;
-    const removedJobIds = new Set(removedEntries.map(({ job }) => job.id));
-    const pairedJobs = new Map(
-      entries
-        .filter(({ trackIndex }) => trackIndex >= 0)
-        .map(({ job, trackIndex }) => [trackIndex, job]),
-    );
+    const removedIndexes = new Set(removedEntries.map(({ trackIndex }) => trackIndex));
     const keptTracks =
-      songIds !== undefined
-        ? []
-        : playlist.tracks.flatMap((track, index) => {
-            const job = pairedJobs.get(index);
-            const jobId = job?.id ?? track.canonicalJobId;
-            if (jobId !== undefined && removedJobIds.has(jobId)) return [];
-            return [
-              track.canonicalJobId !== undefined && removedJobIds.has(track.canonicalJobId)
-                ? { ...track, canonicalJobId: job!.id }
-                : track,
-            ];
-          });
-    const keptUnpairedTracks = visibleEntries
-      .filter(({ job, trackIndex }) => trackIndex < 0 && !removedJobIds.has(job.id))
-      .map(({ job }) => ({ ...trackFromJob(job), canonicalJobId: job.id }));
-    const nextTracks = [
-      ...keptTracks,
-      ...keptUnpairedTracks,
-      ...resolvedAdds.map((entry) => {
-        const job = "job" in entry ? entry.job : undefined;
-        return job?.playlistType === playlist.id
-          ? { ...entry.track, canonicalJobId: job.id }
-          : entry.track;
-      }),
-    ];
+      songIds !== undefined ? [] : playlist.tracks.filter((_, index) => !removedIndexes.has(index));
+    const nextTracks = [...keptTracks, ...resolvedAdds.map((entry) => entry.track)];
     const updates: StaticPlaylistUpdates = {};
     if (name !== undefined) updates.name = String(name || "").trim();
     if (comment !== undefined) updates.description = String(comment || "").trim() || null;
-    return replaceSubsonicPlaylistTracks(user, playlist, nextTracks, updates, removedJobIds);
+    return replaceSubsonicPlaylistTracks(user, playlist, nextTracks, updates);
   });
 }
 
@@ -1589,7 +1362,7 @@ export function star(user: SubsonicUser, value: string) {
   return starMany(user, [value]);
 }
 
-export function starMany(
+export async function starMany(
   user: SubsonicUser,
   values: string[],
   { skipLibraryValidation = false }: { skipLibraryValidation?: boolean } = {},
@@ -1618,15 +1391,15 @@ export function starMany(
   )
     return false;
   if (favoriteAutoKeepEnabled()) {
-    const createdJobIds: string[] = [];
-    for (const entry of playlistSongs.filter((song): song is NonNullable<typeof song> =>
-      Boolean(song),
-    )) {
-      if (!ensureLibraryJob(entry.track, createdJobIds)) {
-        for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-        return false;
-      }
+    const linked = await linkTracksToLibrary(
+      playlistSongs.flatMap((song) => (song ? [song.track] : [])),
+      { addedBy: null },
+    );
+    if (linked.tracks.some((track) => !track.canonicalJobId)) {
+      await discardLibraryJobs(linked.createdJobIds);
+      return false;
     }
+    keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
   }
   const addStars = db.transaction(() => {
     let changed = false;

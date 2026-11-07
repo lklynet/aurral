@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { staticPlaylistJobs } from "../playlists/playlistJobs.ts";
 import { db } from "../../config/db-sqlite.ts";
 import type { LibraryTracksRow } from "../../db/rows.ts";
 import {
@@ -142,11 +143,10 @@ export async function importShare(payload: Record<string, unknown>) {
     manifest.kind === "playlist"
       ? flowPlaylistConfig.getStaticPlaylist(String(payload.playlistId))
       : null;
-  const ownerId =
-    playlist?.id || (manifest.kind === "playlist" ? String(payload.playlistId) : "library");
+  const playlistId = manifest.kind === "playlist" ? String(payload.playlistId) : null;
   const jobIds: string[] = [];
   if (manifest.kind === "playlist" && playlist) {
-    for (const job of downloadTracker.getByPlaylistType(playlist.id)) {
+    for (const job of staticPlaylistJobs(playlist)) {
       if (job.status === "pending" && getShareDownload(job.id))
         downloadTracker.enqueueDownloadPipeline(job.id);
     }
@@ -185,9 +185,11 @@ export async function importShare(payload: Record<string, unknown>) {
         : findSharedTrack(remote?.files?.tracks || [], track);
       if (manifest.kind !== "playlist" && (!file?.path || findQueuedLibraryTrackJob(input)))
         return input;
-      const jobId = downloadTracker.addJob(input, ownerId);
-      if (!jobId) throw new Error("The shared track is incomplete.");
       const local = localFiles[index];
+      const jobId = downloadTracker.addJob(input, "library", {
+        addedBy: local ? null : playlistId,
+      });
+      if (!jobId) throw new Error("The shared track is incomplete.");
       if (local)
         downloadTracker.setDone(jobId, local.path, track.albumTitle, null, {
           reusedLibraryFile: true,
@@ -212,7 +214,7 @@ export async function importShare(payload: Record<string, unknown>) {
     for (let copy = 2; names.has(name.toLowerCase()); copy += 1)
       name = `${requestedName} (${copy})`;
     playlist = flowPlaylistConfig.createStaticPlaylist({
-      id: ownerId,
+      id: String(payload.playlistId),
       name,
       ownerUserId: owner.id,
       sourceName: "Aurral share",

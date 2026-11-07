@@ -32,7 +32,8 @@ const [
   lastfmStationsModule,
   youtubeMusicPlaylistsModule,
   { api },
-  { orderJobsByPlaylistTracks, rebuildStaticPlaylistTracksFromJobs },
+  { staticPlaylistJobs },
+  { orderJobsByPlaylistTracks },
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -52,17 +53,14 @@ const [
   () => import("../../backend/services/importLists/lastfmStations.ts"),
   () => import("../../backend/services/importLists/youtubeMusicPlaylists.ts"),
   () => import("../../backend/routes/api.ts"),
+  () => import("../../backend/services/playlists/playlistJobs.ts"),
   () => import("../../backend/services/playlists/playlistTracks.ts"),
 );
 
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
-const {
-  appendStaticPlaylistTracks,
-  markLatestPlaylistOperationToken,
-  processPlaylistOperation,
-  updateStaticPlaylist,
-} = operationsModule;
+const { markLatestPlaylistOperationToken, processPlaylistOperation, updateStaticPlaylist } =
+  operationsModule;
 const { downloadWorker, DownloadWorker } = workerModule;
 assert.ok(downloadWorker instanceof DownloadWorker);
 const { flowTrackSource } = flowTrackSourceModule;
@@ -239,11 +237,22 @@ beforeEach(async () => {
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-const addJob = (track: Parameters<typeof downloadTracker.addJob>[0], playlistType: string) => {
-  const jobId = downloadTracker.addJob(track, playlistType);
+const libraryJob = (track: Parameters<typeof downloadTracker.addJob>[0], addedBy?: string) => {
+  const jobId = downloadTracker.addJob(track, "library", { addedBy });
   assert.ok(jobId);
   return jobId;
 };
+
+const linkTracks = <T extends Parameters<typeof downloadTracker.addJob>[0]>(
+  tracks: T[],
+  addedBy?: string,
+) => tracks.map((track) => ({ ...track, canonicalJobId: libraryJob(track, addedBy) }));
+
+const playlistJobs = (playlistId: string) =>
+  staticPlaylistJobs(requireFixture(flowPlaylistConfig.getStaticPlaylist(playlistId)));
+
+const appendTracks = (playlistId: string, tracks: object[]) =>
+  processPlaylistOperation({ kind: "static-playlist-append-tracks", playlistId, tracks });
 
 const importSourceOf = (playlistId: string) => {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
@@ -486,25 +495,6 @@ test("orderJobsByPlaylistTracks follows config order over createdAt", () => {
   );
 });
 
-test("rebuildStaticPlaylistTracksFromJobs keeps remaining config order", () => {
-  const tracks = [
-    { artistName: "A", trackName: "One", albumName: "Album" },
-    { artistName: "B", trackName: "Two", albumName: "Album" },
-    { artistName: "C", trackName: "Three", albumName: "Album" },
-    { artistName: "D", trackName: "Four", albumName: "Album" },
-  ];
-  const jobs = [
-    { id: "10", createdAt: 40, ...tracks[3] },
-    { id: "11", createdAt: 10, ...tracks[0] },
-    { id: "12", createdAt: 30, ...tracks[2] },
-  ];
-  const remaining = rebuildStaticPlaylistTracksFromJobs(tracks, jobs);
-  assert.deepEqual(
-    remaining.map((track) => track.trackName),
-    ["One", "Three", "Four"],
-  );
-});
-
 test("mixed reuse seeding keeps import job order", async () => {
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => {};
@@ -537,19 +527,13 @@ test("mixed reuse seeding keeps import job order", async () => {
       tracks: [],
     });
     const imported = [reusableA, missingB, reusableC, missingD];
-    const result = await appendStaticPlaylistTracks({
-      playlistId: playlist.id,
-      tracks: imported,
-    });
-    assert.ok(result != null);
+    const result = await appendTracks(playlist.id, imported);
+    assert.ok(result != null && typeof result === "object" && "tracksReused" in result);
 
     assert.equal(result.tracksReused, 2);
     assert.equal(result.tracksQueued, 2);
 
-    const jobs = orderJobsByPlaylistTracks(
-      downloadTracker.getByPlaylistType(playlist.id),
-      requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks,
-    );
+    const jobs = playlistJobs(playlist.id);
     assert.deepEqual(
       jobs.map((job) => `${job.artistName}:${job.trackName}:${job.status}`),
       [
@@ -902,15 +886,9 @@ test("deleting a track keeps remaining import order in config", async () => {
       name: "Delete Order",
       tracks: [],
     });
-    await appendStaticPlaylistTracks({
-      playlistId: playlist.id,
-      tracks,
-    });
+    await appendTracks(playlist.id, tracks);
 
-    const jobsBefore = orderJobsByPlaylistTracks(
-      downloadTracker.getByPlaylistType(playlist.id),
-      requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks,
-    );
+    const jobsBefore = playlistJobs(playlist.id);
     const removedJobId = requireFixture(jobsBefore[1]).id;
 
     const deleted = await processPlaylistOperation({
@@ -928,10 +906,7 @@ test("deleting a track keeps remaining import order in config", async () => {
       ["One", "Three", "Four"],
     );
 
-    const jobsAfter = orderJobsByPlaylistTracks(
-      downloadTracker.getByPlaylistType(playlist.id),
-      updated.tracks,
-    );
+    const jobsAfter = playlistJobs(playlist.id);
     assert.deepEqual(
       jobsAfter.map((job) => job.trackName),
       ["One", "Three", "Four"],
@@ -951,9 +926,11 @@ test("replacing a static playlist removes Spotify tracks and honors file retenti
       trackName: "Removed",
       albumName: "Album",
     };
+    const keepTracks = linkTracks([track], "keep");
     const keepPlaylist = flowPlaylistConfig.createStaticPlaylist({
+      id: "keep",
       name: "Keep Removed",
-      tracks: [track],
+      tracks: keepTracks,
       importSource: {
         provider: "spotify-playlist",
         externalId: "keep-id",
@@ -964,9 +941,7 @@ test("replacing a static playlist removes Spotify tracks and honors file retenti
     await fs.mkdir(downloadRoot, { recursive: true });
     const keepPath = path.join(downloadRoot, "keep-removed.flac");
     await fs.writeFile(keepPath, "audio");
-    const keepJobId = downloadTracker.addJob(track, keepPlaylist.id);
-    assert.ok(keepJobId != null);
-    downloadTracker.setDone(keepJobId, keepPath, track.albumName);
+    downloadTracker.setDone(keepTracks[0]!.canonicalJobId, keepPath, track.albumName);
 
     await updateStaticPlaylist({
       playlistId: keepPlaylist.id,
@@ -981,9 +956,11 @@ test("replacing a static playlist removes Spotify tracks and honors file retenti
     );
     await fs.access(keepPath);
 
+    const deleteTracks = linkTracks([track], "delete");
     const deletePlaylist = flowPlaylistConfig.createStaticPlaylist({
+      id: "delete",
       name: "Delete Removed",
-      tracks: [track],
+      tracks: deleteTracks,
       importSource: {
         provider: "spotify-playlist",
         externalId: "delete-id",
@@ -994,9 +971,7 @@ test("replacing a static playlist removes Spotify tracks and honors file retenti
     });
     const deletePath = path.join(downloadRoot, "delete-removed.flac");
     await fs.writeFile(deletePath, "audio");
-    const deleteJobId = downloadTracker.addJob(track, deletePlaylist.id);
-    assert.ok(deleteJobId != null);
-    downloadTracker.setDone(deleteJobId, deletePath, track.albumName);
+    downloadTracker.setDone(deleteTracks[0]!.canonicalJobId, deletePath, track.albumName);
 
     await updateStaticPlaylist({
       playlistId: deletePlaylist.id,
@@ -1023,9 +998,10 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
     trackName,
     albumName: "Album",
   }));
+  const linked = linkTracks(tracks);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
-    tracks,
+    tracks: linked,
     importSource: {
       provider: "deezer-playlist",
       externalId: "123",
@@ -1034,7 +1010,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
       keepRemovedTracks: true,
     },
   });
-  const [doneId, queuedId, heldId, failedId] = tracks.map((track) => addJob(track, playlist.id));
+  const [doneId, queuedId, heldId, failedId] = linked.map((track) => track.canonicalJobId);
   assert.ok(doneId && queuedId && heldId && failedId);
   downloadTracker.setDone(doneId, path.join(downloadRoot, "done.flac"), "Album");
   downloadTracker.setBlocked(heldId, "Held for review");
@@ -1058,9 +1034,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
   assert.equal(updated.importSource?.keepRemovedTracks, false);
   assert.equal(updated.tracks.length, 4);
   assert.deepEqual(
-    Object.fromEntries(
-      downloadTracker.getByPlaylistType(playlist.id).map((job) => [job.id, job.status]),
-    ),
+    Object.fromEntries(playlistJobs(playlist.id).map((job) => [job.id, job.status])),
     {
       [doneId]: "done",
       [queuedId]: "pending",
@@ -1088,10 +1062,23 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     };
     const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
     const retitled = { artistName: "Artist", trackName: "Retitled", albumName: "Album" };
+    const [pendingJobId, completedJobId, removedJobId, retitledJobId] = [
+      pending,
+      completed,
+      removed,
+      retitled,
+    ].map((track) => libraryJob(track, "retention"));
+    assert.ok(completedJobId && retitledJobId);
     const playlist = flowPlaylistConfig.createStaticPlaylist({
+      id: "retention",
       name: "Imported Job Retention",
       ownerUserId: 7,
-      tracks: [pending, completed, removed, retitled],
+      tracks: [
+        { ...pending, canonicalJobId: pendingJobId },
+        { ...completed, canonicalJobId: completedJobId },
+        { ...removed, canonicalJobId: removedJobId },
+        { ...retitled, canonicalJobId: retitledJobId },
+      ],
       importSource: {
         provider: "spotify-playlist",
         externalId: "imported-id",
@@ -1099,16 +1086,10 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
         syncIntervalHours: 24,
       },
     });
-    const pendingJobId = downloadTracker.addJob(pending, playlist.id);
-    const completedJobId = downloadTracker.addJob(completed, playlist.id);
-    assert.ok(completedJobId != null);
     await fs.mkdir(downloadRoot, { recursive: true });
     const completedPath = path.join(downloadRoot, "imported-retained-completed.flac");
     await fs.writeFile(completedPath, "audio");
     downloadTracker.setDone(completedJobId, completedPath, completed.albumName);
-    const removedJobId = downloadTracker.addJob(removed, playlist.id);
-    const retitledJobId = downloadTracker.addJob(retitled, playlist.id);
-    assert.ok(retitledJobId != null);
     downloadTracker.updateMetadata(retitledJobId, { albumName: "Album (Deluxe Edition)" });
     downloadTracker.setDone(retitledJobId, completedPath, "Album (Deluxe Edition)");
 
@@ -1131,9 +1112,7 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
     await fs.access(completedPath);
     assert.equal(downloadTracker.getJob(removedJobId), null);
-    assert.ok(
-      downloadTracker.getByPlaylistType(playlist.id).some((job) => job.trackName === "New"),
-    );
+    assert.ok(playlistJobs(playlist.id).some((job) => job.trackName === "New"));
   } finally {
     downloadWorker.start = originalStart;
     downloadWorker.stop();
@@ -1181,7 +1160,9 @@ test("ListenBrainz sync uses the shared import update path", async () => {
     assert.ok(syncedTracks[0]?.membershipId);
     assert.notEqual(syncedTracks[0].membershipId, requireFixture(playlist.tracks[0]).membershipId);
     assert.deepEqual(
-      syncedTracks.map(({ membershipId: _membershipId, ...track }) => track),
+      syncedTracks.map(
+        ({ membershipId: _membershipId, canonicalJobId: _jobId, ...track }) => track,
+      ),
       [
         {
           artistName: "New Artist",
@@ -1211,9 +1192,9 @@ test("ListenBrainz sync uses the shared import update path", async () => {
             disc_number: import("../../backend/db/rows.ts").DownloadJobsRow["disc_number"];
           }
         >(
-          "SELECT track_name, release_mbid, track_number, disc_number FROM download_jobs WHERE owner_type = ?",
+          "SELECT track_name, release_mbid, track_number, disc_number FROM download_jobs WHERE id = ?",
         )
-        .all(playlist.id),
+        .all(syncedTracks[0].canonicalJobId),
       [{ track_name: "New Song", release_mbid: releaseMbid, track_number: 3, disc_number: 2 }],
     );
     const completed = info.mock.calls.find((call) => call[1] === "Playlist import sync completed");
@@ -1487,10 +1468,12 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
       trackName: "Removed",
       albumName: "Album",
     };
+    const [linked] = linkTracks([track], "pending-retention");
     const playlist = flowPlaylistConfig.createStaticPlaylist({
+      id: "pending-retention",
       name: "Pending Retention",
       ownerUserId: 7,
-      tracks: [track],
+      tracks: [requireFixture(linked)],
       importSource: {
         provider: "spotify-playlist",
         externalId: "pending-id",
@@ -1501,9 +1484,7 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
     await fs.mkdir(downloadRoot, { recursive: true });
     const finalPath = path.join(downloadRoot, "pending-retention.flac");
     await fs.writeFile(finalPath, "audio");
-    const jobId = downloadTracker.addJob(track, playlist.id);
-    assert.ok(jobId != null);
-    downloadTracker.setDone(jobId, finalPath, track.albumName);
+    downloadTracker.setDone(requireFixture(linked).canonicalJobId, finalPath, track.albumName);
 
     let resolveSpotifyTracks!: (value: never[]) => void;
     spotifyClient.listPlaylistTracks = () =>
@@ -1557,10 +1538,12 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
       trackName: "Cleanup",
       albumName: "Album",
     };
+    const [linked] = linkTracks([track], "serialized-retention");
     const playlist = flowPlaylistConfig.createStaticPlaylist({
+      id: "serialized-retention",
       name: "Serialized Retention",
       ownerUserId: 7,
-      tracks: [track],
+      tracks: [requireFixture(linked)],
       importSource: {
         provider: "spotify-playlist",
         externalId: "serialized-id",
@@ -1572,9 +1555,7 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
     await fs.mkdir(downloadRoot, { recursive: true });
     const finalPath = path.join(downloadRoot, "serialized-retention.flac");
     await fs.writeFile(finalPath, "audio");
-    const jobId = downloadTracker.addJob(track, playlist.id);
-    assert.ok(jobId != null);
-    downloadTracker.setDone(jobId, finalPath, track.albumName);
+    downloadTracker.setDone(requireFixture(linked).canonicalJobId, finalPath, track.albumName);
 
     spotifyClient.listPlaylistTracks = async () => [];
     fs.rm = async (...args) => {

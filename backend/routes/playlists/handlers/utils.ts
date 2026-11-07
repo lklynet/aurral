@@ -1,6 +1,5 @@
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { DEFAULT_FLOW_SIZE } from "../../../../lib/flows.ts";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import {
@@ -9,10 +8,6 @@ import {
   markLatestPlaylistOperationToken,
   restorePlaylistOperationToken,
 } from "../../../services/playlists/playlistOperations.ts";
-import {
-  restartWorkerIfPending,
-  withPlaylistMutation,
-} from "../../../services/downloadJobs/mutationGuards.ts";
 import { splitFlowTotal } from "../../../../lib/flows.ts";
 import { logger } from "../../../services/logger.ts";
 import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.ts";
@@ -114,20 +109,6 @@ export const restoreFlowMutationToken = (mutation: FlowMutation) =>
     previousToken: mutation?.previousToken,
   });
 
-export const pauseStaticPlaylistRetryCycle = async (playlistId: string) => {
-  await downloadWorker.setRetryCyclePaused(playlistId, true);
-  let cancelledJobs = 0;
-  await withPlaylistMutation(playlistId, async () => {
-    cancelledJobs = downloadTracker.failActiveJobsForPlaylist(playlistId, "Retry cycle paused");
-  });
-  if (downloadWorker.running) {
-    downloadWorker.wake();
-  } else {
-    await restartWorkerIfPending();
-  }
-  return cancelledJobs;
-};
-
 export const getAccessibleFlow = (user: RequestUser | undefined, flowId: string) =>
   flowPlaylistConfig.getFlowForUser(user, flowId);
 
@@ -212,7 +193,7 @@ export const enqueueResearchTrack = async <E extends AppEnv>(
   }
 
   const job = downloadTracker.getJob(jobId);
-  if (!job || job.playlistType !== playlistId) {
+  if (!job || !canAccessJobThroughPlaylist(user, job, playlistId)) {
     return c.json({ error: "Track not found" }, 404);
   }
 

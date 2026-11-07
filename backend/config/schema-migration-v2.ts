@@ -474,6 +474,7 @@ function migrateJobsTable(db: Database.Database) {
     ["quality_upgrade_checked_at", "INTEGER"],
     ["upgrade_for_job_id", "TEXT"],
     ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
+    ["added_by", "TEXT"],
   ]) {
     tryAddColumn(db, `ALTER TABLE download_jobs ADD COLUMN ${name} ${type}`);
   }

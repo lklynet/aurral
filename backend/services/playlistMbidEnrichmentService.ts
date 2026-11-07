@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { staticPlaylistJobs } from "./playlists/playlistJobs.ts";
 import { playlistMbidEnrichmentQueue } from "./jobs/queues.ts";
 import {
   downloadTracker,
@@ -265,7 +266,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
       ARTIST_MBID_RECONCILIATION_VERSION;
   const jobIds = [];
   for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {
-    const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    const jobs = staticPlaylistJobs(playlist);
     const hasMissingConfig = hasMissingPlaylistMbids(playlist);
     const hasMissingJobs = (Array.isArray(playlist?.tracks) ? playlist.tracks : []).some((track) =>
       hasMissingJobMbid(track, jobs),
@@ -306,7 +307,7 @@ export async function enrichStaticPlaylistMbids(
   const snapshotPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!snapshotPlaylist) return { missing: true, changed: false };
 
-  const snapshotJobs = downloadTracker.getByPlaylistType(safePlaylistId);
+  const snapshotJobs = staticPlaylistJobs(snapshotPlaylist);
   const snapshotTracks = Array.isArray(snapshotPlaylist.tracks) ? snapshotPlaylist.tracks : [];
   const tracksExamined = snapshotTracks.length;
   let tracksResolved = 0;
@@ -383,7 +384,7 @@ export async function enrichStaticPlaylistMbids(
       });
     }
 
-    const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
+    const jobs = staticPlaylistJobs(currentPlaylist);
     let jobsUpdated = 0;
     const updatedJobIds = new Set<string>();
     for (const track of nextTracks) {

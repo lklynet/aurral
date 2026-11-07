@@ -36,26 +36,26 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+function libraryTrack(track: { artistName: string; trackName: string; albumName?: string }) {
+  const jobId = downloadTracker.addJob(track, "library");
+  assert.ok(jobId != null);
+  return { ...track, canonicalJobId: jobId };
+}
+
 test("preserves static playlist track order", async () => {
+  const second = libraryTrack({ artistName: "A", trackName: "Second", albumName: "Album" });
+  const first = libraryTrack({ artistName: "B", trackName: "First", albumName: "Album" });
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Ordered",
-    tracks: [
-      { artistName: "A", trackName: "Second", albumName: "Album" },
-      { artistName: "B", trackName: "First", albumName: "Album" },
-    ],
+    tracks: [second, first],
   });
   const secondPath = path.join(downloadRoot, "music", "second.flac");
   const firstPath = path.join(downloadRoot, "music", "first.flac");
   await fs.mkdir(path.dirname(secondPath), { recursive: true });
   await fs.writeFile(secondPath, "two");
   await fs.writeFile(firstPath, "one");
-
-  const secondJobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
-  assert.ok(secondJobId != null);
-  const firstJobId = downloadTracker.addJob(playlist.tracks[1], playlist.id);
-  assert.ok(firstJobId != null);
-  downloadTracker.setDone(secondJobId, secondPath, "Album");
-  downloadTracker.setDone(firstJobId, firstPath, "Album");
+  downloadTracker.setDone(first.canonicalJobId, firstPath, "Album");
+  downloadTracker.setDone(second.canonicalJobId, secondPath, "Album");
 
   const entries = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
   assert.deepEqual(
@@ -64,41 +64,16 @@ test("preserves static playlist track order", async () => {
   );
 });
 
-test("keeps completed tracks after metadata correction", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Corrected album",
-    tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Imported album" }],
-  });
-  const trackPath = path.join(downloadRoot, "music", "track.flac");
-  await fs.mkdir(path.dirname(trackPath), { recursive: true });
-  await fs.writeFile(trackPath, "audio");
-  const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
-  assert.ok(jobId != null);
-  downloadTracker.updateMetadata(jobId, {
-    artistName: "Resolved artist",
-    trackName: "Resolved track",
-  });
-  downloadTracker.setDone(jobId, trackPath, "Resolved album");
-
-  const entries = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
-  assert.deepEqual(
-    entries.map((entry) => entry.path),
-    [trackPath],
-  );
-});
-
 test("normalizes empty migrated names", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Migrated",
-    tracks: [{ artistName: "Artist", trackName: "Track" }],
-  });
+  const track = libraryTrack({ artistName: "Artist", trackName: "Track" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Migrated", tracks: [track] });
   const trackPath = path.join(downloadRoot, "music", "migrated.flac");
   await fs.mkdir(path.dirname(trackPath), { recursive: true });
   await fs.writeFile(trackPath, "audio");
-  const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
-  assert.ok(jobId != null);
-  downloadTracker.setDone(jobId, trackPath);
-  db.prepare("UPDATE download_jobs SET artist_name = '', track_name = ' ' WHERE id = ?").run(jobId);
+  downloadTracker.setDone(track.canonicalJobId, trackPath);
+  db.prepare("UPDATE download_jobs SET artist_name = '', track_name = ' ' WHERE id = ?").run(
+    track.canonicalJobId,
+  );
   downloadTracker._load();
 
   const tracks = await collectPlaylistFileTracks(playlist.id, { downloadRoot });

@@ -844,17 +844,20 @@ test("playlist shares play the library file an entry downloaded to", async () =>
     artistName: artist.name,
     albumName: "Mellon Collie (Deluxe Edition)",
   };
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Remasters",
-    ownerUserId: owner.id,
-    tracks: [remaster, { trackName: "Bullet", artistName: artist.name }],
-  });
-  const jobId = downloadTracker.addJob(remaster, playlist.id);
+  const jobId = downloadTracker.addJob(remaster, "library");
   assert.ok(jobId);
   downloadTracker.setDone(
     jobId,
     path.join(paths.baseDir, "music", artist.name, "Mellon Collie", "1979.flac"),
   );
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Remasters",
+    ownerUserId: owner.id,
+    tracks: [
+      { ...remaster, canonicalJobId: jobId },
+      { trackName: "Bullet", artistName: artist.name },
+    ],
+  });
   const snapshot = resolveShareManifest(
     { kind: "playlist", targetRef: playlist.id, albumRef: null },
     { kind: "playlist", title: playlist.name },
