@@ -67,7 +67,7 @@ import {
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.ts";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
-import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searchResultCache.ts";
+import { createSearchResultCache } from "./downloadJobs/searchResultCache.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trackSearchQueries.ts";
@@ -181,6 +181,7 @@ import {
   orderAdvertisedQualityCandidates,
 } from "./qualityProfileModel.ts";
 
+const searchResults = createSearchResultCache<SoulseekSearchItem>();
 const slskdClient = getDownloadClient("slskd");
 
 const updateSlskdMetaStmt = db.prepare(`
@@ -207,7 +208,7 @@ const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: 
 const STALLED_TRANSFER_MS = 30 * 60 * 1000;
 const QUEUED_TRANSFER_MS = 10 * 60 * 1000;
 const TAIL_ALBUM_TRANSFER_MS = 20 * 60 * 1000;
-const searchMonitors = createCache(10 * 60, 100);
+const searchMonitors = createCache<ReturnType<typeof slskdClient.monitorSearch>>(10 * 60, 100);
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
 const MAX_TRANSFER_RETRIES_PER_CANDIDATE = 1;
@@ -879,9 +880,7 @@ function searchMonitorFor(
   payload: SlskdPayload,
   activeSearch: NonNullable<SlskdPayload["activeSearch"]>,
 ) {
-  let monitor: ReturnType<typeof slskdClient.monitorSearch> | undefined = searchMonitors.get(
-    activeSearch.id,
-  );
+  let monitor = searchMonitors.get(activeSearch.id);
   if (!monitor) {
     monitor = slskdClient.monitorSearch(activeSearch.id, {
       startedAt: activeSearch.startedAt,
@@ -914,7 +913,7 @@ async function advanceSlskdSearch(
   const seen = new Set<string>();
   let index = Number(payload.searchQueryIndex || 0);
   for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
-    const cached = getCachedSearchResults("slskd", queries[queryIndex]);
+    const cached = searchResults.get(queries[queryIndex]);
     if (!cached) {
       index = queryIndex;
       break;
@@ -962,7 +961,7 @@ async function advanceSlskdSearch(
     }
     searchMonitors.delete(activeSearch.id);
     const results = slskdClient.flattenSearchResults(result.data);
-    cacheSearchResults("slskd", activeSearch.query, results);
+    searchResults.set(activeSearch.query, results);
     mergeSearchResults(aggregated, seen, results, searchResultKey);
     index += 1;
   }
@@ -970,7 +969,7 @@ async function advanceSlskdSearch(
   while (index < queries.length && !enough(aggregated)) {
     const query = queries[index];
     if (query === undefined) break;
-    const cached = getCachedSearchResults("slskd", query);
+    const cached = searchResults.get(query);
     if (cached) {
       mergeSearchResults(aggregated, seen, cached, searchResultKey);
       index += 1;

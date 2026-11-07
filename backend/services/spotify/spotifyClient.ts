@@ -2,7 +2,7 @@ import { asAppError } from "../../../lib/errors.ts";
 import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.ts";
 import { spotifyConnectionStore, type SpotifyConnection } from "./spotifyConnectionStore.ts";
 import createCache from "../apiClients/simpleCache.ts";
-import { runSharedInflight } from "../sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 
 interface SpotifyError extends Error {
@@ -80,10 +80,10 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
 export const SPOTIFY_LIKED_SONGS_ID = "liked";
 const INVALID_GRANT = "invalid_grant";
-const playlistTrackCache = createCache(2 * 60, 200);
-const playlistTrackInflight = new Map();
-const playlistTrackGeneration = new Map();
-const tokenRefreshInflight = new Map();
+const playlistTrackCache = createCache<(SpotifyPlaylistItem | null)[]>(2 * 60, 200);
+const playlistTrackInflight = new Map<string, Promise<(SpotifyPlaylistItem | null)[]>>();
+const playlistTrackGeneration = new Map<string, number>();
+const tokenRefreshInflight: InflightRequests = new Map();
 
 const getPlaylistTrackGeneration = (userId: number | string | undefined) =>
   playlistTrackGeneration.get(String(userId)) || 0;

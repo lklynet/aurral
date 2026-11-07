@@ -32,12 +32,12 @@ function scheduleIdleSweep(registration: CacheRegistration) {
   idleSweepTimer.unref?.();
 }
 
-export default function createCache(
+export default function createCache<Value = unknown>(
   defaultTtlSeconds = 300,
   maxEntries = 1000,
   { now = () => Date.now() } = {},
 ) {
-  const cache = new Map();
+  const cache = new Map<unknown, CacheEntry & { value: Value }>();
   const registration = { cache: new WeakRef(cache), now };
   let nextSweepAt = now() + SWEEP_INTERVAL_MS;
 
@@ -73,7 +73,7 @@ export default function createCache(
       cache.delete(key);
       return undefined;
     },
-    set(key: unknown, value: unknown, ttlSeconds = defaultTtlSeconds, staleTtlSeconds = 0) {
+    set(key: unknown, value: Value, ttlSeconds = defaultTtlSeconds, staleTtlSeconds = 0) {
       const currentTime = now();
       sweepExpired(currentTime);
       if (cache.has(key)) cache.delete(key);

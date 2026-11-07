@@ -2,7 +2,7 @@ import createCache from "./simpleCache.ts";
 import { compareRecording, MATCH_POLICY } from "../trackMatching/nativeMatcher.ts";
 import { parseYoutubeTitle, readYoutubeUpload } from "../trackMatching/youtubeEvidence.ts";
 
-export const youtubeVideoCache = createCache(24 * 3600);
+export const youtubeVideoCache = createCache<Awaited<ReturnType<typeof findVideo>>>(24 * 3600);
 const inflight = new Map<string, ReturnType<typeof findVideo>>();
 const YOUTUBE_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -106,7 +106,7 @@ export async function youtubeFindTopSongVideo(
   const title = String(trackTitle || "").trim();
   if (!artist || !title) return null;
   const key = `${artist.toLowerCase()}\0${title.toLowerCase()}`;
-  const cached: Awaited<ReturnType<typeof findVideo>> | undefined = youtubeVideoCache.get(key);
+  const cached = youtubeVideoCache.get(key);
   if (cached !== undefined) return cached;
   const existing = inflight.get(key);
   if (existing) return existing;

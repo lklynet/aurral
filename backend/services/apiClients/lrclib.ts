@@ -5,7 +5,7 @@ import createCache from "./simpleCache.ts";
 import { readOne } from "../integrationData.ts";
 
 const LRCLIB_API = "https://lrclib.net/api";
-export const lrclibCache = createCache(24 * 3600, 2000);
+export const lrclibCache = createCache<string | null>(24 * 3600, 2000);
 const lrclibInflight = new Map<string, Promise<string | null>>();
 
 const lrclibTrackSchema = v.looseObject({
@@ -33,7 +33,7 @@ export function lrclibGetLyrics({
   };
   if (!params.artist_name || !params.track_name) return Promise.resolve(null);
   const key = JSON.stringify(params).toLowerCase();
-  const cached: string | null | undefined = lrclibCache.get(key);
+  const cached = lrclibCache.get(key);
   if (cached !== undefined) return Promise.resolve(cached);
   const existing = lrclibInflight.get(key);
   if (existing) return existing;

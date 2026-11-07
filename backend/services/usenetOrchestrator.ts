@@ -21,7 +21,7 @@ import {
   selectRankedUsenetCandidates,
   type UsenetRelease,
 } from "./downloadJobs/usenetReleaseSearch.ts";
-import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searchResultCache.ts";
+import { createSearchResultCache } from "./downloadJobs/searchResultCache.ts";
 import { selectVerifiedDownloadedFile } from "./trackMatching/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
@@ -50,6 +50,7 @@ import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.
 import { attemptTrackRequest } from "./releaseManifest.ts";
 import { attemptRelease } from "./releaseResolver.ts";
 
+const searchResults = createSearchResultCache<UsenetRelease>();
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
 const MAX_TRACK_NZB_GRABS = 2;
@@ -463,7 +464,7 @@ async function advanceUsenetSearch(
   const seen = new Set();
   let index = Number(payload.searchQueryIndex || 0);
   for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
-    const cached = getCachedSearchResults("usenet", queries[queryIndex]);
+    const cached = searchResults.get(queries[queryIndex]);
     if (!cached) {
       index = queryIndex;
       break;
@@ -478,12 +479,12 @@ async function advanceUsenetSearch(
     }
     const query = queries[index];
     if (query === undefined) break;
-    let releases = getCachedSearchResults("usenet", query);
+    let releases = searchResults.get(query);
     if (!releases) {
       searched = true;
       try {
         releases = await runQuery(query);
-        cacheSearchResults("usenet", query, releases);
+        searchResults.set(query, releases);
       } catch (error) {
         searchError = asAppError(error)?.message || String(error);
         logger.warn("usenet", "Prowlarr search failed", {
@@ -492,7 +493,7 @@ async function advanceUsenetSearch(
           error: searchError,
         });
         releases = [];
-        cacheSearchResults("usenet", query, releases);
+        searchResults.set(query, releases);
       }
     }
     mergeSearchResults(aggregated, seen, releases, releaseKey);

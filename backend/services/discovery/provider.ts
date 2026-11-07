@@ -198,7 +198,7 @@ const fetchListenHistoryArtists = async (
       return {
         mbid: String(artist.mbid || "").trim() || cachedArtistGuess(artistName) || null,
         artistName,
-        playcount: parseInt(artist.playcount || 0, 10) || 0,
+        playcount: parseInt(String(artist.playcount || 0), 10) || 0,
       };
     })
     .filter((artist) => artist !== null);

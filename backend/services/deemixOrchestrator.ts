@@ -258,7 +258,7 @@ async function searchDeemixAlbum(
 ) {
   const jobs = albumGrabJobs(payload);
   const { wanted } = mapRequest(manifest, jobs);
-  if (wanted.size === 0)
+  if (!manifest || wanted.size === 0)
     return helpers.failOrTryNextSource(payload, job, "No wanted track is on the requested release");
   const denied = deniedAlbumSources([job, ...jobs], "deemix");
   const checked = new Set();

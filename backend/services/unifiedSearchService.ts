@@ -30,7 +30,7 @@ const SONG_WINDOW = 10;
 const CATALOG_PLAYLIST_LIMIT = 12;
 const MIN_USER_PLAYLIST_TRACKS = 20;
 
-const catalogCache = createCache(60, 200);
+const catalogCache = createCache<Catalog>(60, 200);
 
 type ProviderArtist = Awaited<ReturnType<typeof searchArtists>>["items"][number];
 type ProviderAlbum = Awaited<ReturnType<typeof searchAlbums>>["items"][number];
@@ -350,7 +350,7 @@ export async function searchUnified(
     status,
     ...withLibraryArtists(catalog, perBucket),
   });
-  const cached: Catalog | undefined = catalogCache.get(query);
+  const cached = catalogCache.get(query);
   if (cached) return respond(cached);
   const result = query ? await searchCatalog(query, signal) : null;
   if (!result) return respond({ top: null, artists: [], albums: [], tracks: [] });

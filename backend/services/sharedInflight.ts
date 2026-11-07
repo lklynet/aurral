@@ -4,27 +4,23 @@ const createAbortError = () => {
   return error;
 };
 
-type InflightEntry<T> = {
+type InflightEntry = {
   controller: AbortController;
   consumers: Set<object>;
   settled: boolean;
-  promise: Promise<Awaited<T>> | null;
+  promise: Promise<unknown> | null;
 };
+
+export type InflightRequests = Map<string, InflightEntry>;
 
 const getAbortReason = (signal: AbortSignal | undefined) => signal?.reason || createAbortError();
 
-export const runSharedInflight = <K, T>(
-  inflight: Map<K, InflightEntry<T>>,
-  key: K,
+export const runSharedInflight = <T>(
+  inflight: InflightRequests,
+  key: string,
   task: (signal: AbortSignal) => T,
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<Awaited<T>> => {
-  if (!(inflight instanceof Map)) {
-    throw new TypeError("inflight must be a Map");
-  }
-  if (typeof task !== "function") {
-    throw new TypeError("task must be a function");
-  }
   if (signal?.aborted) {
     return Promise.reject(getAbortReason(signal));
   }
@@ -77,7 +73,8 @@ export const runSharedInflight = <K, T>(
       (value) => {
         if (finished) return;
         release();
-        resolve(value);
+        // A key only ever runs one kind of task, so its result has that task's type.
+        resolve(value as Awaited<T>);
       },
       (error) => {
         if (finished) return;

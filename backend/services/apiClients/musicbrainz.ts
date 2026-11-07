@@ -8,23 +8,27 @@ import {
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
 import { artistCreditSchema, musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
 import { readMany } from "../integrationData.ts";
-import { runSharedInflight } from "../sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import type { ArtistCredit } from "../../../lib/artistCredit.ts";
 
 type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
 
-const musicbrainzArtistNameCache = createCache(3600);
-const musicbrainzReleaseGroupsCache = createCache(300);
-const musicbrainzAppearsOnCache = createCache(6 * 60 * 60, 200);
-const musicbrainzTagArtistsCache = createCache(6 * 60 * 60, 200);
-const musicbrainzReleaseCreditsCache = createCache(24 * 60 * 60, 500);
+const musicbrainzArtistNameCache = createCache<string | null>(3600);
+const musicbrainzReleaseGroupsCache = createCache<ReturnType<typeof toReleaseGroup>[]>(300);
+const musicbrainzAppearsOnCache = createCache<AppearsOnScanState>(6 * 60 * 60, 200);
+const musicbrainzTagArtistsCache = createCache<{
+  total: number;
+  nextOffset: number;
+  artists: { mbid: string; name: string }[];
+}>(6 * 60 * 60, 200);
+const musicbrainzReleaseCreditsCache = createCache<Map<string, ArtistCredit>>(24 * 60 * 60, 500);
 const RELEASE_CREDITS_RETRY_SECONDS = 5 * 60;
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 const APPEARS_ON_PAGE_SIZE = 100;
 const APPEARS_ON_MAX_RELEASES = 1000;
-const musicbrainzInflightRequests = new Map();
+const musicbrainzInflightRequests: InflightRequests = new Map();
 const PRIMARY_RELEASE_TYPES = ["Album", "EP", "Single"];
 const SECONDARY_RELEASE_TYPES = [
   "Live",
@@ -87,6 +91,25 @@ interface AppearsOnScanState {
   complete: boolean;
 }
 
+const toReleaseGroup = (item: ArtistAlbum) => ({
+  id: item.id,
+  title: item.title || "",
+  "first-release-date": item.firstReleaseDate || null,
+  "primary-type": item.type || "Album",
+  "secondary-types": Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
+  rating: item.rating || null,
+  "artist-credit": item.artistName
+    ? [
+        {
+          name: item.artistName,
+          artist: item.artistId
+            ? { id: item.artistId, name: item.artistName }
+            : { name: item.artistName },
+        },
+      ]
+    : [],
+});
+
 export async function musicbrainzGetArtistReleaseGroups(
   mbid: string,
   selectedReleaseTypes: string[] | null = null,
@@ -112,24 +135,7 @@ export async function musicbrainzGetArtistReleaseGroups(
       hydrateLimit: safeHydrateLimit,
       signal,
     });
-    const mapped = items.map((item: ArtistAlbum) => ({
-      id: item.id,
-      title: item.title || "",
-      "first-release-date": item.firstReleaseDate || null,
-      "primary-type": item.type || "Album",
-      "secondary-types": Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
-      rating: item.rating || null,
-      "artist-credit": item.artistName
-        ? [
-            {
-              name: item.artistName,
-              artist: item.artistId
-                ? { id: item.artistId, name: item.artistName }
-                : { name: item.artistName },
-            },
-          ]
-        : [],
-    }));
+    const mapped = items.map(toReleaseGroup);
     musicbrainzReleaseGroupsCache.set(cacheKey, mapped);
     return mapped;
   } catch {

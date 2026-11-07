@@ -6,7 +6,7 @@ import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
-import { runSharedInflight } from "../sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { readOne } from "../integrationData.ts";
 
@@ -28,7 +28,63 @@ interface LastfmErrorDetails {
   error: unknown;
 }
 
-const lastfmCache = createCache(300);
+const lenient = <Schema extends v.GenericSchema>(schema: Schema) =>
+  v.fallback(v.optional(schema), undefined);
+const lastfmText = lenient(v.string());
+const lastfmCount = lenient(v.union([v.string(), v.number()]));
+const oneOrMany = <Schema extends v.GenericSchema>(item: Schema) =>
+  lenient(v.union([v.array(item), item]));
+const lastfmRank = lenient(v.looseObject({ rank: lastfmCount }));
+
+const lastfmImageSchema = v.looseObject({ size: lastfmText, "#text": lastfmText });
+const lastfmTagSchema = v.looseObject({ name: lastfmText, count: lastfmCount });
+const lastfmArtistSchema = v.looseObject({
+  name: lastfmText,
+  "#text": lastfmText,
+  mbid: lastfmText,
+  match: lastfmCount,
+  image: oneOrMany(lastfmImageSchema),
+  listeners: lastfmCount,
+  playcount: lastfmCount,
+  rank: lastfmCount,
+  "@attr": lastfmRank,
+});
+const lastfmTrackSchema = v.looseObject({
+  name: lastfmText,
+  mbid: lastfmText,
+  playcount: lastfmCount,
+  listeners: lastfmCount,
+  duration: lastfmCount,
+  artist: lenient(v.looseObject({ name: lastfmText, "#text": lastfmText, mbid: lastfmText })),
+  album: lenient(v.looseObject({ title: lastfmText, "#text": lastfmText })),
+  "@attr": lastfmRank,
+});
+const lastfmResponseSchema = v.looseObject({
+  error: lenient(v.number()),
+  toptags: lenient(v.looseObject({ tag: oneOrMany(lastfmTagSchema) })),
+  tags: lenient(v.looseObject({ tag: oneOrMany(lastfmTagSchema) })),
+  similarartists: lenient(v.looseObject({ artist: oneOrMany(lastfmArtistSchema) })),
+  artists: lenient(v.looseObject({ artist: oneOrMany(lastfmArtistSchema) })),
+  topartists: lenient(
+    v.looseObject({
+      artist: oneOrMany(lastfmArtistSchema),
+      "@attr": lenient(v.looseObject({ total: lastfmText })),
+    }),
+  ),
+  toptracks: lenient(v.looseObject({ track: oneOrMany(lastfmTrackSchema) })),
+  tracks: lenient(v.looseObject({ track: oneOrMany(lastfmTrackSchema) })),
+  track: lenient(lastfmTrackSchema),
+  album: lenient(
+    v.looseObject({ tracks: lenient(v.looseObject({ track: oneOrMany(lastfmTrackSchema) })) }),
+  ),
+});
+
+export type LastfmImage = v.InferOutput<typeof lastfmImageSchema>;
+export type LastfmArtist = v.InferOutput<typeof lastfmArtistSchema>;
+export type LastfmTrack = v.InferOutput<typeof lastfmTrackSchema>;
+type LastfmResponse = v.InferOutput<typeof lastfmResponseSchema>;
+
+const lastfmCache = createCache<LastfmResponse>(300);
 
 const lastfmLimiter = createRateLimiter(200);
 
@@ -38,7 +94,7 @@ const LASTFM_MAX_RETRIES = 2;
 const LASTFM_PAUSE_AFTER_FAILURES = 3;
 const LASTFM_PAUSE_MS = 60_000;
 
-const lastfmInflightRequests = new Map();
+const lastfmInflightRequests: InflightRequests = new Map();
 const lastfmErrorLogAt = new Map();
 let lastfmFailuresInARow = 0;
 let lastfmPausedUntil = 0;
@@ -105,7 +161,7 @@ export async function lastfmRequest(
   method: string,
   params: Record<string, string | number | null | undefined> = {},
   options: { timeoutMs?: number; maxRetries?: number; signal?: AbortSignal } = {},
-) {
+): Promise<LastfmResponse | null> {
   const apiKey = getLastfmApiKey();
   if (!apiKey) return null;
 
@@ -158,8 +214,12 @@ export async function lastfmRequest(
             }),
           );
           lastfmFailuresInARow = 0;
-          lastfmCache.set(cacheKey, response.data);
-          return response.data;
+          const data = readOne(lastfmResponseSchema, response.data, {
+            service: "Last.fm",
+            endpoint: method,
+          });
+          lastfmCache.set(cacheKey, data);
+          return data;
         } catch (error) {
           if (sharedSignal.aborted) throw sharedSignal.reason || error;
           lastError = error;
