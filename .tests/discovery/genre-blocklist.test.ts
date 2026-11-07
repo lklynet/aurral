@@ -94,8 +94,8 @@ test("flows drop trending and focus artists carrying a blocked genre", async () 
   source._getTagArtists = async (tag) => {
     searchedTags.push(tag);
     return [
-      { name: "Idol Two", mbid: null },
-      { name: "Focus Band", mbid: null },
+      { name: "Idol Two", mbid: null, image: null },
+      { name: "Focus Band", mbid: null, image: null },
     ];
   };
   source._getArtistTopTagLists = async (artists) =>

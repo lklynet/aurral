@@ -1,10 +1,10 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { runSharedInflight } from "../../backend/services/sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "../../backend/services/sharedInflight.ts";
 
 test("concurrent consumers share one outbound operation", async () => {
-  const inflight = new Map();
+  const inflight: InflightRequests = new Map();
   let calls = 0;
   const task = async () => {
     calls += 1;
@@ -24,7 +24,7 @@ test("concurrent consumers share one outbound operation", async () => {
 });
 
 test("one cancelled consumer does not abort work still needed by another", async () => {
-  const inflight = new Map();
+  const inflight: InflightRequests = new Map();
   const first = new AbortController();
   const second = new AbortController();
   let underlyingAborted = false;
@@ -53,7 +53,7 @@ test("one cancelled consumer does not abort work still needed by another", async
 });
 
 test("the underlying operation aborts after every consumer leaves", async () => {
-  const inflight = new Map();
+  const inflight: InflightRequests = new Map();
   const first = new AbortController();
   const second = new AbortController();
   let underlyingAborted = false;

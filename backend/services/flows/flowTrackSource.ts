@@ -143,8 +143,8 @@ type AlbumTrackRow = Partial<
   NormalizedTrack &
     ArtistTopTrack & {
       releaseMbid: string | null;
-      "@attr": { rank: string };
-      attr: { rank: string };
+      "@attr": { rank?: string | number };
+      attr: { rank?: string | number };
       trackName: string;
       position: number | string;
       track_number: number | string;

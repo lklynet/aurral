@@ -16,7 +16,7 @@ const ARTICLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ARTICLES = 5000;
 const MAX_IMAGE_LOOKUPS = 40;
 
-const articleMatchCache = createCache(5 * 60, 100);
+const articleMatchCache = createCache<Map<string | null, NewsArtist[]>>(5 * 60, 100);
 
 const upsertArticle = db.prepare(`
   INSERT INTO news_articles (

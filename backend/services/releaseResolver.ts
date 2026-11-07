@@ -23,15 +23,22 @@ const MANIFEST_TTL_SECONDS = 60 * 60;
 // A release its group does not list is looked for again after a minute.
 const MISSING_MANIFEST_TTL_SECONDS = 60;
 const MAX_MANIFESTS = 64;
-const manifests = createCache(MANIFEST_TTL_SECONDS, MAX_MANIFESTS);
 const UNREACHABLE = Symbol("metadata unreachable");
+type LoadedManifest =
+  | (NonNullable<ReleaseManifest> & { groupReleaseMbids?: string[] })
+  | null
+  | typeof UNREACHABLE;
+const manifests = createCache<LoadedManifest | Promise<LoadedManifest>>(
+  MANIFEST_TTL_SECONDS,
+  MAX_MANIFESTS,
+);
 // How long and how often a download waits for metadata it cannot read
 // before it goes on without its release.
 export const RELEASE_WAIT_SECONDS = 60;
 export const MAX_RELEASE_WAITS = 30;
 // A group that could not be read is asked for again within every wait.
 const UNREACHABLE_TTL_SECONDS = RELEASE_WAIT_SECONDS / 2;
-const unreachableGroups = createCache(UNREACHABLE_TTL_SECONDS, MAX_MANIFESTS);
+const unreachableGroups = createCache<true>(UNREACHABLE_TTL_SECONDS, MAX_MANIFESTS);
 
 const libraryAlbumStmt = db.prepare<
   [string, string, string],

@@ -5,7 +5,7 @@ import { http } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
-import { runSharedInflight } from "./sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "./sharedInflight.ts";
 import { readMany, readOne } from "./integrationData.ts";
 
 type NearbyLocation = {
@@ -124,11 +124,14 @@ export const rememberNearbyLocation = (userId: number, choice: NearbyLocationCho
 export const getRememberedNearbyLocation = (userId: number) =>
   dbOps.getJSONSetting(nearbyLocationKey(userId), nearbyLocationSchema);
 
-const ticketmasterEventCache = createCache(15 * 60);
-const ipLocationCache = createCache(30 * 60);
-const zipLocationCache = createCache(24 * 60 * 60);
-const nearbyShowsResponseCache = createCache(5 * 60, 100);
-const nearbyShowsInflight = new Map();
+const ticketmasterEventCache = createCache<ReturnType<typeof toEventRecord>[]>(15 * 60);
+const ipLocationCache = createCache<NearbyLocation>(30 * 60);
+const zipLocationCache = createCache<NearbyLocation>(24 * 60 * 60);
+const nearbyShowsResponseCache = createCache<{
+  location: NearbyLocation;
+  shows: ReturnType<typeof matchShows>;
+}>(5 * 60, 100);
+const nearbyShowsInflight: InflightRequests = new Map();
 
 const DEFAULT_RADIUS_MILES = 250;
 const EVENT_PAGE_SIZE = 200;

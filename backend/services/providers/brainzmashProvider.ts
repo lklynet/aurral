@@ -34,7 +34,7 @@ import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
 import { readMany, readOne } from "../integrationData.ts";
 import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.ts";
-import { runSharedInflight } from "../sharedInflight.ts";
+import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -112,16 +112,16 @@ const METADATA_REQUEST_LEASE_MS = 2 * 60_000;
 const METADATA_REQUEST_LEASE_POLL_MS = 250;
 const METADATA_MAX_QUEUED_REQUESTS =
   Math.floor(METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS) - 1;
-const metadataHotCache = createCache(
+const metadataHotCache = createCache<CachedMetadata<unknown>>(
   METADATA_HOT_CACHE_TTL_SECONDS,
   METADATA_HOT_CACHE_MAX_ENTRIES,
 );
 let nextMetadataStoreCleanupAt = 0;
-const metadataNotFoundCache = createCache(
+const metadataNotFoundCache = createCache<true>(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
 );
-const providerInflightRequests = new Map();
+const providerInflightRequests: InflightRequests = new Map();
 const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
 });
@@ -317,18 +317,20 @@ async function readCachedMetadata<Schema extends v.GenericSchema>(
   schema: Schema,
   { persistent = false } = {},
 ) {
-  let entry: CachedMetadata<v.InferOutput<Schema>> | null = persistent
-    ? null
-    : metadataHotCache.get(cacheKey);
+  const readHot = () =>
+    persistent
+      ? null
+      : // A cache key always holds output of the same schema.
+        ((metadataHotCache.get(cacheKey) as CachedMetadata<v.InferOutput<Schema>> | undefined) ??
+        null);
+  let entry = readHot();
   if (!entry) {
     const persisted = readStoredMetadata(
       cacheKey,
       schema,
       await dbOps.getMetadataResponseAsync(cacheKey),
     );
-    const current: CachedMetadata<v.InferOutput<Schema>> | null = persistent
-      ? null
-      : metadataHotCache.get(cacheKey);
+    const current = readHot();
     if (!persisted) {
       if (!current) return null;
       entry = current;

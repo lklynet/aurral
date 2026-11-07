@@ -27,7 +27,10 @@ interface ListenbrainzErrorDetails {
 }
 
 const listenbrainzCache = createCache(300);
-const listenbrainzLookupCache = createCache(3600, 200);
+const listenbrainzListensCache = createCache<
+  Map<string, { listenCount: number; listenerCount: number }>
+>(3600, 200);
+const listenbrainzDatesCache = createCache<Map<string, string>>(3600, 200);
 const LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS = 300;
 const LISTENBRAINZ_POPULARITY_BATCH_SIZE = 1000;
 const LISTENBRAINZ_METADATA_BATCH_SIZE = 100;
@@ -256,24 +259,25 @@ const toListenCount = (value: number | null | undefined) =>
   Number.isInteger(value) && value! > 0 ? value! : null;
 
 async function cachedListenbrainzLookup<V>(
+  cache: ReturnType<typeof createCache<Map<string, V>>>,
   cacheKey: string,
   lookup: () => Promise<Map<string, V>>,
-): Promise<Map<string, V>> {
-  const cached = listenbrainzLookupCache.get(cacheKey);
+) {
+  const cached = cache.get(cacheKey);
   if (cached) return cached;
   try {
     const value = await lookup();
-    listenbrainzLookupCache.set(cacheKey, value);
+    cache.set(cacheKey, value);
     return value;
   } catch {
     const empty = new Map<string, V>();
-    listenbrainzLookupCache.set(cacheKey, empty, LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS);
+    cache.set(cacheKey, empty, LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS);
     return empty;
   }
 }
 
 export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids: string[]) =>
-  cachedListenbrainzLookup(`listens:${releaseGroupMbids.join(",")}`, async () => {
+  cachedListenbrainzLookup(listenbrainzListensCache, releaseGroupMbids.join(","), async () => {
     const batches = await Promise.all(
       toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
         listenbrainzRequest(
@@ -299,7 +303,7 @@ const isReleaseGroupMetadata = (batch: unknown) =>
   Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch!);
 
 export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
-  cachedListenbrainzLookup(`dates:${releaseGroupMbids.join(",")}`, async () => {
+  cachedListenbrainzLookup(listenbrainzDatesCache, releaseGroupMbids.join(","), async () => {
     const batches = await Promise.all(
       toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
         listenbrainzRequest("/1/metadata/release_group/", { release_group_mbids: mbids.join(",") }),
@@ -316,4 +320,4 @@ export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
     return dates;
   });
 
-export { listenbrainzCache, listenbrainzLookupCache };
+export { listenbrainzCache, listenbrainzDatesCache, listenbrainzListensCache };

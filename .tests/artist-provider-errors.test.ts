@@ -62,12 +62,7 @@ beforeEach(() => {
   wikidataLinked = false;
   resetDatabase(db);
   clearMetadataProviderCaches();
-  for (const cache of [
-    deezer.deezerArtistCache,
-    deezer.deezerAlbumCache,
-    deezer.deezerTopTrackCache,
-  ])
-    cache.flushAll();
+  deezer.clearDeezerCaches();
 });
 afterAll(async () => {
   await cleanupIsolatedState(state);
@@ -400,3 +395,23 @@ for (const origin of ["relationship", "override"] as const) {
     assert.equal(requests, 1);
   });
 }
+
+test("cached album previews still attach to each request's current tracks", async (t) => {
+  responses(t, () => ({
+    data: [{ id: 41, title: "Song", track_position: 1, preview: "https://cdn.deezer.test/41.mp3" }],
+  }));
+  const options = { deezerAlbumId: "9", cacheKey: "library:album" };
+  await deezer.enrichTracksWithDeezerPreviews(
+    [{ title: "Song", trackNumber: 1, streamPath: null }],
+    options,
+  );
+  const current = { title: "Song", trackNumber: 1, streamPath: "/music/song.flac" };
+  assert.deepEqual(await deezer.enrichTracksWithDeezerPreviews([current], options), [
+    {
+      ...current,
+      preview_url: deezer.deezerPreviewPath(41),
+      previewProvider: "deezer",
+      previewTrackId: "41",
+    },
+  ]);
+});

@@ -3,19 +3,17 @@ import createCache from "../apiClients/simpleCache.ts";
 // Tracks from one album search for the same "Artist Album" query, so one
 // provider search answers all of them for a while.
 const SEARCH_RESULT_TTL_SECONDS = 15 * 60;
-const results = createCache(SEARCH_RESULT_TTL_SECONDS, 200);
 
-function cacheKey(source: string, query: string | undefined) {
-  return `${source}\0${String(query || "")
+const cacheKey = (query: string | undefined) =>
+  String(query || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ")}`;
-}
+    .replace(/\s+/g, " ");
 
-export function getCachedSearchResults(source: string, query: string | undefined) {
-  return results.get(cacheKey(source, query));
-}
-
-export function cacheSearchResults(source: string, query: string | undefined, items: unknown) {
-  results.set(cacheKey(source, query), Array.isArray(items) ? items : []);
+export function createSearchResultCache<Item>() {
+  const results = createCache<Item[]>(SEARCH_RESULT_TTL_SECONDS, 200);
+  return {
+    get: (query: string | undefined) => results.get(cacheKey(query)),
+    set: (query: string | undefined, items: Item[]) => results.set(cacheKey(query), items),
+  };
 }

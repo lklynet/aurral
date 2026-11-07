@@ -63,9 +63,24 @@ type MatchableTrack = {
 
 const CONTEXT_CACHE_TTL_SECONDS = 15 * 60;
 const MAX_CACHE_ENTRIES = 500;
-const artistAliasCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
-const releaseGroupSearchCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
-const releaseContextCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
+type Lookup<T> = T | Promise<T>;
+type ReleaseGroupSearch =
+  | { id: string; title: string; releaseYear: ReturnType<typeof getYear> }
+  | typeof UNREACHABLE
+  | null;
+type ReleaseContextLookup = ReleaseContext | UnknownAlbum | null;
+const artistAliasCache = createCache<Lookup<string[]>>(
+  CONTEXT_CACHE_TTL_SECONDS,
+  MAX_CACHE_ENTRIES,
+);
+const releaseGroupSearchCache = createCache<Lookup<ReleaseGroupSearch>>(
+  CONTEXT_CACHE_TTL_SECONDS,
+  MAX_CACHE_ENTRIES,
+);
+const releaseContextCache = createCache<Lookup<ReleaseContextLookup>>(
+  CONTEXT_CACHE_TTL_SECONDS,
+  MAX_CACHE_ENTRIES,
+);
 const MATCHER_OPTIONS = { extended: true };
 
 function rankCandidates<T extends RankableRelease>(
@@ -139,12 +154,12 @@ async function holdsTrack(albumMbid: string, track: DownloadTrackFields) {
   );
 }
 
-const UNREACHABLE = Object.freeze({ unreachable: true });
+const UNREACHABLE = Symbol("metadata unreachable");
 
 // A guessed release group must list the track, so a search that finds an
 // album of the same name, such as another of an artist's self-titled albums,
 // is not the track's. A search metadata could not answer is not remembered.
-async function resolveReleaseGroup(track: DownloadTrackFields) {
+async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseGroupSearch> {
   const safeAlbum = String(track.albumName || "").trim();
   if (!safeAlbum) return null;
   const safeArtist = String(track.artistName || "").trim();
@@ -411,7 +426,7 @@ const UNKNOWN_ALBUM = Object.freeze({ unknown: true });
 
 async function fetchReleaseContext(
   albumMbid: string | null | undefined,
-): Promise<ReleaseContext | UnknownAlbum | null> {
+): Promise<ReleaseContextLookup> {
   const key = String(albumMbid || "").trim();
   if (!key) return null;
   const cachedContext = releaseContextCache.get(key);
@@ -612,17 +627,9 @@ export async function resolveTrackSearchContext(
   if (!base.albumMbid && base.albumName) {
     const releaseGroup = await resolveReleaseGroup(base);
     unreachable ||= releaseGroup === UNREACHABLE;
-    if (releaseGroup?.id) {
+    if (releaseGroup && releaseGroup !== UNREACHABLE) {
       base.albumMbid = releaseGroup.id;
-      if (!base.artistMbid && releaseGroup.artistMbid) {
-        base.artistMbid = releaseGroup.artistMbid;
-      }
-      if (!base.releaseYear && releaseGroup.releaseYear) {
-        base.releaseYear = releaseGroup.releaseYear;
-      }
-      if (!base.albumName && releaseGroup.title) {
-        base.albumName = releaseGroup.title;
-      }
+      base.releaseYear ||= releaseGroup.releaseYear;
     }
   }
 

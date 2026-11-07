@@ -1,5 +1,6 @@
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { lastfmRequest } from "../apiClients/index.ts";
+import type { LastfmArtist, LastfmImage, LastfmTrack } from "../apiClients/lastfm.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
 import type { MusicArtistRef, MusicTrendingArtist } from "./index.ts";
@@ -8,37 +9,6 @@ const LASTFM_PLACEHOLDER_IMAGE_HASH = "2a96cbd8b46e442fc41c2b86b821562f";
 const TAG_ARTIST_MAX_PAGE_SIZE = 200;
 const TAG_LOOKUP_CONCURRENCY = 6;
 
-type LastfmImage = { size?: string; "#text"?: string };
-type LastfmTag = { name?: string; count?: string | number };
-type LastfmArtist = {
-  name?: string;
-  "#text"?: string;
-  mbid?: string;
-  match?: string | number;
-  image?: LastfmImage | LastfmImage[];
-  listeners?: string | number;
-  playcount?: string | number;
-  rank?: string | number;
-  "@attr"?: { rank?: string | number };
-};
-type LastfmTrack = {
-  name?: string;
-  mbid?: string;
-  playcount?: string | number;
-  listeners?: string | number;
-  artist?: { name?: string; "#text"?: string; mbid?: string };
-  album?: { title?: string; "#text"?: string };
-};
-type LastfmResponse = {
-  error?: number;
-  toptags?: { tag?: LastfmTag | LastfmTag[] };
-  similarartists?: { artist?: LastfmArtist | LastfmArtist[] };
-  topartists?: { artist?: LastfmArtist | LastfmArtist[]; "@attr"?: { total?: string } };
-  toptracks?: { track?: LastfmTrack | LastfmTrack[] };
-  tracks?: { track?: LastfmTrack | LastfmTrack[] };
-  artists?: { artist?: LastfmArtist | LastfmArtist[] };
-  tags?: { tag?: LastfmTag | LastfmTag[] };
-};
 type LastfmParams = Record<string, string | number | null | undefined>;
 type LastfmCallOptions = { health?: SourceHealth; signal?: AbortSignal };
 
@@ -85,9 +55,9 @@ const callLastfm = async (
   method: string,
   params: LastfmParams,
   { health, signal }: LastfmCallOptions = {},
-): Promise<LastfmResponse | null> => {
+) => {
   const data = await lastfmRequest(method, params, { signal }).catch(() => null);
-  const ok = Boolean(data) && !data.error;
+  const ok = Boolean(data) && !data?.error;
   recordHealth(health, ok);
   return ok ? data : null;
 };
