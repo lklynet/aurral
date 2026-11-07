@@ -696,6 +696,14 @@ export async function getArtistByMbid(mbid: string, { signal }: MetadataRequestO
   return toNormalizedArtist(data);
 }
 
+export async function getCachedArtistByMbid(mbid: string) {
+  const cached = await readCachedMetadata(
+    `${getMetadataBaseUrl()}/artist/${mbid}:{}`,
+    artistDetailSchema,
+  );
+  return cached ? toNormalizedArtist(cached.value) : null;
+}
+
 export async function getAlbumByMbid(
   albumMbid: string,
   { signal, forceRefresh = false }: MetadataRequestOptions = {},

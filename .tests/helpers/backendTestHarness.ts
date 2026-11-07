@@ -17,6 +17,7 @@ const RESET_TABLES = [
   "user_identities",
   "lastfm_link_states",
   "subsonic_stars",
+  "subsonic_ratings",
   "subsonic_play_queues",
   "play_album_stats",
   "play_events",

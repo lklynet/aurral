@@ -42,6 +42,7 @@ const {
   clearMetadataProviderCaches,
   getAlbumByMbid,
   getArtistByMbid,
+  getCachedArtistByMbid,
   listArtistAlbums,
   searchAlbums,
   searchArtists,
@@ -209,6 +210,47 @@ test("BrainzMash data Aurral can't read is never served, from the provider or th
     );
     assert.equal((await getAlbumByMbid("album-x")).title, "Album");
     assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("cached artist lookups read only what Aurral already stored", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "artist-x", artistname: "Artist" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    assert.equal(await getCachedArtistByMbid("artist-x"), null);
+
+    const past = Date.now() - 1000;
+    const later = Date.now() + 60_000;
+    await dbOps.setMetadataResponseAsync(`${server.url}/artist/artist-x:{}`, {
+      value: { id: "artist-x", artistname: "Artist", overview: "A biography." },
+      freshUntil: past,
+      staleUntil: later,
+    });
+    assert.equal((await getCachedArtistByMbid("artist-x"))?.overview, "A biography.");
+    assert.equal(requests, 0);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);

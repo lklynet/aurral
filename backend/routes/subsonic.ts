@@ -1,8 +1,10 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import * as v from "valibot";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
+import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
 import { getPlayQueue, getPlayQueueByIndex, savePlayQueue } from "../services/playQueueService.ts";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
@@ -39,6 +41,7 @@ import {
   resolveLibraryArtwork,
   resolveStreamPath,
   searchLibrary,
+  setRating,
   starMany,
   toChildAlbum,
   toIndexArtist,
@@ -161,6 +164,15 @@ function renderXmlElement(name: string, value: unknown): string {
   const body = [text == null ? "" : escapeXml(text), ...children].join("");
   return body ? `${opening}${body}</${name}>` : opening.slice(0, -1) + "/>";
 }
+
+// Most Subsonic fields are XML attributes, but artist info fields are child elements.
+const asXmlElements = (value: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      typeof entry === "string" ? { value: entry } : entry,
+    ]),
+  );
 
 function renderXml({
   status,
@@ -331,6 +343,15 @@ function authenticate(params: SubsonicParams, method: string) {
   return { format, error };
 }
 
+const artistImageSignature = (id: string) =>
+  createHmac("sha256", getSettingsEncryptionKey()).update(`artist-image:${id}`).digest("base64url");
+
+const hasArtistImageSignature = (id: string, signature: string) => {
+  const expected = Buffer.from(artistImageSignature(id));
+  const given = Buffer.from(signature);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+};
+
 const reply = (c: Context<AppEnv>, { contentType, body }: ReturnType<typeof renderResponse>) =>
   c.body(body, 200, { "Content-Type": contentType });
 
@@ -386,12 +407,33 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     );
   }
 
+  if (method === "artistimage") {
+    const id = getParameter(params, "id");
+    const artwork =
+      id.startsWith("artist:") && hasArtistImageSignature(id, getParameter(params, "sig"))
+        ? await resolveLibraryArtwork(id)
+        : null;
+    if (!artwork) return notFound(c, "Cover art not found");
+    c.header("Cache-Control", "public, max-age=86400");
+    const sent = await sendViaNode(c, sendFile, artwork.filePath, {
+      contentType: artwork.contentType,
+      dotfiles: "deny",
+    });
+    return sent || notFound(c, "Cover art not found");
+  }
+
   const auth = authenticate(params, requestedMethod);
   if (auth.error) return reply(c, failedResponse(auth.format, ...auth.error));
   const { format, user } = auth;
   const ok = (data: Record<string, unknown> = {}) =>
     reply(c, renderResponse(format, "ok", null, data));
   const fail = (...failure: SubsonicFailure) => reply(c, failedResponse(format, ...failure));
+  const artistImageUrl = (id: string) =>
+    `${c.var.protocol}://${c.req.header("host")}/rest/artistImage?id=${encodeURIComponent(id)}&sig=${artistImageSignature(id)}`;
+  const withImage = <T extends { id: string }>(artist: T) => ({
+    ...artist,
+    artistImageUrl: artistImageUrl(artist.id),
+  });
 
   if (method === "ping") return ok();
   if (method === "stream") {
@@ -567,7 +609,10 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   }
   if (method === "getartists") {
     return ok({
-      artists: { ignoredArticles: IGNORED_ARTICLES, index: groupArtists(listArtists(user)) },
+      artists: {
+        ignoredArticles: IGNORED_ARTICLES,
+        index: groupArtists(listArtists(user).map(withImage)),
+      },
     });
   }
   if (method === "getindexes") {
@@ -578,21 +623,31 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
       indexes: {
         ignoredArticles: IGNORED_ARTICLES,
         lastModified,
-        ...(!unchanged && { index: groupArtists(listArtists(user).map(toIndexArtist)) }),
+        ...(!unchanged && {
+          index: groupArtists(listArtists(user).map(toIndexArtist).map(withImage)),
+        }),
       },
     });
   }
   if (method === "getartist") {
     const artist = getArtist(getParameter(params, "id"), user);
-    return artist ? ok({ artist }) : fail(70, "Requested data was not found");
+    return artist ? ok({ artist: withImage(artist) }) : fail(70, "Requested data was not found");
   }
-  if (method === "getartistinfo") {
-    const artistInfo = getArtistInfo(getParameter(params, "id"));
-    return artistInfo ? ok({ artistInfo }) : fail(70, "Requested data was not found");
-  }
-  if (method === "getartistinfo2") {
-    const artistInfo2 = getArtistInfo(getParameter(params, "id"));
-    return artistInfo2 ? ok({ artistInfo2 }) : fail(70, "Requested data was not found");
+  if (method === "getartistinfo" || method === "getartistinfo2") {
+    const info = await getArtistInfo(getParameter(params, "id"));
+    if (!info) return fail(70, "Requested data was not found");
+    const { id, ...artistInfo } = info;
+    const imageUrl = artistImageUrl(id);
+    const fields = {
+      ...artistInfo,
+      smallImageUrl: imageUrl,
+      mediumImageUrl: imageUrl,
+      largeImageUrl: imageUrl,
+    };
+    return ok({
+      [method === "getartistinfo" ? "artistInfo" : "artistInfo2"]:
+        format === "xml" ? asXmlElements(fields) : fields,
+    });
   }
   if (method === "getalbuminfo" || method === "getalbuminfo2") {
     return getAlbum(getParameter(params, "id"))
@@ -667,10 +722,10 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     );
     return ok(
       method === "search3"
-        ? { searchResult3: result }
+        ? { searchResult3: { ...result, artist: result.artist.map(withImage) } }
         : {
             searchResult2: {
-              artist: result.artist.map(toIndexArtist),
+              artist: result.artist.map(toIndexArtist).map(withImage),
               album: result.album.map(toChildAlbum),
               song: result.song,
             },
@@ -714,15 +769,23 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     const starred = getStarred(user);
     return ok(
       method === "getstarred2"
-        ? { starred2: starred }
+        ? { starred2: { ...starred, artist: starred.artist.map(withImage) } }
         : {
             starred: {
-              artist: starred.artist.map(toIndexArtist),
+              artist: starred.artist.map(toIndexArtist).map(withImage),
               album: starred.album.map(toChildAlbum),
               song: starred.song,
             },
           },
     );
+  }
+  if (method === "setrating") {
+    const id = getParameter(params, "id");
+    const rating = getParameter(params, "rating");
+    if (!id) return fail(10, "Required parameter is missing: id");
+    if (!rating) return fail(10, "Required parameter is missing: rating");
+    if (!/^[0-5]$/.test(rating)) return fail(0, "rating must be a whole number from 0 to 5");
+    return setRating(user, id, Number(rating)) ? ok() : fail(70, "Requested data was not found");
   }
   if (method === "star" || method === "unstar") {
     const targets = getParameters(params, ["id", "albumId", "artistId"]);

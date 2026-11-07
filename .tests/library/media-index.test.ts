@@ -2475,6 +2475,9 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
     db.prepare(
       "INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at) VALUES (?, ?, 3, 1)",
     ).run(userId, requireValue(before).albumKey);
+    db.prepare(
+      "INSERT INTO subsonic_ratings (user_id, entity_kind, entity_key, rating, updated_at) VALUES (?, 'song', ?, 4, 1)",
+    ).run(userId, requireValue(before).trackKey);
 
     const tagged = untagged(artist, "22 Grand Job", "22 Grand Job");
     Object.assign(tagged.common, {
@@ -2502,6 +2505,15 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
       ["album", requireValue(after).albumKey],
       ["song", requireValue(after).trackKey],
     ]);
+    assert.deepEqual(
+      db
+        .prepare<unknown[], Rows.SubsonicRatingsRow["entity_key"]>(
+          "SELECT entity_key FROM subsonic_ratings WHERE user_id = ?",
+        )
+        .pluck()
+        .all(userId),
+      [requireValue(after).trackKey],
+    );
     assert.equal(
       db
         .prepare<unknown[], Rows.PlayAlbumStatsRow["play_count"]>(
