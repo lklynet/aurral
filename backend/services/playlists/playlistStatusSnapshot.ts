@@ -1,4 +1,5 @@
 import { getPlaylistArtworkRevisions } from "../playlistArtworkState.ts";
+import { staticPlaylistJobs } from "./playlistJobs.ts";
 import { createHash } from "node:crypto";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
@@ -74,7 +75,7 @@ const coreIdentity = (identity: string) => identity.split("\u0001", 2).join("\u0
 function getMembershipSummary(playlist: StaticPlaylist) {
   let summary = membershipCache.get(playlist.id);
   if (!summary) {
-    const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    const jobs = staticPlaylistJobs(playlist);
     const identities = collectPlaylistTrackIdentities(playlist, jobs);
     summary = {
       trackIdentities: new Set(identities),
@@ -152,7 +153,7 @@ export function getPlaylistStatusVersion() {
 }
 
 function aggregateStats(
-  statsByType: ReturnType<typeof downloadTracker.getStatsByPlaylistType>,
+  statsByType: Partial<Record<string, Partial<Record<string, number>>>>,
   ids: string[],
 ) {
   const base = {
@@ -174,6 +175,13 @@ function aggregateStats(
   }
   base.total = base.pending + base.downloading + base.blocked + base.done + base.failed;
   return base;
+}
+
+function staticPlaylistStats(playlist: StaticPlaylist) {
+  const counts: Record<string, number> = {};
+  for (const job of staticPlaylistJobs(playlist))
+    counts[job.status] = (counts[job.status] ?? 0) + 1;
+  return aggregateStats({ [playlist.id]: counts }, [playlist.id]);
 }
 
 function collectPlaylistTrackIdentities(playlist: StaticPlaylist, jobs: DownloadJob[]) {
@@ -253,19 +261,12 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
     : flowPlaylistConfig.getStaticPlaylists();
   const flowIds = flows.map((flow) => flow.id);
   const staticPlaylistIds = rawStaticPlaylists.map((playlist) => playlist.id);
-  const scopedStats = downloadTracker.getStatsByPlaylistType([
-    ...flowIds,
-    ...staticPlaylistIds,
-    "library",
-  ]);
+  const scopedStats = downloadTracker.getStatsByPlaylistType([...flowIds, "library"]);
+  const staticPlaylistStatsById = Object.fromEntries(
+    rawStaticPlaylists.map((playlist) => [playlist.id, staticPlaylistStats(playlist)]),
+  );
   const staticPlaylists = rawStaticPlaylists.map((playlist) => {
-    const playlistStats = scopedStats?.[playlist.id];
-    const jobTotal =
-      Number(playlistStats?.pending || 0) +
-      Number(playlistStats?.downloading || 0) +
-      Number(playlistStats?.blocked || 0) +
-      Number(playlistStats?.done || 0) +
-      Number(playlistStats?.failed || 0);
+    const jobTotal = staticPlaylistStatsById[playlist.id]?.total ?? 0;
     return {
       id: playlist.id,
       name: playlist.name,
@@ -305,9 +306,8 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
     ownerUsername: ownerMap.get(Number(playlist?.ownerUserId)) || null,
   }));
   const stats = aggregateStats(scopedStats, flowIds);
-  const sharedStats = aggregateStats(scopedStats, staticPlaylistIds);
-  const reviewCount =
-    stats.blocked + sharedStats.blocked + Number(scopedStats.library?.blocked || 0);
+  const sharedStats = aggregateStats(staticPlaylistStatsById, staticPlaylistIds);
+  const reviewCount = stats.blocked + Number(scopedStats.library?.blocked || 0);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
   const operationWorker = workerStatus?.operationWorker || getPlaylistOperationWorkerStatus();
@@ -345,14 +345,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
   for (const flowId of flowIds) {
     flowStats[flowId] = scopedStats[flowId] || aggregateStats({}, []);
   }
-  const staticPlaylistStats: Record<string, ReturnType<typeof aggregateStats>> = {};
-  for (const playlistId of staticPlaylistIds) {
-    staticPlaylistStats[playlistId] = scopedStats[playlistId] || aggregateStats({}, []);
-  }
-  const retryCyclePausedByPlaylist = downloadWorker.getRetryCyclePausedMap([
-    ...flowIds,
-    ...staticPlaylistIds,
-  ]);
+  const retryCyclePausedByPlaylist = downloadWorker.getRetryCyclePausedMap(flowIds);
   return {
     worker: {
       ...workerStatus,
@@ -363,7 +356,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
     reviewCount,
     flowStats,
     sharedStats,
-    sharedPlaylistStats: staticPlaylistStats,
+    sharedPlaylistStats: staticPlaylistStatsById,
     flows: flowsWithOwners,
     sharedPlaylists: staticPlaylistsWithOwners,
     retryCyclePausedByPlaylist,

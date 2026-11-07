@@ -224,11 +224,14 @@ export async function recordPipelineJobSuccess({
 }
 
 export async function refreshCompletedPipelinePlaylist(
-  job: Pick<DownloadJob, "playlistId" | "playlistType">,
+  job: Pick<DownloadJob, "id" | "playlistId" | "playlistType">,
 ) {
   const playlistType = job.playlistId || job.playlistType;
   const { playlistManager } = await import("./playlists/playlistManager.ts");
-  playlistManager.requestPlaylistSync([playlistType]);
+  playlistManager.requestPlaylistSync([
+    playlistType,
+    ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([job.id]),
+  ]);
   const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
   downloadWorker.wake(0);
   await downloadWorker.checkPlaylistComplete(playlistType);

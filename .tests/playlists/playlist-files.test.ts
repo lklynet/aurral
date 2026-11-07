@@ -58,12 +58,15 @@ async function addDownloadedTrack(playlistId: string, title: string) {
   const file = path.join(downloadRoot, "Artist", "Album", `${title}.flac`);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, title);
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: title, albumName: "Album", durationMs: 61_400 },
-    playlistId,
-  );
+  const track = { artistName: "Artist", trackName: title, albumName: "Album", durationMs: 61_400 };
+  const jobId = downloadTracker.addJob(track, "library");
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, file, "Album");
+  assert.ok(
+    flowPlaylistConfig.appendStaticPlaylistTracks(playlistId, [
+      { ...track, canonicalJobId: jobId },
+    ]),
+  );
 }
 
 const playlistFiles = async () =>

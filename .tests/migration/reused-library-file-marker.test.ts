@@ -79,11 +79,27 @@ const insertMedia = seed.prepare(`
 `);
 insertMedia.run(1, files.reusedAfterFailedDownload, 500, 500);
 insertMedia.run(2, files.downloaded, 2500, 2500);
+seed.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+seed.prepare("INSERT INTO settings (key, value) VALUES ('staticPlaylists', ?)").run(
+  JSON.stringify([
+    {
+      id: playlistId,
+      name: "Saved before the marker",
+      importSource: { provider: "spotify-playlist", externalId: "old", keepRemovedTracks: false },
+      tracks: ["Reused", "Retried", "Downloaded"].map((trackName) => ({
+        artistName: "Legacy Band",
+        albumName: "Old Record",
+        trackName,
+      })),
+    },
+  ]),
+);
 seed.close();
 applyIsolatedBackendEnv(isolatedState);
 
 const { flowPlaylistConfig } =
   await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.ts");
 const { playlistManager } = await import("../../backend/services/playlists/playlistManager.ts");
 const { processPlaylistOperation } =
   await import("../../backend/services/playlists/playlistOperations.ts");
@@ -92,22 +108,26 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("deleting a playlist saved by an older version keeps the Library files it reused", async () => {
+test("a synced playlist saved by an older version deletes only the files it downloaded", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockReturnValue(undefined);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Saved before the marker",
-    tracks: ["Reused", "Retried", "Downloaded"].map((trackName) => ({
-      artistName: "Legacy Band",
-      albumName: "Old Record",
-      trackName,
-    })),
+  const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
+  assert.ok(playlist != null);
+  assert.deepEqual(
+    playlist.tracks.map(
+      (track) => downloadTracker.getJob(track.canonicalJobId)?.startedByPlaylist ?? null,
+    ),
+    [null, null, playlistId],
+  );
+
+  await processPlaylistOperation({
+    kind: "static-playlist-update",
+    playlistId,
+    tracks: [],
+    hasTracksUpdate: true,
+    mergeImportSource: true,
   });
 
-  await processPlaylistOperation({ kind: "static-playlist-delete", playlistId });
-
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId), null);
   await fs.access(files.reused);
   await fs.access(files.reusedAfterFailedDownload);
   await assert.rejects(fs.access(files.downloaded), { code: "ENOENT" });

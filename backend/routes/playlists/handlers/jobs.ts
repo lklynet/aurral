@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { staticPlaylistJobs } from "../../../services/playlists/playlistJobs.ts";
 import * as v from "valibot";
 import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
@@ -221,30 +222,11 @@ export default new Hono<AppEnv>()
           ? Math.floor(parsedLimit)
           : null;
       const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistId);
-      const staticPlaylistTracks = staticPlaylist?.tracks;
-      let jobs = downloadTracker.getByPlaylistType(
-        playlistId,
-        staticPlaylistTracks?.length ? null : limit,
-      );
-      if (staticPlaylistTracks?.length) {
-        const referencedJobIds = new Set<string>(
-          staticPlaylistTracks.map((track) => String(track?.canonicalJobId || "")).filter(Boolean),
-        );
-        const referencedJobs = [...referencedJobIds]
-          .map((jobId) => downloadTracker.getJob(jobId))
-          .filter((job): job is DownloadJob => Boolean(job));
-        jobs = [...referencedJobs, ...jobs].filter(
-          (job, index, values) =>
-            values.findIndex((candidate) => candidate.id === job.id) === index,
-        );
-        jobs = orderJobsByPlaylistTracks(jobs, staticPlaylistTracks);
-        if (limit != null) jobs = jobs.slice(0, limit);
-        jobs = jobs.map((job) =>
-          referencedJobIds.has(job.id) && job.playlistType !== playlistId
-            ? { ...job, playlistId: playlistId, playlistType: playlistId }
-            : job,
-        );
-      }
+      const jobs = staticPlaylist
+        ? orderJobsByPlaylistTracks(staticPlaylistJobs(staticPlaylist), staticPlaylist.tracks)
+            .slice(0, limit ?? undefined)
+            .map((job) => ({ ...job, playlistId, playlistType: playlistId }))
+        : downloadTracker.getByPlaylistType(playlistId, limit);
       const profile = getQualityProfile();
       const accessibleJobs = filterJobsForUser(user, jobs);
       const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);

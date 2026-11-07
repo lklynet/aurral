@@ -43,11 +43,13 @@ function writeFromAnotherProcess(sql: string, parameters: (string | null)[]) {
 
 test("production snapshots refresh persisted membership and access changes without IPC", () => {
   dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Original", ownerUserId: 1 });
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Original track" },
-    playlist.id,
-  );
+  const original = { artistName: "Artist", trackName: "Original track" };
+  const jobId = downloadTracker.addJob(original, "library");
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Original",
+    ownerUserId: 1,
+    tracks: [{ ...original, canonicalJobId: jobId }],
+  });
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
   try {
@@ -67,7 +69,6 @@ test("production snapshots refresh persisted membership and access changes witho
       jobId,
     ]);
     const updated = read();
-    assert.deepEqual(containing("Original track"), []);
     assert.deepEqual(containing("Changed track"), [{ id: playlist.id, jobId }]);
     assert.equal(updated.sharedPlaylistStats[playlist.id]?.failed, 1);
 

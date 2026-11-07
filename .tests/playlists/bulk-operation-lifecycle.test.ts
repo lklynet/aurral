@@ -21,9 +21,6 @@ test("bulk acceptance commits its queue job and durable progress together", () =
       {
         jobId: "one",
         membershipId: "one",
-        jobPlaylistId: "source",
-        jobGeneration: 0,
-        jobCreatedAt: 1,
       },
     ],
   });
@@ -36,9 +33,6 @@ test("bulk acceptance commits its queue job and durable progress together", () =
     {
       jobId: "one",
       membershipId: "one",
-      jobPlaylistId: "source",
-      jobGeneration: 0,
-      jobCreatedAt: 1,
     },
   ]);
   const claimed = playlistOperationQueue.claim("bulk-test");

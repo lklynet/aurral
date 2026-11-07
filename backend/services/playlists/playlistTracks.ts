@@ -1,5 +1,4 @@
 import { UUID_REGEX } from "../../../lib/uuid.ts";
-import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 
 export interface PlaylistTrackInput {
   artistName?: unknown;
@@ -141,7 +140,7 @@ const sortJobsByCreatedAt = <T extends PlaylistJob>(jobs: T[] | null | undefined
     return String(left?.id || "").localeCompare(String(right?.id || ""));
   });
 
-const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
+export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
   jobs: T[] | null | undefined,
   tracks: PlaylistTrackInput[] | null | undefined,
 ) => {
@@ -167,22 +166,6 @@ const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
   ];
 };
 
-export function playlistJobEntries(
-  playlist: { id: string; tracks?: PlaylistTrackInput[] } | null | undefined,
-) {
-  if (!playlist) return [];
-  const referencedJobs = (playlist.tracks || [])
-    .map((track) =>
-      track?.canonicalJobId ? downloadTracker.getJob(String(track.canonicalJobId)) : null,
-    )
-    .filter((job) => job !== null);
-  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist.id)];
-  const uniqueJobs = jobs.filter(
-    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
-  );
-  return pairJobsWithPlaylistTracks(uniqueJobs, playlist.tracks);
-}
-
 export const orderJobsByPlaylistTracks = <T extends PlaylistJob>(
   jobs: T[] | null | undefined,
   tracks: PlaylistTrackInput[] | null | undefined,
@@ -200,44 +183,6 @@ export const dedupePlaylistTracks = (tracks: PlaylistTrackInput[] | null | undef
     uniqueTracks.push(normalizedTrack);
   }
   return uniqueTracks;
-};
-
-export const rebuildStaticPlaylistTracksFromJobs = (
-  configTracks: PlaylistTrackInput[] | null | undefined,
-  jobs: PlaylistJob[] | null | undefined,
-) => {
-  const jobList = Array.isArray(jobs) ? jobs : [];
-  const unmatchedJobIds = new Set(jobList.map((job) => job.id));
-  const remainingTracks = [];
-  for (const track of dedupePlaylistTracks(configTracks)) {
-    const match = jobList.find(
-      (job) => unmatchedJobIds.has(job.id) && tracksShareMembership(job, track),
-    );
-    if (!match) continue;
-    unmatchedJobIds.delete(match.id);
-    remainingTracks.push(track);
-  }
-  for (const job of sortJobsByCreatedAt(jobList)) {
-    if (!unmatchedJobIds.has(job.id)) continue;
-    unmatchedJobIds.delete(job.id);
-    const track = normalizePlaylistTrack({
-      artistName: job?.artistName,
-      trackName: job?.trackName,
-      albumName: job?.albumName || null,
-      artistMbid: job?.artistMbid || null,
-      albumMbid: job?.albumMbid || null,
-      trackMbid: job?.trackMbid || null,
-      releaseYear: job?.releaseYear || null,
-      durationMs: job?.durationMs || null,
-      artistAliases: job?.artistAliases || [],
-      reason: job?.reason || null,
-      releaseMbid: job?.releaseMbid,
-      trackNumber: job?.trackNumber,
-      discNumber: job?.discNumber,
-    });
-    if (track) remainingTracks.push(track);
-  }
-  return remainingTracks;
 };
 
 export const filterMissingPlaylistTracks = (

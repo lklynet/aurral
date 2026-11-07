@@ -5,6 +5,7 @@ import { downloadTracker, type DownloadTrackInput } from "./downloadJobs/downloa
 import { asAppError } from "../../lib/errors.ts";
 import { getLibraryTrackOwnership } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
+import { keepInLibrary } from "./playlists/playlistLibrary.ts";
 
 const libraryTrackStmt = db.prepare("SELECT 1 FROM library_tracks WHERE mbid = ? LIMIT 1");
 
@@ -52,6 +53,7 @@ export async function requestLibraryTrack(
   } = {},
 ) {
   if (!automatic) {
+    keepInLibrary(track);
     clearTrackMonitoringExclusion({
       mbid: track.trackMbid,
       artistMbid: track.artistMbid,
@@ -90,6 +92,13 @@ export async function requestLibraryTrack(
   }
 
   const existingJob = findQueuedLibraryTrackJob(track);
+  if (existingJob?.status === "saved") {
+    downloadTracker.setPending(existingJob.id);
+    recordTrackJobQueued(downloadTracker.getJob(existingJob.id), user);
+    const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
+    await downloadWorker.start();
+    return { queued: true, jobId: existingJob.id };
+  }
   if (existingJob) {
     if (!automatic) recordTrackJobQueued(existingJob);
     return { queued: true, jobId: existingJob.id, alreadyQueued: true };

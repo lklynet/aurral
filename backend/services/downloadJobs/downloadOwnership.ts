@@ -7,7 +7,6 @@ import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import {
   beginDownloadAttempt,
   getActiveDownloadAttemptId,
-  getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
 } from "./downloadCancellation.ts";
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
@@ -195,28 +194,6 @@ function recordTransfer(
     to.playlistId,
     from.id,
   );
-}
-
-export function transferDownloadOwnershipInTransaction(jobId: string, targetPlaylistId: string) {
-  if (!db.inTransaction)
-    throw new Error("Download ownership must change inside the membership transaction");
-  const from = currentJob(jobId);
-  if (!from) throw new Error("Download job is no longer available");
-  const fromAttemptId = getActiveDownloadAttemptId(jobId);
-  const toAttemptId =
-    fromAttemptId || (from.status === "done" ? null : beginDownloadAttempt(jobId));
-  const generation = getPlaylistDownloadGeneration(targetPlaylistId);
-  db.prepare(
-    "UPDATE download_jobs SET owner_id = ?, owner_type = ?, playlist_generation = ? WHERE id = ?",
-  ).run(targetPlaylistId, targetPlaylistId, generation, jobId);
-  const to = {
-    ...from,
-    playlistId: targetPlaylistId,
-    playlistType: targetPlaylistId,
-    playlistGeneration: generation,
-  };
-  recordTransfer(from, to, fromAttemptId, toAttemptId);
-  return { fromJobId: jobId, toJobId: jobId, dispatched: downloadTracker.isSlskdDispatched(jobId) };
 }
 
 export function replaceAlbumDownloadLeaderInTransaction(

@@ -469,7 +469,11 @@ export async function finalizeQualityUpgradeSuccess(
     });
   }
   downloadTracker.removeJob(upgradeJob.id);
-  const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
+  const { flowPlaylistConfig } = await import("./playlists/flowPlaylistConfig.ts");
+  const playlistIds = [
+    ...changed.map((job) => job.playlistType),
+    ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs(changed.map((job) => job.id)),
+  ];
   const { playlistManager } = await import("./playlists/playlistManager.ts");
   playlistManager.requestPlaylistSync(playlistIds);
   const { scheduleLibraryScan } = await import("./libraryScanWorker.ts");

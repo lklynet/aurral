@@ -454,7 +454,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${playlist.name}?`}
-        body="Deletes this playlist and its associated downloaded files."
+        body="Its tracks stay in your Library."
         confirmLabel="Delete playlist"
         busyLabel="Deleting…"
         busy={deleting}

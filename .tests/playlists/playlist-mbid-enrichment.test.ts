@@ -67,22 +67,13 @@ afterAll(async () => {
 });
 
 test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () => {
+  const track = { artistName: "Refused", trackName: "New Noise" };
+  const jobId = downloadTracker.addJob(track, "library");
+  assert.ok(jobId != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
-    tracks: [
-      {
-        artistName: "Refused",
-        trackName: "New Noise",
-      },
-    ],
+    tracks: [{ ...track, canonicalJobId: jobId }],
   });
-  const jobId = downloadTracker.addJob(
-    {
-      artistName: "Refused",
-      trackName: "New Noise",
-    },
-    playlist.id,
-  );
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: async (track) =>

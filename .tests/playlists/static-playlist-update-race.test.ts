@@ -6,21 +6,14 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [
-  state,
-  { db },
-  { downloadTracker },
-  { flowPlaylistConfig },
-  { downloadWorker },
-  { updateStaticPlaylist },
-] = await setupIsolatedBackend(
-  "static-playlist-update-race",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/playlists/playlistOperations.ts"),
-);
+const [state, { db }, { downloadTracker }, { flowPlaylistConfig }, { updateStaticPlaylist }] =
+  await setupIsolatedBackend(
+    "static-playlist-update-race",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+    () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+    () => import("../../backend/services/playlists/playlistOperations.ts"),
+  );
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -35,11 +28,11 @@ afterAll(async () => {
 test("a track update reports a playlist deleted while it waited for the lock as missing", async () => {
   const playlistId = "deleted-while-waiting";
   flowPlaylistConfig.createStaticPlaylist({ id: playlistId, name: "Gone Soon", tracks: [] });
-  downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlistId);
-  const blockPlaylist = downloadWorker.blockPlaylist.bind(downloadWorker);
-  vi.spyOn(downloadWorker, "blockPlaylist").mockImplementationOnce(async (id: string) => {
+  const getPlaylist = flowPlaylistConfig.getStaticPlaylist.bind(flowPlaylistConfig);
+  vi.spyOn(flowPlaylistConfig, "getStaticPlaylist").mockImplementationOnce((id) => {
+    const playlist = getPlaylist(id);
     flowPlaylistConfig.deleteStaticPlaylist(playlistId);
-    return blockPlaylist(id);
+    return playlist;
   });
 
   const result = await updateStaticPlaylist({ playlistId, hasTracksUpdate: true, tracks: [] });

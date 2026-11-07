@@ -253,7 +253,7 @@ async function seedMergedLibrary(
   assert.ok(userId);
   const user = { id: userId, username: "listener", role: "user", permissions: {} };
   assert.equal(
-    subsonic.starMany(user, [
+    await subsonic.starMany(user, [
       subsonic.idFor("artist", artist.identity_key),
       subsonic.idFor("album", album.identity_key),
       subsonic.idFor("song", track.identity_key),

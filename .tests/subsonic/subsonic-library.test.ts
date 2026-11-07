@@ -184,14 +184,14 @@ test("reports and resolves versioned custom album and track artwork", async () =
   assert.ok(subsonic.getLibraryLastModified(undefined) > changedAfterSave);
 });
 
-test("starMany validates duplicate and equivalent encoded library targets", () => {
+test("starMany validates duplicate and equivalent encoded library targets", async () => {
   const user = createTestUser("subsonic-star-many", "user");
   const key = "test-track:Old Song";
   const encoded = `song:${encodeURIComponent(key)}`;
   const alternate = encoded.replaceAll("%3A", "%3a");
-  assert.equal(starMany(user, [encoded, encoded]), true);
-  assert.equal(starMany(user, [encoded, alternate]), true);
-  assert.equal(starMany(user, [encoded, "song:missing"]), false);
+  assert.equal(await starMany(user, [encoded, encoded]), true);
+  assert.equal(await starMany(user, [encoded, alternate]), true);
+  assert.equal(await starMany(user, [encoded, "song:missing"]), false);
 });
 
 beforeAll(() => {
@@ -251,7 +251,7 @@ test("orders newest albums by media arrival before applying pagination", () => {
   );
 });
 
-test("implements starred and frequent album lists without inventing ratings", () => {
+test("implements starred and frequent album lists without inventing ratings", async () => {
   const user = createTestUser("subsonic-album-lists", "user");
   const insertPlay = db.prepare(`
     INSERT INTO play_events
@@ -260,7 +260,7 @@ test("implements starred and frequent album lists without inventing ratings", ()
   `);
 
   try {
-    assert.equal(starMany(user, [idFor("album", "test-album:New Album")]), true);
+    assert.equal(await starMany(user, [idFor("album", "test-album:New Album")]), true);
     insertPlay.run(
       user.id,
       idFor("song", "test-track:Old Song"),
@@ -522,19 +522,22 @@ test("playlist entries resolve a featured library track by its performer or albu
 
   const user = createTestUser("subsonic-featured-resolution", "admin");
   const playlistId = "subsonic-featured-resolution";
-  const jobIds = ["Featured Owner", "Featured Owner feat. Guest", "Another Artist"].map(
-    (artistName) => {
-      const jobId = downloadTracker.addJob({ artistName, trackName: "Featured Song" }, playlistId);
-      assert.ok(jobId != null);
-      downloadTracker.setDone(jobId, path.join(root, `${artistName}.flac`), "Featured Album");
-      return jobId;
-    },
-  );
+  const artistNames = ["Featured Owner", "Featured Owner feat. Guest", "Another Artist"];
+  const jobIds = artistNames.map((artistName) => {
+    const jobId = downloadTracker.addJob({ artistName, trackName: "Featured Song" }, "library");
+    assert.ok(jobId != null);
+    downloadTracker.setDone(jobId, path.join(root, `${artistName}.flac`), "Featured Album");
+    return jobId;
+  });
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Featured Resolution",
     ownerUserId: user.id,
-    tracks: [],
+    tracks: artistNames.map((artistName, index) => ({
+      artistName,
+      trackName: "Featured Song",
+      canonicalJobId: jobIds[index],
+    })),
   });
 
   const entries = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user)!.entry;
@@ -551,7 +554,7 @@ test("playlist entries resolve a featured library track by its performer or albu
   );
 
   const storedId = idFor("shared-song", `${playlistId}:${jobIds[0]}`);
-  assert.equal(starMany(user, [storedId]), true);
+  assert.equal(await starMany(user, [storedId]), true);
   assert.deepEqual(
     subsonic.getStarredWithLibrary(user).songIds.sort(),
     [idFor("song", libraryTrack.identityKey), storedId].sort(),
@@ -631,7 +634,8 @@ test("keeping a flow track moves its file into the Library, even under another p
       .find((job) => job.playlistType === "library" && job.trackName === "Keep")?.finalPath,
     libraryPath,
   );
-  assert.deepEqual(synced.mock.calls.at(-1)?.[0]?.toSorted(), [flow.id, otherFlow.id].toSorted());
+  const syncedIds = synced.mock.calls.flatMap(([ids]) => ids ?? []);
+  assert.ok(syncedIds.includes(flow.id) && syncedIds.includes(otherFlow.id));
 });
 
 test("keeping a favorited playlist song carries over its album track count and titles", async (t: import("vite-plus/test").TestContext) => {
@@ -660,7 +664,7 @@ test("keeping a favorited playlist song carries over its album track count and t
   downloadTracker.setDone(jobId, file, "Album");
 
   assert.equal(
-    starMany({ ...user, role: "admin" }, [idFor("shared-song", `${playlistId}:${jobId}`)]),
+    await starMany({ ...user, role: "admin" }, [idFor("shared-song", `${playlistId}:${jobId}`)]),
     true,
   );
 

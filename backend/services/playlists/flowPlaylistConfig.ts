@@ -684,6 +684,13 @@ export const flowPlaylistConfig = {
     return getStoredStaticPlaylists();
   },
 
+  getStaticPlaylistIdsUsingJobs(jobIds: Iterable<string>) {
+    const ids = new Set(jobIds);
+    return getStoredStaticPlaylists()
+      .filter((playlist) => playlist.tracks.some((track) => ids.has(track.canonicalJobId ?? "")))
+      .map((playlist) => playlist.id);
+  },
+
   getStaticPlaylistsForUser(user: AccessUser) {
     return getStoredStaticPlaylists().filter((playlist) =>
       this.canUserAccessStaticPlaylist(user, playlist),

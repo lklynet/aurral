@@ -1,5 +1,3 @@
-import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.ts";
-import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
@@ -9,14 +7,12 @@ import type {
   StaticPlaylistSelection,
 } from "./bulkOperationStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
+import { withPlaylistMutationLock } from "../downloadJobs/mutationGuards.ts";
 import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
 import { tracksShareMembership } from "./playlistTracks.ts";
 import type { StaticPlaylist } from "./flowPlaylistConfig.ts";
-import {
-  withStaticPlaylistRemovalMutation,
-  isStaticPlaylistSelectionCurrent,
-  removeStaticPlaylistSelectionsLocked,
-} from "./trackRemoval.ts";
+import { isStaticPlaylistSelectionCurrent } from "./trackRemoval.ts";
+import { linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 import { playlistManager } from "./playlistManager.ts";
 import { isArtistBlockedForUser } from "../discovery/feedback.ts";
 
@@ -38,134 +34,121 @@ function persistMembership<T>(operation: () => T) {
 export async function processStaticPlaylistBulkOperation(operationId: unknown) {
   const record = getBulkOperation(operationId);
   if (!record || ["completed", "failed"].includes(record.state)) return;
-  let user = userOps.getUserById(record.ownerUserId);
-  const source = user && flowPlaylistConfig.getStaticPlaylistForUser(user, record.sourcePlaylistId);
-  if (!source || user!.status !== "active")
-    throw new Error("Source playlist access is no longer available");
-  await withStaticPlaylistRemovalMutation(
-    {
-      playlistId: source.id,
-      jobIds: record.selections.map((selection) => selection.jobId),
-      extraPlaylistIds: [record.target?.playlistId],
-    },
-    async () => {
-      user = userOps.getUserById(record.ownerUserId);
-      if (!user || user.status !== "active")
-        throw new Error("Source playlist access is no longer available");
-      const lockedSource = flowPlaylistConfig.getStaticPlaylistForUser(user, source.id);
-      if (!lockedSource) throw new Error("Source playlist access is no longer available");
-      record.state = "running";
-      persist(record);
-      let target: Pick<StaticPlaylist, "id" | "name" | "ownerUserId" | "tracks"> | null = null;
-      let creatingTarget = false;
-      if (record.action === "move") {
-        target = flowPlaylistConfig.getStaticPlaylist(record.target.playlistId);
-        if (!target && record.target.create) {
-          creatingTarget = true;
-          target = {
-            id: record.target.playlistId,
-            name: record.target.name!,
-            ownerUserId: user.id,
-            tracks: [],
-          };
-        }
-        if (
-          !target ||
-          !flowPlaylistConfig.canUserAccessStaticPlaylist(user, target) ||
-          target.id === source.id
-        ) {
-          throw new Error("Destination playlist access is no longer available");
-        }
-      }
-      const finished = new Set(record.outcomes.map((outcome) => outcome.jobId));
-      const remaining = record.selections.filter((selection) => !finished.has(selection.jobId));
-      const eligible: StaticPlaylistSelection[] = [];
-      const rejected: BulkOperationOutcome[] = [];
-      for (const selection of remaining) {
-        const job = downloadTracker.getJob(selection.jobId);
-        if (target && (!job || !isStaticPlaylistSelectionCurrent(selection, lockedSource, job))) {
-          rejected.push({
-            jobId: selection.jobId,
-            status: job ? "failed" : "alreadyAbsent",
-            message: "The selected membership changed. Select the track again.",
-          });
-        } else if (
-          target &&
-          job &&
-          target.tracks.some(
-            (track) => tracksShareMembership(track, job) && track.canonicalJobId !== job.id,
-          )
-        ) {
-          rejected.push({
-            jobId: selection.jobId,
-            status: "failed",
-            message: "Track already in the destination. Source kept.",
-          });
-        } else if (target && job && isArtistBlockedForUser(target.ownerUserId, job)) {
-          rejected.push({
-            jobId: selection.jobId,
-            status: "failed",
-            message: "The destination owner has blocked this artist.",
-          });
-        } else eligible.push(selection);
-      }
-      if (target && eligible.length) {
-        const tracks = eligible
-          .map((selection) => {
-            const job = downloadTracker.getJob(selection.jobId);
-            return job && { ...job, canonicalJobId: job.id };
-          })
-          .filter((track): track is NonNullable<typeof track> => Boolean(track));
-        target = persistMembership(() => {
-          const result = creatingTarget
-            ? flowPlaylistConfig.createStaticPlaylist({
-                id: target!.id,
-                name: target!.name,
-                ownerUserId: user!.id,
-                tracks,
-              })
-            : flowPlaylistConfig.appendStaticPlaylistTracks(target!.id, tracks);
-          if (
-            !result ||
-            !tracks.every((track) =>
-              result.tracks.some(
-                (entry) =>
-                  tracksShareMembership(entry, track) &&
-                  entry.canonicalJobId === track.canonicalJobId,
-              ),
-            )
-          ) {
-            throw new Error("Could not persist destination membership");
-          }
-          record.synchronization[target!.id] = false;
-          persist(record);
-          return result;
-        });
-      }
-      await removeStaticPlaylistSelectionsLocked({
-        playlistId: source.id,
-        selections: eligible,
-        deleteFiles: record.action === "remove",
-        onCommitted(outcomes, affectedPlaylistIds) {
-          record.outcomes.push(
-            ...rejected,
-            ...outcomes.map((outcome): BulkOperationOutcome => ({
-              ...outcome,
-              ...(target &&
-                outcome.status === "removed" && { status: "moved", targetPlaylistId: target.id }),
-            })),
-          );
-          for (const id of affectedPlaylistIds) record.synchronization[id] = false;
-          record.outcomes.sort(
-            (a, b) =>
-              record.selections.findIndex((selection) => selection.jobId === a.jobId) -
-              record.selections.findIndex((selection) => selection.jobId === b.jobId),
-          );
-          persist(record);
-        },
+  const user = userOps.getUserById(record.ownerUserId);
+  const source =
+    user?.status === "active"
+      ? flowPlaylistConfig.getStaticPlaylistForUser(user, record.sourcePlaylistId)
+      : null;
+  if (!user || !source) throw new Error("Source playlist access is no longer available");
+  record.state = "running";
+  persist(record);
+  let target: Pick<StaticPlaylist, "id" | "name" | "ownerUserId" | "tracks"> | null = null;
+  let creatingTarget = false;
+  if (record.action === "move") {
+    target = flowPlaylistConfig.getStaticPlaylist(record.target.playlistId);
+    if (!target && record.target.create) {
+      creatingTarget = true;
+      target = {
+        id: record.target.playlistId,
+        name: record.target.name!,
+        ownerUserId: user.id,
+        tracks: [],
+      };
+    }
+    if (
+      !target ||
+      !flowPlaylistConfig.canUserAccessStaticPlaylist(user, target) ||
+      target.id === source.id
+    ) {
+      throw new Error("Destination playlist access is no longer available");
+    }
+  }
+  const destinationSaved = target ? target.id in record.synchronization : false;
+  const finished = new Set(record.outcomes.map((outcome) => outcome.jobId));
+  const eligible: StaticPlaylistSelection[] = [];
+  const rejected: BulkOperationOutcome[] = [];
+  for (const selection of record.selections.filter((entry) => !finished.has(entry.jobId))) {
+    const job = downloadTracker.getJob(selection.jobId);
+    if (!job || !isStaticPlaylistSelectionCurrent(selection, source, job)) {
+      rejected.push({
+        jobId: selection.jobId,
+        status: job ? "failed" : "alreadyAbsent",
+        ...(job && { message: "The selected membership changed. Select the track again." }),
       });
-    },
+    } else if (
+      !destinationSaved &&
+      target?.tracks.some((track) => tracksShareMembership(track, job))
+    ) {
+      rejected.push({
+        jobId: selection.jobId,
+        status: "failed",
+        message: "Track already in the destination. Source kept.",
+      });
+    } else if (target && isArtistBlockedForUser(target.ownerUserId, job)) {
+      rejected.push({
+        jobId: selection.jobId,
+        status: "failed",
+        message: "The destination owner has blocked this artist.",
+      });
+    } else eligible.push(selection);
+  }
+  const selected = (track: StaticPlaylist["tracks"][number]) =>
+    eligible.some(
+      (selection) =>
+        track.canonicalJobId === selection.jobId &&
+        (!selection.membershipId || track.membershipId === selection.membershipId),
+    );
+  if (target && eligible.length && !destinationSaved) {
+    const destination = target;
+    const linked = await linkTracksToLibrary(
+      source.tracks.filter(selected).map(({ membershipId: _, ...track }) => track),
+      { startedByPlaylist: destination.id, download: false },
+    );
+    await withPlaylistMutationLock(destination.id, () =>
+      persistMembership(() => {
+        const result = creatingTarget
+          ? flowPlaylistConfig.createStaticPlaylist({
+              id: destination.id,
+              name: destination.name,
+              ownerUserId: user.id,
+              tracks: linked.tracks,
+            })
+          : flowPlaylistConfig.appendStaticPlaylistTracks(destination.id, linked.tracks);
+        if (!result) throw new Error("Could not persist destination membership");
+        record.synchronization[destination.id] = false;
+        persist(record);
+      }),
+    );
+  }
+  await withPlaylistMutationLock(source.id, () =>
+    persistMembership(() => {
+      const current = flowPlaylistConfig.getStaticPlaylist(source.id);
+      if (!current) throw new Error("Source playlist no longer exists");
+      flowPlaylistConfig.updateStaticPlaylist(source.id, {
+        tracks: current.tracks.filter((track) => !selected(track)),
+      });
+      record.outcomes.push(
+        ...rejected,
+        ...eligible.map(({ jobId }): BulkOperationOutcome =>
+          target
+            ? { jobId, status: "moved", targetPlaylistId: target.id }
+            : { jobId, status: "removed" },
+        ),
+      );
+      record.outcomes.sort(
+        (a, b) =>
+          record.selections.findIndex((selection) => selection.jobId === a.jobId) -
+          record.selections.findIndex((selection) => selection.jobId === b.jobId),
+      );
+      if (eligible.length) record.synchronization[source.id] = false;
+      persist(record);
+    }),
   );
+  if (!target)
+    await releaseLibraryJobs(
+      source.id,
+      eligible.map((selection) => selection.jobId),
+    );
   if (record.target?.create) await playlistManager.ensurePlaylistArtwork(record.target.playlistId);
   const unsynchronized = Object.entries(record.synchronization)
     .filter(([, synchronized]) => !synchronized)
@@ -175,14 +158,6 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
     for (const id of unsynchronized) record.synchronization[id] = true;
     persist(record);
   }
-  if (Object.keys(record.synchronization).length && !record.scanScheduled) {
-    await playlistManager.scheduleScanLibrary(true);
-    record.scanScheduled = true;
-    persist(record);
-  }
-  await finalizeRetainedPlaylistRelocations(record.sourcePlaylistId, {
-    downloadRoot: downloadWorker.downloadRoot,
-  });
   record.state = "completed";
   delete record.message;
   persist(record);

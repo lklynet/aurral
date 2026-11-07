@@ -446,7 +446,7 @@ export async function stopOrphanedSlskdSearches() {
   await cancelSlskdWork([], [], listOrphanedDownloadProviderWork("slskd-search"));
 }
 
-export function markDownloadWorkCancelledForJobs(jobs: DownloadJob[] = []) {
+function markDownloadWorkCancelledForJobs(jobs: DownloadJob[] = []) {
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
   const rows = downloadPipelineQueue.list();
   db.transaction(() => {

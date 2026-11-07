@@ -17,9 +17,6 @@ const listStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
 const selectionSchema = v.looseObject({
   jobId: v.string(),
   membershipId: v.nullable(v.string()),
-  jobPlaylistId: v.string(),
-  jobGeneration: v.number(),
-  jobCreatedAt: v.number(),
 });
 
 const outcomeSchema = v.looseObject({

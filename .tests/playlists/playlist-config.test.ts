@@ -342,8 +342,8 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
           track_number: import("../../backend/db/rows.ts").DownloadJobsRow["track_number"];
           disc_number: import("../../backend/db/rows.ts").DownloadJobsRow["disc_number"];
         }
-      >("SELECT release_mbid, track_number, disc_number FROM download_jobs WHERE owner_type = ?")
-      .all(playlistId),
+      >("SELECT release_mbid, track_number, disc_number FROM download_jobs WHERE id = ?")
+      .all(track.canonicalJobId),
     [{ release_mbid: releaseMbid, track_number: 4, disc_number: 2 }],
   );
 });

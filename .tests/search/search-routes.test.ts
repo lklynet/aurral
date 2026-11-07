@@ -565,7 +565,9 @@ test("adding library search results to a new static playlist keeps their MusicBr
     .getStaticPlaylistsForUser(user)
     .find((entry) => entry.name === "Beacon Picks");
   assert.ok(playlist != null);
-  const jobs = downloadTracker.getByPlaylistType(playlist.id);
+  const jobs = playlist.tracks.map((track) =>
+    requireFixture(downloadTracker.getJob(track.canonicalJobId)),
+  );
   const identity = (track: {
     trackName: string | null;
     trackMbid?: string | null;

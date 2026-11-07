@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { afterAll, beforeEach, test, vi } from "vite-plus/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -241,7 +242,7 @@ test("a failed shared file never falls back to configured search sources, includ
     includeFiles: true,
   });
   const job = downloadTracker
-    .getByPlaylistType("offline-files")
+    .getByPlaylistType("library")
     .find((entry) => entry.trackName === "Shared");
   assert.ok(job);
   const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);
@@ -326,7 +327,7 @@ for (const format of ["wav", "m4a"]) {
       includeFiles: true,
     });
     const job = downloadTracker
-      .getByPlaylistType(`download-file-${format}`)
+      .getByPlaylistType("library")
       .find((entry) => entry.trackName === `Shared ${format}`);
     assert.ok(job);
     const entry = downloadPipelineQueue.list().find((queued) => queued.payload?.jobId === job.id);
@@ -345,6 +346,38 @@ for (const format of ["wav", "m4a"]) {
     if (format === "m4a") assert.deepEqual(await readFile(completed.finalPath), audio);
   });
 }
+
+test("a file import downloads a track an earlier details-only import saved", async () => {
+  await importer.importShare({
+    ownerUserId: owner.id,
+    playlistId: "details-first",
+    manifest,
+    includeFiles: false,
+  });
+  const saved = requireFixture(downloadTracker.getAll().find((job) => job.trackName === "Shared"));
+  const album = parseShareManifest({
+    kind: "album",
+    title: "Remote album",
+    artistName: "Remote",
+    tracks: manifest!.tracks.slice(1, 2),
+  });
+  assert.ok(album);
+  remoteShare({ shareManifest: album });
+
+  await importer.importShare({
+    ownerUserId: owner.id,
+    url: SHARE_URL,
+    manifest: album,
+    includeFiles: true,
+  });
+
+  assert.equal(downloadTracker.getJob(saved.id)?.status, "pending");
+  assert.equal(downloadTracker.getJob(saved.id)?.startedByPlaylist, null);
+  assert.equal(
+    downloadPipelineQueue.list().filter((entry) => entry.payload?.jobId === saved.id).length,
+    1,
+  );
+});
 
 test("an unavailable album entry can be imported later when its shared file is available", async () => {
   const album = parseShareManifest({

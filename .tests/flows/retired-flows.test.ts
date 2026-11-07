@@ -99,17 +99,17 @@ test("retired editorial flows stop running and become playlists that keep their 
     replacesFlowId: "metal-mayhem",
     tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
   });
-  const finished = flowPlaylistConfig.createStaticPlaylist({
+  const keptJob = downloadTracker.addJob(
+    { artistName: "Kept Artist", trackName: "Kept Song" },
+    "library",
+  );
+  assert.ok(keptJob != null);
+  flowPlaylistConfig.createStaticPlaylist({
     name: "Half Deleted",
     sourceFlowId: "half-deleted",
     replacesFlowId: "half-deleted",
-    tracks: [{ artistName: "Kept Artist", trackName: "Kept Song" }],
+    tracks: [{ artistName: "Kept Artist", trackName: "Kept Song", canonicalJobId: keptJob }],
   });
-  const keptJob = downloadTracker.addJob(
-    { artistName: "Kept Artist", trackName: "Kept Song" },
-    finished.id,
-  );
-  assert.ok(keptJob != null);
   const keptFile = path.join(
     playlistManager.downloadRoot,
     "Kept Artist",
@@ -134,8 +134,9 @@ test("retired editorial flows stop running and become playlists that keep their 
     [playlist.name, playlist.ownerUserId, playlist.tracks.map((track) => track.trackName)],
     ["Metal Mayhem", 7, ["Old Song"]],
   );
-  const [job] = downloadTracker.getByPlaylistId(playlist.id);
-  assert.ok(job !== undefined);
+  const job = downloadTracker.getJob(playlist.tracks[0]?.canonicalJobId);
+  assert.ok(job != null);
+  assert.equal(job.playlistType, "library");
   assert.equal(
     job.finalPath,
     path.join(playlistManager.downloadRoot, "Old Artist", "Album", "Old Song.flac"),
@@ -149,8 +150,5 @@ test("retired editorial flows stop running and become playlists that keep their 
   );
 
   assert.equal(flowPlaylistConfig.getFlow("half-deleted"), null);
-  assert.deepEqual(
-    downloadTracker.getByPlaylistId(finished.id).map((entry) => entry.trackName),
-    ["Kept Song"],
-  );
+  assert.equal(downloadTracker.getJob(keptJob)?.trackName, "Kept Song");
 });

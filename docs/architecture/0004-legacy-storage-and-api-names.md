@@ -12,7 +12,7 @@ The code kept the old names long after the model changed. `weeklyFlow` modules r
 
 Code uses names that match the current model:
 
-- `backend/services/downloadJobs` runs download jobs for the Library, static playlists, flows, and upgrades.
+- `backend/services/downloadJobs` runs download jobs for the Library, flows, and upgrades.
 - `backend/services/flows` builds and schedules flows.
 - `backend/services/playlists` stores flows and static playlists and runs playlist operations.
 - `backend/routes/playlists` serves `/api/playlists`.
@@ -24,7 +24,7 @@ Public APIs, the Library folder, and the fields apps read keep their old names, 
 
 | Name                                                                                           | Where                                 | Holds                                                                         |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------- |
-| `playlistId`                                                                                   | Job field                             | The owner, which is `library`, a flow ID, or a static playlist ID             |
+| `playlistId`                                                                                   | Job field                             | The owner, which is `library` or a flow ID                                    |
 | `playlistType`                                                                                 | Job field                             | The owner again, or `quality-upgrade` for an upgrade job                      |
 | `sharedPlaylists`                                                                              | `/api/playlists/status` field         | Static playlists                                                              |
 | `sharedPlaylistStats`                                                                          | `/api/playlists/status` field         | Download counts for each static playlist                                      |
