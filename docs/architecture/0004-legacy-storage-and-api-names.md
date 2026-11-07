@@ -45,4 +45,16 @@ Migration code keeps the old names, such as `weeklyFlows` and `playlist_download
 
 ## Upgrading from Aurral 2
 
-Aurral 3 opens a database only when Aurral 2 finished every upgrade step on it (`backend/config/upgrade-gate.ts`). Otherwise it exits before it writes anything and asks the admin to start the `2` image first. That is why 3.0 carries no code for data from before 2.x: no old path remapping, no 2.x settings readers, and no 2.x table rebuilds. Don't add any back. A new schema change gets its own migration with its own marker, and runs on every start.
+Aurral 3 opens a database only when Aurral 2 finished every upgrade step on it (`backend/config/upgrade-gate.ts`). Otherwise it exits before it writes anything and asks the admin to start the `2` image first. That is why 3.0 carries no code for data from before 2.x: no old path remapping, no 2.x settings readers, and no 2.x table rebuilds. Don't add any back. A new data change gets its own migration and its own marker, so it runs once.
+
+Once 3.x has settled, 3.0's own upgrade code retires the same way. Gate on each migration's own marker, not `schemaVersion` 5, because Aurral stamps 5 before those migrations run:
+
+- `migration:job-queue-v1`
+- `migration:static-playlists-reference-library-v1`
+- `migration:silence-tracks-v1`
+- `migration:webhook-events-per-webhook-v1`
+- `migration:playlist-permission-v1`
+- `migration:playlist-files-v1`
+- `migration:settings-login-v1`
+
+Three steps carry no marker because their result shows in the data: the playback server cleanup is done once its old settings are gone, and the `keep_file` and SSO adoption columns are gone once the tables lack them. The `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` fallbacks go in the same release.

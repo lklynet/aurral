@@ -8,27 +8,17 @@ import type {
 import type { InferResponseType } from "hono/client";
 import type { settingsClient } from "../../utils/api/clients/settings.ts";
 
-export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
 
 export type SavedSettings =
   | Partial<InferResponseType<typeof settingsClient.$get, 200>>
   | Partial<InferResponseType<typeof settingsClient.$post, 200>>;
 
-export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
-  const trimmed = String(baseUrl || "")
-    .trim()
-    .replace(/\/+$/, "");
-  return trimmed === LEGACY_METADATA_BASE_URL ? "" : trimmed;
-};
-
 export const normalizeSettings = (savedSettings: SavedSettings) => {
   const lidarr: NonNullable<StoredIntegrations["lidarr"]> =
     savedSettings.integrations?.lidarr || {};
   const lastfm: NonNullable<StoredIntegrations["lastfm"]> =
     savedSettings.integrations?.lastfm || {};
-  const legacyMusicbrainz: NonNullable<StoredIntegrations["musicbrainz"]> =
-    savedSettings.integrations?.musicbrainz || {};
   const metadata: NonNullable<StoredIntegrations["metadata"]> =
     savedSettings.integrations?.metadata || {};
   const news = savedSettings.integrations?.news;
@@ -190,22 +180,13 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       },
       metadata: {
         provider: "brainzmash",
-        baseUrl: normalizeMetadataBaseUrl(
-          metadata.baseUrl ||
-            String(legacyMusicbrainz.customUrl || "")
-              .trim()
-              .replace(/\/ws\/2\/?$/, ""),
-        ),
+        baseUrl: "",
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
         ...metadata,
       },
       ...(savedSettings.integrations?.google && { google: savedSettings.integrations.google }),
-      general: {
-        authUser: "",
-        authPassword: "",
-        ...(savedSettings.integrations?.general || {}),
-      },
+      general: savedSettings.integrations?.general || {},
       gotify: {
         url: "",
         token: "",

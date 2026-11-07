@@ -1,7 +1,6 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import PillToggle from "../../../../components/PillToggle";
 import { DotLoader } from "../../../../components/DotLoader";
-import { useAuth } from "../../../../contexts/AuthContext";
 import { isReauthRequiredError, promptReauth } from "../../../../utils/reauth.ts";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
@@ -29,10 +28,7 @@ const USER_STATUSES = {
 const isUserStatus = (value: string): value is keyof typeof USER_STATUSES =>
   Object.hasOwn(USER_STATUSES, value);
 
-const canClaimBySso = (user: SettingsUser, ssoEnabled: boolean) =>
-  ssoEnabled && user.needsIdentityMigration && !user.isProtected;
-
-export function describeUser(user: SettingsUser, ssoEnabled: boolean) {
+export function describeUser(user: SettingsUser) {
   return [
     user.role === "admin" ? "Admin" : "User",
     user.status === "active"
@@ -40,11 +36,6 @@ export function describeUser(user: SettingsUser, ssoEnabled: boolean) {
       : isUserStatus(user.status)
         ? USER_STATUSES[user.status]
         : user.status,
-    canClaimBySso(user, ssoEnabled)
-      ? user.allowIdentityAdoption
-        ? "Awaiting SSO claim"
-        : "No SSO identity"
-      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -166,7 +157,6 @@ export function NewUserPage() {
 
 export function EditUserPage({ user }: { user: SettingsUser }) {
   const formId = useId();
-  const { bootstrap } = useAuth();
   const { fetchSettings, showSuccess, showError } = useServerSettings();
   const route = useSettingsRoute();
   const [password, setPassword] = useState("");
@@ -175,10 +165,8 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
     ...user.permissions,
   }));
   const [status, setStatus] = useState(user.status);
-  const [allowAdoption, setAllowAdoption] = useState(user.allowIdentityAdoption);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const claimable = canClaimBySso(user, !!bootstrap?.oidcEnabled);
   const listenHistory = formatListenHistory(user);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -189,7 +177,6 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
         ...(password && { password }),
         permissions,
         status: isUserStatus(status) ? status : undefined,
-        ...(claimable && { allowIdentityAdoption: allowAdoption }),
       });
     try {
       try {
@@ -268,20 +255,6 @@ export function EditUserPage({ user }: { user: SettingsUser }) {
           {listenHistory ? (
             <SettingsRow label="Listening history">
               <span className="settings-row__value">{listenHistory}</span>
-            </SettingsRow>
-          ) : null}
-          {claimable ? (
-            <SettingsRow
-              label="Claim by SSO sign-in"
-              htmlFor={`${formId}-adoption`}
-              help="The next matching SSO sign-in takes over this account and keeps its flows and history. Turn on only if you know who owns it."
-            >
-              <PillToggle
-                id={`${formId}-adoption`}
-                checked={allowAdoption}
-                aria-label="Claim by SSO sign-in"
-                onChange={(event) => setAllowAdoption(event.target.checked)}
-              />
             </SettingsRow>
           ) : null}
         </SettingsGroup>

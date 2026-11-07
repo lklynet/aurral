@@ -69,18 +69,6 @@ const withLocalNetworkBypassDefaults = (settings = dbOps.getSettings()) => ({
   },
 });
 
-export const getAuthUser = () => {
-  const settings = dbOps.getSettings();
-  return settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin";
-};
-
-export const getAuthPassword = () => {
-  const settings = dbOps.getSettings();
-  const dbPass = settings.integrations?.general?.authPassword;
-  if (dbPass) return [dbPass];
-  return process.env.AUTH_PASSWORD ? process.env.AUTH_PASSWORD.split(",").map((p) => p.trim()) : [];
-};
-
 const API_KEY_SETTINGS_KEY = "apiKey";
 const API_KEY_MIN_LENGTH = 32;
 
@@ -343,13 +331,7 @@ export const isAuthRequiredByConfig = () => {
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
   if (!onboardingDone) return false;
-  const legacyPasswords = getAuthPassword();
-  return (
-    isProxyAuthEnabled() ||
-    isOidcAuthEnabled() ||
-    userOps.countUsers() > 0 ||
-    legacyPasswords.length > 0
-  );
+  return isProxyAuthEnabled() || isOidcAuthEnabled() || userOps.countUsers() > 0;
 };
 
 export const getLocalNetworkBypassConfig = (settings = dbOps.getSettings()) =>
@@ -512,22 +494,7 @@ export function issueProxySession(req: CredentialRequest) {
   return createSession(proxyUser.id, req.ip || null, getHeaderValue(req, "user-agent") || null);
 }
 
-export function migrateLegacyAdmin() {
-  if (userOps.countUsers() > 0) return;
-  const settings = dbOps.getSettings();
-  const onboardingComplete = settings.onboardingComplete;
-  const authUser = settings.integrations?.general?.authUser || "admin";
-  const authPassword = settings.integrations?.general?.authPassword;
-  if (!onboardingComplete || !authPassword) return;
-  const hash = hashPassword(authPassword);
-  userOps.createUser(authUser, hash, "admin", null, true, true, authPassword);
-}
-
 export function resolveUser(username: string, password: string) {
-  if (userOps.countUsers() === 0) {
-    migrateLegacyAdmin();
-    if (userOps.countUsers() === 0) return null;
-  }
   const un = String(username || "")
     .trim()
     .toLowerCase();
@@ -556,48 +523,17 @@ export function resolveUser(username: string, password: string) {
 
 export function resolveSubsonicTokenUser(username: string, token: unknown, salt: unknown) {
   if (!/^[a-f\d]{32}$/i.test(String(token || "")) || !String(salt || "")) return null;
-  if (userOps.countUsers() === 0) migrateLegacyAdmin();
   const normalizedUsername = String(username || "")
     .trim()
     .toLowerCase();
   const user = userOps.getUserByUsername(normalizedUsername);
   if (!user) return null;
 
-  let password: string | null | undefined = userOps.getSubsonicPasswordById(user.id);
-  if (!password && safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())) {
-    password = getAuthPassword().find((candidate) =>
-      safeCompare(createSubsonicToken(candidate, salt), token),
-    );
-  }
+  const password = userOps.getSubsonicPasswordById(user.id);
   if (!password) return null;
 
   const expectedToken = createSubsonicToken(password, salt);
   return safeCompare(expectedToken, token) ? resolveUser(normalizedUsername, password) : null;
-}
-
-function legacyAuth(username: string, password: string) {
-  const authUser = getAuthUser();
-  const passwords = getAuthPassword();
-  if (passwords.length === 0) return null;
-  const userMatches = safeCompare(username, authUser);
-  const passwordMatches = passwords.some((p) => safeCompare(password, p));
-  if (!userMatches || !passwordMatches) return null;
-  return {
-    id: 0,
-    username: authUser,
-    role: "admin",
-    permissions: {
-      accessSettings: true,
-      accessPlaylists: true,
-      accessFlow: true,
-      addArtist: true,
-      addAlbum: true,
-      changeMonitoring: true,
-      deleteArtist: true,
-      deleteAlbum: true,
-      deleteTrack: true,
-    },
-  };
 }
 
 export function resolveLocalNetworkBypassUser(req: ClientRequest) {
@@ -622,8 +558,7 @@ export function resolveRequestUser(req: CredentialRequest) {
       const colon = decoded.indexOf(":");
       const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
       const password = colon >= 0 ? decoded.slice(colon + 1) : "";
-      let user = resolveUser(username, password);
-      if (!user && userOps.countUsers() === 0) user = legacyAuth(username, password);
+      const user = resolveUser(username, password);
       if (user) return user;
     } catch (e) {
       return null;
@@ -676,7 +611,7 @@ function resolveBasicUser(authorization: string | undefined) {
   const colon = decoded.indexOf(":");
   const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
   const password = colon >= 0 ? decoded.slice(colon + 1) : "";
-  return resolveUser(username, password) || legacyAuth(username, password);
+  return resolveUser(username, password);
 }
 
 export const resolveTokenUser = (req: CredentialRequest) =>

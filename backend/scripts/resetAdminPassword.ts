@@ -1,6 +1,5 @@
 import crypto from "crypto";
-import { dbOps, userOps } from "../db/helpers/index.ts";
-import type { AppSettings } from "../db/helpers/settings.ts";
+import { userOps } from "../db/helpers/index.ts";
 import { hashPassword } from "../middleware/passwordHash.ts";
 
 function parseArgs(argv: string[]) {
@@ -62,7 +61,7 @@ function printUsage() {
   console.log("  pnpm run auth:reset-admin-password --username admin --generate");
   console.log("");
   console.log("Flags:");
-  console.log("  -u, --username   Admin username (default: configured auth user)");
+  console.log("  -u, --username   Admin username (default: the first admin account)");
   console.log("  -p, --password   New password");
   console.log("  -g, --generate   Generate a random password");
   console.log("  -l, --length     Generated password length (default: 24)");
@@ -78,23 +77,11 @@ function generatePassword(length: number) {
   return out.slice(0, safeLength);
 }
 
-function resolveConfiguredAdminUsername(settings: AppSettings) {
-  return settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin";
-}
-
-function upsertGeneralAuth(settings: AppSettings, username: string, password: string) {
-  return {
-    ...settings,
-    integrations: {
-      ...(settings.integrations || {}),
-      general: {
-        ...(settings.integrations?.general || {}),
-        authUser: username,
-        authPassword: password,
-      },
-    },
-  };
-}
+const oldestAdminUsername = () =>
+  userOps
+    .getAllUsers()
+    .filter((user) => user.role === "admin")
+    .sort((a, b) => a.id - b.id)[0]?.username;
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -103,9 +90,8 @@ function main() {
     process.exit(0);
   }
 
-  const currentSettings = dbOps.getSettings();
   const username =
-    String(args.username || resolveConfiguredAdminUsername(currentSettings))
+    String(args.username || oldestAdminUsername() || "")
       .trim()
       .toLowerCase() || "admin";
 
@@ -135,8 +121,6 @@ function main() {
     console.error("Failed to update admin password.");
     process.exit(1);
   }
-
-  dbOps.updateSettings(upsertGeneralAuth(currentSettings, username, password));
 
   console.log("Admin password reset successful.");
   console.log(`Username: ${username}`);

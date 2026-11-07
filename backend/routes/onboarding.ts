@@ -56,20 +56,8 @@ export default new Hono<AppEnv>()
       }
 
       const current = dbOps.getSettings();
-      const integrations = {
-        ...(current.integrations || defaultData.settings.integrations || {}),
-        general: {
-          ...(current.integrations?.general || {}),
-          authUser:
-            authUser != null ? authUser.trim() : current.integrations?.general?.authUser || "admin",
-          authPassword:
-            authPassword != null ? authPassword : current.integrations?.general?.authPassword || "",
-        },
-      };
-
       const nextSettings = {
         ...current,
-        integrations,
         security: {
           ...(current.security || defaultData.settings.security || {}),
           localNetworkBypass: {
@@ -103,19 +91,16 @@ export default new Hono<AppEnv>()
 
       dbOps.updateSettings({ ...dbOps.getSettings(), onboardingComplete: true });
 
-      const authUserFinal = integrations.general.authUser || "admin";
-      const authPasswordFinal = integrations.general.authPassword || "";
       let token: string | null = null;
-      if (authPasswordFinal && userOps.getAllUsers().length === 0) {
-        const hash = hashPassword(authPasswordFinal);
+      if (authPassword && userOps.countUsers() === 0) {
         const user = userOps.createUser(
-          authUserFinal,
-          hash,
+          authUser?.trim() || "admin",
+          hashPassword(authPassword),
           "admin",
           null,
           true,
           true,
-          authPasswordFinal,
+          authPassword,
         );
         if (user) {
           token = createSession(

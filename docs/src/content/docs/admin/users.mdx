@@ -100,28 +100,6 @@ A user who already has an Aurral account can link SSO to it:
 
 Later SSO sign-ins open this account. Aurral refuses the link if the SSO account already belongs to another Aurral account. After the link, the identity provider sets the role at each SSO sign-in, as for any OIDC account. If it does not give the user the admin role, an admin who signs in with SSO becomes a regular user. The protected recovery admin keeps its role.
 
-### Claim existing accounts after an upgrade
-
-Users can link SSO themselves in **Settings > Profile**. An admin can also approve a claim for them.
-
-Aurral links an OIDC user to an account by the issuer and subject in the token, not by the username. An account created before identity linking has no linked identity. If that person signs in with SSO, Aurral creates a new account instead of using the old one.
-
-A matching username does not prove that the person owns the account, so an admin must approve each claim:
-
-1. In **Settings > Users**, find the accounts with a **no SSO identity** badge.
-2. Open **Manage** on an account that you know belongs to an SSO user, and turn on **Claim by SSO sign-in**. The badge changes to **awaiting SSO claim**.
-3. The user signs in with SSO once. Aurral links the identity to the existing account and keeps its flows, history, settings, and permissions.
-
-The first SSO sign-in uses up the approval, and the badge goes away.
-
-:::caution
-Approve the accounts before you tell users that the upgrade is live. If someone signs in with SSO before you approve their account, their identity links to a new empty account, and a later approval has no effect.
-:::
-
-To recover, delete the new duplicate account, which has a number such as `-2` at the end of its username. Then approve the original account and ask the user to sign in again.
-
-You cannot approve a claim for the protected recovery admin.
-
 ## Sign in with Google
 
 Google sign-in lets a user sign in to an account that already exists. It never creates an account and never changes a role. A user must link the Google account first, while signed in another way.
@@ -217,3 +195,5 @@ To generate a random password:
 ```bash
 pnpm run auth:reset-admin-password --generate
 ```
+
+It resets the first admin account. Add `--username <name>` to reset another one.

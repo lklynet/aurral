@@ -1,6 +1,17 @@
 import type Database from "better-sqlite3";
 
-export function renamePlaylistPermission(db: Database.Database) {
+export const PLAYLIST_PERMISSION_MIGRATION_KEY = "migration:playlist-permission-v1";
+
+export const renamePlaylistPermission = (db: Database.Database) =>
+  db.transaction(() => {
+    const claimed = db
+      .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')")
+      .run(PLAYLIST_PERMISSION_MIGRATION_KEY);
+    if (claimed.changes === 0) return;
+    renameStoredPermission(db);
+  })();
+
+function renameStoredPermission(db: Database.Database) {
   const hasPermissions = db
     .prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'permissions'")
     .get();
