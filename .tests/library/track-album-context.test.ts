@@ -37,7 +37,13 @@ const [
 
 const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-type ListedTrack = { title: string; releaseMbid: string; discNumber: number; trackNumber: number };
+type ListedTrack = {
+  title: string;
+  releaseMbid: string;
+  discNumber: number;
+  discTitle: string | null;
+  trackNumber: number;
+};
 
 async function listReleaseGroupTracks(mbid: string) {
   const response = await app.request(`/artists/release-group/${mbid}/tracks`);
@@ -76,7 +82,7 @@ const group = brainzmashGroup({
         { title: "Extra", position: 2, disc: 2 },
       ],
     },
-    { id: STANDARD, tracks: [intro, song, outro] },
+    { id: STANDARD, discTitles: ["", "Side Two"], tracks: [intro, song, outro] },
     { id: PRESSING, tracks: [intro, song, outro] },
   ],
 });
@@ -133,12 +139,13 @@ test("a release page lists the release and disc a plain request for its track se
       track.title,
       track.releaseMbid,
       track.discNumber,
+      track.discTitle,
       track.trackNumber,
     ]),
     [
-      ["Intro", STANDARD, 1, 1],
-      ["Song", STANDARD, 1, 2],
-      ["Outro", STANDARD, 2, 1],
+      ["Intro", STANDARD, 1, null, 1],
+      ["Song", STANDARD, 1, null, 2],
+      ["Outro", STANDARD, 2, "Side Two", 1],
     ],
   );
   const plain = await requestTrack({ trackName: "Outro", trackMbid: "rec-outro" });

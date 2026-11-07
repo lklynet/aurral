@@ -722,11 +722,15 @@ export async function getAlbumTracksByAlbumMbid(
 ) {
   const album = await getAlbumByMbid(albumMbid);
   const release = chooseRelease(album);
-  return Array.isArray(release?.tracks)
-    ? release.tracks
-        .filter((track) => !isSilenceTrack(track.title))
-        .map((track) => ({ ...track, releaseMbid: release.id || null }))
-    : [];
+  if (!Array.isArray(release?.tracks)) return [];
+  const discNames = new Map(release.media.map((medium) => [medium.position, medium.name]));
+  return release.tracks
+    .filter((track) => !isSilenceTrack(track.title))
+    .map((track) => ({
+      ...track,
+      releaseMbid: release.id || null,
+      discTitle: discNames.get(track.mediumNumber || 1) || null,
+    }));
 }
 
 export async function searchArtists(
