@@ -24,6 +24,22 @@ function getWsUrl() {
 type ChannelListener = (message: WebSocketChannelMessage) => void;
 type StatusListener = (isConnected: boolean) => void;
 
+const RELOADED_FOR_VERSION_KEY = "aurral:reloaded-for-version";
+
+const reloadIfServerChanged = (serverVersion: unknown) => {
+  if (typeof serverVersion !== "string" || serverVersion === import.meta.env.VITE_APP_VERSION) {
+    return false;
+  }
+  try {
+    if (sessionStorage.getItem(RELOADED_FOR_VERSION_KEY) === serverVersion) return false;
+    sessionStorage.setItem(RELOADED_FOR_VERSION_KEY, serverVersion);
+  } catch {
+    return false;
+  }
+  window.location.reload();
+  return true;
+};
+
 const OPEN = WebSocket.OPEN;
 const CONNECTING = WebSocket.CONNECTING;
 const CLOSING = WebSocket.CLOSING;
@@ -197,6 +213,12 @@ function connectSocket() {
       const msg = JSON.parse(event.data);
       if (msg.type === "pong") {
         clearHeartbeatTimeout();
+        return;
+      }
+      if (msg.type === "connected" && reloadIfServerChanged(msg.version)) {
+        socket = null;
+        clearHeartbeat();
+        currentSocket.close();
         return;
       }
       const listeners = channelListeners.get(msg.channel);

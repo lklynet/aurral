@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
 import * as v from "valibot";
@@ -228,13 +229,16 @@ function upgradeBlocker(
 }
 
 // Returns what adding the upgrade of a done track needs, or why it has none.
-async function prepareQualityUpgrade(job: QualityJob | null | undefined) {
+async function prepareQualityUpgrade(
+  job: QualityJob | null | undefined,
+  isUnmonitored = indexUnmonitoredJobs(),
+) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return { status: "ineligible" };
   }
   if (!job.qualityCheckedAt) await classifyQualityJob(job);
   const current = downloadTracker.getJob(job.id);
-  const blocker = upgradeBlocker(current);
+  const blocker = upgradeBlocker(current, isUnmonitored);
   if (blocker) return { status: blocker };
   return { sourceJobId: current!.id, context: await readUpgradeSearchContext(current!) };
 }
@@ -332,13 +336,14 @@ async function listUpgradeCandidatesByAlbum({
   force,
   owners,
   profile,
+  isUnmonitored,
 }: {
   force: boolean;
   owners: Set<string> | null;
   profile: QualityProfile;
+  isUnmonitored: ReturnType<typeof indexUnmonitoredJobs>;
 }) {
   const dueBefore = Date.now() - profile.intervalDays * DAY_MS;
-  const isUnmonitored = indexUnmonitoredJobs();
   const albums = new Map<string, UpgradeCandidate[]>();
   const collect = (albumKey: string, candidate: UpgradeCandidate) =>
     albums.set(albumKey, [...(albums.get(albumKey) || []), candidate]);
@@ -358,7 +363,7 @@ async function listUpgradeCandidatesByAlbum({
         const current = downloadTracker.getJob(job.id);
         if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") return {};
         if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) return {};
-        return prepareQualityUpgrade(current);
+        return prepareQualityUpgrade(current, isUnmonitored);
       },
     });
   }
@@ -372,7 +377,7 @@ async function listUpgradeCandidatesByAlbum({
             trackId: candidate.trackId,
             albumId: candidate.albumId,
           });
-          return job ? prepareQualityUpgrade(job) : {};
+          return job ? prepareQualityUpgrade(job, isUnmonitored) : {};
         },
       });
     }
@@ -391,8 +396,15 @@ export async function runQualityUpgradeCheck({
   if (!force && !profile.automaticUpgrades) return 0;
   const owners = playlistIds ? new Set(playlistIds) : null;
   const addedByOwner = new Map<string | null, number>();
+  const isUnmonitored = indexUnmonitoredJobs();
   let queued = 0;
-  for (const candidates of await listUpgradeCandidatesByAlbum({ force, owners, profile })) {
+  for (const candidates of await listUpgradeCandidatesByAlbum({
+    force,
+    owners,
+    profile,
+    isUnmonitored,
+  })) {
+    await yieldToEventLoop();
     const prepared: UpgradePlan[] = [];
     for (const { owner, add } of candidates) {
       const counted = owners ? owner : null;
@@ -402,6 +414,7 @@ export async function runQualityUpgradeCheck({
       prepared.push(upgrade);
       addedByOwner.set(counted, (addedByOwner.get(counted) || 0) + 1);
     }
+    if (prepared.length === 0) continue;
     queued += (await addUpgradesAtOnce(prepared)).filter((status) => status === "queued").length;
   }
   return queued;
