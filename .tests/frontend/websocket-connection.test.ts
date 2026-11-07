@@ -150,3 +150,66 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
 
   unsubscribe();
 });
+
+test("a tab built for another server version reloads once instead of reading new messages", async (t: import("vite-plus/test").TestContext) => {
+  const sockets: MessageSocket[] = [];
+
+  class MessageSocket {
+    readyState = 0;
+    onopen?: () => void;
+    onmessage?: (event: { data: string }) => void;
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+
+    constructor() {
+      sockets.push(this);
+    }
+
+    send() {}
+
+    close() {
+      this.readyState = MessageSocket.CLOSING;
+    }
+  }
+
+  const reloads: string[] = [];
+  const sessionStorage = createStorage();
+  vi.stubGlobal("sessionStorage", sessionStorage);
+  vi.stubGlobal("localStorage", createStorage());
+  vi.stubGlobal("window", {
+    ...browserWindow(),
+    location: { ...browserWindow().location, reload: () => reloads.push("reload") },
+  });
+  vi.stubGlobal("WebSocket", MessageSocket);
+  vi.stubEnv("VITE_APP_VERSION", "2.9.0");
+  t.onTestFinished(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  const openTab = async () => {
+    vi.resetModules();
+    const received: string[] = [];
+    const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.ts");
+    const unsubscribe = webSocketConnection.subscribeToChannel("playlists", (message) =>
+      received.push(message.type),
+    );
+    const socket = requireFixture(sockets.at(-1));
+    socket.readyState = MessageSocket.OPEN;
+    socket.onopen?.();
+    for (const message of [
+      { type: "connected", version: "3.0.0" },
+      { type: "playlist_status", channel: "playlists" },
+    ]) {
+      socket.onmessage?.({ data: JSON.stringify(message) });
+    }
+    unsubscribe();
+    return received;
+  };
+
+  assert.deepEqual(await openTab(), []);
+  assert.deepEqual(reloads, ["reload"]);
+  assert.deepEqual(await openTab(), ["playlist_status"]);
+  assert.deepEqual(reloads, ["reload"]);
+});
