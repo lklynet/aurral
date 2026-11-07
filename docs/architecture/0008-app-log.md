@@ -20,4 +20,4 @@ Aurral keeps one log in `<data dir>/logs/aurral.log`, as JSON Lines, and serves 
 
 - The reader matches `{"id":…,"ts":"…","level":"…"` at the start of each line to skip parsing lines it doesn't need. The writer must keep those three keys first.
 - `id` is the cursor for paging, not `ts`. Worker entries carry the time they were made, so `ts` is only roughly in file order.
-- Failed outgoing requests are logged from `lib/axiosFetch.ts` without the query string, since many integrations put keys there.
+- Failed outgoing requests are logged from `lib/http.ts` without the query string, since many integrations put keys there.

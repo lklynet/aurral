@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
-import axios from "../../../lib/axiosFetch.ts";
+import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { dbOps } from "../../db/helpers/index.ts";
@@ -269,19 +269,13 @@ function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
-const RETRYABLE_ERROR_CODES: (string | undefined)[] = [
-  "ECONNABORTED",
-  "ETIMEDOUT",
-  "ECONNRESET",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-];
 const RETRYABLE_STATUSES: (number | undefined)[] = [408, 425, 429, 500, 502, 503, 504];
 
 function isRetryable(error: unknown) {
   const failure = asAppError(error);
   return (
-    (typeof failure?.code === "string" && RETRYABLE_ERROR_CODES.includes(failure.code)) ||
+    isTransientNetworkError(error) ||
+    failure?.code === "ETIMEDOUT" ||
     RETRYABLE_STATUSES.includes(failure?.response?.status)
   );
 }
@@ -491,12 +485,12 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 throw error;
               }
               providerRequestStarted = true;
-              return axios.get(`${baseUrl}${path}`, {
-                params,
-                timeout: Number.isFinite(requestTimeoutMs)
+              return http.get(`${baseUrl}${path}`, {
+                query: params,
+                timeoutMs: Number.isFinite(requestTimeoutMs)
                   ? Math.max(1, Math.floor(requestTimeoutMs))
                   : METADATA_REQUEST_TIMEOUT_MS,
-                bodyTimeout: METADATA_RESPONSE_BODY_TIMEOUT_MS,
+                bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
                 headers: {
                   "User-Agent": getUserAgent(),
                 },

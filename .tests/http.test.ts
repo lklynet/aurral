@@ -1,16 +1,16 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import http from "node:http";
+import { createServer, type IncomingHttpHeaders, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import axios from "../lib/axiosFetch.ts";
+import { http, isTransientNetworkError } from "../lib/http.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 import { requireFixture } from "./playlists/fixtures.ts";
 
 useFakeClock();
 
-async function listen(handler: http.RequestListener) {
-  const server = http.createServer(handler);
+async function listen(handler: RequestListener) {
+  const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
@@ -20,7 +20,7 @@ async function listen(handler: http.RequestListener) {
 }
 
 test("cross-origin redirects drop credential headers but same-origin redirects keep them", async () => {
-  const seen: http.IncomingHttpHeaders[] = [];
+  const seen: IncomingHttpHeaders[] = [];
   await using target = await listen((req, res) => {
     seen.push(req.headers);
     res.end("ok");
@@ -31,14 +31,14 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
     res.writeHead(302, { location }).end();
   });
 
-  const response = await axios.get(`${source.origin}/start`, {
+  const response = await http.get(`${source.origin}/start`, {
     headers: {
       "X-Api-Key": "secret",
       "X-Gotify-Key": "gotify",
       "X-Plex-Token": "token",
       Accept: "text/plain",
     },
-    auth: { username: "user", password: "pass" },
+    basicAuth: { username: "user", password: "pass" },
   });
 
   assert.equal(response.data, "ok");
@@ -64,9 +64,7 @@ test("redirects stop with an error after five hops", async () => {
     res.writeHead(302, { location: `/hop-${requests}` }).end();
   });
 
-  await assert.rejects(axios.get(`${server.origin}/start`), {
-    code: "ERR_FR_TOO_MANY_REDIRECTS",
-  });
+  await assert.rejects(http.get(`${server.origin}/start`), { code: "TOO_MANY_REDIRECTS" });
   assert.equal(requests, 6);
 });
 
@@ -77,11 +75,11 @@ test("five redirects still reach the final response", async () => {
     else res.end("done");
   });
 
-  const response = await axios.get(`${server.origin}/hop-0`);
+  const response = await http.get(`${server.origin}/hop-0`);
   assert.equal(response.data, "done");
 });
 
-test("timeout covers the wait for headers, and bodyTimeout bounds the download", async () => {
+test("timeoutMs covers the wait for headers, and bodyTimeoutMs bounds the download", async () => {
   let finishBody = () => {};
   await using server = await listen((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
@@ -90,12 +88,20 @@ test("timeout covers the wait for headers, and bodyTimeout bounds the download",
     if (req.url === "/slow") setTimeout(finishBody, 2_000);
   });
 
-  const slow = await axios.get(`${server.origin}/slow`, { timeout: 1_000, bodyTimeout: 5_000 });
+  const slow = await http.get(`${server.origin}/slow`, { timeoutMs: 1_000, bodyTimeoutMs: 5_000 });
   assert.deepEqual(slow.data, { ok: true });
 
   await assert.rejects(
-    axios.get(`${server.origin}/stalled`, { timeout: 1_000, bodyTimeout: 5_000 }),
-    { code: "ECONNABORTED" },
+    http.get(`${server.origin}/stalled`, { timeoutMs: 1_000, bodyTimeoutMs: 5_000 }),
+    { code: "TIMEOUT" },
   );
   finishBody();
+});
+
+test("a dropped connection is a transient network error, so callers retry it", async () => {
+  await using server = await listen((req) => req.socket.destroy());
+
+  await assert.rejects(http.get(`${server.origin}/drop`), (error) =>
+    isTransientNetworkError(error),
+  );
 });

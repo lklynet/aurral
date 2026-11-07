@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
@@ -342,8 +342,8 @@ test("playlist search lists matching editor playlists before full user playlists
 type DeezerSong = { title: string; artist: string; album: string; rank: number };
 
 function stubDeezerSongs(songs: DeezerSong[]) {
-  const realGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation((url, config) => {
+  const realGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation((url, config) => {
     if (!String(url).startsWith("https://api.deezer.com/search/track")) return realGet(url, config);
     const data = songs.map((song, index) => ({
       id: index + 1,

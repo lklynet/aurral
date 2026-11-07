@@ -1,4 +1,4 @@
-import axios from "../../../lib/axiosFetch.ts";
+import { http } from "../../../lib/http.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import type { LibraryArtistsRow, LibraryEntityGenresRow, PlayEventsRow } from "../../db/rows.ts";
@@ -174,17 +174,17 @@ export function listenbrainzWrappedReader(username: string, period: Period, toke
 
 export function koitoReader(baseUrl: string, token: string | undefined, period: Period) {
   return async (page: number): Promise<Page> => {
-    const { data }: { data: unknown } = await axios.get(
+    const { data }: { data: unknown } = await http.get(
       `${normalizeKoitoBaseUrl(baseUrl)}/apis/web/v1/listens`,
       {
-        params: {
+        query: {
           from: Math.floor(period.start / 1000),
           to: Math.ceil(period.end / 1000) - 1,
           page,
           limit: PAGE_SIZE,
         },
         headers: token ? { Authorization: `Token ${token}` } : {},
-        timeout: 20_000,
+        timeoutMs: 20_000,
       },
     );
     const result = object(data);

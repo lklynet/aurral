@@ -37,9 +37,6 @@ async function fakeLidarr(t: TestContext, responses: Record<string, unknown>) {
     circuitDisabled: true,
   };
   t.onTestFinished(async () => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
     await server.close();
   });
   return { client, puts };

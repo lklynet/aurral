@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseFeed } from "@rowanmanning/feed-parser";
 import { decode } from "html-entities";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { assertPublicUrl } from "../../lib/publicUrl.ts";
 
 const MAX_ITEMS_PER_FEED = 100;
@@ -103,10 +103,10 @@ export const parseRssFeed = (xml: string, feed: RssFeedInput) => {
 };
 
 export async function fetchRssFeed(feed: RssFeedInput, { signal }: { signal?: AbortSignal } = {}) {
-  const response = await axios.get(feed.url, {
+  const response = await http.get(feed.url, {
     publicOnly: true,
     signal,
-    timeout: 10000,
+    timeoutMs: 10000,
     headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
   });
   return parseRssFeed(String(response.data || ""), feed);
@@ -115,9 +115,9 @@ export async function fetchRssFeed(feed: RssFeedInput, { signal }: { signal?: Ab
 export async function fetchArticleImage(articleUrl: string) {
   try {
     await assertPublicUrl(articleUrl);
-    const response = await axios.get(articleUrl, {
+    const response = await http.get(articleUrl, {
       publicOnly: true,
-      timeout: 8000,
+      timeoutMs: 8000,
       headers: { Accept: "text/html,application/xhtml+xml" },
     });
     return getHtmlImage(String(response.data || ""));

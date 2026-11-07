@@ -9,13 +9,8 @@ import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 
-function createClient(t: import("vite-plus/test").TestContext) {
+function createClient() {
   const client = new LidarrClient();
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
   vi.spyOn(client, "resolveArtistAddConfiguration").mockImplementation(async () => ({
     rootFolders: [],
     qualityProfiles: [],
@@ -27,8 +22,8 @@ function createClient(t: import("vite-plus/test").TestContext) {
 
 for (const triggerSearch of [false, true]) {
   for (const monitorOption of [undefined, "none"]) {
-    test(`album request remains wanted after artist refresh (${monitorOption || "default"}, search=${triggerSearch})`, async (t: import("vite-plus/test").TestContext) => {
-      const client = createClient(t);
+    test(`album request remains wanted after artist refresh (${monitorOption || "default"}, search=${triggerSearch})`, async () => {
+      const client = createClient();
       let artist: AddedArtist | undefined;
       let refreshSnapshot: AddedArtist | undefined;
       let postedArtist: AddedArtist | undefined;
@@ -96,8 +91,8 @@ for (const triggerSearch of [false, true]) {
 }
 
 for (const monitorOption of ["none", "all"]) {
-  test(`ordinary artist add preserves the ${monitorOption} monitoring option`, async (t: import("vite-plus/test").TestContext) => {
-    const client = createClient(t);
+  test(`ordinary artist add preserves the ${monitorOption} monitoring option`, async () => {
+    const client = createClient();
     let postedArtist: AddedArtist | undefined;
     vi.spyOn(client, "request").mockImplementation(async (endpoint, method, payload) => {
       assert.equal(endpoint, "/artist");

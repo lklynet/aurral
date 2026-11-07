@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import axios from "../../../lib/axiosFetch.ts";
+import { http } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { APP_NAME, APP_VERSION, MUSICBRAINZ_API } from "../../config/constants.ts";
 import { dbOps } from "../../db/helpers/index.ts";
@@ -46,10 +46,10 @@ const request = (
   musicbrainzLimiter.schedule(
     async (): Promise<unknown> => {
       signal?.throwIfAborted();
-      const response = await axios.get(`${MUSICBRAINZ_API}${path}`, {
-        params: { fmt: "json", ...params },
+      const response = await http.get(`${MUSICBRAINZ_API}${path}`, {
+        query: { fmt: "json", ...params },
         headers: { "User-Agent": userAgent() },
-        timeout: 8000,
+        timeoutMs: 8000,
         signal,
       });
       return response.data;

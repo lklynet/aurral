@@ -226,16 +226,15 @@ export default new Hono<AppEnv>()
         status,
       );
     }
-    const key = session?.session?.key;
-    if (!key) {
+    if (!session?.key) {
       return c.html("Last.fm did not return a session", 400);
     }
     try {
       scrobbleConnectionStore.saveConnection(userId, "lastfm", {
-        token: key,
-        displayName: session.session.name,
+        token: session.key,
+        displayName: session.name,
       });
-      useForHistory(userId, "lastfm", session.session.name);
+      useForHistory(userId, "lastfm", session.name ?? null);
     } catch (error) {
       const failure = asAppError(error);
       logger.error("scrobbling", "Last.fm connection could not be saved", {

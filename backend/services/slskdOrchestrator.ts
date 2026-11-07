@@ -894,7 +894,7 @@ function searchMonitorFor(
 }
 
 async function stopSearch(searchId: string) {
-  const deleted = await slskdClient.deleteSearch(searchId, { timeout: 20000 }).catch(() => false);
+  const deleted = await slskdClient.deleteSearch(searchId, { timeoutMs: 20000 }).catch(() => false);
   if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
 }
 

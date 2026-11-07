@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import {
   getFreshReleasesByArtists,
   refreshFreshReleases,
@@ -21,8 +21,8 @@ const release = (index: number, artist: string, type: string, date: string) => (
 
 test("new releases come from ListenBrainz in the background and list only the given artists' albums, EPs and singles", async () => {
   const requests: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, config) => {
-    const query = Object.entries(config?.params || {}).map(([key, value]) => `${key}=${value}`);
+  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
+    const query = Object.entries(config?.query || {}).map(([key, value]) => `${key}=${value}`);
     requests.push(`${new URL(url).pathname}?${query.join("&")}`);
     return {
       status: 200,

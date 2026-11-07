@@ -1,6 +1,3 @@
-import type { Agent as HttpsAgent } from "node:https";
-import { Readable } from "node:stream";
-import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import {
   Agent,
   EnvHttpProxyAgent,
@@ -23,44 +20,65 @@ interface FetchInit {
 
 type NodeFetch = (url: string, init: FetchInit & { redirect: "manual" }) => Promise<FetchResponse>;
 
-interface AxiosBasicAuth {
-  username?: string;
-  password?: string;
-}
+type HttpQuery = Record<string, string | number | boolean | null | undefined>;
 
-interface AxiosRequestConfig {
-  url?: string;
+export interface HttpOptions {
   method?: string;
-  baseURL?: string;
-  params?: Record<string, string | number | boolean | null | undefined>;
+  query?: HttpQuery;
   headers?: Record<string, string>;
-  auth?: AxiosBasicAuth;
-  data?: unknown;
-  timeout?: number;
-  bodyTimeout?: number;
-  maxRedirects?: 5;
+  basicAuth?: { username?: string; password?: string };
+  body?: unknown;
+  timeoutMs?: number;
+  bodyTimeoutMs?: number;
   signal?: AbortSignal;
-  responseType?: "arraybuffer" | "stream";
-  validateStatus?: (status: number) => boolean;
-  httpsAgent?: HttpsAgent;
+  responseType?: "buffer";
+  okStatus?: (status: number) => boolean;
+  insecureTls?: boolean;
   publicOnly?: boolean;
-  preserveMethodOnRedirect?: boolean;
+  keepMethodOnRedirect?: boolean;
 }
 
-interface AxiosResponse {
+export interface HttpResponse {
   status: number;
   statusText: string;
   headers: Record<string, string>;
   data: unknown;
 }
 
-interface AxiosError extends Error {
-  code?: string;
-  request?: { method: string; url: string };
-  response?: AxiosResponse;
+export class HttpError extends Error {
+  readonly method: string;
+  readonly url: string;
+  readonly response: HttpResponse | undefined;
+  readonly code: string | undefined;
+
+  constructor(
+    message: string,
+    request: { method: string; url: string },
+    { response, code, cause }: { response?: HttpResponse; code?: string; cause?: unknown } = {},
+  ) {
+    super(message, { cause });
+    this.name = "HttpError";
+    this.method = request.method;
+    this.url = request.url;
+    this.response = response;
+    this.code = code;
+  }
 }
 
-export type RequestFailure = {
+const TRANSIENT_NETWORK_CODES = new Set([
+  "TIMEOUT",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+export const isTransientNetworkError = (error: unknown) =>
+  error instanceof HttpError && !error.response && TRANSIENT_NETWORK_CODES.has(error.code ?? "");
+
+type RequestFailure = {
   method: string;
   url: string;
   status: number | null;
@@ -78,35 +96,28 @@ export function onRequestFailure(listener: (failure: RequestFailure) => void) {
 const usesNativeFetch = () =>
   Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
 
-function joinUrl(baseURL: string | undefined, url: string | undefined) {
-  if (!url) return baseURL || "";
-  if (String(url).startsWith("http://") || String(url).startsWith("https://")) return url;
-  if (!baseURL) return url;
-  return `${String(baseURL).replace(/\/+$/, "")}/${String(url).replace(/^\/+/, "")}`;
+function joinUrl(baseUrl: string | undefined, url: string) {
+  if (!baseUrl || url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (!url) return baseUrl;
+  return `${baseUrl.replace(/\/+$/, "")}/${url.replace(/^\/+/, "")}`;
 }
 
-function appendParams(url: string, params: AxiosRequestConfig["params"]) {
-  if (!params || typeof params !== "object") return url;
+function appendQuery(url: string, query: HttpQuery | undefined) {
+  if (!query) return url;
   const target = new URL(url);
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(query)) {
     if (value == null) continue;
     target.searchParams.set(key, String(value));
   }
   return target.toString();
 }
 
-function headersToObject(
-  headers: FetchResponse["headers"] | AxiosRequestConfig["headers"],
-): Record<string, string> {
+function headersToObject(headers: FetchResponse["headers"]): Record<string, string> {
   const output: Record<string, string> = {};
-  if (!headers) return output;
-  if (typeof headers.forEach === "function") {
-    headers.forEach((value: string, key: string) => {
-      output[key] = value;
-    });
-    return output;
-  }
-  return { ...(headers as Record<string, string>) };
+  headers.forEach((value: string, key: string) => {
+    output[key] = value;
+  });
+  return output;
 }
 
 const defaultDispatcher = new Agent({
@@ -124,10 +135,8 @@ const insecureDispatcher = new Agent({
   connect: { rejectUnauthorized: false },
 });
 
-function resolveDispatcher(config: AxiosRequestConfig) {
-  if (config.httpsAgent?.options?.rejectUnauthorized === false) {
-    return insecureDispatcher;
-  }
+function resolveDispatcher(options: HttpOptions) {
+  if (options.insecureTls) return insecureDispatcher;
   if (process.env.NODE_USE_ENV_PROXY === "1") {
     envProxyDispatcher ||= new EnvHttpProxyAgent();
     return envProxyDispatcher;
@@ -135,12 +144,8 @@ function resolveDispatcher(config: AxiosRequestConfig) {
   return defaultDispatcher;
 }
 
-async function readBody(response: FetchResponse, config: AxiosRequestConfig) {
-  if (config.responseType === "stream") {
-    if (response.body) return Readable.fromWeb(response.body as NodeReadableStream);
-    return Readable.from([]);
-  }
-  if (config.responseType === "arraybuffer") {
+async function readBody(response: FetchResponse, options: HttpOptions) {
+  if (options.responseType === "buffer") {
     return Buffer.from(await response.arrayBuffer());
   }
   const contentType = response.headers.get("content-type") || "";
@@ -154,7 +159,7 @@ async function readBody(response: FetchResponse, config: AxiosRequestConfig) {
   return response.text();
 }
 
-function buildAuthHeader(auth: AxiosBasicAuth | undefined) {
+function basicAuthHeader(auth: HttpOptions["basicAuth"]) {
   if (!auth?.username && !auth?.password) return null;
   const encoded = Buffer.from(`${auth.username || ""}:${auth.password || ""}`).toString("base64");
   return `Basic ${encoded}`;
@@ -195,22 +200,26 @@ async function createPublicDispatcher(url: string) {
   return new Agent({ connections: 1, connect: { lookup } });
 }
 
-async function axiosRequest(inputConfig: AxiosRequestConfig) {
-  const config = { ...inputConfig };
-  const method = String(config.method || "GET").toUpperCase();
-  let url = config.url || "";
-  if (config.baseURL) url = joinUrl(config.baseURL, url);
-  url = appendParams(url, config.params);
+const causeCode = (error: unknown) => {
+  const cause = error instanceof Error ? error.cause : undefined;
+  return cause instanceof Error && "code" in cause && typeof cause.code === "string"
+    ? cause.code
+    : undefined;
+};
 
-  const headers = headersToObject(config.headers);
+async function request(inputUrl: string, options: HttpOptions = {}): Promise<HttpResponse> {
+  const method = String(options.method || "GET").toUpperCase();
+  let url = appendQuery(inputUrl, options.query);
+
+  const headers = { ...options.headers };
   if (!Object.keys(headers).some((key) => key.toLowerCase() === "user-agent")) {
     headers["User-Agent"] = APP_USER_AGENT;
   }
-  const authHeader = buildAuthHeader(config.auth);
+  const authHeader = basicAuthHeader(options.basicAuth);
   if (authHeader) headers.Authorization = authHeader;
 
   const controller = new AbortController();
-  const externalSignal = config.signal;
+  const externalSignal = options.signal;
   const handleExternalAbort = () => controller.abort(externalSignal!.reason);
   if (externalSignal?.aborted) {
     controller.abort(externalSignal.reason);
@@ -218,16 +227,16 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     externalSignal?.addEventListener("abort", handleExternalAbort, { once: true });
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let timeoutTriggered = false;
+  let timedOut = false;
   const startTimer = (ms: number) => {
     clearTimeout(timer);
     if (ms <= 0) return;
     timer = setTimeout(() => {
-      timeoutTriggered = true;
+      timedOut = true;
       controller.abort();
     }, ms);
   };
-  startTimer(Number(config.timeout || 0));
+  startTimer(Number(options.timeoutMs || 0));
 
   const startedAt = Date.now();
   const publicDispatchers = [];
@@ -235,10 +244,10 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     method,
     headers,
     signal: controller.signal,
-    dispatcher: resolveDispatcher(config),
+    dispatcher: resolveDispatcher(options),
   };
 
-  const body = config.data;
+  const body = options.body;
   if (body != null && method !== "GET" && method !== "HEAD") {
     if (typeof body === "string" || body instanceof URLSearchParams || body instanceof Uint8Array) {
       init.body = body;
@@ -251,7 +260,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
   }
 
   try {
-    if (config.publicOnly) {
+    if (options.publicOnly) {
       init.dispatcher = await createPublicDispatcher(url);
       publicDispatchers.push(init.dispatcher);
     }
@@ -263,20 +272,22 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
       if (redirectCount === MAX_REDIRECTS) {
-        const error: AxiosError = new Error("Maximum number of redirects exceeded");
-        error.code = "ERR_FR_TOO_MANY_REDIRECTS";
-        throw error;
+        throw new HttpError(
+          "Maximum number of redirects exceeded",
+          { method, url },
+          { code: "TOO_MANY_REDIRECTS" },
+        );
       }
       const nextUrl = new URL(location, url).href;
       const crossesOrigin = new URL(url).origin !== new URL(nextUrl).origin;
       if (crossesOrigin) {
         removeHeaders(init.headers, SENSITIVE_REDIRECT_HEADERS);
-        if (config.preserveMethodOnRedirect && init.body != null) {
-          throw new Error("Refusing to redirect request body across origins");
+        if (options.keepMethodOnRedirect && init.body != null) {
+          throw new HttpError("Refusing to redirect request body across origins", { method, url });
         }
       }
       if (
-        !config.preserveMethodOnRedirect &&
+        !options.keepMethodOnRedirect &&
         (([301, 302].includes(response.status) && requestMethod === "POST") ||
           (response.status === 303 && !["GET", "HEAD"].includes(requestMethod)))
       ) {
@@ -286,65 +297,62 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
         removeHeaders(init.headers, BODY_HEADERS);
       }
       url = nextUrl;
-      if (config.publicOnly) {
+      if (options.publicOnly) {
         init.dispatcher = await createPublicDispatcher(url);
         publicDispatchers.push(init.dispatcher);
       }
     }
-    if (config.bodyTimeout) startTimer(config.bodyTimeout);
-    const data = await readBody(response, config);
+    if (options.bodyTimeoutMs) startTimer(options.bodyTimeoutMs);
+    const data = await readBody(response, options);
     controller.signal.throwIfAborted();
-    const axiosResponse = {
+    const result = {
       status: response.status,
       statusText: response.statusText,
       headers: headersToObject(response.headers),
       data,
     };
-    const validateStatus =
-      typeof config.validateStatus === "function"
-        ? config.validateStatus
-        : (status: number) => status >= 200 && status < 300;
-    if (!validateStatus(response.status)) {
-      const error: AxiosError = new Error(
+    const ok = options.okStatus ?? ((status: number) => status >= 200 && status < 300);
+    if (!ok(response.status)) {
+      throw new HttpError(
         `Request to ${new URL(url).host} failed with status code ${response.status}`,
+        { method, url },
+        { response: result },
       );
-      error.response = axiosResponse;
-      error.code = controller.signal.aborted ? "ECONNABORTED" : undefined;
-      throw error;
     }
-    return axiosResponse;
+    return result;
   } catch (error) {
-    const failure: AxiosError | undefined = error instanceof Error ? error : undefined;
-    if (timeoutTriggered) {
-      Object.defineProperty(error, "code", {
-        configurable: true,
-        enumerable: true,
-        value: "ECONNABORTED",
-        writable: true,
-      });
-    } else if (failure && controller.signal.aborted && !failure.code) {
-      failure.code = "ECONNABORTED";
-    }
-    if (failure && !failure.response && !failure.request) {
-      failure.request = { method, url };
-    }
-    if (timeoutTriggered || !externalSignal?.aborted) {
-      const cause = failure?.cause instanceof Error ? failure.cause : undefined;
-      const causeCode =
-        cause && "code" in cause && typeof cause.code === "string" ? cause.code : null;
-      const message = failure?.message || String(error);
+    const failure =
+      error instanceof HttpError
+        ? error
+        : new HttpError(
+            timedOut
+              ? `Request to ${new URL(url).host} timed out`
+              : error instanceof Error
+                ? error.message
+                : String(error),
+            { method, url },
+            {
+              cause: error,
+              code: timedOut ? "TIMEOUT" : controller.signal.aborted ? "ABORTED" : causeCode(error),
+            },
+          );
+    if (timedOut || !externalSignal?.aborted) {
+      const cause = failure.cause instanceof Error ? failure.cause.cause : undefined;
       try {
         reportFailure?.({
           method,
           url,
-          status: failure?.response?.status ?? null,
-          code: failure?.code ?? causeCode,
+          status: failure.response?.status ?? null,
+          code: failure.code ?? null,
           ms: Date.now() - startedAt,
-          message: cause?.message ? `${message}: ${cause.message}` : message,
+          message:
+            cause instanceof Error && cause.message
+              ? `${failure.message}: ${cause.message}`
+              : failure.message,
         });
       } catch {}
     }
-    throw error;
+    throw failure;
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", handleExternalAbort);
@@ -352,36 +360,23 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
   }
 }
 
-function create(defaults: AxiosRequestConfig = {}) {
-  const withDefaults = (config: AxiosRequestConfig = {}) =>
-    axiosRequest({ ...defaults, ...config });
-  withDefaults.request = withDefaults;
-  withDefaults.get = (url: string, config: AxiosRequestConfig = {}) =>
-    withDefaults({ ...config, method: "GET", url });
-  withDefaults.post = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
-    withDefaults({ ...config, method: "POST", url, data });
-  withDefaults.put = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
-    withDefaults({ ...config, method: "PUT", url, data });
-  withDefaults.delete = (url: string, config: AxiosRequestConfig = {}) =>
-    withDefaults({ ...config, method: "DELETE", url });
-  return withDefaults;
-}
+const withVerbs = (send: (url: string, options?: HttpOptions) => Promise<HttpResponse>) => ({
+  request: send,
+  get: (url: string, options: HttpOptions = {}) => send(url, { ...options, method: "GET" }),
+  post: (url: string, body?: unknown, options: HttpOptions = {}) =>
+    send(url, { ...options, method: "POST", body }),
+  put: (url: string, body?: unknown, options: HttpOptions = {}) =>
+    send(url, { ...options, method: "PUT", body }),
+  delete: (url: string, options: HttpOptions = {}) => send(url, { ...options, method: "DELETE" }),
+});
 
-function axios(config: AxiosRequestConfig) {
-  return axiosRequest(config);
-}
+export const http = withVerbs(request);
 
-axios.request = axiosRequest;
-axios.get = (url: string, config: AxiosRequestConfig = {}) =>
-  axiosRequest({ ...config, method: "GET", url });
-axios.post = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
-  axiosRequest({ ...config, method: "POST", url, data });
-axios.put = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
-  axiosRequest({ ...config, method: "PUT", url, data });
-axios.delete = (url: string, config: AxiosRequestConfig = {}) =>
-  axiosRequest({ ...config, method: "DELETE", url });
-axios.create = create;
-
-export { defaultDispatcher };
-
-export default axios;
+export const createHttpClient = ({ baseUrl, ...defaults }: HttpOptions & { baseUrl: string }) =>
+  withVerbs((url, options = {}) =>
+    http.request(joinUrl(baseUrl, url), {
+      ...defaults,
+      ...options,
+      headers: { ...defaults.headers, ...options.headers },
+    }),
+  );

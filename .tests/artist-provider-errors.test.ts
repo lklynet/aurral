@@ -39,7 +39,7 @@ const provider = await createMockHttpServer((req, res) => {
 process.env.BRAINZMASH_BASE_URL = provider.url;
 const [
   state,
-  { default: axios },
+  { http },
   deezer,
   { getArtistImage },
   { dbOps },
@@ -48,7 +48,7 @@ const [
   { listenbrainzSource },
 ] = await setupIsolatedBackend(
   "artist-provider-errors",
-  () => import("../lib/axiosFetch.ts"),
+  () => import("../lib/http.ts"),
   () => import("../backend/services/apiClients/deezer.ts"),
   () => import("../backend/services/imageService.ts"),
   () => import("../backend/db/helpers/index.ts"),
@@ -77,10 +77,10 @@ afterAll(async () => {
 
 function responses(
   t: TestContext,
-  respond: (url: string, options?: Parameters<typeof axios.get>[1]) => unknown,
+  respond: (url: string, options?: Parameters<typeof http.get>[1]) => unknown,
 ) {
-  const realGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  const realGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (String(url).startsWith(provider.url)) return realGet(url, options);
     assert.equal(new URL(url).hostname, "api.deezer.com");
     return {
@@ -113,9 +113,9 @@ test.each([
     wikidataLinked = true;
     const commonsPhoto =
       "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Provider.jpg/960px-Provider.jpg";
-    const realGet = axios.get.bind(axios);
+    const realGet = http.get.bind(http);
     const asked: string[] = [];
-    vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+    vi.spyOn(http, "get").mockImplementation(async (url, options) => {
       if (String(url).startsWith(provider.url)) return realGet(url, options);
       const host = new URL(url).hostname;
       asked.push(host);

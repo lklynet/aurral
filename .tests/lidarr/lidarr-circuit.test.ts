@@ -15,10 +15,7 @@ const lidarrResponse = (status: number, body: unknown, headers: Record<string, s
     headers: { "content-type": "application/json", ...headers },
   });
 
-function createStubbedLidarrClient(
-  t: import("vite-plus/test").TestContext,
-  { circuitDisabled = true }: { circuitDisabled?: boolean } = {},
-) {
+function createStubbedLidarrClient({ circuitDisabled = true }: { circuitDisabled?: boolean } = {}) {
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
@@ -28,11 +25,6 @@ function createStubbedLidarrClient(
     timeoutMs: 2000,
     circuitDisabled,
   };
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
   return client;
 }
 
@@ -92,9 +84,6 @@ test("bulk track reads use Lidarr artist selectors", async (t: import("vite-plus
     "/api/v1/trackfile?artistId=7",
     "/api/v1/trackfile?artistId=8",
   ]);
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("bulk album reads use Lidarr artist selectors when requested", async (t: import("vite-plus/test").TestContext) => {
@@ -125,15 +114,12 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t: im
   await client.getAllAlbums({ artistIds: [7, 8], forceRefresh: true });
 
   assert.deepEqual(requests.sort(), ["/api/v1/album?artistId=7", "/api/v1/album?artistId=8"]);
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("no-response Lidarr errors identify the endpoint and timeout", async (t: import("vite-plus/test").TestContext) => {
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
   skipRetryDelays();
-  const client = createStubbedLidarrClient(t);
+  const client = createStubbedLidarrClient();
   const originalConsoleError = console.error;
   const errors: unknown[][] = [];
   console.error = (...args) => errors.push(args);
@@ -236,18 +222,15 @@ test("bulk track-file reads use bounded repeated ID selectors", async (t: import
     requests.flat().sort((left, right) => left - right),
     [...Array.from({ length: 401 }, (_, index) => index + 1)],
   );
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
-test("testConnection preserves Lidarr HTTP diagnostics", async (t: import("vite-plus/test").TestContext) => {
+test("testConnection preserves Lidarr HTTP diagnostics", async () => {
   let status = 401;
   vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
     lidarrResponse(status, { message: `failure-${status}` }, { "x-test-header": String(status) }),
   );
   skipRetryDelays();
-  const client = createStubbedLidarrClient(t);
+  const client = createStubbedLidarrClient();
 
   let result = await client.testConnection(true);
   assert.equal(result.statusCode, 401);
@@ -292,9 +275,6 @@ test("missing Lidarr resources are absent records, not endpoint failures", async
   console.error = (...args) => errors.push(args);
   t.onTestFinished(() => {
     console.error = originalConsoleError;
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   assert.equal(await client.getArtist(2411485), null);
@@ -350,9 +330,6 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t: import
 
   assert.equal(album, undefined);
   assert.deepEqual(requests, ["/api/v1/album?foreignAlbumId=missing-album"]);
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("getAlbumByMbid selects the matching album from filtered results", async (t: import("vite-plus/test").TestContext) => {
@@ -392,9 +369,6 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
 
   assert.equal(album?.id, 2);
   assert.equal(album?.foreignAlbumId, "TARGET-ALBUM");
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("getAlbumByMbid accepts wrapped Lidarr album results", async (t: import("vite-plus/test").TestContext) => {
@@ -439,18 +413,10 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t: import("vi
 
   assert.equal(album?.id, 42);
   assert.equal(album?.artistId, 7);
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
-test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t: import("vite-plus/test").TestContext) => {
+test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async () => {
   const client = new LidarrClient();
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
 
   let active = 0;
   let maxActive = 0;
@@ -597,10 +563,6 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
     "/api/v1/artist/42",
     "/api/v1/artist/42",
   ]);
-
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("artist add resolves a numeric metadata-provider response ID", async (t: import("vite-plus/test").TestContext) => {
@@ -610,9 +572,6 @@ test("artist add resolves a numeric metadata-provider response ID", async (t: im
   const client = new LidarrClient();
   t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   client.resolveArtistAddConfiguration = async () => ({
@@ -692,9 +651,6 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t: import("
   const client = new LidarrClient();
   t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   client.resolveArtistAddConfiguration = async () => ({
@@ -737,9 +693,6 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
   const client = new LidarrClient();
   t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   client.resolveArtistAddConfiguration = async () => ({
@@ -807,9 +760,6 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
   t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
     dbOps.deleteLidarrArtistIdMap(existingMbid);
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   dbOps.setLidarrArtistIdMap(existingMbid, providerId);
@@ -873,14 +823,9 @@ test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t: im
   assert.equal(dbOps.getLidarrArtistMbid(providerId), firstMbid);
 });
 
-test("artist add fails when Lidarr cannot resolve a numeric ID", async (t: import("vite-plus/test").TestContext) => {
+test("artist add fails when Lidarr cannot resolve a numeric ID", async () => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const client = new LidarrClient();
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
 
   client.resolveArtistAddConfiguration = async () => ({
     rootFolders: [],
@@ -928,13 +873,8 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t: impor
   assert.equal(lookupCount, 2);
 });
 
-test("artist add does not retry creation after monitoring fails", async (t: import("vite-plus/test").TestContext) => {
+test("artist add does not retry creation after monitoring fails", async () => {
   const client = new LidarrClient();
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
 
   client.resolveArtistAddConfiguration = async () => ({
     rootFolders: [],
@@ -982,7 +922,7 @@ test("artist add does not retry creation after monitoring fails", async (t: impo
   assert.equal(postCount, 1);
 });
 
-test("Lidarr cooldown permits only one half-open recovery request", async (t: import("vite-plus/test").TestContext) => {
+test("Lidarr cooldown permits only one half-open recovery request", async () => {
   const firstRequest = Promise.withResolvers<void>();
   const releaseFirst = Promise.withResolvers<void>();
   let requestCount = 0;
@@ -994,7 +934,7 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t: im
     }
     return lidarrResponse(200, { ok: true });
   });
-  const client = createStubbedLidarrClient(t, { circuitDisabled: false });
+  const client = createStubbedLidarrClient({ circuitDisabled: false });
   client._circuitOpen = true;
   client._circuitOpenedAt = Date.now() - 61000;
 
@@ -1015,14 +955,14 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t: im
   assert.equal(client._circuitOpen, false);
 });
 
-test("a failed Lidarr recovery probe reopens the cooldown", async (t: import("vite-plus/test").TestContext) => {
+test("a failed Lidarr recovery probe reopens the cooldown", async () => {
   let requestCount = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     requestCount += 1;
     return lidarrResponse(503, { error: "unavailable" });
   });
   skipRetryDelays();
-  const client = createStubbedLidarrClient(t, { circuitDisabled: false });
+  const client = createStubbedLidarrClient({ circuitDisabled: false });
   client._circuitOpen = true;
   client._circuitFailures = 3;
   client._lastCircuitFailureAt = Date.now() - 61000;

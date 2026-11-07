@@ -989,7 +989,7 @@ test("getEvents names the field that made slskd's download event unreadable", as
 });
 
 test("a search that reaches its deadline mid-request does not report slskd as failing", async () => {
-  const { onRequestFailure } = await import("../../lib/axiosFetch.ts");
+  const { onRequestFailure } = await import("../../lib/http.ts");
   const failures: string[] = [];
   onRequestFailure(({ url }) => failures.push(url));
   const server = await createMockHttpServer((req, res) => {

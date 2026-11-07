@@ -62,11 +62,5 @@ export async function withTemporaryLidarrClient<T>(
   };
   lidarrClient.apiPath = "/api/v1";
 
-  try {
-    return await fn(lidarrClient);
-  } finally {
-    lidarrClient._httpAgent.destroy();
-    lidarrClient._httpsAgent.destroy();
-    lidarrClient._httpsInsecureAgent.destroy();
-  }
+  return await fn(lidarrClient);
 }

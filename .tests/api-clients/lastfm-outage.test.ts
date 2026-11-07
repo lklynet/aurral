@@ -3,12 +3,13 @@ import { afterAll, test, vi } from "vite-plus/test";
 import type { LogEntry } from "../../backend/services/logger.ts";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-const [state, { default: axios }, { lastfmRequest }, { startLogSink }] = await setupIsolatedBackend(
-  "lastfm-outage",
-  () => import("../../lib/axiosFetch.ts"),
-  () => import("../../backend/services/apiClients/lastfm.ts"),
-  () => import("../../backend/services/logger.ts"),
-);
+const [state, { http, HttpError }, { lastfmRequest }, { startLogSink }] =
+  await setupIsolatedBackend(
+    "lastfm-outage",
+    () => import("../../lib/http.ts"),
+    () => import("../../backend/services/apiClients/lastfm.ts"),
+    () => import("../../backend/services/logger.ts"),
+  );
 
 afterAll(() => cleanupIsolatedState(state));
 
@@ -17,9 +18,13 @@ test("Last.fm pauses for a minute after three requests in a row get no answer", 
   const logged: LogEntry[] = [];
   startLogSink((entry) => logged.push(entry));
   const get = vi
-    .spyOn(axios, "get")
+    .spyOn(http, "get")
     .mockRejectedValue(
-      Object.assign(new Error("timeout of 3000ms exceeded"), { code: "ECONNABORTED" }),
+      new HttpError(
+        "Request to ws.audioscrobbler.com timed out",
+        { method: "GET", url: "https://ws.audioscrobbler.com/2.0/" },
+        { code: "TIMEOUT" },
+      ),
     );
   t.onTestFinished(() => {
     get.mockRestore();

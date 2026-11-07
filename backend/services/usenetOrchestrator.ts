@@ -731,7 +731,7 @@ async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
-  let historyItem;
+  let historyItem: UsenetHistoryItem | null | undefined;
   let queueItem = null;
   try {
     historyItem = await client.getHistoryItem(payload.nzbId);

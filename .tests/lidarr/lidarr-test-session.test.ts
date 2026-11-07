@@ -1,7 +1,7 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
-import { test, beforeEach, afterAll, vi, type MockInstance } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -47,9 +47,6 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  lidarrClient._httpAgent.destroy();
-  lidarrClient._httpsAgent.destroy();
-  lidarrClient._httpsInsecureAgent.destroy();
   db.close();
   await cleanupIsolatedState(state);
 });
@@ -93,15 +90,11 @@ for (const fails of [false, true]) {
   test(`temporary root defaults and original configuration survive ${fails ? "failure" : "success"}`, async () => {
     const original = { ...lidarrClient.config };
     const originalApiPath = lidarrClient.apiPath;
-    const agentCleanup: MockInstance<() => void>[] = [];
     const operation = withTemporaryLidarrClient(
       "http://temporary-lidarr:8686/",
       " temporary-key ",
       async (client) => {
         assert.notEqual(client, lidarrClient);
-        for (const agent of [client._httpAgent, client._httpsAgent, client._httpsInsecureAgent]) {
-          agentCleanup.push(vi.spyOn(agent, "destroy"));
-        }
         assert.equal(client.config.rootFolderPath, null);
         assert.deepEqual([...client.config.rootFolderPaths], []);
         assert.deepEqual(client.getConfiguredRootFolderPaths(), []);
@@ -116,7 +109,6 @@ for (const fails of [false, true]) {
     assert.deepEqual(lidarrClient.config, original);
     assert.equal(lidarrClient.apiPath, originalApiPath);
     assert.equal(lidarrClient._holdConfig, false);
-    for (const cleanup of agentCleanup) assert.equal(cleanup.mock.calls.length, 1);
   });
 }
 

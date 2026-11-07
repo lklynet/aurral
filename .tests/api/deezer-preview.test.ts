@@ -14,14 +14,14 @@ const [
   { dbOps },
   { app },
   { deezerGetArtistTopTracksById, deezerGetAlbumTracks },
-  { default: axios },
+  { http },
 ] = await setupIsolatedBackend(
   "deezer-preview",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/app.ts"),
   () => import("../../backend/services/apiClients/index.ts"),
-  () => import("../../lib/axiosFetch.ts"),
+  () => import("../../lib/http.ts"),
 );
 
 let server: import("node:http").Server;
@@ -32,7 +32,7 @@ const signedLink = (trackId: string, issuedAt: number) =>
 
 function stubDeezer(routes: Record<string, () => unknown>) {
   const requests: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     requests.push(String(url));
     const route = routes[String(url)];
     if (!route) throw new Error(`unexpected request to ${url}`);

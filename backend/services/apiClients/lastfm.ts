@@ -1,5 +1,5 @@
-import axios from "../../../lib/axiosFetch.ts";
-import https from "https";
+import * as v from "valibot";
+import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { createHash } from "node:crypto";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
@@ -8,6 +8,7 @@ import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { readOne } from "../integrationData.ts";
 
 interface LastfmScrobbleEvent {
   playedAt: number | string;
@@ -30,14 +31,6 @@ interface LastfmErrorDetails {
 const lastfmCache = createCache(300);
 
 const lastfmLimiter = createRateLimiter(200);
-
-const lastfmHttpsAgent = new https.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 30000,
-  maxSockets: 16,
-  maxFreeSockets: 8,
-  timeout: 15000,
-});
 
 const LASTFM_TIMEOUT_MS =
   Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;
@@ -68,21 +61,33 @@ const signedLastfmRequest = async (
     .join("");
   signedParams.api_sig = createHash("md5").update(`${signature}${apiSecret}`).digest("hex");
   const response = await lastfmLimiter.schedule(() =>
-    axios.post(LASTFM_API, new URLSearchParams({ ...signedParams, format: "json" }), {
-      timeout: LASTFM_TIMEOUT_MS,
-      httpsAgent: lastfmHttpsAgent,
+    http.post(LASTFM_API, new URLSearchParams({ ...signedParams, format: "json" }), {
+      timeoutMs: LASTFM_TIMEOUT_MS,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      validateStatus: (status) => status >= 200 && status < 300,
     }),
   );
-  if (response.data?.error) {
-    throw new Error(response.data.message || `Last.fm request failed (${response.data.error})`);
+  const failure = v.safeParse(lastfmErrorSchema, response.data);
+  if (failure.success) {
+    throw new Error(failure.output.message || `Last.fm request failed (${failure.output.error})`);
   }
   return response.data;
 };
 
-export const lastfmGetSession = (token: string | null | undefined) =>
-  signedLastfmRequest("auth.getSession", { token: String(token || "").trim() });
+const lastfmErrorSchema = v.looseObject({
+  error: v.number(),
+  message: v.optional(v.string()),
+});
+
+const lastfmSessionSchema = v.looseObject({
+  session: v.optional(v.looseObject({ key: v.optional(v.string()), name: v.optional(v.string()) })),
+});
+
+export const lastfmGetSession = async (token: string | null | undefined) =>
+  readOne(
+    lastfmSessionSchema,
+    await signedLastfmRequest("auth.getSession", { token: String(token || "").trim() }),
+    { service: "Last.fm", endpoint: "auth.getSession" },
+  ).session;
 
 export const lastfmScrobble = (event: LastfmScrobbleEvent, sessionKey: string | null | undefined) =>
   signedLastfmRequest("track.scrobble", {
@@ -119,15 +124,9 @@ export async function lastfmRequest(
     cacheKey,
     async (sharedSignal: AbortSignal) => {
       const isRetryable = (error: unknown) => {
-        const failure = asAppError(error);
-        const status = failure?.response?.status;
-        const code = failure?.code;
+        const status = asAppError(error)?.response?.status;
         return (
-          code === "ECONNABORTED" ||
-          code === "ETIMEDOUT" ||
-          code === "ECONNRESET" ||
-          code === "ENOTFOUND" ||
-          code === "EAI_AGAIN" ||
+          isTransientNetworkError(error) ||
           (status !== undefined && [408, 425, 500, 502, 503, 504].includes(status))
         );
       };
@@ -147,15 +146,14 @@ export async function lastfmRequest(
         if (Date.now() < lastfmPausedUntil) return null;
         try {
           const response = await lastfmLimiter.schedule(() =>
-            axios.get(LASTFM_API, {
-              params: {
+            http.get(LASTFM_API, {
+              query: {
                 method,
                 api_key: apiKey,
                 format: "json",
                 ...params,
               },
-              timeout: timeoutMs,
-              httpsAgent: lastfmHttpsAgent,
+              timeoutMs,
               signal: sharedSignal,
             }),
           );
@@ -193,7 +191,7 @@ export async function lastfmRequest(
         lastfmFailuresInARow = 0;
         lastfmPausedUntil = Date.now() + LASTFM_PAUSE_MS;
         logger.warn("api", "Last.fm is not responding, pausing requests for a minute", details);
-      } else if (details.code === "ECONNABORTED") {
+      } else if (details.code === "TIMEOUT") {
         logFailure(`Last.fm API timeout (${method})`, details);
       } else {
         logFailure(`Last.fm API error (${method})`, details);

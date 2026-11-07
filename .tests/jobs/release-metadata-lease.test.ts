@@ -48,11 +48,11 @@ test("a metadata refresh waiting on another's lease stops without running or spe
 
 test("losing the lease aborts a blocked provider request", async () => {
   const { refreshReleaseMetadata } = await import("../../backend/services/releaseMetadataSync.ts");
-  const { default: axios } = await import("../../lib/axiosFetch.ts");
+  const { http } = await import("../../lib/http.ts");
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], now: 0 });
   const lease = await acquireReleaseMetadataLease();
   const requested = Promise.withResolvers<void>();
-  vi.spyOn(axios, "get").mockImplementation(
+  vi.spyOn(http, "get").mockImplementation(
     (_url, config) =>
       new Promise<never>((_resolve, reject) => {
         const signal = config?.signal;

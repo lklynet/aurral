@@ -4,22 +4,17 @@ import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-function createClient(t: import("vite-plus/test").TestContext) {
+function createClient() {
   const client = new LidarrClient();
   vi.spyOn(client, "getAlbum").mockResolvedValue(null);
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
   return client;
 }
 
 // Lidarr omits album/artist from queue and history records unless asked, so
 // Activity showed raw release titles ("Rihanna - ... [FLAC 16bit] [👤 user]")
 // under the placeholder artist "Artist".
-test("queue and history requests ask Lidarr to embed album and artist", async (t: import("vite-plus/test").TestContext) => {
-  const client = createClient(t);
+test("queue and history requests ask Lidarr to embed album and artist", async () => {
+  const client = createClient();
   const endpoints: string[] = [];
   vi.spyOn(client, "request").mockImplementation(async (endpoint) => {
     endpoints.push(endpoint);
@@ -41,8 +36,8 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
   );
 });
 
-test("activity rows use the embedded album and artist names", async (t) => {
-  const requests = await buildLidarrRequests(createClient(t), {
+test("activity rows use the embedded album and artist names", async () => {
+  const requests = await buildLidarrRequests(createClient(), {
     queue: [
       {
         id: 1,
@@ -59,8 +54,8 @@ test("activity rows use the embedded album and artist names", async (t) => {
   assert.equal(requests[0]?.artistName, "Rihanna");
 });
 
-test("a queue item whose status messages report a failure shows as Failed", async (t) => {
-  const requests = await buildLidarrRequests(createClient(t), {
+test("a queue item whose status messages report a failure shows as Failed", async () => {
+  const requests = await buildLidarrRequests(createClient(), {
     queue: [
       {
         id: 1,
@@ -78,9 +73,9 @@ test("a queue item whose status messages report a failure shows as Failed", asyn
   assert.equal(requests[0]?.statusLabel, "Failed");
 });
 
-test("history rows follow Lidarr event types, not words in the record", async (t) => {
+test("history rows follow Lidarr event types, not words in the record", async () => {
   const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
-  const requests = await buildLidarrRequests(createClient(t), {
+  const requests = await buildLidarrRequests(createClient(), {
     queue: [],
     history: {
       records: [

@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import path from "node:path";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import type { NotificationEvent } from "../../lib/notificationEvents.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
@@ -90,10 +90,10 @@ async function sendGotifyDirect(
   const token = (gotify.token || "").trim();
   if (!url || !token) return;
   try {
-    await axios.post(
+    await http.post(
       `${url}/message`,
       { title, message, priority },
-      { timeout: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": token } },
+      { timeoutMs: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": token } },
     );
   } catch (error) {
     logDeliveryFailure("gotify", null, url, error);
@@ -141,9 +141,9 @@ async function sendWebhookDirect(webhook: WebhookTarget, event: string, vars: We
         parsed = interpolated;
       }
       const headers = { ...buildHeaders(webhook.headers), "Content-Type": "application/json" };
-      await axios.post(url, parsed, { timeout: 30000, headers });
+      await http.post(url, parsed, { timeoutMs: 30000, headers });
     } else {
-      await axios.get(url, { timeout: 30000, headers: buildHeaders(webhook.headers) });
+      await http.get(url, { timeoutMs: 30000, headers: buildHeaders(webhook.headers) });
     }
   } catch (error) {
     logDeliveryFailure("webhooks", event, url, error);
@@ -216,14 +216,14 @@ export async function sendGotifyTest(
     err.code = "MISSING_CONFIG";
     throw err;
   }
-  const response = await axios.post(
+  const response = await http.post(
     `${base}/message`,
     {
       title: "Aurral test",
       message: "Test notification received.",
       priority: 5,
     },
-    { timeout: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": t } },
+    { timeoutMs: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": t } },
   );
   return response.status === 200;
 }

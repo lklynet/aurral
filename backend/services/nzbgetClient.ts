@@ -1,9 +1,18 @@
+import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.ts";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { removeNzbgetDownloadFolder } from "./nzbgetCleanup.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { readOne } from "./integrationData.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
+
+const rpcResponseSchema = v.looseObject({
+  result: v.optional(v.unknown()),
+  error: v.nullish(
+    v.looseObject({ message: v.optional(v.string()), Message: v.optional(v.string()) }),
+  ),
+});
 
 export const nzbgetSettings = Object.freeze({
   key: "nzbget",
@@ -220,7 +229,7 @@ export class NzbgetClient {
     const { url, username, password } = this._getSettings();
     const rpcUrl = buildRpcUrl(url);
     if (!rpcUrl) throw new Error("NZBGet not configured");
-    const response = await axios.post(
+    const response = await http.post(
       rpcUrl,
       {
         jsonrpc: "2.0",
@@ -229,8 +238,8 @@ export class NzbgetClient {
         id: Date.now(),
       },
       {
-        timeout: 45000,
-        auth: buildAuthFromCredentials(username, password),
+        timeoutMs: 45000,
+        basicAuth: buildAuthFromCredentials(username, password),
         headers: {
           Accept: "application/json",
         },
@@ -239,14 +248,16 @@ export class NzbgetClient {
     if (response.status !== 200) {
       throw new Error(`NZBGet ${method} failed: HTTP ${response.status}`);
     }
-    if (response.data?.error) {
-      const message =
-        response.data.error.message ||
-        response.data.error.Message ||
-        JSON.stringify(response.data.error);
-      throw new Error(`NZBGet ${method} failed: ${message}`);
+    const { result, error } = readOne(rpcResponseSchema, response.data, {
+      service: "NZBGet",
+      endpoint: method,
+    });
+    if (error) {
+      throw new Error(
+        `NZBGet ${method} failed: ${error.message || error.Message || JSON.stringify(error)}`,
+      );
     }
-    return response.data?.result;
+    return result as T;
   }
 
   async version() {

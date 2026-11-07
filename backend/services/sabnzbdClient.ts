@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.ts";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { removeSabnzbdDownloadFolder } from "./sabnzbdCleanup.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { readOne } from "./integrationData.ts";
 
 export const sabnzbdSettings = Object.freeze({
   key: "sabnzbd",
@@ -146,7 +148,25 @@ type SabnzbdConnection = {
   directories?: Awaited<ReturnType<SabnzbdClient["getDownloadDirectories"]>>;
 };
 
-type SabnzbdSlot = { nzo_id: string; storage?: string | null };
+const slotSchema = v.looseObject({
+  nzo_id: v.string(),
+  storage: v.nullish(v.string()),
+  status: v.optional(v.string()),
+});
+const slotsSchema = v.optional(v.looseObject({ slots: v.optional(v.array(slotSchema)) }));
+const sabnzbdResponseSchema = v.looseObject({
+  status: v.optional(v.unknown()),
+  error: v.optional(v.unknown()),
+  version: v.optional(v.string()),
+  nzo_ids: v.optional(v.array(v.string())),
+  queue: slotsSchema,
+  history: slotsSchema,
+  config: v.optional(
+    v.looseObject({ misc: v.optional(v.unknown()), categories: v.optional(v.unknown()) }),
+  ),
+});
+
+type SabnzbdSlot = v.InferOutput<typeof slotSchema>;
 type NzbId = string | number | null | undefined;
 
 const connectionCache = new Map<
@@ -286,15 +306,15 @@ export class SabnzbdClient {
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
       .join("&");
     const response = file
-      ? await axios.post(`${base}&${query}`, file.body, {
-          timeout: 45000,
+      ? await http.post(`${base}&${query}`, file.body, {
+          timeoutMs: 45000,
           headers: { "Content-Type": file.contentType },
         })
-      : await axios.get(`${base}&${query}`, { timeout: 45000 });
+      : await http.get(`${base}&${query}`, { timeoutMs: 45000 });
     if (response.status !== 200) {
       throw new Error(`${this.name} ${mode} failed: HTTP ${response.status}`);
     }
-    return response.data;
+    return readOne(sabnzbdResponseSchema, response.data, { service: this.name, endpoint: mode });
   }
 
   async appendNzb({
@@ -322,7 +342,9 @@ export class SabnzbdClient {
       { file: buildNzbUpload(nzbName, content) },
     );
     if (!result?.nzo_ids || result.nzo_ids.length === 0) {
-      throw new Error(`${this.name} rejected the NZB${result?.error ? `: ${result.error}` : ""}`);
+      throw new Error(
+        `${this.name} rejected the NZB${result?.error ? `: ${String(result.error)}` : ""}`,
+      );
     }
     return {
       nzbId: String(result.nzo_ids[0]),
@@ -351,7 +373,10 @@ export class SabnzbdClient {
     {
       deleteFiles = false,
       historyItem = null,
-    }: { deleteFiles?: boolean; historyItem?: Partial<SabnzbdSlot> | null } = {},
+    }: {
+      deleteFiles?: boolean;
+      historyItem?: Partial<Pick<SabnzbdSlot, "nzo_id" | "storage">> | null;
+    } = {},
   ) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
@@ -384,7 +409,7 @@ export class SabnzbdClient {
     return result?.status === true;
   }
 
-  async sharesDownloadFolder(item: Partial<SabnzbdSlot>) {
+  async sharesDownloadFolder(item: Partial<Pick<SabnzbdSlot, "nzo_id" | "storage">>) {
     const id = String(item?.nzo_id || "").trim();
     const storage = normalizeStoragePath(item?.storage);
     if (!storage) return false;
@@ -441,10 +466,12 @@ export class SabnzbdClient {
     let result: SabnzbdConnection;
     try {
       const [versionRes, directories] = await Promise.all([
-        axios.get(`${this._apiUrl()}&mode=version`, { timeout: 15000 }),
+        http.get(`${this._apiUrl()}&mode=version`, { timeoutMs: 15000 }),
         this.getDownloadDirectories(),
       ]);
-      const version = versionRes.data?.version || null;
+      const version =
+        readOne(sabnzbdResponseSchema, versionRes.data, { service: this.name, endpoint: "version" })
+          .version || null;
       result = {
         ok: true,
         configured: true,

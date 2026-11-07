@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 
-const [state, { default: preview }, { dbOps }, { default: axios }] = await setupIsolatedBackend(
+const [state, { default: preview }, { dbOps }, { http }] = await setupIsolatedBackend(
   "artist-preview-query",
   () => import("../backend/routes/artists/handlers/preview.ts"),
   () => import("../backend/db/helpers/index.ts"),
-  () => import("../lib/axiosFetch.ts"),
+  () => import("../lib/http.ts"),
 );
 const mbid = "58e235fc-f6ea-4614-9ed4-9855a5665ae1";
 
@@ -14,7 +14,7 @@ afterAll(() => cleanupIsolatedState(state));
 
 test("a repeated artistName query is ignored instead of crashing the preview route", async () => {
   dbOps.setArtistOverride(mbid, { deezerArtistId: "101" });
-  vi.spyOn(axios, "get").mockResolvedValue({
+  vi.spyOn(http, "get").mockResolvedValue({
     status: 200,
     statusText: "OK",
     headers: {},
@@ -30,11 +30,11 @@ const unlinkedMbid = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
 
 function searchedDeezerArtists() {
   const searched: unknown[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, config) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
     if (url !== "https://api.deezer.com/search/artist") {
       throw Object.assign(new Error("Not found"), { response: { status: 404 } });
     }
-    searched.push(config?.params?.q);
+    searched.push(config?.query?.q);
     return { status: 200, statusText: "OK", headers: {}, data: { data: [] } };
   });
   return searched;

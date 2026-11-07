@@ -63,7 +63,7 @@ process.env.BRAINZMASH_BASE_URL = providerServer.url;
 
 const [
   isolatedState,
-  { default: axios },
+  { http },
   { getArtistByMbid },
   { musicbrainzGetArtistIdentityByMbid },
   { getArtistTagPayload },
@@ -72,7 +72,7 @@ const [
   { fetchReleaseGroupCoverUrl },
 ] = await setupIsolatedBackend(
   "brainzmash-linked-metadata",
-  () => import("../lib/axiosFetch.ts"),
+  () => import("../lib/http.ts"),
   () => import("../backend/services/providers/brainzmashProvider.ts"),
   () => import("../backend/services/apiClients/musicbrainz.ts"),
   () => import("../backend/routes/artists/shared/transform.ts"),
@@ -87,7 +87,7 @@ afterAll(async () => {
   delete process.env.BRAINZMASH_BASE_URL;
 });
 
-const externalResponse = (url: string, options: Parameters<typeof axios.get>[1]) => {
+const externalResponse = (url: string, options: Parameters<typeof http.get>[1]) => {
   if (url === "https://api.deezer.com/artist/412") {
     return { id: 412, name: "Queen", picture_big: "https://cdn.deezer.test/queen.jpg" };
   }
@@ -125,7 +125,7 @@ const externalResponse = (url: string, options: Parameters<typeof axios.get>[1])
       ],
     };
   }
-  if (options?.params?.method === "artist.getTopTags") {
+  if (options?.query?.method === "artist.getTopTags") {
     return {
       toptags: {
         tag: [
@@ -141,10 +141,10 @@ const externalResponse = (url: string, options: Parameters<typeof axios.get>[1])
 
 function recordExternalRequests() {
   const requests: string[] = [];
-  const providerGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  const providerGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
-    requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
+    requests.push(options?.query?.method ? `${url}?method=${options.query.method}` : url);
     return { status: 200, statusText: "OK", headers: {}, data: externalResponse(url, options) };
   });
   return requests;

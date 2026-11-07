@@ -1,7 +1,7 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -59,9 +59,9 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
   });
   const calls: {
     url: string;
-    options: NonNullable<Parameters<typeof axios.get>[1]> | undefined;
+    options: NonNullable<Parameters<typeof http.get>[1]> | undefined;
   }[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url: string, options) => {
+  vi.spyOn(http, "get").mockImplementation(async (url: string, options) => {
     calls.push({ url, options });
     if (url.includes("/1/playlist/")) {
       const id = new URL(String(url)).pathname.split("/").pop();
@@ -164,7 +164,7 @@ test("ListenBrainz playlist imports retain JSPF cover artwork", async () => {
     token: "test-token",
     displayName: "playlist-user",
   });
-  vi.spyOn(axios, "get").mockResolvedValue({
+  vi.spyOn(http, "get").mockResolvedValue({
     status: 200,
     statusText: "OK",
     headers: {},

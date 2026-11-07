@@ -3,7 +3,7 @@ import { signedInAs } from "./helpers/honoApp.ts";
 import { testUser } from "./helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
-import axios from "../lib/axiosFetch.ts";
+import { http } from "../lib/http.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -90,7 +90,7 @@ const rss = (
     .join("")}</channel></rss>`;
 
 const serveFeeds = (t: import("vite-plus/test").TestContext, responses: Record<string, string>) =>
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     const response = responses[url];
     if (response === undefined) throw new Error(`Unexpected request: ${url}`);
     return { data: response, status: 200, statusText: "OK", headers: {} };
@@ -134,7 +134,7 @@ test("parses RSS items, Atom entries, entities, categories, and images", () => {
 });
 
 test("fetches RSS feed articles under the feed's configured name", async () => {
-  vi.spyOn(axios, "get").mockImplementation(async () => ({
+  vi.spyOn(http, "get").mockImplementation(async () => ({
     status: 200,
     statusText: "OK",
     headers: {},
@@ -293,7 +293,7 @@ test("looks up a missing story image once", async () => {
   configureFeeds([UNTAGGED_FEED]);
   const storyUrl = "https://93.184.216.34/story";
   const storyRequests: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     if (url === UNTAGGED_FEED)
       return {
         status: 200,

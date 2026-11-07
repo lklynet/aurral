@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { db } from "../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
@@ -53,10 +53,10 @@ export class HistoryServerError extends Error {}
 
 async function navidromeToken({ url, username, secret }: Connection) {
   try {
-    const { data } = await axios.post(
+    const { data } = await http.post(
       `${url}/auth/login`,
       { username, password: secret },
-      { timeout: TIMEOUT_MS },
+      { timeoutMs: TIMEOUT_MS },
     );
     const token = text(object(data).token);
     if (!token) throw new HistoryServerError("Navidrome did not accept the login");
@@ -85,9 +85,9 @@ const navidrome: Provider = {
         _sort: "submission_time",
         _order: "ASC",
       });
-      const { data } = await axios.get(`${connection.url}/api/scrobble?${query}`, {
+      const { data } = await http.get(`${connection.url}/api/scrobble?${query}`, {
         headers,
-        timeout: TIMEOUT_MS,
+        timeoutMs: TIMEOUT_MS,
       });
       if (!Array.isArray(data)) throw new HistoryServerError("Navidrome history is unavailable");
       const rows = data.map(object);
@@ -98,9 +98,9 @@ const navidrome: Provider = {
         const ids = new URLSearchParams(
           missing.slice(offset, offset + 100).map((id) => ["id", id]),
         );
-        const found = await axios.get(`${connection.url}/api/song?${ids}`, {
+        const found = await http.get(`${connection.url}/api/song?${ids}`, {
           headers,
-          timeout: TIMEOUT_MS,
+          timeoutMs: TIMEOUT_MS,
         });
         for (const song of list(found.data).map(object)) songs.set(text(song.id), song);
       }
@@ -129,8 +129,8 @@ async function navidromeFavorites({
   secret,
 }: Connection): Promise<ImportedFavorite[]> {
   const salt = randomBytes(8).toString("hex");
-  const { data } = await axios.get(`${url}/rest/getStarred2`, {
-    params: {
+  const { data } = await http.get(`${url}/rest/getStarred2`, {
+    query: {
       u: username,
       t: createHash("md5").update(`${secret}${salt}`).digest("hex"),
       s: salt,
@@ -138,7 +138,7 @@ async function navidromeFavorites({
       c: "aurral",
       f: "json",
     },
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   const response = object(object(data)["subsonic-response"]);
   if (response.status !== "ok") {
@@ -187,8 +187,8 @@ const plexHeaders = (token: string) => ({
 
 const readPlex: Reader = async function* ({ url, secret, accountId }, since, until) {
   for (let start = 0; ; start += PAGE_SIZE) {
-    const { data } = await axios.get(`${url}/status/sessions/history/all`, {
-      params: {
+    const { data } = await http.get(`${url}/status/sessions/history/all`, {
+      query: {
         "viewedAt>": Math.floor(since / 1000) - 1,
         "viewedAt<": Math.ceil(until / 1000),
         accountID: accountId,
@@ -197,7 +197,7 @@ const readPlex: Reader = async function* ({ url, secret, accountId }, since, unt
         "X-Plex-Container-Size": PAGE_SIZE,
       },
       headers: plexHeaders(secret),
-      timeout: TIMEOUT_MS,
+      timeoutMs: TIMEOUT_MS,
     });
     const container = object(object(data).MediaContainer);
     if (!Array.isArray(container.Metadata) && container.size !== 0)
@@ -223,10 +223,10 @@ const jellyfinHeaders = (apiKey: string) => ({
 
 async function playbackReporting({ url, secret }: Connection, sql: string) {
   try {
-    const { data } = await axios.post(
+    const { data } = await http.post(
       `${url}/user_usage_stats/submit_custom_query`,
       { CustomQueryString: sql, ReplaceUserId: false },
-      { headers: jellyfinHeaders(secret), timeout: TIMEOUT_MS },
+      { headers: jellyfinHeaders(secret), timeoutMs: TIMEOUT_MS },
     );
     const result = object(data);
     if (!Array.isArray(result.results)) throw new Error(text(result.message));
@@ -251,9 +251,9 @@ async function jellyfinOffsetMs(connection: Connection) {
 
 const jellyfin: Provider = {
   async connect(connection) {
-    const { data } = await axios.get(`${connection.url}/Users`, {
+    const { data } = await http.get(`${connection.url}/Users`, {
       headers: jellyfinHeaders(connection.secret),
-      timeout: TIMEOUT_MS,
+      timeoutMs: TIMEOUT_MS,
     });
     const user = list(data)
       .map(object)
@@ -275,14 +275,14 @@ const jellyfin: Provider = {
       const items = new Map<string, Record<string, unknown>>();
       const ids = [...new Set(rows.map((row) => text(row[1])).filter(Boolean))];
       for (let index = 0; index < ids.length; index += 100) {
-        const { data } = await axios.get(`${connection.url}/Items`, {
-          params: {
+        const { data } = await http.get(`${connection.url}/Items`, {
+          query: {
             ids: ids.slice(index, index + 100).join(","),
             userId: connection.accountId,
             enableImages: false,
           },
           headers: jellyfinHeaders(connection.secret),
-          timeout: TIMEOUT_MS,
+          timeoutMs: TIMEOUT_MS,
         });
         for (const item of list(object(data).Items).map(object)) items.set(text(item.Id), item);
       }

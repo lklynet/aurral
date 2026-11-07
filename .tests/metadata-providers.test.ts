@@ -24,7 +24,7 @@ const [
     getMetadataProviderBudget,
   },
   { db },
-  { default: axios },
+  { http },
   { readAppSettings, saveAppSettings },
 ] = await setupIsolatedBackend(
   "metadata-providers",
@@ -33,7 +33,7 @@ const [
   () => import("../backend/services/providers/brainzmashProvider.ts"),
   () => import("../backend/services/metadataProviderBudget.ts"),
   () => import("../backend/config/db-sqlite.ts"),
-  () => import("../lib/axiosFetch.ts"),
+  () => import("../lib/http.ts"),
   () => import("../backend/services/appSettings.ts"),
 );
 
@@ -854,8 +854,8 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
     response.setHeader("content-type", "application/json");
     response.end("[]");
   });
-  const providerGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  const providerGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (url.startsWith("https://musicbrainz.org/")) throw new Error("MusicBrainz unavailable");
     return providerGet(url, options);
   });
