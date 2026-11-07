@@ -11,7 +11,7 @@ import { logger } from "../../../services/logger.ts";
 import { requireAdmin } from "../../../middleware/guards.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import { requireFlowAccess } from "./utils.ts";
+import { requirePlaylistAccess } from "./utils.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const workerSettings = v.object({
@@ -20,12 +20,12 @@ const workerSettings = v.object({
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/worker/settings", requireFlowAccess, requireAdmin, (c) =>
+  .get("/worker/settings", requirePlaylistAccess, requireAdmin, (c) =>
     c.json(downloadWorker.getWorkerSettings(), 200),
   )
   .put(
     "/worker/settings",
-    requireFlowAccess,
+    requirePlaylistAccess,
     requireAdmin,
     validate("json", workerSettings),
     async (c) => {
@@ -42,7 +42,7 @@ export default new Hono<AppEnv>()
       return c.json({ success: true, settings }, 200);
     },
   )
-  .post("/worker/start", requireFlowAccess, requireAdmin, async (c) => {
+  .post("/worker/start", requirePlaylistAccess, requireAdmin, async (c) => {
     try {
       void startDownloadPipelineWorker();
       await downloadWorker.start();
@@ -51,7 +51,7 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to start worker", message: asAppError(error)?.message }, 500);
     }
   })
-  .post("/worker/stop", requireFlowAccess, requireAdmin, async (c) => {
+  .post("/worker/stop", requirePlaylistAccess, requireAdmin, async (c) => {
     try {
       await downloadWorker.stopAndDrain();
       return c.json({ success: true, message: "Worker stopped" }, 200);
@@ -59,10 +59,10 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to stop worker", message: asAppError(error)?.message }, 500);
     }
   })
-  .delete("/jobs/completed", requireFlowAccess, requireAdmin, (c) =>
+  .delete("/jobs/completed", requirePlaylistAccess, requireAdmin, (c) =>
     c.json({ success: true, cleared: downloadTracker.clearCompleted() }, 200),
   )
-  .delete("/jobs/all", requireFlowAccess, requireAdmin, async (c) => {
+  .delete("/jobs/all", requirePlaylistAccess, requireAdmin, async (c) => {
     try {
       const count = await clearAllDownloadJobs(downloadTracker);
       return c.json({ success: true, cleared: count }, 200);
@@ -81,7 +81,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/reset",
-    requireFlowAccess,
+    requirePlaylistAccess,
     requireAdmin,
     validate("json", v.object({ flowIds: v.nullish(v.array(v.string())) })),
     async (c) => {
@@ -107,7 +107,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post("/playlist/:playlistType/create", requireFlowAccess, requireAdmin, async (c) => {
+  .post("/playlist/:playlistType/create", requirePlaylistAccess, requireAdmin, async (c) => {
     try {
       playlistManager.requestPlaylistSync();
       return c.json(

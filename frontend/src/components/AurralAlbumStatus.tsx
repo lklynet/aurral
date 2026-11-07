@@ -52,8 +52,8 @@ export function AurralAlbumStatus({
     queryKey: queryKeys.aurralAlbumStatus(album.id),
     queryFn: ({ signal }) =>
       parseResponse(
-        libraryAlbumsClient.albums.aurral[":canonicalId"].status.$get(
-          { param: { canonicalId: encodeURIComponent(album.id) } },
+        libraryAlbumsClient.albums.aurral[":albumId"].status.$get(
+          { param: { albumId: encodeURIComponent(album.id) } },
           { init: { signal } },
         ),
       ),

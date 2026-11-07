@@ -399,7 +399,7 @@ function GlobalSearch() {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || "Playlist";
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"].$post({
+            staticPlaylistsClient["static-playlists"].$post({
               json: {
                 name,
                 tracks: [payload],
@@ -412,7 +412,7 @@ function GlobalSearch() {
             (playlist) => playlist.id === target?.playlistId,
           );
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+            staticPlaylistsClient["static-playlists"][":playlistId"].tracks.$post({
               param: { playlistId: encodeURIComponent(target.playlistId) },
               json: {
                 tracks: [payload],

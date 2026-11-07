@@ -18,5 +18,6 @@ export const API_CONTRACT = {
     "loudness",
     "albumPlaySorts",
     "browsePlaylists",
+    "currentNames",
   ],
 };

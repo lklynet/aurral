@@ -478,10 +478,10 @@ test("track cancellation respects private flow ownership", async () => {
     ownerUserId: 4,
   });
   const id = addJob({ artistName: "Artist", trackName: "Private song" }, flow.id);
-  requestUser = testUser(3, "user", { accessFlow: true });
+  requestUser = testUser(3, "user", { accessPlaylists: true });
   assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).status, 404);
   assert.equal(getJob(id).status, "pending");
-  requestUser = testUser(4, "user", { accessFlow: true });
+  requestUser = testUser(4, "user", { accessPlaylists: true });
   assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).status, 200);
 });
 

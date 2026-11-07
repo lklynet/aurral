@@ -82,7 +82,7 @@ beforeAll(async () => {
   });
 
   user = requireFixture(
-    userOps.createUser("search-routes-user", "unused", "user", { accessFlow: true }),
+    userOps.createUser("search-routes-user", "unused", "user", { accessPlaylists: true }),
   );
   const server = await listen(signedInAs(() => user).route("/api", api));
   app = { url: `http://127.0.0.1:${listeningAddress(server).port}`, server };
@@ -550,7 +550,7 @@ test("adding library search results to a new static playlist keeps their MusicBr
   const payloads = ["Beacon Light", "Beacon Reprise"].map((title) =>
     buildTrackPlaylistPayload(requireFixture(results.find((result) => result.title === title))),
   );
-  const created = await fetch(`${app.url}/api/playlists/shared-playlists`, {
+  const created = await fetch(`${app.url}/api/playlists/static-playlists`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "Beacon Picks", tracks: payloads }),

@@ -296,7 +296,7 @@ test("songs already in the Library play in full and the rest stay previews", asy
       ["New Song", null],
     ],
   );
-  assert.match(tracks[0]?.owned?.streamPath ?? "", /^\/library\/canonical-stream\//);
+  assert.match(tracks[0]?.owned?.streamPath ?? "", /^\/library\/stream\//);
 });
 
 test("adding the same Deezer playlist twice at once queues it only once", async (t: import("vite-plus/test").TestContext) => {

@@ -378,6 +378,7 @@ const trackInput = v.object({
   discNumber: count,
   albumTrackCount: count,
   albumTrackTitles: v.optional(v.nullable(v.array(v.string()))),
+  libraryTrackId: v.optional(v.nullable(id)),
   canonicalTrackId: v.optional(v.nullable(id)),
 });
 
@@ -471,7 +472,7 @@ export default new Hono<AppEnv>()
       }
       try {
         const result = await requestLibraryTrack(track, {
-          canonicalTrackId: body.canonicalTrackId,
+          libraryTrackId: body.libraryTrackId ?? body.canonicalTrackId,
           user: c.var.user,
         });
         if (isFailure(result)) {

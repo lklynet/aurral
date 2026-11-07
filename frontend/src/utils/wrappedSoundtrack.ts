@@ -14,9 +14,7 @@ export const playable = (song: WrappedSong) =>
 export function wrappedSongSource(song: WrappedSong) {
   const path =
     song.preview === null
-      ? buildAuthenticatedApiUrl(
-          `/library/canonical-stream/${song.libraryAlbumId}/${song.libraryTrackId}`,
-        )
+      ? buildAuthenticatedApiUrl(`/library/stream/${song.libraryAlbumId}/${song.libraryTrackId}`)
       : resolveApiPath(song.preview);
   return new URL(path, window.location.href).href;
 }

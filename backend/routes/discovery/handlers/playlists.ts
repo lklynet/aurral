@@ -111,7 +111,7 @@ export default new Hono<AppEnv>()
   .post(
     "/playlists/:provider/:playlistId/library",
     requireAuth,
-    requirePermission("accessFlow"),
+    requirePermission("accessPlaylists"),
     validate("param", playlistParams),
     async (c) => {
       const { provider, playlistId } = c.req.valid("param");

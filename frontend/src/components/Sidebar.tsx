@@ -66,7 +66,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
   const navBeta = useNavBeta();
   const sectionId = useSectionNav()?.id;
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const { hasReview: hasReviewAlert, status: playlistStatus } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
   });
@@ -180,7 +180,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       const items: SidebarNavItem[] = [
         { path: "/", label: "Discover", icon: Sparkles, section: "discover" },
         { path: "/library", label: "Library", icon: Library, section: "library" },
-        { path: "/flows", label: "Flows", icon: AudioWaveform, permission: "accessFlow" },
+        { path: "/flows", label: "Flows", icon: AudioWaveform, permission: "accessPlaylists" },
         ...(ticketmasterConfigured
           ? [
               {
@@ -244,7 +244,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         path: "/flows",
         label: "Flows",
         icon: AudioWaveform,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
       {
         path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
@@ -260,7 +260,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         icon: AlertTriangle,
         section: "wanted",
         subnav: WANTED_VIEWS,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
     ];
     return items.filter(allowed);

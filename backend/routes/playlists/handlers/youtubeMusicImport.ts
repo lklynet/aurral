@@ -10,7 +10,7 @@ import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
-import { importSettings, requireFlowAccess } from "./utils.ts";
+import { importSettings, requirePlaylistAccess } from "./utils.ts";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 
@@ -37,7 +37,7 @@ const sendProviderError = <E extends AppEnv>(c: Context<E>, error: unknown, fall
 export default new Hono<AppEnv>()
   .post(
     "/import/youtube-music/preview",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ url: v.string() })),
     async (c) => {
       try {
@@ -65,7 +65,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/youtube-music",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ ...importSettings, playlistId: v.string() })),
     async (c) => {
       let stage = "fetch";

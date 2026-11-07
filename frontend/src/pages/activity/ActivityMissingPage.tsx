@@ -63,7 +63,7 @@ const toPlaylistInfo = (status: PlaylistStatus | undefined) => {
       ...entry,
       kind: "flow",
     })),
-    ...(Array.isArray(status?.sharedPlaylists) ? status.sharedPlaylists : []).map((entry) => ({
+    ...(Array.isArray(status?.staticPlaylists) ? status.staticPlaylists : []).map((entry) => ({
       ...entry,
       kind: "playlist",
     })),
@@ -324,7 +324,7 @@ export default function ActivityMissingPage() {
         const jobId = encodeURIComponent(job.id);
         await parseResponse(
           playlist?.kind === "playlist"
-            ? staticPlaylistsClient["shared-playlists"][":playlistId"].tracks[
+            ? staticPlaylistsClient["static-playlists"][":playlistId"].tracks[
                 ":jobId"
               ].research.$post({ param: { playlistId, jobId } })
             : flowsClient.flows[":flowId"].tracks[":jobId"].research.$post({

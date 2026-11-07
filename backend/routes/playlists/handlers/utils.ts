@@ -19,12 +19,12 @@ import type { Context } from "hono";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
 import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
 
-export const requireFlowAccess = requirePermission("accessFlow");
+export const requirePlaylistAccess = requirePermission("accessPlaylists");
 
-export const requireFlowAccessIfSignedIn = createMiddleware<AppEnv>(async (c, next) => {
+export const requirePlaylistAccessIfSignedIn = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get("user");
-  if (user && !hasPermission(user, "accessFlow")) {
-    return c.json({ error: "Forbidden", message: "Permission required: accessFlow" }, 403);
+  if (user && !hasPermission(user, "accessPlaylists")) {
+    return c.json({ error: "Forbidden", message: "Permission required: accessPlaylists" }, 403);
   }
   await next();
 });

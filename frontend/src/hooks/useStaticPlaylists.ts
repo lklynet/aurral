@@ -10,15 +10,15 @@ export function useStaticPlaylists() {
   const { showError } = useToast();
   const [playlistsError, setPlaylistsError] = useState("");
   const query: UseQueryResult<PlaylistStatus, ApiError> = useQuery(playlistStatusQueryOptions());
-  const staticPlaylists: StaticPlaylist[] = Array.isArray(query.data?.sharedPlaylists)
-    ? query.data.sharedPlaylists
+  const staticPlaylists: StaticPlaylist[] = Array.isArray(query.data?.staticPlaylists)
+    ? query.data.staticPlaylists
     : [];
   const { refetch } = query;
   const setStaticPlaylists = useCallback(
     (next: StaticPlaylist[] | ((current: StaticPlaylist[]) => StaticPlaylist[])) => {
       queryClient.setQueryData<Partial<PlaylistStatus>>(queryKeys.playlistStatus, (current) => ({
         ...(current || {}),
-        sharedPlaylists: typeof next === "function" ? next(current?.sharedPlaylists || []) : next,
+        staticPlaylists: typeof next === "function" ? next(current?.staticPlaylists || []) : next,
       }));
     },
     [],
@@ -28,7 +28,7 @@ export function useStaticPlaylists() {
     setPlaylistsError("");
     try {
       const { data } = await refetch({ throwOnError: true });
-      const playlists = Array.isArray(data?.sharedPlaylists) ? data.sharedPlaylists : [];
+      const playlists = Array.isArray(data?.staticPlaylists) ? data.staticPlaylists : [];
       return playlists;
     } catch (err) {
       const failure = asApiError(err);

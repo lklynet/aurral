@@ -23,7 +23,12 @@ function resolvePathValue(raw: unknown) {
 }
 
 export function resolveEnvDownloadFolder() {
-  for (const key of ["PLAYLIST_FOLDER", "WEEKLY_FLOW_FOLDER", "DOWNLOAD_FOLDER"]) {
+  for (const key of [
+    "LIBRARY_FOLDER",
+    "PLAYLIST_FOLDER",
+    "WEEKLY_FLOW_FOLDER",
+    "DOWNLOAD_FOLDER",
+  ]) {
     const resolved = resolvePathValue(process.env[key]);
     if (resolved) return resolved;
   }

@@ -35,7 +35,7 @@ const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePa
   cancellationModule;
 
 const flowUser = (id: number, role = "user") =>
-  testUser(id, { role, permissions: { accessFlow: true } });
+  testUser(id, { role, permissions: { accessPlaylists: true } });
 
 const updatePreference = async (
   preference: "track-availability" | "record-history",
@@ -45,7 +45,7 @@ const updatePreference = async (
 ) => {
   const response = await signedInAs(user)
     .route("/", api)
-    .request(`/playlists/shared-playlists/${id}/${preference}`, {
+    .request(`/playlists/static-playlists/${id}/${preference}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
@@ -125,11 +125,11 @@ test("availability is opt-in, persists per playlist, and does not queue playback
     user: { id: 1, role: "user", username: "test", permissions: {} },
   });
   assert.equal(
-    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === first.id)).showTrackAvailability,
+    requireFixture(snapshot.staticPlaylists.find((p) => p.id === first.id)).showTrackAvailability,
     true,
   );
   assert.equal(
-    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === second.id)).showTrackAvailability,
+    requireFixture(snapshot.staticPlaylists.find((p) => p.id === second.id)).showTrackAvailability,
     false,
   );
   assert.equal((await updateAvailability(first.id, false)).body.showTrackAvailability, false);
@@ -183,7 +183,7 @@ test("history is enabled by default, persists per playlist, and does not queue p
     user: { id: 1, role: "user", username: "test", permissions: {} },
   });
   assert.equal(
-    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === first.id)).recordHistory,
+    requireFixture(snapshot.staticPlaylists.find((p) => p.id === first.id)).recordHistory,
     false,
   );
   assert.equal((await updateRecordHistory(first.id, true)).body.recordHistory, true);
@@ -221,7 +221,7 @@ test("a failed playlist-delete enqueue restores the active download generation",
   });
   const response = await signedInAs(user)
     .route("/", api)
-    .request(`/playlists/shared-playlists/${playlist.id}`, { method: "DELETE" });
+    .request(`/playlists/static-playlists/${playlist.id}`, { method: "DELETE" });
 
   assert.equal(response.status, 500);
   assert.equal(isDownloadJobCancelled(jobId), false);

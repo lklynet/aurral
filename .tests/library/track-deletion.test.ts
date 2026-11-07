@@ -218,7 +218,7 @@ test("deleting a library track removes it from playlists that referenced its dow
   try {
     assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.tracks, keptTracks);
-    const status = getPlaylistStatusSnapshot().sharedPlaylists.find(
+    const status = getPlaylistStatusSnapshot().staticPlaylists.find(
       (entry) => entry.id === playlist.id,
     );
     assert.ok(status != null);

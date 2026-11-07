@@ -326,7 +326,7 @@ const appRoutes = createRoutesFromElements(
         <Route
           path="/library/playlists"
           element={
-            <PermissionRoute permission="accessFlow">
+            <PermissionRoute permission="accessPlaylists">
               <PlaylistsPage />
             </PermissionRoute>
           }
@@ -334,7 +334,7 @@ const appRoutes = createRoutesFromElements(
         <Route
           path="/library/playlists/:playlistId"
           element={
-            <PermissionRoute permission="accessFlow">
+            <PermissionRoute permission="accessPlaylists">
               <PlaylistDetailPage />
             </PermissionRoute>
           }
@@ -346,7 +346,7 @@ const appRoutes = createRoutesFromElements(
         <Route
           path="/flows"
           element={
-            <PermissionRoute permission="accessFlow">
+            <PermissionRoute permission="accessPlaylists">
               <FlowsPage />
             </PermissionRoute>
           }
@@ -354,7 +354,7 @@ const appRoutes = createRoutesFromElements(
         <Route
           path="/flows/:flowId"
           element={
-            <PermissionRoute permission="accessFlow">
+            <PermissionRoute permission="accessPlaylists">
               <FlowDetailPage />
             </PermissionRoute>
           }
@@ -362,7 +362,7 @@ const appRoutes = createRoutesFromElements(
         <Route
           path="/playlists"
           element={
-            <PermissionRoute permission="accessFlow">
+            <PermissionRoute permission="accessPlaylists">
               <PlaylistRedirect />
             </PermissionRoute>
           }

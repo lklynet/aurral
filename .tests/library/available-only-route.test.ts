@@ -44,7 +44,7 @@ async function callLibraryPage<Kind extends "artists" | "albums">(query: {
   availableOnly?: string;
   sort?: string;
 }) {
-  const response = await app.request(`/library/canonical?${new URLSearchParams(query)}`);
+  const response = await app.request(`/library?${new URLSearchParams(query)}`);
   const page: Page<Kind> = await response.json();
   return page;
 }

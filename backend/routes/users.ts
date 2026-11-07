@@ -64,6 +64,14 @@ const isValidPermissions = (permissions: unknown): permissions is Record<string,
   !Array.isArray(permissions) &&
   Object.values(permissions).every((value) => typeof value === "boolean");
 
+const toStoredPermissions = (permissions: unknown) => {
+  if (!isValidPermissions(permissions)) return null;
+  const { accessFlow, ...stored } = permissions;
+  return accessFlow === undefined || "accessPlaylists" in stored
+    ? stored
+    : { ...stored, accessPlaylists: accessFlow };
+};
+
 const INVALID_PERMISSIONS_ERROR = "Permissions must be true or false";
 const VALID_STATUSES = ["active", "suspended", "disabled"];
 
@@ -128,7 +136,7 @@ export default new Hono<AppEnv>()
         return c.json({ error: passwordValidation.error }, 400);
       }
       const hash = hashPassword(password);
-      const perms = isValidPermissions(permissions) ? permissions : null;
+      const perms = toStoredPermissions(permissions);
       const created = userOps.createUser(un, hash, role, perms, true, false, password);
       if (!created) {
         return c.json({ error: "Failed to create user" }, 500);
@@ -231,7 +239,7 @@ export default new Hono<AppEnv>()
         updates.subsonicPassword = password;
       }
       if (permissions !== undefined) {
-        updates.permissions = isValidPermissions(permissions) ? permissions : {};
+        updates.permissions = toStoredPermissions(permissions) ?? {};
       }
       if (role !== undefined) {
         updates.role = role;

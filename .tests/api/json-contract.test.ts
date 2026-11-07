@@ -241,6 +241,7 @@ beforeAll(async () => {
   });
   fields(login, { token: "string", expiresAt: "number", user: "object" });
   fields(login.user, { id: "number", username: "string", role: "string", permissions: "object" });
+  fields(login.user.permissions, { accessPlaylists: "boolean", accessFlow: "boolean" });
   token = login.token;
 });
 
@@ -275,6 +276,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
     "flowAutoDownload",
     "pluginActions",
     "radio",
+    "currentNames",
   ]) {
     assert.ok(
       bootstrap.api.features.includes(feature),
@@ -489,6 +491,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
     files: "array",
   });
   assert.equal(page.items[0].mbid, trackMbid);
+  assert.deepEqual(await call("/api/library?kind=tracks&pageSize=10&availableOnly=true"), page);
   for (const [kind, name] of [
     ["artists", "name"],
     ["albums", "title"],
@@ -527,6 +530,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
     exists: "boolean",
     artist: "object|null",
     albums: "array",
+    fromLibraryIndex: "boolean",
     canonical: "boolean",
     libraryArtistId: "string|null",
   });
@@ -542,6 +546,9 @@ test("library pages, lookups, album requests, and track requests preserve their 
   });
   fields(albums[albumMbid], {
     inLibrary: "boolean",
+    fromLibraryIndex: "boolean",
+    providerAlbumId: "string|null",
+    providerArtistId: "string|null",
     libraryAlbumId: "string|null",
     libraryArtistId: "string|null",
     status: "string",
@@ -551,6 +558,10 @@ test("library pages, lookups, album requests, and track requests preserve their 
     ownedTrackMbids: "array",
   });
   assert.deepEqual(albums[albumMbid].ownedTrackMbids, [trackMbid]);
+  assert.deepEqual(
+    [albums[albumMbid].providerAlbumId, albums[albumMbid].providerArtistId],
+    [null, null],
+  );
   const requested = await call("/api/library/albums/request", {
     method: "POST",
     status: 201,
@@ -621,6 +632,7 @@ test("flows, activity, and review preserve their public response fields and stor
   fields(status, {
     flows: "array",
     sharedPlaylists: "array",
+    staticPlaylists: "array",
     stats: "object",
     flowStats: "object",
     worker: "object",

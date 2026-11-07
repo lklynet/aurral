@@ -44,7 +44,7 @@ afterAll(async () => {
 
 test("serves playlist artwork from a hidden data directory", async () => {
   const owner = userOps.createUser("listener", hashPassword("listener-password"), "user", {
-    accessFlow: true,
+    accessPlaylists: true,
   });
   assert.ok(owner != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
@@ -122,7 +122,7 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     assert.equal((await request(`/artwork/${flow.id}/generate`, { style: "photo" })).status, 400);
     assert.equal((await request(`/artwork/${flow.id}/restore`, {})).status, 400);
 
-    const playlistResponse = await request("/shared-playlists", { name: "Fresh Playlist" });
+    const playlistResponse = await request("/static-playlists", { name: "Fresh Playlist" });
     assert.equal(playlistResponse.status, 200);
     const { playlistId } = await playlistResponse.body.json();
     assert.equal(queuedOperations.length, 1);

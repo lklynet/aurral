@@ -36,7 +36,7 @@ const [
 const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePayloadActive } =
   cancellation;
 
-const user = testUser(1, { permissions: { accessFlow: true } });
+const user = testUser(1, { permissions: { accessPlaylists: true } });
 const app = signedInAs(user).route("/", api);
 const send = async (method: string, path: string, body?: Record<string, unknown>) =>
   app.request(

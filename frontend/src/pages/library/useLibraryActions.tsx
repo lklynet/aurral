@@ -364,13 +364,13 @@ export function useLibraryActions({
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || defaultName;
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"].$post({ json: { name, tracks: payloads } }),
+            staticPlaylistsClient["static-playlists"].$post({ json: { name, tracks: payloads } }),
           );
           showSuccess(`${label} saved to ${name}`);
         } else {
           const playlist = staticPlaylists.find((candidate) => candidate.id === target?.playlistId);
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+            staticPlaylistsClient["static-playlists"][":playlistId"].tracks.$post({
               param: { playlistId: encodeURIComponent(target?.playlistId) },
               json: { tracks: payloads },
             }),
@@ -457,7 +457,7 @@ export function useLibraryActions({
   const canDeleteAlbum = hasPermission("deleteAlbum");
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canAddTracks = hasPermission("addAlbum");
-  const canSearchManually = canAddTracks && hasPermission("accessFlow");
+  const canSearchManually = canAddTracks && hasPermission("accessPlaylists");
   const canChangeMonitoring = hasPermission("changeMonitoring");
   const canEditArtwork = !isPreviewLibrary && (canAddTracks || canChangeMonitoring);
   const libraryDestination = useLibraryDestination();
@@ -568,8 +568,8 @@ export function useLibraryActions({
           const { entity } = removal;
           if (resolveAlbumManager(entity) === "aurral") {
             await parseResponse(
-              libraryAlbumsClient.albums.aurral[":canonicalId"].$delete({
-                param: { canonicalId: encodeURIComponent(entity.canonicalId || entity.id) },
+              libraryAlbumsClient.albums.aurral[":albumId"].$delete({
+                param: { albumId: encodeURIComponent(entity.id) },
                 query: { deleteFiles: String(deleteFiles) },
               }),
             );
@@ -641,7 +641,7 @@ export function useLibraryActions({
         durationMs: trackDurationMs(track),
         trackNumber: relation?.trackNumber || null,
         discNumber: relation?.discNumber || null,
-        canonicalTrackId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
+        libraryTrackId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
       };
       if (!payload.artistName || !payload.trackName) {
         showError("Track details are incomplete");
@@ -777,7 +777,7 @@ export function useLibraryActions({
           file?.previewUrl ||
           (file && album
             ? buildAuthenticatedApiUrl(
-                `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+                `/library/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
               )
             : ""),
         streamFormat: file?.format || null,

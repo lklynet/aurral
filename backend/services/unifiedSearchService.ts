@@ -43,6 +43,7 @@ export type ArtistSearchResult = {
   key: string;
   name: string;
   sortName: string;
+  libraryId?: string | null;
   canonicalId?: string | null;
   image?: string | null;
   disambiguation?: string | null;
@@ -58,6 +59,7 @@ export type AlbumSearchResult = {
   title: string;
   artistName: string;
   artistMbid: string | null;
+  libraryId?: string;
   canonicalId?: string;
   releaseDate?: string | null;
   status?: "available";
@@ -76,6 +78,7 @@ export type TrackSearchResult = {
   artistName: string;
   albumTitle: string | null;
   albumMbid: string | null;
+  libraryAlbumId: string | null;
   albumCanonicalId: string | null;
   streamPath: string | null;
   trackMbid?: string | null;
@@ -175,6 +178,7 @@ function toSong(
     artistName,
     albumTitle: track.album?.title || null,
     albumMbid: album?.id ?? null,
+    libraryAlbumId: null,
     albumCanonicalId: null,
     streamPath: null,
     artistMbid: album?.artistMbid || artist?.id || null,
@@ -385,7 +389,7 @@ function searchPlaylists(
   limit: number,
 ): PlaylistSearchResult[] {
   const query = parseSearchQuery(text);
-  if (!query || !hasPermission(user, "accessFlow")) return [];
+  if (!query || !hasPermission(user, "accessPlaylists")) return [];
   const minimum = query.key.length < 3 ? MATCH.prefix : MATCH.words;
   const hits: { quality: MatchQuality; item: PlaylistSearchResult }[] = [];
   for (const flow of flowPlaylistConfig.getFlowsForUser(user)) {
@@ -515,7 +519,7 @@ export function searchLibrary(
   const describeAlbum = (album: LibraryAlbum) => {
     const artist = libraryArtists.get(String(album.artistId));
     return {
-      canonicalId: String(album.id),
+      libraryId: String(album.id),
       title: album.title,
       artistName: artist?.name || album.albumArtist || "Unknown Artist",
       artistMbid: artist?.mbid || null,
@@ -543,6 +547,7 @@ export function searchLibrary(
     type: "artist",
     source: "library",
     id: artist.mbid || String(artist.id),
+    libraryId: String(artist.id),
     canonicalId: String(artist.id),
     key: `library-artist:${artist.id}`,
     name: artist.name,
@@ -557,8 +562,9 @@ export function searchLibrary(
       type: "album",
       source: "library",
       id: details.releaseGroupMbid,
-      canonicalId: details.canonicalId,
-      key: `library-album:${details.canonicalId}`,
+      libraryId: details.libraryId,
+      canonicalId: details.libraryId,
+      key: `library-album:${details.libraryId}`,
       title: details.title,
       artistName: details.artistName,
       artistMbid: details.artistMbid,
@@ -582,14 +588,15 @@ export function searchLibrary(
       artistName: details?.artistName || track.artistName || "Unknown Artist",
       albumTitle: details?.title || null,
       albumMbid: details?.releaseGroupMbid || null,
-      albumCanonicalId: details?.canonicalId || null,
+      libraryAlbumId: details?.libraryId || null,
+      albumCanonicalId: details?.libraryId || null,
       trackMbid: track.mbid || null,
       artistMbid: details?.artistMbid || null,
       durationMs: track.files?.find((file) => Number(file.durationMs) > 0)?.durationMs ?? null,
       releaseYear: String(details?.releaseDate || "").match(/^\d{4}/)?.[0] || null,
       coverUrl: album ? albumCover(album.id) : null,
       streamPath: album
-        ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+        ? `/library/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
         : null,
       inLibrary: true,
     };

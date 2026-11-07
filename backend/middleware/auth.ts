@@ -231,10 +231,11 @@ function isTrustedProxy(req: ClientRequest) {
   return requestIps.some((ip) => allowed.includes(ip));
 }
 
-function buildPermissions(role: string, permissions?: UserPermissions) {
+export function buildPermissions(role: string, permissions?: UserPermissions) {
   if (role === "admin") {
     return {
       accessSettings: true,
+      accessPlaylists: true,
       accessFlow: true,
       addArtist: true,
       addAlbum: true,
@@ -244,11 +245,8 @@ function buildPermissions(role: string, permissions?: UserPermissions) {
       deleteTrack: true,
     };
   }
-  return {
-    ...userOps.getDefaultPermissions(),
-    ...(permissions || {}),
-    accessSettings: false,
-  };
+  const resolved = { ...userOps.getDefaultPermissions(), ...permissions };
+  return { ...resolved, accessFlow: resolved.accessPlaylists, accessSettings: false };
 }
 
 export function toResolvedUser(user: ResolvableUser | null) {
@@ -590,6 +588,7 @@ function legacyAuth(username: string, password: string) {
     role: "admin",
     permissions: {
       accessSettings: true,
+      accessPlaylists: true,
       accessFlow: true,
       addArtist: true,
       addAlbum: true,

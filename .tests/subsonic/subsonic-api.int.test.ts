@@ -623,7 +623,9 @@ test("the web player and Subsonic clients resume the same play queue", async () 
       body: JSON.stringify({ streamPaths, current, positionMs: 1500, device: "Aurral web" }),
     }).then((response) => response.json());
   const [librarySong, flowTrack] = queue.tracks;
-  const saved = await save([flowTrack.streamPath, "/artists/x/preview", librarySong.streamPath], 2);
+  const legacyStreamPath = librarySong.streamPath.replace("/stream/", "/canonical-stream/");
+  assert.equal((await apiFetch(`/api${legacyStreamPath}`)).status, 200);
+  const saved = await save([flowTrack.streamPath, "/artists/x/preview", legacyStreamPath], 2);
   assert.ok(saved.changed > 0);
   const resumed = responseJson(await request("getPlayQueue")).playQueue;
   assert.deepEqual(
@@ -1655,7 +1657,7 @@ test("creates durable Subsonic playlists around one promoted library job", async
   );
   assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
   const removeLibraryTrackResponse = await apiFetch(
-    `/api/playlists/shared-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
+    `/api/playlists/static-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
     { method: "DELETE" },
   );
   assert.equal(removeLibraryTrackResponse.status, 200);
@@ -1703,7 +1705,7 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
 
 test("playlist detail and list report its owner's saved description", async () => {
   userOps.createUser("playlist-owner", hashPassword("owner-password"), "user", {
-    accessFlow: true,
+    accessPlaylists: true,
   });
   const credentials = { u: "playlist-owner", p: "owner-password" };
   const created = responseJson(
@@ -1922,7 +1924,7 @@ test("playlist favorites resolve to the owned library track", async () => {
       responseJson(await request("getAlbum", { id: album.id })).album.song[0],
     ).id;
     const page = await (
-      await apiFetch("/api/library/canonical?kind=tracks&page=1&pageSize=100&availableOnly=true")
+      await apiFetch("/api/library?kind=tracks&page=1&pageSize=100&availableOnly=true")
     ).json();
     assert.equal(
       page.items.find(
@@ -2018,7 +2020,7 @@ test("streams library files through the authenticated native route", async () =>
   const { token } = await login.json();
   const headers = { Authorization: `Bearer ${token}` };
   const canonical = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
+    `http://127.0.0.1:${aurral.port}/api/library?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
   );
   const library = await canonical.json();

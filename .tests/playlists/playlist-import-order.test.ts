@@ -75,7 +75,7 @@ const { playlistOperationQueue } = operationQueueModule;
 const { logger } = loggerModule;
 
 const requestAs = async (userId: number, path: string, body?: object) => {
-  const response = await signedInAs(testUser(userId, { permissions: { accessFlow: true } }))
+  const response = await signedInAs(testUser(userId, { permissions: { accessPlaylists: true } }))
     .route("/", api)
     .request(
       `/playlists${path}`,

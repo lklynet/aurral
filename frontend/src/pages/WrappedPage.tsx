@@ -1629,7 +1629,7 @@ export default function WrappedPage() {
             >
               Share
             </button>
-            {hasPermission("accessFlow") && (
+            {hasPermission("accessPlaylists") && (
               <button
                 type="button"
                 className="btn btn-ghost"

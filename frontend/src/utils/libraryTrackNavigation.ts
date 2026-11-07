@@ -1,4 +1,4 @@
-type LibraryEntry = { id?: string | number | null; canonicalId?: string | null };
+type LibraryEntry = { id?: string | number | null; libraryId?: string | null };
 
 type LibraryArtistEntry = LibraryEntry & {
   name?: string | null;
@@ -18,7 +18,7 @@ const normalizeName = (value: string | null | undefined) =>
     .toLocaleLowerCase();
 
 export const libraryRecordId = (entry: LibraryEntry | null | undefined) =>
-  entry?.canonicalId ?? entry?.id ?? null;
+  entry?.libraryId ?? entry?.id ?? null;
 
 export function findLibraryArtistByName<T extends LibraryArtistEntry>(
   artists: T[] | null | undefined,

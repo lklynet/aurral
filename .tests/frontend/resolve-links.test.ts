@@ -76,13 +76,13 @@ test("an album that isn't found opens its artist, and an unknown artist explains
 test("a library artist link falls back to a name match when the ID lookup misses", async (t) => {
   const { links, open } = await setup(t, (url) => {
     if (url.pathname.includes("/library/lookup/")) return { body: { exists: false } };
-    if (url.pathname.endsWith("/library/canonical")) {
+    if (url.pathname.endsWith("/library")) {
       return {
         body: {
           kind: "artists",
           artists: [
             { id: 3, name: "Other" },
-            { id: 9, canonicalId: "c-9", name: "Wanted Artist" },
+            { id: 9, name: "Wanted Artist" },
           ],
         },
       };
@@ -93,7 +93,7 @@ test("a library artist link falls back to a name match when the ID lookup misses
   const target = await open(
     links.resolveLibraryArtistPath({ mbid: "mb-1", name: "wanted artist" }),
   );
-  assert.equal(target.to, "/library/artist/c-9");
+  assert.equal(target.to, "/library/artist/9");
 });
 
 test("hovering a resolver link does the lookup the opened page then reuses", async (t) => {

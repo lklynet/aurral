@@ -153,7 +153,7 @@ test("a saved queue does not replace something that is already playing", () => {
 test("other devices get the Aurral tracks around the current one, without previews", () => {
   const state = queueReducer(
     playing([
-      { id: "a", src: "/api/library/canonical-stream/1/11?token=secret" },
+      { id: "a", src: "/api/library/stream/1/11?token=secret" },
       { id: "b", src: "https://cdn.example/preview.mp3" },
       { id: "c", src: "/api/playlists/stream/job%201?token=secret" },
     ]),
@@ -161,7 +161,7 @@ test("other devices get the Aurral tracks around the current one, without previe
   );
 
   assert.deepEqual(remoteQueueFor(state, 12.3456), {
-    streamPaths: ["/library/canonical-stream/1/11", "/playlists/stream/job%201"],
+    streamPaths: ["/library/stream/1/11", "/playlists/stream/job%201"],
     current: 1,
     positionMs: 12346,
   });

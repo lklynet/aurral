@@ -16,13 +16,18 @@ afterAll(async () => {
 });
 
 test("resolveDownloadRoot follows env precedence and relative download paths", () => {
+  const previousLibrary = process.env.LIBRARY_FOLDER;
   const previousPlaylist = process.env.PLAYLIST_FOLDER;
   const previousWeekly = process.env.WEEKLY_FLOW_FOLDER;
   const previousDownload = process.env.DOWNLOAD_FOLDER;
 
+  process.env.LIBRARY_FOLDER = "/custom/library";
   process.env.PLAYLIST_FOLDER = "/custom/playlist";
   process.env.WEEKLY_FLOW_FOLDER = "/custom/flow";
   process.env.DOWNLOAD_FOLDER = "/data/downloads/tmp";
+  assert.equal(resolveDownloadRoot(), "/custom/library");
+
+  delete process.env.LIBRARY_FOLDER;
   assert.equal(resolveDownloadRoot(), "/custom/playlist");
 
   delete process.env.PLAYLIST_FOLDER;
@@ -36,6 +41,8 @@ test("resolveDownloadRoot follows env precedence and relative download paths", (
   process.env.DOWNLOAD_FOLDER = "./data/downloads";
   assert.equal(resolveDownloadRoot(), path.resolve(process.cwd(), "./data/downloads"));
 
+  if (previousLibrary === undefined) delete process.env.LIBRARY_FOLDER;
+  else process.env.LIBRARY_FOLDER = previousLibrary;
   if (previousPlaylist === undefined) delete process.env.PLAYLIST_FOLDER;
   else process.env.PLAYLIST_FOLDER = previousPlaylist;
   if (previousWeekly === undefined) delete process.env.WEEKLY_FLOW_FOLDER;

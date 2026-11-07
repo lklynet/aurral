@@ -55,7 +55,7 @@ interface PlaylistDetailProps {
   fetchStatus: () => Promise<unknown>;
 }
 
-const sharedPlaylist = staticPlaylistsClient["shared-playlists"][":playlistId"];
+const sharedPlaylist = staticPlaylistsClient["static-playlists"][":playlistId"];
 const syncFetch = apiFetchWithin(5 * 60 * 1000);
 
 function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylist>) {
@@ -63,7 +63,7 @@ function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylis
     current
       ? {
           ...current,
-          sharedPlaylists: current.sharedPlaylists.map((playlist) =>
+          staticPlaylists: current.staticPlaylists.map((playlist) =>
             playlist.id === playlistId ? { ...playlist, ...changes } : playlist,
           ),
         }

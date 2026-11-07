@@ -16,7 +16,11 @@ import {
 } from "../../../services/playlists/playlistTracks.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
-import { enqueueResearchTrack, getAccessibleStaticPlaylist, requireFlowAccess } from "./utils.ts";
+import {
+  enqueueResearchTrack,
+  getAccessibleStaticPlaylist,
+  requirePlaylistAccess,
+} from "./utils.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
@@ -185,11 +189,10 @@ async function enqueueBulkAction<E extends AppEnv>(
 const bulkActionFailed = <E extends AppEnv>(c: Context<E>, error: unknown) =>
   c.json({ error: "Failed to queue playlist action", message: asAppError(error)?.message }, 500);
 
-export default new Hono<AppEnv>()
-  .basePath("/playlists")
+const staticPlaylistRoutes = new Hono<AppEnv>()
   .post(
-    "/shared-playlists/:playlistId/track-removals",
-    requireFlowAccess,
+    "/:playlistId/track-removals",
+    requirePlaylistAccess,
     validate("json", bulkInput),
     async (c) => {
       try {
@@ -206,8 +209,8 @@ export default new Hono<AppEnv>()
     },
   )
   .post(
-    "/shared-playlists/:playlistId/track-moves",
-    requireFlowAccess,
+    "/:playlistId/track-moves",
+    requirePlaylistAccess,
     validate("json", moveInput),
     async (c) => {
       try {
@@ -223,7 +226,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .get("/shared-playlists/:playlistId/operations/:operationId", requireFlowAccess, (c) => {
+  .get("/:playlistId/operations/:operationId", requirePlaylistAccess, (c) => {
     try {
       const playlistId = c.req.param("playlistId");
       cleanupBulkOperations();
@@ -254,7 +257,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/shared-playlists", requireFlowAccess, validate("json", playlistInput), async (c) => {
+  .post("/", requirePlaylistAccess, validate("json", playlistInput), async (c) => {
     try {
       return await createStaticPlaylist(c, c.var.user, c.req.valid("json"));
     } catch (error) {
@@ -262,8 +265,8 @@ export default new Hono<AppEnv>()
     }
   })
   .post(
-    "/shared-playlists/:playlistId/tracks",
-    requireFlowAccess,
+    "/:playlistId/tracks",
+    requirePlaylistAccess,
     validate("json", v.object({ tracks: playlistTracks })),
     async (c) => {
       try {
@@ -306,8 +309,8 @@ export default new Hono<AppEnv>()
     },
   )
   .put(
-    "/shared-playlists/:playlistId/track-availability",
-    requireFlowAccess,
+    "/:playlistId/track-availability",
+    requirePlaylistAccess,
     validate("json", enabledInput),
     (c) => {
       const playlistId = c.req.param("playlistId");
@@ -321,8 +324,8 @@ export default new Hono<AppEnv>()
     },
   )
   .put(
-    "/shared-playlists/:playlistId/record-history",
-    requireFlowAccess,
+    "/:playlistId/record-history",
+    requirePlaylistAccess,
     validate("json", enabledInput),
     (c) => {
       const playlistId = c.req.param("playlistId");
@@ -335,77 +338,72 @@ export default new Hono<AppEnv>()
       return c.json({ success: true, recordHistory: playlist!.recordHistory }, 200);
     },
   )
-  .put(
-    "/shared-playlists/:playlistId",
-    requireFlowAccess,
-    validate("json", playlistUpdate),
-    async (c) => {
-      try {
-        const playlistId = c.req.param("playlistId");
-        const body = c.req.valid("json");
-        const hasNameUpdate = Object.hasOwn(body, "name");
-        const hasTracksUpdate = Object.hasOwn(body, "tracks");
-        const hasImportSourceUpdate = Object.hasOwn(body, "importSource");
-        if (!hasNameUpdate && !hasTracksUpdate && !hasImportSourceUpdate) {
-          return c.json({ error: "At least one playlist field is required" }, 400);
-        }
-        const currentPlaylist = getAccessibleStaticPlaylist(c.var.user, playlistId);
-        if (!currentPlaylist) {
-          return c.json({ error: "Playlist not found" }, 404);
-        }
-        const safeName = hasNameUpdate
-          ? String(body.name || "").trim()
-          : String(currentPlaylist.name || "").trim();
-        if (!safeName) {
-          return c.json({ error: "name is required" }, 400);
-        }
-        const normalizedTracks = hasTracksUpdate
-          ? dedupePlaylistTracks(body.tracks)
-          : currentPlaylist.tracks;
-        if (hasTracksUpdate && body.tracks?.length && normalizedTracks.length === 0) {
-          return c.json(
-            {
-              error: "tracks are invalid",
-              message: "Playlist update must include at least one valid track",
-            },
-            400,
-          );
-        }
-        let importSource = null;
-        if (hasImportSourceUpdate) {
-          if (!currentPlaylist.importSource) {
-            return c.json({ error: "Playlist has no import source" }, 400);
-          }
-          importSource = normalizeImportSource({
-            ...currentPlaylist.importSource,
-            ...body.importSource,
-          });
-          if (!importSource) {
-            return c.json({ error: "importSource is invalid" }, 400);
-          }
-        }
-
-        const result = await playlistOperationQueue.enqueuePayload({
-          kind: "static-playlist-update",
-          label: `static-playlist:${playlistId}:update`,
-          playlistId,
-          name: safeName,
-          tracks: normalizedTracks,
-          hasNameUpdate,
-          hasTracksUpdate,
-          hasImportSourceUpdate,
-          importSource,
-        });
-        return c.json(
-          { success: true, playlistId, queued: true, operationId: result.operationId },
-          200,
-        );
-      } catch (error) {
-        return nameConflict(c, error, "Failed to update playlist");
+  .put("/:playlistId", requirePlaylistAccess, validate("json", playlistUpdate), async (c) => {
+    try {
+      const playlistId = c.req.param("playlistId");
+      const body = c.req.valid("json");
+      const hasNameUpdate = Object.hasOwn(body, "name");
+      const hasTracksUpdate = Object.hasOwn(body, "tracks");
+      const hasImportSourceUpdate = Object.hasOwn(body, "importSource");
+      if (!hasNameUpdate && !hasTracksUpdate && !hasImportSourceUpdate) {
+        return c.json({ error: "At least one playlist field is required" }, 400);
       }
-    },
-  )
-  .delete("/shared-playlists/:playlistId/tracks/:jobId", requireFlowAccess, async (c) => {
+      const currentPlaylist = getAccessibleStaticPlaylist(c.var.user, playlistId);
+      if (!currentPlaylist) {
+        return c.json({ error: "Playlist not found" }, 404);
+      }
+      const safeName = hasNameUpdate
+        ? String(body.name || "").trim()
+        : String(currentPlaylist.name || "").trim();
+      if (!safeName) {
+        return c.json({ error: "name is required" }, 400);
+      }
+      const normalizedTracks = hasTracksUpdate
+        ? dedupePlaylistTracks(body.tracks)
+        : currentPlaylist.tracks;
+      if (hasTracksUpdate && body.tracks?.length && normalizedTracks.length === 0) {
+        return c.json(
+          {
+            error: "tracks are invalid",
+            message: "Playlist update must include at least one valid track",
+          },
+          400,
+        );
+      }
+      let importSource = null;
+      if (hasImportSourceUpdate) {
+        if (!currentPlaylist.importSource) {
+          return c.json({ error: "Playlist has no import source" }, 400);
+        }
+        importSource = normalizeImportSource({
+          ...currentPlaylist.importSource,
+          ...body.importSource,
+        });
+        if (!importSource) {
+          return c.json({ error: "importSource is invalid" }, 400);
+        }
+      }
+
+      const result = await playlistOperationQueue.enqueuePayload({
+        kind: "static-playlist-update",
+        label: `static-playlist:${playlistId}:update`,
+        playlistId,
+        name: safeName,
+        tracks: normalizedTracks,
+        hasNameUpdate,
+        hasTracksUpdate,
+        hasImportSourceUpdate,
+        importSource,
+      });
+      return c.json(
+        { success: true, playlistId, queued: true, operationId: result.operationId },
+        200,
+      );
+    } catch (error) {
+      return nameConflict(c, error, "Failed to update playlist");
+    }
+  })
+  .delete("/:playlistId/tracks/:jobId", requirePlaylistAccess, async (c) => {
     try {
       const playlistId = c.req.param("playlistId");
       const jobId = c.req.param("jobId");
@@ -440,7 +438,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/shared-playlists/:playlistId/tracks/:jobId/research", requireFlowAccess, async (c) => {
+  .post("/:playlistId/tracks/:jobId/research", requirePlaylistAccess, async (c) => {
     try {
       return await enqueueResearchTrack(
         c,
@@ -456,7 +454,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .delete("/shared-playlists/:playlistId", requireFlowAccess, async (c) => {
+  .delete("/:playlistId", requirePlaylistAccess, async (c) => {
     try {
       const playlistId = c.req.param("playlistId");
       if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
@@ -478,7 +476,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/shared-playlists/:playlistId/sync", requireFlowAccess, async (c) => {
+  .post("/:playlistId/sync", requirePlaylistAccess, async (c) => {
     try {
       const playlist = getAccessibleStaticPlaylist(c.var.user, c.req.param("playlistId"));
       if (!playlist) {
@@ -498,3 +496,8 @@ export default new Hono<AppEnv>()
       );
     }
   });
+
+export default new Hono<AppEnv>()
+  .basePath("/playlists")
+  .route("/static-playlists", staticPlaylistRoutes)
+  .route("/shared-playlists", staticPlaylistRoutes);

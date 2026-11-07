@@ -109,38 +109,38 @@ async function resolveCatalog(
 async function resolveLibraryArtist(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
-  let canonicalId = null;
+  let libraryId = null;
   if (mbid) {
     const lookup = await lookupArtistInLibrary(mbid, { signal }).catch(() => null);
-    canonicalId = lookup?.libraryArtistId || lookup?.artist?.canonicalId || null;
+    libraryId = lookup?.libraryArtistId || lookup?.artist?.libraryId || null;
   }
-  if (!canonicalId && name) {
+  if (!libraryId && name) {
     const page = await getLibraryPage(
       { kind: "artists", page: 1, pageSize: 100, query: name, availableOnly: false },
       { signal },
     ).catch(() => null);
-    canonicalId = libraryRecordId(findLibraryArtistByName(page?.artists, name));
+    libraryId = libraryRecordId(findLibraryArtistByName(page?.artists, name));
   }
-  if (!canonicalId) throw notFound(`Couldn't find ${name || "this artist"} in your library`);
-  return { to: `/library/artist/${encodeURIComponent(canonicalId)}` };
+  if (!libraryId) throw notFound(`Couldn't find ${name || "this artist"} in your library`);
+  return { to: `/library/artist/${encodeURIComponent(libraryId)}` };
 }
 
 async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
   if (mbid) return { to: albumPath(mbid) };
-  let canonicalId = null;
+  let libraryId = null;
   if (name) {
     const page = await getLibraryPage(
       { kind: "albums", page: 1, pageSize: 100, query: name, availableOnly: false },
       { signal },
     ).catch(() => null);
-    canonicalId = libraryRecordId(
+    libraryId = libraryRecordId(
       findLibraryAlbumByName(page?.albums, name, text(params.get("artist"))),
     );
   }
-  if (!canonicalId) throw notFound(`Couldn't find ${name || "this album"} in your library`);
-  return { to: albumPath(canonicalId) };
+  if (!libraryId) throw notFound(`Couldn't find ${name || "this album"} in your library`);
+  return { to: albumPath(libraryId) };
 }
 
 export function resolveLinkTarget(

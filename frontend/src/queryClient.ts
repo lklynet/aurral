@@ -235,10 +235,10 @@ export const queryKeys = {
   artistAppearsOn: (mbid: MaybeText): QueryKey => ["artists", "appears-on", mbid || null],
   activeDownloads: ["downloads", "active"],
   downloadStatus: (ids: MaybeId[]): QueryKey => ["library", "download-status", [...ids].sort()],
-  aurralAlbumStatus: (canonicalId: MaybeId): QueryKey => [
+  aurralAlbumStatus: (albumId: MaybeId): QueryKey => [
     "library",
     "aurral-album-status",
-    String(canonicalId),
+    String(albumId),
   ],
   searchCatalog: (query: string, scope: string, options: unknown): QueryKey => [
     "search",

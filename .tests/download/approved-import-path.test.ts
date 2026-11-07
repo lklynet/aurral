@@ -220,7 +220,12 @@ test("playlist job file paths are only returned to admins", async (t: import("vi
   assert.equal(adminResponse.status, 200);
   assert.deepEqual(await adminResponse.json(), { paths: [finalPath] });
 
-  requestUser = { id: 2, username: "listener", role: "user", permissions: { accessFlow: true } };
+  requestUser = {
+    id: 2,
+    username: "listener",
+    role: "user",
+    permissions: { accessPlaylists: true },
+  };
   const userResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
   assert.equal(userResponse.status, 403);
   assert.equal(JSON.stringify(await userResponse.json()).includes(finalPath), false);
@@ -799,7 +804,7 @@ test("search all stays within the requesting user's playlist access", async () =
     id: owner.id,
     username: "owner",
     role: "user",
-    permissions: { accessFlow: true },
+    permissions: { accessPlaylists: true },
   };
   try {
     const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
@@ -874,7 +879,12 @@ test("wanted covers every library job regardless of playlist access", async () =
 
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => {};
-  requestUser = { id: 9, username: "listener", role: "user", permissions: { accessFlow: true } };
+  requestUser = {
+    id: 9,
+    username: "listener",
+    role: "user",
+    permissions: { accessPlaylists: true },
+  };
   try {
     const jobsPayload: ListedJob[] = await (await fetch(`${baseUrl}/jobs`)).json();
     const listed = new Map(jobsPayload.map((job) => [job.id, job]));

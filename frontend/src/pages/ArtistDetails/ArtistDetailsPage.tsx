@@ -377,7 +377,7 @@ function ArtistDetailsPage() {
           String(target?.name || "").trim() ||
           reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
         await parseResponse(
-          staticPlaylistsClient["shared-playlists"].$post({
+          staticPlaylistsClient["static-playlists"].$post({
             json: {
               name,
               tracks: [trackPayload],
@@ -390,7 +390,7 @@ function ArtistDetailsPage() {
           (playlist) => playlist.id === target?.playlistId,
         );
         await parseResponse(
-          staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+          staticPlaylistsClient["static-playlists"][":playlistId"].tracks.$post({
             param: { playlistId: encodeURIComponent(target.playlistId) },
             json: {
               tracks: [trackPayload],

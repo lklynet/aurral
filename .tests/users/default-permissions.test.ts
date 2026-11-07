@@ -26,15 +26,15 @@ afterAll(async () => {
 });
 
 test("new accounts start from the admin's default permissions", () => {
-  setDefaults({ accessFlow: true, addAlbum: false });
+  setDefaults({ accessPlaylists: true, addAlbum: false });
 
   const sso = createSystemProvisionedUser("sso-user", "user");
-  assert.equal(sso?.permissions.accessFlow, true);
+  assert.equal(sso?.permissions.accessPlaylists, true);
   assert.equal(sso?.permissions.addAlbum, false);
   assert.equal(sso?.permissions.addArtist, true);
 
-  const chosen = userOps.createUser("chosen", "hash", "user", { accessFlow: false });
-  assert.equal(chosen?.permissions.accessFlow, false);
+  const chosen = userOps.createUser("chosen", "hash", "user", { accessPlaylists: false });
+  assert.equal(chosen?.permissions.accessPlaylists, false);
   assert.equal(chosen?.permissions.addAlbum, false);
 });
 
@@ -42,9 +42,9 @@ test("changing the defaults leaves existing users alone", () => {
   const existing = userOps.createUser("existing", "hash");
   assert.ok(existing);
 
-  setDefaults({ accessFlow: true, deleteTrack: true });
+  setDefaults({ accessPlaylists: true, deleteTrack: true });
 
   const stored = userOps.getUserById(existing.id);
-  assert.equal(stored?.permissions.accessFlow, false);
+  assert.equal(stored?.permissions.accessPlaylists, false);
   assert.equal(stored?.permissions.deleteTrack, false);
 });

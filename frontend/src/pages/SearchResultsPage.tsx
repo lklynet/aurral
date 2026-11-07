@@ -105,8 +105,8 @@ type AlbumLibraryState =
   | {
       inLibrary?: boolean;
       managedBy?: string | null;
-      libraryAlbumId?: string | number | null;
-      libraryArtistId?: string | number | null;
+      providerAlbumId?: string | null;
+      providerArtistId?: string | null;
       status?: string;
       monitored?: boolean;
       trackFileCount?: number;
@@ -572,7 +572,7 @@ function SearchResults() {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || "Playlist";
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"].$post({
+            staticPlaylistsClient["static-playlists"].$post({
               json: {
                 name,
                 tracks: [payload],
@@ -585,7 +585,7 @@ function SearchResults() {
             (playlist) => playlist.id === target?.playlistId,
           );
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+            staticPlaylistsClient["static-playlists"][":playlistId"].tracks.$post({
               param: { playlistId: encodeURIComponent(target.playlistId) },
               json: {
                 tracks: [payload],

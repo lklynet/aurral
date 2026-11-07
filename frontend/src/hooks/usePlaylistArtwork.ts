@@ -10,7 +10,7 @@ export function usePlaylistArtwork() {
     enabled: false,
     select: (status) =>
       Object.fromEntries(
-        [...status.flows, ...status.sharedPlaylists].map(
+        [...status.flows, ...status.staticPlaylists].map(
           (entry) => [entry.id, entry.artworkRevision] as const,
         ),
       ),

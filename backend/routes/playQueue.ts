@@ -21,7 +21,7 @@ const playQueueInput = v.object({
 });
 
 function entryForStreamPath(path: string) {
-  const library = /^\/library\/canonical-stream\/[^/]+\/(\d+)$/.exec(path);
+  const library = /^\/library\/(?:canonical-)?stream\/[^/]+\/(\d+)$/.exec(path);
   if (library) return { trackId: Number(library[1]) };
   const playlist = /^\/playlists\/stream\/([^/]+)$/.exec(path);
   if (!playlist?.[1]) return null;

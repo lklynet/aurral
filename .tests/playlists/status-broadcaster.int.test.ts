@@ -82,20 +82,20 @@ test(
     socket.send(JSON.stringify({ type: "subscribe", channels: ["playlists"] }));
     const initial = await next((message) => message.type === "playlist_status");
     assert.equal(
-      initial.status.sharedPlaylists.find((entry) => entry.id === playlist.id)?.name,
+      initial.status.staticPlaylists.find((entry) => entry.id === playlist.id)?.name,
       "Before",
     );
     dbOps.updateSettings({ staticPlaylists: [{ ...playlist, name: "After" }] });
     const updated = await next(
       (message) =>
         message.type === "playlist_status" &&
-        message.status.sharedPlaylists.some((entry) => entry.name === "After"),
+        message.status.staticPlaylists.some((entry) => entry.name === "After"),
     );
     assert.equal(updated.channel, "playlists");
     socket.send(JSON.stringify({ type: "unsubscribe", channels: ["playlists"] }));
     await next((message) => message.type === "unsubscribed");
     socket.send(JSON.stringify({ type: "subscribe", channels: ["playlists"] }));
     const resubscribed = await next((message) => message.type === "playlist_status");
-    assert.equal(resubscribed.status.sharedPlaylists[0]?.name, "After");
+    assert.equal(resubscribed.status.staticPlaylists[0]?.name, "After");
   },
 );

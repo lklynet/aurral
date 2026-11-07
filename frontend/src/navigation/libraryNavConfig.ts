@@ -7,7 +7,12 @@ const VIEWS = [
   { id: "album-artists", label: "Album artists", path: "/library/album-artists" },
   { id: "artists", label: "Artists", path: "/library/artists" },
   { id: "genres", label: "Genres", path: "/library/genres" },
-  { id: "playlists", label: "Playlists", path: "/library/playlists", permission: "accessFlow" },
+  {
+    id: "playlists",
+    label: "Playlists",
+    path: "/library/playlists",
+    permission: "accessPlaylists",
+  },
 ] as const;
 
 export type LibraryViewId = (typeof VIEWS)[number]["id"] | typeof DEFAULT_LIBRARY_VIEW;

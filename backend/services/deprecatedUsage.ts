@@ -6,7 +6,7 @@ const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 
 const DEPRECATIONS = {
   "download-folder-env":
-    "WEEKLY_FLOW_FOLDER or PLAYLIST_FOLDER is set. Set DOWNLOAD_FOLDER instead. Aurral 3.0 does not read the older names.",
+    "DOWNLOAD_FOLDER, WEEKLY_FLOW_FOLDER, or PLAYLIST_FOLDER is set. Rename it to LIBRARY_FOLDER. Aurral 3.0 does not read the older names.",
   "legacy-data-dir":
     "Aurral's data folder is /app/backend/data. Mount it at /config instead. Aurral 3.0 does not look in /app/backend/data.",
   "auth-password-env":
@@ -17,7 +17,10 @@ type DeprecationKind = keyof typeof DEPRECATIONS;
 
 export function listConfigDeprecations() {
   const kinds: DeprecationKind[] = [];
-  if (process.env.WEEKLY_FLOW_FOLDER || process.env.PLAYLIST_FOLDER)
+  if (
+    !process.env.LIBRARY_FOLDER &&
+    (process.env.DOWNLOAD_FOLDER || process.env.WEEKLY_FLOW_FOLDER || process.env.PLAYLIST_FOLDER)
+  )
     kinds.push("download-folder-env");
   if (path.resolve(resolveAurralDataDir()) === LEGACY_CONTAINER_DATA_DIR)
     kinds.push("legacy-data-dir");

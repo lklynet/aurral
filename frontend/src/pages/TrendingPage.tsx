@@ -261,7 +261,7 @@ export default function TrendingPage() {
         })
       : null;
     const leadArtistPath = lead ? resolveArtistPath({ name: lead.artistName }) : null;
-    const canSavePlaylist = hasPermission("accessFlow");
+    const canSavePlaylist = hasPermission("accessPlaylists");
 
     return (
       <>

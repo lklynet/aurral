@@ -193,7 +193,7 @@ export function ArtistDetailsLibraryAlbums({
     const hasFiles =
       (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
       (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
-    if (libraryAlbum.canonicalId && hasFiles) {
+    if (libraryAlbum.libraryId && hasFiles) {
       return { to: libraryAlbumPath(libraryAlbum) };
     }
     return getLibraryAlbumLink(libraryAlbum, {

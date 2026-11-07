@@ -5,7 +5,7 @@ import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { resolveExistingTrackPath } from "../../../services/downloadPaths.ts";
-import { canAccessPlaylistType, requireFlowAccessIfSignedIn } from "./utils.ts";
+import { canAccessPlaylistType, requirePlaylistAccessIfSignedIn } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
@@ -27,7 +27,7 @@ const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/stream/:jobId", noCache, requireStreamAuth, requireFlowAccessIfSignedIn, async (c) => {
+  .get("/stream/:jobId", noCache, requireStreamAuth, requirePlaylistAccessIfSignedIn, async (c) => {
     const job = downloadTracker.getJob(c.req.param("jobId"));
     if (!job || !canAccessJob(c.get("user"), job)) {
       return c.json({ error: "Track not found" }, 404);
@@ -49,7 +49,7 @@ export default new Hono<AppEnv>()
     "/staging-stream/:jobId",
     noCache,
     requireStreamAuth,
-    requireFlowAccessIfSignedIn,
+    requirePlaylistAccessIfSignedIn,
     async (c) => {
       const job = downloadTracker.getJob(c.req.param("jobId"));
       if (!job || job.status !== "blocked" || !job.stagingPath) {

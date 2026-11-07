@@ -65,7 +65,7 @@ const HISTORY_EMPTY_STATE = {
 function ActivityPage() {
   const { view: viewParam } = useParams();
   const { user } = useAuth();
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const [localError, setLocalError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);

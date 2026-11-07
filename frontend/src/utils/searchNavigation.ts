@@ -16,8 +16,8 @@ type SearchItem = {
   artistMbid?: string | null;
   artistInLibrary?: boolean | null;
   albumMbid?: string | null;
-  albumCanonicalId?: string | null;
-  canonicalId?: string | null;
+  libraryAlbumId?: string | null;
+  libraryId?: string | null;
   trackMbid?: string | null;
   inLibrary?: boolean | null;
   source?: string | null;
@@ -228,14 +228,14 @@ export function getReleaseNavigationTarget(item: SearchItem | null | undefined) 
 
 function getLibraryResultPath(item: SearchItem) {
   if (item?.source !== "library") return null;
-  if (item.type === "artist" && item.canonicalId) {
-    return `/library/artist/${encodeURIComponent(item.canonicalId)}`;
+  if (item.type === "artist" && item.libraryId) {
+    return `/library/artist/${encodeURIComponent(item.libraryId)}`;
   }
-  if (item.type === "album" && item.canonicalId) {
-    return albumPath(item.id || item.canonicalId);
+  if (item.type === "album" && item.libraryId) {
+    return albumPath(item.id || item.libraryId);
   }
-  if (item.type === "track" && item.albumCanonicalId) {
-    return albumPath(item.albumMbid || item.albumCanonicalId);
+  if (item.type === "track" && item.libraryAlbumId) {
+    return albumPath(item.albumMbid || item.libraryAlbumId);
   }
   return null;
 }

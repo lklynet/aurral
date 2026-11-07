@@ -463,7 +463,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
         downloadRole: true,
         folder: [1],
         jukeboxRole: false,
-        playlistRole: hasPermission(user, "accessFlow"),
+        playlistRole: hasPermission(user, "accessPlaylists"),
         podcastRole: false,
         scrobblingEnabled: true,
         settingsRole: isAdmin,

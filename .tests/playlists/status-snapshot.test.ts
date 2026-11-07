@@ -53,11 +53,11 @@ test("status snapshot includes static playlist summaries without embedding track
   downloadTracker.addJob(tracks[0], playlist.id);
 
   const status = getPlaylistStatusSnapshot();
-  const shared = (status.sharedPlaylists || []).find((p) => p.id === playlist.id);
+  const shared = (status.staticPlaylists || []).find((p) => p.id === playlist.id);
 
   assert.ok(shared);
   assert.equal(shared.trackCount, 421);
-  assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 421);
+  assert.equal(getStaticPlaylistTrackCount(shared, status.staticPlaylistStats[playlist.id]), 421);
   assert.equal("tracks" in shared, false);
   assert.equal("trackIdentities" in shared, false);
   assert.deepEqual(getPlaylistsContainingTrack(null, tracks[420]!), [
@@ -76,7 +76,7 @@ test("status snapshot includes empty manual playlists", () => {
   });
 
   const status = getPlaylistStatusSnapshot();
-  const shared = (status.sharedPlaylists || []).find((p) => p.id === playlist.id);
+  const shared = (status.staticPlaylists || []).find((p) => p.id === playlist.id);
 
   assert.ok(shared);
   assert.equal(shared.name, "Manual Empty");
@@ -117,11 +117,11 @@ test("status snapshot trackCount includes failed download jobs", async () => {
   });
 
   const status = getPlaylistStatusSnapshot();
-  const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
+  const shared = status.staticPlaylists.find((entry) => entry.id === playlist.id);
   assert.ok(shared != null);
 
   assert.equal(shared.trackCount, 1);
-  assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 1);
+  assert.equal(getStaticPlaylistTrackCount(shared, status.staticPlaylistStats[playlist.id]), 1);
 });
 
 test("review count includes Library jobs and respects playlist ownership", async () => {
@@ -150,7 +150,7 @@ test("review count includes Library jobs and respects playlist ownership", async
   assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), true);
   downloadTracker.setFailed(requireFixture(held[1]), "Dismissed");
   const libraryOnly = getPlaylistStatusSnapshot({ user });
-  assert.equal(libraryOnly.stats.blocked + libraryOnly.sharedStats.blocked, 0);
+  assert.equal(libraryOnly.stats.blocked + libraryOnly.staticStats.blocked, 0);
   assert.equal(libraryOnly.reviewCount, 1);
   assert.equal(hasReviewActivity(libraryOnly), true);
   downloadTracker.setFailed(requireFixture(held[0]), "Dismissed");

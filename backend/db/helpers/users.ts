@@ -79,7 +79,7 @@ const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id 
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 
 const DEFAULT_PERMISSIONS = {
-  accessFlow: false,
+  accessPlaylists: false,
   addArtist: true,
   addAlbum: true,
   changeMonitoring: false,

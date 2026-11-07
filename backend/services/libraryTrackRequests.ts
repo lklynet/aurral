@@ -43,11 +43,11 @@ export function findQueuedLibraryTrackJob({
 export async function requestLibraryTrack(
   track: DownloadTrackInput,
   {
-    canonicalTrackId = null,
+    libraryTrackId = null,
     user = null,
     automatic = false,
   }: {
-    canonicalTrackId?: unknown;
+    libraryTrackId?: unknown;
     user?: Parameters<typeof recordTrackJobQueued>[1];
     automatic?: boolean;
   } = {},
@@ -76,7 +76,7 @@ export async function requestLibraryTrack(
     : await (
         await import("./libraryManager.ts")
       ).libraryManager.monitorAurralTrack({
-        canonicalTrackId,
+        libraryTrackId,
         trackMbid: track.trackMbid,
         albumMbid: track.albumMbid,
       });

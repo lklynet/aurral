@@ -236,15 +236,15 @@ function AlbumPage() {
     }
   }, [albumTracks.length, releaseDetailsQuery.isError, showError, tracksQuery.error]);
 
-  const lookupLibraryAlbumId = libraryInfo?.libraryAlbumId
-    ? String(libraryInfo.libraryAlbumId)
+  const lookupProviderAlbumId = libraryInfo?.providerAlbumId
+    ? String(libraryInfo.providerAlbumId)
     : null;
   const downloadStatusQuery = useDownloadStatuses(
-    lookupLibraryAlbumId ? [lookupLibraryAlbumId] : [],
+    lookupProviderAlbumId ? [lookupProviderAlbumId] : [],
     {
       pollWhile: (status) => ALBUM_DOWNLOADING_STATUSES.has(status) || status === "failed",
       onPush: (pushed) => {
-        if (pushed[lookupLibraryAlbumId!]?.status !== "added") return;
+        if (pushed[lookupProviderAlbumId!]?.status !== "added") return;
         void queryClient.invalidateQueries({
           queryKey: queryKeys.libraryAlbumLookup([routeReleaseGroupMbid]),
         });
@@ -252,7 +252,7 @@ function AlbumPage() {
     },
   );
   const downloadStatus =
-    (lookupLibraryAlbumId && downloadStatusQuery.data?.[lookupLibraryAlbumId]) || null;
+    (lookupProviderAlbumId && downloadStatusQuery.data?.[lookupProviderAlbumId]) || null;
 
   const libraryDisplay = resolveReleaseLibraryDisplay(
     countReleaseTracks(libraryInfo, releaseTracks.length),

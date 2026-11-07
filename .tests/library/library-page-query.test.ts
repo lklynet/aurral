@@ -13,8 +13,7 @@ const app = signedInAs(undefined).route("/", api);
 
 afterAll(() => cleanupIsolatedState(state));
 
-const requestPage = (filters: string) =>
-  app.request(`/library/canonical?kind=albums&pageSize=10&${filters}`);
+const requestPage = (filters: string) => app.request(`/library?kind=albums&pageSize=10&${filters}`);
 
 test("a repeated artistId or albumId filter is rejected", async () => {
   for (const filters of ["artistId=1&artistId=2", "albumId=1&albumId=2"]) {
