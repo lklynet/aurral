@@ -160,6 +160,21 @@ test("a user can link an unmatched artist to a MusicBrainz ID", async () => {
   assert.equal(response.body.musicbrainzName, "Known Artist");
   assert.equal(artistRow(artist.id).mbid, KNOWN_MBID);
   assert.equal(artistRow(artist.id).name, "Unmatched Artist");
+
+  db.prepare(
+    "INSERT OR IGNORE INTO users (id, username, password_hash) VALUES (1, 'fan', 'x')",
+  ).run();
+  const key = artistRow(artist.id).identity_key;
+  db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (1, 'artist', ?, 1)",
+  ).run(key);
+  db.prepare(
+    "INSERT INTO subsonic_ratings (user_id, entity_kind, entity_key, rating, updated_at) VALUES (1, 'artist', ?, 4, 1)",
+  ).run(key);
+  assert.equal((await updateMbid(artist.id, KNOWN_MBID)).status, 200);
+  const marks = (table: string) =>
+    db.prepare(`SELECT COUNT(*) FROM ${table} WHERE entity_key = ?`).pluck().get(key);
+  assert.deepEqual([marks("subsonic_stars"), marks("subsonic_ratings")], [1, 1]);
 });
 
 test("linking to an MBID already in the library merges the albums into that artist", async () => {

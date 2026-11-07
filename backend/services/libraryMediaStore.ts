@@ -240,6 +240,7 @@ const deleteLibraryMarks = (entityKind: string, key: string) => {
 };
 
 function moveLibraryMarks(entityKind: string, fromKey: string, toKey: string | null) {
+  if (fromKey === toKey) return false;
   const copied = copyLibraryMarks(entityKind, fromKey, toKey);
   return deleteLibraryMarks(entityKind, fromKey) || copied;
 }
