@@ -57,10 +57,10 @@ test("production snapshots refresh persisted membership and access changes witho
     const read = () => getPlaylistStatusSnapshot({ user });
     const containing = (trackName: string, artistName = "Artist") =>
       getPlaylistsContainingTrack(user, { artistName, trackName });
-    const first = read().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    const first = read().staticPlaylists.find((entry) => entry.id === playlist.id);
     assert.ok(first != null);
     assert.equal(first.name, "Original");
-    assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
+    assert.deepEqual(read().staticPlaylists, read().staticPlaylists);
     assert.deepEqual(containing("Original track"), [{ id: playlist.id, jobId }]);
 
     writeFromAnotherProcess("UPDATE download_jobs SET track_name = ?, status = ? WHERE id = ?", [
@@ -70,7 +70,7 @@ test("production snapshots refresh persisted membership and access changes witho
     ]);
     const updated = read();
     assert.deepEqual(containing("Changed track"), [{ id: playlist.id, jobId }]);
-    assert.equal(updated.sharedPlaylistStats[playlist.id]?.failed, 1);
+    assert.equal(updated.staticPlaylistStats[playlist.id]?.failed, 1);
 
     const stored = JSON.parse(
       requireFixture(
@@ -87,7 +87,7 @@ test("production snapshots refresh persisted membership and access changes witho
       JSON.stringify(stored),
       "staticPlaylists",
     ]);
-    const renamed = requireFixture(read().sharedPlaylists[0]);
+    const renamed = requireFixture(read().staticPlaylists[0]);
     assert.equal(renamed.name, "Renamed elsewhere");
     assert.deepEqual(containing("Manual track", "Manual artist"), [
       { id: playlist.id, jobId: null },
@@ -104,13 +104,13 @@ test("production snapshots refresh persisted membership and access changes witho
       JSON.stringify(stored),
       "staticPlaylists",
     ]);
-    assert.deepEqual([...read().sharedPlaylists], []);
+    assert.deepEqual([...read().staticPlaylists], []);
 
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       "[]",
       "staticPlaylists",
     ]);
-    assert.deepEqual([...getPlaylistStatusSnapshot().sharedPlaylists], []);
+    assert.deepEqual([...getPlaylistStatusSnapshot().staticPlaylists], []);
   } finally {
     process.env.NODE_ENV = previousMode;
   }

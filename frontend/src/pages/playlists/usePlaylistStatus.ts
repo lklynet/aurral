@@ -19,10 +19,10 @@ export function usePlaylistStatus() {
     (playlistId: string) =>
       sanitizePlaylistStats(
         status?.flowStats?.[playlistId] ||
-          status?.sharedPlaylistStats?.[playlistId] ||
+          status?.staticPlaylistStats?.[playlistId] ||
           EMPTY_PLAYLIST_STATS,
       ),
-    [status?.flowStats, status?.sharedPlaylistStats],
+    [status?.flowStats, status?.staticPlaylistStats],
   );
 
   const getPlaylistState = useCallback(
@@ -30,7 +30,7 @@ export function usePlaylistStatus() {
     [getPlaylistStats],
   );
 
-  const staticPlaylists = useMemo(() => status?.sharedPlaylists || [], [status?.sharedPlaylists]);
+  const staticPlaylists = useMemo(() => status?.staticPlaylists || [], [status?.staticPlaylists]);
   const flows = useMemo(() => status?.flows || [], [status?.flows]);
 
   return {

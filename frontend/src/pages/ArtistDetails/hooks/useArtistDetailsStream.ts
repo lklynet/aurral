@@ -28,7 +28,7 @@ type ReleaseGroupList = NonNullable<ArtistDetails["appears-on-release-groups"]>;
 type ReleaseGroup = NonNullable<ArtistDetails["release-groups"]>[number];
 export type LibraryAlbumEntry = {
   id: string | number;
-  canonicalId?: string | number;
+  libraryId?: string | number;
   mbid?: string | null;
   foreignAlbumId?: string | null;
   albumName?: string | null;
@@ -340,7 +340,7 @@ export function useArtistDetailsStream(
         setExistsInLibrary(lookup.exists);
         if (!lookup.exists || !lookup.artist) return;
 
-        const fullArtist = lookup.canonical
+        const fullArtist = lookup.fromLibraryIndex
           ? lookup.artist
           : await getLibraryArtist(lookup.artist.mbid || lookup.artist.foreignArtistId, {
               bypassCache,
@@ -352,7 +352,7 @@ export function useArtistDetailsStream(
 
         setLibraryArtist(fullArtist);
 
-        if (lookup.canonical) {
+        if (lookup.fromLibraryIndex) {
           setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
           return;
         }

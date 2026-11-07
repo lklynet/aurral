@@ -48,7 +48,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/playlist",
-    requirePermission("accessFlow"),
+    requirePermission("accessPlaylists"),
     validate("json", v.object({ timeZone })),
     async (c) => {
       const result = await saveWrappedPlaylist(

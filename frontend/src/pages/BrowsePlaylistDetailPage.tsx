@@ -202,7 +202,7 @@ function BrowsePlaylistDetail({
 
   const ready = Boolean(playlist);
   const libraryPlaylistId = playlist?.libraryPlaylistId ?? savedPlaylistId;
-  const canAdd = hasPermission("accessFlow");
+  const canAdd = hasPermission("accessPlaylists");
   const addLabel = libraryPlaylistId ? copy.open : copy.add;
   const artworkUrl = resolveAuthenticatedApiAssetUrl(shown.artworkUrl) || null;
   const showArtwork = Boolean(artworkUrl) && !failedArtwork;

@@ -22,7 +22,7 @@ interface TrackChange {
   toastId?: string;
 }
 
-const sharedPlaylist = staticPlaylistsClient["shared-playlists"][":playlistId"];
+const sharedPlaylist = staticPlaylistsClient["static-playlists"][":playlistId"];
 
 type SubmitResponse = InferResponseType<(typeof sharedPlaylist)["track-moves"]["$post"], 200>;
 type OperationStatus = InferResponseType<
@@ -57,7 +57,7 @@ const describeTracks = (tracks: ChangedTrack[], jobIds: string[]) => {
 const playlistName = (playlistId: string | null | undefined) =>
   queryClient
     .getQueryData<PlaylistStatus>(queryKeys.playlistStatus)
-    ?.sharedPlaylists?.find((playlist) => playlist.id === playlistId)?.name || "the playlist";
+    ?.staticPlaylists?.find((playlist) => playlist.id === playlistId)?.name || "the playlist";
 
 export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
   let changes: TrackChange[] = [];

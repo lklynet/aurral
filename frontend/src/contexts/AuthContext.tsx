@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             role: "admin",
             permissions: {
               accessSettings: true,
-              accessFlow: true,
+              accessPlaylists: true,
               addArtist: true,
               addAlbum: true,
               changeMonitoring: true,

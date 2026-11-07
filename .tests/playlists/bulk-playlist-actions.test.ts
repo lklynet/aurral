@@ -50,7 +50,7 @@ beforeEach(() => {
 afterAll(() => cleanupIsolatedState(state));
 
 function fixture(_t: import("vite-plus/test").TestContext, count: number = 3) {
-  const user = userOps.createUser("bulk-user", "unused", "user", { accessFlow: true });
+  const user = userOps.createUser("bulk-user", "unused", "user", { accessPlaylists: true });
   assert.ok(user != null);
   const tracks = Array.from({ length: count }, (_, index) => ({
     artistName: "Artist",
@@ -226,7 +226,7 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
     await import("../../backend/services/playlists/playlistOperationWorker.ts");
   await stopPlaylistOperationWorker();
   vi.spyOn(playlistOperationQueue, "start").mockImplementation(async () => undefined);
-  const removals = `/shared-playlists/${f.source.id}/track-removals`;
+  const removals = `/static-playlists/${f.source.id}/track-removals`;
   const malformed = await send(f.user, "POST", removals, { jobIds: [] });
   assert.equal(malformed.status, 400);
   const accepted = await (
@@ -238,7 +238,7 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
   assert.deepEqual(accepted.acceptedJobIds, [requireFixture(f.jobs[0]).id]);
   assert.equal(accepted.rejected[0].jobId, "missing");
   assert.equal(playlistOperationQueue.readyCount(), 1);
-  const operation = `/shared-playlists/${f.source.id}/operations/${accepted.operationId}`;
+  const operation = `/static-playlists/${f.source.id}/operations/${accepted.operationId}`;
   const own = await (await send(f.user, "GET", operation)).json();
   assert.equal(own.state, "queued");
   const other = await send({ ...f.user, id: f.user.id + 1, role: "admin" }, "GET", operation);

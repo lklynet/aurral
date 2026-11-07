@@ -51,14 +51,14 @@ export function useTrackSaveActions() {
           const requested =
             String(target?.name || "").trim() || getDefaultPlaylistName(payloads[0]);
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"].$post({
+            staticPlaylistsClient["static-playlists"].$post({
               json: { name: requested, tracks: payloads },
             }),
           );
           name = requested;
         } else {
           await parseResponse(
-            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+            staticPlaylistsClient["static-playlists"][":playlistId"].tracks.$post({
               param: { playlistId: encodeURIComponent(target.playlistId) },
               json: { tracks: payloads },
             }),
@@ -178,7 +178,7 @@ export function useTrackSaveActions() {
     [showError, showSuccess],
   );
 
-  const canUsePlaylists = hasPermission("accessFlow");
+  const canUsePlaylists = hasPermission("accessPlaylists");
   const canAddToLibrary = hasPermission("addAlbum");
   return {
     playlists: staticPlaylists,

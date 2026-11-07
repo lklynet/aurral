@@ -9,7 +9,7 @@ import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
-import { importSettings, requireFlowAccess } from "./utils.ts";
+import { importSettings, requirePlaylistAccess } from "./utils.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const getErrorStatus = (error: unknown) => {
@@ -37,7 +37,7 @@ const getPlaylistImport = ({
 };
 
 export default new Hono<AppEnv>()
-  .get("/import/listenbrainz/playlists", requireFlowAccess, async (c) => {
+  .get("/import/listenbrainz/playlists", requirePlaylistAccess, async (c) => {
     try {
       return c.json(await listenbrainzPlaylistClient.listPlaylists(c.var.user.id), 200);
     } catch (error) {
@@ -55,7 +55,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/import/listenbrainz/preview",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object(playlistReference)),
     async (c) => {
       try {
@@ -91,7 +91,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/listenbrainz",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({ ...playlistReference, ...importSettings, externalName: v.nullish(v.string()) }),

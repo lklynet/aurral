@@ -22,8 +22,8 @@ import { PLAYLIST_COVER_TEMPLATES } from "../../../services/playlistCoverTemplat
 import {
   canAccessJobThroughPlaylist,
   canAccessPlaylistType,
-  requireFlowAccess,
-  requireFlowAccessIfSignedIn,
+  requirePlaylistAccess,
+  requirePlaylistAccessIfSignedIn,
 } from "./utils.ts";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
@@ -103,7 +103,7 @@ const badRequest = <E extends AppEnv>(c: Context<E>, error: unknown, fallback: s
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/artwork/:playlistId", requireStreamAuth, requireFlowAccessIfSignedIn, async (c) => {
+  .get("/artwork/:playlistId", requireStreamAuth, requirePlaylistAccessIfSignedIn, async (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist artwork not found" }, 404);
@@ -119,7 +119,7 @@ export default new Hono<AppEnv>()
     });
     return sent || c.json({ error: "Playlist artwork not found" }, 404);
   })
-  .put("/artwork/:playlistId", requireFlowAccess, limitImageUpload, async (c) => {
+  .put("/artwork/:playlistId", requirePlaylistAccess, limitImageUpload, async (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
@@ -135,7 +135,7 @@ export default new Hono<AppEnv>()
       return badRequest(c, error, "Failed to save artwork");
     }
   })
-  .delete("/artwork/:playlistId", requireFlowAccess, async (c) => {
+  .delete("/artwork/:playlistId", requirePlaylistAccess, async (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
@@ -150,7 +150,7 @@ export default new Hono<AppEnv>()
   .get(
     "/artwork/:playlistId/preview",
     requireStreamAuth,
-    requireFlowAccessIfSignedIn,
+    requirePlaylistAccessIfSignedIn,
     validate("query", v.object({ ...coverPick, title: v.optional(v.string()) })),
     async (c) => {
       const playlistId = c.req.param("playlistId");
@@ -169,7 +169,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .get("/artwork/:playlistId/pick", requireFlowAccess, (c) => {
+  .get("/artwork/:playlistId/pick", requirePlaylistAccess, (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
@@ -178,7 +178,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/artwork/:playlistId/shuffle",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ style: coverStyle, previous: v.nullish(v.object(coverPick)) })),
     async (c) => {
       const playlistId = c.req.param("playlistId");
@@ -194,7 +194,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post("/artwork/:playlistId/restore", requireFlowAccess, async (c) => {
+  .post("/artwork/:playlistId/restore", requirePlaylistAccess, async (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
@@ -208,7 +208,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/artwork/:playlistId/generate",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({ style: v.optional(coverStyle, "artist"), pick: v.nullish(v.object(coverPick)) }),
@@ -246,7 +246,7 @@ export default new Hono<AppEnv>()
   })
   .put(
     "/track-artwork/:jobId",
-    requireFlowAccess,
+    requirePlaylistAccess,
     canEditArtwork,
     trackArtworkQuery,
     requireAccessibleJob,
@@ -277,7 +277,7 @@ export default new Hono<AppEnv>()
   )
   .put(
     "/track-artwork/:jobId/url",
-    requireFlowAccess,
+    requirePlaylistAccess,
     canEditArtwork,
     trackArtworkQuery,
     requireAccessibleJob,
@@ -303,7 +303,7 @@ export default new Hono<AppEnv>()
   )
   .delete(
     "/track-artwork/:jobId",
-    requireFlowAccess,
+    requirePlaylistAccess,
     canEditArtwork,
     trackArtworkQuery,
     requireAccessibleJob,

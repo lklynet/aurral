@@ -20,23 +20,24 @@ Code uses names that match the current model:
 
 Stored data uses the current names too. When Aurral moved to its own job queue, one startup migration renamed the tables, columns, queues, task kinds, and settings keys (`backend/config/job-queue-migration.ts`). An older build cannot read the renamed data, so the migration first writes a snapshot, `aurral.pre-job-queue.db`, to the data dir.
 
-Public APIs, the Library folder, and the fields apps read keep their old names, because Aurral apps, Subsonic clients, and media servers depend on them. The table below lists each old name and what it holds now. Rename one only with a plan for existing clients.
+The JSON API uses the current names too. Version 1 of the [app contract](../src/content/docs/api/app-contract.mdx#renamed-in-version-1) still accepts and returns the older ones beside them, so Aurral apps keep working until they move over, and `currentNames` tells an app the new names exist. Version 2 removes them. Two choices there are easy to undo by accident:
 
-| Name                                                                                           | Where                                 | Holds                                                                         |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------- |
-| `playlistId`                                                                                   | Job field                             | The owner, which is `library` or a flow ID                                    |
-| `playlistType`                                                                                 | Job field                             | The owner again, or `quality-upgrade` for an upgrade job                      |
-| `sharedPlaylists`                                                                              | `/api/playlists/status` field         | Static playlists                                                              |
-| `sharedPlaylistStats`                                                                          | `/api/playlists/status` field         | Download counts for each static playlist                                      |
-| `canonicalJobId`                                                                               | Static playlist track field           | The Library job that the track references                                     |
-| `canonicalId`, `canonicalArtistId`, `canonicalAlbumId`, `canonicalTrackId`, `albumCanonicalId` | Library API fields                    | Library record IDs                                                            |
-| `canonical`, `canonicalInLibrary`                                                              | Library lookup responses              | Whether the answer came from the Library index rather than a live Lidarr read |
-| `/api/library/canonical`, `readPath=canonical`, `/api/library/canonical-stream`                | Library API                           | Library pages, reads, and streams                                             |
-| `/api/playlists/shared-playlists`                                                              | Playlist API                          | Static playlist routes                                                        |
-| `shared`, `shared-song`                                                                        | Subsonic IDs                          | Static playlists and their songs                                              |
-| `accessFlow`                                                                                   | User permission                       | Access to flows and static playlists                                          |
-| `aurral-weekly-flow/`                                                                          | Library folder                        | Playlist artwork and sidecar files                                            |
-| `downloadFolderPath`, `DOWNLOAD_FOLDER`                                                        | Settings key and environment variable | The Library folder, where Aurral keeps the music it adds                      |
-| `WEEKLY_FLOW_FOLDER`, `PLAYLIST_FOLDER`                                                        | Environment variables                 | Older names for `DOWNLOAD_FOLDER`, read before it                             |
+- The websocket playlist status carries only `staticPlaylists`. Only the web app reads it, and the list includes every track, so sending both names doubles each update. `GET /api/playlists/status` adds the older names for apps.
+- Album lookup objects already used `libraryAlbumId` and `libraryArtistId` for the managing service's IDs. They keep that meaning in version 1, next to `providerAlbumId` and `providerArtistId`. Version 2 makes them Library IDs, so `library*Id` always means a Library ID.
+
+`LIBRARY_FOLDER` names the Library folder. `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` still work and log a warning.
+
+These names stay, because something outside Aurral depends on them or renaming them would cost more than it explains:
+
+| Name                         | Where                       | Holds                                                   |
+| ---------------------------- | --------------------------- | ------------------------------------------------------- |
+| `playlistId`, `playlistType` | Job fields                  | The owner, `library` or a flow ID, or `quality-upgrade` |
+| `canonicalJobId`             | Static playlist track field | The Library job that the track references               |
+| `canonicalAlbumId`           | Stored activity metadata    | The Library album, read into `libraryAlbumId`           |
+| `shared`, `shared-song`      | Subsonic IDs                | Static playlists and their songs                        |
+| `aurral-weekly-flow/`        | Library folder              | Playlist artwork and sidecar files                      |
+| `downloadFolderPath`         | Settings key                | The Library folder                                      |
+
+Subsonic clients store `shared` and `shared-song` IDs for favorites, offline caches, and playlists, so a rename would make them treat existing items as new ones.
 
 Migration code keeps the old names, such as `weeklyFlows` and `playlist_download_jobs`, because it describes data from older versions.

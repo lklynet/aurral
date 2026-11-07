@@ -53,8 +53,8 @@ const [
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
-const owner = testUser(2, { username: "owner", permissions: { accessFlow: true } });
-const stranger = testUser(3, { username: "stranger", permissions: { accessFlow: true } });
+const owner = testUser(2, { username: "owner", permissions: { accessPlaylists: true } });
+const stranger = testUser(3, { username: "stranger", permissions: { accessPlaylists: true } });
 
 const routes = (user: RequestUser) => signedInAs(user).route("/", pluginRoutes);
 const json = (method: string, body: unknown) => ({

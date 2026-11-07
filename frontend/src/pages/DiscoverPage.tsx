@@ -338,7 +338,7 @@ function DiscoverPage() {
                     isInLibrary={true}
                     artist={{
                       id: artist.mbid || null,
-                      libraryPath: `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
+                      libraryPath: `/library/artist/${encodeURIComponent(artist.id)}`,
                       name: artist.artistName,
                       image: getLibraryArtistImage(artist),
                       type: "Artist",

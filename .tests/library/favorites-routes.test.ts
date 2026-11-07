@@ -120,8 +120,7 @@ afterAll(async () => {
 
 const library = (signedIn: RequestUser | undefined) => signedInAs(signedIn).route("/", api);
 
-const pagePath = (query: Record<string, string>) =>
-  `/library/canonical?${new URLSearchParams(query)}`;
+const pagePath = (query: Record<string, string>) => `/library?${new URLSearchParams(query)}`;
 
 const getFavorites = () => library(user).request("/library/favorites");
 

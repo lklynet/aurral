@@ -10,10 +10,10 @@ import { getStaticPlaylistTrackCount } from "../playlists/playlistStats";
 
 export function LibraryHomePlaylists() {
   const { hasPermission } = useAuth();
-  const canSeePlaylists = hasPermission("accessFlow");
+  const canSeePlaylists = hasPermission("accessPlaylists");
   const { data: status } = useQuery({ ...playlistStatusQueryOptions(), enabled: canSeePlaylists });
   const { artworkUrlFor } = usePlaylistArtwork();
-  const playlists = canSeePlaylists ? (status?.sharedPlaylists ?? []) : [];
+  const playlists = canSeePlaylists ? (status?.staticPlaylists ?? []) : [];
   if (!playlists.length) return null;
   return (
     <DiscoverRail title="Playlists" viewAllTo="/library/playlists">
@@ -25,7 +25,7 @@ export function LibraryHomePlaylists() {
             name={playlist.name}
             artworkUrl={artworkUrlFor(playlist.id)}
             meta={formatTrackTotal(
-              getStaticPlaylistTrackCount(playlist, status?.sharedPlaylistStats?.[playlist.id]),
+              getStaticPlaylistTrackCount(playlist, status?.staticPlaylistStats?.[playlist.id]),
             )}
           />
         ))}

@@ -251,7 +251,7 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
             Up next
           </h3>
           <div className="player-queue__section-actions">
-            {savable.length > 0 && hasPermission("accessFlow") ? (
+            {savable.length > 0 && hasPermission("accessPlaylists") ? (
               <SaveQueueButton tracks={savable} />
             ) : null}
             {queued.length > 0 ? (

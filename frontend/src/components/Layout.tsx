@@ -200,7 +200,7 @@ function Layout({ children, headerActions }: LayoutProps) {
         path: "/flows",
         label: "Flows",
         icon: Workflow,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
       ...(bootstrap?.ticketmasterConfigured
         ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]

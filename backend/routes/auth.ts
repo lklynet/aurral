@@ -8,7 +8,12 @@ import {
   touchReauth,
 } from "../config/session-helpers.ts";
 import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/guards.ts";
-import { getApiKey, isApiKeyManagedByEnv, rotateApiKey } from "../middleware/auth.ts";
+import {
+  getApiKey,
+  isApiKeyManagedByEnv,
+  rotateApiKey,
+  buildPermissions,
+} from "../middleware/auth.ts";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
@@ -87,7 +92,7 @@ export default new Hono<AppEnv>()
             id: user.id,
             username: user.username,
             role: user.role,
-            permissions: user.permissions,
+            permissions: buildPermissions(user.role, user.permissions),
           },
         },
         200,

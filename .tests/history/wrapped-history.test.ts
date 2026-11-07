@@ -57,7 +57,7 @@ beforeEach(async () => {
   for (const name of ["one", "two"]) userOps.createUser(name, "hash");
   const [first, second] = ["one", "two"].map((name) => userOps.getUserByUsername(name)!);
   assert.ok(first && second);
-  one = { id: first.id, username: "one", role: "user", permissions: { accessFlow: true } };
+  one = { id: first.id, username: "one", role: "user", permissions: { accessPlaylists: true } };
   two = { id: second.id, username: "two", role: "user", permissions: {} };
 });
 

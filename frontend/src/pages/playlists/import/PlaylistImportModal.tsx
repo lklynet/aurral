@@ -318,7 +318,7 @@ export function PlaylistImportModal({
   });
   const resetYoutubePreview = youtubePreview.reset;
   const pluginImportLists = useQuery(
-    pluginImportListsQueryOptions(user?.permissions?.accessFlow !== false),
+    pluginImportListsQueryOptions(user?.permissions?.accessPlaylists !== false),
   );
   const pluginPreview = useMutation({
     mutationFn: ({ id, url }: { id: string; url: string }) =>
@@ -531,8 +531,8 @@ export function PlaylistImportModal({
 
   const fileImport = useMutation({
     mutationFn: (
-      json: InferRequestType<(typeof staticPlaylistsClient)["shared-playlists"]["$post"]>["json"],
-    ) => parseResponse(staticPlaylistsClient["shared-playlists"].$post({ json })),
+      json: InferRequestType<(typeof staticPlaylistsClient)["static-playlists"]["$post"]>["json"],
+    ) => parseResponse(staticPlaylistsClient["static-playlists"].$post({ json })),
   });
 
   const importing = externalImport.isPending || shareImport.isPending || fileImport.isPending;

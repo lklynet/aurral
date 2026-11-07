@@ -106,7 +106,7 @@ const flowStatuses = (flowId: string) =>
     .sort();
 
 const requestPlaylists = (path: string, init?: RequestInit) =>
-  signedInAs(testUser(1, { role: "admin", permissions: { accessFlow: true } }))
+  signedInAs(testUser(1, { role: "admin", permissions: { accessPlaylists: true } }))
     .route("/", api)
     .request(`/playlists${path}`, init);
 

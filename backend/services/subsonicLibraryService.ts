@@ -268,7 +268,7 @@ const entityGenres = (entity: GenreEntity) => {
 };
 
 const visibleFlows = (user: SubsonicUser) =>
-  user && hasPermission(user, "accessFlow")
+  user && hasPermission(user, "accessPlaylists")
     ? flowPlaylistConfig.getFlowsForUser(user).filter((flow) => flow.enabled)
     : [];
 
@@ -1255,7 +1255,7 @@ export async function createSubsonicPlaylist(
   user: SubsonicUser,
   { name, songIds = [] }: { name?: string; songIds?: string[] } = {},
 ) {
-  if (!hasPermission(user, "accessFlow")) return null;
+  if (!hasPermission(user, "accessPlaylists")) return null;
   const safeName = String(name || "").trim();
   if (!safeName) return null;
   const resolved = songIds.map((id) => resolveSubsonicTrack(user, id));
@@ -1312,7 +1312,7 @@ export async function updateSubsonicPlaylist(
       user,
       normalizeStaticPlaylistId(playlistId),
     );
-    if (!playlist || !hasPermission(user, "accessFlow")) return null;
+    if (!playlist || !hasPermission(user, "accessPlaylists")) return null;
     const entries = playlistJobEntries(playlist);
     const visibleEntries = entries.filter(({ job }) => isPlayableJob(job));
     const removedEntries =
@@ -1347,7 +1347,7 @@ export async function deleteSubsonicPlaylist(user: SubsonicUser, playlistId: str
     user,
     normalizeStaticPlaylistId(playlistId),
   );
-  if (!playlist || !hasPermission(user, "accessFlow")) return false;
+  if (!playlist || !hasPermission(user, "accessPlaylists")) return false;
   return processPlaylistOperation({
     kind: "static-playlist-delete",
     playlistId: playlist.id,

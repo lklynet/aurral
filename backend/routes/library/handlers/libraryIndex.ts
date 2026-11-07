@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { createFactory } from "hono/factory";
 import * as v from "valibot";
 import { isAuthRequiredByConfig } from "../../../middleware/auth.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
@@ -222,8 +223,52 @@ const favoritesInput = v.object({
   starred: v.optional(v.boolean()),
 });
 
+const factory = createFactory<AppEnv>();
+
 const restoreInput = v.object({
   favorites: v.optional(v.array(v.object({ id: v.string(), starredAt: v.number() }))),
+});
+
+const libraryPage = factory.createHandlers(noCache, validate("query", pageQuery), (c) => {
+  const user = c.var.user;
+  const query = c.req.valid("query");
+  try {
+    const favoriteKeys = user ? getStarredIdentityKeys(user) : null;
+    const kind = query.kind?.trim() ?? "";
+    const pageSize = query.pageSize === undefined ? NaN : Number(query.pageSize);
+    if (!kind || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+      return c.json({ error: "kind and pageSize (1-100) are required" }, 400);
+    }
+    const page = toPublicLibraryPage(
+      getLibraryPage({
+        source: query.source,
+        availableOnly: resolveAvailableOnly(query.availableOnly),
+        kind,
+        page: query.page,
+        pageSize,
+        query: query.query,
+        genre: query.genre,
+        sort: query.sort,
+        direction: query.direction,
+        artistId: query.artistId,
+        albumId: query.albumId,
+        userId: user?.id ?? null,
+      }),
+      favoriteKeys,
+    );
+    if (query.compact !== "true" || page.kind === "genres") return c.json(page, 200);
+    const { items, genres, ...compactPage } = page;
+    return c.json(compactPage, 200);
+  } catch (error) {
+    const failure = asAppError(error);
+    if (
+      failure?.message.startsWith("Unsupported library source:") ||
+      failure?.message.startsWith("Unsupported library page kind:")
+    ) {
+      return c.json({ error: failure.message }, 400);
+    }
+    return c.json({ error: "Failed to query library", message: failure?.message }, 500);
+  }
 });
 
 export default new Hono<AppEnv>()
@@ -245,47 +290,8 @@ export default new Hono<AppEnv>()
     }
     return c.json(status, 200);
   })
-  .get("/canonical", noCache, validate("query", pageQuery), (c) => {
-    const user = c.var.user;
-    const query = c.req.valid("query");
-    try {
-      const favoriteKeys = user ? getStarredIdentityKeys(user) : null;
-      const kind = query.kind?.trim() ?? "";
-      const pageSize = query.pageSize === undefined ? NaN : Number(query.pageSize);
-      if (!kind || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
-        return c.json({ error: "kind and pageSize (1-100) are required" }, 400);
-      }
-      const page = toPublicLibraryPage(
-        getLibraryPage({
-          source: query.source,
-          availableOnly: resolveAvailableOnly(query.availableOnly),
-          kind,
-          page: query.page,
-          pageSize,
-          query: query.query,
-          genre: query.genre,
-          sort: query.sort,
-          direction: query.direction,
-          artistId: query.artistId,
-          albumId: query.albumId,
-          userId: user?.id ?? null,
-        }),
-        favoriteKeys,
-      );
-      if (query.compact !== "true" || page.kind === "genres") return c.json(page, 200);
-      const { items, genres, ...compactPage } = page;
-      return c.json(compactPage, 200);
-    } catch (error) {
-      const failure = asAppError(error);
-      if (
-        failure?.message.startsWith("Unsupported library source:") ||
-        failure?.message.startsWith("Unsupported library page kind:")
-      ) {
-        return c.json({ error: failure.message }, 400);
-      }
-      return c.json({ error: "Failed to query library", message: failure?.message }, 500);
-    }
-  })
+  .get("/", ...libraryPage)
+  .get("/canonical", ...libraryPage)
   .get("/favorites", requireAuth, noCache, (c) => {
     const { starred, songIds, library } = getStarredWithLibrary(c.var.user);
     return c.json({ ...starred, songIds, library: toPublicLibrary(library) }, 200);

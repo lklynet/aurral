@@ -131,11 +131,11 @@ test("new and wildcard subscribers receive current status immediately with owner
   start(t, socket);
   const user = socket.connect("user", { id: 1, role: "user" });
   assert.deepEqual(
-    user.messages[0]?.status.sharedPlaylists.map((playlist) => playlist.id),
+    user.messages[0]?.status.staticPlaylists.map((playlist) => playlist.id),
     [own.id],
   );
   const admin = socket.connect("admin", { id: 3, role: "admin" }, ["*"]);
-  assert.equal(admin.messages[0]?.status.sharedPlaylists.length, 2);
+  assert.equal(admin.messages[0]?.status.staticPlaylists.length, 2);
   assert.equal(user.messages.length, 1);
 });
 
@@ -156,7 +156,7 @@ test("local and external commits refresh status and reconnects receive an unchan
   ]);
   vi.advanceTimersByTime(4000);
   assert.equal(
-    requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.pending,
+    requireFixture(client.messages.at(-1)).status.staticPlaylistStats[playlist.id]?.pending,
     1,
   );
   const external = new Database(state.dbPath);
@@ -164,7 +164,7 @@ test("local and external commits refresh status and reconnects receive an unchan
     external.prepare("UPDATE download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
     vi.advanceTimersByTime(4000);
     assert.equal(
-      requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.failed,
+      requireFixture(client.messages.at(-1)).status.staticPlaylistStats[playlist.id]?.failed,
       1,
     );
   } finally {
@@ -175,7 +175,7 @@ test("local and external commits refresh status and reconnects receive an unchan
   vi.advanceTimersByTime(60000);
   assert.equal(socket.inspections, inspections);
   const reconnected = socket.connect("second", { id: 1, role: "user" });
-  assert.equal(reconnected.messages[0]?.status.sharedPlaylistStats[playlist.id]?.failed, 1);
+  assert.equal(reconnected.messages[0]?.status.staticPlaylistStats[playlist.id]?.failed, 1);
 });
 
 test("completed flow countdowns advance without a database write", (t) => {

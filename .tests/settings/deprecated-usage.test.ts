@@ -10,17 +10,7 @@ const [isolatedState, { listConfigDeprecations }] = await setupIsolatedBackend(
 
 const kinds = () => listConfigDeprecations().sort();
 
-function withEnv(
-  values:
-    | {
-        WEEKLY_FLOW_FOLDER: string;
-        PLAYLIST_FOLDER: undefined;
-        AUTH_PASSWORD: string;
-        AURRAL_DATA_DIR: string;
-      }
-    | { WEEKLY_FLOW_FOLDER: undefined; PLAYLIST_FOLDER: undefined; AUTH_PASSWORD: undefined },
-  run: () => void,
-) {
+function withEnv(values: Record<string, string | undefined>, run: () => void) {
   const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined) delete process.env[key];
@@ -43,6 +33,7 @@ afterAll(async () => {
 test("reports configuration that Aurral 3.0 no longer reads", () => {
   withEnv(
     {
+      LIBRARY_FOLDER: undefined,
       WEEKLY_FLOW_FOLDER: "/data/old-downloads",
       PLAYLIST_FOLDER: undefined,
       AUTH_PASSWORD: "secret",
@@ -53,6 +44,8 @@ test("reports configuration that Aurral 3.0 no longer reads", () => {
   );
   withEnv(
     {
+      LIBRARY_FOLDER: "/data/library",
+      DOWNLOAD_FOLDER: "/data/old-downloads",
       WEEKLY_FLOW_FOLDER: undefined,
       PLAYLIST_FOLDER: undefined,
       AUTH_PASSWORD: undefined,

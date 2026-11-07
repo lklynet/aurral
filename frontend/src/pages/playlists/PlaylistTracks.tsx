@@ -41,7 +41,7 @@ import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { albumPath } from "../../../../lib/albumPath.ts";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 
-const sharedPlaylists = staticPlaylistsClient["shared-playlists"];
+const playlistRoutes = staticPlaylistsClient["static-playlists"];
 const trackArtwork = playlistArtworkClient["track-artwork"][":jobId"];
 
 type FavoriteSongs = Partial<Pick<LibraryFavoritesResponse, "songIds">>;
@@ -206,11 +206,11 @@ export function PlaylistTracks({
     try {
       if (target?.mode === "new") {
         await parseResponse(
-          sharedPlaylists.$post({ json: { name: targetName, tracks: [payload] } }),
+          playlistRoutes.$post({ json: { name: targetName, tracks: [payload] } }),
         );
       } else {
         await parseResponse(
-          sharedPlaylists[":playlistId"].tracks.$post({
+          playlistRoutes[":playlistId"].tracks.$post({
             param: { playlistId: encodeURIComponent(target.playlistId) },
             json: { tracks: [payload] },
           }),
@@ -244,12 +244,10 @@ export function PlaylistTracks({
           "the playlist";
     try {
       if (target?.mode === "new") {
-        await parseResponse(
-          sharedPlaylists.$post({ json: { name: targetName, tracks: payloads } }),
-        );
+        await parseResponse(playlistRoutes.$post({ json: { name: targetName, tracks: payloads } }));
       } else {
         await parseResponse(
-          sharedPlaylists[":playlistId"].tracks.$post({
+          playlistRoutes[":playlistId"].tracks.$post({
             param: { playlistId: encodeURIComponent(target.playlistId) },
             json: { tracks: payloads },
           }),
@@ -310,7 +308,7 @@ export function PlaylistTracks({
             ? flowsClient.flows[":flowId"].tracks[":jobId"].research.$post({
                 param: { flowId: encodeURIComponent(entry.id), jobId: encodeURIComponent(jobId) },
               })
-            : sharedPlaylists[":playlistId"].tracks[":jobId"].research.$post({
+            : playlistRoutes[":playlistId"].tracks[":jobId"].research.$post({
                 param: {
                   playlistId: encodeURIComponent(entry.id),
                   jobId: encodeURIComponent(jobId),

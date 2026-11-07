@@ -16,7 +16,7 @@ function SidebarPlaylists({ status, iconsOnly, onTooltip }: SidebarPlaylistsProp
   const { pathname } = useLocation();
   const { artworkUrlFor } = usePlaylistArtwork();
   const entries = [
-    ...status.sharedPlaylists.map(({ id, name }) => ({
+    ...status.staticPlaylists.map(({ id, name }) => ({
       id,
       name,
       kind: "Playlist",

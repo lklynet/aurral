@@ -19,11 +19,11 @@ export interface StaticPlaylist {
   trackCount: number;
   recordHistory: boolean;
   showTrackAvailability: boolean;
-  importSource: PlaylistStatusSnapshot["sharedPlaylists"][number]["importSource"];
+  importSource: PlaylistStatusSnapshot["staticPlaylists"][number]["importSource"];
 }
 
-export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "sharedPlaylists"> & {
-  sharedPlaylists: StaticPlaylist[];
+export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "staticPlaylists"> & {
+  staticPlaylists: StaticPlaylist[];
 };
 
 const statCount = (value: number | null | undefined) => Number(value || 0);
@@ -128,7 +128,7 @@ export const getPlaylistStateFromStats = (stats: PlaylistStats) => {
 
 export const getCombinedActivityStats = (status: PlaylistStatus | null | undefined) => {
   const flow = status?.stats || EMPTY_PLAYLIST_STATS;
-  const shared = status?.sharedStats || EMPTY_PLAYLIST_STATS;
+  const shared = status?.staticStats || EMPTY_PLAYLIST_STATS;
   const pending = statCount(flow.pending) + statCount(shared.pending);
   const downloading = statCount(flow.downloading) + statCount(shared.downloading);
   const blocked = statCount(flow.blocked) + statCount(shared.blocked);

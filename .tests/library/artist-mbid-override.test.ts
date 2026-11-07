@@ -136,7 +136,7 @@ function createArtist(
 const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 async function updateMbid(artistId: number, mbid: string | null) {
-  const response = await app.request(`/library/canonical/artists/${artistId}/mbid`, {
+  const response = await app.request(`/library/artists/${artistId}/mbid`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mbid }),

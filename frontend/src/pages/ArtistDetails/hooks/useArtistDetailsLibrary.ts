@@ -289,8 +289,8 @@ export function useArtistDetailsLibrary({
   const deleteAurralAlbumMutation = useMutation({
     mutationFn: ({ id, deleteFiles }: { id: string | number; deleteFiles: boolean }) =>
       parseResponse(
-        libraryAlbumsClient.albums.aurral[":canonicalId"].$delete({
-          param: { canonicalId: encodeURIComponent(id) },
+        libraryAlbumsClient.albums.aurral[":albumId"].$delete({
+          param: { albumId: encodeURIComponent(id) },
           query: { deleteFiles: String(deleteFiles) },
         }),
       ),
@@ -808,7 +808,7 @@ export function useArtistDetailsLibrary({
       setRemovingAlbum(albumId);
       if (libraryAlbum.managedBy === "aurral") {
         await deleteAurralAlbumMutation.mutateAsync({
-          id: libraryAlbum.canonicalId || libraryAlbum.id,
+          id: libraryAlbum.libraryId || libraryAlbum.id,
           deleteFiles: deleteAlbumFiles,
         });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();

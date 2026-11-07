@@ -123,15 +123,16 @@ export default new Hono<AppEnv>()
     }
   })
   .put(
-    "/tracks/aurral/:canonicalId",
+    "/tracks/aurral/:trackId",
     requireAuth,
     requirePermission("changeMonitoring"),
     validate("json", aurralTrackInput),
     async (c) => {
-      const canonicalId = c.req.param("canonicalId");
       const { monitored } = c.req.valid("json");
       try {
-        const result = await libraryManager.setAurralTrackMonitoring(canonicalId, { monitored });
+        const result = await libraryManager.setAurralTrackMonitoring(c.req.param("trackId"), {
+          monitored,
+        });
         if (isFailure(result)) {
           const { error, statusCode, ...details } = result;
           return c.json({ ...details, error }, isErrorStatus(statusCode) ? statusCode : 500);
@@ -169,7 +170,7 @@ export default new Hono<AppEnv>()
     const query = c.req.valid("query");
     try {
       const { albumId, releaseGroupMbid } = query;
-      if (query.readPath === "canonical") {
+      if (query.readPath === "library" || query.readPath === "canonical") {
         let readModel = albumId
           ? getLibraryReadModelForAlbumReferences({
               source: query.source || "all",
@@ -203,7 +204,7 @@ export default new Hono<AppEnv>()
           ? findLibraryTracksForAlbum(tracks, album.id).map((track) => ({
               ...stripFilesystemPaths(track),
               streamPath: track.hasFile
-                ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+                ? `/library/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
                 : null,
             }))
           : [];

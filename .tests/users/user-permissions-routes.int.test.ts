@@ -74,10 +74,10 @@ test("admins cannot store permission values other than true or false", async () 
 
   const patchStatus = await apiFetch(adminToken, `/api/users/${member.id}`, {
     method: "PATCH",
-    body: JSON.stringify({ permissions: { accessFlow: "false" } }),
+    body: JSON.stringify({ permissions: { accessPlaylists: "false" } }),
   });
   assert.equal(patchStatus, 400);
-  assert.equal(userOps.getUserById(member.id)?.permissions.accessFlow, false);
+  assert.equal(userOps.getUserById(member.id)?.permissions.accessPlaylists, false);
   assert.equal(await flowAccessStatus(await login("member")), 403);
 
   const createStatus = await apiFetch(adminToken, "/api/users", {
@@ -85,7 +85,7 @@ test("admins cannot store permission values other than true or false", async () 
     body: JSON.stringify({
       username: "newcomer",
       password: "password123",
-      permissions: { accessFlow: "yes" },
+      permissions: { accessPlaylists: "yes" },
     }),
   });
   assert.equal(createStatus, 400);
@@ -96,6 +96,8 @@ test("admins cannot store permission values other than true or false", async () 
     body: JSON.stringify({ permissions: { accessFlow: true } }),
   });
   assert.equal(grantStatus, 200);
+  const granted = userOps.getUserById(member.id)?.permissions;
+  assert.deepEqual([granted?.accessPlaylists, granted?.accessFlow], [true, undefined]);
   assert.notEqual(await flowAccessStatus(await login("member")), 403);
 });
 
@@ -103,10 +105,10 @@ test("a permission already stored as a string does not grant access", async () =
   const member = createUser("member");
   assert.ok(member != null);
   db.prepare("UPDATE users SET permissions = ? WHERE id = ?").run(
-    JSON.stringify({ accessFlow: "false" }),
+    JSON.stringify({ accessPlaylists: "false" }),
     member.id,
   );
 
-  assert.equal(userOps.getUserById(member.id)?.permissions.accessFlow, false);
+  assert.equal(userOps.getUserById(member.id)?.permissions.accessPlaylists, false);
   assert.equal(await flowAccessStatus(await login("member")), 403);
 });

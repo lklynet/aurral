@@ -77,7 +77,7 @@ export default function PlaylistsPage() {
     setCreateError("");
     try {
       const response = await parseResponse(
-        staticPlaylistsClient["shared-playlists"].$post({ json: { name } }),
+        staticPlaylistsClient["static-playlists"].$post({ json: { name } }),
       );
       showSuccess(`Created ${name}`);
       setCreateOpen(false);

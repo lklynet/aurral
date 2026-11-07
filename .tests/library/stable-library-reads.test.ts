@@ -136,7 +136,7 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
     assert.equal(firstTrack.providerId, 9933);
     assert.equal(
       queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
-      `/library/canonical-stream/${album.id}/${track.id}`,
+      `/library/stream/${album.id}/${track.id}`,
     );
     assert.equal(request.mock.calls.length, 0);
   } finally {

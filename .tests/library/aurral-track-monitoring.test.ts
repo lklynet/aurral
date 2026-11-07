@@ -267,7 +267,7 @@ test("one track asked for is a track request, asking for the album's missing tra
     );
 
   const single = await libraryManager.monitorAurralTrack({
-    canonicalTrackId: requireFixture(tracks[0]).id,
+    libraryTrackId: requireFixture(tracks[0]).id,
   });
   assert.ok(single != null);
   assert.equal(single.queuedJobIds.length, 1);
@@ -282,7 +282,7 @@ test("one track asked for is a track request, asking for the album's missing tra
   assert.ok(second != null);
   downloadTracker.setFailed(second.id, "No source had the track");
   const retried = await libraryManager.monitorAurralTrack({
-    canonicalTrackId: requireFixture(tracks[1]).id,
+    libraryTrackId: requireFixture(tracks[1]).id,
   });
   assert.ok(retried != null);
   assert.deepEqual(retried.queuedJobIds, [second.id]);
@@ -342,7 +342,7 @@ test("downloading a missing track in a Lidarr album leaves the download to the t
   const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["missing"] });
 
   const result = await libraryManager.monitorAurralTrack({
-    canonicalTrackId: requireFixture(tracks[0]).id,
+    libraryTrackId: requireFixture(tracks[0]).id,
   });
 
   assert.equal(result, null);
@@ -369,7 +369,7 @@ test("requesting a guest track retains canonical album ownership for acquisition
       albumMbid,
       trackMbid: track.mbid,
     },
-    { canonicalTrackId: track.id },
+    { libraryTrackId: track.id },
   );
 
   assert.equal(result.monitored, true);
@@ -400,7 +400,7 @@ test("a Lidarr track request keeps the album owner's identity on its fallback jo
       albumMbid,
       trackMbid: track.mbid,
     },
-    { canonicalTrackId: track.id },
+    { libraryTrackId: track.id },
   );
 
   assert.equal(result.queued, true);

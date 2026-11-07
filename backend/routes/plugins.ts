@@ -34,7 +34,7 @@ import {
 } from "../services/plugins/pluginImportList.ts";
 import { enqueueImportedPlaylist } from "../services/importLists/importPlaylist.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { importSettings, requireFlowAccess } from "./playlists/handlers/utils.ts";
+import { importSettings, requirePlaylistAccess } from "./playlists/handlers/utils.ts";
 
 const pluginParam = v.object({ id: v.string() });
 const reference = v.union([v.pipe(v.string(), v.minLength(1)), v.number()]);
@@ -165,7 +165,7 @@ export default new Hono<AppEnv>()
   .post(
     "/:id/import/preview",
     requireAuth,
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("param", pluginParam),
     validate("json", v.object({ url: httpsUrl })),
     (c) =>
@@ -185,7 +185,7 @@ export default new Hono<AppEnv>()
   .post(
     "/:id/import",
     requireAuth,
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("param", pluginParam),
     validate("json", v.object({ ...importSettings, url: httpsUrl })),
     (c) =>

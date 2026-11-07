@@ -29,7 +29,7 @@ test("buildPlaybackQueueFromLibrary keeps the performer credit and uses indexed 
       title: "Track",
       artist: "Guest & Artist",
       album: "Album",
-      streamPath: "/library/canonical-stream/603/7",
+      streamPath: "/library/stream/603/7",
       streamFormat: "flac",
       quality: null,
       trackNumber: 4,

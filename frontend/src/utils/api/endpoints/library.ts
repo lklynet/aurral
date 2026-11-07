@@ -61,7 +61,7 @@ type ActiveDownloadStart = {
   track?: { mbid: string | null; artistName?: string | null; trackName?: string | null };
 };
 
-export type LibraryPageResponse = InferResponseType<typeof libraryClient.canonical.$get, 200>;
+export type LibraryPageResponse = InferResponseType<typeof libraryClient.$get, 200>;
 export type LibraryFavoritesResponse = InferResponseType<typeof libraryClient.favorites.$get, 200>;
 export type ArtistsInLibrary = InferResponseType<typeof libraryMiscClient.lookup.batch.$post, 200>;
 
@@ -172,7 +172,7 @@ export function fetchLibraryPage(
   { signal }: SignalOptions = {},
 ): Promise<LibraryPageResponse> {
   return parseResponse(
-    libraryClient.canonical.$get(
+    libraryClient.$get(
       { query: { ...asQuery(libraryPageParams(options)), compact: "true" } },
       { init: { signal } },
     ),
@@ -218,7 +218,7 @@ export const settleLibraryOwnerConflict = (error: unknown) => {
 
 export const updateLibraryArtistMbid = async (artistId: number, mbid: string | null) => {
   const result = await parseResponse(
-    libraryArtistsClient.canonical.artists[":id"].mbid.$put({
+    libraryArtistsClient.artists[":id"].mbid.$put({
       param: { id: encodeURIComponent(artistId) },
       json: { mbid },
     }),
@@ -655,36 +655,36 @@ export const getDownloadStatus = async (
   });
 };
 
-export const cancelAurralAlbum = (canonicalId: string | number) =>
+export const cancelAurralAlbum = (albumId: string | number) =>
   refreshActiveDownloadsAfter(
     parseResponse(
-      libraryAlbumsClient.albums.aurral[":canonicalId"].cancel.$post({
-        param: { canonicalId: encodeURIComponent(canonicalId) },
+      libraryAlbumsClient.albums.aurral[":albumId"].cancel.$post({
+        param: { albumId: encodeURIComponent(albumId) },
       }),
     ),
   );
 
 export const setAurralAlbumMonitoring = (
-  canonicalId: string | number,
+  albumId: string | number,
   monitored: boolean,
 ): Promise<AurralMonitoringResult> =>
   refreshActiveDownloadsAfter(
     parseResponse(
-      libraryAlbumsClient.albums.aurral[":canonicalId"].$put({
-        param: { canonicalId: encodeURIComponent(canonicalId) },
+      libraryAlbumsClient.albums.aurral[":albumId"].$put({
+        param: { albumId: encodeURIComponent(albumId) },
         json: { monitored },
       }),
     ),
   );
 
 export const setAurralTrackMonitoring = async (
-  canonicalId: string | number,
+  trackId: string | number,
   monitored: boolean,
 ): Promise<AurralMonitoringResult> => {
   const result = await refreshActiveDownloadsAfter(
     parseResponse(
-      libraryTracksClient.tracks.aurral[":canonicalId"].$put({
-        param: { canonicalId: encodeURIComponent(canonicalId) },
+      libraryTracksClient.tracks.aurral[":trackId"].$put({
+        param: { trackId: encodeURIComponent(trackId) },
         json: { monitored },
       }),
     ),

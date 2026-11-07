@@ -306,7 +306,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
     ownerUsername: ownerMap.get(Number(playlist?.ownerUserId)) || null,
   }));
   const stats = aggregateStats(scopedStats, flowIds);
-  const sharedStats = aggregateStats(staticPlaylistStatsById, staticPlaylistIds);
+  const staticStats = aggregateStats(staticPlaylistStatsById, staticPlaylistIds);
   const reviewCount = stats.blocked + Number(scopedStats.library?.blocked || 0);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
@@ -355,10 +355,10 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
     stats,
     reviewCount,
     flowStats,
-    sharedStats,
-    sharedPlaylistStats: staticPlaylistStatsById,
+    staticStats,
+    staticPlaylistStats: staticPlaylistStatsById,
     flows: flowsWithOwners,
-    sharedPlaylists: staticPlaylistsWithOwners,
+    staticPlaylists: staticPlaylistsWithOwners,
     retryCyclePausedByPlaylist,
     operationQueue,
     operationWorker,

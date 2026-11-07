@@ -83,7 +83,7 @@ test("library track reads remove nested filesystem paths", async () => {
     assert.equal(body.length, 1);
     assert.equal("path" in requireFixture(body[0]), false);
     assert.deepEqual(body[0]?.quality, { audioFormat: "FLAC", nested: {} });
-    assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
+    assert.match(body[0].streamPath, /\/library\/stream\/\d+\/\d+$/);
     assert.equal(body[0]?.streamFormat, "flac");
 
     const filesPath = `/library/tracks/${body[0].id}/files`;

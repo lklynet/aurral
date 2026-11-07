@@ -149,13 +149,13 @@ const toResponse = (link: ShareLink) => ({
 });
 
 const canSharePlaylist = (user: RequestUser, playlistId: string) =>
-  hasPermission(user, "accessFlow") &&
+  hasPermission(user, "accessPlaylists") &&
   Boolean(flowPlaylistConfig.getStaticPlaylistForUser(user, playlistId));
 
 const canImport = (user: RequestUser, kind: string) =>
   hasPermission(
     user,
-    kind === "playlist" ? "accessFlow" : kind === "artist" ? "addArtist" : "addAlbum",
+    kind === "playlist" ? "accessPlaylists" : kind === "artist" ? "addArtist" : "addAlbum",
   );
 
 async function previewImport(url: unknown) {

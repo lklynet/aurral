@@ -1205,6 +1205,7 @@ export interface AurralAlbumGrab {
   fallbackReason: string | null;
   requestedAt: string;
   completedAt?: string | null;
+  libraryAlbumId?: string | null;
   canonicalAlbumId?: string | null;
 }
 
@@ -1234,6 +1235,7 @@ export interface AurralRequestItem {
   albumName: string | null;
   albumMbid: string | null;
   albumId: string | null;
+  libraryAlbumId: string | null;
   canonicalAlbumId: string | null;
   requestGroupId: string | null;
   requestedBy: { id: string | number; username: string | null } | null;
@@ -1250,9 +1252,14 @@ type HistoryRequestOptions = {
   releaseTitle?: string | null;
   albumName?: string | null;
   albumGrab?: AurralAlbumGrab | null;
-  canonicalAlbumId?: string | null;
+  libraryAlbumId?: string | null;
   requestGroupId?: string | null;
 };
+
+const libraryAlbumIds = (libraryAlbumId: string | null | undefined) => ({
+  libraryAlbumId: libraryAlbumId || null,
+  canonicalAlbumId: libraryAlbumId || null,
+});
 
 export const toHistoryRequestItem = (
   entry: AurralHistoryEntry,
@@ -1301,7 +1308,7 @@ export const toHistoryRequestItem = (
     albumName,
     albumMbid: entry.metadata?.albumMbid || null,
     albumId: entry.metadata?.albumId ? String(entry.metadata.albumId) : null,
-    canonicalAlbumId: options.canonicalAlbumId || entry.metadata?.canonicalAlbumId || null,
+    ...libraryAlbumIds(options.libraryAlbumId || entry.metadata?.canonicalAlbumId || null),
     requestGroupId: options.requestGroupId || entry.metadata?.requestGroupId || null,
     requestedBy: requester ? { id: requester.userId, username: requester.username || null } : null,
     sourceFilename,
@@ -1404,15 +1411,15 @@ export const getAurralHistoryRequests = async (
 
   const now = Date.now();
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
-  const canonicalAlbumIds = new Map<unknown, string | null>();
-  const resolveCanonicalAlbumId = (albumMbid: unknown) => {
+  const libraryAlbumIdsByMbid = new Map<unknown, string | null>();
+  const resolveLibraryAlbumId = (albumMbid: unknown) => {
     if (!albumMbid) return null;
-    if (!canonicalAlbumIds.has(albumMbid)) {
+    if (!libraryAlbumIdsByMbid.has(albumMbid)) {
       const album = getLibraryForAlbumReferences({ source: "all", references: [albumMbid] })
         .albums[0];
-      canonicalAlbumIds.set(albumMbid, album?.id != null ? String(album.id) : null);
+      libraryAlbumIdsByMbid.set(albumMbid, album?.id != null ? String(album.id) : null);
     }
-    return canonicalAlbumIds.get(albumMbid);
+    return libraryAlbumIdsByMbid.get(albumMbid);
   };
   const canViewEntry = (entry: AurralHistoryEntry) =>
     canViewPlaylistActivity(
@@ -1440,9 +1447,9 @@ export const getAurralHistoryRequests = async (
       }
       const albumGrabId = entry.metadata?.albumGrabId;
       const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
-      const canonicalAlbumId =
+      const libraryAlbumId =
         entry.metadata?.canonicalAlbumId ||
-        resolveCanonicalAlbumId(job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid);
+        resolveLibraryAlbumId(job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid);
       const blockedJob = entry.status === "blocked" ? job : null;
       const sourceFilename =
         (blockedJob && resolveBlockedJobSourceFilename(blockedJob)) ||
@@ -1473,9 +1480,9 @@ export const getAurralHistoryRequests = async (
         releaseTitle,
         albumName,
         trackName,
-        canonicalAlbumId,
+        libraryAlbumId,
         requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
-        albumGrab: manifest ? { ...manifest, canonicalAlbumId } : null,
+        albumGrab: manifest ? { ...manifest, ...libraryAlbumIds(libraryAlbumId) } : null,
       });
     });
 };

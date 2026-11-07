@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createFactory } from "hono/factory";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
@@ -59,6 +60,51 @@ const deleteQuery = v.object({
   manager: v.optional(v.string()),
 });
 
+const setArtistMbid = createFactory<AppEnv>().createHandlers(
+  requireAuth,
+  requirePermission("addArtist"),
+  validate("json", mbidInput),
+  async (c) => {
+    const artistId = Number(c.req.param("id"));
+    const rawMbid = c.req.valid("json").mbid;
+    const mbid = typeof rawMbid === "string" ? rawMbid.trim().toLowerCase() : rawMbid;
+    if (!Number.isSafeInteger(artistId) || (mbid !== null && !UUID_REGEX.test(String(mbid)))) {
+      return c.json({ error: "A MusicBrainz artist ID or null is required" }, 400);
+    }
+    let musicbrainzName = null;
+    if (mbid) {
+      try {
+        const artist = await getArtistByMbid(mbid);
+        musicbrainzName = artist.name || null;
+      } catch (error) {
+        if (isMetadataNotFoundError(error)) {
+          return c.json({ error: "MusicBrainz has no artist with that ID" }, 404);
+        }
+        return c.json({ error: "Could not reach the metadata provider. Try again." }, 503);
+      }
+    }
+    const result = setLibraryArtistMbid(artistId, mbid ?? null);
+    if (result.error === "lidarr_managed") {
+      return c.json(
+        { error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." },
+        409,
+      );
+    }
+    const { artist } = result;
+    if (!artist) return c.json({ error: "Artist not found" }, 404);
+    return c.json(
+      {
+        id: artist.id,
+        mbid: artist.mbid,
+        name: artist.name,
+        musicbrainzName,
+        merged: Boolean(result.mergedArtistId),
+      },
+      200,
+    );
+  },
+);
+
 export default new Hono<AppEnv>()
   .basePath("/library")
   .get("/artists", cacheFor(120), validate("query", listQuery), (c) => {
@@ -66,7 +112,7 @@ export default new Hono<AppEnv>()
     try {
       const limit = Math.min(Math.max(Number.parseInt(query.limit ?? "", 10) || 10000, 1), 10000);
       const offset = Math.max(Number.parseInt(query.offset ?? "", 10) || 0, 0);
-      if (query.readPath === "canonical") {
+      if (query.readPath === "library" || query.readPath === "canonical") {
         const { artists } = getLibraryReadModelForArtistPage({
           source: query.source || "all",
           limit,
@@ -243,51 +289,8 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .put(
-    "/canonical/artists/:id/mbid",
-    requireAuth,
-    requirePermission("addArtist"),
-    validate("json", mbidInput),
-    async (c) => {
-      const artistId = Number(c.req.param("id"));
-      const rawMbid = c.req.valid("json").mbid;
-      const mbid = typeof rawMbid === "string" ? rawMbid.trim().toLowerCase() : rawMbid;
-      if (!Number.isSafeInteger(artistId) || (mbid !== null && !UUID_REGEX.test(String(mbid)))) {
-        return c.json({ error: "A MusicBrainz artist ID or null is required" }, 400);
-      }
-      let musicbrainzName = null;
-      if (mbid) {
-        try {
-          const artist = await getArtistByMbid(mbid);
-          musicbrainzName = artist.name || null;
-        } catch (error) {
-          if (isMetadataNotFoundError(error)) {
-            return c.json({ error: "MusicBrainz has no artist with that ID" }, 404);
-          }
-          return c.json({ error: "Could not reach the metadata provider. Try again." }, 503);
-        }
-      }
-      const result = setLibraryArtistMbid(artistId, mbid ?? null);
-      if (result.error === "lidarr_managed") {
-        return c.json(
-          { error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." },
-          409,
-        );
-      }
-      const { artist } = result;
-      if (!artist) return c.json({ error: "Artist not found" }, 404);
-      return c.json(
-        {
-          id: artist.id,
-          mbid: artist.mbid,
-          name: artist.name,
-          musicbrainzName,
-          merged: Boolean(result.mergedArtistId),
-        },
-        200,
-      );
-    },
-  )
+  .put("/artists/:id/mbid", ...setArtistMbid)
+  .put("/canonical/artists/:id/mbid", ...setArtistMbid)
   .put(
     "/artists/:mbid",
     requireAuth,

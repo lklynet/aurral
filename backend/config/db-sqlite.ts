@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup, type TableColumnRow } from "./schema-migration-v2.ts";
 import { JOB_TABLES_SQL, migrateToJobQueue } from "./job-queue-migration.ts";
+import { renamePlaylistPermission } from "./playlist-permission-migration.ts";
 import { migrateStaticPlaylistsToLibrary } from "./static-playlist-library-migration.ts";
 import { initializeLibrarySearchIndex } from "./library-search-index.ts";
 import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
@@ -1667,6 +1668,7 @@ db.transaction(() => {
 }).immediate();
 
 migrateStaticPlaylistsToLibrary(db);
+renamePlaylistPermission(db);
 
 const existingDownloadFolder = db
   .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")

@@ -15,7 +15,7 @@ import {
   getAccessibleFlow,
   queueFlowSideEffect,
   enqueueResearchTrack,
-  requireFlowAccess,
+  requirePlaylistAccess,
 } from "./utils.ts";
 import {
   markPlaylistDownloadWorkCancelled,
@@ -71,7 +71,7 @@ export default new Hono<AppEnv>()
   .basePath("/playlists")
   .post(
     "/start/:flowId",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ limit: v.nullish(count) })),
     async (c) => {
       try {
@@ -108,7 +108,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .get("/flow-templates", requireFlowAccess, async (c) => {
+  .get("/flow-templates", requirePlaylistAccess, async (c) => {
     try {
       return c.json({ templates: listFlowTemplates(c.var.user) }, 200);
     } catch (error) {
@@ -118,7 +118,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/flows", requireFlowAccess, validate("json", flowCreate), async (c) => {
+  .post("/flows", requirePlaylistAccess, validate("json", flowCreate), async (c) => {
     try {
       const user = c.var.user;
       const ownerUserId = Number(user.id);
@@ -164,7 +164,7 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to create flow", message: failure?.message }, 500);
     }
   })
-  .put("/flows/:flowId", requireFlowAccess, validate("json", flowUpdate), async (c) => {
+  .put("/flows/:flowId", requirePlaylistAccess, validate("json", flowUpdate), async (c) => {
     try {
       const flowId = c.req.param("flowId");
       const existingFlow = getAccessibleFlow(c.var.user, flowId);
@@ -200,7 +200,7 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to update flow", message: failure?.message }, 500);
     }
   })
-  .delete("/flows/:flowId", requireFlowAccess, async (c) => {
+  .delete("/flows/:flowId", requirePlaylistAccess, async (c) => {
     try {
       const flowId = c.req.param("flowId");
       if (!getAccessibleFlow(c.var.user, flowId)) {
@@ -230,7 +230,7 @@ export default new Hono<AppEnv>()
   })
   .put(
     "/flows/:flowId/enabled",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ enabled: v.boolean() })),
     async (c) => {
       try {
@@ -291,7 +291,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/flows/:flowId/static-playlist",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ name: v.nullish(v.string()) })),
     async (c) => {
       try {
@@ -325,7 +325,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post("/flows/:flowId/download", requireFlowAccess, async (c) => {
+  .post("/flows/:flowId/download", requirePlaylistAccess, async (c) => {
     try {
       const flowId = c.req.param("flowId");
       if (!getAccessibleFlow(c.var.user, flowId)) {
@@ -348,7 +348,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/flows/:flowId/tracks/:jobId/research", requireFlowAccess, async (c) => {
+  .post("/flows/:flowId/tracks/:jobId/research", requirePlaylistAccess, async (c) => {
     try {
       return await enqueueResearchTrack(
         c,
@@ -364,7 +364,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .get("/flows/:flowId/lidarr-import-list", requireFlowAccess, (c) => {
+  .get("/flows/:flowId/lidarr-import-list", requirePlaylistAccess, (c) => {
     const flowId = c.req.param("flowId");
     const flow = getAccessibleFlow(c.var.user, flowId);
     if (!flow) {

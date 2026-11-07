@@ -43,9 +43,12 @@ const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
 
 const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) => ({
   inLibrary: true,
+  fromLibraryIndex: true,
   canonicalInLibrary: true,
   canonicalAlbumId: String(album.canonicalId ?? album.id),
   canonicalArtistId: String(album.artistId),
+  providerAlbumId: String(album.providerId ?? album.id),
+  providerArtistId: String(album.providerArtistId ?? album.artistId),
   libraryAlbumId: String(album.providerId ?? album.id),
   libraryArtistId: String(album.providerArtistId ?? album.artistId),
   status:
@@ -90,6 +93,7 @@ const toLibraryArtist = (
 ) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
+  libraryId: String(artist.canonicalId ?? artist.id),
   canonicalId: String(artist.canonicalId ?? artist.id),
   foreignArtistId: artist.foreignArtistId || artist.mbid,
   added: artist.addedAt,
@@ -104,6 +108,7 @@ const toLibraryAlbum = (
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
+  libraryId: String(album.canonicalId ?? album.id),
   canonicalId: String(album.canonicalId ?? album.id),
   foreignAlbumId: album.foreignAlbumId || album.mbid,
   title: album.albumName,
@@ -127,6 +132,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       exists: true,
       artist: toLibraryArtist(aurralArtist),
       albums: albums.map(toLibraryAlbum),
+      fromLibraryIndex: true,
       canonical: true,
       libraryArtistId,
     };
@@ -157,6 +163,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       exists: true,
       artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
       albums: lidarrAlbums,
+      fromLibraryIndex: true,
       canonical: true,
       libraryArtistId,
     };
@@ -166,6 +173,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       exists: true,
       artist: toLibraryArtist(artist),
       albums: albums.map(toLibraryAlbum),
+      fromLibraryIndex: true,
       canonical: true,
       libraryArtistId,
     };
@@ -174,6 +182,7 @@ export async function getArtistLibraryLookup(mbid: string) {
     exists: false,
     artist: null,
     albums: [],
+    fromLibraryIndex: true,
     canonical: true,
     libraryArtistId,
   };
@@ -181,7 +190,10 @@ export async function getArtistLibraryLookup(mbid: string) {
 
 type LidarrAlbumLookupResult = {
   inLibrary: true;
+  fromLibraryIndex: false;
   canonicalInLibrary: false;
+  providerAlbumId: string | null;
+  providerArtistId: string | null;
   libraryAlbumId: string | null;
   libraryArtistId: string | null;
   managedBy?: undefined;
@@ -348,12 +360,16 @@ export default new Hono<AppEnv>()
         const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
         const monitored = Boolean(album?.monitored);
 
+        const providerAlbumId = album.id != null ? String(album.id) : null;
+        const providerArtistId = album.artistId != null ? String(album.artistId) : null;
         results[foreignAlbumId] = {
           inLibrary: true,
+          fromLibraryIndex: false,
           canonicalInLibrary: false,
-          libraryAlbumId: album.id !== undefined && album.id !== null ? String(album.id) : null,
-          libraryArtistId:
-            album.artistId !== undefined && album.artistId !== null ? String(album.artistId) : null,
+          providerAlbumId,
+          providerArtistId,
+          libraryAlbumId: providerAlbumId,
+          libraryArtistId: providerArtistId,
           status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
           monitored,
           trackListComplete: true,

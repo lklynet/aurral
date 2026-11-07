@@ -16,7 +16,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
-import { importSettings, requireFlowAccess } from "./utils.ts";
+import { importSettings, requirePlaylistAccess } from "./utils.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
@@ -56,7 +56,7 @@ function sendSpotifyError<E extends AppEnv>(c: Context<E>, error: unknown, fallb
 const expiry = v.nullish(v.union([v.number(), v.string()]));
 
 export default new Hono<AppEnv>()
-  .get("/import/spotify/status", requireFlowAccess, (c) => {
+  .get("/import/spotify/status", requirePlaylistAccess, (c) => {
     const userId = c.var.user.id;
     const status = spotifyConnectionStore.getPublicStatus(userId);
     const hasSyncedPlaylists = flowPlaylistConfig
@@ -71,7 +71,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/import/spotify/oauth/start",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ callbackUrl: v.string() })),
     (c) => {
       const callbackUrl = c.req.valid("json").callbackUrl.trim();
@@ -83,7 +83,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/spotify/oauth/complete",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({
@@ -151,12 +151,12 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .delete("/import/spotify", requireFlowAccess, (c) => {
+  .delete("/import/spotify", requirePlaylistAccess, (c) => {
     spotifyConnectionStore.clearConnection(c.var.user.id);
     spotifyClient.clearPlaylistTrackCache(c.var.user.id);
     return c.json({ connected: false }, 200);
   })
-  .get("/import/spotify/playlists", requireFlowAccess, async (c) => {
+  .get("/import/spotify/playlists", requirePlaylistAccess, async (c) => {
     try {
       return c.json(await spotifyClient.listPlaylists(c.var.user.id), 200);
     } catch (error) {
@@ -168,7 +168,7 @@ export default new Hono<AppEnv>()
   })
   .post(
     "/import/spotify/preview",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ playlistId: v.string() })),
     async (c) => {
       try {
@@ -197,7 +197,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/spotify",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({

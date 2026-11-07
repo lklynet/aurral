@@ -508,6 +508,7 @@ function buildAlbumConflict(album: AlbumConflictSource, message: string | null =
     manager: album?.managedBy || null,
     currentManager: album?.managedBy || null,
     sources: Array.isArray(album?.sources) ? album.sources : [],
+    libraryId: album?.canonicalId || album?.id || null,
     canonicalId: album?.canonicalId || album?.id || null,
     providerId: album?.providerId || album?.foreignAlbumId || album?.mbid || null,
     availability: {
@@ -1110,7 +1111,7 @@ export function buildPlaybackQueueFromLibrary({
         title: track.title || "Unknown Track",
         artist: track.artistName || artist?.name || "Unknown Artist",
         album: album.title || "Unknown Album",
-        streamPath: `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+        streamPath: `/library/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
         streamFormat: file.format || null,
         quality: file.quality?.quality?.name || file.quality?.audioFormat || null,
         trackNumber: relation?.trackNumber || 0,
@@ -3023,7 +3024,7 @@ export class LibraryManager {
     const id = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(id) || id <= 0) {
       return {
-        error: "canonicalId must be a positive integer",
+        error: "Album ID must be a positive integer",
         statusCode: 400,
         code: "invalid_canonical_id",
       };
@@ -3129,6 +3130,7 @@ export class LibraryManager {
       failed(entry)
         ? entry
         : {
+            libraryId: entry.mappedAlbum.canonicalId,
             canonicalId: entry.mappedAlbum.canonicalId,
             ...this._summarizeAurralAlbum(entry.album, entry.library.tracks, jobsForAlbum),
           },
@@ -3150,7 +3152,7 @@ export class LibraryManager {
     const trackId = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
       return {
-        error: "canonicalId must be a positive integer",
+        error: "Track ID must be a positive integer",
         statusCode: 400,
         code: "invalid_canonical_id",
       } as const;
@@ -3189,6 +3191,7 @@ export class LibraryManager {
           cleanupFailed ||= cancellation.cleanupFailed;
         }
         return {
+          libraryId: String(trackId),
           canonicalId: String(trackId),
           monitored,
           cancelledJobIds,
@@ -3222,6 +3225,7 @@ export class LibraryManager {
         }
       }
       return {
+        libraryId: String(trackId),
         canonicalId: String(trackId),
         monitored,
         cancelledJobIds,
@@ -3234,11 +3238,11 @@ export class LibraryManager {
   // A track asked for from an album's page goes to that album when the
   // Library holds it there.
   async monitorAurralTrack({
-    canonicalTrackId = null,
+    libraryTrackId = null,
     trackMbid = null,
     albumMbid = null,
   }: {
-    canonicalTrackId?: unknown;
+    libraryTrackId?: unknown;
     trackMbid?: string | null;
     albumMbid?: string | null;
   } = {}) {
@@ -3246,8 +3250,8 @@ export class LibraryManager {
     const group = String(albumMbid || "")
       .trim()
       .toLowerCase();
-    const trackId = /^\d+$/.test(String(canonicalTrackId ?? "").trim())
-      ? Number(canonicalTrackId)
+    const trackId = /^\d+$/.test(String(libraryTrackId ?? "").trim())
+      ? Number(libraryTrackId)
       : (mbid &&
           ((group && trackIdByMbidOnAlbumStmt.get(mbid, group, group)?.id) ||
             trackIdByMbidStmt.get(mbid)?.id)) ||
@@ -3270,6 +3274,7 @@ export class LibraryManager {
     const { album, mappedAlbum } = resolved;
     const result = await cancelAurralAlbumJobs(albumJobKeys(album));
     return {
+      libraryId: mappedAlbum.canonicalId,
       canonicalId: mappedAlbum.canonicalId,
       managedBy: "aurral",
       ...result,
@@ -3291,7 +3296,12 @@ export class LibraryManager {
       title: album.title,
     });
     if (!artistState) removeLibraryArtistIfEmpty(album.artistId);
-    return { success: true, canonicalId: mappedAlbum.canonicalId, excluded };
+    return {
+      success: true,
+      libraryId: mappedAlbum.canonicalId,
+      canonicalId: mappedAlbum.canonicalId,
+      excluded,
+    };
   }
 
   async _removeAurralAlbumContents(

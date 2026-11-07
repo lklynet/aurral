@@ -856,7 +856,7 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
 
     const localPermissions = {
       accessSettings: false,
-      accessFlow: true,
+      accessPlaylists: true,
       requestDownloads: false,
     };
     userOps.updateUser(user.id, {

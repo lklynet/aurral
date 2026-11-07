@@ -28,7 +28,7 @@ import {
   canAccessJobType,
   canAccessPlaylistType,
   filterJobsForUser,
-  requireFlowAccess,
+  requirePlaylistAccess,
 } from "./utils.ts";
 import {
   approveBlockedJob,
@@ -162,7 +162,7 @@ const reviewBlockedJob = async <E extends AppEnv>(
 };
 
 const canControlJob = (user: RequestUser, job: DownloadJob) =>
-  hasPermission(user, "accessFlow")
+  hasPermission(user, "accessPlaylists")
     ? canAccessJobType(user, job.playlistId || job.playlistType)
     : job.playlistType === LIBRARY_JOB_TYPE &&
       user.id != null &&
@@ -172,7 +172,7 @@ const getControllableJob = <E extends AppEnv>(c: Context<E>, user: RequestUser, 
   const job = downloadTracker.getJob(jobId);
   if (!job) return { failure: c.json({ error: "Track not found" }, 404) };
   if (!canControlJob(user, job)) {
-    return hasPermission(user, "accessFlow")
+    return hasPermission(user, "accessPlaylists")
       ? { failure: c.json({ error: "Track not found" }, 404) }
       : { failure: c.json({ error: "Forbidden" }, 403) };
   }
@@ -198,15 +198,24 @@ const containingQuery = v.object({
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/status", requireFlowAccess, noCache, (c) =>
-    c.json(getPlaylistStatusSnapshot({ user: c.var.user }), 200),
-  )
-  .get("/containing", requireFlowAccess, noCache, validate("query", containingQuery), (c) =>
+  .get("/status", requirePlaylistAccess, noCache, (c) => {
+    const status = getPlaylistStatusSnapshot({ user: c.var.user });
+    return c.json(
+      {
+        ...status,
+        sharedPlaylists: status.staticPlaylists,
+        sharedPlaylistStats: status.staticPlaylistStats,
+        sharedStats: status.staticStats,
+      },
+      200,
+    );
+  })
+  .get("/containing", requirePlaylistAccess, noCache, validate("query", containingQuery), (c) =>
     c.json({ playlists: getPlaylistsContainingTrack(c.var.user, c.req.valid("query")) }, 200),
   )
   .get(
     "/jobs/:playlistId",
-    requireFlowAccess,
+    requirePlaylistAccess,
     noCache,
     validate("query", v.object({ limit: queryValue })),
     async (c) => {
@@ -261,7 +270,7 @@ export default new Hono<AppEnv>()
   )
   .get(
     "/jobs",
-    requireFlowAccess,
+    requirePlaylistAccess,
     noCache,
     validate("query", v.object({ status: queryValue })),
     (c) => {
@@ -302,14 +311,14 @@ export default new Hono<AppEnv>()
       );
     },
   )
-  .get("/jobs/:jobId/files", requireFlowAccess, requireAdmin, noCache, (c) => {
+  .get("/jobs/:jobId/files", requirePlaylistAccess, requireAdmin, noCache, (c) => {
     const job = downloadTracker.getJob(c.req.param("jobId"));
     if (!job) return c.json({ error: "Track not found" }, 404);
     return c.json({ paths: job.finalPath ? [job.finalPath] : [] }, 200);
   })
   .get(
     "/jobs/:jobId/manual-search/sources",
-    requireFlowAccess,
+    requirePlaylistAccess,
     noCache,
     validate("query", manualSearchQuery),
     (c) => {
@@ -324,7 +333,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/jobs/:jobId/manual-search",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({
@@ -369,7 +378,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/jobs/:jobId/manual-search/select",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object({ sessionId: v.string(), resultId: v.string() })),
     async (c) => {
       const jobId = c.req.param("jobId");
@@ -415,7 +424,7 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post("/research-missing", requireFlowAccess, async (c) => {
+  .post("/research-missing", requirePlaylistAccess, async (c) => {
     try {
       let requeued = 0;
       for (const playlistId of [LIBRARY_JOB_TYPE, ...getAccessiblePlaylistIds(c.var.user)]) {
@@ -429,7 +438,7 @@ export default new Hono<AppEnv>()
       );
     }
   })
-  .post("/quality-upgrades", requireFlowAccess, async (c) => {
+  .post("/quality-upgrades", requirePlaylistAccess, async (c) => {
     const playlistIds = getAccessiblePlaylistIds(c.var.user);
     const checkedIds = [LIBRARY_JOB_TYPE, ...playlistIds];
     const queued = isDownloadOwnerProcess()
@@ -440,7 +449,7 @@ export default new Hono<AppEnv>()
     if (queued > 0) invalidateRequestsCache();
     return c.json({ success: true, queued, playlistCount: playlistIds.length }, 200);
   })
-  .post("/quality-upgrades/:playlistId/:jobId", requireFlowAccess, async (c) => {
+  .post("/quality-upgrades/:playlistId/:jobId", requirePlaylistAccess, async (c) => {
     const playlistId = c.req.param("playlistId");
     const jobId = c.req.param("jobId");
     if (!canAccessJobType(c.var.user, playlistId)) {
@@ -470,10 +479,10 @@ export default new Hono<AppEnv>()
     invalidateRequestsCache();
     return c.json({ success: true, queued: 1, jobId }, 200);
   })
-  .post("/jobs/:jobId/approve", requireFlowAccess, (c) =>
+  .post("/jobs/:jobId/approve", requirePlaylistAccess, (c) =>
     reviewBlockedJob(c, "approveBlockedJob", c.req.param("jobId")),
   )
-  .post("/jobs/:jobId/deny", requireFlowAccess, (c) =>
+  .post("/jobs/:jobId/deny", requirePlaylistAccess, (c) =>
     reviewBlockedJob(c, "denyBlockedJob", c.req.param("jobId")),
   )
   .post("/jobs/cancel", requireAuth, async (c) => {

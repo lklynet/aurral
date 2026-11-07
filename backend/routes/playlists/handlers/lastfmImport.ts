@@ -9,7 +9,7 @@ import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
-import { importSettings, requireFlowAccess } from "./utils.ts";
+import { importSettings, requirePlaylistAccess } from "./utils.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const getErrorStatus = (error: unknown) => {
@@ -38,7 +38,7 @@ const getPlaylistImport = ({
 export default new Hono<AppEnv>()
   .get(
     "/import/lastfm/playlists",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "query",
       v.object({ username: v.optional(v.union([v.string(), v.array(v.string())])) }),
@@ -67,7 +67,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/lastfm/preview",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate("json", v.object(stationReference)),
     async (c) => {
       try {
@@ -99,7 +99,7 @@ export default new Hono<AppEnv>()
   )
   .post(
     "/import/lastfm",
-    requireFlowAccess,
+    requirePlaylistAccess,
     validate(
       "json",
       v.object({ ...stationReference, ...importSettings, externalName: v.nullish(v.string()) }),

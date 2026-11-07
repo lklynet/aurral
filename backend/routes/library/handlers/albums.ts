@@ -82,7 +82,7 @@ export default new Hono<AppEnv>()
       const { artistId } = query;
       if (!artistId) return c.json({ error: "artistId parameter is required" }, 400);
 
-      if (query.readPath === "canonical") {
+      if (query.readPath === "library" || query.readPath === "canonical") {
         const { albums } = getLibraryReadModelForArtistReferences({
           source: query.source || "all",
           availableOnly: true,
@@ -182,6 +182,7 @@ export default new Hono<AppEnv>()
               code: album.code || null,
               managedBy: album.managedBy || null,
               sources: album.sources || [],
+              libraryId: album.canonicalId || null,
               canonicalId: album.canonicalId || null,
               providerId: album.providerId || null,
               availability: album.availability || null,
@@ -280,6 +281,7 @@ export default new Hono<AppEnv>()
             code: failure?.code || null,
             managedBy: failure?.managedBy || null,
             sources: failure?.sources || [],
+            libraryId: failure?.canonicalId || null,
             canonicalId: failure?.canonicalId || null,
             providerId: failure?.providerId || null,
             availability: failure?.availability || null,
@@ -290,9 +292,9 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .get("/albums/aurral/:canonicalId/status", noCache, (c) => {
+  .get("/albums/aurral/:albumId/status", noCache, (c) => {
     try {
-      const result = libraryManager.getAurralAlbumStatus(c.req.param("canonicalId"));
+      const result = libraryManager.getAurralAlbumStatus(c.req.param("albumId"));
       if (isFailure(result)) return sendAurralFailure(c, result);
       return c.json(result, 200);
     } catch (error) {
@@ -303,14 +305,14 @@ export default new Hono<AppEnv>()
     }
   })
   .put(
-    "/albums/aurral/:canonicalId",
+    "/albums/aurral/:albumId",
     requireAuth,
     requirePermission("changeMonitoring"),
     validate("json", monitoredInput),
     async (c) => {
       try {
         const result = await libraryManager.setAurralAlbumMonitoring(
-          c.req.param("canonicalId"),
+          c.req.param("albumId"),
           c.req.valid("json"),
         );
         if (isFailure(result)) return sendAurralFailure(c, result);
@@ -324,14 +326,14 @@ export default new Hono<AppEnv>()
     },
   )
   .delete(
-    "/albums/aurral/:canonicalId",
+    "/albums/aurral/:albumId",
     requireAuth,
     requirePermission("deleteAlbum"),
     validate("query", deleteQuery),
     async (c) => {
       try {
         const result = await libraryManager.deleteAurralAlbum(
-          c.req.param("canonicalId"),
+          c.req.param("albumId"),
           c.req.valid("query").deleteFiles === "true",
         );
         if (isFailure(result)) return sendAurralFailure(c, result);
@@ -344,23 +346,15 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post(
-    "/albums/aurral/:canonicalId/cancel",
-    requireAuth,
-    requirePermission("addAlbum"),
-    async (c) => {
-      try {
-        const result = await libraryManager.cancelAurralAlbum(c.req.param("canonicalId"));
-        if (isFailure(result)) return sendAurralFailure(c, result);
-        return c.json(result, 200);
-      } catch (error) {
-        return c.json(
-          { error: "Failed to cancel album", message: asAppError(error)?.message },
-          500,
-        );
-      }
-    },
-  )
+  .post("/albums/aurral/:albumId/cancel", requireAuth, requirePermission("addAlbum"), async (c) => {
+    try {
+      const result = await libraryManager.cancelAurralAlbum(c.req.param("albumId"));
+      if (isFailure(result)) return sendAurralFailure(c, result);
+      return c.json(result, 200);
+    } catch (error) {
+      return c.json({ error: "Failed to cancel album", message: asAppError(error)?.message }, 500);
+    }
+  })
   .get("/albums/:id", cacheFor(120), async (c) => {
     try {
       const album = await libraryManager.getAlbumById(c.req.param("id"));
