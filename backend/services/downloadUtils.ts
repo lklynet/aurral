@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { parseFile, type ICommonTagsResult, type IAudioMetadata } from "music-metadata";
+import type { ICommonTagsResult, IAudioMetadata } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
@@ -357,81 +357,4 @@ export async function writeAudioMetadata(filePath: string, metadata: DownloadTra
     },
     { identity: buildAurralIdentity(metadata) },
   );
-}
-
-export async function moveIdentityMarkerToOwnTag(
-  filePath: string,
-  identity: AurralIdentity | null,
-) {
-  return writeAudioTags(filePath, {}, { identity });
-}
-
-type RepairableJob = DownloadTrackFields & {
-  status?: string | null;
-  downloadClient?: string | null;
-  finalPath?: string | null;
-  externalPath?: string | null;
-};
-
-export async function repairYtdlpMetadata(jobs: RepairableJob[] = []) {
-  const result = { scanned: 0, repaired: 0, failed: 0 };
-  const seen = new Set<string>();
-  for (const job of jobs) {
-    if (
-      job?.status !== "done" ||
-      job?.downloadClient !== "ytdlp" ||
-      job?.externalPath ||
-      path.extname(job?.finalPath || "").toLowerCase() !== ".m4a"
-    ) {
-      continue;
-    }
-    const filePath = path.resolve(job.finalPath!);
-    if (seen.has(filePath)) continue;
-    seen.add(filePath);
-    result.scanned += 1;
-    try {
-      const metadata = await parseFile(filePath, { skipCovers: true });
-      const { common } = metadata;
-      const expected = [
-        [common.title, job.trackName],
-        [common.albumartist, job.artistName],
-        [common.album, job.albumName],
-      ].filter(([, value]) => String(value || "").trim());
-      const embeddedIdentity = readAurralIdentity(metadata) || {};
-      const expectedIdentity = [
-        [
-          common.musicbrainz_albumartistid ||
-            common.musicbrainz_artistid ||
-            embeddedIdentity.artistMbid,
-          job.artistMbid,
-        ],
-        [
-          common.musicbrainz_releasegroupid ||
-            common.musicbrainz_albumid ||
-            embeddedIdentity.albumMbid,
-          job.albumMbid,
-        ],
-        [
-          common.musicbrainz_recordingid ||
-            common.musicbrainz_trackid ||
-            embeddedIdentity.trackMbid,
-          job.trackMbid,
-        ],
-      ].filter(([, value]) => String(value || "").trim());
-      if (
-        String(common.artist || "").trim() &&
-        expected.every(([actual, value]) => String(actual || "").trim() === String(value).trim()) &&
-        expectedIdentity.every(
-          ([actual, value]) => String(actual || "").trim() === String(value).trim(),
-        )
-      ) {
-        continue;
-      }
-      await writeAudioMetadata(filePath, job);
-      result.repaired += 1;
-    } catch {
-      result.failed += 1;
-    }
-  }
-  return result;
 }

@@ -1,10 +1,8 @@
 import { Hono } from "hono";
 import { sendAudioFile } from "../../../services/audioFileStream.ts";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
-import { resolveExistingTrackPath } from "../../../services/downloadPaths.ts";
 import { canAccessPlaylistType, requirePlaylistAccessIfSignedIn } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
@@ -41,8 +39,7 @@ export default new Hono<AppEnv>()
     if (job.status !== "done" || !job.finalPath) {
       return c.json({ error: "Track is not ready to stream" }, 400);
     }
-    const resolved = await resolveExistingTrackPath(job.finalPath, downloadWorker.downloadRoot);
-    const sent = resolved && (await sendViaNode(c, sendAudioFile, resolved.path));
+    const sent = await sendViaNode(c, sendAudioFile, job.finalPath);
     return sent || c.json({ error: "Track file missing" }, 404);
   })
   .get(

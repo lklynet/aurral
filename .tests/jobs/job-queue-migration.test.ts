@@ -79,6 +79,15 @@ function honkerDatabase(dir: string, nowS: number) {
     0,
     nowS,
   );
+  live.run(
+    16,
+    "system-task",
+    JSON.stringify({ kind: "stored-data-migration" }),
+    "pending",
+    nowS,
+    0,
+    nowS,
+  );
   const dead = db.prepare(
     "INSERT INTO _honker_dead VALUES (?, '_outbox:notifications', '{\"kind\":\"webhook\"}', 0, ?, 5, 5, ?, 'refused', ?)",
   );
@@ -107,9 +116,6 @@ test("a Honker database moves its tables, settings, jobs, and schedules over in 
 
     assert.ok(fs.existsSync(path.join(dir, "aurral.pre-job-queue.db")));
     assert.deepEqual(tables(), [
-      "_honker_dead",
-      "_honker_live",
-      "_honker_scheduler_tasks",
       "download_cancellations",
       "download_job_cancellations",
       "download_jobs",

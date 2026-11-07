@@ -1,18 +1,12 @@
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseFile } from "music-metadata";
-import taglib from "node-taglib-sharp";
 
-import {
-  readAurralIdentity,
-  repairYtdlpMetadata,
-  writeAudioMetadata,
-} from "../../backend/services/downloadUtils.ts";
-import { requireFixture } from "../playlists/fixtures.ts";
+import { readAurralIdentity, writeAudioMetadata } from "../../backend/services/downloadUtils.ts";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-metadata-"));
 
@@ -38,41 +32,6 @@ function createUntaggedM4a(name: string) {
   );
   assert.equal(generated.status, 0, generated.stderr);
   return filePath;
-}
-
-async function writeM4aTags(
-  filePath: string,
-  tags: {
-    title: string;
-    artist: string;
-    album_artist: string;
-    album: string;
-    grouping: string;
-    comment: string;
-  },
-) {
-  const taggedPath = `${filePath}.tagged.m4a`;
-  const tagged = spawnSync(
-    "ffmpeg",
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-nostdin",
-      "-y",
-      "-i",
-      filePath,
-      "-map",
-      "0",
-      "-c",
-      "copy",
-      ...Object.entries(tags).flatMap(([key, value]) => ["-metadata", `${key}=${value}`]),
-      taggedPath,
-    ],
-    { encoding: "utf8" },
-  );
-  assert.equal(tagged.status, 0, tagged.stderr);
-  await rename(taggedPath, filePath);
 }
 
 test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
@@ -105,110 +64,6 @@ test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
     albumMbid: "22222222-2222-4222-8222-222222222222",
     trackMbid: "33333333-3333-4333-8333-333333333333",
   });
-});
-
-test("startup repair merges partial grouping and legacy comment identities", async () => {
-  const filePath = createUntaggedM4a("partial-marker.m4a");
-  const jobs = [
-    {
-      status: "done",
-      downloadClient: "ytdlp",
-      finalPath: filePath,
-      trackName: "Dead And Lovely",
-      artistName: "Tom Waits",
-      albumName: "Real Gone (Original Version)",
-      artistMbid: "44444444-4444-4444-8444-444444444444",
-      albumMbid: "55555555-5555-4555-8555-555555555555",
-      trackMbid: "66666666-6666-4666-8666-666666666666",
-    },
-  ];
-  await writeM4aTags(filePath, {
-    title: requireFixture(jobs[0]).trackName,
-    artist: requireFixture(jobs[0]).artistName,
-    album_artist: requireFixture(jobs[0]).artistName,
-    album: requireFixture(jobs[0]).albumName,
-    grouping: `AURRAL_IDS={"trackMbid":"${requireFixture(jobs[0]).trackMbid}"}`,
-    comment: `AURRAL_IDS={"artistMbid":"${requireFixture(jobs[0]).artistMbid}","albumMbid":"${requireFixture(jobs[0]).albumMbid}"}`,
-  });
-
-  assert.deepEqual(await repairYtdlpMetadata(jobs), {
-    scanned: 1,
-    repaired: 0,
-    failed: 0,
-  });
-});
-
-test("startup repair tags existing completed yt-dlp M4As", async () => {
-  const filePath = createUntaggedM4a("existing-track.m4a");
-  const jobs = [
-    {
-      status: "done",
-      downloadClient: "ytdlp",
-      finalPath: filePath,
-      trackName: "Dead And Lovely",
-      artistName: "Tom Waits",
-      albumName: "Real Gone (Original Version)",
-      artistMbid: "44444444-4444-4444-8444-444444444444",
-      albumMbid: "55555555-5555-4555-8555-555555555555",
-      trackMbid: "66666666-6666-4666-8666-666666666666",
-      releaseYear: "2004",
-      trackNumber: 2,
-    },
-  ];
-  const result = await repairYtdlpMetadata(jobs);
-
-  assert.deepEqual(result, { scanned: 1, repaired: 1, failed: 0 });
-  const { common } = await parseFile(filePath);
-  assert.equal(common.title, "Dead And Lovely");
-  assert.equal(common.artist, "Tom Waits");
-  assert.equal(common.albumartist, "Tom Waits");
-  assert.equal(common.album, "Real Gone (Original Version)");
-  assert.deepEqual(await repairYtdlpMetadata(jobs), {
-    scanned: 1,
-    repaired: 0,
-    failed: 0,
-  });
-});
-
-test("startup repair keeps the guest artists in a track's credit", async () => {
-  const filePath = createUntaggedM4a("guest-credit.m4a");
-  const jobs = [
-    {
-      status: "done",
-      downloadClient: "ytdlp",
-      finalPath: filePath,
-      trackName: "Dead And Lovely",
-      artistName: "Tom Waits",
-      albumName: "Real Gone (Original Version)",
-    },
-  ];
-  await repairYtdlpMetadata(jobs);
-  const file = taglib.File.createFromPath(filePath);
-  file.tag.performers = ["Tom Waits & Kathleen Brennan"];
-  file.save();
-  file.dispose();
-
-  assert.deepEqual(await repairYtdlpMetadata(jobs), { scanned: 1, repaired: 0, failed: 0 });
-  assert.equal((await parseFile(filePath)).common.artist, "Tom Waits & Kathleen Brennan");
-});
-
-test("startup repair leaves a file that a yt-dlp job later reused from outside Aurral", async () => {
-  const filePath = createUntaggedM4a("reused-elsewhere.m4a");
-  const before = await parseFile(filePath);
-  const result = await repairYtdlpMetadata([
-    {
-      status: "done",
-      downloadClient: "ytdlp",
-      finalPath: filePath,
-      externalPath: filePath,
-      trackName: "Dead And Lovely",
-      artistName: "Tom Waits",
-      albumName: "Real Gone (Original Version)",
-    },
-  ]);
-
-  assert.deepEqual(result, { scanned: 0, repaired: 0, failed: 0 });
-  assert.deepEqual((await parseFile(filePath)).common, before.common);
 });
 
 afterAll(async () => {

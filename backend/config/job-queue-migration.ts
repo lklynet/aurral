@@ -83,6 +83,13 @@ const RETIRED_OBJECTS = [
   "DROP TABLE IF EXISTS honker_task_runs",
 ];
 
+const RETIRED_SYSTEM_KINDS = new Set([
+  "identity-marker-migration",
+  "playlist-startup-migration",
+  "stored-data-migration",
+  "upgrade-readiness-check",
+]);
+
 const RENAMED_SETTINGS = [["sharedPlaylists", "staticPlaylists"]] as const;
 const RETIRED_SETTINGS = ["weeklyFlowIncompleteRetryJobs", "deprecatedUsage"];
 
@@ -209,6 +216,7 @@ function copyHonkerJobs(db: Database.Database, nowS: number) {
     .all();
   for (const row of live) {
     const job = mapLegacyJob(row.queue, row.payload);
+    if (RETIRED_SYSTEM_KINDS.has(job.kind)) continue;
     insert.run(
       row.id,
       job.queue,
@@ -267,6 +275,15 @@ function copyHonkerJobs(db: Database.Database, nowS: number) {
   return { live: live.length, failed: dead.length };
 }
 
+function dropHonkerTables(db: Database.Database) {
+  const tables = db
+    .prepare<[], { name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '\\_honker\\_%' ESCAPE '\\'",
+    )
+    .all();
+  for (const { name } of tables) db.exec(`DROP TABLE "${name}"`);
+}
+
 function copyHonkerSchedules(db: Database.Database) {
   if (!tableExists(db, "_honker_scheduler_tasks")) return 0;
   const rows = db
@@ -302,7 +319,10 @@ function copyHonkerSchedules(db: Database.Database) {
 export function migrateToJobQueue(db: Database.Database, dataDir: string) {
   db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   const done = db.prepare("SELECT 1 FROM settings WHERE key = ?").get(MIGRATION_KEY);
-  if (done) return;
+  if (done) {
+    dropHonkerTables(db);
+    return;
+  }
   if (!hasLegacyState(db)) {
     db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)").run(MIGRATION_KEY, "1");
     return;
@@ -348,6 +368,7 @@ export function migrateToJobQueue(db: Database.Database, dataDir: string) {
     db.exec(JOB_TABLES_SQL);
     const jobs = copyHonkerJobs(db, Math.floor(Date.now() / 1000));
     const schedules = copyHonkerSchedules(db);
+    dropHonkerTables(db);
     db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(MIGRATION_KEY, "1");
     return { tables, columns, settings, jobs, schedules };
   })();

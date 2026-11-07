@@ -27,7 +27,7 @@ The JSON API uses the current names too. Version 1 of the [app contract](../src/
 
 `LIBRARY_FOLDER` names the Library folder. `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` still work and log a warning.
 
-Playlist files live in `_playlists` in the Library folder. At boot, before the server listens, Aurral moves them there from `aurral-weekly-flow/_playlists`. It must finish first: a playlist written at the new path while uploaded artwork still sits at the old one would replace that artwork. Media servers see the move as new files. Jellyfin replaces each playlist, and Navidrome keeps the old copy beside the new one until someone deletes it. `aurral-weekly-flow/` stays only to read download folders from older versions.
+Playlist files live in `_playlists` in the Library folder. At boot, before the server listens, Aurral moves them there from `aurral-weekly-flow/_playlists`. It must finish first: a playlist written at the new path while uploaded artwork still sits at the old one would replace that artwork. Media servers see the move as new files. Jellyfin replaces each playlist, and Navidrome keeps the old copy beside the new one until someone deletes it.
 
 These names stay, because something outside Aurral depends on them or renaming them would cost more than it explains:
 
@@ -42,3 +42,7 @@ These names stay, because something outside Aurral depends on them or renaming t
 Subsonic clients store `shared` and `shared-song` IDs for favorites, offline caches, and playlists, so a rename would make them treat existing items as new ones.
 
 Migration code keeps the old names, such as `weeklyFlows` and `playlist_download_jobs`, because it describes data from older versions.
+
+## Upgrading from Aurral 2
+
+Aurral 3 opens a database only when Aurral 2 finished every upgrade step on it (`backend/config/upgrade-gate.ts`). Otherwise it exits before it writes anything and asks the admin to start the `2` image first. That is why 3.0 carries no code for data from before 2.x: no old path remapping, no 2.x settings readers, and no 2.x table rebuilds. Don't add any back. A new schema change gets its own migration with its own marker, and runs on every start.

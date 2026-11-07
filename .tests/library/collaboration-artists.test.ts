@@ -1,11 +1,9 @@
 import { test, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ICommonTagsResult } from "music-metadata";
-import { fileURLToPath } from "node:url";
 import { db } from "../../backend/config/db-sqlite.ts";
 import { getArtistLibraryLookup } from "../../backend/routes/library/handlers/misc.ts";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.ts";
@@ -199,46 +197,4 @@ test("deleting a credited artist keeps a release credited to several artists", a
   assert.equal(deleted.success, true);
   assert.deepEqual(albumOwners(), [{ title: "Furi", name: credit, mbid: null }]);
   await access(soundtrack.path);
-});
-
-test("credits come from album tags stored before an upgrade", (t) => {
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-  const dataDir = path.join(tmpdir(), `aurral-album-credits-${process.pid}`);
-  t.onTestFinished(() => rm(dataDir, { recursive: true, force: true }));
-  const run = (script: string) =>
-    execFileSync(process.execPath, ["--input-type=module", "-e", script], {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        AURRAL_DATA_DIR: dataDir,
-        AURRAL_DB_PATH: path.join(dataDir, "aurral.db"),
-      },
-      encoding: "utf8",
-    });
-  const seeded = (ids: unknown, tag = "musicbrainz_albumartistid") =>
-    JSON.stringify({ tags: { [tag]: ids } });
-  run(`
-    const { db } = await import("./backend/config/db-sqlite.ts");
-    db.prepare("INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES ('name:artist:credit', 'Credit', 1, 1)").run();
-    const album = db.prepare("INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at) VALUES (?, 1, ?, ?, 1, 1)");
-    album.run("album:shared", "Shared", ${JSON.stringify(seeded(["AAAAAAAA-0000-4000-8000-000000000001", "not-an-id", "bbbbbbbb-0000-4000-8000-000000000002"]))});
-    album.run("album:solo", "Solo", ${JSON.stringify(seeded(["cccccccc-0000-4000-8000-000000000003", "not-an-id"]))});
-    album.run("album:tracks", "Tracks", ${JSON.stringify(seeded(["dddddddd-0000-4000-8000-000000000004", "eeeeeeee-0000-4000-8000-000000000005"], "musicbrainz_artistid"))});
-    album.run("album:broken", "Broken", "{");
-    db.prepare("DELETE FROM settings WHERE key = 'migration:album-credits-v1'").run();
-  `);
-
-  const credits = JSON.parse(
-    run(`
-      const { db } = await import("./backend/config/db-sqlite.ts");
-      process.stdout.write(JSON.stringify(db.prepare(
-        "SELECT album.title, credit.artist_mbid FROM library_album_credits AS credit JOIN library_albums AS album ON album.id = credit.album_id ORDER BY credit.artist_mbid",
-      ).all()));
-    `),
-  );
-
-  assert.deepEqual(credits, [
-    { title: "Shared", artist_mbid: "aaaaaaaa-0000-4000-8000-000000000001" },
-    { title: "Shared", artist_mbid: "bbbbbbbb-0000-4000-8000-000000000002" },
-  ]);
 });

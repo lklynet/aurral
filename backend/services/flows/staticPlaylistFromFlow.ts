@@ -1,17 +1,11 @@
 import fsp from "fs/promises";
-import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
-import { RETIRED_FLOWS_SETTING } from "../../config/db-sqlite.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
-import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
-import { remapLegacyPath } from "../downloadPaths.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { flowPlaylistConfig, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { buildPlaylistTrackIdentity, normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
 import { linkTracksToLibrary } from "../playlists/playlistLibrary.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
-import { processPlaylistOperation } from "../playlists/playlistOperations.ts";
 
 const trackFromJob = (job: DownloadJob) => ({
   artistName: job.artistName,
@@ -56,8 +50,7 @@ export async function saveFlowAsStaticPlaylist(
     if (job.status !== "done" || typeof job.finalPath !== "string") continue;
     const identity = buildPlaylistTrackIdentity(job);
     if (saved.has(identity)) continue;
-    const filePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
-    if (await isFile(filePath)) saved.set(identity, { job });
+    if (await isFile(job.finalPath)) saved.set(identity, { job });
   }
   if (saved.size === 0) return null;
 
@@ -84,32 +77,4 @@ export async function saveFlowAsStaticPlaylist(
     throw error;
   }
   return { playlist, trackCount: saved.size };
-}
-
-export async function convertRetiredFlows() {
-  for (const flowId of dbOps.getJSONSetting(RETIRED_FLOWS_SETTING, v.array(v.string())) ?? []) {
-    const flow = flowPlaylistConfig.getFlow(flowId);
-    if (!flow) continue;
-    try {
-      if (downloadTracker.getByPlaylistId(flowId).some((job) => job.status === "done")) {
-        const leftover = flowPlaylistConfig
-          .getStaticPlaylists()
-          .find((playlist) => playlist.sourceFlowId === flowId && playlist.name === flow.name);
-        if (leftover) await discardStaticPlaylist(leftover.id);
-        const saved = await saveFlowAsStaticPlaylist(flow, {
-          name: flow.name,
-          ownerUserId: flow.ownerUserId,
-          replacesFlow: true,
-        });
-        if (!saved) throw new Error("none of its track files were found");
-      }
-      await processPlaylistOperation({ kind: "delete-flow", flowId });
-    } catch (error) {
-      console.warn(
-        `[Flows] Could not turn retired flow "${flow.name}" into a playlist:`,
-        asAppError(error)?.message,
-      );
-    }
-  }
-  dbOps.setJSONSetting(RETIRED_FLOWS_SETTING, []);
 }

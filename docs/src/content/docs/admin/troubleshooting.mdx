@@ -219,14 +219,20 @@ docker stats --no-stream <container>
 2. Restart Aurral.
 3. Read the container logs.
 
-## Roll back after the release metadata worker was introduced
+## Aurral 3 says it can't open the database
 
-Stop Aurral before restoring a version that has no separate release metadata worker. Using the current version, run the maintenance command against the same application data directory:
+Aurral 3 opens a database only after Aurral 2 has finished upgrading it. Aurral 3 stops before it changes anything.
 
-```sh
-AURRAL_DATA_DIR=/path/to/config node backend/scripts/restoreReleaseMetadataQueue.ts
-```
+1. Change the image to `ghcr.io/lklynet/aurral:2` and start it with the same `./config`.
+2. Wait a few minutes after it starts. If Aurral 2 shows download folder items waiting for review, finish them.
+3. Change the image back and start Aurral 3.
 
-For Docker, run the command in a temporary container using the current image and the same config volume. Keep the regular Aurral container stopped. Preserve a custom `AURRAL_DB_PATH` if your installation uses one.
+## Roll back to Aurral 2
 
-The command moves pending refreshes and their schedule to the legacy system queue. It preserves job ids, retry counts, deadlines, and the next scheduled refresh. It refuses to run while a metadata job is still claimed. Let the current version finish those jobs, then stop it and retry the command before starting the older version. If Aurral stopped during a refresh, the command returns that refresh to the queue once its claim expires, which can take up to an hour.
+On its first start, Aurral 3 saves the database as `aurral.pre-job-queue.db` in `./config`. To go back to Aurral 2:
+
+1. Stop Aurral.
+2. Delete `aurral.db`, `aurral.db-wal`, and `aurral.db-shm`, then rename `aurral.pre-job-queue.db` to `aurral.db`.
+3. Start a `2` image.
+
+Changes made in Aurral 3 are lost.

@@ -52,7 +52,6 @@ import {
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.ts";
 import { removeEmptiedFolder, removeSidecars } from "./libraryFiles/fileTransfer.ts";
-import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { activeLidarrRoots, libraryFolderOwner } from "./libraryFolders.ts";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.ts";
@@ -871,17 +870,11 @@ async function deleteAurralLibraryFiles(paths: string[]) {
   );
   const deletionResults = await Promise.allSettled(
     paths.map(async (filePath) => {
-      const removal = await removePlaylistFileIfUnshared(filePath, "library", {
-        deleteIfUnshared: true,
-      });
-      if (removal.action === "skipped") {
-        if (deletablePaths.has(path.resolve(filePath))) {
-          try {
-            await fsp.unlink(filePath);
-          } catch (error) {
-            const failure = asAppError(error);
-            if (failure?.code !== "ENOENT") throw error;
-          }
+      if (deletablePaths.has(path.resolve(filePath))) {
+        try {
+          await fsp.unlink(filePath);
+        } catch (error) {
+          if (asAppError(error)?.code !== "ENOENT") throw error;
         }
       }
       return filePath;

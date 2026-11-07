@@ -89,19 +89,19 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   };
   const sourcePath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "source-playlist",
+    "_flows",
+    "source-flow",
     "System of a Down",
     "Toxicity",
     "Chop Suey.flac",
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const sourceJobId = createTrackedJob(downloadTracker, track, "source-playlist");
+  const sourceJobId = createTrackedJob(downloadTracker, track, "source-flow");
   assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
-  const result = await reuseTrackForPlaylist(track, "target-playlist", {
+  const result = await reuseTrackForPlaylist(track, "target-flow", {
     downloadRoot,
   });
 
@@ -112,9 +112,8 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
 });
 
-test("adding a flow track to a shared playlist moves its file into the Library folder", async () => {
+test("adding a flow track to the Library moves its file into the Library folder", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Source Flow", size: 10 });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Keepers", tracks: [] });
   const track = {
     artistName: "Julia Holter",
     trackName: "Betsy on the Roof",
@@ -135,7 +134,7 @@ test("adding a flow track to a shared playlist moves its file into the Library f
   downloadTracker.setDone(flowJobId, flowPath, track.albumName);
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
-  const result = await reuseTrackForPlaylist(track, playlist.id, { downloadRoot });
+  const result = await reuseTrackForPlaylist(track, "library", { downloadRoot });
 
   const libraryPath = path.join(downloadRoot, "Julia Holter", "Wilderness", "Betsy.flac");
   assert.equal(result.finalPath, libraryPath);
@@ -285,15 +284,15 @@ test("library reuse does not cross album boundaries for the same track title", a
   };
   const sourcePath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "source-playlist",
+    "_flows",
+    "source-flow",
     "Amigo the Devil",
     "Everything is Fine",
     "Hell and You.flac",
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const sourceJobId = createTrackedJob(downloadTracker, sourceTrack, "source-playlist");
+  const sourceJobId = createTrackedJob(downloadTracker, sourceTrack, "source-flow");
   assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, sourceTrack.albumName);
 
@@ -318,7 +317,7 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
     trackName: "Change",
     albumName: "White Pony",
   };
-  const missingPath = path.join(downloadRoot, "aurral-weekly-flow", "flow-playlist", "Change.flac");
+  const missingPath = path.join(downloadRoot, "_flows", "flow-playlist", "Change.flac");
   const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, missingPath, track.albumName);
@@ -342,7 +341,7 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
   const deletedFlowId = "deleted-flow";
   const reusedPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
+    "_flows",
     deletedFlowId,
     "Metric",
     "Romanticize the Dive",
@@ -375,7 +374,7 @@ test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing f
   const deletedFlowId = "56cb64eb-e545-4760-bb29-58ad2ccaccea";
   const reusedPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
+    "_flows",
     deletedFlowId,
     "Metric",
     "Romanticize the Dive",
@@ -401,12 +400,7 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
     trackName: "Glory Box",
     albumName: "Dummy",
   };
-  const missingPath = path.join(
-    downloadRoot,
-    "aurral-weekly-flow",
-    "flow-playlist",
-    "Glory Box.flac",
-  );
+  const missingPath = path.join(downloadRoot, "_flows", "flow-playlist", "Glory Box.flac");
   const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, missingPath, track.albumName);
@@ -455,6 +449,7 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
 
 test("reuseTrackForPlaylist path-shares flow files until refresh relocates them", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Discover Weekly", size: 10 });
+  const keepers = flowPlaylistConfig.createFlow({ name: "Keepers", size: 10 });
   const track = {
     artistName: "Burial",
     trackName: "Archangel",
@@ -462,7 +457,7 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   };
   const sourcePath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
+    "_flows",
     flow.id,
     "Burial",
     "Untrue",
@@ -474,7 +469,7 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
-  const result = await reuseTrackForPlaylist(track, "keepers", {
+  const result = await reuseTrackForPlaylist(track, keepers.id, {
     downloadRoot,
   });
 
@@ -489,8 +484,8 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   });
   const expectedPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "keepers",
+    "_flows",
+    keepers.id,
     "Burial",
     "Untrue",
     "Archangel.flac",
@@ -500,7 +495,8 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   assert.equal(await fs.readFile(expectedPath, "utf8"), "audio");
   await assert.rejects(fs.access(sourcePath));
 });
-test("relocateSharedFilesBeforePlaylistRemoval moves shared files to a survivor playlist", async () => {
+
+test("relocateSharedFilesBeforePlaylistRemoval moves a flow file the Library kept into the Library", async () => {
   const track = {
     artistName: "Four Tet",
     trackName: "Two Thousand and Seventeen",
@@ -508,29 +504,27 @@ test("relocateSharedFilesBeforePlaylistRemoval moves shared files to a survivor 
   };
   const ownerPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "owner-playlist",
+    "_flows",
+    "owner-flow",
     "Four Tet",
     "New Energy",
     "Two Thousand and Seventeen.flac",
   );
   await fs.mkdir(path.dirname(ownerPath), { recursive: true });
   await fs.writeFile(ownerPath, "audio");
-  const ownerJobId = createTrackedJob(downloadTracker, track, "owner-playlist");
+  const ownerJobId = createTrackedJob(downloadTracker, track, "owner-flow");
   assert.ok(ownerJobId != null);
   downloadTracker.setDone(ownerJobId, ownerPath, track.albumName);
-  const sharedJobId = createTrackedJob(downloadTracker, track, "survivor-playlist");
+  const sharedJobId = createTrackedJob(downloadTracker, track, "library");
   assert.ok(sharedJobId != null);
   downloadTracker.setDone(sharedJobId, ownerPath, track.albumName);
 
-  const result = await relocateSharedFilesBeforePlaylistRemoval("owner-playlist", {
+  const result = await relocateSharedFilesBeforePlaylistRemoval("owner-flow", {
     downloadRoot,
   });
 
   const expectedPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "survivor-playlist",
     "Four Tet",
     "New Energy",
     "Two Thousand and Seventeen.flac",
@@ -541,7 +535,9 @@ test("relocateSharedFilesBeforePlaylistRemoval moves shared files to a survivor 
   await assert.rejects(fs.access(ownerPath));
 });
 
-test("removePlaylistFileIfUnshared relocates when another playlist still references the file", async () => {
+test("removePlaylistFileIfUnshared relocates when another flow still references the file", async () => {
+  const owner = flowPlaylistConfig.createFlow({ name: "Owner", size: 10 });
+  const other = flowPlaylistConfig.createFlow({ name: "Other", size: 10 });
   const track = {
     artistName: "Aphex Twin",
     trackName: "Xtal",
@@ -549,30 +545,30 @@ test("removePlaylistFileIfUnshared relocates when another playlist still referen
   };
   const ownerPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "owner-playlist",
+    "_flows",
+    owner.id,
     "Aphex Twin",
     "Selected Ambient Works",
     "Xtal.flac",
   );
   await fs.mkdir(path.dirname(ownerPath), { recursive: true });
   await fs.writeFile(ownerPath, "audio");
-  const ownerJobId = createTrackedJob(downloadTracker, track, "owner-playlist");
+  const ownerJobId = createTrackedJob(downloadTracker, track, owner.id);
   assert.ok(ownerJobId != null);
   downloadTracker.setDone(ownerJobId, ownerPath, track.albumName);
-  const sharedJobId = createTrackedJob(downloadTracker, track, "other-playlist");
+  const sharedJobId = createTrackedJob(downloadTracker, track, other.id);
   assert.ok(sharedJobId != null);
   downloadTracker.setDone(sharedJobId, ownerPath, track.albumName);
 
-  const result = await removePlaylistFileIfUnshared(ownerPath, "owner-playlist", {
+  const result = await removePlaylistFileIfUnshared(ownerPath, owner.id, {
     downloadRoot,
     excludeJobIds: [ownerJobId],
   });
 
   const expectedPath = path.join(
     downloadRoot,
-    "aurral-weekly-flow",
-    "other-playlist",
+    "_flows",
+    other.id,
     "Aphex Twin",
     "Selected Ambient Works",
     "Xtal.flac",
@@ -583,23 +579,22 @@ test("removePlaylistFileIfUnshared relocates when another playlist still referen
 });
 
 test("removePlaylistFileIfUnshared preserves external files during shared cleanup", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "External" });
+  const flow = flowPlaylistConfig.createFlow({ name: "External", size: 10 });
   const track = {
     artistName: "Aphex Twin",
     trackName: "External Xtal",
     albumName: "Selected Ambient Works",
   };
-  const externalPath = path.join(downloadRoot, "external-xtal.flac");
+  const externalPath = path.join(downloadRoot, "_flows", flow.id, "external-xtal.flac");
   await fs.mkdir(path.dirname(externalPath), { recursive: true });
   await fs.writeFile(externalPath, "audio");
-  const jobId = createTrackedJob(downloadTracker, track, playlist.id);
+  const jobId = createTrackedJob(downloadTracker, track, flow.id);
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, externalPath, track.albumName, "/music/External Xtal.flac");
 
-  const result = await removePlaylistFileIfUnshared(externalPath, playlist.id, {
+  const result = await removePlaylistFileIfUnshared(externalPath, flow.id, {
     downloadRoot,
     excludeJobIds: [jobId],
-    deleteIfUnshared: true,
   });
 
   assert.equal(result.action, "skipped");
@@ -693,7 +688,7 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
 
-  const result = await moveHandedOverTracksToLidarr({ downloadRoot });
+  const result = await moveHandedOverTracksToLidarr();
 
   assert.deepEqual(result, { moved: 1, deleted: 1 });
   assert.equal(
@@ -708,7 +703,7 @@ test("Aurral copies stay when the album was not handed over", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
-  await moveHandedOverTracksToLidarr({ downloadRoot });
+  await moveHandedOverTracksToLidarr();
   assert.equal(
     trackedJob(downloadTracker, notHandedOver.jobId).finalPath,
     notHandedOver.aurralPath,

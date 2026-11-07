@@ -57,7 +57,7 @@ test("preserves static playlist track order", async () => {
   downloadTracker.setDone(first.canonicalJobId, firstPath, "Album");
   downloadTracker.setDone(second.canonicalJobId, secondPath, "Album");
 
-  const entries = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
+  const entries = await collectPlaylistFileTracks(playlist.id);
   assert.deepEqual(
     entries.map((entry) => entry.path),
     [secondPath, firstPath],
@@ -76,7 +76,7 @@ test("normalizes empty migrated names", async () => {
   );
   downloadTracker._load();
 
-  const tracks = await collectPlaylistFileTracks(playlist.id, { downloadRoot });
+  const tracks = await collectPlaylistFileTracks(playlist.id);
   assert.equal(tracks[0]?.artist, "Unknown Artist");
   assert.equal(tracks[0]?.title, "Unknown Track");
 });

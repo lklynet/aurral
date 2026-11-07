@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { initializeSchemaOnStartup, type TableColumnRow } from "./schema-migration-v2.ts";
+import { SCHEMA_VERSION, missingUpgradeSteps } from "./upgrade-gate.ts";
 import { JOB_TABLES_SQL, migrateToJobQueue } from "./job-queue-migration.ts";
 import { renamePlaylistPermission } from "./playlist-permission-migration.ts";
 import { migrateStaticPlaylistsToLibrary } from "./static-playlist-library-migration.ts";
@@ -27,6 +27,20 @@ const db = new Database(DB_PATH);
 
 db.pragma("foreign_keys = ON");
 db.pragma("busy_timeout = 5000");
+
+const missingSteps = missingUpgradeSteps(db);
+if (missingSteps.length) {
+  console.error(
+    [
+      "Aurral 3 can't open this database yet. It was last used by an Aurral 2 that didn't finish upgrading it.",
+      "Start ghcr.io/lklynet/aurral:2 with this data folder, wait a few minutes for it to finish starting up, then start Aurral 3 again.",
+      "If Aurral 2 shows download folder items waiting for review, finish those first. Aurral 3 didn't change anything.",
+      `Missing: ${missingSteps.join(", ")}`,
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
 for (let attempt = 0; attempt < 5; attempt++) {
   try {
     if (db.pragma("journal_mode", { simple: true }) !== "wal") {
@@ -63,13 +77,19 @@ function tryAddColumn(sql: string) {
   }
 }
 
-migrateToJobQueue(db, DATA_DIR);
-
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+`);
+db.prepare(
+  "INSERT INTO settings (key, value) VALUES ('schemaVersion', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+).run(String(SCHEMA_VERSION));
+
+migrateToJobQueue(db, DATA_DIR);
+
+db.exec(`
 
   CREATE TABLE IF NOT EXISTS discovery_cache (
     key TEXT PRIMARY KEY,
@@ -92,7 +112,19 @@ db.exec(`
     subsonic_password TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     permissions TEXT,
-    discover_layout TEXT
+    discover_layout TEXT,
+    lastfm_username TEXT,
+    listen_history_provider TEXT,
+    listen_history_username TEXT,
+    lidarr_root_folder_path TEXT,
+    lidarr_quality_profile_id INTEGER,
+    listen_history_url TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    is_protected INTEGER NOT NULL DEFAULT 0,
+    role_source TEXT NOT NULL DEFAULT 'local',
+    has_local_password INTEGER NOT NULL DEFAULT 0,
+    needs_identity_migration INTEGER NOT NULL DEFAULT 0,
+    allow_identity_adoption INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -144,6 +176,8 @@ db.exec(`
     allow_download INTEGER NOT NULL DEFAULT 0,
     expires_at INTEGER,
     created_at INTEGER NOT NULL,
+    manifest TEXT,
+    share_files INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -356,6 +390,7 @@ db.exec(`
     remote_username TEXT,
     remote_filename TEXT,
     denied_remote_sources TEXT,
+    external_path TEXT,
     quality_tier TEXT,
     quality_format TEXT,
     quality_bitrate_kbps INTEGER,
@@ -368,8 +403,14 @@ db.exec(`
     album_grab_attempted INTEGER NOT NULL DEFAULT 0,
     request_kind TEXT NOT NULL DEFAULT 'track',
     quick_searched_sources TEXT NOT NULL DEFAULT '[]',
-    held_for_review TEXT
+    held_for_review TEXT,
+    album_grab_failures INTEGER NOT NULL DEFAULT 0,
+    managed_by TEXT,
+    request_group_id TEXT,
+    reused_library_file INTEGER NOT NULL DEFAULT 0
   );
+
+  CREATE INDEX IF NOT EXISTS idx_download_jobs_request_group ON download_jobs(request_group_id);
 
   CREATE TABLE IF NOT EXISTS download_cancellations (
     owner_id TEXT PRIMARY KEY,
@@ -499,7 +540,8 @@ db.exec(`
     artist_name TEXT,
     metadata_json TEXT,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    monitored INTEGER NOT NULL DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS custom_artwork (
@@ -544,6 +586,7 @@ db.exec(`
     last_seen_scan_id INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    artist_tag TEXT,
     UNIQUE (source, path),
     FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
   );
@@ -737,7 +780,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_inbox_items_user_state ON inbox_items(user_id, is_dismissed, is_read, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inbox_items_expiry ON inbox_items(expires_at, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles(published_at DESC);
-  DELETE FROM settings WHERE key = 'news:rssState' OR key GLOB 'user:*:newsPreferences';
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_username ON slskd_transfer_history(username, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_created_at ON slskd_transfer_history(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_status ON slskd_transfer_history(status, created_at DESC);
@@ -745,9 +787,6 @@ db.exec(`
 `);
 db.exec(JOB_TABLES_SQL);
 
-tryAddColumn("ALTER TABLE share_links ADD COLUMN manifest TEXT");
-tryAddColumn("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
-tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 tryAddColumn("ALTER TABLE play_events ADD COLUMN external_id TEXT");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN disabled TEXT NOT NULL DEFAULT '[]'");
 tryAddColumn("ALTER TABLE plugins ADD COLUMN source_url TEXT");
@@ -759,15 +798,7 @@ db.exec(`
     ON play_events(user_id, source, external_id) WHERE external_id IS NOT NULL;
 `);
 
-db.transaction(() => {
-  const columns = db
-    .prepare<[], TableColumnRow>("PRAGMA table_info(play_album_stats)")
-    .all()
-    .map((column) => column.name);
-  if (!columns.includes("album_key")) {
-    db.exec("DROP TRIGGER IF EXISTS play_events_album_stats_insert; DROP TABLE play_album_stats;");
-  }
-  db.exec(`
+db.exec(`
     CREATE TABLE IF NOT EXISTS play_album_stats (
       user_id INTEGER NOT NULL,
       album_key TEXT NOT NULL,
@@ -790,90 +821,6 @@ db.transaction(() => {
         last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at);
     END;
   `);
-}).immediate();
-
-const playAlbumStatsMigrationKey = "migration:play-album-stats-v2";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(playAlbumStatsMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.exec(`
-    UPDATE play_events AS event
-    SET album_key = (
-      SELECT MIN(album.identity_key)
-      FROM library_albums AS album
-      JOIN library_artists AS artist ON artist.id = album.artist_id
-      WHERE (
-        event.album_mbid IS NOT NULL
-        AND TRIM(event.album_mbid) != ''
-        AND event.album_mbid IN (
-          album.identity_key,
-          COALESCE(album.mbid, ''),
-          COALESCE(album.release_group_mbid, ''),
-          CAST(album.id AS TEXT)
-        )
-      ) OR (
-        (event.album_mbid IS NULL OR TRIM(event.album_mbid) = '')
-        AND event.album = album.title COLLATE NOCASE
-        AND (
-          event.artist = artist.name COLLATE NOCASE
-          OR event.artist = album.album_artist COLLATE NOCASE
-        )
-      )
-      HAVING COUNT(*) = 1
-    )
-    WHERE album_key IS NULL;
-
-    DELETE FROM play_album_stats;
-    INSERT INTO play_album_stats
-      (user_id, album_key, play_count, last_played_at)
-    SELECT user_id, album_key, COUNT(*), MAX(played_at)
-    FROM play_events
-    WHERE album_key IS NOT NULL AND TRIM(album_key) != ''
-    GROUP BY user_id, album_key;
-  `);
-}).immediate();
-
-const retiredDiscoverPlaylistsMigrationKey = "migration:retire-discover-playlists-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(retiredDiscoverPlaylistsMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.prepare("DELETE FROM discovery_cache WHERE key LIKE '%discoverPlaylists'").run();
-  db.prepare("DELETE FROM jobs WHERE queue = 'discovery-playlist-build'").run();
-  fs.rmSync(path.join(DATA_DIR, "discover-artwork"), { recursive: true, force: true });
-}).immediate();
-
-const flowSourcesMigrationKey = "migration:flow-sources-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(flowSourcesMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  const stored = db
-    .prepare<[], Pick<SettingsRow, "value">>(
-      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
-    )
-    .get();
-  const flows = v.safeParse(v.array(v.looseObject({})), stored ? JSON.parse(stored.value) : null);
-  if (!flows.success) return;
-  const migrated = flows.output.map((flow) => {
-    if (flow.discoverPresetId === "release-radar") {
-      return { ...flow, mix: { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 100 } };
-    }
-    if (flow.discoverPresetId !== "focus-listening-history") return flow;
-    const related = Array.isArray(flow.relatedArtists) ? flow.relatedArtists.join(", ") : "";
-    const generated = flow.description === `Tracks related to ${related}`;
-    return {
-      ...flow,
-      recentListening: true,
-      ...(generated && { relatedArtists: [], description: null }),
-    };
-  });
-  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(JSON.stringify(migrated));
-}).immediate();
 
 const webhookEventsMigrationKey = "migration:webhook-events-per-webhook-v1";
 db.transaction(() => {
@@ -901,201 +848,6 @@ db.transaction(() => {
   );
 }).immediate();
 
-const perUserDiscoveryMigrationKey = "migration:per-user-discovery-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(perUserDiscoveryMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.prepare(
-    "DELETE FROM discovery_cache WHERE key LIKE 'lfm:%' OR key LIKE 'lb:%' OR key LIKE 'koito:%'",
-  ).run();
-  db.prepare(
-    "DELETE FROM jobs WHERE queue = 'discovery-user-refresh' AND state IN ('pending', 'running')",
-  ).run();
-}).immediate();
-
-const unifiedDiscoverySourceMigrationKey = "migration:unified-discovery-source-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(unifiedDiscoverySourceMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.prepare(
-    `DELETE FROM discovery_cache
-     WHERE key = 'topTags' OR key LIKE '%fallbackGenres' OR key LIKE '%fallbackGenrePools'`,
-  ).run();
-  db.prepare(
-    "UPDATE discovery_cache SET value = 'listenbrainz' WHERE key = 'provider' AND value = 'listenbrainz-fallback'",
-  ).run();
-}).immediate();
-
-const nameGuessesMigrationKey = "migration:name-guesses-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(nameGuessesMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.prepare(
-    "DELETE FROM musicbrainz_artist_mbid_cache WHERE artist_name_key NOT LIKE 'library:%'",
-  ).run();
-  db.prepare(
-    "DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'",
-  ).run();
-}).immediate();
-
-const artistGuessesMigrationKey = "migration:name-guesses-v2";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(artistGuessesMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.prepare("DELETE FROM musicbrainz_artist_mbid_cache").run();
-}).immediate();
-
-const albumCreditsMigrationKey = "migration:album-credits-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(albumCreditsMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  const hex = (length: number) => "[0-9a-f]".repeat(length);
-  db.prepare(
-    `WITH credit AS (
-       SELECT DISTINCT album.id AS album_id, lower(trim(tag.value)) AS artist_mbid
-       FROM library_albums AS album,
-         json_each(
-           CASE WHEN json_valid(album.metadata_json) THEN album.metadata_json END,
-           '$.tags.musicbrainz_albumartistid'
-         ) AS tag
-       WHERE lower(trim(tag.value)) GLOB ?
-     )
-     INSERT OR IGNORE INTO library_album_credits (album_id, artist_mbid)
-     SELECT album_id, artist_mbid FROM credit
-     WHERE album_id IN (SELECT album_id FROM credit GROUP BY album_id HAVING count(*) > 1)`,
-  ).run([8, 4, 4, 4, 12].map(hex).join("-"));
-}).immediate();
-
-const releaseCalendarPrimaryKey = db
-  .prepare<[], TableColumnRow>("PRAGMA table_info(library_release_calendar)")
-  .all()
-  .filter((column) => Number(column.pk) > 0)
-  .sort((left, right) => Number(left.pk) - Number(right.pk))
-  .map((column) => column.name);
-
-if (
-  JSON.stringify(releaseCalendarPrimaryKey) !== JSON.stringify(["release_group_mbid", "artist_id"])
-) {
-  db.transaction(() => {
-    db.exec(`
-      CREATE TABLE library_release_calendar_v2 (
-        release_group_mbid TEXT NOT NULL,
-        artist_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        release_date TEXT NOT NULL,
-        release_type TEXT,
-        secondary_types_json TEXT,
-        release_statuses_json TEXT,
-        present INTEGER NOT NULL DEFAULT 1,
-        refreshed_at INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (release_group_mbid, artist_id),
-        FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
-      );
-
-      INSERT INTO library_release_calendar_v2
-        (release_group_mbid, artist_id, title, release_date, release_type,
-         secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at)
-      SELECT release_group_mbid, artist_id, title, release_date, release_type,
-        secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at
-      FROM library_release_calendar;
-
-      DROP TABLE library_release_calendar;
-      ALTER TABLE library_release_calendar_v2 RENAME TO library_release_calendar;
-      CREATE INDEX idx_library_release_calendar_artist
-        ON library_release_calendar (artist_id);
-      CREATE INDEX idx_library_release_calendar_date
-        ON library_release_calendar (present, release_date DESC);
-    `);
-  })();
-}
-
-// The previous getIndexes timestamp was the request time. Seed existing users past that value
-// so a client carrying a pre-upgrade ifModifiedSince receives the new index once.
-db.prepare(`
-  INSERT OR IGNORE INTO subsonic_star_changes (user_id, changed_at)
-  SELECT users.id,
-         MAX(?, COALESCE((
-           SELECT MAX(created_at) FROM subsonic_stars WHERE user_id = users.id
-         ), 0))
-  FROM users
-`).run(Date.now() + 1);
-
-tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
-tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
-
-function hasUniqueIndex(columns: string[]) {
-  return db
-    .prepare<[], { name: string; unique: number }>("PRAGMA index_list(library_media_files)")
-    .all()
-    .some((index) => {
-      if (!index.unique) return false;
-      const indexName = String(index.name).replaceAll('"', '""');
-      const indexColumns = db
-        .prepare<[], { name: string | null }>(`PRAGMA index_info("${indexName}")`)
-        .all()
-        .map((column) => column.name);
-      return JSON.stringify(indexColumns) === JSON.stringify(columns);
-    });
-}
-
-if (hasUniqueIndex(["path"])) {
-  db.transaction(() => {
-    db.exec(`
-      CREATE TABLE library_media_files_v3 (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        track_id INTEGER NOT NULL,
-        album_id INTEGER,
-        source TEXT NOT NULL,
-        path TEXT NOT NULL,
-        format TEXT,
-        size INTEGER NOT NULL DEFAULT 0,
-        mtime_ms INTEGER,
-        duration_ms INTEGER,
-        quality_json TEXT,
-        available INTEGER NOT NULL DEFAULT 1,
-        last_seen_scan_id INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        UNIQUE (source, path),
-        FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
-      );
-
-      INSERT INTO library_media_files_v3
-        (id, track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
-         available, last_seen_scan_id, created_at, updated_at)
-      SELECT id, track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
-        available, last_seen_scan_id, created_at, updated_at
-      FROM library_media_files;
-
-      DROP TABLE library_media_files;
-      ALTER TABLE library_media_files_v3 RENAME TO library_media_files;
-    `);
-  })();
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
-      ON library_media_files (track_id);
-    CREATE INDEX IF NOT EXISTS idx_library_media_files_track_source_available
-      ON library_media_files (track_id, source, available);
-    CREATE INDEX IF NOT EXISTS idx_library_media_files_source_available
-      ON library_media_files (source, available);
-    CREATE INDEX IF NOT EXISTS idx_library_media_files_scan_id
-      ON library_media_files (last_seen_scan_id);
-  `);
-}
-
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_artists_provider_id
     ON library_artists (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT));
@@ -1113,187 +865,17 @@ db.exec(`
 
 ensureUniqueLidarrArtistIdIndex(db);
 
-const tableColumns = db
-  .prepare<[], TableColumnRow>("PRAGMA table_info(download_jobs)")
-  .all()
-  .map((column) => column.name);
-
-if (!tableColumns.includes("playlist_generation")) {
-  tryAddColumn(
-    "ALTER TABLE download_jobs ADD COLUMN playlist_generation INTEGER NOT NULL DEFAULT 0",
-  );
-}
-if (!tableColumns.includes("album_name")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN album_name TEXT");
-}
-if (!tableColumns.includes("reason")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN reason TEXT");
-}
-if (!tableColumns.includes("artist_mbid")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN artist_mbid TEXT");
-}
-if (!tableColumns.includes("album_mbid")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN album_mbid TEXT");
-}
-if (!tableColumns.includes("track_mbid")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN track_mbid TEXT");
-}
-if (!tableColumns.includes("release_year")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN release_year TEXT");
-}
-if (!tableColumns.includes("duration_ms")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN duration_ms INTEGER");
-}
-if (!tableColumns.includes("external_path")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN external_path TEXT");
-}
-if (!tableColumns.includes("denied_remote_sources")) {
-  tryAddColumn("ALTER TABLE download_jobs ADD COLUMN denied_remote_sources TEXT");
-}
-for (const [name, type] of [
-  ["quality_tier", "TEXT"],
-  ["quality_format", "TEXT"],
-  ["quality_bitrate_kbps", "INTEGER"],
-  ["quality_sample_rate_hz", "INTEGER"],
-  ["quality_bit_depth", "INTEGER"],
-  ["quality_checked_at", "INTEGER"],
-  ["quality_upgrade_checked_at", "INTEGER"],
-  ["upgrade_for_job_id", "TEXT"],
-  ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
-  ["album_grab_attempted", "INTEGER NOT NULL DEFAULT 0"],
-  ["album_grab_failures", "INTEGER NOT NULL DEFAULT 0"],
-  ["request_kind", "TEXT NOT NULL DEFAULT 'track'"],
-  ["quick_searched_sources", "TEXT NOT NULL DEFAULT '[]'"],
-  ["held_for_review", "TEXT"],
-  ["disc_number", "INTEGER"],
-  ["release_mbid", "TEXT"],
-  ["started_by_playlist", "TEXT"],
-] as const) {
-  if (!tableColumns.includes(name)) {
-    tryAddColumn(`ALTER TABLE download_jobs ADD COLUMN ${name} ${type}`);
-  }
-}
-if (!tableColumns.includes("reused_library_file")) {
-  db.transaction(() => {
-    tryAddColumn(
-      "ALTER TABLE download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0",
-    );
-    db.exec(`
-      UPDATE download_jobs SET reused_library_file = 1
-      WHERE status = 'done' AND final_path IS NOT NULL AND (
-        started_at IS NULL OR EXISTS (
-          SELECT 1 FROM library_media_files AS media
-          WHERE media.path = download_jobs.final_path
-            AND media.created_at <= COALESCE(download_jobs.completed_at, download_jobs.created_at)
-        )
-      )
-    `);
-  })();
-}
-
-const sessionColumns = db
-  .prepare<[], TableColumnRow>("PRAGMA table_info(sessions)")
-  .all()
-  .map((column) => column.name);
-if (!sessionColumns.includes("reauthenticated_at")) {
-  tryAddColumn("ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER");
-}
-
-const userColumns = db
-  .prepare<[], TableColumnRow>("PRAGMA table_info(users)")
-  .all()
-  .map((column) => column.name);
-
-if (!userColumns.includes("lastfm_username")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN lastfm_username TEXT");
-}
-if (!userColumns.includes("listen_history_provider")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_provider TEXT");
-}
-if (!userColumns.includes("listen_history_username")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_username TEXT");
-}
-if (!userColumns.includes("lidarr_root_folder_path")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN lidarr_root_folder_path TEXT");
-}
-if (!userColumns.includes("lidarr_quality_profile_id")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN lidarr_quality_profile_id INTEGER");
-}
-if (!userColumns.includes("discover_layout")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN discover_layout TEXT");
-}
-if (!userColumns.includes("listen_history_url")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
-}
-if (!userColumns.includes("status")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
-}
-if (!userColumns.includes("is_protected")) {
-  db.transaction(() => {
-    tryAddColumn("ALTER TABLE users ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0");
-    const integrationsRow = db
-      .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'integrations'")
-      .get();
-    let integrations = null;
-    try {
-      integrations = JSON.parse(integrationsRow?.value || "null");
-    } catch {
-      integrations = null;
-    }
-    const legacyUsername = String(integrations?.general?.authUser || "admin").trim();
-    if (legacyUsername && integrations?.general?.authPassword) {
-      db.prepare(
-        "UPDATE users SET is_protected = 1 WHERE LOWER(username) = LOWER(?) AND role = 'admin'",
-      ).run(legacyUsername);
-    }
-  })();
-}
-if (!userColumns.includes("role_source")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN role_source TEXT NOT NULL DEFAULT 'local'");
-}
-if (!userColumns.includes("has_local_password")) {
-  db.transaction(() => {
-    tryAddColumn("ALTER TABLE users ADD COLUMN has_local_password INTEGER NOT NULL DEFAULT 0");
-    // Old rows cannot reliably distinguish local passwords from random hashes
-    // generated for external users. Expire sessions so the next successful
-    // local login can prove and record that a usable password exists.
-    db.exec("DELETE FROM sessions");
-  })();
-}
-if (!userColumns.includes("needs_identity_migration")) {
-  db.transaction(() => {
-    tryAddColumn(
-      "ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0",
-    );
-    db.exec(`
-      UPDATE users SET needs_identity_migration = 1
-      WHERE id NOT IN (SELECT DISTINCT user_id FROM user_identities)
-    `);
-  })();
-}
-if (!userColumns.includes("allow_identity_adoption")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0");
-}
+tryAddColumn("ALTER TABLE download_jobs ADD COLUMN started_by_playlist TEXT");
 
 db.exec(`
   UPDATE users SET needs_identity_migration = 0, allow_identity_adoption = 0
   WHERE needs_identity_migration = 1
     AND id IN (SELECT DISTINCT user_id FROM user_identities)
 `);
-if (!userColumns.includes("subsonic_password")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN subsonic_password TEXT");
-}
-if (!userColumns.includes("api_key")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN api_key TEXT");
-}
-if (!userColumns.includes("api_key_hash")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN api_key_hash TEXT");
-}
+tryAddColumn("ALTER TABLE users ADD COLUMN api_key TEXT");
+tryAddColumn("ALTER TABLE users ADD COLUMN api_key_hash TEXT");
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)");
 
-const hasListenHistorySources = db
-  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'listen_history_sources'")
-  .get();
 db.exec(`
   CREATE TABLE IF NOT EXISTS listen_history_sources (
     user_id INTEGER NOT NULL,
@@ -1303,22 +885,6 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `);
-if (!hasListenHistorySources) {
-  db.exec(`
-    INSERT OR IGNORE INTO listen_history_sources (user_id, provider, account)
-    SELECT id, 'koito', TRIM(listen_history_url) FROM users
-    WHERE LOWER(TRIM(COALESCE(listen_history_provider, ''))) IN ('', 'koito')
-      AND TRIM(COALESCE(listen_history_url, '')) != '';
-
-    INSERT OR IGNORE INTO listen_history_sources (user_id, provider, account)
-    SELECT id, COALESCE(NULLIF(LOWER(TRIM(listen_history_provider)), ''), 'lastfm'),
-      COALESCE(NULLIF(TRIM(listen_history_username), ''), TRIM(lastfm_username))
-    FROM users
-    WHERE LOWER(TRIM(COALESCE(listen_history_provider, ''))) IN ('', 'lastfm', 'listenbrainz')
-      AND COALESCE(NULLIF(TRIM(listen_history_username), ''), TRIM(lastfm_username), '') != '';
-  `);
-}
-
 export const dbHelpers = {
   parseJSON: (text: string | null | undefined): unknown => {
     if (!text) return null;
@@ -1355,158 +921,28 @@ export const dbHelpers = {
   },
 };
 
-initializeSchemaOnStartup(db, dbHelpers);
-tryAddColumn("ALTER TABLE library_management ADD COLUMN last_missing_search_at INTEGER");
-tryAddColumn("ALTER TABLE library_tracks ADD COLUMN monitored INTEGER NOT NULL DEFAULT 1");
-
-export const RETIRED_FLOWS_SETTING = "migration:retired-flows-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '[]')")
-    .run(RETIRED_FLOWS_SETTING);
-  if (claimed.changes === 0) return;
-  const stored = db
-    .prepare<[], Pick<SettingsRow, "value">>(
-      "SELECT value FROM settings WHERE key = 'flows' AND json_valid(value)",
-    )
-    .get();
-  const flows = v.safeParse(
-    v.array(v.looseObject({ id: v.optional(v.unknown()), type: v.optional(v.unknown()) })),
-    stored ? JSON.parse(stored.value) : null,
+db.exec(`
+  CREATE TABLE IF NOT EXISTS library_management (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_kind TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    managed_by TEXT NOT NULL,
+    monitor_mode TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_missing_search_at INTEGER,
+    monitor_rules TEXT,
+    UNIQUE (entity_kind, entity_id)
   );
-  if (!flows.success) return;
-  const retiredIds = flows.output.flatMap((flow) =>
-    flow.type === "editorial" && typeof flow.id === "string" ? [flow.id] : [],
-  );
-  if (retiredIds.length === 0) return;
-  db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(
-    JSON.stringify(retiredIds),
-    RETIRED_FLOWS_SETTING,
-  );
-  db.prepare("UPDATE settings SET value = ? WHERE key = 'flows'").run(
-    JSON.stringify(
-      flows.output.map((flow) =>
-        flow.type === "editorial" ? { ...flow, enabled: false, nextRunAt: null } : flow,
-      ),
-    ),
-  );
-}).immediate();
 
-const aurralAlbumMonitoredMigrationKey = "migration:aurral-album-monitored-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(aurralAlbumMonitoredMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  db.exec(`
-    UPDATE library_albums
-    SET metadata_json = json_set(
-      CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
-      '$.monitored',
-      json('true')
-    )
-    WHERE id IN (
-      SELECT entity_id FROM library_management
-      WHERE entity_kind = 'album'
-        AND managed_by = 'aurral'
-        AND COALESCE(monitor_mode, '') != 'unmonitored'
-    )
-    AND CASE
-      WHEN json_valid(metadata_json) THEN json_type(metadata_json, '$.monitored') IS NULL
-      ELSE 1
-    END
-  `);
-}).immediate();
-
-const aurralTrackMonitoringMigrationKey = "migration:aurral-track-monitoring-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(aurralTrackMonitoringMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  const monitoredAlbumIds = `
-    SELECT management.entity_id FROM library_management AS management
-    JOIN library_albums AS album ON album.id = management.entity_id
-    WHERE management.entity_kind = 'album'
-      AND management.managed_by = 'aurral'
-      AND COALESCE(management.monitor_mode, '') != 'unmonitored'
-      AND json_valid(album.metadata_json)
-      AND json_extract(album.metadata_json, '$.monitored') = 1
-  `;
-  const unownedAurralAlbumIds = `
-    SELECT album.id FROM library_albums AS album
-    WHERE NOT EXISTS (
-      SELECT 1 FROM library_management AS management
-      WHERE management.entity_kind = 'album' AND management.entity_id = album.id
-    )
-    AND EXISTS (
-      SELECT 1 FROM library_media_files AS media
-      WHERE media.album_id = album.id AND media.source = 'aurral'
-    )
-  `;
-  db.exec(`
-    UPDATE library_tracks SET monitored = 0
-    WHERE id IN (
-      SELECT link.track_id FROM library_album_tracks AS link
-      JOIN library_management AS management
-        ON management.entity_kind = 'album' AND management.entity_id = link.album_id
-      WHERE management.managed_by = 'aurral'
-    )
-    AND id NOT IN (
-      SELECT link.track_id FROM library_album_tracks AS link
-      WHERE link.album_id IN (${monitoredAlbumIds})
-    );
-
-    UPDATE library_tracks SET monitored = 0
-    WHERE id IN (
-      SELECT link.track_id FROM library_album_tracks AS link
-      WHERE link.album_id IN (${unownedAurralAlbumIds})
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM library_media_files AS media
-      JOIN download_jobs AS job ON job.final_path = media.path AND job.status = 'done'
-      WHERE media.track_id = library_tracks.id AND media.source = 'aurral'
-    );
-
-    UPDATE library_albums
-    SET metadata_json = json_set(
-      CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
-      '$.monitored',
-      json('false')
-    )
-    WHERE id IN (${unownedAurralAlbumIds});
-  `);
-  const now = Date.now();
-  db.prepare(`
-    INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
-    SELECT 'album', id, 'aurral', NULL, ?, ? FROM (${unownedAurralAlbumIds})
-  `).run(now, now);
-}).immediate();
-
-const aurralMissingMonitorModeMigrationKey = "migration:aurral-missing-monitor-mode-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(aurralMissingMonitorModeMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  const missingArtistIds = `
-    SELECT entity_id FROM library_management
-    WHERE entity_kind = 'artist' AND managed_by = 'aurral' AND monitor_mode = 'missing'
-  `;
-  db.exec(`
-    UPDATE library_artists
-    SET metadata_json = json_set(metadata_json, '$.monitor', 'all', '$.monitorOption', 'all', '$.addOptions.monitor', 'all')
-    WHERE id IN (${missingArtistIds}) AND json_valid(metadata_json);
-
-    UPDATE library_management SET monitor_mode = 'all'
-    WHERE entity_kind = 'artist' AND managed_by = 'aurral' AND monitor_mode = 'missing';
-  `);
-}).immediate();
-
-tryAddColumn("ALTER TABLE library_management ADD COLUMN monitor_rules TEXT");
+  CREATE INDEX IF NOT EXISTS idx_library_management_entity
+    ON library_management (entity_kind, entity_id);
+  CREATE INDEX IF NOT EXISTS idx_library_management_managed_by
+    ON library_management (managed_by);
+`);
 db.transaction(() => {
   const columns = db
-    .prepare<[], TableColumnRow>("PRAGMA table_info(library_tracks)")
+    .prepare<[], { name: string }>("PRAGMA table_info(library_tracks)")
     .all()
     .map((column) => column.name);
   if (columns.includes("keep_file")) {
@@ -1516,7 +952,6 @@ db.transaction(() => {
     `);
   }
 })();
-tryAddColumn("ALTER TABLE library_media_files ADD COLUMN artist_tag TEXT");
 db.exec(`
   CREATE TABLE IF NOT EXISTS library_monitoring_exclusions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1533,76 +968,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_monitoring_exclusions_artist
     ON library_monitoring_exclusions (artist_mbid);
 `);
-
-// Aurral artists move from one monitor mode to monitoring rules. "all" uses
-// the default rules, which match it. "first" never followed new releases, so
-// its album stays monitored and the artist stops being monitored.
-const aurralMonitoringRulesMigrationKey = "migration:aurral-monitoring-rules-v1";
-db.transaction(() => {
-  const claimed = db
-    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-    .run(aurralMonitoringRulesMigrationKey, "1");
-  if (claimed.changes === 0) return;
-  const artists = db
-    .prepare<
-      [],
-      { id: number; mode: string | null; updatedAt: number; startedAt: string | number | null }
-    >(`
-    SELECT management.entity_id AS id, management.monitor_mode AS mode, management.updated_at AS updatedAt,
-      CASE WHEN json_valid(artist.metadata_json)
-        THEN json_extract(artist.metadata_json, '$.monitorStartedAt') END AS startedAt
-    FROM library_management AS management
-    JOIN library_artists AS artist ON artist.id = management.entity_id
-    WHERE management.entity_kind = 'artist'
-      AND management.managed_by = 'aurral'
-      AND management.monitor_rules IS NULL
-      AND COALESCE(management.monitor_mode, 'none') != 'none'
-  `)
-    .all();
-  const rulesFor = (catalog: string) => ({
-    catalog,
-    sinceYear: null,
-    latestCount: 1,
-    newReleases: true,
-    types: ["album", "ep"],
-    extraTypes: [],
-    edition: "standard",
-    topTracks: 0,
-  });
-  const setRules = db.prepare(
-    "UPDATE library_management SET monitor_rules = ? WHERE entity_kind = 'artist' AND entity_id = ?",
-  );
-  const stopMonitoring = db.prepare(`
-    UPDATE library_management SET monitor_mode = 'none'
-    WHERE entity_kind = 'artist' AND entity_id = ?
-  `);
-  const markUnmonitored = db.prepare(`
-    UPDATE library_artists
-    SET metadata_json = json_set(metadata_json, '$.monitored', json('false'), '$.monitor', 'none',
-      '$.monitorOption', 'none', '$.addOptions.monitor', 'none')
-    WHERE id = ? AND json_valid(metadata_json)
-  `);
-  const migratedAt = Date.now();
-  for (const artist of artists) {
-    const mode = String(artist.mode).trim().toLowerCase();
-    if (mode === "first") {
-      stopMonitoring.run(artist.id);
-      markUnmonitored.run(artist.id);
-      continue;
-    }
-    // Latest took whichever release was newest at each scan, so its cutoffs
-    // start now rather than when the mode was chosen.
-    const since =
-      mode === "latest"
-        ? migratedAt
-        : (mode === "future" && Number(artist.startedAt)) || Number(artist.updatedAt) || migratedAt;
-    const stored =
-      mode === "future" || mode === "latest"
-        ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
-        : { default: true };
-    setRules.run(JSON.stringify({ ...stored, catalogAt: since, newSince: since }), artist.id);
-  }
-}).immediate();
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS download_jobs_revision (

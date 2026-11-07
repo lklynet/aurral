@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { asAppError } from "../../lib/errors.ts";
 import type { libraryManager } from "./libraryManager.ts";
 import { acquireReleaseMetadataLease } from "./releaseMetadataLease.ts";
 import { createJobWorker, type TypedJob } from "./jobs/worker.ts";
@@ -10,13 +9,7 @@ import {
   systemTaskQueue,
   systemTaskSchema,
 } from "./jobs/queues.ts";
-import {
-  PLAYLIST_STARTUP_MIGRATION_SETTING,
-  PLAYLIST_STARTUP_MIGRATION_VERSION,
-} from "./jobs/startup.ts";
 import { cleanExpiredSessions } from "../config/session-helpers.ts";
-import { dbOps } from "../db/helpers/index.ts";
-import { resolveDownloadRoot } from "./downloadPaths.ts";
 
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
 type SystemTask = v.InferOutput<typeof systemTaskSchema>;
@@ -254,83 +247,6 @@ export async function processSystemTask(
       if (!hadStarters && getChartStarterArtists(1).length > 0) {
         const { enqueueAllUserDiscoveryRefreshes } = await import("./discovery/provider.ts");
         enqueueAllUserDiscoveryRefreshes("charts_ready");
-      }
-      return;
-    }
-    case "playlist-startup-migration": {
-      const [migrationModule, trackerModule, { repairYtdlpMetadata }] = await Promise.all([
-        import("./aurralDownloadFolderMigration.ts"),
-        import("./downloadJobs/downloadTracker.ts"),
-        import("./downloadUtils.ts"),
-      ]);
-      const { migrateAurralDownloadFolder } = migrationModule;
-      let result;
-      try {
-        result = {
-          flowMigrated: 0,
-          failed: 0,
-          repaired: 0,
-          ...(await migrateAurralDownloadFolder()),
-        };
-      } catch (error) {
-        console.error(
-          `[Playlists] Aurral download folder migration failed: ${asAppError(error)?.message}`,
-        );
-        throw error;
-      }
-      const flowMigrated = result.flowMigrated || 0;
-      const permanentMigrated = (result.migrated || 0) - flowMigrated;
-      if (result.migrated > 0 || result.removed > 0) {
-        console.log(
-          `[Playlists] Migrated ${permanentMigrated} permanent track(s) and ${flowMigrated} flow track(s), and removed ${result.removed} unkept flow file(s)`,
-        );
-      }
-      if (result.repaired > 0) {
-        console.log(`[Playlists] Repaired ${result.repaired} migrated tracker path(s)`);
-      }
-      if (result.retained > 0 || result.failed > 0) {
-        console.warn(
-          `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
-        );
-      }
-      if (result.status === "blocked" || result.failed > 0) return;
-      const metadataRepair = await repairYtdlpMetadata(trackerModule.downloadTracker.getAll());
-      if (metadataRepair.repaired > 0) {
-        console.log(`[Playlists] Added metadata to ${metadataRepair.repaired} yt-dlp track(s)`);
-      }
-      if (metadataRepair.failed > 0) {
-        console.warn(
-          `[Playlists] Could not add metadata to ${metadataRepair.failed} yt-dlp track(s)`,
-        );
-      }
-      if (result.migrated > 0 || result.removed > 0 || metadataRepair.repaired > 0) {
-        const { playlistManager } = await import("./playlists/playlistManager.ts");
-        playlistManager.requestPlaylistSync();
-      }
-      if (metadataRepair.failed === 0) {
-        dbOps.setJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING, {
-          version: PLAYLIST_STARTUP_MIGRATION_VERSION,
-          rootPath: resolveDownloadRoot(),
-          completedAt: Date.now(),
-        });
-      }
-      return;
-    }
-    case "stored-data-migration": {
-      const { migrateStoredData } = await import("./storedDataMigration.ts");
-      await migrateStoredData();
-      return;
-    }
-    case "upgrade-readiness-check": {
-      return;
-    }
-    case "identity-marker-migration": {
-      const { migrateIdentityMarkers } = await import("./identityMarkerMigration.ts");
-      const result = await migrateIdentityMarkers();
-      if (result.moved > 0 || result.failed > 0) {
-        console.log(
-          `[Library] Moved the identity marker to its own tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
-        );
       }
       return;
     }
