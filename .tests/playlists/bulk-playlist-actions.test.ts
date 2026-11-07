@@ -37,6 +37,7 @@ const [
   () => import("../../backend/routes/api.ts"),
 );
 beforeEach(() => {
+  vi.spyOn(downloadPipelineQueue, "start").mockImplementation(async () => undefined);
   resetDatabase(db);
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();

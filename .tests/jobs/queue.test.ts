@@ -183,6 +183,7 @@ test("a lock passes to another owner only after its TTL lapses", () => {
   vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
   try {
     assert.equal(jobs.tryLock("ttl", "a", 1000), true);
+    assert.equal(jobs.tryLock("ttl", "a", 1000), false);
     assert.equal(jobs.tryLock("ttl", "b", 1000), false);
     vi.advanceTimersByTime(999);
     assert.equal(jobs.renewLock("ttl", "a", 1000), true);

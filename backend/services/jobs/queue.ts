@@ -197,7 +197,7 @@ const statements = {
   tryLock: db.prepare<{ name: string; owner: string; now: number; expiresAt: number }>(`
     INSERT INTO job_locks (name, owner, expires_at) VALUES (@name, @owner, @expiresAt)
     ON CONFLICT (name) DO UPDATE SET owner = excluded.owner, expires_at = excluded.expires_at
-    WHERE job_locks.expires_at <= @now OR job_locks.owner = excluded.owner
+    WHERE job_locks.expires_at <= @now
   `),
   renewLock: db.prepare<{ name: string; owner: string; now: number; expiresAt: number }>(
     "UPDATE job_locks SET expires_at = @expiresAt WHERE name = @name AND owner = @owner AND expires_at > @now",
