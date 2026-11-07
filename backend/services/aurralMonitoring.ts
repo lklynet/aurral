@@ -267,7 +267,6 @@ export function nextMonitoringDefaults(
   };
 }
 
-// Older builds read monitor_mode, so it keeps the closest of their modes.
 export function legacyMonitorMode(effective: { rules: MonitorRules } | null | undefined) {
   if (!effective?.rules.newReleases) return "none";
   if (effective.rules.catalog === "all") return "all";

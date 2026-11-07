@@ -382,8 +382,6 @@ type AlbumAddOptions = {
   edition?: string | null;
 };
 
-// A request names monitoring as { monitored, useDefault, rules }. Older clients
-// send one monitor option instead, which maps to the same choices.
 function resolveAurralMonitoringRequest({
   monitoring,
   monitorOption,

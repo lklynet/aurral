@@ -1,70 +1,6 @@
 #!/bin/sh
 set -e
 
-is_mount() {
-  point="$1"
-  if [ ! -e "$point" ]; then
-    return 1
-  fi
-  resolved=$(readlink -f "$point" 2>/dev/null || printf '%s' "$point")
-  grep -qs " ${resolved} " /proc/mounts 2>/dev/null
-}
-
-resolve_data_dir() {
-  if [ -n "${AURRAL_DATA_DIR:-}" ]; then
-    readlink -f "$AURRAL_DATA_DIR" 2>/dev/null || printf '%s' "$AURRAL_DATA_DIR"
-    return
-  fi
-
-  canonical=/config
-  legacy=/app/backend/data
-
-  mkdir -p "$canonical" "$legacy"
-
-  if [ -f "$canonical/aurral.db" ]; then
-    printf '%s' "$canonical"
-    return
-  fi
-  if [ -f "$legacy/aurral.db" ]; then
-    printf '%s' "$legacy"
-    return
-  fi
-
-  if is_mount "$canonical"; then
-    printf '%s' "$canonical"
-    return
-  fi
-  if is_mount "$legacy"; then
-    printf '%s' "$legacy"
-    return
-  fi
-
-  printf '%s' "$canonical"
-}
-
-link_compat_paths() {
-  primary="$1"
-  canonical=/config
-  legacy=/app/backend/data
-
-  if [ "$primary" = "$canonical" ]; then
-    if is_mount "$legacy" || [ -L "$legacy" ]; then
-      return
-    fi
-    rm -rf "$legacy"
-    ln -sfn "$canonical" "$legacy"
-    return
-  fi
-
-  if [ "$primary" = "$legacy" ]; then
-    if is_mount "$canonical" || [ -L "$canonical" ]; then
-      return
-    fi
-    rm -rf "$canonical"
-    ln -sfn "$legacy" "$canonical"
-  fi
-}
-
 if [ "$(id -u)" = "0" ]; then
     runtime_ld_preload="${LD_PRELOAD:-}"
     runtime_malloc_conf="${MALLOC_CONF:-}"
@@ -102,22 +38,14 @@ if [ "$(id -u)" = "0" ]; then
         target_user="aurral"
     fi
 
-    AURRAL_DATA_DIR="$(resolve_data_dir)"
-    export AURRAL_DATA_DIR
-    link_compat_paths "$AURRAL_DATA_DIR"
-    mkdir -p "$AURRAL_DATA_DIR"
-    chown -R "$target_uid:$target_gid" /config /app/backend/data "$AURRAL_DATA_DIR"
+    data_dir="${AURRAL_DATA_DIR:-/config}"
+    mkdir -p "$data_dir"
+    chown -R "$target_uid:$target_gid" "$data_dir"
 
     exec setpriv --reuid "$target_uid" --regid "$target_gid" --groups "$target_gid" env \
-      AURRAL_DATA_DIR="$AURRAL_DATA_DIR" \
       LD_PRELOAD="$runtime_ld_preload" \
       MALLOC_CONF="$runtime_malloc_conf" \
       "$@"
-fi
-
-if [ -z "${AURRAL_DATA_DIR:-}" ]; then
-  AURRAL_DATA_DIR="$(resolve_data_dir)"
-  export AURRAL_DATA_DIR
 fi
 
 exec "$@"

@@ -55,8 +55,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1001 nodejs \
     && useradd --uid 1001 --gid nodejs --shell /usr/sbin/nologin --create-home nodejs \
-    && mkdir -p /app/backend/data /config \
-    && chown -R nodejs:nodejs /app/backend/data /config
+    && mkdir -p /config \
+    && chown -R nodejs:nodejs /config
 
 ENV LD_PRELOAD=libjemalloc.so.2 \
     MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000

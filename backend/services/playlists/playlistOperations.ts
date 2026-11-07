@@ -58,8 +58,7 @@ import type {
 } from "../../db/rows.ts";
 import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 
-const OPERATION_TOKENS_KEY = "playlistOperationTokens";
-const operationTokenKey = (scope: string) => `${OPERATION_TOKENS_KEY}:${encodeURIComponent(scope)}`;
+const operationTokenKey = (scope: string) => `playlistOperationTokens:${encodeURIComponent(scope)}`;
 
 export function createPlaylistOperationToken() {
   return `${Date.now()}-${randomUUID()}`;
@@ -75,11 +74,7 @@ export function markLatestPlaylistOperationToken(scope: string, token: string) {
 export function getLatestPlaylistOperationToken(scope: string) {
   const safeScope = String(scope || "").trim();
   if (!safeScope) return null;
-  const current = dbOps.getJSONSetting(operationTokenKey(safeScope), v.string());
-  if (current != null) return current;
-  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY, v.record(v.string(), v.unknown()));
-  const token = legacy?.[safeScope];
-  return typeof token === "string" ? token : null;
+  return dbOps.getJSONSetting(operationTokenKey(safeScope), v.string());
 }
 
 export function restorePlaylistOperationToken({
