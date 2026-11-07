@@ -41,7 +41,7 @@ if (missingSteps.length) {
     [
       "Aurral 3 can't open this database yet. It was last used by an Aurral 2 that didn't finish upgrading it.",
       "Start ghcr.io/lklynet/aurral:2 with this data folder, wait a few minutes for it to finish starting up, then start Aurral 3 again.",
-      "If Aurral 2 shows download folder items waiting for review, finish those first. Aurral 3 didn't change anything.",
+      "Aurral 3 didn't change anything.",
       `Missing: ${missingSteps.join(", ")}`,
     ].join("\n"),
   );
