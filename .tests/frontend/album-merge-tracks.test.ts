@@ -120,21 +120,31 @@ test("a recording is only matched once", () => {
   );
 });
 
-test("multi-disc albums head each disc, named when its files share one disc subtitle", () => {
-  const row = (disc: number, discsubtitle?: unknown) => ({
+test("multi-disc albums head each disc, named by its files' disc subtitle or else MusicBrainz", () => {
+  const row = (disc: number, discsubtitle?: unknown, discTitle: string | null = null) => ({
     disc,
     libraryTrack: discsubtitle === undefined ? null : { metadata: { tags: { discsubtitle } } },
+    releaseTrack: { discTitle },
   });
   assert.deepEqual(albumDiscHeadings([row(1, ["Side A"]), row(1, ["Side B"])]), [null, null]);
   assert.deepEqual(
     albumDiscHeadings([
-      row(1, [" Saint-Saëns: Tone Poems "]),
+      row(1, [" Saint-Saëns: Tone Poems "], "Tone Poems"),
       row(1),
       row(1, "Saint-Saëns: Tone Poems"),
       row(2, ["Bruckner"]),
       row(2, ["Mahler"]),
-      row(3),
+      row(3, undefined, "Dawn to Dusk"),
+      row(4),
     ]),
-    ["Disc 1 · Saint-Saëns: Tone Poems", null, null, "Disc 2", null, "Disc 3"],
+    [
+      "Disc 1 · Saint-Saëns: Tone Poems",
+      null,
+      null,
+      "Disc 2",
+      null,
+      "Disc 3 · Dawn to Dusk",
+      "Disc 4",
+    ],
   );
 });

@@ -256,6 +256,7 @@ export default new Hono<AppEnv>()
           trackName: track.title,
           trackNumber: track.trackPosition || track.trackNumber || 0,
           discNumber: track.mediumNumber || 1,
+          discTitle: track.discTitle,
           position: track.trackPosition || track.trackNumber || 0,
           releaseMbid: track.releaseMbid || null,
           length: track.durationMs || null,

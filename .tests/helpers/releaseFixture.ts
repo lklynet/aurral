@@ -26,6 +26,7 @@ type GroupFixture = {
     title?: string;
     status?: string;
     trackCount?: number;
+    discTitles?: string[];
     tracks: (string | TrackFixture)[];
   }[];
 };
@@ -56,6 +57,13 @@ export function brainzmashGroup({
       title: release.title || title,
       status: release.status || "Official",
       ...(release.trackCount && { track_count: release.trackCount }),
+      ...(release.discTitles && {
+        media: release.discTitles.map((name, index) => ({
+          Format: "CD",
+          Name: name,
+          Position: index + 1,
+        })),
+      }),
       tracks: release.tracks.map((entry, index) => {
         const track = typeof entry === "string" ? { title: entry } : entry;
         return {

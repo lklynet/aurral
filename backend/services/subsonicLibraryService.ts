@@ -52,6 +52,7 @@ import { buildRadio, type RadioSeed } from "./radio.ts";
 import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withLock } from "./jobs/queue.ts";
+import { discSubtitle, discTitles } from "../../lib/discTitles.ts";
 import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
 import { processPlaylistOperation } from "./playlists/playlistOperations.ts";
 import {
@@ -446,7 +447,18 @@ const toAlbumSummary = (library: IndexedLibrary, album: LibraryAlbum) =>
 
 const toAlbum = (library: IndexedLibrary, album: LibraryAlbum) => {
   const { tracks, value } = albumData(library, album);
-  return { ...value, song: tracks.map((track) => toSong(library, track, album)) };
+  const song = tracks.map((track) => toSong(library, track, album));
+  const titles = discTitles(
+    song.map(({ discNumber }, index) => ({
+      disc: discNumber,
+      title: discSubtitle(tracks[index]?.metadata),
+    })),
+  );
+  return {
+    ...value,
+    ...(titles.size && { discTitles: [...titles].map(([disc, title]) => ({ disc, title })) }),
+    song,
+  };
 };
 
 const toArtistSummary = (

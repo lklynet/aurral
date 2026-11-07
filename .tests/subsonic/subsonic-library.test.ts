@@ -1261,3 +1261,44 @@ test("splits semicolon genre tags into separate Subsonic genres", () => {
       .map((value) => ({ value, albumCount: 1, songCount: 1 })),
   );
 });
+
+test("albums report the disc titles their files agree on", () => {
+  const artist = upsertLibraryArtist({ identityKey: "disc-titles:artist", name: "Box Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: "disc-titles:album",
+    artistId: artist.id,
+    title: "Box Set",
+    albumArtist: artist.name,
+  });
+  [
+    [1, "Tone Poems"],
+    [1, "Tone Poems"],
+    [2, "Bruckner"],
+    [2, "Mahler"],
+    [3, null],
+  ].forEach(([discNumber, discsubtitle], index) => {
+    const track = upsertLibraryTrack({
+      identityKey: `disc-titles:track-${index}`,
+      title: `Track ${index}`,
+      artistName: artist.name,
+      metadata: { tags: { discsubtitle: discsubtitle ? [discsubtitle] : [] } },
+    });
+    linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: track.id,
+      discNumber: Number(discNumber),
+      trackNumber: index + 1,
+    });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      source: "lidarr",
+      path: `/test/disc-titles/${index}.flac`,
+      format: "flac",
+      available: true,
+    });
+  });
+
+  assert.deepEqual(getAlbum(idFor("album", "disc-titles:album"))?.discTitles, [
+    { disc: 1, title: "Tone Poems" },
+  ]);
+});

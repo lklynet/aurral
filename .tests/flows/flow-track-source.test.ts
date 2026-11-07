@@ -411,6 +411,7 @@ test("new releases pick a release track from metadata before Last.fm fallbacks",
       durationMs: 185000,
       artistId: null,
       releaseMbid: null,
+      discTitle: null,
     },
   ];
   source._getLastfmAlbumInfo = async () => {
