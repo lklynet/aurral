@@ -23,6 +23,13 @@ const ALBUM_PHASE_LABELS: Partial<Record<string, string>> = {
   finalize: "Processing",
 };
 
+const ALBUM_TRACK_PHASE_LABELS: Partial<Record<string, string>> = {
+  search: "Searching",
+  download: "Downloading",
+  poll: "Downloading",
+  finalize: "Processing",
+};
+
 export const lookupLabel = (
   table: Partial<Record<string, string>>,
   key: string | null | undefined,
@@ -82,17 +89,29 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
     groups.set(grab.id, members);
     members.set(request.jobId, request);
   }
+  const groupedRequestIds = new Set<string>();
   for (const [id, members] of groups) {
-    const children = [...members.values()].sort(
+    const sorted = [...members.values()].sort(
       (left, right) =>
         Number(left.discNumber || 1) - Number(right.discNumber || 1) ||
         Number(left.trackNumber || 0) - Number(right.trackNumber || 0) ||
         String(left.jobId).localeCompare(String(right.jobId)),
     );
-    const [first] = children;
+    const [first] = sorted;
     if (!first) continue;
     const grab = first.albumGrab!;
     const total = grab.memberJobIds.length;
+    const albumFiles = sorted.filter((child) => child.downloadMethod === "album").length;
+    const trackFiles = sorted.some((child) => child.downloadMethod === "track");
+    const fallback = grab.phase === "tracks" || Boolean(grab.fallbackReason) || trackFiles;
+    const albumTrackLabel = fallback ? null : lookupLabel(ALBUM_TRACK_PHASE_LABELS, grab.phase);
+    const children = albumTrackLabel
+      ? sorted.map((child) =>
+          child.status === "pending" || child.status === "processing"
+            ? { ...child, status: "processing", statusLabel: albumTrackLabel }
+            : child,
+        )
+      : sorted;
     const ready = children.filter(
       (child) => child.status === "completed" || child.status === "available",
     ).length;
@@ -101,9 +120,6 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
     const processing = children.some((child) => child.status === "processing");
     const pending = children.some((child) => child.status === "pending");
     const active = blocked || processing || pending;
-    const albumFiles = children.filter((child) => child.downloadMethod === "album").length;
-    const trackFiles = children.some((child) => child.downloadMethod === "track");
-    const fallback = grab.phase === "tracks" || Boolean(grab.fallbackReason) || trackFiles;
     const activeLabel = fallback
       ? processing
         ? "Downloading tracks"
@@ -149,6 +165,7 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
     const progressLabel =
       `${ready} of ${total} tracks ready` +
       (missing ? ` · ${missing} track detail${missing === 1 ? "" : "s"} unavailable` : "");
+    if (first.requestGroupId) groupedRequestIds.add(first.requestGroupId);
     rows.push({
       ...first,
       id,
@@ -176,7 +193,12 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       previousErrors: [...new Set(children.flatMap((child) => child.previousErrors || []))],
     });
   }
-  return rows;
+  return rows.filter(
+    (row) =>
+      row.kind !== "album_requested" ||
+      !row.requestGroupId ||
+      !groupedRequestIds.has(row.requestGroupId),
+  );
 }
 
 const getRequestIdentity = (request: ActivityRequest | null | undefined) =>

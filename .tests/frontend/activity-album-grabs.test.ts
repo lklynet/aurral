@@ -32,6 +32,7 @@ function albumTracks({
     type: "track",
     albumName: "Everything Now",
     artistName: "Arcade Fire",
+    requestGroupId: `${id}-request`,
     trackName: `Song ${index + 1}`,
     trackNumber: index + 1,
     status,
@@ -53,8 +54,22 @@ function albumTracks({
 
 test("an album grab keeps completed tracks inside its queue row until every track is terminal", () => {
   const tracks = albumTracks();
-  const [row] = groupAlbumGrabRequests(tracks.toReversed());
+  const request = {
+    ...requireFixture(tracks[0]),
+    id: "album-request",
+    kind: "album_requested",
+    jobId: null,
+    trackName: null,
+    albumGrab: undefined,
+  };
+  const rows = groupAlbumGrabRequests([request, ...tracks.toReversed()]);
+  assert.equal(rows.length, 1);
+  const [row] = rows;
   assert.ok(row !== undefined);
+  assert.deepEqual(
+    row.children?.map((child) => child.statusLabel),
+    ["completed", "Downloading", "Downloading"],
+  );
   assert.equal(row.albumName, "Everything Now");
   assert.equal(row.statusLabel, "Downloading album");
   assert.equal(row.progressLabel, "1 of 3 tracks ready");
