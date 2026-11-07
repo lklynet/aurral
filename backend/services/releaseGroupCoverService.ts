@@ -63,6 +63,9 @@ const pickAlbumCoverUrl = (images: NormalizedAlbum["images"] = []) => {
 
 export { warmPublicImageUrl };
 
+export const releaseGroupCoverImageUrl = (releaseGroupMbid: string) =>
+  `/api/artists/release-group/${encodeURIComponent(releaseGroupMbid)}/cover/image`;
+
 const toPublicCoverUrl = (imageUrl: string | null) => {
   if (!imageUrl || imageUrl === "NOT_FOUND") return null;
   return buildStableImageProxyUrl(imageUrl);

@@ -19,5 +19,6 @@ export const API_CONTRACT = {
     "albumPlaySorts",
     "browsePlaylists",
     "currentNames",
+    "playlistTrackArtwork",
   ],
 };

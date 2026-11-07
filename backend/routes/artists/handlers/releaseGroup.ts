@@ -3,6 +3,7 @@ import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
+import { requireStreamAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import {
@@ -190,6 +191,17 @@ export default new Hono<AppEnv>()
       c.header("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
       return c.json({ images: [], notFound: false, transientError: true }, 200);
     }
+  })
+  .get("/release-group/:mbid/cover/image", requireStreamAuth, async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+    const cover = await fetchReleaseGroupCoverUrl(mbid).catch(() => null);
+    if (!cover?.imageUrl) {
+      c.header("Cache-Control", cover?.notFound ? "private, max-age=3600" : "no-store");
+      return c.json({ error: "Cover not found" }, 404);
+    }
+    c.header("Cache-Control", "private, max-age=86400");
+    return c.redirect(cover.imageUrl, 302);
   })
   .get("/release/:mbid/credits", async (c) => {
     const mbid = c.req.param("mbid");

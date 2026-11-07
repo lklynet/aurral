@@ -639,6 +639,27 @@ test("flows, activity, and review preserve their public response fields and stor
     hint: "object",
   });
   assert.ok(status.flows.some((flow: { id: string }) => flow.id === created.flow.id));
+  downloadTracker.addJob(
+    { artistName: "Flow Artist", trackName: "Flow Song", albumMbid },
+    created.flow.id,
+  );
+  downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Loose Song" }, created.flow.id);
+  const flowTracks = await call(`/api/playlists/jobs/${created.flow.id}`);
+  const artworkUrl = `/api/artists/release-group/${albumMbid}/cover/image`;
+  assert.deepEqual(
+    Object.fromEntries(
+      flowTracks.map((track: { trackName: string; artworkUrl: string | null }) => [
+        track.trackName,
+        track.artworkUrl,
+      ]),
+    ),
+    { "Flow Song": artworkUrl, "Loose Song": null },
+  );
+  dbOps.setImage(`rg:${albumMbid}`, "https://images.example/contract.jpg");
+  const cover = await fetch(`${baseUrl}${artworkUrl}?token=${token}`, { redirect: "manual" });
+  assert.equal(cover.status, 302);
+  assert.equal(cover.headers.get("location"), "https://images.example/contract.jpg");
+  assert.equal((await fetch(`${baseUrl}${artworkUrl}`, { redirect: "manual" })).status, 401);
   const denied = await hold("Denied Song");
   const approved = await hold("Approved Song");
   const jobs = await call("/api/playlists/jobs?status=blocked");
