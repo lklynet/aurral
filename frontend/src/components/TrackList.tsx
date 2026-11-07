@@ -49,6 +49,7 @@ type TrackCoverField = TrackLinkField & { src?: string | null };
 
 export type TrackListRow = {
   key: string | number;
+  section?: string | null;
   title: string;
   number: ReactNode;
   year?: string | null;
@@ -299,13 +300,22 @@ export function TrackList({
         <span />
       </div>
       <div role="list" aria-label={label}>
-        {rows.map((row) => {
+        {rows.flatMap((row) => {
           const playLabel = row.playing
             ? `Pause ${row.title}`
             : row.previewOnly
               ? `Preview ${row.title}`
               : `Play ${row.title}`;
-          return (
+          return [
+            row.section ? (
+              <div
+                key={`section-${row.key}`}
+                className="native-library-track-section"
+                role="presentation"
+              >
+                {row.section}
+              </div>
+            ) : null,
             <div
               key={row.key}
               ref={(node) => {
@@ -434,8 +444,8 @@ export function TrackList({
               ) : (
                 <span />
               )}
-            </div>
-          );
+            </div>,
+          ];
         })}
       </div>
     </div>

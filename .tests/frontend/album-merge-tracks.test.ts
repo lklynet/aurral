@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { mergeAlbumTracks } from "../../frontend/src/pages/album/mergeAlbumTracks.ts";
+import {
+  albumDiscHeadings,
+  mergeAlbumTracks,
+} from "../../frontend/src/pages/album/mergeAlbumTracks.ts";
 
 const release = (mbid: string, title: string, trackNumber: number, discNumber = 1) => ({
   id: mbid,
@@ -114,5 +117,24 @@ test("a recording is only matched once", () => {
       ["7", 7],
       ["dup", null],
     ],
+  );
+});
+
+test("multi-disc albums head each disc, named when its files share one disc subtitle", () => {
+  const row = (disc: number, discsubtitle?: unknown) => ({
+    disc,
+    libraryTrack: discsubtitle === undefined ? null : { metadata: { tags: { discsubtitle } } },
+  });
+  assert.deepEqual(albumDiscHeadings([row(1, ["Side A"]), row(1, ["Side B"])]), [null, null]);
+  assert.deepEqual(
+    albumDiscHeadings([
+      row(1, [" Saint-Saëns: Tone Poems "]),
+      row(1),
+      row(1, "Saint-Saëns: Tone Poems"),
+      row(2, ["Bruckner"]),
+      row(2, ["Mahler"]),
+      row(3),
+    ]),
+    ["Disc 1 · Saint-Saëns: Tone Poems", null, null, "Disc 2", null, "Disc 3"],
   );
 });

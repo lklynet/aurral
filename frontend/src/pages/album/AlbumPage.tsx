@@ -69,7 +69,7 @@ import {
   useLibraryViewData,
 } from "../library/libraryShared.tsx";
 
-import { mergeAlbumTracks } from "./mergeAlbumTracks.ts";
+import { albumDiscHeadings, mergeAlbumTracks } from "./mergeAlbumTracks.ts";
 import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./releaseTracks.tsx";
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
@@ -370,13 +370,18 @@ function AlbumPage() {
     onLibraryAlbumRequested: albumState.markAlbumRequested,
   });
 
-  const rows: TrackListRow[] = merged.map((entry) => {
+  const discHeadings = albumDiscHeadings(merged);
+  const rows: TrackListRow[] = merged.map((entry, index) => {
     const { releaseIndex } = entry;
+    const section = discHeadings[index];
     if (!entry.libraryTrack) {
-      return releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
-        key: entry.key,
-        number: entry.number,
-      });
+      return {
+        ...releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
+          key: entry.key,
+          number: entry.number,
+        }),
+        section,
+      };
     }
     const track = entry.libraryTrack;
     const row = actions.buildLibraryTrackRow(track, albumTracks.indexOf(track), albumTracks);
@@ -393,6 +398,7 @@ function AlbumPage() {
         : [];
     return {
       ...row,
+      section,
       key: entry.key,
       number: entry.number,
       subtitle:
