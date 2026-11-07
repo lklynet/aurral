@@ -21,12 +21,8 @@ import {
 } from "../playlistArtworkState.ts";
 import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
-import {
-  withHonkerLock,
-  enqueueSystemTaskJob,
-  getSystemTaskQueueName,
-  mergeIntoPendingHonkerJob,
-} from "../honkerDb.ts";
+import { withLock } from "../jobs/queue.ts";
+import { enqueueSystemTask } from "../jobs/queues.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { collectPlaylistFileTracks } from "./playlistFileTracks.ts";
 import {
@@ -89,19 +85,22 @@ export class PlaylistManager {
                 .filter((id) => id && id !== LIBRARY_DOWNLOADS_ID),
             ),
           ];
-    if (ids?.length === 0) return null;
+    if (ids?.length === 0) return;
     const delaySeconds = rewrite ? PLAYLIST_REWRITE_DELAY_SECONDS : PLAYLIST_SYNC_DELAY_SECONDS;
-    return (
-      mergeIntoPendingHonkerJob(getSystemTaskQueueName(PLAYLIST_SYNC_KIND), {
-        payloadKind: PLAYLIST_SYNC_KIND,
-        matches: (payload) => (payload.rewrite === true) === rewrite,
-        merge: (payload) => ({
-          ...payload,
-          entityIds: mergeEntityIds(stringList(payload.entityIds), ids),
-        }),
-        delaySeconds: rewrite ? delaySeconds : 0,
-      }) ??
-      enqueueSystemTaskJob({ kind: PLAYLIST_SYNC_KIND, entityIds: ids, rewrite }, { delaySeconds })
+    enqueueSystemTask(
+      { kind: PLAYLIST_SYNC_KIND, entityIds: ids, rewrite },
+      {
+        delayMs: delaySeconds * 1000,
+        mergeDelayMs: rewrite ? undefined : 0,
+        mergeInto: (waiting) =>
+          (waiting.rewrite === true) === rewrite
+            ? {
+                ...waiting,
+                kind: PLAYLIST_SYNC_KIND,
+                entityIds: mergeEntityIds(stringList(waiting.entityIds), ids),
+              }
+            : null,
+      },
     );
   }
 
@@ -170,7 +169,7 @@ export class PlaylistManager {
   }
 
   requestPlexUpload() {
-    return enqueueSystemTaskJob({ kind: PLAYLIST_SYNC_KIND, entityIds: null, rewrite: true });
+    enqueueSystemTask({ kind: PLAYLIST_SYNC_KIND, entityIds: null, rewrite: true });
   }
 
   async removePlaylistsFromPlex() {
@@ -200,7 +199,7 @@ export class PlaylistManager {
 
   async _relocateArtwork(playlistId: string) {
     if (!this._artworkNeedsRelocation(playlistId, getPlaylistArtworkState(playlistId))) return;
-    await withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    await withLock(`playlist-artwork:${playlistId}`, async () => {
       const state = getPlaylistArtworkState(playlistId);
       const resolved = this._artworkNeedsRelocation(playlistId, state);
       if (!state?.baseName || !resolved) return;
@@ -256,7 +255,7 @@ export class PlaylistManager {
   }
 
   async _ensureFlowArtwork(playlistId: string, playlistName: string, artworkKind: string) {
-    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    return withLock(`playlist-artwork:${playlistId}`, async () => {
       await fs.mkdir(this.libraryRoot, { recursive: true });
       const baseName = this._getPlaylistBaseName(playlistName);
       if (await this._isArtworkGenerationSuppressed(path.resolve(this.libraryRoot), baseName))
@@ -459,7 +458,7 @@ export class PlaylistManager {
   }
 
   async restoreOriginalArtwork(playlistId: string) {
-    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    return withLock(`playlist-artwork:${playlistId}`, async () => {
       const sourceUrl = flowPlaylistConfig.getStaticPlaylist(playlistId)?.importSource?.artworkUrl;
       if (!sourceUrl)
         throw new Error("No original cover is available. Sync the playlist and try again.");
@@ -469,7 +468,7 @@ export class PlaylistManager {
   }
 
   async saveArtworkUpload(playlistId: string, buffer: Buffer) {
-    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    return withLock(`playlist-artwork:${playlistId}`, async () => {
       const outputPath = await this._saveArtworkBuffer(playlistId, buffer);
       this._rememberArtwork(playlistId, {
         mode: "upload",
@@ -483,7 +482,7 @@ export class PlaylistManager {
   }
 
   async removeArtwork(playlistId: string) {
-    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    return withLock(`playlist-artwork:${playlistId}`, async () => {
       const resolved = this._resolveArtworkBase(playlistId);
       if (!resolved) {
         throw new Error("Playlist not found");
@@ -541,7 +540,7 @@ export class PlaylistManager {
     style: PlaylistArtworkStyle = "artist",
     pick: PlaylistCoverPick | null = null,
   ) {
-    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+    return withLock(`playlist-artwork:${playlistId}`, async () => {
       const resolved = this._resolveArtworkBase(playlistId);
       const context = this.getArtworkContextForPlaylistId(playlistId);
       if (!resolved || !context) throw new Error("Playlist not found");

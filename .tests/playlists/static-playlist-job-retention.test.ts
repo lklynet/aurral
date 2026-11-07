@@ -19,7 +19,7 @@ const [
   { downloadTracker },
   { playlistManager },
   operations,
-  honker,
+  { downloadPipelineQueue },
   { downloadWorker },
   { scanMusicRoot },
   { getLibrary },
@@ -32,7 +32,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
@@ -42,9 +42,7 @@ beforeEach(() => {
   resetDatabase(db);
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  honker.getPipelineQueue();
-  db.prepare("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'").run();
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
 });
 afterAll(() => cleanupIsolatedState(state));
 
@@ -56,7 +54,7 @@ function fixture() {
     name: "Source",
     tracks: [track],
   });
-  const jobId = downloadTracker.addJob(track, source.id);
+  const jobId = requireFixture(downloadTracker.addJob(track, source.id));
   const survivor = config.flowPlaylistConfig.createStaticPlaylist({
     name: "Survivor",
     tracks: [{ ...track, canonicalJobId: jobId }],
@@ -66,7 +64,7 @@ function fixture() {
 
 test("single-track removal retains the job and provider work needed by another library membership", async () => {
   const { source, survivor, jobId } = fixture();
-  const queuedId = honker.getPipelineQueue().enqueue({
+  const queuedId = downloadPipelineQueue.enqueue({
     jobId,
     playlistId: source.id,
     playlistGeneration: 0,
@@ -75,7 +73,7 @@ test("single-track removal retains the job and provider work needed by another l
     queueUuid: "needed-provider-work",
   });
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete-track",
+    kind: "static-playlist-delete-track",
     playlistId: source.id,
     jobId,
   });
@@ -94,10 +92,9 @@ test("single-track removal retains the job and provider work needed by another l
     JSON.parse(
       requireFixture(
         db
-          .prepare<
-            unknown[],
-            { payload: import("../../backend/db/rows.ts").HonkerLiveRow["payload"] }
-          >("SELECT payload FROM _honker_live WHERE id = ?")
+          .prepare<[number], Pick<import("../../backend/db/rows.ts").JobsRow, "payload">>(
+            "SELECT payload FROM jobs WHERE id = ?",
+          )
           .get(queuedId),
       ).payload,
     ).playlistId,
@@ -146,7 +143,7 @@ test("removing a playlist track succeeds when only a later orphan prune would fa
   failOrphanPrunesAfterFirst();
   const escaped = await collectEscapedRejections(() =>
     operations.processPlaylistOperation({
-      kind: "shared-playlist-delete-track",
+      kind: "static-playlist-delete-track",
       playlistId: source.id,
       jobId,
     }),
@@ -171,7 +168,7 @@ test("deleting the original playlist preserves a survivor's completed media", as
     synced.push(...requireFixture(ids));
   });
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: source.id,
   });
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id), null);
@@ -213,7 +210,7 @@ test("an import persistence failure preserves an unshared completed job and its 
   await fs.writeFile(file, "original audio");
   downloadTracker.setDone(requireFixture(jobId), file);
   db.exec(
-    "CREATE TRIGGER reject_import BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'import save rejected'); END",
+    "CREATE TRIGGER reject_import BEFORE INSERT ON settings WHEN NEW.key = 'staticPlaylists' BEGIN SELECT RAISE(ABORT, 'import save rejected'); END",
   );
   t.onTestFinished(() => {
     db.exec("DROP TRIGGER IF EXISTS reject_import");
@@ -245,7 +242,7 @@ test("a single-removal retry syncs the surviving playlist after the sync could n
     if (requireFixture(ids).includes(survivor.id) && fail)
       throw new Error("sync queue unavailable");
   });
-  const operation = { kind: "shared-playlist-delete-track", playlistId: source.id, jobId };
+  const operation = { kind: "static-playlist-delete-track", playlistId: source.id, jobId };
   await assert.rejects(operations.processPlaylistOperation(operation), /sync queue unavailable/);
   assert.equal(downloadTracker.getJob(jobId)?.playlistType, survivor.id);
   fail = false;
@@ -267,11 +264,16 @@ test("removal locks include reused files and quality-upgrade album peers", async
   );
   assert.ok(sharedJobId != null);
   downloadTracker.setDone(sharedJobId, file);
-  const upgradeId = downloadTracker.addReplacementSearchJob(downloadTracker.getJob(jobId));
-  const peerId = downloadTracker.addJob({ artistName: "Artist", trackName: "Peer" }, peerOwner.id);
-  honker.getPipelineQueue().enqueue({
+  const upgradeId = requireFixture(
+    downloadTracker.addReplacementSearchJob(downloadTracker.getJob(jobId)),
+  );
+  const peerId = requireFixture(
+    downloadTracker.addJob({ artistName: "Artist", trackName: "Peer" }, peerOwner.id),
+  );
+  downloadPipelineQueue.enqueue({
     jobId: upgradeId,
     playlistId: source.id,
+    phase: "poll",
     albumGrab: true,
     albumGroupJobIds: [upgradeId, peerId],
   });
@@ -297,9 +299,9 @@ test("a failed membership commit keeps both media copies and retries retained ow
   await fs.writeFile(file, "retained audio");
   downloadTracker.setDone(requireFixture(jobId), file);
   db.exec(
-    "CREATE TRIGGER reject_retained_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'retained save rejected'); END",
+    "CREATE TRIGGER reject_retained_membership BEFORE INSERT ON settings WHEN NEW.key = 'staticPlaylists' BEGIN SELECT RAISE(ABORT, 'retained save rejected'); END",
   );
-  const operation = { kind: "shared-playlist-delete-track", playlistId: source.id, jobId };
+  const operation = { kind: "static-playlist-delete-track", playlistId: source.id, jobId };
   try {
     await assert.rejects(operations.processPlaylistOperation(operation), /retained save rejected/);
     assert.equal(
@@ -352,7 +354,7 @@ test("whole-playlist deletion resumes external cleanup after membership commits"
     if (fail) throw new Error("cleanup unavailable");
     return weeklyReset(...args);
   });
-  const operation = { kind: "shared-playlist-delete", playlistId: source.id };
+  const operation = { kind: "static-playlist-delete", playlistId: source.id };
   await assert.rejects(operations.processPlaylistOperation(operation), /cleanup unavailable/);
   assert.equal(requireFixture(downloadTracker.getJob(jobId)).playlistType, survivor.id);
   assert.ok(config.flowPlaylistConfig.getStaticPlaylist(source.id));
@@ -443,7 +445,7 @@ async function createPlaylist(
   } = {},
 ) {
   const result = await operations.processPlaylistOperation({
-    kind: "shared-playlist-create",
+    kind: "static-playlist-create",
     name: "From the Library",
     tracks,
     ...extra,
@@ -484,7 +486,7 @@ test("deleting a playlist keeps the Library files it reused and deletes the file
   const downloadedFile = await finishDownload(jobFor(downloaded));
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: playlist!.id,
   });
 
@@ -510,7 +512,7 @@ test("an imported track links the Library file at its path even when its names d
   const libraryFile = await addLibraryFile(library);
   mockPlaylistServices();
   const result = await operations.processPlaylistOperation({
-    kind: "shared-playlist-create",
+    kind: "static-playlist-create",
     name: "From an M3U",
     tracks: [{ artistName: "N.E.R.D.", trackName: "Thrasher", path: libraryFile }],
   });
@@ -529,7 +531,7 @@ test("an imported track does not link an indexed file that is gone from disk", a
   await fs.rm(libraryFile);
   mockPlaylistServices();
   const result = await operations.processPlaylistOperation({
-    kind: "shared-playlist-create",
+    kind: "static-playlist-create",
     name: "Stale M3U",
     tracks: [{ ...library, path: libraryFile }],
     downloadMissing: false,
@@ -548,7 +550,7 @@ test("removing a reused track from a playlist keeps its Library file", async () 
   const jobId = requireFixture(jobFor(reused)).id;
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete-track",
+    kind: "static-playlist-delete-track",
     playlistId: playlist!.id,
     jobId,
   });
@@ -581,7 +583,7 @@ test("a synced playlist that drops a reused track keeps its Library file when re
   const jobId = requireFixture(jobFor(reused)).id;
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-update",
+    kind: "static-playlist-update",
     playlistId: playlist!.id,
     tracks: [],
     hasTracksUpdate: true,
@@ -615,7 +617,7 @@ test("a playlist track repaired onto a Library file keeps that file when the pla
   await repairReusableTrackLinks({ downloadRoot: process.env.WEEKLY_FLOW_FOLDER });
   assert.equal(requireFixture(jobFor(track)).finalPath, libraryFile);
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: playlist!.id,
   });
 
@@ -635,12 +637,12 @@ test("a file one playlist downloaded and another reused is deleted once neither 
   assert.equal(second.jobFor(track)!.finalPath, file);
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: first.playlist!.id,
   });
   await fs.access(file);
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: second.playlist!.id,
   });
 
@@ -656,11 +658,11 @@ test("a Library file two playlists reused stays after both playlists are deleted
   assert.equal(second.jobFor(track)!.finalPath, libraryFile);
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: first.playlist!.id,
   });
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: second.playlist!.id,
   });
 

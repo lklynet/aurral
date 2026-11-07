@@ -3,8 +3,8 @@ import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import type { UsenetClientKey } from "../usenetClientCommon.ts";
-import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.ts";
-import type { WeeklyFlowDownloadProviderWorkRow } from "../../db/rows.ts";
+import { downloadPipelineQueue } from "../jobs/queues.ts";
+import type { DownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
 import { downloadTracker, type DownloadJob, type DownloadTracker } from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
@@ -22,8 +22,6 @@ import {
   restoreDownloadJobCancellations,
   restorePlaylistDownloadWork,
 } from "./downloadCancellation.ts";
-
-const PIPELINE_QUEUE = "slskd-pipeline";
 
 const cancellationWorkSchema = v.looseObject({
   jobs: v.array(v.unknown()),
@@ -166,7 +164,7 @@ function throwProviderCleanupFailures(provider: string, failures: unknown[]) {
 async function cancelSlskdWork(
   payloads: CancellationPayload[],
   jobs: CancellationJob[],
-  providerWork: WeeklyFlowDownloadProviderWorkRow[] = [],
+  providerWork: DownloadProviderWorkRow[] = [],
 ) {
   const client = getDownloadClient("slskd");
   const searchIds = new Set<string>();
@@ -359,7 +357,7 @@ function fulfilledValue<T>(result: PromiseSettledResult<T>) {
 async function cancelProviderWork(
   payloads: CancellationPayload[],
   jobs: CancellationJob[],
-  providerWork: WeeklyFlowDownloadProviderWorkRow[] = [],
+  providerWork: DownloadProviderWorkRow[] = [],
 ) {
   const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
@@ -388,16 +386,15 @@ async function cancelProviderWork(
 
 function cancelPipelineRows(playlistId: string, jobs: DownloadJob[]) {
   const jobIds = new Set(jobs.map((job) => normalizeId(job?.id)).filter(Boolean));
-  const rows = listHonkerJobs(PIPELINE_QUEUE).filter(({ payload }) =>
-    payloadBelongsToPlaylist(payload, playlistId, jobIds),
-  );
-  const queue = getHonkerQueueByName(PIPELINE_QUEUE);
+  const rows = downloadPipelineQueue
+    .list()
+    .filter(({ payload }) => payloadBelongsToPlaylist(payload, playlistId, jobIds));
   const payloads = [];
   let cancelled = 0;
   for (const row of rows) {
     payloads.push(row.payload || {});
     try {
-      if (queue?.cancel(row.id)) cancelled += 1;
+      if (downloadPipelineQueue.cancel(row.id)) cancelled += 1;
     } catch (error) {
       logger.warn("playlists", "Could not cancel a removed playlist pipeline job", {
         queueJobId: row.id,
@@ -410,16 +407,15 @@ function cancelPipelineRows(playlistId: string, jobs: DownloadJob[]) {
 
 function cancelPipelineRowsForJobs(jobs: DownloadJob[]) {
   const jobIds = new Set(jobs.map((job) => normalizeId(job?.id)).filter(Boolean));
-  const rows = listHonkerJobs(PIPELINE_QUEUE).filter(({ payload }) =>
-    jobIds.has(normalizeId(payload?.jobId)),
-  );
-  const queue = getHonkerQueueByName(PIPELINE_QUEUE);
+  const rows = downloadPipelineQueue
+    .list()
+    .filter(({ payload }) => jobIds.has(normalizeId(payload?.jobId)));
   const payloads = [];
   let cancelled = 0;
   for (const row of rows) {
     payloads.push(row.payload || {});
     try {
-      if (queue?.cancel(row.id)) cancelled += 1;
+      if (downloadPipelineQueue.cancel(row.id)) cancelled += 1;
     } catch (error) {
       logger.warn("playlists", "Could not cancel a removed track pipeline job", {
         queueJobId: row.id,
@@ -452,7 +448,7 @@ export async function stopOrphanedSlskdSearches() {
 
 export function markDownloadWorkCancelledForJobs(jobs: DownloadJob[] = []) {
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
-  const rows = listHonkerJobs(PIPELINE_QUEUE);
+  const rows = downloadPipelineQueue.list();
   db.transaction(() => {
     for (const job of normalizedJobs) {
       captureCancellationWork(
@@ -475,7 +471,8 @@ export function markPlaylistDownloadWorkCancelled(playlistId: string, jobs: Down
   captureCancellationWork(
     `playlistCancellationWork:${safePlaylistId}`,
     normalizedJobs,
-    listHonkerJobs(PIPELINE_QUEUE)
+    downloadPipelineQueue
+      .list()
       .filter((row) =>
         payloadBelongsToPlaylist(
           row.payload,

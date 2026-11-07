@@ -620,9 +620,9 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     scheduleLibraryScan({ includeLidarr: lidarrActive });
     if (!lidarrActive) {
       const { invalidateLidarrArtistCache } = await import("./libraryManager.ts");
-      const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
+      const { enqueueSystemTask } = await import("./jobs/queues.ts");
       invalidateLidarrArtistCache();
-      enqueueSystemTaskJob({ kind: "lidarr-files-release" });
+      enqueueSystemTask({ kind: "lidarr-files-release" });
     }
   }
   const { downloadClientRegistry } = await import("./download/downloadClientSettings.ts");
@@ -640,12 +640,12 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     JSON.stringify(updatedSettings.qualityProfile) !==
       JSON.stringify(currentSettings.qualityProfile)
   ) {
-    const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
-    enqueueSystemTaskJob({ kind: "quality-profile-refresh" }, { priority: -10 });
+    const { enqueueSystemTask } = await import("./jobs/queues.ts");
+    enqueueSystemTask({ kind: "quality-profile-refresh" }, { priority: -10 });
   }
   if (!isDeepStrictEqual(newsBefore, getNewsSettings())) {
-    const { enqueueSystemTaskJob } = await import("./honkerDb.ts");
-    enqueueSystemTaskJob({ kind: "news-refresh" });
+    const { enqueueSystemTask } = await import("./jobs/queues.ts");
+    enqueueSystemTask({ kind: "news-refresh" });
   }
   const reconciled = reconcileLocalNetworkBypassSetting().settings;
   if (localBypassWasEnabled && reconciled?.security?.localNetworkBypass?.enabled !== true) {

@@ -307,8 +307,8 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
   assert.equal(response.status, 200);
 
   const queuedForAlice = db
-    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").HonkerLiveRow["payload"] }>(
-      "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
+    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").JobsRow["payload"] }>(
+      "SELECT payload FROM jobs WHERE queue = 'discovery-user-refresh' AND state IN ('pending', 'running')",
     )
     .all()
     .filter((row) => JSON.parse(row.payload).userId === alice.id);
@@ -334,8 +334,8 @@ test("each user gets their own pool and a missing pool queues one refresh", asyn
     reason: "queued",
   });
   const queued = db
-    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").HonkerLiveRow["payload"] }>(
-      "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
+    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").JobsRow["payload"] }>(
+      "SELECT payload FROM jobs WHERE queue = 'discovery-user-refresh' AND state IN ('pending', 'running')",
     )
     .all()
     .map((row) => JSON.parse(row.payload));

@@ -41,7 +41,7 @@ test("upgrading gives every saved webhook the events that were turned on for all
         webhookEvents: {
           notifyRequestMade: true,
           notifyRequestAvailable: false,
-          notifyWeeklyFlowDone: true,
+          notifyFlowDone: true,
         },
         webhooks: [
           { url: "http://discord.test", body: '{"content":"$albumName"}', headers: [] },
@@ -58,7 +58,7 @@ test("upgrading gives every saved webhook the events that were turned on for all
         "SELECT value FROM settings WHERE key = 'integrations'",
       )
       .get();
-    const events = ["notifyRequestMade", "notifyWeeklyFlowDone"];
+    const events = ["notifyRequestMade", "notifyFlowDone"];
     assert.deepEqual(JSON.parse(stored?.value ?? "null"), {
       gotify,
       webhooks: [

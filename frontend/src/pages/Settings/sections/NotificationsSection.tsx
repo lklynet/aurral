@@ -34,7 +34,7 @@ const MAX_HEADERS = 10;
 
 const EVENT_LABELS: Record<NotificationEvent, string> = {
   notifyDiscoveryUpdated: "Discover updated",
-  notifyWeeklyFlowDone: "Flow finished",
+  notifyFlowDone: "Flow finished",
   notifyRequestMade: "Request made",
   notifyRequestAvailable: "Request available",
   notifyArtistAdded: "Artist added",

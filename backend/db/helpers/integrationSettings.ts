@@ -122,7 +122,7 @@ export const integrationSettingsSchema = v.looseObject({
     url: text,
     token: text,
     notifyDiscoveryUpdated: flag,
-    notifyWeeklyFlowDone: flag,
+    notifyFlowDone: flag,
     notifyRequestMade: flag,
     notifyRequestAvailable: flag,
     notifyArtistAdded: flag,

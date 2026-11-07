@@ -1,5 +1,5 @@
 import type { DownloadWorker } from "./downloadWorker.ts";
-import type { JsonValue } from "@russellthehippo/honker-node";
+import type { JsonValue } from "../jobs/queue.ts";
 
 export type DownloadOwnerStatus = ReturnType<DownloadWorker["getStatus"]> & {
   operationWorker: { running: boolean; currentLabel: JsonValue };

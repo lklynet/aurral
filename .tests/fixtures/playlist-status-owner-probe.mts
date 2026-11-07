@@ -12,7 +12,7 @@ const [{ dbOps }, owner, { getDatabaseRevision }, { websocketService }, { startP
   import("../../backend/services/websocketService.ts"),
   import("../../backend/services/playlists/playlistStatusBroadcaster.ts"),
 ]);
-dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
 type OwnerStatus = NonNullable<ReturnType<Parameters<typeof owner.configureDownloadOwnerClient>[0]["getStatus"]>>;
 type Client = Parameters<typeof websocketService.clients.add>[0];
 type StatusMessage = { status: { hint: { phase: string }; worker: { currentJob: { id: string } | null } } };

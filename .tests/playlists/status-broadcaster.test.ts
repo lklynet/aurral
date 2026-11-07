@@ -82,7 +82,7 @@ class SocketTransport extends EventEmitter {
 
 beforeEach(() => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   invalidateFlowPlaylistConfigCache();
 });
 afterAll(() => cleanupIsolatedState(state));
@@ -157,7 +157,7 @@ test("local and external commits refresh status and reconnects receive an unchan
   );
   const external = new Database(state.dbPath);
   try {
-    external.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
+    external.prepare("UPDATE download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
     vi.advanceTimersByTime(4000);
     assert.equal(
       requireFixture(client.messages.at(-1)).status.sharedPlaylistStats[playlist.id]?.failed,

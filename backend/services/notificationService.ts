@@ -4,7 +4,7 @@ import axios from "../../lib/axiosFetch.ts";
 import type { NotificationEvent } from "../../lib/notificationEvents.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
-import { enqueueNotification, parseHonkerPayload } from "./honkerDb.ts";
+import { notificationQueue } from "./jobs/queues.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { webhookSchema } from "../db/helpers/integrationSettings.ts";
 import {
@@ -177,19 +177,24 @@ function notify(event: NotificationEvent, { title, message, vars = {}, plugin }:
     const { integrations } = dbOps.getSettings();
     if (plugin) emitPluginEvent("notification", { title, message, ...plugin });
     if (integrations?.gotify?.[event]) {
-      enqueueNotification({ kind: "gotify", title, message, priority: 5, requestedAt: Date.now() });
+      notificationQueue.enqueue({
+        kind: "gotify",
+        title,
+        message,
+        priority: 5,
+        requestedAt: Date.now(),
+      });
     }
     const resolved = Object.fromEntries(
       Object.entries({ ...vars, message, event }).filter(([, value]) => value),
     );
     for (const webhook of integrations?.webhooks ?? []) {
       if (!webhook.events?.includes(event)) continue;
-      enqueueNotification({
+      notificationQueue.enqueue({
         kind: "webhook",
         event,
-        webhook: parseHonkerPayload(JSON.stringify(webhook)) ?? {},
+        webhook,
         vars: resolved,
-        requestedAt: Date.now(),
       });
     }
   } catch (error) {
@@ -270,7 +275,7 @@ export function notifyFlowDone(
 ) {
   const name = String(flowName || playlistType || "").trim() || playlistType;
   const counts = completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : "";
-  notify("notifyWeeklyFlowDone", {
+  notify("notifyFlowDone", {
     title: "Aurral – Flow",
     message: `Flow "${name}" finished processing.${counts}`,
     vars: { flowPath, flowName: name },

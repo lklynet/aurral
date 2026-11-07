@@ -23,7 +23,8 @@ import {
 } from "./recommendationPipeline.ts";
 import type { DiscoveryCache, DiscoveryCacheUpdate } from "../../db/helpers/discovery.ts";
 import { getMusicDataSourceName, getTrendingArtists } from "../musicDataSource/index.ts";
-import { enqueueDiscoveryUserRefreshJob } from "../honkerDb.ts";
+import { discoveryUserRefreshQueue } from "../jobs/queues.ts";
+import { withLock } from "../jobs/queue.ts";
 import { websocketService } from "../websocketService.ts";
 import {
   getLastfmDiscoveryPeriod,
@@ -85,9 +86,9 @@ const enqueueUserRefreshJob = (
 ) => {
   const requestedAt = Date.now();
   markDiscoveryRefreshRequested(getUserDiscoveryNamespace(userId), requestedAt);
-  const operationId = enqueueDiscoveryUserRefreshJob(
+  const operationId = discoveryUserRefreshQueue.enqueue(
     { userId, requestedAt, reason },
-    { delaySeconds, priority: -10 },
+    { delayMs: delaySeconds * 1000, priority: -10 },
   );
   emitUserDiscoveryUpdate(userId, {
     isUpdating: true,
@@ -296,16 +297,13 @@ const publishGlobalDiscovery = (discoveryData: DiscoveryCacheUpdate) => {
   });
 };
 
-export const updateDiscoveryCache = async (
-  options: { skipHonkerLock?: boolean } = {},
-): Promise<void> => {
-  const { withHonkerLock } = await import("../honkerDb.ts");
-  if (options.skipHonkerLock !== true) {
-    return withHonkerLock(
+export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {}): Promise<void> => {
+  if (options.skipLock !== true) {
+    return withLock(
       "discovery-global-refresh",
-      () => updateDiscoveryCache({ ...options, skipHonkerLock: true }),
+      () => updateDiscoveryCache({ ...options, skipLock: true }),
       {
-        ttlSeconds: 3600,
+        ttlMs: 3_600_000,
         waitTimeoutMs: 30 * 60 * 1000,
         retryDelayMs: 500,
       },
@@ -535,17 +533,16 @@ const buildUserRecommendations = async ({
 
 export const updateUserDiscoveryCache = async (
   userId: number,
-  options: { requestedAt?: number; skipHonkerLock?: boolean } = {},
+  options: { requestedAt?: number; skipLock?: boolean } = {},
 ): Promise<
   { skipped: true; reason: string } | { refreshed: true; recommendationCount: number }
 > => {
-  const { withHonkerLock } = await import("../honkerDb.ts");
-  if (options.skipHonkerLock !== true) {
-    return withHonkerLock(
+  if (options.skipLock !== true) {
+    return withLock(
       `discovery-user-refresh:${userId}`,
-      () => updateUserDiscoveryCache(userId, { ...options, skipHonkerLock: true }),
+      () => updateUserDiscoveryCache(userId, { ...options, skipLock: true }),
       {
-        ttlSeconds: 1800,
+        ttlMs: 1_800_000,
         waitTimeoutMs: 30 * 60 * 1000,
         retryDelayMs: 500,
       },

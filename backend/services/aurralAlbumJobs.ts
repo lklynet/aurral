@@ -12,7 +12,7 @@ import {
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
 import { logger } from "./logger.ts";
 import type { LibraryTrack } from "./libraryQueryService.ts";
-import type { HonkerPayload } from "./honkerDb.ts";
+import type { JsonObject } from "./jobs/queue.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);
@@ -21,7 +21,7 @@ export const RETRYABLE_JOB_STATUSES = new Set([...ACTIVE_JOB_STATUSES, "failed",
 type AlbumMbids = (string | null | undefined)[];
 type AlbumTrackRef = Pick<LibraryTrack, "mbid" | "title">;
 
-const payloadGroupJobIds = (payload: HonkerPayload | null) => {
+const payloadGroupJobIds = (payload: JsonObject | null) => {
   const ids = payload?.albumGroupJobIds;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 };
@@ -266,11 +266,12 @@ export async function cancelTrackDownload(jobId: string) {
         status: current.status,
       };
     }
-    const { listHonkerJobs } = await import("./honkerDb.ts");
-    const grab = listHonkerJobs("slskd-pipeline")
+    const { downloadPipelineQueue } = await import("./jobs/queues.ts");
+    const grab = downloadPipelineQueue
+      .list()
       .map(({ payload }) => payload)
       .find(
-        (payload): payload is HonkerPayload =>
+        (payload): payload is JsonObject =>
           payload?.albumGrab === true && payloadGroupJobIds(payload).includes(jobId),
       );
     const peers = payloadGroupJobIds(grab ?? null)

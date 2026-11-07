@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import type {
-  HonkerTaskStatus,
   TaskQueueRow,
   TaskScheduledRow,
+  TaskStatusReport,
   TaskWorkerRow,
-} from "../../../../../../backend/services/honkerTaskStatus.ts";
+} from "../../../../../../backend/services/jobs/status.ts";
 import {
   Activity,
   AlertCircle,
@@ -38,14 +38,9 @@ const POLL_INTERVAL_MS = 5000;
 type StatusMeta = { label: string; tone: string; icon: IconComponent; hint?: string };
 
 const STATUS_META: Partial<Record<string, StatusMeta>> = {
-  interrupted: {
-    label: "Interrupted",
-    tone: "subtle",
-    icon: Clock,
-    hint: "Unfinished work was returned to the queue",
-  },
   completed: { label: "Completed", tone: "muted", icon: Check },
   failed: { label: "Failed", tone: "danger", icon: XCircle },
+  cancelled: { label: "Cancelled", tone: "muted", icon: XCircle },
   running: { label: "Running", tone: "default", icon: Activity },
   queued: { label: "Queued", tone: "subtle", icon: Clock },
   scheduled: { label: "Scheduled", tone: "subtle", icon: Clock },
@@ -213,7 +208,7 @@ function QueueRow({ task }: { task: TaskQueueRow }) {
   );
 }
 
-function TasksSummary({ summary }: { summary: HonkerTaskStatus["summary"] }) {
+function TasksSummary({ summary }: { summary: TaskStatusReport["summary"] }) {
   const { staleCount, failedCount, workersFailedCount, activeCount } = summary;
   return (
     <SettingsNote tone="warning">
@@ -232,7 +227,7 @@ function TasksSummary({ summary }: { summary: HonkerTaskStatus["summary"] }) {
 }
 
 export function useTasksStatus() {
-  return useQuery<HonkerTaskStatus, ApiError>({
+  return useQuery<TaskStatusReport, ApiError>({
     queryKey: queryKeys.settingsTasks,
     queryFn: ({ signal }) => parseResponse(settingsClient.tasks.$get({}, { init: { signal } })),
     staleTime: 0,
@@ -241,7 +236,7 @@ export function useTasksStatus() {
   });
 }
 
-export function tasksServiceStatus(tasks: HonkerTaskStatus | undefined): ServiceStatus | null {
+export function tasksServiceStatus(tasks: TaskStatusReport | undefined): ServiceStatus | null {
   if (!tasks) return null;
   const { healthy, staleCount, failedCount, workersFailedCount, completedCount } = tasks.summary;
   if (healthy) {

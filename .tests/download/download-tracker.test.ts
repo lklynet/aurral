@@ -1,5 +1,5 @@
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
-import type { HonkerPayload } from "../../backend/services/honkerDb.ts";
+import { insertJob } from "../helpers/jobs.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -23,7 +23,7 @@ const [
   qualityProfileService,
   workerModule,
   orchestratorWorker,
-  honkerDb,
+  queues,
 ] = await setupIsolatedBackend(
   "download-tracker",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -32,7 +32,7 @@ const [
   () => import("../../backend/services/qualityProfileService.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 
 const { DownloadTracker } = trackerModule;
@@ -40,8 +40,7 @@ const { DownloadWorker } = workerModule;
 
 // Queues a pipeline step without starting the pipeline worker, which these
 // tests drive themselves.
-const enqueuePipeline: typeof honkerDb.enqueuePipelineJob = (payload) =>
-  honkerDb.getPipelineQueue().enqueue(payload as HonkerPayload, {});
+const enqueuePipeline = (payload: PipelinePayload) => insertJob(db, "download-pipeline", payload);
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -650,8 +649,8 @@ test("album siblings return to individual searches when the leader stops mid-gra
     }),
     true,
   );
-  const grab = honkerDb
-    .listHonkerJobs("slskd-pipeline")!
+  const grab = queues.downloadPipelineQueue
+    .list()
     .find((entry) => entry.payload?.jobId === ids[0])!.payload;
   assert.ok(grab != null);
   assert.equal(grab.albumGrab, true);
@@ -737,18 +736,19 @@ test("restart reuses the queued album pipeline instead of submitting another gra
     }),
     true,
   );
-  const { listHonkerJobs } = await import("../../backend/services/honkerDb.ts");
-  const before = listHonkerJobs("slskd-pipeline").filter(
-    (entry) => entry.payload?.jobId === ids[0],
-  );
+  const before = queues.downloadPipelineQueue
+    .list()
+    .filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(before.length, 1);
   assert.equal(tracker.enqueueDownloadPipeline(requireFixture(ids[1])), true);
   assert.equal(
-    listHonkerJobs("slskd-pipeline").filter(
-      (entry) =>
-        Array.isArray(entry.payload?.albumGroupJobIds) &&
-        entry.payload.albumGroupJobIds.includes(requireFixture(ids[1])),
-    ).length,
+    queues.downloadPipelineQueue
+      .list()
+      .filter(
+        (entry) =>
+          Array.isArray(entry.payload?.albumGroupJobIds) &&
+          entry.payload.albumGroupJobIds.includes(requireFixture(ids[1])),
+      ).length,
     1,
   );
   // The attempt gave this track back to search on its own.
@@ -777,12 +777,15 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[1])), true);
   assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[0])), true);
   assert.equal(restarted.enqueueDownloadPipeline(single), true);
-  const after = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
+  const after = queues.downloadPipelineQueue
+    .list()
+    .filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(after.length, 1);
   assert.equal(trackedJob(restarted, ids[1]).status, "downloading");
   assert.equal(trackedJob(restarted, ids[2]).status, "pending");
   assert.deepEqual(
-    listHonkerJobs("slskd-pipeline")
+    queues.downloadPipelineQueue
+      .list()
       .filter((entry) => entry.payload?.jobId === single)
       .map((entry) => entry.payload!.albumGroupJobIds),
     [[single]],
@@ -794,9 +797,7 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
   const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
   const flowConnection = new Database(isolatedState.dbPath);
   try {
-    flowConnection
-      .prepare("UPDATE playlist_download_jobs SET status = 'done' WHERE id = ?")
-      .run(id);
+    flowConnection.prepare("UPDATE download_jobs SET status = 'done' WHERE id = ?").run(id);
     const previousEnv = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = "production";
@@ -922,10 +923,12 @@ test("a worker starts no more searches than its concurrency allows", async () =>
   worker.updateWorkerSettings({ concurrency: 1 });
   const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
   vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
-  const transaction = honkerDb.getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
-  transaction.commit();
-  honkerDb.enqueuePipelineJob({ phase: "search", source: "slskd", jobId: "already-searching" });
+  db.prepare("DELETE FROM jobs WHERE queue = 'download-pipeline'").run();
+  insertJob(db, "download-pipeline", {
+    phase: "search",
+    source: "slskd",
+    jobId: "already-searching",
+  });
   const jobId = createTrackedJob(
     trackerModule.downloadTracker,
     { artistName: "Artist", trackName: "Waiting Song" },
@@ -1135,7 +1138,7 @@ test("clearing a playlist removes all of its jobs or none of them", () => {
     assert.ok(tracker.addJob({ artistName: "Artist", trackName }, "atomic-clear") != null);
   }
   db.exec(
-    `CREATE TEMP TRIGGER fail_clear BEFORE DELETE ON playlist_download_jobs WHEN OLD.track_name = 'Second' BEGIN SELECT RAISE(ABORT, 'disk gone'); END`,
+    `CREATE TEMP TRIGGER fail_clear BEFORE DELETE ON download_jobs WHEN OLD.track_name = 'Second' BEGIN SELECT RAISE(ABORT, 'disk gone'); END`,
   );
   try {
     assert.throws(() => tracker.clearByPlaylistId("atomic-clear"), /disk gone/);
@@ -1146,7 +1149,7 @@ test("clearing a playlist removes all of its jobs or none of them", () => {
   assert.equal(
     db
       .prepare<[string], { count: number }>(
-        `SELECT COUNT(*) AS count FROM playlist_download_jobs WHERE playlist_type = ?`,
+        `SELECT COUNT(*) AS count FROM download_jobs WHERE owner_type = ?`,
       )
       .get("atomic-clear")?.count,
     2,

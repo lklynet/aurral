@@ -10,7 +10,7 @@ const [
   { db },
   { dbOps, userOps },
   inboxService,
-  honkerDb,
+  { inboxTaskQueue },
   systemTaskWorker,
   { upsertLibraryArtist },
   axios,
@@ -20,7 +20,7 @@ const [
   () => import("../backend/config/db-sqlite.ts"),
   () => import("../backend/db/helpers/index.ts"),
   () => import("../backend/services/inboxService.ts"),
-  () => import("../backend/services/honkerDb.ts"),
+  () => import("../backend/services/jobs/queues.ts"),
   () => import("../backend/services/systemTaskWorker.ts"),
   () => import("../backend/services/libraryMediaStore.ts"),
   () => import("../lib/axiosFetch.ts"),
@@ -29,7 +29,6 @@ const [
 
 const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refreshInboxForUser } =
   inboxService;
-const { enqueueHonkerStartupTasks, getHonkerDb, getInboxTaskQueue } = honkerDb;
 const { processSystemTask } = systemTaskWorker;
 
 const showDate = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
@@ -37,9 +36,7 @@ const showDate = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10
 let userId: number;
 
 function clearRefreshState() {
-  const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live");
-  transaction.commit();
+  db.prepare("DELETE FROM jobs").run();
   db.prepare("DELETE FROM inbox_items").run();
   db.prepare(
     "DELETE FROM settings WHERE key LIKE 'inboxRefresh:%' OR key LIKE 'user:%:nearbyLocation'",
@@ -47,7 +44,6 @@ function clearRefreshState() {
 }
 
 beforeAll(() => {
-  getInboxTaskQueue();
   userId = userOps.createUser("inbox-refresh-user", "password-hash")!.id;
   upsertLibraryArtist({
     identityKey: "artist:inbox-refresh",
@@ -66,20 +62,20 @@ afterAll(async () => {
 
 test("GET inbox reads cached rows without creating refresh work", () => {
   const result = getInboxForUser(userId);
-  const jobs = getHonkerDb().query("SELECT id FROM _honker_live WHERE queue = 'system-task-inbox'");
+  const jobs = inboxTaskQueue.list();
 
   assert.equal(result.refreshStatus.status, "idle");
   assert.equal(result.refreshing, false);
   assert.equal(jobs.length, 0);
 });
 
-test("manual refreshes deduplicate per user and survive a Honker reopen", async () => {
-  const queue = getInboxTaskQueue();
+test("manual refreshes deduplicate per user", async () => {
+  const queue = inboxTaskQueue;
   const originalEnqueue = queue.enqueue;
   queue.enqueue = function enqueueWithFutureRunAt(payload, options = {}) {
     return originalEnqueue.call(this, payload, {
       ...options,
-      runAt: Math.floor(Date.now() / 1000) + 120,
+      runAt: Date.now() + 120_000,
     });
   };
 
@@ -95,26 +91,19 @@ test("manual refreshes deduplicate per user and survive a Honker reopen", async 
   assert.equal(first.queued, true);
   assert.equal(second.queued, false);
   assert.equal(second.jobId, first.jobId);
-  assert.equal(
-    getHonkerDb().query(
-      "SELECT id FROM _honker_live WHERE queue = 'system-task-inbox' AND state = 'pending'",
-    ).length,
-    1,
-  );
-
-  honkerDb.closeHonkerDb();
-  const statusAfterReopen = getInboxRefreshStatus(userId);
-  assert.equal(statusAfterReopen.status, "queued");
-  assert.equal(statusAfterReopen.jobId, first.jobId);
+  assert.equal(inboxTaskQueue.list().length, 1);
+  const status = getInboxRefreshStatus(userId);
+  assert.equal(status.status, "queued");
+  assert.equal(status.jobId, first.jobId);
 });
 
 test("a removed queued refresh is reported stale", async () => {
-  const queue = getInboxTaskQueue();
+  const queue = inboxTaskQueue;
   const originalEnqueue = queue.enqueue;
   queue.enqueue = function enqueueWithFutureRunAt(payload, options = {}) {
     return originalEnqueue.call(this, payload, {
       ...options,
-      runAt: Math.floor(Date.now() / 1000) + 120,
+      runAt: Date.now() + 120_000,
     });
   };
   let refresh: { queued: boolean; jobId: number; status: string };
@@ -123,50 +112,12 @@ test("a removed queued refresh is reported stale", async () => {
   } finally {
     queue.enqueue = originalEnqueue;
   }
-  const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE id = ?", [refresh.jobId]);
-  transaction.commit();
+  db.prepare("DELETE FROM jobs WHERE id = ?").run(refresh.jobId);
 
   const status = getInboxRefreshStatus(userId);
   assert.equal(status.status, "stale");
   assert.equal(status.stale, true);
   assert.match(requireFixture(status.error), /no longer active/i);
-});
-
-test("expired inbox leases are reported stale and recovered without overlap", async () => {
-  const refresh = await inboxService.enqueueInboxRefreshForUser(userId, { reason: "retry" });
-  const jobId = refresh.jobId;
-  const expiredAt = Math.floor(Date.now() / 1000) - 10;
-  const transaction = getHonkerDb().transaction();
-  transaction.execute(
-    `UPDATE _honker_live
-     SET state = 'processing', worker_id = ?, claim_expires_at = ?
-     WHERE id = ?`,
-    ["stale-worker", expiredAt, jobId],
-  );
-  transaction.commit();
-
-  const staleStatus = getInboxRefreshStatus(userId);
-  assert.equal(staleStatus.status, "stale");
-  assert.equal(staleStatus.stale, true);
-  assert.match(requireFixture(staleStatus.error), /no longer active/i);
-  assert.equal(
-    getHonkerDb().query("SELECT state FROM _honker_live WHERE id = ?", [jobId])[0]?.state,
-    "processing",
-  );
-
-  const recovered = await inboxService.enqueueInboxRefreshForUser(userId, { reason: "retry" });
-  assert.equal(recovered.queued, true);
-  assert.notEqual(recovered.jobId, jobId);
-  assert.equal(
-    getHonkerDb().query(
-      `SELECT id FROM _honker_live
-       WHERE queue = 'system-task-inbox'
-         AND (state = 'pending' OR (state = 'processing' AND claim_expires_at > ?))`,
-      [Math.floor(Date.now() / 1000)],
-    ).length,
-    1,
-  );
 });
 
 test("provider failure preserves rows and marks the inbox stale", async () => {
@@ -390,16 +341,4 @@ test("failed refreshes are explicit and a worker retry can complete", async () =
   assert.equal(recovered.status, "complete");
   assert.equal(recovered.stale, false);
   assert.equal(requireFixture(recovered.lastSuccessAt) > 0, true);
-});
-
-test("startup markers prevent duplicate bootstrap jobs on restart", () => {
-  enqueueHonkerStartupTasks();
-  enqueueHonkerStartupTasks();
-  const kinds = getHonkerDb()
-    .query("SELECT payload FROM _honker_live WHERE queue = 'system-task'")
-    .map((row) => JSON.parse(row.payload).kind);
-
-  assert.equal(kinds.filter((kind) => kind === "weekly-flow-startup-check").length, 1);
-  assert.equal(kinds.filter((kind) => kind === "discovery-bootstrap").length, 1);
-  assert.equal(kinds.filter((kind) => kind === "library-index-bootstrap").length, 1);
 });

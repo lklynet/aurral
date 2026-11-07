@@ -1,4 +1,5 @@
 import { createTrackedJob, localDownloadWorker, trackedJob } from "./fixtures.ts";
+import { insertJob } from "../helpers/jobs.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -20,7 +21,7 @@ const [
   operationsModule,
   playlistManagerModule,
   workerModule,
-  honkerModule,
+  { downloadPipelineQueue },
   cancellationServiceModule,
   dbHelpersModule,
   downloadFolderConfigModule,
@@ -35,7 +36,7 @@ const [
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadFolderConfig.ts"),
@@ -59,7 +60,7 @@ const { flowPlaylistConfig } = playlistConfigModule;
 const { processPlaylistOperation } = operationsModule;
 const { playlistManager } = playlistManagerModule;
 const downloadWorker = localDownloadWorker(workerModule.downloadWorker);
-const { enqueuePipelineJob, listHonkerJobs } = honkerModule;
+const enqueuePipelineJob = (payload: object) => insertJob(db, "download-pipeline", payload);
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
 const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
@@ -68,8 +69,8 @@ const { nzbgetClient } = nzbgetModule;
 
 beforeEach(async () => {
   await resetDatabase(db);
-  db.exec("DELETE FROM weekly_flow_download_job_cancellations");
-  db.exec("DELETE FROM weekly_flow_download_cancellations");
+  db.exec("DELETE FROM download_job_cancellations");
+  db.exec("DELETE FROM download_cancellations");
   downloadTracker.clearAll();
   downloadWorker.stop();
 });
@@ -91,7 +92,7 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     { artistName: "Artist", trackName: "Track" },
     "cancellation-retry",
   );
-  honkerModule.getPipelineQueue().enqueue({
+  enqueuePipelineJob({
     jobId,
     playlistId: "cancellation-retry",
     playlistGeneration: 0,
@@ -221,9 +222,9 @@ test("quality-upgrade jobs retain their source playlist generation", () => {
       .prepare<
         unknown[],
         {
-          playlist_generation: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["playlist_generation"];
+          playlist_generation: import("../../backend/db/rows.ts").DownloadJobsRow["playlist_generation"];
         }
-      >("SELECT playlist_generation FROM playlist_download_jobs WHERE id = ?")
+      >("SELECT playlist_generation FROM download_jobs WHERE id = ?")
       .get(upgradeJobId)?.playlist_generation,
     playlistGeneration,
   );
@@ -274,7 +275,7 @@ test("deletion marks queued work cancelled before the background operation start
     false,
   );
   assert.equal(
-    listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId),
+    downloadPipelineQueue.list().some((row) => row.id === queueJobId),
     true,
   );
 });
@@ -319,7 +320,7 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   await processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId,
   });
 
@@ -335,11 +336,11 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
     false,
   );
   assert.equal(
-    listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId),
+    downloadPipelineQueue.list().some((row) => row.id === queueJobId),
     false,
   );
   assert.equal(
-    listHonkerJobs("slskd-pipeline").some((row) => row.id === upgradeQueueJobId),
+    downloadPipelineQueue.list().some((row) => row.id === upgradeQueueJobId),
     false,
   );
 });
@@ -394,7 +395,7 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
     false,
   );
   assert.equal(
-    listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId),
+    downloadPipelineQueue.list().some((row) => row.id === queueJobId),
     false,
   );
 });
@@ -648,7 +649,7 @@ test("failed static playlist deletion preserves membership and leaves a recovera
 
   try {
     await assert.rejects(
-      processPlaylistOperation({ kind: "shared-playlist-delete", playlistId }),
+      processPlaylistOperation({ kind: "static-playlist-delete", playlistId }),
       /Could not cancel download provider work/,
     );
 

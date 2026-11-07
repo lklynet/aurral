@@ -121,7 +121,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     playlistWorker: { concurrency: 1 },
   });
   invalidateFlowPlaylistConfigCache();

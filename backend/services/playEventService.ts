@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
-import { getHonkerDb, getPlayEventOutbox } from "./honkerDb.ts";
+import { playEventQueue } from "./jobs/queues.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
 import type { PlayEventsRow } from "../db/rows.ts";
@@ -124,6 +124,31 @@ export const getTopPlayedArtists = (userId: number, { limit = 20 }: { limit?: un
   }));
 };
 
+const insertEventStmt = db.prepare<
+  [
+    number,
+    string,
+    string,
+    string,
+    string | null,
+    string | null,
+    string | null,
+    string | null,
+    string | null,
+    number | null,
+    number,
+    string,
+    number,
+  ],
+  Pick<PlayEventsRow, "id">
+>(`
+  INSERT INTO play_events
+    (user_id, track_id, title, artist, album, album_key, artist_mbid, album_mbid,
+     track_mbid, duration_ms, played_at, source, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  RETURNING id
+`);
+
 export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
   const trackId = text(input.trackId, 500);
   const title = text(input.title, 500);
@@ -137,52 +162,34 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
     : Date.now();
   const albumKey = resolveAlbumKey(input);
   const connections = scrobbleConnectionStore.getConnections(userId);
-  const honker = getHonkerDb();
-  const tx = honker.transaction();
-  let eventId: number;
-  try {
-    const rows = tx.query(
-      `
-      INSERT INTO play_events
-        (user_id, track_id, title, artist, album, album_key, artist_mbid, album_mbid,
-         track_mbid, duration_ms, played_at, source, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      RETURNING id
-    `,
-      [
-        userId,
-        trackId,
-        title,
-        artist,
-        text(input.album, 500) || null,
-        albumKey,
-        text(input.artistMbid, 100) || null,
-        text(input.albumMbid, 100) || null,
-        text(input.trackMbid, 100) || null,
-        positiveInt(input.durationMs),
-        playedAt,
-        text(input.source, 50) || "unknown",
-        Date.now(),
-      ],
-    ) as { id: number }[];
-    const [row] = rows;
+  const eventId = db.transaction(() => {
+    const row = insertEventStmt.get(
+      userId,
+      trackId,
+      title,
+      artist,
+      text(input.album, 500) || null,
+      albumKey,
+      text(input.artistMbid, 100) || null,
+      text(input.albumMbid, 100) || null,
+      text(input.trackMbid, 100) || null,
+      positiveInt(input.durationMs),
+      playedAt,
+      text(input.source, 50) || "unknown",
+      Date.now(),
+    );
     if (!row) throw new Error("Play event was not saved");
-    eventId = row.id;
     for (const [provider, connection] of Object.entries(connections)) {
-      getPlayEventOutbox().enqueueTx(tx, {
-        eventId,
+      const delivery = {
+        eventId: row.id,
         userId,
         provider,
         connectionRevision: connection.connectionRevision,
-      });
+      };
+      if (v.is(playEventDeliverySchema, delivery)) playEventQueue.enqueue(delivery);
     }
-    tx.commit();
-  } catch (error) {
-    try {
-      tx.rollback();
-    } catch {}
-    throw error;
-  }
+    return row.id;
+  })();
   const event = toPublicEvent(getEventStmt.get(eventId));
   emitPluginEvent("track.played", {
     user: { id: userId, username: userOps.getUserById(userId)?.username ?? null },

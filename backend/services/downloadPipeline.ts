@@ -2,7 +2,8 @@ import fs from "fs/promises";
 import { asAppError } from "../../lib/errors.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
-import { enqueuePipelineJob, listHonkerJobs, type HonkerPayload } from "./honkerDb.ts";
+import type { JsonObject } from "./jobs/queue.ts";
+import { downloadPipelineQueue } from "./jobs/queues.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   discardSlskdSearch,
@@ -47,7 +48,7 @@ import { pluginIdFromSource } from "./plugins/pluginStore.ts";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
-// shares the Honker queue still named slskd-pipeline.
+// shares the download-pipeline queue.
 const slskdClient = getDownloadClient("slskd");
 
 type TrackerPayload = Parameters<typeof downloadTracker.upgradeAttemptAhead>[0];
@@ -95,7 +96,8 @@ type SourceFields = Partial<
 export function enqueuePendingJobsWithoutBatch() {
   if (!isAnyDownloadSourceConfigured()) return 0;
   const activePipelineJobIds = new Set(
-    listHonkerJobs("slskd-pipeline")
+    downloadPipelineQueue
+      .list()
       .map((entry) => String(entry.payload?.jobId || "").trim())
       .filter(Boolean),
   );
@@ -469,7 +471,7 @@ async function discardSourceWork(payload: PipelinePayload) {
 // tracks start again untried, and the source removes the work it started
 // unless a cancellation already did.
 export async function settleDroppedAlbumGrab(
-  dropped: HonkerPayload | PipelinePayload | null,
+  dropped: JsonObject | PipelinePayload | null,
   nextPayload: PipelinePayload | null = null,
   reason = ALBUM_GRAB_ENDED_REASON,
 ) {
@@ -610,11 +612,5 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
 export async function continuePipeline(payload: PipelinePayload | null | undefined) {
   if (!payload) return;
   if (!isPipelinePayloadActive(payload)) return;
-  if (payload.delaySeconds) {
-    enqueuePipelineJob(payload, {
-      delaySeconds: Number(payload.delaySeconds),
-    });
-    return;
-  }
-  enqueuePipelineJob(payload, {});
+  downloadPipelineQueue.enqueue(payload, { delayMs: Number(payload.delaySeconds || 0) * 1000 });
 }

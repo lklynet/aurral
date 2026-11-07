@@ -132,7 +132,7 @@ const rockEssentials = (
 });
 
 const captureEnqueues = () => {
-  const payloads: (import("../../backend/services/honkerDb.ts").HonkerPayload | undefined)[] = [];
+  const payloads: object[] = [];
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     payloads.push(payload);
     return { queued: true, operationId: payloads.length };
@@ -146,7 +146,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
   invalidateFlowPlaylistConfigCache();
 });

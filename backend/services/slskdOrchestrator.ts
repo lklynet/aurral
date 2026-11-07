@@ -184,7 +184,7 @@ import {
 const slskdClient = getDownloadClient("slskd");
 
 const updateSlskdMetaStmt = db.prepare(`
-  UPDATE playlist_download_jobs
+  UPDATE download_jobs
   SET slskd_search_id = COALESCE(?, slskd_search_id),
       slskd_batch_id = COALESCE(?, slskd_batch_id),
       remote_username = COALESCE(?, remote_username),

@@ -521,10 +521,8 @@ function trackedSlskdSearchIds() {
   return db
     .prepare<
       unknown[],
-      { work_id: import("../../backend/db/rows.ts").WeeklyFlowDownloadProviderWorkRow["work_id"] }
-    >(
-      "SELECT work_id FROM weekly_flow_download_provider_work WHERE provider = 'slskd-search' ORDER BY work_id",
-    )
+      { work_id: import("../../backend/db/rows.ts").DownloadProviderWorkRow["work_id"] }
+    >("SELECT work_id FROM download_provider_work WHERE provider = 'slskd-search' ORDER BY work_id")
     .all()
     .map((row) => row.work_id);
 }
@@ -538,7 +536,7 @@ test("a restart that drops an upgrade deletes the upgrade's running search from 
   const trackedSearches = () =>
     db
       .prepare<unknown[], { count: number }>(
-        "SELECT COUNT(*) AS count FROM weekly_flow_download_provider_work WHERE work_id = ?",
+        "SELECT COUNT(*) AS count FROM download_provider_work WHERE work_id = ?",
       )
       .get(searchId)!.count;
   assert.deepEqual(
@@ -582,7 +580,7 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
   const heldDelete = new Promise<(status: number) => void>((resolve) => {
     soulseek.holdDelete = resolve;
   });
-  const startup = processSystemTask({ kind: "weekly-flow-startup-check" });
+  const startup = processSystemTask({ kind: "flow-startup-check" });
   const respond = await Promise.race([
     heldDelete,
     startup.then(
@@ -604,7 +602,7 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
     [dropped.activeSearch!.id, live.activeSearch!.id].sort(),
   );
 
-  await processSystemTask({ kind: "weekly-flow-startup-check" });
+  await processSystemTask({ kind: "flow-startup-check" });
   assert.ok(dropped != null);
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${dropped.activeSearch!.id}`]);
   assert.deepEqual(trackedSlskdSearchIds(), [live.activeSearch!.id]);

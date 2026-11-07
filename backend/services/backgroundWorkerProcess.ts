@@ -1,19 +1,23 @@
-import { ISOLATED_WORKER_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.ts";
+import { WORKER_GROUPS } from "./jobs/groups.ts";
+import { ownsQueueHere } from "./jobs/queue.ts";
 import { logger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
-const group = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
-if (!group || !ISOLATED_WORKER_GROUPS.includes(group) || !process.send) {
+const group = WORKER_GROUPS.find((name) => name === process.env.AURRAL_BACKGROUND_WORKER_GROUP);
+if (!group || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
 
 (await import("./logs.ts")).startWorkerLogging();
 
-const { startWorkerSupervisor, wakeQueuedBackgroundWork, hasQueuedBackgroundWork } =
+const { startGroupWorkers, wakeQueuedBackgroundWork, hasQueuedBackgroundWork } =
   await import("./appRuntime.ts");
-const { getHonkerWorkerStatuses, getWorkerIdleStopMs, shutdownHonkerInfrastructure } =
-  await import("./honkerWorkerRuntime.ts");
-const { isHonkerScheduleDue } = await import("./honkerDb.ts");
+const { getWorkerStatuses, hasActiveJobs, shutdownJobWorkers } = await import("./jobs/worker.ts");
+const IDLE_STOP_MS = (() => {
+  const configured = Number(process.env.AURRAL_WORKER_IDLE_STOP_MS);
+  if (!Number.isFinite(configured)) return 60_000;
+  return configured <= 0 ? 0 : Math.max(5000, Math.floor(configured));
+})();
 async function loadDownloadOwner() {
   const { DownloadWorker, downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
   if (!(downloadWorker instanceof DownloadWorker)) {
@@ -35,6 +39,7 @@ const hasApprovalFollowUps =
 let stopping = false;
 let ownerCommandsInFlight = 0;
 let lastOwnerCommandAt = 0;
+let lastBusyAt = Date.now();
 const DOWNLOAD_OWNER_COMMAND_NAMES = [
   "start",
   "stop",
@@ -169,21 +174,24 @@ async function handleDownloadOwnerCommand(
 async function stop() {
   if (stopping) return;
   stopping = true;
-  await shutdownHonkerInfrastructure({ timeoutMs: 3000 });
+  await shutdownJobWorkers({ timeoutMs: 3000 });
   process.exit(0);
 }
 
-function isIdle() {
-  const idleStopMs = getWorkerIdleStopMs();
-  if (stopping || !idleStopMs) return false;
-  if (ownerCommandsInFlight > 0 || Date.now() - lastOwnerCommandAt < idleStopMs) return false;
-  if (downloadWorker?.hasWork() || hasApprovalFollowUps()) return false;
+function isBusy() {
+  if (ownerCommandsInFlight > 0 || hasActiveJobs()) return true;
+  if (downloadWorker?.hasWork() || hasApprovalFollowUps()) return true;
   try {
-    if (group === "scheduler") return !isHonkerScheduleDue();
-    return !hasQueuedBackgroundWork(group);
+    return hasQueuedBackgroundWork();
   } catch {
-    return false;
+    return true;
   }
+}
+
+function isIdle() {
+  if (stopping || !IDLE_STOP_MS) return false;
+  if (isBusy()) lastBusyAt = Date.now();
+  return Date.now() - Math.max(lastBusyAt, lastOwnerCommandAt) >= IDLE_STOP_MS;
 }
 
 process.on("message", (received) => {
@@ -196,7 +204,7 @@ process.on("message", (received) => {
       lastOwnerCommandAt = Date.now();
     });
   }
-  if (message?.type === "queue-wake") wakeQueuedBackgroundWork(group);
+  if (message?.type === "queue-wake") wakeQueuedBackgroundWork();
   if (message?.type === "retire") {
     if (isIdle()) void stop();
     else if (process.connected) process.send!({ type: "busy" });
@@ -212,14 +220,7 @@ process.once("disconnect", () => {
   void stop();
 });
 
-if (group === "scheduler") {
-  const { startHonkerScheduler } = await import("./honkerDb.ts");
-  startHonkerScheduler();
-  const { startHonkerTaskCleanup } = await import("./honkerTaskStatus.ts");
-  await startHonkerTaskCleanup();
-} else {
-  startWorkerSupervisor({ group });
-}
+startGroupWorkers();
 process.send({ type: "ready", group });
 const heartbeat = setInterval(() => {
   if (process.connected) {
@@ -231,9 +232,7 @@ const heartbeat = setInterval(() => {
       type: "heartbeat",
       group,
       memory: { rss, heapUsed },
-      workers: getHonkerWorkerStatuses().filter((worker) =>
-        isQueueOwnedByGroup(worker.name, group),
-      ),
+      workers: getWorkerStatuses().filter((worker) => ownsQueueHere(worker.name)),
       ...(downloadOwnerStatus && { downloadOwnerStatus }),
     });
   }

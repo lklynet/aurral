@@ -1,15 +1,13 @@
 import * as v from "valibot";
-import createHonkerWorker from "../honkerWorkerFactory.ts";
-import { getLibraryFileQueue } from "../honkerDb.ts";
+import { createJobWorker } from "../jobs/worker.ts";
+import { libraryFileQueue } from "../jobs/queues.ts";
 import { processLibraryFileJob } from "./operations.ts";
 
-const worker = createHonkerWorker({
-  name: "library-files",
-  schema: v.looseObject({ operationId: v.number() }),
-  getQueue: getLibraryFileQueue,
+export const libraryFileJobSchema = v.looseObject({ operationId: v.number() });
+
+const worker = createJobWorker(libraryFileQueue, {
+  schema: libraryFileJobSchema,
   processJob: ({ operationId }) => processLibraryFileJob(operationId),
-  idlePollS: 5,
-  retryDelayS: 30,
 });
 
 export const {

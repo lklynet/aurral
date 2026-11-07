@@ -36,17 +36,10 @@ const BUDGET_MS = 20000;
 const BATCH = 50;
 
 async function enqueue(operationId: number, { dedupe = true }: { dedupe?: boolean } = {}) {
-  const { enqueueLibraryFileJob, findActiveHonkerJob } = await import("../honkerDb.ts");
-  if (
-    dedupe &&
-    findActiveHonkerJob(
-      "library-files",
-      (payload) => Number(payload?.operationId) === Number(operationId),
-      { recoverExpired: true },
-    )
-  )
+  const { libraryFileQueue } = await import("../jobs/queues.ts");
+  if (dedupe && libraryFileQueue.list().some((job) => job.payload?.operationId === operationId))
     return;
-  enqueueLibraryFileJob({ operationId });
+  libraryFileQueue.enqueue({ operationId });
 }
 
 export async function startIngest({

@@ -1,24 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { db } from "../config/db-sqlite.ts";
-import { getHonkerDb } from "./honkerDb.ts";
-import { honkerJobInterruption } from "./honkerWorkerRuntime.ts";
+import { WORKER_ID, ownsLock, releaseLock, renewLock, tryLock } from "./jobs/queue.ts";
+import { jobInterruption } from "./jobs/worker.ts";
 
 const LOCK_NAME = "release-metadata-refresh";
-const TTL_SECONDS = 120;
+const TTL_MS = 120_000;
 
 export async function acquireReleaseMetadataLease({ signal }: { signal?: AbortSignal } = {}) {
   const controller = new AbortController();
-  const interrupt = () => controller.abort(honkerJobInterruption("Metadata refresh interrupted"));
+  const interrupt = () => controller.abort(jobInterruption("Metadata refresh interrupted"));
   signal?.addEventListener("abort", interrupt, { once: true });
   if (signal?.aborted) interrupt();
-  const owner = `metadata-${process.pid}-${randomUUID()}`;
-  let lock;
+  const owner = `${WORKER_ID}:${randomUUID()}`;
   try {
-    while (!lock) {
+    while (!tryLock(LOCK_NAME, owner, TTL_MS)) {
       controller.signal.throwIfAborted();
-      lock = getHonkerDb().tryLock(LOCK_NAME, owner, TTL_SECONDS);
-      if (!lock) await delay(250, undefined, { signal: controller.signal });
+      await delay(250, undefined, { signal: controller.signal });
     }
   } catch (error) {
     signal?.removeEventListener("abort", interrupt);
@@ -27,20 +25,15 @@ export async function acquireReleaseMetadataLease({ signal }: { signal?: AbortSi
   }
   const heartbeat = setInterval(() => {
     try {
-      if (!lock.heartbeat(TTL_SECONDS)) interrupt();
+      if (!renewLock(LOCK_NAME, owner, TTL_MS)) interrupt();
     } catch {
       interrupt();
     }
-  }, 30000);
+  }, 30_000);
   heartbeat.unref();
   const write = db.transaction((fn: () => unknown) => {
     controller.signal.throwIfAborted();
-    const held = db
-      .prepare(
-        "SELECT 1 FROM _honker_locks WHERE name = ? AND owner = ? AND expires_at > unixepoch()",
-      )
-      .get(LOCK_NAME, owner);
-    if (!held) {
+    if (!ownsLock(LOCK_NAME, owner)) {
       interrupt();
       throw controller.signal.reason;
     }
@@ -48,14 +41,12 @@ export async function acquireReleaseMetadataLease({ signal }: { signal?: AbortSi
   });
   return {
     signal: controller.signal,
-    write(fn: () => unknown) {
-      return write.immediate(fn);
-    },
+    write,
     release() {
       clearInterval(heartbeat);
       signal?.removeEventListener("abort", interrupt);
       try {
-        lock.release();
+        releaseLock(LOCK_NAME, owner);
       } catch {}
     },
   };

@@ -2,10 +2,10 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { randomUUID } from "node:crypto";
 import type {
-  PlaylistDownloadJobsRow,
+  DownloadJobsRow,
   SettingsRow,
-  WeeklyFlowDownloadCancellationsRow,
-  WeeklyFlowDownloadProviderWorkRow,
+  DownloadCancellationsRow,
+  DownloadProviderWorkRow,
 } from "../../db/rows.ts";
 
 const attemptStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
@@ -36,49 +36,49 @@ export function setActiveDownloadAttemptId(jobId: string, id: string | null | un
 
 const playlistCancellationStmt = db.prepare<
   [string],
-  Pick<WeeklyFlowDownloadCancellationsRow, "generation" | "state">
->(`SELECT generation, state FROM weekly_flow_download_cancellations WHERE playlist_id = ?`);
+  Pick<DownloadCancellationsRow, "generation" | "state">
+>(`SELECT generation, state FROM download_cancellations WHERE owner_id = ?`);
 const insertActivePlaylistStmt = db.prepare<[string, number]>(
-  `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
+  `INSERT INTO download_cancellations (owner_id, generation, state, changed_at)
    VALUES (?, 0, 'active', ?)`,
 );
 const activateExistingPlaylistStmt = db.prepare<[number, string]>(
-  `UPDATE weekly_flow_download_cancellations
+  `UPDATE download_cancellations
    SET generation = generation + 1, state = 'active', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
 const touchActivePlaylistStmt = db.prepare<[number, string]>(
-  `UPDATE weekly_flow_download_cancellations
+  `UPDATE download_cancellations
    SET state = 'active', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
 const cancelNewPlaylistStmt = db.prepare<[string, number]>(
-  `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
+  `INSERT INTO download_cancellations (owner_id, generation, state, changed_at)
    VALUES (?, 0, 'cancelled', ?)`,
 );
 const cancelExistingPlaylistStmt = db.prepare<[number, string]>(
-  `UPDATE weekly_flow_download_cancellations
+  `UPDATE download_cancellations
    SET state = 'cancelled', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
 const jobCancellationStmt = db.prepare<[string], { 1: number }>(
-  `SELECT 1 FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
+  `SELECT 1 FROM download_job_cancellations WHERE job_id = ?`,
 );
 const cancelJobStmt = db.prepare<[string, number]>(
-  `INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at)
+  `INSERT OR IGNORE INTO download_job_cancellations (job_id, cancelled_at)
    VALUES (?, ?)`,
 );
 const restoreJobStmt = db.prepare<[string]>(
-  `DELETE FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
+  `DELETE FROM download_job_cancellations WHERE job_id = ?`,
 );
 
 const providerWorkInsertStmt = db.prepare<[string, string, string, string, string, number]>(
-  `INSERT OR IGNORE INTO weekly_flow_download_provider_work
-   (job_id, playlist_id, provider, work_id, username, created_at)
+  `INSERT OR IGNORE INTO download_provider_work
+   (job_id, owner_id, provider, work_id, username, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
 const providerWorkDeleteStmt = db.prepare<[string, string]>(
-  `DELETE FROM weekly_flow_download_provider_work
+  `DELETE FROM download_provider_work
    WHERE provider = ? AND work_id = ?`,
 );
 
@@ -233,7 +233,7 @@ export function listDownloadProviderWork({
   }
   const scope = [];
   if (safePlaylistId) {
-    scope.push("playlist_id = ?");
+    scope.push("owner_id = ?");
     params.push(safePlaylistId);
   }
   if (safeJobIds.length > 0) {
@@ -243,19 +243,19 @@ export function listDownloadProviderWork({
   if (scope.length === 0) return [];
   clauses.push(`(${scope.join(" OR ")})`);
   return db
-    .prepare<string[], WeeklyFlowDownloadProviderWorkRow>(
-      `SELECT job_id, playlist_id, provider, work_id, username, created_at
-     FROM weekly_flow_download_provider_work
+    .prepare<string[], DownloadProviderWorkRow>(
+      `SELECT job_id, owner_id, provider, work_id, username, created_at
+     FROM download_provider_work
      WHERE ${clauses.join(" AND ")}
      ORDER BY created_at, work_id`,
     )
     .all(...params);
 }
 
-const orphanedProviderWorkStmt = db.prepare<[string], WeeklyFlowDownloadProviderWorkRow>(
-  `SELECT job_id, playlist_id, provider, work_id, username, created_at
-   FROM weekly_flow_download_provider_work AS work
-   WHERE provider = ? AND NOT EXISTS (SELECT 1 FROM playlist_download_jobs AS job WHERE job.id = work.job_id)
+const orphanedProviderWorkStmt = db.prepare<[string], DownloadProviderWorkRow>(
+  `SELECT job_id, owner_id, provider, work_id, username, created_at
+   FROM download_provider_work AS work
+   WHERE provider = ? AND NOT EXISTS (SELECT 1 FROM download_jobs AS job WHERE job.id = work.job_id)
    ORDER BY created_at, work_id`,
 );
 
@@ -295,17 +295,14 @@ export function isPipelinePayloadActive(payload: PipelinePayloadFields = {}) {
     return false;
   if (jobId) {
     const owner = db
-      .prepare<
-        [string],
-        Pick<PlaylistDownloadJobsRow, "playlist_id" | "playlist_type" | "playlist_generation">
-      >(
-        "SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?",
+      .prepare<[string], Pick<DownloadJobsRow, "owner_id" | "owner_type" | "playlist_generation">>(
+        "SELECT owner_id, owner_type, playlist_generation FROM download_jobs WHERE id = ?",
       )
       .get(jobId);
     if (
       owner &&
       payload.playlistId &&
-      ((owner.playlist_id || owner.playlist_type) !== payload.playlistId ||
+      ((owner.owner_id || owner.owner_type) !== payload.playlistId ||
         Number(owner.playlist_generation || 0) !== Number(payload.playlistGeneration || 0))
     )
       return false;

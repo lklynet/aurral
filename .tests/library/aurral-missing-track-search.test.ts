@@ -21,8 +21,9 @@ const [
   { getLibraryForAlbumIds },
   { recordMissingTrackSearch },
   { runMissingTrackSearch },
-  { SCHEDULED_SYSTEM_TASKS },
-  { processSystemTask, systemTaskSchema },
+  { SCHEDULES },
+  { systemTaskSchema },
+  { processSystemTask },
   { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "aurral-missing-track-search",
@@ -37,7 +38,8 @@ const [
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
   () => import("../../backend/services/aurralMissingTrackSearch.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/schedules.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
 );
@@ -673,9 +675,7 @@ test("an album asked for before it comes out waits, then is searched once when i
 });
 
 test("the scheduled system task searches due albums", async () => {
-  const scheduled = SCHEDULED_SYSTEM_TASKS.find(
-    (task) => task.payload?.kind === "aurral-missing-track-search",
-  );
+  const scheduled = SCHEDULES.find((schedule) => schedule.name === "aurral-missing-track-search");
   assert.ok(scheduled, "the missing-track search has a schedule");
   const { albumMbid } = createAlbum({ tracks: ["failed", "missing"] });
 

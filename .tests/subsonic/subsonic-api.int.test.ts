@@ -1643,8 +1643,8 @@ test("creates durable Subsonic playlists around one promoted library job", async
       db
         .prepare<
           unknown[],
-          { status: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["status"] }
-        >("SELECT status FROM playlist_download_jobs WHERE id = ?")
+          { status: import("../../backend/db/rows.ts").DownloadJobsRow["status"] }
+        >("SELECT status FROM download_jobs WHERE id = ?")
         .get(canonicalJobId)?.status === "done",
   );
   const firstReady = await waitFor(async () => {
@@ -1664,11 +1664,11 @@ test("creates durable Subsonic playlists around one promoted library job", async
     .prepare<
       unknown[],
       {
-        id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"];
-        finalPath: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["final_path"];
+        id: import("../../backend/db/rows.ts").DownloadJobsRow["id"];
+        finalPath: import("../../backend/db/rows.ts").DownloadJobsRow["final_path"];
       }
     >(
-      "SELECT id, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ?",
+      "SELECT id, final_path AS finalPath FROM download_jobs WHERE owner_type = ? AND track_name = ?",
     )
     .all("library", "Flow Song");
   assert.equal(libraryJobs.length, 1);
@@ -1739,11 +1739,8 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
     );
     assert.equal(
       db
-        .prepare<
-          unknown[],
-          { id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"] }
-        >(
-          "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+        .prepare<unknown[], { id: import("../../backend/db/rows.ts").DownloadJobsRow["id"] }>(
+          "SELECT id FROM download_jobs WHERE owner_type = ? AND track_name = ? LIMIT 1",
         )
         .get("library", "Canonical Song"),
       undefined,
@@ -1878,7 +1875,7 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
     Boolean(
       db
         .prepare<unknown[], { "1": unknown }>(
-          "SELECT 1 FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+          "SELECT 1 FROM download_jobs WHERE owner_type = ? AND track_name = ? LIMIT 1",
         )
         .get("library", "Favorite Song"),
     ),
@@ -1898,8 +1895,8 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
   assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
   const autoKeepJob = db
-    .prepare<unknown[], { id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"] }>(
-      "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+    .prepare<unknown[], { id: import("../../backend/db/rows.ts").DownloadJobsRow["id"] }>(
+      "SELECT id FROM download_jobs WHERE owner_type = ? AND track_name = ? LIMIT 1",
     )
     .get("library", "Favorite Song");
   assert.ok(autoKeepJob);
@@ -1931,12 +1928,12 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
       .prepare<
         unknown[],
         {
-          id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"];
-          status: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["status"];
-          finalPath: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["final_path"];
+          id: import("../../backend/db/rows.ts").DownloadJobsRow["id"];
+          status: import("../../backend/db/rows.ts").DownloadJobsRow["status"];
+          finalPath: import("../../backend/db/rows.ts").DownloadJobsRow["final_path"];
         }
       >(
-        "SELECT id, status, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+        "SELECT id, status, final_path AS finalPath FROM download_jobs WHERE owner_type = ? AND track_name = ? LIMIT 1",
       )
       .get("library", track.trackName);
     assert.ok(libraryJob);
@@ -1959,8 +1956,8 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     const updatedLibraryJob = db
       .prepare<
         unknown[],
-        { finalPath: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["final_path"] }
-      >("SELECT final_path AS finalPath FROM playlist_download_jobs WHERE id = ?")
+        { finalPath: import("../../backend/db/rows.ts").DownloadJobsRow["final_path"] }
+      >("SELECT final_path AS finalPath FROM download_jobs WHERE id = ?")
       .get(libraryJobId);
     assert.ok(updatedLibraryJob != null);
     await stat(updatedLibraryJob.finalPath!);
@@ -2378,7 +2375,7 @@ test("repairs repeated and form-posted IDs in playlists, favorites, and play que
   );
   const encoded = encodeURIComponent(song.id);
   const libraryJobs = db.prepare<[], { id: string }>(
-    "SELECT id FROM playlist_download_jobs WHERE playlist_type = 'library'",
+    "SELECT id FROM download_jobs WHERE owner_type = 'library'",
   );
   const priorJobs = new Set(libraryJobs.all().map((job) => job.id));
   const name = "shared%3Aplaylist%20name";

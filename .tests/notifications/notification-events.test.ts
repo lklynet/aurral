@@ -6,6 +6,7 @@ type CapturedRequest = {
 };
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { insertJob } from "../helpers/jobs.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -17,13 +18,14 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, notifications, honker] = await setupIsolatedBackend(
-  "notifications",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/notificationService.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
-);
+const [isolatedState, { db }, { dbOps }, notifications, { notificationQueue }] =
+  await setupIsolatedBackend(
+    "notifications",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/notificationService.ts"),
+    () => import("../../backend/services/jobs/queues.ts"),
+  );
 
 const {
   interpolateBody,
@@ -211,10 +213,10 @@ test("each subscribed webhook is queued on its own, carrying only itself", async
       },
     });
 
-    honker.enqueueNotification({ kind: "email" });
+    insertJob(db, "notifications", { kind: "email" });
     notifyArtistAdded({ artistName: "Slowdive", user: { id: 7, username: "alice" } });
 
-    const queued = honker.listHonkerJobs("_outbox:notifications");
+    const queued = notificationQueue.list();
     assert.deepEqual(
       queued.flatMap((job) => {
         const queuedJob = v.safeParse(queuedNotificationSchema, requireFixture(job).payload);
@@ -415,14 +417,14 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
         gotify: {
           url: baseUrl,
           token: "test-token",
-          notifyWeeklyFlowDone: true,
+          notifyFlowDone: true,
         },
         webhooks: [
           {
             url: `${baseUrl}/hook`,
             body: '{"name":"$flowName","path":"$flowPath"}',
             headers: [],
-            events: ["notifyWeeklyFlowDone"],
+            events: ["notifyFlowDone"],
           },
         ],
       },

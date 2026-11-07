@@ -21,7 +21,7 @@ const [
   playlistConfigModule,
   cancellationModule,
   playlistManagerModule,
-  honkerModule,
+  jobQueue,
   dbHelpersModule,
   artworkService,
 ] = await setupIsolatedBackend(
@@ -32,7 +32,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queue.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/customArtworkService.ts"),
 );
@@ -51,7 +51,7 @@ const {
   withPipelineCommitLock,
 } = cancellationModule;
 const { playlistManager } = playlistManagerModule;
-const { withHonkerLock } = honkerModule;
+const { withLock } = jobQueue;
 const { dbOps } = dbHelpersModule;
 const playlistArtworkImage = await sharp({
   create: { width: 32, height: 32, channels: 3, background: { r: 180, g: 40, b: 100 } },
@@ -483,7 +483,7 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
   const { promise: entered, resolve: signalEntered } = Promise.withResolvers<void>();
   const { promise: held, resolve: releaseLock } = Promise.withResolvers<void>();
   let lockReleased = false;
-  const currentMutation = withHonkerLock("weekly-flow-operation", async () => {
+  const currentMutation = withLock("playlist-operation", async () => {
     signalEntered();
     await held;
   });
@@ -498,7 +498,7 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
     playlistId,
     name: "After Ordered Edit",
   });
-  const followingMutation = withHonkerLock("weekly-flow-operation", () => {
+  const followingMutation = withLock("playlist-operation", () => {
     assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "After Ordered Edit");
   });
   try {

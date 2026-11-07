@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { logger } from "../logger.ts";
-import { enqueueNotification, parseHonkerPayload } from "../honkerDb.ts";
+import { parseJobPayload } from "../jobs/queue.ts";
+import { notificationQueue } from "../jobs/queues.ts";
 import { callPlugin, PluginError } from "./pluginHost.ts";
 import { PLUGIN_EVENTS, type PluginEvent } from "./pluginManifest.ts";
 import { activePluginWith, pluginInput, pluginsForEvent } from "./pluginStore.ts";
@@ -18,10 +19,10 @@ export function emitPluginEvent(event: PluginEvent, data: Record<string, unknown
   try {
     const plugins = pluginsForEvent(event);
     if (!plugins.length) return;
-    const payload = parseHonkerPayload(JSON.stringify(data));
+    const payload = parseJobPayload(JSON.stringify(data));
     if (!payload) return;
     for (const plugin of plugins)
-      enqueueNotification({ kind: "plugin", pluginId: plugin.id, event, data: payload });
+      notificationQueue.enqueue({ kind: "plugin", pluginId: plugin.id, event, data: payload });
   } catch (error) {
     logger.warn("plugins", "Could not queue a plugin event", {
       event,

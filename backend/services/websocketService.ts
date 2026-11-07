@@ -4,7 +4,6 @@ import { EventEmitter } from "node:events";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
-import { noteDeprecatedUsage } from "./deprecatedUsage.ts";
 import {
   getAuthPassword,
   isProxyAuthEnabled,
@@ -202,10 +201,7 @@ class WebSocketService extends EventEmitter {
   }
 
   handleSubscribe(client: WebSocketClient, channels: string[]) {
-    for (const channel of channels) {
-      client.subscriptions.add(channel);
-      if (channel === "weekly-flow") noteDeprecatedUsage("weekly-flow-channel");
-    }
+    for (const channel of channels) client.subscriptions.add(channel);
 
     this.send(client, {
       type: "subscribed",

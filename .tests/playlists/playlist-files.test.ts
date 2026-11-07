@@ -14,7 +14,7 @@ const [
   state,
   { db },
   { dbOps, userOps },
-  honker,
+  { playbackTaskQueue },
   { playlistManager },
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { downloadTracker },
@@ -24,7 +24,7 @@ const [
   "playlist-files",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -40,10 +40,7 @@ beforeEach(async () => {
   resetDatabase(db);
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
-  const tx = honker.getHonkerDb().transaction();
-  tx.execute("DELETE FROM _honker_live");
-  tx.commit();
-  dbOps.updateSettings({ onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ onboardingComplete: true, flows: [], staticPlaylists: [] });
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
@@ -73,14 +70,18 @@ const playlistFiles = async () =>
   (await fs.readdir(libraryRoot).catch(() => [])).filter((file) => file.endsWith(".m3u")).sort();
 
 function pendingSyncs() {
-  const now = Math.floor(Date.now() / 1000);
-  return honker
-    .listHonkerJobs("playback")
-    .flatMap(({ run_at: runAt, payload }) =>
-      payload?.kind === "playback-playlist-sync"
-        ? [{ delaySeconds: runAt - now, entityIds: payload.entityIds, rewrite: payload.rewrite }]
-        : [],
-    );
+  const now = Date.now();
+  return playbackTaskQueue.list().flatMap(({ kind, run_at: runAt, payload }) =>
+    kind === "playback-playlist-sync" && payload
+      ? [
+          {
+            delaySeconds: Math.round((runAt - now) / 1000),
+            entityIds: payload.entityIds,
+            rewrite: payload.rewrite,
+          },
+        ]
+      : [],
+  );
 }
 
 test("writes a playlist file with full paths and rewrites it once later", async () => {
@@ -99,9 +100,7 @@ test("writes a playlist file with full paths and rewrites it once later", async 
   assert.deepEqual([rewrite.entityIds, rewrite.rewrite], [[playlist.id], true]);
   assert.ok(rewrite.delaySeconds >= 170);
 
-  const tx = honker.getHonkerDb().transaction();
-  tx.execute("DELETE FROM _honker_live");
-  tx.commit();
+  db.prepare("DELETE FROM jobs").run();
   await playlistManager.syncPlaylists({ entityIds: [playlist.id], rewrite: true });
   await playlistManager.syncPlaylists({ entityIds: [playlist.id] });
   assert.deepEqual(pendingSyncs(), []);
@@ -112,9 +111,7 @@ test("a later change pushes the pending rewrite out again", async () => {
   const second = flowPlaylistConfig.createStaticPlaylist({ name: "Second" });
   await addDownloadedTrack(first.id, "Song A");
   await playlistManager.syncPlaylists({ entityIds: [first.id] });
-  const tx = honker.getHonkerDb().transaction();
-  tx.execute("UPDATE _honker_live SET run_at = ?", [Math.floor(Date.now() / 1000) + 5]);
-  tx.commit();
+  db.prepare("UPDATE jobs SET run_at = ?").run(Date.now() + 5000);
 
   await addDownloadedTrack(second.id, "Song B");
   await playlistManager.syncPlaylists({ entityIds: [second.id] });
@@ -124,6 +121,17 @@ test("a later change pushes the pending rewrite out again", async () => {
   assert.deepEqual(rest, []);
   assert.deepEqual(rewrite.entityIds, [first.id, second.id]);
   assert.ok(rewrite.delaySeconds >= 170);
+});
+
+test("more tracks joining a pending sync keep its deadline", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Busy" });
+  playlistManager.requestPlaylistSync([playlist.id]);
+  const deadline = Date.now() + 500;
+  db.prepare("UPDATE jobs SET run_at = ?").run(deadline);
+  playlistManager.requestPlaylistSync([playlist.id]);
+  const [merged, ...rest] = playbackTaskQueue.list();
+  assert.deepEqual(rest, []);
+  assert.equal(merged?.run_at, deadline);
 });
 
 test("renaming, disabling, or deleting removes the old file", async () => {

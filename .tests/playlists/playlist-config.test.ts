@@ -54,7 +54,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 
@@ -338,13 +338,11 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
       .prepare<
         unknown[],
         {
-          release_mbid: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_mbid"];
-          track_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["track_number"];
-          disc_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["disc_number"];
+          release_mbid: import("../../backend/db/rows.ts").DownloadJobsRow["release_mbid"];
+          track_number: import("../../backend/db/rows.ts").DownloadJobsRow["track_number"];
+          disc_number: import("../../backend/db/rows.ts").DownloadJobsRow["disc_number"];
         }
-      >(
-        "SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?",
-      )
+      >("SELECT release_mbid, track_number, disc_number FROM download_jobs WHERE owner_type = ?")
       .all(playlistId),
     [{ release_mbid: releaseMbid, track_number: 4, disc_number: 2 }],
   );

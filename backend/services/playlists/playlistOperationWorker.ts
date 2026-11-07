@@ -1,6 +1,5 @@
-import type { Job } from "@russellthehippo/honker-node";
-import createHonkerWorker from "../honkerWorkerFactory.ts";
-import { getFlowRunQueue, getPlaylistOperationQueue } from "../honkerDb.ts";
+import { createJobWorker, type TypedJob } from "../jobs/worker.ts";
+import { flowRunQueue, playlistOperationQueue } from "../jobs/queues.ts";
 import { playlistOperationSchema, processPlaylistOperation } from "./playlistOperations.ts";
 import { setPlaylistOperationWorkerState } from "./playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
@@ -15,14 +14,14 @@ let currentLabel: string | null = null;
 let flowRunLabel: string | null = null;
 
 const isPlaylistImport = (payload: PlaylistOperation) =>
-  payload.kind === "shared-playlist-create" && payload.importSource != null;
+  payload.kind === "static-playlist-create" && payload.importSource != null;
 
 const importProvider = ({ importSource }: PlaylistOperation) =>
   typeof importSource === "object" && importSource !== null && "provider" in importSource
     ? importSource.provider || null
     : null;
 
-const importContext = (payload: PlaylistOperation, job: Job) => ({
+const importContext = (payload: PlaylistOperation, job: Pick<TypedJob<unknown>, "id">) => ({
   provider: importProvider(payload),
   playlistName: payload.name || null,
   playlistId: payload.playlistId || null,
@@ -38,21 +37,19 @@ function syncWorkerState() {
   });
 }
 
-function retryDecision(error: unknown, job: Pick<Job, "attempts">) {
+function retryDecision(error: unknown, job: Pick<TypedJob<unknown>, "attempts">) {
   const failure = asAppError(error);
   const message = failure?.message || String(error);
   if (PERMANENT_ERROR_CODES.has(String(failure?.code || "")) || job.attempts >= 3) {
     return { action: "fail" as const, message };
   }
-  return { action: "retry" as const, delayS: 60, message };
+  return { action: "retry" as const, delayMs: 60_000, message };
 }
 
-const worker = createHonkerWorker({
-  name: "weekly-flow-operation",
+const worker = createJobWorker(playlistOperationQueue, {
   schema: playlistOperationSchema,
-  getQueue: getPlaylistOperationQueue,
   async processJob(payload, job) {
-    if (payload.kind !== "shared-playlist-bulk") return processPlaylistOperation(payload);
+    if (payload.kind !== "static-playlist-bulk") return processPlaylistOperation(payload);
     const record = getBulkOperation(job.id);
     if (!record || ["completed", "failed"].includes(record.state)) return;
     saveBulkOperation({ ...record, state: "running", updatedAt: Date.now() });
@@ -60,8 +57,6 @@ const worker = createHonkerWorker({
     const applied = getBulkOperation(job.id);
     if (applied) saveBulkOperation({ ...applied, state: "completed", updatedAt: Date.now() });
   },
-  idlePollS: 5,
-  retryDelayS: 60,
   shouldLogFailure: (job) => !isPlaylistImport(job.payload),
   onJobDequeue(payload, job) {
     currentLabel = labelOf(payload);
@@ -86,7 +81,7 @@ const worker = createHonkerWorker({
   onJobError(error, job) {
     currentLabel = null;
     syncWorkerState();
-    if (job.payload.kind === "shared-playlist-bulk") {
+    if (job.payload.kind === "static-playlist-bulk") {
       const record = getBulkOperation(job.id);
       if (record && record.state !== "completed") {
         saveBulkOperation({
@@ -99,7 +94,7 @@ const worker = createHonkerWorker({
     }
   },
   onFinalFailure(job, error) {
-    if (job.payload.kind !== "shared-playlist-bulk") return;
+    if (job.payload.kind !== "static-playlist-bulk") return;
     const record = getBulkOperation(job.id);
     if (record && record.state !== "completed") {
       saveBulkOperation({
@@ -128,13 +123,9 @@ const worker = createHonkerWorker({
   },
 });
 
-const flowRunWorker = createHonkerWorker({
-  name: "flow-run",
+const flowRunWorker = createJobWorker(flowRunQueue, {
   schema: playlistOperationSchema,
-  getQueue: getFlowRunQueue,
   processJob: processPlaylistOperation,
-  idlePollS: 5,
-  retryDelayS: 60,
   onJobDequeue(payload) {
     flowRunLabel = labelOf(payload);
     syncWorkerState();

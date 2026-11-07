@@ -1,13 +1,7 @@
 import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./aurralMonitoring.ts";
 import { UUID_REGEX } from "../../lib/uuid.ts";
 import { asAppError } from "../../lib/errors.ts";
-import {
-  enqueueSystemTaskJob,
-  findActiveHonkerJob,
-  requireHonkerQueueByName,
-  getSystemTaskQueueName,
-  listHonkerJobs,
-} from "./honkerDb.ts";
+import { enqueueSystemTask, releaseMetadataQueue } from "./jobs/queues.ts";
 import { logger } from "./logger.ts";
 import { getAlbumByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
 import {
@@ -80,33 +74,13 @@ function isValidCatalogueRelease(
 
 export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   if (listArtistsDue(listReleaseCalendarArtists(), Date.now()).length === 0) return null;
-  const normalizedDelay = Math.max(0, Number(delaySeconds) || 0);
-  const requestedRunAt = Math.floor(Date.now() / 1000) + normalizedDelay;
-  const queueName = getSystemTaskQueueName(TASK_KIND);
-  const active = [queueName, "system-task"]
-    .flatMap((name) => {
-      findActiveHonkerJob(name, (payload) => payload?.kind === TASK_KIND, {
-        recoverExpired: true,
-        payloadKind: TASK_KIND,
-      });
-      return listHonkerJobs(name).map((job) => ({ ...job, queue: name }));
-    })
-    .filter(
-      (job) =>
-        job.payload?.kind === TASK_KIND && (job.state === "pending" || job.state === "processing"),
-    );
-  const [pending, ...duplicates] = active
-    .filter((job) => job.state === "pending")
-    .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));
-  for (const job of duplicates) requireHonkerQueueByName(job.queue).cancel(job.id);
-  if (pending?.id) {
-    const existingRunAt = Number(pending.run_at || 0);
-    if (existingRunAt === 0 || existingRunAt <= requestedRunAt) {
-      return pending.id;
-    }
-    if (!requireHonkerQueueByName(pending.queue).cancel(pending.id)) return pending.id;
+  const delayMs = Math.max(0, Number(delaySeconds) || 0) * 1000;
+  const pending = releaseMetadataQueue.list().find((job) => job.state === "pending");
+  if (pending) {
+    if (pending.run_at <= Date.now() + delayMs) return pending.id;
+    if (!releaseMetadataQueue.cancel(pending.id)) return pending.id;
   }
-  return enqueueSystemTaskJob({ kind: TASK_KIND }, { delaySeconds: normalizedDelay, priority: -5 });
+  return enqueueSystemTask({ kind: TASK_KIND }, { delayMs, priority: -5 });
 }
 
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;

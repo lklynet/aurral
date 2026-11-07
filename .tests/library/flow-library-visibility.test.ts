@@ -30,7 +30,7 @@ let root: string;
 
 beforeEach(async () => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   root = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-"));
 });
 
@@ -71,8 +71,8 @@ let jobCounter = 0;
 function addDoneJob(playlistId: string, filePath: string, trackName: string) {
   jobCounter += 1;
   db.prepare(
-    `INSERT INTO playlist_download_jobs
-      (id, artist_name, track_name, album_name, playlist_id, playlist_type, status, final_path, created_at, completed_at)
+    `INSERT INTO download_jobs
+      (id, artist_name, track_name, album_name, owner_id, owner_type, status, final_path, created_at, completed_at)
      VALUES (?, ?, ?, ?, ?, ?, 'done', ?, ?, ?)`,
   ).run(
     `job-${jobCounter}`,
@@ -147,7 +147,7 @@ test("tracks that leave an included flow leave the library", async () => {
   await scan([added]);
   assert.deepEqual(libraryTrackTitles(), ["Added", "Kept", "Rotated"]);
 
-  db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(rotatedJob);
+  db.prepare("DELETE FROM download_jobs WHERE id = ?").run(rotatedJob);
   await rm(rotated);
   await scan([rotated]);
   assert.deepEqual(libraryTrackTitles(), ["Added", "Kept"]);

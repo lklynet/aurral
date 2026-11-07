@@ -1,7 +1,7 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
 import { asAppError } from "../../lib/errors.ts";
-import type { LibraryArtistsRow, PlaylistDownloadJobsRow } from "../db/rows.ts";
+import type { LibraryArtistsRow, DownloadJobsRow } from "../db/rows.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.ts";
 import {
@@ -77,7 +77,7 @@ function getAurralJobMetadataByPath() {
     .prepare<
       [],
       Pick<
-        PlaylistDownloadJobsRow,
+        DownloadJobsRow,
         | "final_path"
         | "artist_name"
         | "album_name"
@@ -92,7 +92,7 @@ function getAurralJobMetadataByPath() {
     >(
       `SELECT final_path, artist_name, album_name, track_name,
         artist_mbid, album_mbid, track_mbid, release_year, track_number, disc_number
-       FROM playlist_download_jobs
+       FROM download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
        ORDER BY completed_at DESC, created_at DESC`,
     )
@@ -124,11 +124,11 @@ function getLibraryFlowPaths() {
   if (flowIds.length === 0) return [];
   const placeholders = flowIds.map(() => "?").join(",");
   const rows = db
-    .prepare<string[], Pick<PlaylistDownloadJobsRow, "final_path">>(
+    .prepare<string[], Pick<DownloadJobsRow, "final_path">>(
       `SELECT DISTINCT final_path
-       FROM playlist_download_jobs
+       FROM download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
-         AND (playlist_id IN (${placeholders}) OR playlist_type IN (${placeholders}))`,
+         AND (owner_id IN (${placeholders}) OR owner_type IN (${placeholders}))`,
     )
     .all(...flowIds, ...flowIds);
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];

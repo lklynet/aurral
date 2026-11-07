@@ -1,7 +1,7 @@
 import { usenetCandidate } from "./fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
-import type { HonkerPayload } from "../../backend/services/honkerDb.ts";
+import { insertJob } from "../helpers/jobs.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import { createTrackedJob, trackedJob, usenetIndexer, usenetRelease } from "./fixtures.ts";
 import { test, afterAll, vi, type TestContext } from "vite-plus/test";
@@ -41,7 +41,8 @@ const [
   { resolveDownloadRoot },
   { api },
   { flowPlaylistConfig },
-  { getHonkerDb, getPipelineQueue, listHonkerJobs },
+  { downloadPipelineQueue },
+  { db },
   { stopDownloadPipelineWorker },
   { getAurralHistoryRequests },
   {
@@ -68,7 +69,8 @@ const [
   () => import("../../backend/services/downloadPaths.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
@@ -1393,9 +1395,7 @@ async function gateUpgradeSearches(t: import("vite-plus/test").TestContext, grou
   if (downloadWorker.running) await downloadWorker.stopAndDrain();
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const clearSearches = () => {
-    const transaction = getHonkerDb().transaction();
-    transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
-    transaction.commit();
+    db.prepare("DELETE FROM jobs WHERE queue = 'download-pipeline'").run();
   };
   clearSearches();
   await serveGroups(
@@ -1415,9 +1415,7 @@ async function gateUpgradeSearches(t: import("vite-plus/test").TestContext, grou
   await downloadWorker.updateWorkerSettings({ concurrency: 1 });
   let searchQueued = () => {};
   vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) => {
-    getPipelineQueue().enqueue(payload as HonkerPayload, {
-      runAt: Math.floor(Date.now() / 1000) + 3600,
-    });
+    insertJob(db, "download-pipeline", payload, { runAt: Date.now() + 3_600_000 });
     searchQueued();
   });
   t.onTestFinished(async () => {
@@ -1466,7 +1464,8 @@ async function gateUpgradeSearches(t: import("vite-plus/test").TestContext, grou
       return id;
     },
     searching: () =>
-      listHonkerJobs("slskd-pipeline")
+      downloadPipelineQueue
+        .list()
         .filter((entry) => entry.payload?.phase === "search")
         .map((entry) => downloadTracker.getJob(String(entry.payload?.jobId))?.upgradeForJobId),
     waiting: () =>
@@ -1483,11 +1482,9 @@ async function gateUpgradeSearches(t: import("vite-plus/test").TestContext, grou
       const nextSearch = new Promise<void>((resolve) => {
         searchQueued = resolve;
       });
-      const transaction = getHonkerDb().transaction();
-      transaction.execute(
-        "UPDATE _honker_live SET payload = json_set(payload, '$.phase', 'poll') WHERE queue = 'slskd-pipeline'",
-      );
-      transaction.commit();
+      db.prepare(
+        "UPDATE jobs SET payload = json_set(payload, '$.phase', 'poll') WHERE queue = 'download-pipeline'",
+      ).run();
       await nextSearch;
       await downloadWorker.waitForIdle();
     },

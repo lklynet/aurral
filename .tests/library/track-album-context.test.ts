@@ -120,7 +120,7 @@ const storedJob = (jobId: string) =>
     .prepare<
       unknown[],
       { release_mbid: string | null; track_number: number | null; disc_number: number | null }
-    >("SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE id = ?")
+    >("SELECT release_mbid, track_number, disc_number FROM download_jobs WHERE id = ?")
     .get(jobId);
 
 test("a release page lists the release and disc a plain request for its track searches", async (t) => {

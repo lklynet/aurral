@@ -260,7 +260,7 @@ test("one track asked for is a track request, asking for the album's missing tra
     Object.fromEntries(
       db
         .prepare<unknown[], { track_mbid: string; request_kind: string }>(
-          "SELECT track_mbid, request_kind FROM playlist_download_jobs WHERE track_mbid IN (?, ?, ?)",
+          "SELECT track_mbid, request_kind FROM download_jobs WHERE track_mbid IN (?, ?, ?)",
         )
         .all(...tracks.map((track) => track.mbid))
         .map((row) => [row.track_mbid.slice(-2), row.request_kind]),

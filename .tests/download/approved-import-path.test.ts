@@ -3,6 +3,7 @@ import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, afterEach } from "vite-plus/test";
 import assert from "node:assert/strict";
+import * as v from "valibot";
 import fs from "fs/promises";
 import path from "path";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
@@ -34,7 +35,7 @@ const [
   { processPipelineJob },
   { withPlaylistMutationLock },
   { scanMusicRoot },
-  { getPlaybackTaskQueue, listHonkerJobs },
+  { playbackTaskQueue, systemTaskSchema },
   { processSystemTask },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -54,16 +55,14 @@ const [
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/downloadJobs/mutationGuards.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
 );
 
 function takePlaylistSyncs() {
-  const jobs = listHonkerJobs("playback").filter(
-    (job) => job.payload!.kind === "playback-playlist-sync",
-  );
-  for (const job of jobs) getPlaybackTaskQueue().cancel(job.id);
-  return jobs.map((job) => job.payload);
+  const jobs = playbackTaskQueue.list().filter((job) => job.kind === "playback-playlist-sync");
+  for (const job of jobs) playbackTaskQueue.cancel(job.id);
+  return jobs.map((job) => v.parse(systemTaskSchema, job.payload));
 }
 
 const {
@@ -906,7 +905,7 @@ test("wanted covers every library job regardless of playlist access", async () =
 
     downloadTracker.setFailed(missingJobId, "Still no source");
     const research = await processPlaylistOperation({
-      kind: "shared-playlist-research-track",
+      kind: "static-playlist-research-track",
       playlistId: "library",
       jobId: missingJobId,
     });

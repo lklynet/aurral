@@ -24,7 +24,7 @@ const [
   { flowPlaylistConfig },
   { websocketService },
   { deliverPluginEvent, emitPluginEvent, pluginEventDeliverySchema },
-  { listHonkerJobs },
+  { notificationQueue },
   { deliverQueuedNotification, queuedNotificationSchema },
   { scanMusicRoot },
   { getLibrary },
@@ -42,7 +42,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/websocketService.ts"),
   () => import("../../backend/services/plugins/pluginEvents.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/notificationService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
@@ -405,9 +405,9 @@ test("an event is queued for each subscribed plugin and delivered with its data"
     } } };`,
   );
   const queued = () =>
-    listHonkerJobs("_outbox:notifications").filter(
-      (job) => v.parse(queuedNotificationSchema, job.payload).kind === "plugin",
-    );
+    notificationQueue
+      .list()
+      .filter((job) => v.parse(queuedNotificationSchema, job.payload).kind === "plugin");
   const played = { track: { title: "Night Drive" }, playedAt: 5 };
 
   emitPluginEvent("track.played", played);
@@ -449,7 +449,7 @@ test("a plugin that never answers an event doesn't hold up Aurral's notification
   );
   await turnOn("stuck");
   emitPluginEvent("track.played", { playedAt: 1 });
-  const [job] = listHonkerJobs("_outbox:notifications");
+  const [job] = notificationQueue.list();
   assert.ok(job);
 
   await deliverQueuedNotification(v.parse(queuedNotificationSchema, job.payload));

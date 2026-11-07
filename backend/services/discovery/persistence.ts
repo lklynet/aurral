@@ -1,7 +1,7 @@
 import { dbOps } from "../../db/helpers/index.ts";
 import type { DiscoveryCache, DiscoveryMetadata } from "../../db/helpers/discovery.ts";
 import { websocketService } from "../websocketService.ts";
-import { isHonkerLockHeld } from "../honkerDb.ts";
+import { isLockHeld } from "../jobs/queue.ts";
 
 export const EMPTY_CACHE: DiscoveryCache = {
   recommendations: [],
@@ -178,5 +178,4 @@ export const recordDiscoveryUpdateProgress = (
 
 export { discoveryCache };
 
-export const isGlobalDiscoveryRefreshInProgress = () =>
-  isHonkerLockHeld("discovery-global-refresh");
+export const isGlobalDiscoveryRefreshInProgress = () => isLockHeld("discovery-global-refresh");

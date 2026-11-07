@@ -101,7 +101,7 @@ import {
 } from "./aurralMonitoringStore.ts";
 import { getArtistTopTracks } from "./musicDataSource/index.ts";
 import { getNormalizedText } from "./providers/brainzmashRanking.ts";
-import { enqueueSystemTaskJob } from "./honkerDb.ts";
+import { enqueueSystemTask, systemTaskQueue } from "./jobs/queues.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import {
   musicbrainzGetArtistReleaseGroups,
@@ -1046,19 +1046,10 @@ async function getLidarrClient() {
 }
 
 function scheduleLidarrRetry() {
-  import("./honkerDb.ts")
-    .then(({ enqueueSystemTaskJob, findActiveHonkerJob }) => {
-      const existing = findActiveHonkerJob(
-        "system-task",
-        (payload) => payload?.kind === "lidarr-retry",
-        { recoverExpired: true, payloadKind: "lidarr-retry" },
-      );
-      if (existing?.state === "pending") return;
-      enqueueSystemTaskJob({ kind: "lidarr-retry" }, { delaySeconds: 60 });
-    })
-    .catch((err) => {
-      logger.warn("library", err);
-    });
+  const waiting = systemTaskQueue
+    .list()
+    .some((job) => job.kind === "lidarr-retry" && job.state === "pending");
+  if (!waiting) enqueueSystemTask({ kind: "lidarr-retry" }, { delayMs: 60_000 });
 }
 
 export function getCachedArtistCount() {
@@ -2524,7 +2515,7 @@ export class LibraryManager {
     plan: MonitoringPlan,
   ) {
     if (!plan.releases.length && !plan.topTracks.length) return false;
-    enqueueSystemTaskJob({
+    enqueueSystemTask({
       kind: "aurral-monitoring-apply",
       artistMbid: artist.mbid,
       token: monitoringToken(effective),
@@ -2855,7 +2846,7 @@ export class LibraryManager {
           setAurralArtistMonitoringState(artistId, entry.monitorRules, next);
         }
       }).immediate();
-      enqueueSystemTaskJob({ kind: "aurral-monitoring-reconcile" });
+      enqueueSystemTask({ kind: "aurral-monitoring-reconcile" });
     }
     return this.getMonitoringDefaultsState();
   }

@@ -1,6 +1,6 @@
 import * as v from "valibot";
-import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getDiscoveryRefreshQueue } from "./honkerDb.ts";
+import { createJobWorker } from "./jobs/worker.ts";
+import { discoveryRefreshQueue } from "./jobs/queues.ts";
 import { websocketService } from "./websocketService.ts";
 import { updateDiscoveryCache } from "./discovery/index.ts";
 import {
@@ -23,7 +23,7 @@ function skipDiscoveryRefresh(progressMessage: string) {
   });
 }
 
-const discoveryRefreshSchema = v.looseObject({ scheduleOnly: v.optional(v.boolean()) });
+export const discoveryRefreshSchema = v.looseObject({ scheduleOnly: v.optional(v.boolean()) });
 
 async function runDiscoveryRefresh({ scheduleOnly }: v.InferOutput<typeof discoveryRefreshSchema>) {
   if (scheduleOnly === true && !discoveryNeedsRefresh()) {
@@ -38,13 +38,9 @@ const {
   start: startDiscoveryRefreshWorker,
   stop: stopDiscoveryRefreshWorker,
   isRunning: isDiscoveryRefreshWorkerRunning,
-} = createHonkerWorker({
-  name: "discovery-refresh",
+} = createJobWorker(discoveryRefreshQueue, {
   schema: discoveryRefreshSchema,
-  getQueue: getDiscoveryRefreshQueue,
   processJob: runDiscoveryRefresh,
-  idlePollS: 5,
-  retryDelayS: 300,
   onJobSuccess: scheduleNextDiscoveryRefresh,
 });
 

@@ -1,6 +1,6 @@
 export const NOTIFICATION_EVENTS = [
   "notifyDiscoveryUpdated",
-  "notifyWeeklyFlowDone",
+  "notifyFlowDone",
   "notifyRequestMade",
   "notifyRequestAvailable",
   "notifyArtistAdded",

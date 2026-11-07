@@ -2,13 +2,13 @@ import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { migrateLegacyAdmin } from "../middleware/auth.ts";
-import { STORED_DATA_MIGRATION_SETTING, STORED_DATA_MIGRATION_VERSION } from "./honkerDb.ts";
+import { STORED_DATA_MIGRATION_SETTING, STORED_DATA_MIGRATION_VERSION } from "./jobs/startup.ts";
 import { convertRetiredFlows } from "./flows/staticPlaylistFromFlow.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 
 const RENAMED_SETTING_KEYS = [
   ["weeklyFlows", "flows"],
-  ["sharedFlowPlaylists", "sharedPlaylists"],
+  ["sharedFlowPlaylists", "staticPlaylists"],
   ["weeklyFlowWorker", "playlistWorker"],
 ] as const;
 const RETIRED_METADATA_BASE_URL = "https://brainzmash.kell.ly";

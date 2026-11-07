@@ -93,7 +93,7 @@ afterAll(async () => {
 });
 
 test("deleting a playlist saved by an older version keeps the Library files it reused", async () => {
-  vi.spyOn(playlistManager, "requestPlaylistSync").mockReturnValue(null);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockReturnValue(undefined);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -105,7 +105,7 @@ test("deleting a playlist saved by an older version keeps the Library files it r
     })),
   });
 
-  await processPlaylistOperation({ kind: "shared-playlist-delete", playlistId });
+  await processPlaylistOperation({ kind: "static-playlist-delete", playlistId });
 
   assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId), null);
   await fs.access(files.reused);

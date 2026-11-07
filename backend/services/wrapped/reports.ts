@@ -4,7 +4,7 @@ import { APP_VERSION } from "../../config/constants.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import type { LibraryTracksRow, WrappedReportsRow } from "../../db/rows.ts";
 import { wrappedSeason, type WrappedSeason } from "../../../lib/wrapped.ts";
-import { enqueueSystemTaskJob, findActiveHonkerJob, getSystemTaskQueueName } from "../honkerDb.ts";
+import { enqueueSystemTask, maintenanceTaskQueue } from "../jobs/queues.ts";
 import { findCachedImageUrl, warmPublicImageUrl } from "../imageProxyService.ts";
 import { logger } from "../logger.ts";
 import { subsonicId } from "../libraryMediaStore.ts";
@@ -91,13 +91,15 @@ const storedSummarySchema = v.looseObject({
 export const currentWrappedSeason = (now = Date.now()) => wrappedSeason(APP_VERSION, now);
 
 const activeBuild = (userId: number) =>
-  findActiveHonkerJob(getSystemTaskQueueName(BUILD_KIND), (payload) => payload?.userId === userId, {
-    payloadKind: BUILD_KIND,
-    recoverExpired: true,
-  });
+  maintenanceTaskQueue
+    .list()
+    .some((job) => job.kind === BUILD_KIND && job.payload?.userId === userId);
 
 function startBuild(userId: number, timeZone: string) {
-  if (!activeBuild(userId)) enqueueSystemTaskJob({ kind: BUILD_KIND, userId, timeZone });
+  enqueueSystemTask(
+    { kind: BUILD_KIND, userId, timeZone },
+    { dedupeKey: `${BUILD_KIND}:${userId}` },
+  );
 }
 
 function cachedArtwork<Row extends { artwork: string | null }>(rows: Row[]) {
@@ -131,7 +133,7 @@ export function getWrapped(season: WrappedSeason, userId: number, timeZone: stri
   return {
     year: season.year,
     preview: season.preview,
-    building: !row || Boolean(activeBuild(userId)),
+    building: !row || activeBuild(userId),
     bannerHidden: row?.banner_hidden === 1,
     error: row?.error ?? null,
     summary: row ? summary : null,

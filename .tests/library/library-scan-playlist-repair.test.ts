@@ -25,7 +25,7 @@ afterAll(() => cleanupIsolatedState(state));
 test("a library refresh removes playlist tracks whose downloads no longer exist", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-scan-playlist-repair-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const deletedJobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Deleted" },
     "library",

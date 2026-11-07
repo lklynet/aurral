@@ -3,7 +3,6 @@ import { beforeEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import axios from "../../lib/axiosFetch.ts";
-import { getHonkerDb, getHonkerQueueByName } from "../../backend/services/honkerDb.ts";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.ts";
 import {
@@ -263,7 +262,6 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
 });
 
 test("repeat refreshes skip artists refreshed in the last day and only queue for artists that are due", async (t: import("vite-plus/test").TestContext) => {
-  getHonkerDb();
   const artist = createCalendarArtist("Recently Refreshed Artist");
   const releaseMbid = randomUUID();
   const catalogues = { [artist.mbid]: [catalogueRelease(releaseMbid, "Calendar Release")] };
@@ -295,7 +293,7 @@ test("repeat refreshes skip artists refreshed in the last day and only queue for
     assert.equal(daily.artistsRefreshed, 1);
     assert.ok(requestCount() > requestsAfterFirst);
   } finally {
-    if (queuedJob) getHonkerQueueByName("release-metadata-refresh")!.cancel(queuedJob);
+    if (queuedJob) db.prepare("DELETE FROM jobs WHERE id = ?").run(queuedJob);
     if (newArtist) removeCalendarArtist(newArtist.id);
     removeCalendarArtist(artist.id);
   }
@@ -638,13 +636,12 @@ test("library release-date reads return dated albums without loading old albums"
 });
 
 test("lease loss during a catalogue request leaves the last good calendar untouched", async (t: import("vite-plus/test").TestContext) => {
-  getHonkerDb();
   const artist = createCalendarArtist("Lease Loss Artist");
   const releaseMbid = addCalendarRelease(artist.id, "Last Good Release", "2026-09-20");
   stubBrainzMash(t, {
     catalogues: { [artist.mbid]: [] },
     onArtist: () => {
-      db.prepare("UPDATE _honker_locks SET owner = ? WHERE name = ?").run(
+      db.prepare("UPDATE job_locks SET owner = ? WHERE name = ?").run(
         "replacement-owner",
         "release-metadata-refresh",
       );
@@ -656,7 +653,7 @@ test("lease loss during a catalogue request leaves the last good calendar untouc
         artists: [artist],
         now: Date.parse("2026-09-27T12:00:00Z"),
       }),
-      { code: "HONKER_JOB_INTERRUPTED" },
+      { code: "JOB_INTERRUPTED" },
     );
     assert.equal(
       requireFixture(
@@ -670,7 +667,7 @@ test("lease loss during a catalogue request leaves the last good calendar untouc
       1,
     );
   } finally {
-    db.prepare("DELETE FROM _honker_locks WHERE name = ?").run("release-metadata-refresh");
+    db.prepare("DELETE FROM job_locks WHERE name = ?").run("release-metadata-refresh");
     removeCalendarArtist(artist.id);
   }
 });
@@ -686,7 +683,7 @@ test("an aborted metadata refresh never calls the provider or changes the calend
         artists: [artist],
         signal: controller.signal,
       }),
-      { code: "HONKER_JOB_INTERRUPTED" },
+      { code: "JOB_INTERRUPTED" },
     );
     assert.equal(requestCount(), 0);
   } finally {

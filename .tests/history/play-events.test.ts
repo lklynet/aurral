@@ -8,11 +8,10 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-const [isolatedState, playEvents, scrobbleStore, honkerDbModule] = await setupIsolatedBackend(
+const [isolatedState, playEvents, scrobbleStore] = await setupIsolatedBackend(
   "play-events",
   () => import("../../backend/services/playEventService.ts"),
   () => import("../../backend/services/scrobbleConnectionStore.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
 );
 const { db } = await import("../../backend/config/db-sqlite.ts");
 
@@ -83,9 +82,9 @@ test("pins each scrobble delivery to the connection active when the play was rec
   });
   assert.ok(event != null);
   const row = requireFixture(
-    honkerDbModule
-      .getHonkerDb()
-      .query("SELECT payload FROM _honker_live WHERE queue = ?", ["_outbox:play-events"])[0],
+    db
+      .prepare<[], { payload: string }>("SELECT payload FROM jobs WHERE queue = 'play-events'")
+      .get(),
   );
 
   assert.equal(JSON.parse(row.payload).eventId, event.id);

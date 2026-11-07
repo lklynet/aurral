@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { enqueuePlaylistMbidEnrichmentJob } from "./honkerDb.ts";
+import { playlistMbidEnrichmentQueue } from "./jobs/queues.ts";
 import {
   downloadTracker,
   type DownloadJob,
@@ -243,7 +243,7 @@ export function schedulePlaylistMbidEnrichment(
 ) {
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId) return null;
-  return enqueuePlaylistMbidEnrichmentJob(
+  return playlistMbidEnrichmentQueue.enqueue(
     {
       kind: "playlist-mbid-enrichment",
       playlistId: safePlaylistId,
@@ -251,10 +251,7 @@ export function schedulePlaylistMbidEnrichment(
       reconcileArtistMbids: reconcileArtistMbids === true,
       requestedAt: Date.now(),
     },
-    {
-      delaySeconds,
-      priority,
-    },
+    { delayMs: delaySeconds * 1000, priority },
   );
 }
 

@@ -230,7 +230,7 @@ beforeEach(async () => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     playlistWorker: { concurrency: 1 },
   });
   invalidateFlowPlaylistConfigCache();
@@ -786,7 +786,7 @@ test("a playlist edit queued while a flow plans runs without waiting for the pla
     await playlistOperationQueue.enqueuePayload({ kind: "manual-start-flow", flowId: flow.id });
     await planningStarted.promise;
     await playlistOperationQueue.enqueuePayload({
-      kind: "shared-playlist-update",
+      kind: "static-playlist-update",
       playlistId: playlist.id,
       name: "Edited",
       hasNameUpdate: true,
@@ -881,8 +881,8 @@ test("download pipeline work is deferred while its playlist owner is suspended",
 test("flow operation tokens are stored separately for each playlist", () => {
   markLatestPlaylistOperationToken("flow:one", "first");
   markLatestPlaylistOperationToken("flow:two", "second");
-  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Aone", v.string()), "first");
-  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Atwo", v.string()), "second");
+  assert.equal(dbOps.getJSONSetting("playlistOperationTokens:flow%3Aone", v.string()), "first");
+  assert.equal(dbOps.getJSONSetting("playlistOperationTokens:flow%3Atwo", v.string()), "second");
 });
 
 test("deleting a track keeps remaining import order in config", async () => {
@@ -914,7 +914,7 @@ test("deleting a track keeps remaining import order in config", async () => {
     const removedJobId = requireFixture(jobsBefore[1]).id;
 
     const deleted = await processPlaylistOperation({
-      kind: "shared-playlist-delete-track",
+      kind: "static-playlist-delete-track",
       playlistId: playlist.id,
       jobId: removedJobId,
     });
@@ -1041,7 +1041,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
   downloadTracker.setFailed(failedId, "No source");
 
   await processPlaylistOperation({
-    kind: "shared-playlist-update",
+    kind: "static-playlist-update",
     playlistId: playlist.id,
     name: "Renamed",
     tracks: playlist.tracks,
@@ -1205,13 +1205,13 @@ test("ListenBrainz sync uses the shared import update path", async () => {
         .prepare<
           unknown[],
           {
-            track_name: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["track_name"];
-            release_mbid: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_mbid"];
-            track_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["track_number"];
-            disc_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["disc_number"];
+            track_name: import("../../backend/db/rows.ts").DownloadJobsRow["track_name"];
+            release_mbid: import("../../backend/db/rows.ts").DownloadJobsRow["release_mbid"];
+            track_number: import("../../backend/db/rows.ts").DownloadJobsRow["track_number"];
+            disc_number: import("../../backend/db/rows.ts").DownloadJobsRow["disc_number"];
           }
         >(
-          "SELECT track_name, release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?",
+          "SELECT track_name, release_mbid, track_number, disc_number FROM download_jobs WHERE owner_type = ?",
         )
         .all(playlist.id),
       [{ track_name: "New Song", release_mbid: releaseMbid, track_number: 3, disc_number: 2 }],

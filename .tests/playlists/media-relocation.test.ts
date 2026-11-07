@@ -27,7 +27,7 @@ const [
 afterAll(() => cleanupIsolatedState(state));
 
 test("relocation retries a copied file after path persistence fails and preserves every shared job", async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const root = path.join(state.baseDir, "media");
   downloadWorker.downloadRoot = root;
   const source = flowPlaylistConfig.createStaticPlaylist({
@@ -67,7 +67,7 @@ test("relocation retries a copied file after path persistence fails and preserve
       }),
     );
   db.exec(
-    "CREATE TRIGGER reject_relocation BEFORE UPDATE OF final_path ON playlist_download_jobs BEGIN SELECT RAISE(ABORT, 'fixture path failure'); END",
+    "CREATE TRIGGER reject_relocation BEFORE UPDATE OF final_path ON download_jobs BEGIN SELECT RAISE(ABORT, 'fixture path failure'); END",
   );
   try {
     await assert.rejects(remove(), /fixture path failure/);

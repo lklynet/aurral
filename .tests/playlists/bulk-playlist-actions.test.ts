@@ -22,7 +22,7 @@ const [
   { playlistManager },
   operations,
   store,
-  honker,
+  { playlistOperationQueue, downloadPipelineQueue },
   { api },
 ] = await setupIsolatedBackend(
   "bulk-playlist-actions",
@@ -33,20 +33,19 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/playlists/bulkOperationStore.ts"),
-  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/routes/api.ts"),
 );
 beforeEach(() => {
+  vi.spyOn(downloadPipelineQueue, "start").mockImplementation(async () => undefined);
   resetDatabase(db);
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
   dbOps.updateSettings({
     integrations: {},
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
-  honker.getPlaylistOperationQueue();
-  db.prepare("DELETE FROM _honker_live").run();
 });
 afterAll(() => cleanupIsolatedState(state));
 
@@ -90,7 +89,7 @@ async function execute(
   },
 ) {
   const { operationId } = store.enqueueBulkOperation({ ...record, target: record.target ?? null });
-  await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
+  await operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId });
   return store.getBulkOperation(operationId);
 }
 
@@ -132,7 +131,7 @@ test("a move preserves active backing jobs and never duplicates its destination 
   assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id)?.playlistType === target.id));
   assert.ok(await playlistManager.resolveArtworkFile(target.id));
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-bulk",
+    kind: "static-playlist-bulk",
     operationId: result.operationId,
   });
   assert.equal(config.flowPlaylistConfig.getStaticPlaylists().length, 2);
@@ -181,11 +180,11 @@ test("failed destination persistence keeps source membership and owner", async (
     target: { playlistId: target.id },
   });
   db.exec(
-    "CREATE TRIGGER reject_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture persistence failure'); END",
+    "CREATE TRIGGER reject_membership BEFORE INSERT ON settings WHEN NEW.key = 'staticPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture persistence failure'); END",
   );
   try {
     await assert.rejects(
-      operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }),
+      operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId }),
       /fixture persistence failure/,
     );
     assert.equal(
@@ -217,6 +216,10 @@ const send = (user: RequestUser, method: string, path: string, body?: object) =>
 
 test("batch acceptance validates, deduplicates and scopes its durable result to its requester", async (t) => {
   const f = fixture(t, 1);
+  const { stopPlaylistOperationWorker } =
+    await import("../../backend/services/playlists/playlistOperationWorker.ts");
+  await stopPlaylistOperationWorker();
+  vi.spyOn(playlistOperationQueue, "start").mockImplementation(async () => undefined);
   const removals = `/shared-playlists/${f.source.id}/track-removals`;
   const malformed = await send(f.user, "POST", removals, { jobIds: [] });
   assert.equal(malformed.status, 400);
@@ -228,7 +231,7 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
   assert.equal(accepted.queued, true);
   assert.deepEqual(accepted.acceptedJobIds, [requireFixture(f.jobs[0]).id]);
   assert.equal(accepted.rejected[0].jobId, "missing");
-  assert.equal(honker.getHonkerQueueDepth("weekly-flow-operation"), 1);
+  assert.equal(playlistOperationQueue.readyCount(), 1);
   const operation = `/shared-playlists/${f.source.id}/operations/${accepted.operationId}`;
   const own = await (await send(f.user, "GET", operation)).json();
   assert.equal(own.state, "queued");
@@ -250,7 +253,7 @@ test("synchronization failure preserves applied outcomes and retries only unfini
     selections: f.selections,
   });
   await assert.rejects(
-    operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }),
+    operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId }),
     /fixture queue unavailable/,
   );
   assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 2);
@@ -258,7 +261,7 @@ test("synchronization failure preserves applied outcomes and retries only unfini
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     0,
   );
-  await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
+  await operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId });
   assert.equal(requireFixture(store.getBulkOperation(operationId)).state, "completed");
   assert.equal(requireFixture(store.getBulkOperation(operationId)).outcomes.length, 2);
   assert.equal(f.scans(), 1);
@@ -283,11 +286,11 @@ test("failed source commit leaves completed source media intact", async (t) => {
     selections: f.selections,
   });
   db.exec(
-    "CREATE TRIGGER reject_source_commit BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture source failure'); END",
+    "CREATE TRIGGER reject_source_commit BEFORE INSERT ON settings WHEN NEW.key = 'staticPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture source failure'); END",
   );
   try {
     await assert.rejects(
-      operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }),
+      operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId }),
       /fixture source failure/,
     );
     assert.equal(await fs.readFile(file, "utf8"), "disposable audio");
@@ -327,9 +330,9 @@ test("a restarted process resumes a destination already saved before source deta
       "-e",
       `
     const { processPlaylistOperation } = await import('./backend/services/playlists/playlistOperations.ts');
-    const { shutdownHonkerInfrastructure } = await import('./backend/services/honkerWorkerRuntime.ts');
-    await processPlaylistOperation({ kind: 'shared-playlist-bulk', operationId: ${operationId} });
-    await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
+    const { shutdownJobWorkers } = await import('./backend/services/jobs/worker.ts');
+    await processPlaylistOperation({ kind: 'static-playlist-bulk', operationId: ${operationId} });
+    await shutdownJobWorkers({ timeoutMs: 5000 });
   `,
     ],
     { env: process.env, timeout: 15000 },
@@ -361,7 +364,7 @@ test("partial provider failure preserves the failed membership and completes the
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
-  honker.getPipelineQueue().enqueue({
+  downloadPipelineQueue.enqueue({
     jobId: requireFixture(f.jobs[0]).id,
     playlistId: f.source.id,
     playlistGeneration: 0,
@@ -396,12 +399,12 @@ test("partial provider failure preserves the failed membership and completes the
 test("bulk leader removal hands its album download to an unselected held peer", async (t) => {
   const f = fixture(t, 2);
   db.prepare(
-    "UPDATE playlist_download_jobs SET request_group_id = ?, album_mbid = ? WHERE playlist_id = ?",
+    "UPDATE download_jobs SET request_group_id = ?, album_mbid = ? WHERE owner_id = ?",
   ).run("disposable-album-group", "disposable-album", f.source.id);
   downloadTracker.reconcileCommittedJobs();
   downloadTracker.setDownloading(requireFixture(f.jobs[1]).id);
   downloadTracker.markSlskdDispatched(requireFixture(f.jobs[0]).id);
-  honker.getPipelineQueue().enqueue({
+  downloadPipelineQueue.enqueue({
     jobId: requireFixture(f.jobs[0]).id,
     playlistId: f.source.id,
     playlistGeneration: 0,
@@ -425,7 +428,7 @@ test("bulk leader removal hands its album download to an unselected held peer", 
     requireFixture(downloadTracker.getJob(requireFixture(f.jobs[1]).id)).status,
     "downloading",
   );
-  const payload = requireFixture(honker.listHonkerJobs("slskd-pipeline")[0]).payload;
+  const payload = requireFixture(downloadPipelineQueue.list()[0]).payload;
   assert.ok(payload != null);
   assert.equal(payload.jobId, requireFixture(f.jobs[1]).id);
   assert.equal(payload.queueUuid, "album-work-needed-by-peer");
@@ -447,11 +450,11 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
     selections: f.selections,
   });
   db.exec(
-    "CREATE TRIGGER reject_pending_commit BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture pending failure'); END",
+    "CREATE TRIGGER reject_pending_commit BEFORE INSERT ON settings WHEN NEW.key = 'staticPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture pending failure'); END",
   );
   try {
     await assert.rejects(
-      operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }),
+      operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId }),
       /fixture pending failure/,
     );
     assert.equal(
@@ -467,7 +470,7 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
   } finally {
     db.exec("DROP TRIGGER reject_pending_commit");
   }
-  await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
+  await operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId });
   assert.equal(requireFixture(store.getBulkOperation(operationId)).state, "completed");
   assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[0]).id));
 });
@@ -488,7 +491,7 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
-  honker.getPipelineQueue().enqueue({
+  downloadPipelineQueue.enqueue({
     jobId: upgradeId,
     playlistId: f.source.id,
     playlistGeneration: 0,
@@ -705,7 +708,9 @@ test("a bulk job whose record vanished mid-run does not write a record without a
         assert.equal(
           requireFixture(
             db
-              .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM _honker_live")
+              .prepare<unknown[], { count: number }>(
+                "SELECT COUNT(*) AS count FROM jobs WHERE state IN ('pending', 'running')",
+              )
               .get(),
           ).count,
           0,
@@ -760,7 +765,7 @@ test("a bulk operation Aurral can't read changes nothing and reads as gone", asy
     "UPDATE settings SET value = json_set(value, '$.selections', 'all') WHERE key = ?",
   ).run(`playlistBulkOperation:${operationId}`);
 
-  await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
+  await operations.processPlaylistOperation({ kind: "static-playlist-bulk", operationId });
 
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,

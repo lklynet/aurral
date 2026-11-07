@@ -209,8 +209,8 @@ export async function saveBrowsePlaylist(user: RequestUser, provider: BrowseProv
     return [file ? { ...normalized, path: file.path } : normalized];
   });
   await playlistOperationQueue.enqueuePayload({
-    kind: "shared-playlist-create",
-    label: "shared-playlist:create",
+    kind: "static-playlist-create",
+    label: "static-playlist:create",
     playlistId,
     name,
     sourceName: AURRAL,

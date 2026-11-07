@@ -210,7 +210,7 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         url: "",
         token: "",
         notifyDiscoveryUpdated: false,
-        notifyWeeklyFlowDone: false,
+        notifyFlowDone: false,
         notifyRequestMade: false,
         notifyRequestAvailable: false,
         notifyArtistAdded: false,

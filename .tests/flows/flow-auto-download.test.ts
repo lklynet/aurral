@@ -62,7 +62,7 @@ beforeEach(async () => {
     integrations: noSource,
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     playlistWorker: { concurrency: 1 },
   });
   invalidateFlowPlaylistConfigCache();

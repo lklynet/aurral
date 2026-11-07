@@ -782,7 +782,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     )
     .all();
   const jobsBefore = db
-    .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM playlist_download_jobs")
+    .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM download_jobs")
     .get();
 
   try {
@@ -846,11 +846,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
       starsBefore,
     );
     assert.deepEqual(
-      db
-        .prepare<unknown[], { count: number }>(
-          "SELECT COUNT(*) AS count FROM playlist_download_jobs",
-        )
-        .get(),
+      db.prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM download_jobs").get(),
       jobsBefore,
     );
   } finally {

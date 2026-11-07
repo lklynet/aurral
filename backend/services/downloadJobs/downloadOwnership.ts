@@ -1,8 +1,8 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { downloadTracker, type DownloadJob, type JobFields } from "./downloadTracker.ts";
-import { parseHonkerPayload } from "../honkerDb.ts";
-import type { HonkerLiveRow, PlaylistDownloadJobsRow, SettingsRow } from "../../db/rows.ts";
+import { parseJobPayload } from "../jobs/queue.ts";
+import type { JobsRow, DownloadJobsRow, SettingsRow } from "../../db/rows.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import {
   beginDownloadAttempt,
@@ -21,14 +21,12 @@ const saveSettingStmt = db.prepare<[string, string]>(
 );
 const ownerStmt = db.prepare<
   [string],
-  Pick<PlaylistDownloadJobsRow, "playlist_id" | "playlist_type" | "playlist_generation">
->(
-  "SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?",
-);
+  Pick<DownloadJobsRow, "owner_id" | "owner_type" | "playlist_generation">
+>("SELECT owner_id, owner_type, playlist_generation FROM download_jobs WHERE id = ?");
 const pruneSettledTransfersStmt = db.prepare(`
   DELETE FROM settings WHERE key LIKE 'downloadJobTransfers:%' AND NOT EXISTS (
     SELECT 1 FROM json_each(CASE WHEN json_valid(settings.value) THEN settings.value ELSE '[]' END) AS transfer
-    JOIN playlist_download_jobs AS job
+    JOIN download_jobs AS job
       ON job.id = CASE transfer.type WHEN 'object' THEN json_extract(transfer.value, '$.toJobId') END
     WHERE job.status IN ('pending', 'downloading', 'blocked'))
 `);
@@ -69,8 +67,8 @@ function currentJob(jobId: string) {
   return job && row
     ? {
         ...job,
-        playlistId: row.playlist_id,
-        playlistType: row.playlist_type,
+        playlistId: row.owner_id,
+        playlistType: row.owner_type,
         playlistGeneration: row.playlist_generation,
       }
     : null;
@@ -177,11 +175,11 @@ function recordTransfer(
   transfers.push(transfer);
   saveSettingStmt.run(`downloadJobTransfers:${from.id}`, JSON.stringify(transfers));
   for (const row of db
-    .prepare<[], Pick<HonkerLiveRow, "id" | "payload">>(
-      "SELECT id, payload FROM _honker_live WHERE queue = 'slskd-pipeline'",
+    .prepare<[], Pick<JobsRow, "id" | "payload">>(
+      "SELECT id, payload FROM jobs WHERE queue = 'download-pipeline' AND state IN ('pending', 'running')",
     )
     .all()) {
-    const payload = parseHonkerPayload(row.payload);
+    const payload = parseJobPayload(row.payload);
     if (payload?.jobId !== from.id) continue;
     if (
       payload.playlistId !== from.playlistId ||
@@ -190,14 +188,13 @@ function recordTransfer(
     )
       continue;
     const updated = applyTransfer(payload, transfer);
-    db.prepare("UPDATE _honker_live SET payload = ? WHERE id = ?").run(
-      JSON.stringify(updated),
-      row.id,
-    );
+    db.prepare("UPDATE jobs SET payload = ? WHERE id = ?").run(JSON.stringify(updated), row.id);
   }
-  db.prepare(
-    "UPDATE weekly_flow_download_provider_work SET job_id = ?, playlist_id = ? WHERE job_id = ?",
-  ).run(to.id, to.playlistId, from.id);
+  db.prepare("UPDATE download_provider_work SET job_id = ?, owner_id = ? WHERE job_id = ?").run(
+    to.id,
+    to.playlistId,
+    from.id,
+  );
 }
 
 export function transferDownloadOwnershipInTransaction(jobId: string, targetPlaylistId: string) {
@@ -210,7 +207,7 @@ export function transferDownloadOwnershipInTransaction(jobId: string, targetPlay
     fromAttemptId || (from.status === "done" ? null : beginDownloadAttempt(jobId));
   const generation = getPlaylistDownloadGeneration(targetPlaylistId);
   db.prepare(
-    "UPDATE playlist_download_jobs SET playlist_id = ?, playlist_type = ?, playlist_generation = ? WHERE id = ?",
+    "UPDATE download_jobs SET owner_id = ?, owner_type = ?, playlist_generation = ? WHERE id = ?",
   ).run(targetPlaylistId, targetPlaylistId, generation, jobId);
   const to = {
     ...from,
@@ -244,7 +241,7 @@ export function replaceAlbumDownloadLeaderInTransaction(
   const previousAttempt = getActiveDownloadAttemptId(jobId);
   const attempt = previousAttempt || beginDownloadAttempt(jobId);
   saveSettingStmt.run(`activeDownloadAttempt:${peerId}`, JSON.stringify(attempt));
-  const columns: (keyof PlaylistDownloadJobsRow)[] = [
+  const columns: (keyof DownloadJobsRow)[] = [
     "download_source",
     "download_client",
     "download_client_id",
@@ -258,16 +255,16 @@ export function replaceAlbumDownloadLeaderInTransaction(
     "remote_filename",
   ];
   const row = db
-    .prepare<[string], PlaylistDownloadJobsRow>("SELECT * FROM playlist_download_jobs WHERE id = ?")
+    .prepare<[string], DownloadJobsRow>("SELECT * FROM download_jobs WHERE id = ?")
     .get(jobId)!;
   db.prepare(
-    `UPDATE playlist_download_jobs SET ${columns.map((column) => `${column} = ?`).join(", ")} WHERE id = ?`,
+    `UPDATE download_jobs SET ${columns.map((column) => `${column} = ?`).join(", ")} WHERE id = ?`,
   ).run(...columns.map((column) => row[column]), peerId);
   recordTransfer(from, peer, previousAttempt, attempt);
   db.prepare(
-    "INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at) VALUES (?, ?)",
+    "INSERT OR IGNORE INTO download_job_cancellations (job_id, cancelled_at) VALUES (?, ?)",
   ).run(jobId, Date.now());
-  if (!retainCancelled) db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(jobId);
+  if (!retainCancelled) db.prepare("DELETE FROM download_jobs WHERE id = ?").run(jobId);
   return {
     fromJobId: jobId,
     toJobId: peerId,

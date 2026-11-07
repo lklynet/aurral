@@ -70,7 +70,7 @@ beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
   downloadTracker.clearAll();
 });
@@ -82,7 +82,7 @@ afterAll(async () => {
 test("a failed flow-delete enqueue restores active download work", async () => {
   const flow = createFlow({ name: "Delete queue rollback" });
   const tokenScope = `flow:${flow.id}:mutation`;
-  const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
+  const tokenKey = `playlistOperationTokens:${encodeURIComponent(tokenScope)}`;
   dbOps.setJSONSetting(tokenKey, "previous-delete-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = createTrackedJob(
@@ -108,7 +108,7 @@ test("a failed flow-delete enqueue restores active download work", async () => {
 test("a failed flow-disable enqueue restores enabled state and active downloads", async () => {
   const flow = createFlow({ name: "Disable queue rollback", enabled: true });
   const tokenScope = `flow:${flow.id}:mutation`;
-  const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
+  const tokenKey = `playlistOperationTokens:${encodeURIComponent(tokenScope)}`;
   dbOps.setJSONSetting(tokenKey, "previous-disable-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = createTrackedJob(
@@ -190,7 +190,7 @@ test("a successful flow disable reports the accepted cleanup operation", async (
     flow.id,
   );
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-  let queuedPayload: import("../../backend/services/honkerDb.ts").HonkerPayload | undefined;
+  let queuedPayload: { kind: string } | undefined;
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedPayload = payload;
     return { queued: true, operationId: 102 };
