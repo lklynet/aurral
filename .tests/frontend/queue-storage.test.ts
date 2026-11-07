@@ -89,6 +89,18 @@ test("the session token never reaches storage and the current one is used after 
   assert.equal(restored.queue[0]?.artwork, "/api/covers/t0.jpg");
 });
 
+test("a queue saved by Aurral 2 plays from the current stream route", () => {
+  const stored = serializeQueue(playing(makeTracks(1)), { owner: "u1" });
+  assert.ok(stored != null);
+  const fromV2 = stored.replace("/api/library/stream/", "/api/library/canonical-stream/");
+
+  const restored = parseStoredQueue(fromV2, { owner: "u1", token: "fresh-token" });
+  assert.equal(
+    restored?.queue[0]?.src,
+    "/api/library/stream/t0?quality=original&token=fresh-token",
+  );
+});
+
 test("another user's saved queue or unreadable data is not restored", () => {
   const stored = serializeQueue(playing(makeTracks(3)), { owner: "u1" });
   assert.ok(stored != null);
