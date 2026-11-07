@@ -18,6 +18,7 @@ import {
   buildPlaylistTrackIdentity,
   filterMissingPlaylistTracks,
   normalizePlaylistTrack,
+  tracksShareMembership,
 } from "./playlistTracks.ts";
 import {
   fileExists,
@@ -571,10 +572,11 @@ function matchCurrentTracks(
       .map((track, index) => [index, track] as const),
   );
   const assigned = new Map<number, string>();
-  for (const key of [
-    (track: PlaylistTrackInput) => String(track.canonicalJobId || ""),
-    ...matchKeys,
-  ]) {
+  const referencedJob = (track: PlaylistTrackInput) => {
+    const job = downloadTracker.getJob(String(track.canonicalJobId || ""));
+    return job && tracksShareMembership(job, track) ? job.id : "";
+  };
+  for (const key of [referencedJob, ...matchKeys]) {
     const byKey = new Map<string, number[]>();
     for (const [index, track] of unused) {
       const value = key(track);
@@ -616,6 +618,7 @@ async function updateStaticPlaylistLocked({
   const normalizedTracks = hasTracksUpdate
     ? filterBlockedPlaylistTracks(currentPlaylist.ownerUserId, normalizeTrackList(tracks))
     : [];
+  let createdJobIds: string[] = [];
   const result = await withPlaylistMutationLock(safePlaylistId, async () => {
     const lockedPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
     if (!lockedPlaylist) return null;
@@ -638,6 +641,7 @@ async function updateStaticPlaylistLocked({
       normalizedTracks.filter((_, index) => !assigned.has(index)),
       { addedBy: safePlaylistId },
     );
+    createdJobIds = linked.createdJobIds;
     const linkedTracks = [...linked.tracks];
     const nextTracks = normalizedTracks.map((track, index) =>
       assigned.has(index)
@@ -658,6 +662,9 @@ async function updateStaticPlaylistLocked({
         (mergeImportSource && lockedImportSource?.keepRemovedTracks === false),
       ),
     };
+  }).catch(async (error: unknown) => {
+    await discardLibraryJobs(createdJobIds);
+    throw error;
   });
   if (!result?.playlist) return { missing: true };
   const { playlist, linked, tracksReused = 0, removedJobIds = [], dropFiles } = result;

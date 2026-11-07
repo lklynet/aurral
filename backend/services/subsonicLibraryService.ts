@@ -1238,6 +1238,9 @@ const replaceSubsonicPlaylistTracks = async (
       ...updates,
       tracks: linked.tracks,
     });
+  }).catch(async (error: unknown) => {
+    await discardLibraryJobs(linked.createdJobIds);
+    throw error;
   });
   if (!updated) {
     await discardLibraryJobs(linked.createdJobIds);

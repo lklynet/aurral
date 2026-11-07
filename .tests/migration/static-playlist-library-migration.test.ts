@@ -1,6 +1,7 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { insertJob } from "../helpers/jobs.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -78,6 +79,13 @@ test("static playlist downloads move to the Library, marked only when one playli
     playlistGeneration: 0,
     phase: "search",
   });
+  const upgradeId = insertJob(db, "download-pipeline", {
+    jobId: "upgrade",
+    upgradeForJobId: duplicate,
+    playlistId: "mix",
+    playlistGeneration: 0,
+    phase: "search",
+  });
   registerDownloadProviderWork({
     jobId: queued,
     playlistId: "mix",
@@ -120,6 +128,10 @@ test("static playlist downloads move to the Library, marked only when one playli
     .prepare<[number], { payload: string }>("SELECT payload FROM jobs WHERE id = ?")
     .get(pipelineId);
   assert.equal(JSON.parse(payload!.payload).playlistId, "library");
+  const upgrade = db
+    .prepare<[number], { payload: string }>("SELECT payload FROM jobs WHERE id = ?")
+    .get(upgradeId);
+  assert.equal(JSON.parse(requireFixture(upgrade).payload).upgradeForJobId, libraryCopy);
   assert.equal(listDownloadProviderWork({ playlistId: "library" }).length, 1);
 });
 

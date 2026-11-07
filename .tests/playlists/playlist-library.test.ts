@@ -26,6 +26,7 @@ const [
   { getLibrary },
   { keepInLibrary },
   subsonic,
+  { requestLibraryTrack },
 ] = await setupIsolatedBackend(
   "playlist-library",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -39,6 +40,7 @@ const [
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/playlists/playlistLibrary.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
+  () => import("../../backend/services/libraryTrackRequests.ts"),
 );
 beforeEach(() => {
   resetDatabase(db);
@@ -184,6 +186,55 @@ test("a playlist that skips downloads reuses Library files and saves the rest", 
   assert.equal(jobFor(reused).status, "done");
   assert.equal(jobFor(reused).finalPath, libraryFile);
   assert.equal(jobFor(missing).status, "saved");
+
+  await requestLibraryTrack(missing);
+
+  assert.equal(jobFor(missing).status, "pending");
+});
+
+test("a playlist edit links a new Library track when a track no longer matches its download", async () => {
+  const studio = {
+    artistName: "Band",
+    albumName: "Record",
+    trackName: "Song",
+    trackMbid: "11111111-1111-4111-8111-111111111111",
+  };
+  const renamed = { artistName: "Band", albumName: "Record", trackName: "Other Song" };
+  const { playlist, jobFor } = await createPlaylist([studio]);
+  const studioJob = jobFor(studio).id;
+  const live = { ...studio, albumName: "Live", trackMbid: "22222222-2222-4222-8222-222222222222" };
+  const other = await createPlaylist([live], { name: "Live set" });
+  assert.notEqual(other.jobFor(live).id, studioJob);
+
+  await operations.processPlaylistOperation({
+    kind: "static-playlist-update",
+    playlistId: playlist.id,
+    tracks: [{ ...renamed, canonicalJobId: studioJob }],
+    hasTracksUpdate: true,
+  });
+
+  assert.notEqual(jobFor(renamed).id, studioJob);
+});
+
+test("a playlist edit that cannot be saved leaves no new downloads behind", async () => {
+  const kept = { artistName: "Band", albumName: "Record", trackName: "Kept" };
+  const added = { artistName: "Band", albumName: "Record", trackName: "Added" };
+  const { playlist } = await createPlaylist([kept]);
+  await createPlaylist([], { name: "Taken" });
+  const before = downloadTracker.getAll().length;
+
+  await assert.rejects(
+    operations.processPlaylistOperation({
+      kind: "static-playlist-update",
+      playlistId: playlist.id,
+      name: "Taken",
+      hasNameUpdate: true,
+      tracks: [kept, added],
+      hasTracksUpdate: true,
+    }),
+  );
+
+  assert.equal(downloadTracker.getAll().length, before);
 });
 
 test("an imported track links the Library file at its path even when its names differ", async () => {

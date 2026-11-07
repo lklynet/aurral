@@ -183,12 +183,14 @@ export async function importShare(payload: Record<string, unknown>) {
       const file = track.path
         ? remote?.files?.tracks.find((entry) => entry.path === track.path)
         : findSharedTrack(remote?.files?.tracks || [], track);
-      if (manifest.kind !== "playlist" && (!file?.path || findQueuedLibraryTrackJob(input)))
+      const queued = manifest.kind === "playlist" ? null : findQueuedLibraryTrackJob(input);
+      if (manifest.kind !== "playlist" && (!file?.path || (queued && queued.status !== "saved")))
         return input;
       const local = localFiles[index];
-      const jobId = downloadTracker.addJob(input, "library", {
-        addedBy: local ? null : playlistId,
-      });
+      if (queued) downloadTracker.setPending(queued.id);
+      const jobId =
+        queued?.id ??
+        downloadTracker.addJob(input, "library", { addedBy: local ? null : playlistId });
       if (!jobId) throw new Error("The shared track is incomplete.");
       if (local)
         downloadTracker.setDone(jobId, local.path, track.albumTitle, null, {

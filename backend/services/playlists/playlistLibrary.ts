@@ -56,7 +56,11 @@ function libraryJobIndex() {
 
 const bestLibraryJob = (index: Map<string, DownloadJob[]>, track: PlaylistTrack) =>
   (index.get(buildCoreTrackIdentity(track)) ?? [])
-    .filter((job) => tracksShareMembership(job, track))
+    .filter(
+      (job) =>
+        tracksShareMembership(job, track) &&
+        !(job.trackMbid && track.trackMbid && job.trackMbid !== track.trackMbid),
+    )
     .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))[0] ?? null;
 
 function keepFor(job: DownloadJob, addedBy: string | null) {
@@ -177,7 +181,10 @@ async function dropTrackFile(job: DownloadJob) {
     );
   if (sharedFile) return;
   const upgrades = downloadTracker.getAll().filter((entry) => entry.upgradeForJobId === job.id);
-  if (upgrades.length) await cancelTrackDownloads(upgrades.map((entry) => entry.id));
+  if (upgrades.length) {
+    const cancelled = await cancelTrackDownloads(upgrades.map((entry) => entry.id));
+    if (cancelled.cleanupFailed) throw new Error("Could not stop its quality upgrade");
+  }
   await fs.rm(finalPath, { force: true });
   for (const entry of upgrades) downloadTracker.removeJob(entry.id);
   downloadTracker.removeJob(job.id);

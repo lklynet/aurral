@@ -165,11 +165,13 @@ export function migrateStaticPlaylistsToLibrary(db: Database.Database) {
       .all()) {
       const payload: unknown = JSON.parse(row.payload);
       if (!isRecord(payload) || !staticIds.has(String(payload.playlistId))) continue;
+      const upgradeFor = redirect.get(String(payload.upgradeForJobId));
       rewritePayload.run(
         JSON.stringify({
           ...payload,
           playlistId: "library",
           playlistGeneration: libraryGeneration,
+          ...(upgradeFor && { upgradeForJobId: upgradeFor }),
         }),
         row.id,
       );

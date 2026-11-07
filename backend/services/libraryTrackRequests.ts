@@ -92,6 +92,13 @@ export async function requestLibraryTrack(
   }
 
   const existingJob = findQueuedLibraryTrackJob(track);
+  if (existingJob?.status === "saved") {
+    downloadTracker.setPending(existingJob.id);
+    recordTrackJobQueued(downloadTracker.getJob(existingJob.id), user);
+    const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
+    await downloadWorker.start();
+    return { queued: true, jobId: existingJob.id };
+  }
   if (existingJob) {
     if (!automatic) recordTrackJobQueued(existingJob);
     return { queued: true, jobId: existingJob.id, alreadyQueued: true };

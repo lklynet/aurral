@@ -118,6 +118,8 @@ test("a batch removes all selected memberships and their downloads with one refr
 
 test("a move preserves active backing jobs and never duplicates its destination on retry", async (t) => {
   const f = fixture(t);
+  downloadTracker.setSaved(requireFixture(f.jobs[1]).id);
+  downloadTracker.setFailed(requireFixture(f.jobs[2]).id, "No match");
   const result = await execute({
     ownerUserId: f.user.id,
     sourcePlaylistId: f.source.id,
@@ -134,7 +136,10 @@ test("a move preserves active backing jobs and never duplicates its destination 
     target.tracks.map((track) => track.canonicalJobId),
     f.jobs.map((job) => job.id),
   );
-  assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id)?.status === "pending"));
+  assert.deepEqual(
+    f.jobs.map((job) => downloadTracker.getJob(job.id)?.status),
+    ["pending", "saved", "failed"],
+  );
   assert.ok(await playlistManager.resolveArtworkFile(target.id));
   await operations.processPlaylistOperation({
     kind: "static-playlist-bulk",
