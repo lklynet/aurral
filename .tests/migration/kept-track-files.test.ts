@@ -33,7 +33,10 @@ test("upgrading unmonitors tracks whose file was kept and drops keep_file", asyn
   start();
   const db = new Database(state.dbPath);
   try {
-    db.exec("ALTER TABLE library_tracks ADD COLUMN keep_file INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+      PRAGMA user_version = 0;
+      ALTER TABLE library_tracks ADD COLUMN keep_file INTEGER NOT NULL DEFAULT 0;
+    `);
     const now = Date.now();
     const addTrack = db.prepare(
       "INSERT INTO library_tracks (identity_key, title, monitored, keep_file, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?)",

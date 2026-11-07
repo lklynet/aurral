@@ -18,6 +18,7 @@ test("starting drops the SSO adoption columns and keeps the users", async () => 
   try {
     const { db: before } = await bootDb();
     before.exec(`
+      PRAGMA user_version = 0;
       ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0;
       INSERT INTO users (username, password_hash, needs_identity_migration, allow_identity_adoption)
@@ -51,6 +52,7 @@ test("starting removes the login stored in integration settings once", async () 
       }),
     );
     before.prepare("DELETE FROM settings WHERE key = 'migration:settings-login-v1'").run();
+    before.pragma("user_version = 0");
     before.close();
 
     const { db } = await bootDb();

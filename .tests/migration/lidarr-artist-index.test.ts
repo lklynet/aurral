@@ -70,6 +70,7 @@ test("concurrent startup upgrades a nonunique index and preserves the winning ma
     await boot(dbPath, dataDir);
     const seedDb = new Database(dbPath);
     seedDb.exec(`
+      PRAGMA user_version = 0;
       DROP INDEX ${indexName};
       CREATE INDEX ${indexName} ON lidarr_artist_id_map (lidarr_foreign_artist_id);
       INSERT INTO lidarr_artist_id_map VALUES ('older', 'provider-a', 1);
@@ -134,6 +135,7 @@ test("failed unique index creation restores the legacy index and mappings", () =
     await boot(dbPath, dataDir);
     const seedDb = new Database(dbPath);
     seedDb.exec(`
+      PRAGMA user_version = 0;
       DROP INDEX ${indexName};
       CREATE INDEX ${indexName} ON lidarr_artist_id_map (lidarr_foreign_artist_id);
       INSERT INTO lidarr_artist_id_map VALUES ('first', 'provider-a', 1);

@@ -50,6 +50,7 @@ test("upgrading gives every saved webhook the events that were turned on for all
       }),
     );
     db.prepare("DELETE FROM settings WHERE key = 'migration:webhook-events-per-webhook-v1'").run();
+    db.pragma("user_version = 0");
 
     start();
 
