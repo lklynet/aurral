@@ -107,6 +107,7 @@ const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
+const METADATA_RESPONSE_BODY_TIMEOUT_MS = 90_000;
 const METADATA_REQUEST_LEASE_MS = 2 * 60_000;
 const METADATA_REQUEST_LEASE_POLL_MS = 250;
 const METADATA_MAX_QUEUED_REQUESTS =
@@ -495,6 +496,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 timeout: Number.isFinite(requestTimeoutMs)
                   ? Math.max(1, Math.floor(requestTimeoutMs))
                   : METADATA_REQUEST_TIMEOUT_MS,
+                bodyTimeout: METADATA_RESPONSE_BODY_TIMEOUT_MS,
                 headers: {
                   "User-Agent": getUserAgent(),
                 },

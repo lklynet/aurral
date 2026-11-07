@@ -21,7 +21,7 @@ import { acquireReleaseMetadataLease } from "./releaseMetadataLease.ts";
 const TASK_KIND = "release-metadata-refresh";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const ARTIST_REFRESH_INTERVAL_MS = 20 * HOUR_MS;
+const ARTIST_REFRESH_INTERVAL_MS = 7 * DAY_MS;
 const ARTIST_FAILURE_RETRY_MS = HOUR_MS;
 
 const text = (value: unknown) => String(value || "").trim();
