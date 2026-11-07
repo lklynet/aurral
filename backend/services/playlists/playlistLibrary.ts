@@ -132,7 +132,7 @@ export async function linkTracksToLibrary(
         : bestLibraryJob(index, track);
     if (existing) {
       keepFor(existing, addedBy);
-      if (download && requeue(existing)) {
+      if (download && existing !== referenced && requeue(existing)) {
         queuedJobIds.push(existing.id);
         recordTrackJobQueued(downloadTracker.getJob(existing.id));
       }
@@ -161,14 +161,10 @@ export async function linkTracksToLibrary(
 
 function wantedElsewhere(job: DownloadJob, playlistId: string) {
   if (job.addedBy !== playlistId) return true;
-  const referenced = flowPlaylistConfig
-    .getStaticPlaylists()
-    .some(
-      (playlist) =>
-        playlist.id !== playlistId &&
-        playlist.tracks.some((track) => track.canonicalJobId === job.id),
-    );
-  return referenced || Boolean(job.finalPath && starredFileStmt.get(job.finalPath));
+  return (
+    flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([job.id]).length > 0 ||
+    Boolean(job.finalPath && starredFileStmt.get(job.finalPath))
+  );
 }
 
 async function dropTrackFile(job: DownloadJob) {

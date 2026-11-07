@@ -187,7 +187,10 @@ export async function importShare(payload: Record<string, unknown>) {
       if (manifest.kind !== "playlist" && (!file?.path || (queued && queued.status !== "saved")))
         return input;
       const local = localFiles[index];
-      if (queued) downloadTracker.setPending(queued.id);
+      if (queued) {
+        downloadTracker.setAddedBy(queued.id, null);
+        downloadTracker.setPending(queued.id);
+      }
       const jobId =
         queued?.id ??
         downloadTracker.addJob(input, "library", { addedBy: local ? null : playlistId });

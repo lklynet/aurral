@@ -24,7 +24,7 @@ const [
   { downloadWorker },
   { scanMusicRoot },
   { getLibrary },
-  { keepInLibrary },
+  { keepInLibrary, releaseLibraryJobs },
   subsonic,
   { requestLibraryTrack },
 ] = await setupIsolatedBackend(
@@ -289,6 +289,20 @@ test("removing a track cancels its download unless something else wants it", asy
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks,
     [],
   );
+});
+
+test("releasing one copy of a doubled track keeps the download the other copy uses", async () => {
+  const track = { artistName: "Band", albumName: "Record", trackName: "Twice" };
+  const jobId = requireFixture(downloadTracker.addJob(track, "library", { addedBy: "doubled" }));
+  config.flowPlaylistConfig.createStaticPlaylist({
+    id: "doubled",
+    name: "Doubled",
+    tracks: [{ ...track, canonicalJobId: jobId, membershipId: "kept" }],
+  });
+
+  await releaseLibraryJobs("doubled", [jobId]);
+
+  assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
 });
 
 test("a synced playlist that drops a track deletes the file it downloaded only when removed tracks are not kept", async () => {

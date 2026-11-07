@@ -192,11 +192,16 @@ test("renaming a Subsonic playlist keeps its library song and file", async () =>
   );
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, finalPath, "Retained Album");
+  const saved = { artistName: "Retained Artist", trackName: "Saved Song" };
+  const savedJobId = requireFixture(downloadTracker.addJob(saved, "library", { saved: true }));
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Before Rename",
     ownerUserId: user.id,
-    tracks: [{ artistName: "Retained Artist", trackName: "Retained Song", canonicalJobId: jobId }],
+    tracks: [
+      { artistName: "Retained Artist", trackName: "Retained Song", canonicalJobId: jobId },
+      { ...saved, canonicalJobId: savedJobId },
+    ],
   });
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
   await fs.writeFile(finalPath, "retained audio");
@@ -205,6 +210,7 @@ test("renaming a Subsonic playlist keeps its library song and file", async () =>
 
   assert.equal(renamed?.tracks[0]?.canonicalJobId, jobId);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
+  assert.equal(downloadTracker.getJob(savedJobId)?.status, "saved");
   await fs.access(finalPath);
 });
 
