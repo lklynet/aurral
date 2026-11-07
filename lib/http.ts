@@ -151,7 +151,8 @@ async function readBody(response: FetchResponse, options: HttpOptions) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("json")) {
     try {
-      return await response.json();
+      const json: unknown = await response.json();
+      return json;
     } catch {
       return null;
     }
