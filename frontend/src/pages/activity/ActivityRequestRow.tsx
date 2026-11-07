@@ -247,16 +247,14 @@ export default function ActivityRequestRow({
   const artistMbid = isAlbum ? request.artistMbid : request.mbid;
   const hasArtistMbid = Boolean(artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
   const rowLink =
-    (isSlskd || isUsenet) && request.playlistId
-      ? { to: `/playlists?selected=${encodeURIComponent(request.playlistId)}` }
-      : request.href && (isAurral || isActivity)
-        ? { to: request.href }
-        : hasArtistMbid
-          ? {
-              to: `/artist/${artistMbid}`,
-              state: { artistName: isAlbum ? request.artistName || null : displayTitle },
-            }
-          : null;
+    request.href && (isAurral || isActivity)
+      ? { to: request.href }
+      : hasArtistMbid
+        ? {
+            to: `/artist/${artistMbid}`,
+            state: { artistName: isAlbum ? request.artistName || null : displayTitle },
+          }
+        : null;
   const status = getStatusMeta(request);
   const timelineAt = request.completedAt || request.requestedAt;
   const jobError = request.jobId ? jobErrors[request.jobId] : undefined;

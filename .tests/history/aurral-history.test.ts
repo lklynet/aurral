@@ -283,7 +283,7 @@ test("queued library track jobs appear in activity immediately", async () => {
   assert.equal(entry?.source, "unknown");
 });
 
-test("queued album track jobs open their album, and other library jobs open the library playlist", async () => {
+test("queued album track jobs open their album, and other library jobs have no link", async () => {
   const albumMbid = "b2222222-2222-4222-8222-222222222201";
   const artist = upsertLibraryArtist({
     identityKey: "mbid:b1111111-1111-4111-8111-111111111111",
@@ -317,9 +317,19 @@ test("queued album track jobs open their album, and other library jobs open the 
 
   const entries = await getAurralHistoryRequests();
   assert.equal(entries.find((item) => item.jobId === withAlbum)?.href, `/album/${albumMbid}`);
+  assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.href, null);
+
+  upsertAurralHistory({
+    referenceId: "stored-job",
+    kind: "track_download",
+    title: "Downloaded One",
+    status: "completed",
+    href: "/playlists?selected=library",
+    metadata: { jobId: "stored-job", playlistId: "library", albumMbid },
+  });
   assert.equal(
-    entries.find((item) => item.jobId === withoutAlbum)?.href,
-    "/playlists?selected=library",
+    (await getAurralHistoryRequests()).find((item) => item.jobId === "stored-job")?.href,
+    `/album/${albumMbid}`,
   );
 
   const { finalizeQualityUpgradeFailure } =
@@ -366,8 +376,9 @@ test("pending tracker jobs without history appear in activity immediately", asyn
     {
       artistName: "Artist",
       trackName: "Unrecorded Song",
+      albumMbid: "c2222222-2222-4222-8222-222222222201",
     },
-    "playlist-1",
+    "library",
   );
 
   const entry = (await getAurralHistoryRequests()).find((item) => item.jobId === jobId);
@@ -376,6 +387,7 @@ test("pending tracker jobs without history appear in activity immediately", asyn
   assert.equal(entry?.inQueue, true);
   assert.equal(entry?.trackName, "Unrecorded Song");
   assert.equal(entry?.source, "unknown");
+  assert.equal(entry?.href, "/album/c2222222-2222-4222-8222-222222222201");
 });
 
 test("pending playlist imports appear in activity before the worker starts", async () => {

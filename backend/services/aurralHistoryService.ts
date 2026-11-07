@@ -21,7 +21,7 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import type { LidarrClient } from "./lidarrClient.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
-import { libraryAlbumPath } from "../../lib/albumPath.ts";
+import { albumPath } from "../../lib/albumPath.ts";
 
 type HistoryRequester = { userId: number; username?: string };
 type RequesterUser = Pick<RequestUser, "id" | "username" | "role">;
@@ -95,14 +95,8 @@ const buildTrackJobHref = (
   job: Pick<HistoryJob, "playlistId" | "playlistType" | "albumMbid"> | null | undefined,
 ) => {
   const playlistId = job?.playlistId || job?.playlistType;
-  if (playlistId === "library" && job?.albumMbid) {
-    const album = getLibraryForAlbumReferences({
-      source: "all",
-      references: [job.albumMbid],
-    }).albums[0];
-    if (album?.id != null) return libraryAlbumPath(album);
-  }
-  return buildPlaylistHref(playlistId);
+  if (playlistId !== "library") return buildPlaylistHref(playlistId);
+  return job?.albumMbid ? albumPath(job.albumMbid) : null;
 };
 
 const buildArtistHref = (artistMbid: string | null | undefined) => {
@@ -1291,7 +1285,13 @@ export const toHistoryRequestItem = (
       trackNumber: entry.metadata?.trackNumber || null,
       discNumber: entry.metadata?.discNumber || null,
     }),
-    href: entry.href || null,
+    href:
+      kind === "track_download"
+        ? buildTrackJobHref({
+            playlistId: entry.metadata?.playlistId,
+            albumMbid: entry.metadata?.albumMbid,
+          })
+        : entry.href || null,
     kind,
     playlistId: entry.metadata?.playlistId || null,
     playlistName: entry.metadata?.playlistName || null,
@@ -1358,6 +1358,7 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
       trackName: job?.trackName,
       artistName: job?.artistName,
       ...(job?.albumName && { albumName: job.albumName }),
+      ...(job?.albumMbid && { albumMbid: job.albumMbid }),
       playlistId,
       downloadSource: job?.downloadSource || null,
       downloadClient: job?.downloadClient || null,
