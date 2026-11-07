@@ -85,6 +85,8 @@ Aurral is written in TypeScript and Node runs the `.ts` files directly, so use o
 
 Type checking is strict, including `noUncheckedIndexedAccess`, so `record[key]` and `array[i]` can be `undefined`. Handle the missing case, and prefer a `Map` or a union-keyed record over narrowing each read. `typecheck-baseline.json` lists how many type errors each file still has, and `pnpm run check` fails when a file has more. It is empty, so any type error fails the check. When you fix type errors, run `pnpm run typecheck --update` to lower the baseline. Never raise it.
 
+An `any` that reaches code without a type error, such as a `JSON.parse` result, goes just as unchecked. `lint-any-baseline.json` counts the `no-unsafe-*` lint findings in each TypeScript file the same way, and `pnpm run check` fails when a file has more. Type the value as `unknown` and narrow it instead. Run `pnpm run lint:any --update` after you clear some.
+
 `backend/db/rows.ts` holds one row type per SQLite table, generated from the schema. Run `pnpm run db:types` after a schema change, and type queries with them, for example `db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?")`.
 
 Run `pnpm run format` to format the whole repository. After `pnpm install`, the pre-commit hook formats and lints the files you stage. It adds its fixes to the commit and stops the commit when a lint error remains.

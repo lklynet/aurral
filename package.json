@@ -15,9 +15,10 @@
   "scripts": {
     "build": "pnpm --filter aurral-frontend run build",
     "start": "node --max-semi-space-size=4 --env-file=backend/.env backend/server.ts",
-    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && node scripts/typecheck.mts",
+    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && node scripts/typecheck.mts && node scripts/lint-any.mts",
     "lint": "vp lint && node frontend/scripts/lint-ui-css.mts",
     "typecheck": "node scripts/typecheck.mts",
+    "lint:any": "node scripts/lint-any.mts",
     "lint:ui": "node frontend/scripts/lint-ui-css.mts && vp lint frontend/src",
     "format": "vp fmt",
     "test": "vp test run --project unit",
