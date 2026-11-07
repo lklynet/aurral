@@ -206,7 +206,8 @@ Track `streamPath` values use `/library/stream/`. A saved play queue accepts
 either stream path.
 
 Album lookup objects are the exception. Their `libraryAlbumId` and
-`libraryArtistId` hold the IDs of the service that manages the album, the same
-values as `providerAlbumId` and `providerArtistId`. In version 2 they hold
-Library IDs and replace `canonicalAlbumId` and `canonicalArtistId`. Read the
-`provider` fields for service IDs.
+`libraryArtistId` hold the IDs of the service that manages the album. In
+version 2 they hold Library IDs and replace `canonicalAlbumId` and
+`canonicalArtistId`. Read `providerAlbumId` and `providerArtistId` for service
+IDs; they are null when no service manages the album. Artist lookups answered
+by the service directly have no `libraryId`.

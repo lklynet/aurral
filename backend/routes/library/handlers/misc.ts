@@ -47,8 +47,8 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
   canonicalInLibrary: true,
   canonicalAlbumId: String(album.canonicalId ?? album.id),
   canonicalArtistId: String(album.artistId),
-  providerAlbumId: String(album.providerId ?? album.id),
-  providerArtistId: String(album.providerArtistId ?? album.artistId),
+  providerAlbumId: album.providerId == null ? null : String(album.providerId),
+  providerArtistId: album.providerArtistId == null ? null : String(album.providerArtistId),
   libraryAlbumId: String(album.providerId ?? album.id),
   libraryArtistId: String(album.providerArtistId ?? album.artistId),
   status:
@@ -93,7 +93,7 @@ const toLibraryArtist = (
 ) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
-  libraryId: String(artist.canonicalId ?? artist.id),
+  ...(artist.canonicalId != null && { libraryId: String(artist.canonicalId) }),
   canonicalId: String(artist.canonicalId ?? artist.id),
   foreignArtistId: artist.foreignArtistId || artist.mbid,
   added: artist.addedAt,
@@ -108,7 +108,7 @@ const toLibraryAlbum = (
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
-  libraryId: String(album.canonicalId ?? album.id),
+  ...(album.canonicalId != null && { libraryId: String(album.canonicalId) }),
   canonicalId: String(album.canonicalId ?? album.id),
   foreignAlbumId: album.foreignAlbumId || album.mbid,
   title: album.albumName,
