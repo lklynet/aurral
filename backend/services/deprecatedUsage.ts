@@ -1,16 +1,10 @@
-import path from "path";
-import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { logger } from "./logger.ts";
-
-const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 
 const DEPRECATIONS = {
   "download-folder-env":
-    "DOWNLOAD_FOLDER, WEEKLY_FLOW_FOLDER, or PLAYLIST_FOLDER is set. Rename it to LIBRARY_FOLDER. Aurral 3.0 does not read the older names.",
-  "legacy-data-dir":
-    "Aurral's data folder is /app/backend/data. Mount it at /config instead. Aurral 3.0 does not look in /app/backend/data.",
-  "auth-password-env":
-    "AUTH_PASSWORD is set. Create accounts in Settings → Users, then remove AUTH_USER and AUTH_PASSWORD. Aurral 3.0 does not sign in with them.",
+    "DOWNLOAD_FOLDER, WEEKLY_FLOW_FOLDER, or PLAYLIST_FOLDER is set. Rename it to LIBRARY_FOLDER. A future release stops reading the older names.",
+  "auth-env":
+    "AUTH_USER or AUTH_PASSWORD is set. Aurral no longer reads them. Manage accounts in Settings → Users, then remove both.",
 };
 
 type DeprecationKind = keyof typeof DEPRECATIONS;
@@ -22,9 +16,7 @@ export function listConfigDeprecations() {
     (process.env.DOWNLOAD_FOLDER || process.env.WEEKLY_FLOW_FOLDER || process.env.PLAYLIST_FOLDER)
   )
     kinds.push("download-folder-env");
-  if (path.resolve(resolveAurralDataDir()) === LEGACY_CONTAINER_DATA_DIR)
-    kinds.push("legacy-data-dir");
-  if (process.env.AUTH_PASSWORD) kinds.push("auth-password-env");
+  if (process.env.AUTH_USER || process.env.AUTH_PASSWORD) kinds.push("auth-env");
   return kinds;
 }
 

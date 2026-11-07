@@ -102,19 +102,13 @@ const clampedInteger = (value: unknown, min: number, max: number, fallback: numb
 
 export function readAppSettings() {
   const settings = dbOps.getSettings();
-  const legacyMusicbrainz = settings?.integrations?.musicbrainz || {};
-  if (settings?.integrations?.coverArtArchive) {
-    delete settings.integrations.coverArtArchive;
-  }
   if (settings?.integrations?.musicbrainz) {
     delete settings.integrations.musicbrainz;
   }
   if (!settings?.integrations?.metadata) {
     settings.integrations.metadata = {
       provider: "brainzmash",
-      baseUrl: String(legacyMusicbrainz.customUrl || "")
-        .trim()
-        .replace(/\/ws\/2\/?$/, ""),
+      baseUrl: "",
       userAgentSuffix: "",
       enableNarrowFallbacks: true,
     };
@@ -207,10 +201,6 @@ function normalizeIntegrationPatch(
       enabled: enabledLidarr.enabled === true,
     };
   }
-  if (integrations.coverArtArchive) {
-    delete integrations.coverArtArchive;
-  }
-
   const prowlarr = asObject(integrations.prowlarr);
   if (prowlarr) {
     const nextProwlarr = {
@@ -490,9 +480,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     mergedIntegrations = mergeIntegrations(mergedIntegrations, integrations);
   }
 
-  if (mergedIntegrations?.coverArtArchive) {
-    delete mergedIntegrations.coverArtArchive;
-  }
   const { unreadable } = readIntegrationSettings(mergedIntegrations);
   if (unreadable.length) {
     return { error: `Aurral can't save these integration settings: ${unreadable.join(", ")}` };
@@ -578,9 +565,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
       reviewTimeoutHours !== undefined ? reviewTimeoutHours : currentSettings.reviewTimeoutHours,
   };
 
-  if (updatedSettings?.integrations?.coverArtArchive) {
-    delete updatedSettings.integrations.coverArtArchive;
-  }
   if (updatedSettings?.integrations?.musicbrainz) {
     delete updatedSettings.integrations.musicbrainz;
   }

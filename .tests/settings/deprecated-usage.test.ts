@@ -30,17 +30,16 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("reports configuration that Aurral 3.0 no longer reads", () => {
+test("reports configuration Aurral no longer reads or will stop reading", () => {
   withEnv(
     {
       LIBRARY_FOLDER: undefined,
       WEEKLY_FLOW_FOLDER: "/data/old-downloads",
       PLAYLIST_FOLDER: undefined,
-      AUTH_PASSWORD: "secret",
-      AURRAL_DATA_DIR: "/app/backend/data",
+      AUTH_USER: "admin",
+      AUTH_PASSWORD: undefined,
     },
-    () =>
-      assert.deepEqual(kinds(), ["auth-password-env", "download-folder-env", "legacy-data-dir"]),
+    () => assert.deepEqual(kinds(), ["auth-env", "download-folder-env"]),
   );
   withEnv(
     {
@@ -48,6 +47,7 @@ test("reports configuration that Aurral 3.0 no longer reads", () => {
       DOWNLOAD_FOLDER: "/data/old-downloads",
       WEEKLY_FLOW_FOLDER: undefined,
       PLAYLIST_FOLDER: undefined,
+      AUTH_USER: undefined,
       AUTH_PASSWORD: undefined,
     },
     () => assert.deepEqual(kinds(), []),

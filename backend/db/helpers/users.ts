@@ -18,8 +18,6 @@ interface UserUpdate {
   status?: string;
   roleSource?: string;
   hasLocalPassword?: boolean;
-  needsIdentityMigration?: boolean;
-  allowIdentityAdoption?: boolean;
 }
 
 type UsersListRow = Pick<
@@ -34,8 +32,6 @@ type UsersListRow = Pick<
   | "is_protected"
   | "role_source"
   | "has_local_password"
-  | "needs_identity_migration"
-  | "allow_identity_adoption"
 >;
 
 type UserAuthRow = Pick<
@@ -47,7 +43,7 @@ const getUserByUsernameStmt = db.prepare<[string], UsersRow>(
   "SELECT * FROM users WHERE username = ?",
 );
 const getAllUsersStmt = db.prepare<[], UsersListRow>(
-  "SELECT id, username, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption FROM users ORDER BY username",
+  "SELECT id, username, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password FROM users ORDER BY username",
 );
 const getUserByIdStmt = db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare<[number], UserAuthRow>(
@@ -58,7 +54,7 @@ const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ? WHERE id = ?",
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?",
 );
 const getSubsonicPasswordByIdStmt = db.prepare<[number], Pick<UsersRow, "subsonic_password">>(
   "SELECT subsonic_password FROM users WHERE id = ?",
@@ -149,8 +145,6 @@ export const userOps = {
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
       hasLocalPassword: !!row.has_local_password,
-      needsIdentityMigration: !!row.needs_identity_migration,
-      allowIdentityAdoption: !!row.allow_identity_adoption,
     };
   },
   getUserById(id: number | string | null | undefined) {
@@ -169,8 +163,6 @@ export const userOps = {
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
       hasLocalPassword: !!row.has_local_password,
-      needsIdentityMigration: !!row.needs_identity_migration,
-      allowIdentityAdoption: !!row.allow_identity_adoption,
     };
   },
   getUserAuthById(id: number | string) {
@@ -222,8 +214,6 @@ export const userOps = {
       isProtected: !!r.is_protected,
       roleSource: r.role_source || "local",
       hasLocalPassword: !!r.has_local_password,
-      needsIdentityMigration: !!r.needs_identity_migration,
-      allowIdentityAdoption: !!r.allow_identity_adoption,
     }));
   },
   createUser(
@@ -261,8 +251,6 @@ export const userOps = {
         isProtected: !!isProtected,
         roleSource: "local",
         hasLocalPassword: !!hasLocalPassword,
-        needsIdentityMigration: false,
-        allowIdentityAdoption: false,
       };
     } catch (e) {
       return null;
@@ -310,14 +298,6 @@ export const userOps = {
     const roleSource = data.roleSource !== undefined ? data.roleSource : existing.roleSource;
     const hasLocalPassword =
       data.hasLocalPassword !== undefined ? !!data.hasLocalPassword : existing.hasLocalPassword;
-    const needsIdentityMigration =
-      data.needsIdentityMigration !== undefined
-        ? !!data.needsIdentityMigration
-        : existing.needsIdentityMigration;
-    const allowIdentityAdoption =
-      data.allowIdentityAdoption !== undefined
-        ? !!data.allowIdentityAdoption
-        : existing.allowIdentityAdoption;
     try {
       updateUserStmt.run(
         username.toLowerCase(),
@@ -330,8 +310,6 @@ export const userOps = {
         status,
         roleSource,
         hasLocalPassword ? 1 : 0,
-        needsIdentityMigration ? 1 : 0,
-        allowIdentityAdoption ? 1 : 0,
         parseInt(String(id), 10),
       );
       return {
@@ -345,8 +323,6 @@ export const userOps = {
         isProtected: existing.isProtected,
         roleSource,
         hasLocalPassword,
-        needsIdentityMigration,
-        allowIdentityAdoption,
       };
     } catch (e) {
       return null;

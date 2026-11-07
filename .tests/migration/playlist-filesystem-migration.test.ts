@@ -5,10 +5,12 @@ import path from "path";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { movePlaylistFiles }] = await setupIsolatedBackend(
-  "playlist-filesystem-migration",
-  () => import("../../backend/services/playlistFilesystemMigration.ts"),
-);
+const [isolatedState, { db }, { movePlaylistFiles, PLAYLIST_FILES_MIGRATION_KEY }] =
+  await setupIsolatedBackend(
+    "playlist-filesystem-migration",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/playlistFilesystemMigration.ts"),
+  );
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
 assert.ok(root != null);
@@ -22,6 +24,7 @@ const write = async (file: string, contents: string) => {
 
 beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
+  db.prepare("DELETE FROM settings WHERE key = ?").run(PLAYLIST_FILES_MIGRATION_KEY);
 });
 
 afterAll(async () => {
@@ -42,7 +45,18 @@ test("moves playlist files to _playlists and removes the emptied old folder", as
   ]);
   assert.equal(await fs.readFile(path.join(target, "Road Trip.jpg"), "utf8"), "upload");
   await assert.rejects(fs.access(legacyRoot));
+  await write(path.join(legacyRoot, "_playlists", "Later.m3u"), "#EXTM3U\n");
   assert.equal(movePlaylistFiles(root), 0);
+});
+
+test("a move that fails runs again on the next start", async () => {
+  await write(path.join(legacyRoot, "_playlists", "Mix.m3u"), "#EXTM3U\n");
+  await write(target, "not a folder");
+
+  assert.throws(() => movePlaylistFiles(root));
+  await fs.rm(target);
+  assert.equal(movePlaylistFiles(root), 1);
+  assert.deepEqual(await fs.readdir(target), ["Mix.m3u"]);
 });
 
 test("keeps old download folders and a file already at the new path", async () => {

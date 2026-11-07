@@ -5,7 +5,6 @@ import { dbOps, userOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import {
-  getAuthPassword,
   isProxyAuthEnabled,
   resolveLocalNetworkBypassUser,
   resolveSessionUserFromToken,
@@ -73,9 +72,7 @@ type WebSocketClient = {
 const isAuthRequired = () => {
   const settings = dbOps.getSettings();
   if (!settings.onboardingComplete) return false;
-  const users = userOps.getAllUsers();
-  const legacyPasswords = getAuthPassword();
-  return isProxyAuthEnabled() || users.length > 0 || legacyPasswords.length > 0;
+  return isProxyAuthEnabled() || userOps.countUsers() > 0;
 };
 
 class WebSocketService extends EventEmitter {

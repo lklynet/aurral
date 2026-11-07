@@ -642,8 +642,6 @@ export interface UsersRow {
   is_protected: number;
   role_source: string;
   has_local_password: number;
-  needs_identity_migration: number;
-  allow_identity_adoption: number;
   api_key: string | null;
   api_key_hash: string | null;
 }

@@ -179,8 +179,7 @@ function DefaultPermissionsPage() {
 }
 
 function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
-  const { bootstrap, user: me } = useAuth();
-  const ssoEnabled = !!bootstrap?.oidcEnabled;
+  const { user: me } = useAuth();
 
   return (
     <SettingsGroup
@@ -210,7 +209,7 @@ function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
             key={user.id}
             to={user.id === me?.id ? "profile" : `users/${user.id}`}
             name={user.username}
-            status={{ label: describeUser(user, ssoEnabled) }}
+            status={{ label: describeUser(user) }}
           />
         ))
       )}

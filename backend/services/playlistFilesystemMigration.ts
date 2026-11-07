@@ -1,13 +1,16 @@
 import fs from "fs";
 import path from "path";
+import { db } from "../config/db-sqlite.ts";
 import { LEGACY_PLAYLIST_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "./downloadPaths.ts";
+
+export const PLAYLIST_FILES_MIGRATION_KEY = "migration:playlist-files-v1";
 
 const PLAYLIST_SIDECAR_EXT = new Set([".m3u", ".nsp", ".webp", ".png", ".jpg"]);
 
 const entries = (directory: string) =>
   fs.existsSync(directory) ? fs.readdirSync(directory, { withFileTypes: true }) : [];
 
-export function movePlaylistFiles(root = resolveDownloadRoot()) {
+function moveFromLegacyFolder(root: string) {
   const legacyRoot = path.join(root, LEGACY_PLAYLIST_DIR);
   if (!fs.existsSync(legacyRoot)) return 0;
   const legacyFiles = path.join(legacyRoot, "_playlists");
@@ -30,4 +33,15 @@ export function movePlaylistFiles(root = resolveDownloadRoot()) {
   if (fs.existsSync(legacyFiles)) fs.rmdirSync(legacyFiles);
   if (!fs.readdirSync(legacyRoot).length) fs.rmdirSync(legacyRoot);
   return sources.length;
+}
+
+export function movePlaylistFiles(root = resolveDownloadRoot()) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = ?").get(PLAYLIST_FILES_MIGRATION_KEY)) {
+    return 0;
+  }
+  const moved = moveFromLegacyFolder(root);
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(
+    PLAYLIST_FILES_MIGRATION_KEY,
+  );
+  return moved;
 }

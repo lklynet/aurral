@@ -120,7 +120,7 @@ export const defaultData = {
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
       },
-      general: { authUser: "", authPassword: "" },
+      general: {},
       gotify: {
         url: "",
         token: "",

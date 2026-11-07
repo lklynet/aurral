@@ -117,7 +117,7 @@ export const integrationSettingsSchema = v.looseObject({
     userAgentSuffix: text,
     enableNarrowFallbacks: flag,
   }),
-  general: service({ authUser: text, authPassword: text, apiKey: text }),
+  general: service({ apiKey: text }),
   gotify: service({
     url: text,
     token: text,
@@ -129,7 +129,7 @@ export const integrationSettingsSchema = v.looseObject({
     notifyTrackAdded: flag,
   }),
   google: service({ enabled: flag, clientId: text, clientSecret: text, redirectUri: text }),
-  musicbrainz: service({ email: text, customUrl: text }),
+  musicbrainz: service({ email: text }),
 });
 
 export type StoredIntegrations = v.InferOutput<typeof integrationSettingsSchema>;

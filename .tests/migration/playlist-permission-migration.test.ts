@@ -2,14 +2,19 @@ import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, { userOps }, { dbOps }, { renamePlaylistPermission }] =
-  await setupIsolatedBackend(
-    "playlist-permission-migration",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/users.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/config/playlist-permission-migration.ts"),
-  );
+const [
+  state,
+  { db },
+  { userOps },
+  { dbOps },
+  { renamePlaylistPermission, PLAYLIST_PERMISSION_MIGRATION_KEY },
+] = await setupIsolatedBackend(
+  "playlist-permission-migration",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/users.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/playlist-permission-migration.ts"),
+);
 afterAll(() => cleanupIsolatedState(state));
 
 test("accessFlow becomes accessPlaylists in stored users and default permissions", () => {
@@ -31,7 +36,7 @@ test("accessFlow becomes accessPlaylists in stored users and default permissions
     JSON.stringify({ defaultPermissions: { accessFlow: true, addArtist: false } }),
   );
 
-  renamePlaylistPermission(db);
+  db.prepare("DELETE FROM settings WHERE key = ?").run(PLAYLIST_PERMISSION_MIGRATION_KEY);
   renamePlaylistPermission(db);
   dbOps.invalidateSettingsCache();
 

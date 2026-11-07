@@ -176,30 +176,6 @@ test("Subsonic stops accepting a password once the account password hash changes
   );
 });
 
-test("Subsonic token auth checks a configured legacy password against the account password", async () => {
-  const configureLegacyPassword = (authPassword: string) =>
-    dbOps.updateSettings({
-      onboardingComplete: true,
-      integrations: { general: { authUser: "owner", authPassword } },
-    });
-  userOps.createUser("owner", hashPassword("current-password"), "admin");
-  const salt = "owner-salt";
-
-  configureLegacyPassword("stale-password");
-  assert.equal(
-    (await subsonicPing({ u: "owner", t: subsonicToken("stale-password", salt), s: salt })).error
-      .code,
-    41,
-  );
-
-  configureLegacyPassword("current-password");
-  assert.equal(
-    (await subsonicPing({ u: "owner", t: subsonicToken("current-password", salt), s: salt }))
-      .status,
-    "ok",
-  );
-});
-
 test("Subsonic never accepts a stored password it cannot decrypt", async () => {
   const user = userOps.createUser("restored", hashPassword("restored-password"));
   assert.ok(user != null);

@@ -28,19 +28,21 @@ export function resolveAurralDataDir() {
     return path.resolve(process.env.AURRAL_DATA_DIR);
   }
 
-  if (hasDatabaseFile(CANONICAL_CONTAINER_DATA_DIR)) {
-    return CANONICAL_CONTAINER_DATA_DIR;
-  }
-  if (hasDatabaseFile(LEGACY_CONTAINER_DATA_DIR)) {
-    return LEGACY_CONTAINER_DATA_DIR;
-  }
-
   if (isDirectory(CANONICAL_CONTAINER_DATA_DIR)) {
     return CANONICAL_CONTAINER_DATA_DIR;
   }
 
   return DEFAULT_DATA_DIR;
 }
+
+export const databaseOnlyInLegacyDataDir = ({
+  canonical = CANONICAL_CONTAINER_DATA_DIR,
+  legacy = LEGACY_CONTAINER_DATA_DIR,
+} = {}) =>
+  !process.env.AURRAL_DATA_DIR &&
+  !process.env.AURRAL_DB_PATH &&
+  !hasDatabaseFile(canonical) &&
+  hasDatabaseFile(legacy);
 
 export function resolveAurralDbPath() {
   return process.env.AURRAL_DB_PATH

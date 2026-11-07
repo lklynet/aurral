@@ -9,11 +9,18 @@ import { initializeLibrarySearchIndex } from "./library-search-index.ts";
 import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.ts";
-import { ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
+import { databaseOnlyInLegacyDataDir, ensureDataDir, resolveAurralDbPath } from "./data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import * as v from "valibot";
 import { logger } from "../services/logger.ts";
 import type { SettingsRow } from "../db/rows.ts";
+
+if (databaseOnlyInLegacyDataDir()) {
+  console.error(
+    "Aurral's database is in /app/backend/data, but Aurral 3 only reads /config. Mount that folder at /config instead, then start Aurral again.",
+  );
+  process.exit(1);
+}
 
 const DATA_DIR = ensureDataDir();
 
@@ -122,9 +129,7 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'active',
     is_protected INTEGER NOT NULL DEFAULT 0,
     role_source TEXT NOT NULL DEFAULT 'local',
-    has_local_password INTEGER NOT NULL DEFAULT 0,
-    needs_identity_migration INTEGER NOT NULL DEFAULT 0,
-    allow_identity_adoption INTEGER NOT NULL DEFAULT 0
+    has_local_password INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -822,6 +827,18 @@ db.exec(`
     END;
   `);
 
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run("migration:settings-login-v1", "1");
+  if (claimed.changes === 0) return;
+  db.exec(`
+    UPDATE settings
+    SET value = json_remove(value, '$.general.authUser', '$.general.authPassword')
+    WHERE key = 'integrations' AND json_valid(value)
+  `);
+})();
+
 const webhookEventsMigrationKey = "migration:webhook-events-per-webhook-v1";
 db.transaction(() => {
   const claimed = db
@@ -867,11 +884,15 @@ ensureUniqueLidarrArtistIdIndex(db);
 
 tryAddColumn("ALTER TABLE download_jobs ADD COLUMN started_by_playlist TEXT");
 
-db.exec(`
-  UPDATE users SET needs_identity_migration = 0, allow_identity_adoption = 0
-  WHERE needs_identity_migration = 1
-    AND id IN (SELECT DISTINCT user_id FROM user_identities)
-`);
+db.transaction(() => {
+  const columns = db
+    .prepare<[], { name: string }>("PRAGMA table_info(users)")
+    .all()
+    .map((column) => column.name);
+  for (const column of ["needs_identity_migration", "allow_identity_adoption"]) {
+    if (columns.includes(column)) db.exec(`ALTER TABLE users DROP COLUMN ${column}`);
+  }
+})();
 tryAddColumn("ALTER TABLE users ADD COLUMN api_key TEXT");
 tryAddColumn("ALTER TABLE users ADD COLUMN api_key_hash TEXT");
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)");
