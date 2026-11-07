@@ -38,8 +38,8 @@ test("a ListenBrainz rate limit holds every request until the window resets, the
   await vi.runAllTimersAsync();
   const [first, second] = await requests;
 
-  assert.equal(first.payload.artists[0].artist_name, "count 1");
-  assert.equal(second.payload.artists[0].artist_name, "count 2");
+  assert.deepEqual(first, { payload: { artists: [{ artist_name: "count 1" }] } });
+  assert.deepEqual(second, { payload: { artists: [{ artist_name: "count 2" }] } });
   assert.deepEqual(
     calls.map((call) => call.count),
     ["1", "2", "1"],

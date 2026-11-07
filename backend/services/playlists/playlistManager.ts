@@ -313,7 +313,7 @@ export class PlaylistManager {
     if (!context) return;
     await this._ensureFlowArtwork(entityId, this.getPlaylistName(entityId), context.kind).catch(
       (error) => {
-        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
+        console.warn(`[PlaylistManager] Artwork generation failed: ${asAppError(error)?.message}`);
       },
     );
   }

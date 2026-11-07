@@ -37,7 +37,9 @@ import {
   getDownloadOwnerStatus,
   isDownloadOwnerProcess,
   requestDownloadOwner,
+  type DownloadOwnerCommand,
 } from "./downloadOwnerClient.ts";
+import type { DownloadOwnerCommands } from "./downloadOwnerCommands.ts";
 import {
   getDownloadSourceNotConfiguredMessage,
   isAnyDownloadSourceConfigured,
@@ -481,7 +483,9 @@ export class DownloadWorker {
     if (this.reuseRepairInFlight) return;
     this.reuseRepairInFlight = this.repairReusableLinks(force)
       .catch((error) => {
-        console.warn(`[DownloadWorker] Reuse link repair failed: ${error?.message || error}`);
+        console.warn(
+          `[DownloadWorker] Reuse link repair failed: ${asAppError(error)?.message || error}`,
+        );
       })
       .finally(() => {
         this.reuseRepairInFlight = null;
@@ -539,15 +543,16 @@ export class DownloadWorker {
             ) {
               return;
             }
-            console.error(`[DownloadWorker] Error processing job ${job.id}:`, error.message);
+            const message = asAppError(error)?.message || String(error);
+            console.error(`[DownloadWorker] Error processing job ${job.id}:`, message);
             if (job.upgradeForJobId) {
               const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
-              await finalizeQualityUpgradeFailure(job, error.message);
+              await finalizeQualityUpgradeFailure(job, message);
               return;
             }
-            downloadTracker.setFailed(job.id, error.message);
+            downloadTracker.setFailed(job.id, message);
             import("../aurralHistoryService.ts")
-              .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
+              .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, message))
               .catch((historyError) => {
                 console.warn(
                   `[DownloadWorker] Could not record failed job ${job.id} in history:`,
@@ -811,7 +816,10 @@ export class DownloadWorker {
                 return slskdClient.cleanupAfterRun();
               })
               .catch((err) =>
-                console.warn("[DownloadWorker] slskd cleanup failed:", err?.message || err),
+                console.warn(
+                  "[DownloadWorker] slskd cleanup failed:",
+                  asAppError(err)?.message || err,
+                ),
               );
           },
           {
@@ -872,13 +880,19 @@ export class DownloadWorker {
 
 function createRemoteDownloadWorker() {
   const reader = new DownloadWorker();
-  const call = <T = unknown>(method: string, args: unknown[] = [], timeoutMs = 30000) =>
-    requestDownloadOwner<T>(method, args, { timeoutMs });
-  const notify = (method: string, args: unknown[] = []) => {
+  const call = <Command extends DownloadOwnerCommand>(
+    method: Command,
+    args: Parameters<DownloadOwnerCommands[Command]>,
+    timeoutMs = 30000,
+  ) => requestDownloadOwner(method, args, { timeoutMs });
+  const notify = <Command extends DownloadOwnerCommand>(
+    method: Command,
+    args: Parameters<DownloadOwnerCommands[Command]>,
+  ) => {
     void call(method, args).catch((error) => {
       console.warn(
         `[DownloadWorker] ${method} could not reach the download worker process:`,
-        error.message,
+        asAppError(error)?.message,
       );
     });
   };
@@ -903,12 +917,11 @@ function createRemoteDownloadWorker() {
       reader.getWorkerSettings(...args),
     getRetryCyclePausedMap: (...args: Parameters<DownloadWorker["getRetryCyclePausedMap"]>) =>
       reader.getRetryCyclePausedMap(...args),
-    start: () => call("start"),
-    stop: () => notify("stop"),
+    start: () => call("start", []),
+    stop: () => notify("stop", []),
     stopAndDrain: () => call("stopAndDrain", [], 30 * 60 * 1000),
     wake: (delayMs = 0) => notify("wakeOrStart", [delayMs]),
-    researchMissingTracks: (id: string) =>
-      call<number>("researchMissingTracks", [id], 10 * 60 * 1000),
+    researchMissingTracks: (id: string) => call("researchMissingTracks", [id], 10 * 60 * 1000),
     setRetryCyclePaused: async (id: string, paused: boolean) => {
       const result = await call("setRetryCyclePaused", [id, paused]);
       dbOps.invalidateSettingsCache();
@@ -924,7 +937,7 @@ function createRemoteDownloadWorker() {
     unblockPlaylist: (id: string) => call("unblockPlaylist", [id]),
     waitForPlaylistIdle: (id: string) => call("waitForPlaylistIdle", [id], 30 * 60 * 1000),
     waitForIdle: () => call("waitForIdle", [], 30 * 60 * 1000),
-    pruneOrphanedJobState: () => call("pruneOrphanedJobState"),
+    pruneOrphanedJobState: () => call("pruneOrphanedJobState", []),
     scheduleReuseLinkRepair: (force: boolean) => notify("scheduleReuseLinkRepair", [force]),
   };
 }

@@ -332,7 +332,7 @@ export default new Hono<AppEnv>()
         if (result.status === "rejected") {
           logger.warn("library", "Lidarr album lookup failed", {
             foreignAlbumId,
-            message: result.reason?.message || String(result.reason),
+            message: asAppError(result.reason)?.message || String(result.reason),
           });
           continue;
         }

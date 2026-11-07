@@ -1,7 +1,13 @@
 import { listenbrainzRequest } from "../apiClients/listenbrainz.ts";
 import { LISTENBRAINZ_API } from "../../config/constants.ts";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
-import { parseListenBrainzPlaylist } from "./listenbrainzTracks.ts";
+import * as v from "valibot";
+import { lenient, lenientCount } from "../integrationData.ts";
+import {
+  listenbrainzPlaylistEntrySchema,
+  parseListenBrainzPlaylist,
+  type ListenBrainzPlaylist,
+} from "./listenbrainzTracks.ts";
 
 const PLAYLIST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -17,21 +23,15 @@ const GENERATED_PLAYLIST_NAMES = {
 
 type CodedError = Error & { statusCode?: number };
 
-interface ListenBrainzPlaylistExtension {
-  last_modified_at?: string;
-  additional_metadata?: { algorithm_metadata?: { source_patch?: string } };
-}
+type ListenBrainzPlaylistEntry = v.InferOutput<typeof listenbrainzPlaylistEntrySchema>;
 
-interface ListenBrainzPlaylist {
-  image?: string;
-  identifier?: string;
-  title?: string;
-  date?: string;
-  track?: unknown[];
-  extension?: { [PLAYLIST_EXTENSION]?: ListenBrainzPlaylistExtension };
-}
-
-type ListenBrainzPlaylistEntry = ListenBrainzPlaylist & { playlist?: ListenBrainzPlaylist };
+const playlistPageSchema = v.fallback(
+  v.looseObject({
+    playlists: lenient(v.array(listenbrainzPlaylistEntrySchema)),
+    playlist_count: lenientCount,
+  }),
+  {},
+);
 
 const getConnection = (userId: number | undefined) => {
   const connection = scrobbleConnectionStore.getConnection(userId, "listenbrainz");
@@ -41,8 +41,8 @@ const getConnection = (userId: number | undefined) => {
   throw error;
 };
 
-const unwrapPlaylist = (entry: ListenBrainzPlaylistEntry) =>
-  entry?.playlist && typeof entry.playlist === "object" ? entry.playlist : entry;
+const unwrapPlaylist = (entry: ListenBrainzPlaylistEntry): ListenBrainzPlaylist =>
+  entry.playlist ?? entry;
 
 const getPlaylistId = (playlist: ListenBrainzPlaylist | undefined) => {
   const identifier = String(playlist?.identifier || "").trim();
@@ -84,21 +84,25 @@ const fetchPlaylistPages = async ({
   path: string;
 }) => {
   const count = 100;
-  const playlists = [];
+  const playlists: ListenBrainzPlaylistEntry[] = [];
   let offset = 0;
   let playlistCount = null;
   do {
-    const payload = await listenbrainzRequest(
-      `/1/user/${encodeURIComponent(username)}/playlists${path}`,
-      { count, offset },
-      { token, baseUrl: LISTENBRAINZ_API },
+    const payload = v.parse(
+      playlistPageSchema,
+      await listenbrainzRequest(
+        `/1/user/${encodeURIComponent(username)}/playlists${path}`,
+        { count, offset },
+        { token, baseUrl: LISTENBRAINZ_API },
+      ),
     );
-    const page = Array.isArray(payload?.playlists) ? payload.playlists : [];
+    const page = payload.playlists ?? [];
     playlists.push(...page);
     offset += page.length;
-    playlistCount = Number.isFinite(Number(payload?.playlist_count))
-      ? Number(payload.playlist_count)
-      : null;
+    playlistCount =
+      payload.playlist_count != null && Number.isFinite(Number(payload.playlist_count))
+        ? Number(payload.playlist_count)
+        : null;
     if (!page.length) break;
     if (playlistCount == null && page.length < count) break;
   } while (playlistCount == null || offset < playlistCount);
@@ -117,12 +121,21 @@ const fetchPlaylistTrackCount = async ({
     { fetch_metadata: false },
     { token, baseUrl: LISTENBRAINZ_API },
   );
-  const playlist = unwrapPlaylist(payload);
-  return Array.isArray(playlist?.track) ? playlist.track.length : null;
+  const playlist = unwrapPlaylist(v.parse(listenbrainzPlaylistEntrySchema, payload));
+  return playlist.track ? playlist.track.length : null;
 };
 
 const getLatestGeneratedPlaylists = (entries: ListenBrainzPlaylistEntry[]) => {
-  const latest = new Map();
+  const latest = new Map<
+    GeneratedPlaylistType,
+    {
+      id: string;
+      name: string;
+      sourceType: GeneratedPlaylistType;
+      trackCount: number | null;
+      timestamp: number;
+    }
+  >();
   for (const entry of entries) {
     const playlist = unwrapPlaylist(entry);
     const sourceType = getGeneratedPlaylistType(playlist);
@@ -141,9 +154,12 @@ const getLatestGeneratedPlaylists = (entries: ListenBrainzPlaylistEntry[]) => {
       latest.set(sourceType, candidate);
     }
   }
-  return GENERATED_PLAYLIST_TYPES.map((sourceType) => latest.get(sourceType))
-    .filter(Boolean)
-    .map(({ timestamp: _timestamp, ...playlist }) => playlist);
+  return GENERATED_PLAYLIST_TYPES.flatMap((sourceType) => {
+    const playlist = latest.get(sourceType);
+    if (!playlist) return [];
+    const { timestamp: _timestamp, ...rest } = playlist;
+    return [rest];
+  });
 };
 
 const getGeneratedPlaylistTypeOrThrow = (value: unknown) => {
@@ -171,7 +187,10 @@ export const listenbrainzPlaylistClient = {
       await fetchPlaylistPages({ username, token: connection.token, path: "/createdfor" }),
     );
 
-    const normalizedPlaylists = new Map();
+    const normalizedPlaylists = new Map<
+      string,
+      { id: string; name: string; trackCount: number | null }
+    >();
     for (const entry of playlists) {
       const playlist = unwrapPlaylist(entry);
       const normalized = {
@@ -246,7 +265,7 @@ export const listenbrainzPlaylistClient = {
       {},
       { token: connection.token, baseUrl: LISTENBRAINZ_API },
     );
-    const artworkUrl = unwrapPlaylist(payload)?.image;
+    const artworkUrl = unwrapPlaylist(v.parse(listenbrainzPlaylistEntrySchema, payload)).image;
     return {
       ...parseListenBrainzPlaylist(payload),
       ...(typeof artworkUrl === "string" && /^https?:\/\//i.test(artworkUrl) && { artworkUrl }),

@@ -1,5 +1,7 @@
 import { dbOps, userOps } from "../../db/helpers/index.ts";
+import * as v from "valibot";
 import { lastfmRequest, listenbrainzRequest } from "../apiClients/index.ts";
+import { listenbrainzTopArtistsSchema } from "../apiClients/listenbrainz.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
@@ -65,13 +67,6 @@ const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
 
 type DiscoveryUser = NonNullable<ReturnType<typeof userOps.getUserById>>;
-
-type ListenbrainzTopArtist = {
-  artist_mbids?: string[];
-  artist_mbid?: string | null;
-  artist_name: string;
-  listen_count?: number;
-};
 
 export const getUserDiscoveryNamespace = (userId: number) => `user:${userId}`;
 
@@ -150,21 +145,22 @@ const fetchListenHistoryArtists = async (
   discoveryPeriod: string,
 ): Promise<ListenHistoryArtist[]> => {
   if (provider === "listenbrainz") {
-    const data = await listenbrainzRequest(`/1/stats/user/${encodeURIComponent(account)}/artists`, {
-      count: 50,
-      range: getListenbrainzRange(discoveryPeriod)!,
-    });
-    const artists: ListenbrainzTopArtist[] = Array.isArray(data?.payload?.artists)
-      ? data.payload.artists
-      : [];
-    return artists
+    const data = v.parse(
+      listenbrainzTopArtistsSchema,
+      await listenbrainzRequest(`/1/stats/user/${encodeURIComponent(account)}/artists`, {
+        count: 50,
+        range: getListenbrainzRange(discoveryPeriod)!,
+      }),
+    );
+    return (data.payload?.artists ?? [])
       .map((artist) => {
+        const artistName = artist.artist_name ?? "";
         const mbid = Array.isArray(artist.artist_mbids)
           ? artist.artist_mbids.find(Boolean)
           : artist.artist_mbid || null;
         return {
-          mbid: mbid || cachedArtistGuess(artist.artist_name) || null,
-          artistName: artist.artist_name,
+          mbid: mbid || cachedArtistGuess(artistName) || null,
+          artistName,
           playcount: parseInt(String(artist.listen_count || 0), 10) || 0,
         };
       })

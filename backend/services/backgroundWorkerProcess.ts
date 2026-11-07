@@ -2,6 +2,7 @@ import { WORKER_GROUPS } from "./jobs/groups.ts";
 import { ownsQueueHere } from "./jobs/queue.ts";
 import { logger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 
 const group = WORKER_GROUPS.find((name) => name === process.env.AURRAL_BACKGROUND_WORKER_GROUP);
 if (!group || !process.send) {
@@ -40,42 +41,6 @@ let stopping = false;
 let ownerCommandsInFlight = 0;
 let lastOwnerCommandAt = 0;
 let lastBusyAt = Date.now();
-const DOWNLOAD_OWNER_COMMAND_NAMES = [
-  "start",
-  "stop",
-  "stopAndDrain",
-  "wake",
-  "researchMissingTracks",
-  "setRetryCyclePaused",
-  "updateWorkerSettings",
-  "checkPlaylistComplete",
-  "blockPlaylist",
-  "unblockPlaylist",
-  "waitForPlaylistIdle",
-  "waitForIdle",
-  "pruneOrphanedJobState",
-  "scheduleReuseLinkRepair",
-  "runQualityUpgradeChecks",
-  "queueQualityUpgradeForJob",
-  "clearPendingByPlaylist",
-  "wakeOrStart",
-  "syncStaticPlaylistImport",
-  "enqueueManualMissingSelection",
-  "enqueueManualReplacementSelection",
-  "approveBlockedJob",
-  "denyBlockedJob",
-  "cancelTrackDownload",
-  "cancelTrackDownloads",
-  "retryTrackDownload",
-] as const;
-
-type DownloadOwnerCommand = (typeof DOWNLOAD_OWNER_COMMAND_NAMES)[number];
-
-const DOWNLOAD_OWNER_COMMANDS: ReadonlySet<unknown> = new Set(DOWNLOAD_OWNER_COMMAND_NAMES);
-
-const isDownloadOwnerCommand = (method: unknown): method is DownloadOwnerCommand =>
-  DOWNLOAD_OWNER_COMMANDS.has(method);
-
 type SupervisorMessage =
   | { type: "shutdown" | "retire" | "queue-wake" }
   | { type: "download-owner-command"; requestId: number; method: unknown; args?: unknown };
@@ -85,70 +50,23 @@ async function handleDownloadOwnerCommand(
 ) {
   const { requestId, method, args = [] } = message;
   try {
-    if (!downloadWorker || !isDownloadOwnerCommand(method) || !Array.isArray(args)) {
+    const [{ dbOps }, { invalidateFlowPlaylistConfigCache }, { downloadOwnerCommands }] =
+      await Promise.all([
+        import("../db/helpers/index.ts"),
+        import("./playlists/flowPlaylistConfig.ts"),
+        import("./downloadJobs/downloadOwnerCommands.ts"),
+      ]);
+    if (
+      !downloadWorker ||
+      typeof method !== "string" ||
+      !isOwnKey(downloadOwnerCommands, method) ||
+      !Array.isArray(args)
+    ) {
       throw new Error("Unsupported download worker command");
     }
-    const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
-      import("../db/helpers/index.ts"),
-      import("./playlists/flowPlaylistConfig.ts"),
-    ]);
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
-    let result;
-    if (method === "cancelTrackDownload" || method === "retryTrackDownload") {
-      const albumJobs = await import("./aurralAlbumJobs.ts");
-      result = await albumJobs[method](args[0]);
-    } else if (method === "cancelTrackDownloads") {
-      const { cancelTrackDownloads } = await import("./aurralAlbumJobs.ts");
-      const [jobIds] = args;
-      if (!Array.isArray(jobIds) || !jobIds.every((id) => typeof id === "string")) {
-        throw new Error("Unsupported download worker command");
-      }
-      result = await cancelTrackDownloads(jobIds);
-    } else if (method === "enqueueManualMissingSelection") {
-      const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
-      result = downloadTracker.enqueueManualSelection(args[0], args[1]);
-    } else if (method === "enqueueManualReplacementSelection") {
-      const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
-      result = downloadTracker.enqueueManualReplacementSelection(args[0], args[1]);
-    } else if (method === "approveBlockedJob" || method === "denyBlockedJob") {
-      const review = await import("./downloadJobs/blockedJobReview.ts");
-      result = await review[method](args[0]);
-    } else if (method === "clearPendingByPlaylist") {
-      const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
-      result = downloadTracker.clearPendingByPlaylistType(args[0]);
-    } else if (method === "wakeOrStart") {
-      if (downloadWorker.running) downloadWorker.wake(args[0]);
-      else await downloadWorker.start();
-      result = true;
-    } else if (method === "runQualityUpgradeChecks") {
-      const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
-      const [playlistIds, limit = 500] = args;
-      result = await runQualityUpgradeCheck({ force: true, playlistIds, limit });
-    } else if (method === "queueQualityUpgradeForJob") {
-      const [{ queueQualityUpgrade }, { downloadTracker }] = await Promise.all([
-        import("./qualityProfileService.ts"),
-        import("./downloadJobs/downloadTracker.ts"),
-      ]);
-      result = await queueQualityUpgrade(downloadTracker.getJob(args[0]));
-    } else if (method === "syncStaticPlaylistImport") {
-      const { syncStaticPlaylistImport } = await import("./importLists/importListSync.ts");
-      try {
-        result = { ok: true, result: await syncStaticPlaylistImport(args[0]) };
-      } catch (error) {
-        const failure = asAppError(error);
-        result = {
-          ok: false,
-          error: {
-            message: failure?.message || "Playlist sync failed",
-            code: failure?.code || null,
-            statusCode: failure?.statusCode || null,
-          },
-        };
-      }
-    } else {
-      result = await Reflect.apply(downloadWorker[method], downloadWorker, args);
-    }
+    const result: unknown = await Reflect.apply(downloadOwnerCommands[method], undefined, args);
     if (process.connected) {
       process.send!({ type: "cache-invalidate", cache: "playlists" });
       process.send!({ type: "download-owner-response", requestId, result });

@@ -469,7 +469,7 @@ export async function scanConfiguredLibrary({
     if (!targeted) {
       await removePlaylistTracksWithoutDownloads().catch((error) => {
         logger.warn("library", "Could not remove missing tracks from playlists", {
-          message: error?.message || String(error),
+          message: asAppError(error)?.message || String(error),
         });
       });
     }

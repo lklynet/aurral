@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { websocketService } from "../websocketService.ts";
+import { websocketService, type WebSocketChannelPayload } from "../websocketService.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import {
@@ -31,7 +31,10 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
       }
       const version = getPlaylistStatusVersion();
       if (!force && version === lastVersion) return;
-      const payloadByAudience = new Map();
+      const payloadByAudience = new Map<
+        string,
+        { hash: string; message: Extract<WebSocketChannelPayload, { type: "playlist_status" }> }
+      >();
       const buildPayload = (channel: string) => (client: PlaylistStatusClient) => {
         const cacheKey =
           client?.user?.role === "admin"

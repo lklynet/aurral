@@ -1,3 +1,5 @@
+import * as v from "valibot";
+import { lenientCount, lenientText } from "./integrationData.ts";
 import { audioContentType } from "./audioFileStream.ts";
 import { playlistJobEntries, staticPlaylistJobs } from "./playlists/playlistJobs.ts";
 import { randomUUID } from "node:crypto";
@@ -1492,10 +1494,20 @@ export function setRating(user: SubsonicUser, value: string, rating: number) {
   return true;
 }
 
+const starEntriesSchema = v.fallback(
+  v.array(
+    v.fallback(
+      v.looseObject({ id: v.optional(v.unknown()), starredAt: v.optional(v.unknown()) }),
+      {},
+    ),
+  ),
+  [],
+);
+
 export function restoreStars(user: SubsonicUser, entries: unknown) {
-  const parsed = (Array.isArray(entries) ? entries : []).map((entry) => ({
-    target: starTarget(entry?.id),
-    starredAt: Number(entry?.starredAt),
+  const parsed = v.parse(starEntriesSchema, entries).map((entry) => ({
+    target: starTarget(entry.id),
+    starredAt: Number(entry.starredAt),
   }));
   const restorable = parsed.flatMap(({ target, starredAt }) =>
     target && Number.isSafeInteger(starredAt) && starredAt > 0 ? [{ target, starredAt }] : [],
@@ -2000,13 +2012,30 @@ const cachedArtworkUrl = async (key: string) => {
   return artwork || buildImageProxyUrl(stored);
 };
 
+const customArtworkTargetSchema = v.fallback(
+  v.looseObject({
+    id: lenientCount,
+    updatedAt: lenientCount,
+    playlistKind: lenientText,
+    playlistId: lenientText,
+  }),
+  {},
+);
+
 const customArtworkTarget = (parsed: ParsedId | null) => {
   if (!parsed?.kind?.startsWith("art-")) return null;
   try {
-    const value = JSON.parse(parsed.key);
-    const id = String(value?.id || "").trim();
-    const updatedAt = Number(value?.updatedAt);
-    return id && Number.isFinite(updatedAt) ? { ...value, id, updatedAt } : null;
+    const value = v.parse(customArtworkTargetSchema, JSON.parse(parsed.key));
+    const id = String(value.id || "").trim();
+    const updatedAt = Number(value.updatedAt);
+    return id && Number.isFinite(updatedAt)
+      ? {
+          id,
+          updatedAt,
+          playlistKind: value.playlistKind ?? "",
+          playlistId: value.playlistId ?? "",
+        }
+      : null;
   } catch {
     return null;
   }
@@ -2082,7 +2111,7 @@ export async function resolvePlaylistArtwork(value: string, user: SubsonicUser) 
   const parsed = parseId(value);
   const target = parsed?.kind === "art-playlist" ? customArtworkTarget(parsed) : null;
   const playlist = target
-    ? playlistFromId(user, idFor(String(target.playlistKind), target.id))
+    ? playlistFromId(user, idFor(target.playlistKind, target.id))
     : playlistFromId(user, value);
   if (!playlist) return null;
   const artwork = await playlistManager.resolveArtworkFile(playlist.id);

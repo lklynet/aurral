@@ -914,7 +914,8 @@ async function deleteAurralLibraryFiles(paths: string[]) {
   for (const folder of emptiedFolders) {
     await removeEmptiedFolder(folder, folders.downloadRoot).catch(() => {});
   }
-  return deletionResults.find((result) => result.status === "rejected")?.reason || null;
+  const rejected = deletionResults.find((result) => result.status === "rejected");
+  return rejected ? (asAppError(rejected.reason) ?? new Error(String(rejected.reason))) : null;
 }
 
 function buildTrackFileIndex(trackFiles: LidarrTrackFileRecord[] | null | undefined) {
@@ -1609,7 +1610,7 @@ export class LibraryManager {
       .catch((error) => {
         logger.warn("library", "Failed to stabilize artist monitoring defaults", {
           artistId,
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       })
       .finally(() => {
@@ -1760,7 +1761,7 @@ export class LibraryManager {
       .catch((error) => {
         logger.error(
           "library",
-          `[LibraryManager] Failed to stabilize requested album monitoring: ${error.message}`,
+          `[LibraryManager] Failed to stabilize requested album monitoring: ${asAppError(error)?.message}`,
         );
       });
   }

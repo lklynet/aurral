@@ -501,7 +501,7 @@ test("unified search reports an unreachable catalog, does not cache it, and list
 test("adding library search results to a new static playlist keeps their MusicBrainz identity", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
-  vi.spyOn(downloadWorker, "start").mockImplementation(async () => false);
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const queuedOperations: { kind: string }[] = [];
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedOperations.push(payload);

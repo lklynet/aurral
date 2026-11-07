@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { LISTENBRAINZ_LABS_API } from "../../config/constants.ts";
 import {
@@ -7,6 +8,11 @@ import {
   listenbrainzRequest,
   musicbrainzSearchArtistsByTag,
 } from "../apiClients/index.ts";
+import {
+  listenbrainzTopArtistsSchema,
+  listenbrainzTopRecordingsSchema,
+} from "../apiClients/listenbrainz.ts";
+import { lenient, lenientCount, lenientText } from "../integrationData.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getArtistByMbid } from "../providers/brainzmashProvider.ts";
@@ -24,27 +30,31 @@ const TRENDING_ARTIST_COUNT = 100;
 const TRENDING_RECORDING_COUNT = 500;
 const SITEWIDE_STATS_TIMEOUT_MS = 20000;
 
-type ListenbrainzTag = { tag?: string; count?: number };
-type ListenbrainzSimilarArtist = { artist_mbid?: string | null; name?: string; score?: number };
-type ListenbrainzArtistTags = {
-  artist_mbid?: string;
-  mbid?: string;
-  tag?: { artist?: ListenbrainzTag[] };
-};
-type ListenbrainzTopArtist = {
-  artist_name?: string;
-  artist_mbid?: string;
-  artist_mbids?: string[];
-  listen_count?: number;
-};
-type ListenbrainzTopRecording = {
-  artist_name?: string;
-  artist_mbids?: string[];
-  track_name?: string;
-  release_name?: string | null;
-};
-type ListenbrainzTopArtists = { payload?: { artists?: ListenbrainzTopArtist[] } };
-type ListenbrainzTopRecordings = { payload?: { recordings?: ListenbrainzTopRecording[] } };
+const tagSchema = v.fallback(v.looseObject({ tag: lenientText, count: lenientCount }), {});
+const similarArtistsSchema = lenient(
+  v.array(
+    v.fallback(
+      v.looseObject({
+        artist_mbid: lenient(v.nullable(v.string())),
+        name: lenientText,
+        score: lenientCount,
+      }),
+      {},
+    ),
+  ),
+);
+const artistTagsSchema = lenient(
+  v.array(
+    v.fallback(
+      v.looseObject({
+        artist_mbid: lenientText,
+        mbid: lenientText,
+        tag: lenient(v.looseObject({ artist: lenient(v.array(tagSchema)) })),
+      }),
+      {},
+    ),
+  ),
+);
 
 type TagSearchArtist = Awaited<ReturnType<typeof musicbrainzSearchArtistsByTag>>["artists"][number];
 
@@ -70,7 +80,7 @@ const resolveArtistMbid = async (artist: MusicArtistRef) => {
   return guessArtistMbid(name);
 };
 
-const toTagList = (tags: ListenbrainzTag[] | null | undefined) => {
+const toTagList = (tags: v.InferOutput<typeof tagSchema>[] | undefined) => {
   const entries = (Array.isArray(tags) ? tags : []).filter((tag) => text(tag?.tag));
   const topCount = Math.max(1, ...entries.map((tag) => Number(tag.count) || 0));
   return entries
@@ -132,10 +142,13 @@ export const listenbrainzSource = {
     const mbid = await resolveArtistMbid(artist);
     if (mbid) {
       try {
-        const rows: ListenbrainzSimilarArtist[] | undefined = await listenbrainzRequest(
-          "/similar-artists/json",
-          { artist_mbids: mbid, algorithm: LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM },
-          { baseUrl: LISTENBRAINZ_LABS_API },
+        const rows = v.parse(
+          similarArtistsSchema,
+          await listenbrainzRequest(
+            "/similar-artists/json",
+            { artist_mbids: mbid, algorithm: LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM },
+            { baseUrl: LISTENBRAINZ_LABS_API },
+          ),
         );
         recordHealth(health, true);
         const similar = (Array.isArray(rows) ? rows : []).filter((row) => {
@@ -164,12 +177,12 @@ export const listenbrainzSource = {
     const tagsByMbid = new Map<string, ReturnType<typeof toTagList>>();
     for (let index = 0; index < unique.length; index += ARTIST_METADATA_BATCH_SIZE) {
       try {
-        const rows: ListenbrainzArtistTags[] | undefined = await listenbrainzRequest(
-          "/1/metadata/artist/",
-          {
+        const rows = v.parse(
+          artistTagsSchema,
+          await listenbrainzRequest("/1/metadata/artist/", {
             artist_mbids: unique.slice(index, index + ARTIST_METADATA_BATCH_SIZE).join(","),
             inc: "tag",
-          },
+          }),
         );
         recordHealth(health, true);
         for (const row of Array.isArray(rows) ? rows : []) {
@@ -191,10 +204,13 @@ export const listenbrainzSource = {
   getTagArtists,
 
   async getTrendingArtists({ limit = 100 } = {}) {
-    const data: ListenbrainzTopArtists = await listenbrainzRequest(
-      "/1/stats/sitewide/artists",
-      { count: TRENDING_ARTIST_COUNT, range: "week" },
-      { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
+    const data = v.parse(
+      listenbrainzTopArtistsSchema,
+      await listenbrainzRequest(
+        "/1/stats/sitewide/artists",
+        { count: TRENDING_ARTIST_COUNT, range: "week" },
+        { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
+      ),
     );
     return (Array.isArray(data?.payload?.artists) ? data.payload.artists : [])
       .slice(0, limit)
@@ -217,11 +233,14 @@ export const listenbrainzSource = {
   },
 
   async getTrendingTracks() {
-    const data: ListenbrainzTopRecordings | null = await listenbrainzRequest(
-      "/1/stats/sitewide/recordings",
-      { count: TRENDING_RECORDING_COUNT, range: "week" },
-      { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
-    ).catch(() => null);
+    const data = v.parse(
+      listenbrainzTopRecordingsSchema,
+      await listenbrainzRequest(
+        "/1/stats/sitewide/recordings",
+        { count: TRENDING_RECORDING_COUNT, range: "week" },
+        { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
+      ).catch(() => null),
+    );
     return (Array.isArray(data?.payload?.recordings) ? data.payload.recordings : [])
       .map((recording) => ({
         artistName: text(recording?.artist_name),

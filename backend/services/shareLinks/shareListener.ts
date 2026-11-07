@@ -239,7 +239,9 @@ async function applySchedule() {
 
 export function syncShareListener() {
   syncing = syncing.then(applySchedule).catch((error) => {
-    logger.error("share", "Could not update the share listener:", { message: error.message });
+    logger.error("share", "Could not update the share listener:", {
+      message: asAppError(error)?.message,
+    });
   });
   return syncing;
 }

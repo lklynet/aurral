@@ -65,7 +65,10 @@ export function wakeQueuedBackgroundWork() {
       }
       if (queue.hasClaimableJobs()) {
         queue.start().catch((error) => {
-          console.warn(`[AppRuntime] Failed to start ${queue.name}:`, error?.message || error);
+          console.warn(
+            `[AppRuntime] Failed to start ${queue.name}:`,
+            asAppError(error)?.message || error,
+          );
         });
         continue;
       }
@@ -153,7 +156,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
     .catch((error) => {
       logger.warn?.(
         "[AppRuntime] Failed to reconcile stuck activity history on startup:",
-        error?.message || error,
+        asAppError(error)?.message || error,
       );
     });
   backgroundProcessSupervisor = createBackgroundProcessSupervisor({
@@ -189,7 +192,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
               child.send({
                 type: "download-owner-client-response",
                 requestId: message.requestId,
-                error: error?.message || String(error),
+                error: asAppError(error)?.message || String(error),
               });
           });
         return;
@@ -204,7 +207,10 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
             invalidateFlowPlaylistConfigCache();
           })
           .catch((error) => {
-            logger.warn?.("[AppRuntime] Could not refresh flow cache:", error?.message || error);
+            logger.warn?.(
+              "[AppRuntime] Could not refresh flow cache:",
+              asAppError(error)?.message || error,
+            );
           });
         return;
       }
@@ -216,7 +222,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
           .catch((error) => {
             logger.warn?.(
               "[AppRuntime] Could not refresh Lidarr artist cache:",
-              error?.message || error,
+              asAppError(error)?.message || error,
             );
           });
         return;
@@ -237,12 +243,18 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
             invalidateNewsResponseCache();
           })
           .catch((error) => {
-            logger.warn?.("[AppRuntime] Could not refresh news cache:", error?.message || error);
+            logger.warn?.(
+              "[AppRuntime] Could not refresh news cache:",
+              asAppError(error)?.message || error,
+            );
           });
         return;
       }
       void forwardWorkerBroadcast(message).catch((error) => {
-        logger.warn?.("[AppRuntime] Failed to forward worker update:", error?.message || error);
+        logger.warn?.(
+          "[AppRuntime] Failed to forward worker update:",
+          asAppError(error)?.message || error,
+        );
       });
     },
     onExit(group, _code, _signal, _pid, reason, retired) {
@@ -253,7 +265,10 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
           downloadTracker.resetDownloadingToPending();
         })
         .catch((error) => {
-          logger.warn?.(`[AppRuntime] Could not recover ${group} jobs:`, error?.message || error);
+          logger.warn?.(
+            `[AppRuntime] Could not recover ${group} jobs:`,
+            asAppError(error)?.message || error,
+          );
         });
       if (retired || group !== "discovery-refresh") return recovery;
       void import("./discovery/persistence.ts")
@@ -273,7 +288,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
         .catch((error) => {
           logger.warn?.(
             "[AppRuntime] Failed to report discovery restart:",
-            error?.message || error,
+            asAppError(error)?.message || error,
           );
         });
       return recovery;
@@ -292,7 +307,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
     .catch((error) => {
       logger.warn?.(
         "[AppRuntime] Could not recover jobs from before the restart:",
-        error?.message || error,
+        asAppError(error)?.message || error,
       );
     })
     .finally(() => {
@@ -307,7 +322,10 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
       return module.startLibraryFileWatcher({ logger });
     })
     .catch((error) => {
-      logger.warn?.("[AppRuntime] Failed to start library file watcher:", error?.message || error);
+      logger.warn?.(
+        "[AppRuntime] Failed to start library file watcher:",
+        asAppError(error)?.message || error,
+      );
     });
   return true;
 }

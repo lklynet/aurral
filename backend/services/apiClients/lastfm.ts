@@ -8,7 +8,7 @@ import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { asAppError } from "../../../lib/errors.ts";
-import { readOne } from "../integrationData.ts";
+import { lenient, lenientCount, lenientText, oneOrMany, readOne } from "../integrationData.ts";
 
 interface LastfmScrobbleEvent {
   playedAt: number | string;
@@ -28,12 +28,8 @@ interface LastfmErrorDetails {
   error: unknown;
 }
 
-const lenient = <Schema extends v.GenericSchema>(schema: Schema) =>
-  v.fallback(v.optional(schema), undefined);
-const lastfmText = lenient(v.string());
-const lastfmCount = lenient(v.union([v.string(), v.number()]));
-const oneOrMany = <Schema extends v.GenericSchema>(item: Schema) =>
-  lenient(v.union([v.array(item), item]));
+const lastfmText = lenientText;
+const lastfmCount = lenientCount;
 const lastfmRank = lenient(v.looseObject({ rank: lastfmCount }));
 
 const lastfmImageSchema = v.looseObject({ size: lastfmText, "#text": lastfmText });

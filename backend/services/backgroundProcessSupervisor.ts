@@ -4,6 +4,7 @@ import v8 from "node:v8";
 import { WORKER_GROUPS } from "./jobs/groups.ts";
 import type { getWorkerStatuses } from "./jobs/worker.ts";
 import type { LogEntry } from "./logger.ts";
+import type { DownloadOwnerStatus } from "./downloadJobs/downloadOwnerClient.ts";
 import type { WebSocketChannelPayload } from "./websocketService.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
@@ -17,7 +18,7 @@ export type WorkerMessage =
       group: string;
       memory: { rss: number; heapUsed: number };
       workers: WorkerStatus[];
-      downloadOwnerStatus?: unknown;
+      downloadOwnerStatus?: DownloadOwnerStatus;
     }
   | { type: "idle" }
   | { type: "busy" }
@@ -41,6 +42,16 @@ export type WorkerMessage =
     }
   | { type: "download-owner-response"; requestId: number; result?: unknown; error?: undefined }
   | { type: "download-owner-response"; requestId: number; error: string; result?: undefined };
+
+type ActiveJob = { queue: string; jobId: number; startedAt: number; payload: string | null };
+type PendingRequest = {
+  group: string;
+  resolve: (result: unknown) => void;
+  reject: (error: unknown) => void;
+  timer: NodeJS.Timeout;
+  sent: boolean;
+  message: { type: "download-owner-command"; requestId: number; method: string; args: unknown[] };
+};
 
 const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.ts", import.meta.url));
 const RESTART_BASE_MS = 1000;
@@ -100,20 +111,20 @@ export function createBackgroundProcessSupervisor({
   unresponsiveMs?: number;
   watchdogIntervalMs?: number;
 } = {}) {
-  const children = new Map();
-  const restartTimers = new Map();
-  const attempts = new Map();
-  const lastSeen = new Map();
-  const workerStatuses = new Map();
-  const workerMemory = new Map();
-  const activeJobs = new Map();
+  const children = new Map<string, ChildProcess>();
+  const restartTimers = new Map<string, NodeJS.Timeout>();
+  const attempts = new Map<string, number>();
+  const lastSeen = new Map<string, number>();
+  const workerStatuses = new Map<string, WorkerStatus[]>();
+  const workerMemory = new Map<string, { rss: number; heapUsed: number }>();
+  const activeJobs = new Map<string, Map<string, ActiveJob>>();
   const exitReasons = new Map<string, string>();
-  const pendingRequests = new Map();
-  const downloadOwnerStatuses = new Map();
-  const readyGroups = new Set();
-  const retiringGroups = new Set();
-  const recoveringGroups = new Set();
-  const relaunchGroups = new Set();
+  const pendingRequests = new Map<number, PendingRequest>();
+  const downloadOwnerStatuses = new Map<string, DownloadOwnerStatus>();
+  const readyGroups = new Set<string>();
+  const retiringGroups = new Set<string>();
+  const recoveringGroups = new Set<string>();
+  const relaunchGroups = new Set<string>();
   let nextRequestId = 0;
   let watchdogInterval: NodeJS.Timeout | null = null;
   let demandTimer: NodeJS.Timeout | null = null;
@@ -123,7 +134,7 @@ export function createBackgroundProcessSupervisor({
   function canSend(group: string) {
     const child = children.get(group);
     return (
-      Boolean(child) &&
+      child !== undefined &&
       readyGroups.has(group) &&
       !retiringGroups.has(group) &&
       child.connected !== false
@@ -138,7 +149,7 @@ export function createBackgroundProcessSupervisor({
     const pending = pendingRequests.get(requestId);
     if (!pending || pending.sent || !canSend(pending.group)) return false;
     try {
-      children.get(pending.group).send(pending.message);
+      children.get(pending.group)?.send(pending.message);
       pending.sent = true;
     } catch (error) {
       pendingRequests.delete(requestId);
@@ -178,7 +189,7 @@ export function createBackgroundProcessSupervisor({
 
   function launch(group: string) {
     if (stopping || !started || children.has(group) || recoveringGroups.has(group)) return;
-    let child;
+    let child: ChildProcess;
     try {
       child = forkProcess(ENTRY, [], {
         env: { ...process.env, AURRAL_BACKGROUND_WORKER_GROUP: group },
@@ -230,8 +241,9 @@ export function createBackgroundProcessSupervisor({
         return;
       }
       if (message?.type === "job-started" && Number.isInteger(message.jobId)) {
-        if (!activeJobs.has(group)) activeJobs.set(group, new Map());
-        activeJobs.get(group).set(`${message.queue}:${message.jobId}`, {
+        const jobs = activeJobs.get(group) ?? new Map<string, ActiveJob>();
+        activeJobs.set(group, jobs);
+        jobs.set(`${message.queue}:${message.jobId}`, {
           queue: message.queue,
           jobId: message.jobId,
           startedAt: Date.now(),
@@ -358,7 +370,7 @@ export function createBackgroundProcessSupervisor({
         });
         const jobTimedOut = Boolean(job);
         if (!unresponsive && !jobTimedOut) continue;
-        const reason = jobTimedOut
+        const reason = job
           ? `${group} ${job.queue || "worker"} job ${job.jobId} timed out`
           : `${group} worker stopped responding`;
         exitReasons.set(group, reason);
@@ -448,7 +460,7 @@ export function createBackgroundProcessSupervisor({
     if (!started || stopping || !groups.includes(group)) {
       return Promise.reject(new Error(`${group} worker is unavailable`));
     }
-    return new Promise((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       const requestId = ++nextRequestId;
       const timer = setTimeout(() => {
         pendingRequests.delete(requestId);
@@ -472,7 +484,7 @@ export function createBackgroundProcessSupervisor({
       return false;
     }
     try {
-      children.get(group).send({ type: "queue-wake" });
+      children.get(group)?.send({ type: "queue-wake" });
       return true;
     } catch (error) {
       logger.warn?.(`[BackgroundWorkers] Could not wake ${group}:`, error);

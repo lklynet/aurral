@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { asAppError } from "../../../lib/errors.ts";
 import path from "node:path";
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
@@ -553,7 +554,7 @@ function discardReviewFiles(
     })
     .catch((error) => {
       logger.warn("downloads", "Could not remove files held for review", {
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
     });
 }
@@ -2017,7 +2018,7 @@ export class DownloadTracker {
         .catch((historyError) => {
           logger.warn("history", "Could not record failed download jobs", {
             jobCount: failedJobs.length,
-            reason: historyError?.message || String(historyError),
+            reason: asAppError(historyError)?.message || String(historyError),
           });
         });
     }

@@ -1867,7 +1867,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   const jobId = requireFixture(syncedFavoriteSourceJobId);
   const originalStart = downloadWorker.start;
   try {
-    downloadWorker.start = async () => false;
+    downloadWorker.start = async () => {};
     const songId = `shared-song:${encodeURIComponent(`${playlist.id}:${jobId}`)}`;
     assert.equal(await star(userOps.getUserByUsername("alice"), songId), true);
     assert.equal(downloadTracker.getJob(jobId)?.startedByPlaylist, null);

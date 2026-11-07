@@ -1,5 +1,6 @@
 import type { DownloadWorker } from "./downloadWorker.ts";
 import type { JsonValue } from "../jobs/queue.ts";
+import type { DownloadOwnerCommands } from "./downloadOwnerCommands.ts";
 
 export type DownloadOwnerStatus = ReturnType<DownloadWorker["getStatus"]> & {
   operationWorker: { running: boolean; currentLabel: JsonValue };
@@ -61,12 +62,18 @@ export function getDownloadOwnerStatus() {
   return statusReader?.() || null;
 }
 
-export function requestDownloadOwner<T = unknown>(
-  method: string,
-  args: unknown[] = [],
+export type DownloadOwnerCommand = keyof DownloadOwnerCommands;
+type CommandResult<Command extends DownloadOwnerCommand> = Awaited<
+  ReturnType<DownloadOwnerCommands[Command]>
+>;
+
+export function requestDownloadOwner<Command extends DownloadOwnerCommand>(
+  method: Command,
+  args: Parameters<DownloadOwnerCommands[Command]>,
   { timeoutMs = 30000 }: { timeoutMs?: number } = {},
-): Promise<T> {
-  if (requester) return requester(method, args, { timeoutMs }) as Promise<T>;
+): Promise<CommandResult<Command>> {
+  // The owner runs exactly this command, so its reply has the command's result type.
+  if (requester) return requester(method, args, { timeoutMs }) as Promise<CommandResult<Command>>;
   if (!process.env.AURRAL_BACKGROUND_WORKER_GROUP || !process.connected || !process.send) {
     return Promise.reject(new Error("Download worker is not ready"));
   }
@@ -96,5 +103,5 @@ export function requestDownloadOwner<T = unknown>(
       pending.delete(requestId);
       reject(error);
     }
-  }) as Promise<T>;
+  }) as Promise<CommandResult<Command>>;
 }

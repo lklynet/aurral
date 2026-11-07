@@ -373,7 +373,7 @@ async function searchSongs(
               logger.warn("ytdlp", "Could not read YouTube Music song", {
                 query,
                 id: entry.id,
-                error: error?.message || String(error),
+                error: asAppError(error)?.message || String(error),
               });
             },
           ),

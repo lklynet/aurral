@@ -46,34 +46,27 @@ export function isImportSourceDue(importSource: ImportSource | null | undefined,
   return !lastSyncAt || now - lastSyncAt >= intervalMs;
 }
 
-type SyncStaticPlaylistImportResult = Awaited<ReturnType<typeof syncStaticPlaylistImportHere>>;
-
-type SyncStaticPlaylistImportResponse =
-  | { ok: true; result: SyncStaticPlaylistImportResult }
-  | { ok: false; error: { message: string; code: string | null; statusCode: number | null } };
-
 export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImportOptions) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestDownloadOwner<SyncStaticPlaylistImportResponse>(
+    const response = await requestDownloadOwner(
       "syncStaticPlaylistImport",
       [
         {
           playlistId,
-          user: { id: user?.id, role: user?.role },
+          user: user && { id: user.id, role: user.role },
           force,
         },
       ],
       { timeoutMs: 5 * 60 * 1000 },
     );
-    if (response?.ok === false) {
-      const error: CodedError = new Error(response.error?.message || "Playlist sync failed");
-      if (response.error?.code) error.code = response.error.code;
-      if (response.error?.statusCode) error.statusCode = response.error.statusCode;
+    if (!response.ok) {
+      const error: CodedError = new Error(response.error.message);
+      if (response.error.code) error.code = String(response.error.code);
+      if (response.error.statusCode) error.statusCode = response.error.statusCode;
       throw error;
     }
-    if (response?.ok !== true) throw new Error("Invalid playlist sync worker response");
     return response.result;
   } finally {
     dbOps.invalidateSettingsCache();
@@ -81,7 +74,7 @@ export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImport
   }
 }
 
-async function syncStaticPlaylistImportHere({
+export async function syncStaticPlaylistImportHere({
   playlistId,
   user,
   force = false,

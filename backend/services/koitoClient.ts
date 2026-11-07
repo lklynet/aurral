@@ -1,4 +1,6 @@
+import * as v from "valibot";
 import { http, isTransientNetworkError } from "../../lib/http.ts";
+import { lenient, lenientCount, lenientText } from "./integrationData.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import createRateLimiter from "./apiClients/rateLimiter.ts";
@@ -10,7 +12,30 @@ const KOITO_MAX_RETRIES = 2;
 const KOITO_DEFAULT_LIMIT = 100;
 
 const koitoCache = createCache(300);
-const koitoInflightRequests = new Map();
+const koitoInflightRequests = new Map<string, Promise<unknown>>();
+
+const koitoTopArtistsSchema = v.fallback(
+  v.looseObject({
+    items: lenient(
+      v.array(
+        v.fallback(
+          v.looseObject({
+            item: lenient(
+              v.looseObject({
+                musicbrainz_id: lenient(v.nullable(v.string())),
+                name: lenientText,
+                listen_count: lenientCount,
+              }),
+            ),
+          }),
+          {},
+        ),
+      ),
+    ),
+    has_next_page: lenient(v.boolean()),
+  }),
+  {},
+);
 
 const koitoLimiter = createRateLimiter(250);
 
@@ -54,7 +79,11 @@ export function getKoitoPeriod(discoveryPeriod: string | null | undefined) {
 }
 
 const koitoRequest = koitoLimiter.wrap(
-  async (baseUrl: unknown, path: string, params: Record<string, string | number> = {}) => {
+  async (
+    baseUrl: unknown,
+    path: string,
+    params: Record<string, string | number> = {},
+  ): Promise<unknown> => {
     const normalizedBaseUrl = normalizeKoitoBaseUrl(baseUrl);
     const cacheKey = `koito:${normalizedBaseUrl}:${path}:${JSON.stringify(params)}`;
     const cached = koitoCache.get(cacheKey);
@@ -113,32 +142,35 @@ export async function fetchKoitoTopArtists(
   if (!period) return [];
 
   const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 50));
-  const artists = [];
+  const artists: NonNullable<v.InferOutput<typeof koitoTopArtistsSchema>["items"]> = [];
   let page = 1;
 
   while (artists.length < boundedLimit) {
-    const data = await koitoRequest(validation.url, "/apis/web/v1/top/artists", {
-      period,
-      page,
-      limit: Math.min(KOITO_DEFAULT_LIMIT, boundedLimit - artists.length),
-    });
-    const items = Array.isArray(data?.items) ? data.items : [];
+    const data = v.parse(
+      koitoTopArtistsSchema,
+      await koitoRequest(validation.url, "/apis/web/v1/top/artists", {
+        period,
+        page,
+        limit: Math.min(KOITO_DEFAULT_LIMIT, boundedLimit - artists.length),
+      }),
+    );
+    const items = data.items ?? [];
     if (items.length === 0) break;
     artists.push(...items);
-    if (data?.has_next_page !== true) break;
+    if (data.has_next_page !== true) break;
     page += 1;
   }
 
   return artists
     .slice(0, boundedLimit)
     .map((entry) => {
-      const artist = entry?.item || {};
+      const artist = entry.item ?? {};
       const mbid = String(artist.musicbrainz_id || "").trim();
       if (!mbid) return null;
       return {
         mbid,
-        artistName: artist.name,
-        playcount: parseInt(artist.listen_count || 0, 10) || 0,
+        artistName: artist.name ?? "",
+        playcount: parseInt(String(artist.listen_count || 0), 10) || 0,
       };
     })
     .filter((artist) => artist !== null);

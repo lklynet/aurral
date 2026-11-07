@@ -373,7 +373,7 @@ export async function relocateSharedFilesBeforePlaylistRemoval(
   if (!safePlaylistType) return { relocated: 0 };
 
   const removedDir = path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType);
-  const byPath = new Map();
+  const byPath = new Map<string, DownloadJob[]>();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
     if (String(job.playlistType || "") === safePlaylistType) continue;
@@ -938,18 +938,20 @@ export async function moveHandedOverTracksToLidarr() {
   );
   if (handedOver.size === 0) return { moved: 0, deleted: 0 };
 
-  const jobsByPath = new Map();
+  const jobsByPath = new Map<string, DownloadJob[]>();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
     const current = path.resolve(job.finalPath);
     if (handedOver.has(current)) jobsByPath.set(current, [...(jobsByPath.get(current) || []), job]);
   }
 
-  const movedPaths = [];
+  const movedPaths: string[] = [];
   const changedPlaylistTypes = new Set<string>();
   let moved = 0;
   for (const [oldPath, jobs] of jobsByPath) {
-    const source = await findLibraryFolderSource(jobs[0], { targetPlaylistType: "library" });
+    const [first] = jobs;
+    if (!first) continue;
+    const source = await findLibraryFolderSource(first, { targetPlaylistType: "library" });
     if (!source || !(await fileExists(source.sourcePath))) continue;
     for (const job of jobs) {
       downloadTracker.setDone(
@@ -1076,7 +1078,7 @@ export async function reuseTrackForPlaylist(
     options.libraryScanChangedPaths || (options.allowLidarr === false ? [finalPath] : null),
   ).catch((error) => {
     console.warn(
-      `[FileReuse] Failed to refresh playlist ${playlistType}: ${error?.message || error}`,
+      `[FileReuse] Failed to refresh playlist ${playlistType}: ${asAppError(error)?.message || error}`,
     );
   });
   return {

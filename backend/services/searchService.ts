@@ -47,7 +47,7 @@ async function getAlbumLibraryLookup(albumMbids: string[]) {
       if (result.status === "rejected") {
         logger.warn("library", "Album search enrichment lookup failed", {
           foreignAlbumId,
-          message: result.reason?.message || String(result.reason),
+          message: asAppError(result.reason)?.message || String(result.reason),
         });
         continue;
       }
