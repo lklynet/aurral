@@ -17,6 +17,7 @@ afterAll(async () => {
 test("an install already on the current schema gets the playlist mark column and migrates", async () => {
   const before = await import("../../backend/config/db-sqlite.ts");
   before.db.exec(`
+    PRAGMA user_version = 0;
     ALTER TABLE download_jobs DROP COLUMN started_by_playlist;
     DELETE FROM settings WHERE key = 'migration:static-playlists-reference-library-v1';
     INSERT OR REPLACE INTO settings (key, value)

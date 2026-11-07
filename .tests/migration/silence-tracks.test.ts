@@ -66,6 +66,7 @@ test("upgrading drops [silence] tracks without a file and keeps silence files", 
     addTrack("missing-silence", "[silence]", 2, false);
     addTrack("filed-silence", "[Silence]", 3, true);
     db.prepare("DELETE FROM settings WHERE key = 'migration:silence-tracks-v1'").run();
+    db.pragma("user_version = 0");
 
     start();
 
