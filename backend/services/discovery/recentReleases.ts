@@ -6,7 +6,6 @@ type TimeInput = string | number | Date | null | undefined;
 
 interface RecentReleaseArtist {
   id?: string | number | null;
-  canonicalId?: string;
 }
 
 interface RecentReleaseOptions {
@@ -58,8 +57,6 @@ export async function getRecentMissingReleases(limit = 24, options: RecentReleas
     from: new Date(recentCutoff).toISOString().slice(0, 10),
     to: includeFuture ? null : new Date(today!).toISOString().slice(0, 10),
     limit: normalizedLimit,
-    artistIds: providedArtists
-      ? providedArtists.map((artist) => artist?.canonicalId || artist?.id)
-      : [],
+    artistIds: providedArtists ? providedArtists.map((artist) => artist?.id) : [],
   });
 }

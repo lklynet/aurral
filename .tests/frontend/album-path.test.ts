@@ -27,5 +27,5 @@ test("album paths encode the ref and carry the highlighted track", () => {
 test("a library album links by its release group when it has one, else by its library id", () => {
   assert.equal(libraryAlbumPath({ id: 5, releaseGroupMbid: "rg-5" }), "/album/rg-5");
   assert.equal(libraryAlbumPath({ id: 5, releaseGroupMbid: null }), "/album/5");
-  assert.equal(libraryAlbumPath({ canonicalId: "9" }), "/album/9");
+  assert.equal(libraryAlbumPath({ id: 4, libraryId: "9" }), "/album/9");
 });

@@ -4216,7 +4216,6 @@ test("a Lidarr artist without albums reads through the projection and picks up m
     assert.equal(projection?.name, "Albumless Artist");
     assert.equal(projection?.foreignArtistId, providerArtistId);
     assert.equal(projection?.providerId, "1212");
-    assert.equal(projection?.id, projection?.canonicalId);
     assert.deepEqual(projection?.sources, ["lidarr"]);
     assert.equal(projection?.lidarrManaged, true);
     assert.equal(projection?.monitored, false);

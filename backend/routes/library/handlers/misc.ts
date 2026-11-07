@@ -44,13 +44,10 @@ const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
 const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) => ({
   inLibrary: true,
   fromLibraryIndex: true,
-  canonicalInLibrary: true,
-  canonicalAlbumId: String(album.canonicalId ?? album.id),
-  canonicalArtistId: String(album.artistId),
   providerAlbumId: album.providerId == null ? null : String(album.providerId),
   providerArtistId: album.providerArtistId == null ? null : String(album.providerArtistId),
-  libraryAlbumId: String(album.providerId ?? album.id),
-  libraryArtistId: String(album.providerArtistId ?? album.artistId),
+  libraryAlbumId: String(album.id),
+  libraryArtistId: String(album.artistId),
   status:
     album.trackListComplete === false ||
     Number(album.statistics?.trackCount || 0) > Number(album.statistics?.trackFileCount || 0)
@@ -88,13 +85,13 @@ const toLibraryArtist = (
     | ReturnType<typeof getLibraryArtistProjection>[number]
     | ReadArtist
     | ReturnType<typeof libraryManager.mapLidarrArtist>,
-    "providerId" | "canonicalId"
+    "providerId"
   >,
+  libraryId?: string | number,
 ) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
-  ...(artist.canonicalId != null && { libraryId: String(artist.canonicalId) }),
-  canonicalId: String(artist.canonicalId ?? artist.id),
+  ...(libraryId != null && { libraryId: String(libraryId) }),
   foreignArtistId: artist.foreignArtistId || artist.mbid,
   added: artist.addedAt,
 });
@@ -102,14 +99,14 @@ const toLibraryArtist = (
 const toLibraryAlbum = (
   album: WithAbsentKeys<
     ReadAlbum | ReturnType<typeof libraryManager.mapLidarrAlbum>,
-    "providerId" | "canonicalId" | "providerArtistId"
+    "providerId" | "providerArtistId"
   >,
+  libraryId?: string | number,
 ) => ({
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
-  ...(album.canonicalId != null && { libraryId: String(album.canonicalId) }),
-  canonicalId: String(album.canonicalId ?? album.id),
+  ...(libraryId != null && { libraryId: String(libraryId) }),
   foreignAlbumId: album.foreignAlbumId || album.mbid,
   title: album.albumName,
   albumType: "Album",
@@ -123,17 +120,16 @@ export async function getArtistLibraryLookup(mbid: string) {
     includeSharedAlbums: true,
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
-  const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
+  const libraryArtistId = artist ? String(artist.id) : null;
   const aurralArtist = getLibraryArtistProjection({ reference: mbid }).find(
     (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
   );
   if (aurralArtist) {
     return {
       exists: true,
-      artist: toLibraryArtist(aurralArtist),
-      albums: albums.map(toLibraryAlbum),
+      artist: toLibraryArtist(aurralArtist, aurralArtist.id),
+      albums: albums.map((album) => toLibraryAlbum(album, album.id)),
       fromLibraryIndex: true,
-      canonical: true,
       libraryArtistId,
     };
   }
@@ -164,17 +160,15 @@ export async function getArtistLibraryLookup(mbid: string) {
       artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
       albums: lidarrAlbums,
       fromLibraryIndex: true,
-      canonical: true,
       libraryArtistId,
     };
   }
   if (lidarrArtist === undefined && artist && (!lidarrConfigured || artist.lidarrManaged)) {
     return {
       exists: true,
-      artist: toLibraryArtist(artist),
-      albums: albums.map(toLibraryAlbum),
+      artist: toLibraryArtist(artist, artist.id),
+      albums: albums.map((album) => toLibraryAlbum(album, album.id)),
       fromLibraryIndex: true,
-      canonical: true,
       libraryArtistId,
     };
   }
@@ -183,7 +177,6 @@ export async function getArtistLibraryLookup(mbid: string) {
     artist: null,
     albums: [],
     fromLibraryIndex: true,
-    canonical: true,
     libraryArtistId,
   };
 }
@@ -191,11 +184,10 @@ export async function getArtistLibraryLookup(mbid: string) {
 type LidarrAlbumLookupResult = {
   inLibrary: true;
   fromLibraryIndex: false;
-  canonicalInLibrary: false;
   providerAlbumId: string | null;
   providerArtistId: string | null;
-  libraryAlbumId: string | null;
-  libraryArtistId: string | null;
+  libraryAlbumId: null;
+  libraryArtistId: null;
   managedBy?: undefined;
   status: "available" | "monitored" | "unmonitored";
   monitored: boolean;
@@ -365,11 +357,10 @@ export default new Hono<AppEnv>()
         results[foreignAlbumId] = {
           inLibrary: true,
           fromLibraryIndex: false,
-          canonicalInLibrary: false,
           providerAlbumId,
           providerArtistId,
-          libraryAlbumId: providerAlbumId,
-          libraryArtistId: providerArtistId,
+          libraryAlbumId: null,
+          libraryArtistId: null,
           status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
           monitored,
           trackListComplete: true,

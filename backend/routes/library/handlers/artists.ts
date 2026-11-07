@@ -112,7 +112,7 @@ export default new Hono<AppEnv>()
     try {
       const limit = Math.min(Math.max(Number.parseInt(query.limit ?? "", 10) || 10000, 1), 10000);
       const offset = Math.max(Number.parseInt(query.offset ?? "", 10) || 0, 0);
-      if (query.readPath === "library" || query.readPath === "canonical") {
+      if (query.readPath === "library") {
         const { artists } = getLibraryReadModelForArtistPage({
           source: query.source || "all",
           limit,
@@ -290,7 +290,6 @@ export default new Hono<AppEnv>()
     },
   )
   .put("/artists/:id/mbid", ...setArtistMbid)
-  .put("/canonical/artists/:id/mbid", ...setArtistMbid)
   .put(
     "/artists/:mbid",
     requireAuth,

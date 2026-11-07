@@ -170,7 +170,7 @@ export default new Hono<AppEnv>()
     const query = c.req.valid("query");
     try {
       const { albumId, releaseGroupMbid } = query;
-      if (query.readPath === "library" || query.readPath === "canonical") {
+      if (query.readPath === "library") {
         let readModel = albumId
           ? getLibraryReadModelForAlbumReferences({
               source: query.source || "all",

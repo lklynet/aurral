@@ -129,7 +129,7 @@ test("an album track page carries the album's provider id and monitored state", 
 
   const page = getLibraryPage({ kind: "tracks", albumId: album.id, availableOnly: false });
   const summaryAlbum = requireFixture(page.albums[0]);
-  assert.equal(summaryAlbum.canonicalId, String(album.id));
+  assert.equal(summaryAlbum.id, album.id);
   assert.equal(summaryAlbum.providerId, 512);
   assert.equal(summaryAlbum.monitored, true);
   assert.equal(summaryAlbum.monitorOption, "all");
@@ -152,8 +152,8 @@ test("an album track page opens by its release-group MBID, and an unknown MBID f
 
   const page = getLibraryPage({ kind: "tracks", albumId: releaseGroupMbid, availableOnly: false });
   assert.deepEqual(
-    page.albums.map((entry) => entry.canonicalId),
-    [String(album.id)],
+    page.albums.map((entry) => entry.id),
+    [album.id],
   );
   assert.deepEqual(
     page.tracks.map((entry) => entry.title),

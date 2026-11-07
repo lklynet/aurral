@@ -9,7 +9,7 @@ Aurral has two HTTP APIs:
 - The **Subsonic API** under `/rest`. Music players use it.
 
 `GET /api/health/bootstrap` reports `api.version` and `api.features` without
-sign-in. Version 1 keeps the [app API contract](/api/app-contract/) stable.
+sign-in. The current version is 2. Each version keeps the [app API contract](/api/app-contract/) stable.
 A breaking contract change increments the version. New optional fields and
 capabilities are additive, so clients ignore unknown fields and check the
 feature list before using a capability. `appVersion` identifies the build,

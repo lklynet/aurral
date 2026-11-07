@@ -1206,7 +1206,6 @@ export interface AurralAlbumGrab {
   requestedAt: string;
   completedAt?: string | null;
   libraryAlbumId?: string | null;
-  canonicalAlbumId?: string | null;
 }
 
 export interface AurralRequestItem {
@@ -1236,7 +1235,6 @@ export interface AurralRequestItem {
   albumMbid: string | null;
   albumId: string | null;
   libraryAlbumId: string | null;
-  canonicalAlbumId: string | null;
   requestGroupId: string | null;
   requestedBy: { id: string | number; username: string | null } | null;
   sourceFilename: string | null;
@@ -1255,11 +1253,6 @@ type HistoryRequestOptions = {
   libraryAlbumId?: string | null;
   requestGroupId?: string | null;
 };
-
-const libraryAlbumIds = (libraryAlbumId: string | null | undefined) => ({
-  libraryAlbumId: libraryAlbumId || null,
-  canonicalAlbumId: libraryAlbumId || null,
-});
 
 export const toHistoryRequestItem = (
   entry: AurralHistoryEntry,
@@ -1308,7 +1301,7 @@ export const toHistoryRequestItem = (
     albumName,
     albumMbid: entry.metadata?.albumMbid || null,
     albumId: entry.metadata?.albumId ? String(entry.metadata.albumId) : null,
-    ...libraryAlbumIds(options.libraryAlbumId || entry.metadata?.canonicalAlbumId || null),
+    libraryAlbumId: options.libraryAlbumId || entry.metadata?.canonicalAlbumId || null,
     requestGroupId: options.requestGroupId || entry.metadata?.requestGroupId || null,
     requestedBy: requester ? { id: requester.userId, username: requester.username || null } : null,
     sourceFilename,
@@ -1482,7 +1475,7 @@ export const getAurralHistoryRequests = async (
         trackName,
         libraryAlbumId,
         requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
-        albumGrab: manifest ? { ...manifest, ...libraryAlbumIds(libraryAlbumId) } : null,
+        albumGrab: manifest ? { ...manifest, libraryAlbumId: libraryAlbumId || null } : null,
       });
     });
 };

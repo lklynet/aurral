@@ -26,8 +26,8 @@ type ProviderAlbum = Awaited<ReturnType<typeof providerSearchAlbums>>["items"][n
 interface AlbumLibraryLookupEntry {
   inLibrary: true;
   monitored: boolean;
-  libraryAlbumId: string | null;
-  libraryArtistId: string | null;
+  providerAlbumId: string | null;
+  providerArtistId: string | null;
   status: "available" | "monitored" | "unmonitored";
 }
 
@@ -60,8 +60,8 @@ async function getAlbumLibraryLookup(albumMbids: string[]) {
       lookup.set(foreignAlbumId, {
         inLibrary: true,
         monitored,
-        libraryAlbumId: album.id !== undefined && album.id !== null ? String(album.id) : null,
-        libraryArtistId:
+        providerAlbumId: album.id !== undefined && album.id !== null ? String(album.id) : null,
+        providerArtistId:
           album.artistId !== undefined && album.artistId !== null ? String(album.artistId) : null,
         status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
       });
@@ -131,8 +131,8 @@ function normalizeAlbumItem(item: ProviderAlbum, lookup: AlbumLibraryLookupEntry
     secondaryTypes: Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
     coverUrl: item.coverUrl || null,
     inLibrary: !!lookup,
-    libraryAlbumId: lookup?.libraryAlbumId || null,
-    libraryArtistId: lookup?.libraryArtistId || null,
+    providerAlbumId: lookup?.providerAlbumId || null,
+    providerArtistId: lookup?.providerArtistId || null,
     status: lookup?.status || "missing",
     ...(lookup && { monitored: Boolean(lookup.monitored) }),
     score: item.score || 0,

@@ -93,11 +93,10 @@ test("admins cannot store permission values other than true or false", async () 
 
   const grantStatus = await apiFetch(adminToken, `/api/users/${member.id}`, {
     method: "PATCH",
-    body: JSON.stringify({ permissions: { accessFlow: true } }),
+    body: JSON.stringify({ permissions: { accessPlaylists: true } }),
   });
   assert.equal(grantStatus, 200);
-  const granted = userOps.getUserById(member.id)?.permissions;
-  assert.deepEqual([granted?.accessPlaylists, granted?.accessFlow], [true, undefined]);
+  assert.equal(userOps.getUserById(member.id)?.permissions?.accessPlaylists, true);
   assert.notEqual(await flowAccessStatus(await login("member")), 403);
 });
 

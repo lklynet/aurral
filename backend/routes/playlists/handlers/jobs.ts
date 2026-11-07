@@ -212,16 +212,7 @@ const containingQuery = v.object({
 export default new Hono<AppEnv>()
   .basePath("/playlists")
   .get("/status", requirePlaylistAccess, noCache, (c) => {
-    const status = getPlaylistStatusSnapshot({ user: c.var.user });
-    return c.json(
-      {
-        ...status,
-        sharedPlaylists: status.staticPlaylists,
-        sharedPlaylistStats: status.staticPlaylistStats,
-        sharedStats: status.staticStats,
-      },
-      200,
-    );
+    return c.json(getPlaylistStatusSnapshot({ user: c.var.user }), 200);
   })
   .get("/containing", requirePlaylistAccess, noCache, validate("query", containingQuery), (c) =>
     c.json({ playlists: getPlaylistsContainingTrack(c.var.user, c.req.valid("query")) }, 200),

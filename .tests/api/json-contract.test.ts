@@ -241,7 +241,7 @@ beforeAll(async () => {
   });
   fields(login, { token: "string", expiresAt: "number", user: "object" });
   fields(login.user, { id: "number", username: "string", role: "string", permissions: "object" });
-  fields(login.user.permissions, { accessPlaylists: "boolean", accessFlow: "boolean" });
+  fields(login.user.permissions, { accessPlaylists: "boolean" });
   token = login.token;
 });
 
@@ -276,7 +276,6 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
     "flowAutoDownload",
     "pluginActions",
     "radio",
-    "currentNames",
   ]) {
     assert.ok(
       bootstrap.api.features.includes(feature),
@@ -468,7 +467,7 @@ test("trending charts preserve their public response fields", async () => {
 });
 
 test("library pages, lookups, album requests, and track requests preserve their public response fields", async () => {
-  const page = await call("/api/library/canonical?kind=tracks&pageSize=10&availableOnly=true");
+  const page = await call("/api/library?kind=tracks&pageSize=10&availableOnly=true");
   fields(page, {
     kind: "string",
     page: "number",
@@ -491,14 +490,11 @@ test("library pages, lookups, album requests, and track requests preserve their 
     files: "array",
   });
   assert.equal(page.items[0].mbid, trackMbid);
-  assert.deepEqual(await call("/api/library?kind=tracks&pageSize=10&availableOnly=true"), page);
   for (const [kind, name] of [
     ["artists", "name"],
     ["albums", "title"],
   ] as const) {
-    const collection = await call(
-      `/api/library/canonical?kind=${kind}&pageSize=10&availableOnly=true`,
-    );
+    const collection = await call(`/api/library?kind=${kind}&pageSize=10&availableOnly=true`);
     fields(collection, {
       kind: "string",
       page: "number",
@@ -513,7 +509,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
     });
     fields(collection.items[0], { id: "number", identityKey: "string", [name]: "string" });
   }
-  fields(await call("/api/library/canonical?kind=genres&pageSize=10"), {
+  fields(await call("/api/library?kind=genres&pageSize=10"), {
     kind: "string",
     page: "number",
     pageSize: "number",
@@ -531,7 +527,6 @@ test("library pages, lookups, album requests, and track requests preserve their 
     artist: "object|null",
     albums: "array",
     fromLibraryIndex: "boolean",
-    canonical: "boolean",
     libraryArtistId: "string|null",
   });
   assert.equal(lookup.exists, true);
@@ -631,7 +626,6 @@ test("flows, activity, and review preserve their public response fields and stor
   const status = await call("/api/playlists/status");
   fields(status, {
     flows: "array",
-    sharedPlaylists: "array",
     staticPlaylists: "array",
     stats: "object",
     flowStats: "object",

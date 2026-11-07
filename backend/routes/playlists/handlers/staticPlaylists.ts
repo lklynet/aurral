@@ -499,5 +499,4 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .route("/static-playlists", staticPlaylistRoutes)
-  .route("/shared-playlists", staticPlaylistRoutes);
+  .route("/static-playlists", staticPlaylistRoutes);

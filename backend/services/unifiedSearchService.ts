@@ -44,7 +44,6 @@ export type ArtistSearchResult = {
   name: string;
   sortName: string;
   libraryId?: string | null;
-  canonicalId?: string | null;
   image?: string | null;
   disambiguation?: string | null;
   inLibrary: boolean;
@@ -60,7 +59,6 @@ export type AlbumSearchResult = {
   artistName: string;
   artistMbid: string | null;
   libraryId?: string;
-  canonicalId?: string;
   releaseDate?: string | null;
   status?: "available";
   primaryType?: string | null;
@@ -79,7 +77,6 @@ export type TrackSearchResult = {
   albumTitle: string | null;
   albumMbid: string | null;
   libraryAlbumId: string | null;
-  albumCanonicalId: string | null;
   streamPath: string | null;
   trackMbid?: string | null;
   artistMbid?: string | null;
@@ -179,7 +176,6 @@ function toSong(
     albumTitle: track.album?.title || null,
     albumMbid: album?.id ?? null,
     libraryAlbumId: null,
-    albumCanonicalId: null,
     streamPath: null,
     artistMbid: album?.artistMbid || artist?.id || null,
     durationMs: track.duration ? track.duration * 1000 : null,
@@ -548,7 +544,6 @@ export function searchLibrary(
     source: "library",
     id: artist.mbid || String(artist.id),
     libraryId: String(artist.id),
-    canonicalId: String(artist.id),
     key: `library-artist:${artist.id}`,
     name: artist.name,
     sortName: artist.sortName || artist.name,
@@ -563,7 +558,6 @@ export function searchLibrary(
       source: "library",
       id: details.releaseGroupMbid,
       libraryId: details.libraryId,
-      canonicalId: details.libraryId,
       key: `library-album:${details.libraryId}`,
       title: details.title,
       artistName: details.artistName,
@@ -589,7 +583,6 @@ export function searchLibrary(
       albumTitle: details?.title || null,
       albumMbid: details?.releaseGroupMbid || null,
       libraryAlbumId: details?.libraryId || null,
-      albumCanonicalId: details?.libraryId || null,
       trackMbid: track.mbid || null,
       artistMbid: details?.artistMbid || null,
       durationMs: track.files?.find((file) => Number(file.durationMs) > 0)?.durationMs ?? null,

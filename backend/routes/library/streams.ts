@@ -12,16 +12,11 @@ const trackFileMissing = { error: "Track file missing" };
 
 export default new Hono<AppEnv>()
   .basePath("/library")
-  .get(
-    "/:route{stream|canonical-stream}/:albumId/:trackId",
-    noCache,
-    requireStreamAuth,
-    async (c) => {
-      const filePath = resolveLibraryTrackPath(c.req.param("albumId"), c.req.param("trackId"));
-      const sent = filePath && (await sendViaNode(c, sendAudioFile, filePath));
-      return sent || c.json(trackFileMissing, 404);
-    },
-  )
+  .get("/stream/:albumId/:trackId", noCache, requireStreamAuth, async (c) => {
+    const filePath = resolveLibraryTrackPath(c.req.param("albumId"), c.req.param("trackId"));
+    const sent = filePath && (await sendViaNode(c, sendAudioFile, filePath));
+    return sent || c.json(trackFileMissing, 404);
+  })
   .get("/file-stream/:albumId/:trackId", noCache, requireStreamAuth, async (c) => {
     const trackId = c.req.param("trackId");
     const tracks = await libraryManager.getTracks(c.req.param("albumId"));

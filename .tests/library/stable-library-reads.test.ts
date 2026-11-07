@@ -59,7 +59,6 @@ test("stable artist and discovery reads do not call Lidarr", async () => {
 
     const projectedArtist = artists.find((candidate) => candidate.providerId === "9911");
     assert.equal(projectedArtist?.id, String(artist.id));
-    assert.equal(projectedArtist?.canonicalId, String(artist.id));
     assert.deepEqual([...releases], []);
     assert.equal(request.mock.calls.length, 0);
   } finally {
@@ -124,15 +123,15 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
       libraryManager.getTracks(9922),
       libraryManager.getPlaybackQueue({ pageSize: 10 }),
     ]);
-    assert.equal(requireValue(byMbid).canonicalId, String(artist.id));
-    assert.equal(requireValue(byId).canonicalId, String(artist.id));
-    assert.equal(albums[0]?.canonicalId, String(album.id));
+    assert.equal(requireValue(byMbid).id, String(artist.id));
+    assert.equal(requireValue(byId).id, String(artist.id));
+    assert.equal(albums[0]?.id, String(album.id));
     assert.equal(albums[0]?.providerId, 9922);
-    assert.equal(requireValue(byAlbumId).canonicalId, String(album.id));
+    assert.equal(requireValue(byAlbumId).id, String(album.id));
     assert.equal(requireValue(byAlbumId).providerId, 9922);
     const [firstTrack] = tracks;
-    assert.ok(firstTrack && "canonicalId" in firstTrack);
-    assert.equal(firstTrack.canonicalId, String(track.id));
+    assert.ok(firstTrack && "providerId" in firstTrack);
+    assert.equal(firstTrack.id, String(track.id));
     assert.equal(firstTrack.providerId, 9933);
     assert.equal(
       queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
@@ -198,12 +197,11 @@ test("configured Lidarr read failures fall back to the library index", async () 
       libraryManager.getAlbumById(9942),
       libraryManager.getTracks(9942),
     ]);
-    assert.equal(byMbid?.canonicalId, String(artist.id));
-    assert.equal(byId?.canonicalId, String(artist.id));
-    assert.equal(albums[0]?.canonicalId, String(album.id));
-    assert.equal(byAlbumId?.canonicalId, String(album.id));
-    assert.ok(tracks[0] && "canonicalId" in tracks[0]);
-    assert.equal(tracks[0].canonicalId, String(track.id));
+    assert.equal(byMbid?.id, String(artist.id));
+    assert.equal(byId?.id, String(artist.id));
+    assert.equal(albums[0]?.id, String(album.id));
+    assert.equal(byAlbumId?.id, String(album.id));
+    assert.equal(tracks[0]?.id, String(track.id));
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
@@ -381,13 +379,13 @@ test("library artist compatibility reads apply SQL pagination", async () => {
 
   try {
     const response = await app.request(
-      `/library/artists?${new URLSearchParams({ readPath: "canonical", source: "lidarr", limit: "1", offset: "1" })}`,
+      `/library/artists?${new URLSearchParams({ readPath: "library", source: "lidarr", limit: "1", offset: "1" })}`,
     );
     const body: (ReturnType<
       typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
     >["artists"][number] & { added: string | null })[] = await response.json();
     assert.deepEqual(requireValue(body.map((artist) => artist.name)), [`${key} B`]);
-    assert.equal(requireValue(body[0]).canonicalId, requireFixture(artists[1]).id);
+    assert.equal(String(requireValue(body[0]).id), String(requireFixture(artists[1]).id));
     assert.equal(requireValue(body[0]).statistics.trackCount, 1);
     assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
   } finally {

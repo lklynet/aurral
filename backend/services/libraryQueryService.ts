@@ -222,7 +222,6 @@ export interface LibraryTrackAlbumRef {
 
 export interface LibraryAlbum {
   id: number;
-  canonicalId?: string;
   identityKey: string;
   mbid: string | null;
   releaseGroupMbid: string | null;
@@ -248,7 +247,6 @@ export interface LibraryAlbum {
 
 export interface LibraryTrack {
   id: number;
-  canonicalId?: string;
   identityKey: string;
   mbid: string | null;
   title: string;
@@ -268,7 +266,6 @@ export interface LibraryTrack {
 
 interface LibraryRowArtist {
   id: number;
-  canonicalId: string;
   identityKey: string;
   mbid: string | null;
   name: string;
@@ -320,7 +317,6 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
       );
       artist = {
         id: row.artist_id,
-        canonicalId: String(row.artist_id),
         identityKey: row.artist_identity_key,
         mbid: row.artist_mbid,
         name: row.artist_name,
@@ -342,7 +338,6 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
       const albumMetadata = readLibraryMetadata(albumMetadataStmt.get(row.album_id)?.metadata_json);
       album = {
         id: row.album_id,
-        canonicalId: String(row.album_id),
         identityKey: row.album_identity_key,
         mbid: row.album_mbid,
         releaseGroupMbid: row.album_release_group_mbid,
@@ -370,7 +365,6 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
       const trackMetadata = readLibraryMetadata(trackMetadataStmt.get(row.track_id)?.metadata_json);
       track = {
         id: row.track_id,
-        canonicalId: String(row.track_id),
         identityKey: row.track_identity_key,
         mbid: row.track_mbid,
         title: row.track_title,
@@ -536,7 +530,6 @@ const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
   const management = getManagedByMap("artist").get(Number(row.id)) || null;
   return {
     id: String(row.id),
-    canonicalId: String(row.id),
     providerId,
     lidarrManaged: metadata.librarySource === "lidarr",
     managedBy: management?.managedBy ?? null,
@@ -896,7 +889,6 @@ const libraryDateAlbumProjection = (row: LibraryDateAlbumRow) => {
   const availableTrackCount = Number(row.available_track_count || 0);
   return {
     id: String(row.id),
-    canonicalId: String(row.id),
     providerId: metadata.id == null ? null : String(metadata.id),
     artistId: String(row.artist_id),
     providerArtistId: artistMetadata.id == null ? null : String(artistMetadata.id),
@@ -2031,7 +2023,6 @@ export function getLibraryArtistPage({
           row.artist_id,
           {
             id: row.artist_id,
-            canonicalId: String(row.artist_id),
             identityKey: row.artist_identity_key,
             mbid: row.artist_mbid,
             name: row.artist_name,
@@ -2108,7 +2099,6 @@ export function getLibraryArtistPage({
         row.artist_id,
         {
           id: row.artist_id,
-          canonicalId: String(row.artist_id),
           identityKey: row.artist_identity_key,
           mbid: row.artist_mbid,
           name: row.artist_name,
@@ -3077,7 +3067,6 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
   return {
     artist: {
       id: row.artist_id,
-      canonicalId: String(row.artist_id),
       identityKey: row.artist_identity_key,
       mbid: row.artist_mbid,
       name: row.artist_name,
@@ -3094,7 +3083,6 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
     },
     album: {
       id: row.album_id,
-      canonicalId: String(row.album_id),
       identityKey: row.album_identity_key,
       mbid: row.album_mbid,
       releaseGroupMbid: row.album_release_group_mbid,

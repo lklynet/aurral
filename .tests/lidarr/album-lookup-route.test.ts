@@ -8,6 +8,10 @@ type AlbumLookup = {
   trackFileCount?: number;
   percentOfTracks?: number;
   managedBy?: string;
+  libraryAlbumId?: string | null;
+  libraryArtistId?: string | null;
+  providerAlbumId?: string | null;
+  providerArtistId?: string | null;
 };
 type ArtistLookup = {
   error?: string;
@@ -486,6 +490,16 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
     invalidateLibraryQueryCache();
     const { body } = await lookupAlbums([albumMbid]);
     assert.equal(body[albumMbid]?.managedBy, "aurral");
+    const entry = body[albumMbid];
+    assert.deepEqual(
+      [
+        entry?.libraryAlbumId,
+        entry?.libraryArtistId,
+        entry?.providerAlbumId,
+        entry?.providerArtistId,
+      ],
+      [String(album.id), String(artist.id), "52", "51"],
+    );
   } finally {
     clearLibraryManagement("album", album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);

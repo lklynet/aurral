@@ -23,7 +23,7 @@ type AlbumRequestFailure = AppError &
   Partial<
     Pick<
       AlbumAddFailure,
-      "managedBy" | "sources" | "canonicalId" | "providerId" | "availability" | "conflict"
+      "managedBy" | "sources" | "libraryId" | "providerId" | "availability" | "conflict"
     >
   >;
 
@@ -82,7 +82,7 @@ export default new Hono<AppEnv>()
       const { artistId } = query;
       if (!artistId) return c.json({ error: "artistId parameter is required" }, 400);
 
-      if (query.readPath === "library" || query.readPath === "canonical") {
+      if (query.readPath === "library") {
         const { albums } = getLibraryReadModelForArtistReferences({
           source: query.source || "all",
           availableOnly: true,
@@ -182,8 +182,7 @@ export default new Hono<AppEnv>()
               code: album.code || null,
               managedBy: album.managedBy || null,
               sources: album.sources || [],
-              libraryId: album.canonicalId || null,
-              canonicalId: album.canonicalId || null,
+              libraryId: album.libraryId || null,
               providerId: album.providerId || null,
               availability: album.availability || null,
               conflict: album.conflict || null,
@@ -281,8 +280,7 @@ export default new Hono<AppEnv>()
             code: failure?.code || null,
             managedBy: failure?.managedBy || null,
             sources: failure?.sources || [],
-            libraryId: failure?.canonicalId || null,
-            canonicalId: failure?.canonicalId || null,
+            libraryId: failure?.libraryId || null,
             providerId: failure?.providerId || null,
             availability: failure?.availability || null,
             conflict: failure?.conflict || null,

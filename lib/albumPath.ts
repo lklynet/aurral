@@ -14,9 +14,9 @@ export function parseAlbumRef(ref: string | number | null | undefined): AlbumRef
 
 export const libraryAlbumPath = (album: {
   id?: string | number | null;
-  canonicalId?: string | number | null;
+  libraryId?: string | number | null;
   releaseGroupMbid?: string | null;
-}) => albumPath(album.releaseGroupMbid || album.canonicalId || album.id || "");
+}) => albumPath(album.releaseGroupMbid || album.libraryId || album.id || "");
 
 export function albumPath(
   ref: string | number,
