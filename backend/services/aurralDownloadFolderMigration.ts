@@ -11,7 +11,7 @@ import { getLibraryMediaFile } from "./libraryMediaStore.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import {
-  PLAYLIST_FILES_DIR,
+  LEGACY_PLAYLIST_DIR,
   buildAurralTrackDestination,
   isPathInsideRoot,
   remapLegacyPath,
@@ -24,7 +24,7 @@ import { lidarrClient } from "./lidarrClient.ts";
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION = 1;
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING = "aurralDownloadFolderMigration";
 
-const LEGACY_PLAYLIST_ROOTS = [PLAYLIST_FILES_DIR, "aurral-playlists"];
+const LEGACY_PLAYLIST_ROOTS = [LEGACY_PLAYLIST_DIR, "aurral-playlists"];
 const PLAYBACK_RETENTION_REASON = "retained for playback playlist protection";
 const PARTIAL_EXTENSIONS = new Set([".crdownload", ".download", ".part", ".partial", ".tmp"]);
 const UNKNOWN_IDENTITY_VALUES = new Set([

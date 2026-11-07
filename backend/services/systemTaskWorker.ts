@@ -258,19 +258,12 @@ export async function processSystemTask(
       return;
     }
     case "playlist-startup-migration": {
-      const [
-        migrationModule,
-        { ensurePlaylistFilesystemLayout },
-        trackerModule,
-        { repairYtdlpMetadata },
-      ] = await Promise.all([
+      const [migrationModule, trackerModule, { repairYtdlpMetadata }] = await Promise.all([
         import("./aurralDownloadFolderMigration.ts"),
-        import("./playlistFilesystemMigration.ts"),
         import("./downloadJobs/downloadTracker.ts"),
         import("./downloadUtils.ts"),
       ]);
       const { migrateAurralDownloadFolder } = migrationModule;
-      const layout = ensurePlaylistFilesystemLayout();
       let result;
       try {
         result = {
@@ -310,12 +303,7 @@ export async function processSystemTask(
           `[Playlists] Could not add metadata to ${metadataRepair.failed} yt-dlp track(s)`,
         );
       }
-      if (
-        layout.sidecarsMoved > 0 ||
-        result.migrated > 0 ||
-        result.removed > 0 ||
-        metadataRepair.repaired > 0
-      ) {
+      if (result.migrated > 0 || result.removed > 0 || metadataRepair.repaired > 0) {
         const { playlistManager } = await import("./playlists/playlistManager.ts");
         playlistManager.requestPlaylistSync();
       }

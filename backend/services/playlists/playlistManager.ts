@@ -19,7 +19,12 @@ import {
   type PlaylistArtworkStyle,
   type PlaylistArtworkState,
 } from "../playlistArtworkState.ts";
-import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
+import {
+  AURRAL_FLOWS_DIR,
+  LEGACY_PLAYLIST_DIR,
+  PLAYLIST_FILES_DIR,
+  resolveDownloadRoot,
+} from "../downloadPaths.ts";
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 import { withLock } from "../jobs/queue.ts";
 import { enqueueSystemTask } from "../jobs/queues.ts";
@@ -58,13 +63,11 @@ function mergeEntityIds(left: string[] | null | undefined, right: string[] | nul
 
 export class PlaylistManager {
   declare downloadRoot: string;
-  declare playlistFilesRoot: string;
   declare libraryRoot: string;
 
   constructor(downloadRoot = resolveDownloadRoot()) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
-    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
-    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
+    this.libraryRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
   }
 
   _getPlaylistBaseName(playlistName: string) {
@@ -340,7 +343,7 @@ export class PlaylistManager {
           await getDownloadClient("ytdlp").cleanupStaging(job.id);
         }
       }
-      const playlistDir = path.join(this.playlistFilesRoot, playlistType);
+      const playlistDir = path.join(this.downloadRoot, LEGACY_PLAYLIST_DIR, playlistType);
       try {
         const { relocateSharedFilesBeforePlaylistRemoval } =
           await import("../downloadJobs/fileReuse.ts");

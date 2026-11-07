@@ -8,9 +8,9 @@ import {
 } from "./downloadFolderConfig.ts";
 import { buildTrackFileName, sanitizePathPart } from "./downloadUtils.ts";
 
-export const PLAYLIST_FILES_DIR = "aurral-weekly-flow";
+export const PLAYLIST_FILES_DIR = "_playlists";
 export const AURRAL_FLOWS_DIR = "_flows";
-const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
+export const LEGACY_PLAYLIST_DIR = "aurral-weekly-flow";
 const PREVIOUS_V2_LIBRARY_DIR = "aurral-playlists";
 const LEGACY_DOCKER_PLAYLIST_ROOT = "/app/downloads";
 
@@ -50,13 +50,7 @@ export function remapLegacyPath(
   if (resolved.includes(PREVIOUS_V2_LIBRARY_DIR)) {
     resolved = path.resolve(
       root,
-      path.relative(root, resolved).replaceAll(PREVIOUS_V2_LIBRARY_DIR, PLAYLIST_FILES_DIR),
-    );
-  }
-  if (resolved.includes(LEGACY_LIBRARY_DIR)) {
-    resolved = path.resolve(
-      root,
-      path.relative(root, resolved).replaceAll(LEGACY_LIBRARY_DIR, PLAYLIST_FILES_DIR),
+      path.relative(root, resolved).replaceAll(PREVIOUS_V2_LIBRARY_DIR, LEGACY_PLAYLIST_DIR),
     );
   }
   return resolved;

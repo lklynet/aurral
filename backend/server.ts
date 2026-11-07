@@ -25,6 +25,7 @@ import { stopAllPlugins } from "./services/plugins/pluginHost.ts";
 import { refreshInstalledPlugins } from "./services/plugins/pluginService.ts";
 import { asAppError } from "../lib/errors.ts";
 import { startMainLogging } from "./services/logs.ts";
+import { movePlaylistFiles } from "./services/playlistFilesystemMigration.ts";
 
 startMainLogging();
 
@@ -136,6 +137,15 @@ process.once("SIGTERM", () => {
 process.once("SIGINT", () => {
   void gracefulShutdown("SIGINT");
 });
+
+try {
+  const moved = movePlaylistFiles();
+  if (moved) logger.info("playlists", `Moved ${moved} playlist file(s) to the _playlists folder`);
+} catch (error) {
+  logger.error("playlists", "Couldn't move playlist files out of aurral-weekly-flow", {
+    message: asAppError(error)?.message,
+  });
+}
 
 httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
