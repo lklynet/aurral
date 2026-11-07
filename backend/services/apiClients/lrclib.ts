@@ -1,16 +1,18 @@
-import axios from "../../../lib/axiosFetch.ts";
+import * as v from "valibot";
+import { http } from "../../../lib/http.ts";
 import { APP_NAME, APP_VERSION } from "../../config/constants.ts";
 import createCache from "./simpleCache.ts";
+import { readOne } from "../integrationData.ts";
 
 const LRCLIB_API = "https://lrclib.net/api";
 export const lrclibCache = createCache(24 * 3600, 2000);
 const lrclibInflight = new Map<string, Promise<string | null>>();
 
-type LrclibTrack = {
-  instrumental?: boolean;
-  plainLyrics?: string | null;
-  syncedLyrics?: string | null;
-};
+const lrclibTrackSchema = v.looseObject({
+  instrumental: v.optional(v.boolean()),
+  plainLyrics: v.nullish(v.string()),
+  syncedLyrics: v.nullish(v.string()),
+});
 
 export function lrclibGetLyrics({
   artist,
@@ -35,15 +37,18 @@ export function lrclibGetLyrics({
   if (cached !== undefined) return Promise.resolve(cached);
   const existing = lrclibInflight.get(key);
   if (existing) return existing;
-  const lookup = axios
+  const lookup = http
     .get(`${LRCLIB_API}/get`, {
-      params,
+      query: params,
       headers: { "User-Agent": `${APP_NAME}/${APP_VERSION} (https://github.com/lklynet/aurral)` },
-      timeout: 5000,
-      validateStatus: (status) => status === 200 || status === 404,
+      timeoutMs: 5000,
+      okStatus: (status) => status === 200 || status === 404,
     })
     .then((response) => {
-      const track: LrclibTrack | null = response.status === 200 ? response.data : null;
+      const track =
+        response.status === 200
+          ? readOne(lrclibTrackSchema, response.data, { service: "LRCLIB", endpoint: "/get" })
+          : null;
       const lyrics = track?.instrumental
         ? null
         : track?.syncedLyrics?.trim() || track?.plainLyrics?.trim() || null;

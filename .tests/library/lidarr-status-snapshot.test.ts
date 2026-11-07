@@ -190,11 +190,6 @@ test("forced Lidarr status reads bypass the client cache", async (t: import("vit
     rootFolderPaths: [],
     insecure: false,
   };
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
 
   assert.equal((await client.getQueue())[0]?.id, 1);
   assert.equal((await client.getQueue())[0]?.id, 1);

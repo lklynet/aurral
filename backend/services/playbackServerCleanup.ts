@@ -2,7 +2,7 @@ import * as v from "valibot";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { db } from "../config/db-sqlite.ts";
 import { decryptWithKey } from "../config/encryption.ts";
@@ -132,10 +132,10 @@ function navidromeDeletes(pointers: Pointer[]) {
           f: "json",
           id: String(pointer.playlistId),
         });
-        const { data } = await axios.get(
+        const { data } = await http.get(
           `${baseUrl(config.url)}/rest/deletePlaylist.view?${query}`,
           {
-            timeout: TIMEOUT_MS,
+            timeoutMs: TIMEOUT_MS,
           },
         );
         const response = v.is(recordSchema, data) ? data["subsonic-response"] : null;
@@ -161,12 +161,12 @@ function plexDeletes(pointers: Pointer[]) {
     const url = `${baseUrl(config.url)}/playlists/${encodeURIComponent(String(pointer.ratingKey))}`;
     return [
       () =>
-        axios.delete(url, {
+        http.delete(url, {
           headers: {
             "X-Plex-Token": token,
             "X-Plex-Client-Identifier": config.clientId || "aurral",
           },
-          timeout: TIMEOUT_MS,
+          timeoutMs: TIMEOUT_MS,
         }),
     ];
   });
@@ -182,11 +182,11 @@ function jellyfinDeletes(pointers: Pointer[]) {
     const url = `${baseUrl(config.url)}/Items/${encodeURIComponent(String(pointer.playlistId))}`;
     return [
       () =>
-        axios.delete(url, {
+        http.delete(url, {
           headers: {
             Authorization: `MediaBrowser Client="Aurral", Device="Aurral", DeviceId="aurral", Version="1", Token="${token}"`,
           },
-          timeout: TIMEOUT_MS,
+          timeoutMs: TIMEOUT_MS,
         }),
     ];
   });

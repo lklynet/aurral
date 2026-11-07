@@ -13,7 +13,7 @@ const [
   { inboxTaskQueue },
   systemTaskWorker,
   { upsertLibraryArtist },
-  axios,
+  { http },
   { api },
 ] = await setupIsolatedBackend(
   "inbox-refresh-queue",
@@ -23,7 +23,7 @@ const [
   () => import("../backend/services/jobs/queues.ts"),
   () => import("../backend/services/systemTaskWorker.ts"),
   () => import("../backend/services/libraryMediaStore.ts"),
-  () => import("../lib/axiosFetch.ts"),
+  () => import("../lib/http.ts"),
   () => import("../backend/routes/api.ts"),
 );
 
@@ -128,10 +128,10 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
     title: "Previously cached release",
   });
   assert.ok(previous != null);
-  const originalAxiosGet = axios.default.get;
+  const originalGet = http.get;
   const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
-  axios.default.get = (url, options) => {
+  http.get = (url, options) => {
     if (String(url).includes("zippopotam.us")) {
       return Promise.resolve({
         status: 200,
@@ -153,7 +153,7 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
     if (String(url).includes("ticketmaster.com")) {
       return Promise.reject(new Error("Ticketmaster unavailable"));
     }
-    return originalAxiosGet(url, options);
+    return originalGet(url, options);
   };
 
   try {
@@ -172,14 +172,14 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
       "Previously cached release",
     );
   } finally {
-    axios.default.get = originalAxiosGet;
+    http.get = originalGet;
     if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
     else process.env.TICKETMASTER_API_KEY = originalTicketmasterKey;
   }
 });
 
 test("refresh adds nearby shows for library artists only", async () => {
-  const originalAxiosGet = axios.default.get;
+  const originalGet = http.get;
   const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
   const event = (id: string, performer: string) => ({
@@ -192,7 +192,7 @@ test("refresh adds nearby shows for library artists only", async () => {
       attractions: [{ name: performer }],
     },
   });
-  axios.default.get = (url, options) => {
+  http.get = (url, options) => {
     if (String(url).includes("zippopotam.us")) {
       return Promise.resolve({
         status: 200,
@@ -218,7 +218,7 @@ test("refresh adds nearby shows for library artists only", async () => {
         },
       });
     }
-    return originalAxiosGet(url, options);
+    return originalGet(url, options);
   };
 
   try {
@@ -241,7 +241,7 @@ test("refresh adds nearby shows for library artists only", async () => {
       ],
     );
   } finally {
-    axios.default.get = originalAxiosGet;
+    http.get = originalGet;
     if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
     else process.env.TICKETMASTER_API_KEY = originalTicketmasterKey;
   }
@@ -250,7 +250,7 @@ test("refresh adds nearby shows for library artists only", async () => {
 test("scheduled refresh finds shows near the location last used on Discover", async () => {
   const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
-  vi.spyOn(axios.default, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     if (String(url).includes("zippopotam.us/us/60614")) {
       return {
         status: 200,

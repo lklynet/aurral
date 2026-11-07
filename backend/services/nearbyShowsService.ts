@@ -1,11 +1,12 @@
 import * as v from "valibot";
 import { BlockList, isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
 import { runSharedInflight } from "./sharedInflight.ts";
+import { readMany, readOne } from "./integrationData.ts";
 
 type NearbyLocation = {
   source: string;
@@ -20,27 +21,85 @@ type NearbyLocation = {
   label?: string;
 };
 
-type TicketmasterImage = { ratio?: string; url?: string; width?: number };
+const optionalString = v.optional(v.string());
+const coordinateSchema = v.nullish(v.union([v.number(), v.string()]));
 
-type TicketmasterAttraction = { name?: string; url?: string; images?: TicketmasterImage[] };
+const imageSchema = v.looseObject({
+  ratio: optionalString,
+  url: optionalString,
+  width: v.optional(v.number()),
+});
+const imagesSchema = v.optional(v.array(imageSchema));
 
-type TicketmasterEvent = {
-  id?: string;
-  name?: string;
-  url?: string;
-  images?: TicketmasterImage[];
-  distance?: number;
-  dates?: { start?: { localDate?: string; localTime?: string; dateTime?: string } };
-  _embedded?: {
-    attractions?: TicketmasterAttraction[];
-    venues?: {
-      name?: string;
-      city?: { name?: string };
-      state?: { stateCode?: string; name?: string };
-      country?: { countryCode?: string };
-    }[];
-  };
-};
+const ticketmasterEventSchema = v.looseObject({
+  id: optionalString,
+  name: optionalString,
+  url: optionalString,
+  images: imagesSchema,
+  distance: v.optional(v.number()),
+  dates: v.optional(
+    v.looseObject({
+      start: v.optional(
+        v.looseObject({
+          localDate: optionalString,
+          localTime: optionalString,
+          dateTime: optionalString,
+        }),
+      ),
+    }),
+  ),
+  _embedded: v.optional(
+    v.looseObject({
+      attractions: v.optional(
+        v.array(v.looseObject({ name: optionalString, url: optionalString, images: imagesSchema })),
+      ),
+      venues: v.optional(
+        v.array(
+          v.looseObject({
+            name: optionalString,
+            city: v.optional(v.looseObject({ name: optionalString })),
+            state: v.optional(v.looseObject({ stateCode: optionalString, name: optionalString })),
+            country: v.optional(v.looseObject({ countryCode: optionalString })),
+          }),
+        ),
+      ),
+    }),
+  ),
+});
+
+const ticketmasterPageSchema = v.looseObject({
+  _embedded: v.optional(v.looseObject({ events: v.optional(v.array(v.unknown())) })),
+  page: v.optional(v.looseObject({ totalPages: v.optional(v.number()) })),
+});
+
+const zipLookupSchema = v.looseObject({
+  places: v.optional(
+    v.array(
+      v.looseObject({
+        "place name": optionalString,
+        state: optionalString,
+        "state abbreviation": optionalString,
+        latitude: coordinateSchema,
+        longitude: coordinateSchema,
+      }),
+    ),
+  ),
+});
+
+const ipLookupSchema = v.looseObject({
+  error: v.optional(v.unknown()),
+  reason: v.nullish(v.string()),
+  postal: v.nullish(v.string()),
+  city: v.nullish(v.string()),
+  region: v.nullish(v.string()),
+  region_code: v.nullish(v.string()),
+  country_code: v.nullish(v.string()),
+  latitude: coordinateSchema,
+  longitude: coordinateSchema,
+});
+
+type TicketmasterImage = v.InferOutput<typeof imageSchema>;
+type TicketmasterEvent = v.InferOutput<typeof ticketmasterEventSchema>;
 
 type ArtistInput = { artistName?: unknown; name?: unknown };
 
@@ -232,10 +291,10 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
         isLikelyUsZip(normalizedZip) &&
         (!normalizedCountryCode || normalizedCountryCode === "US")
       ) {
-        const response = await axios.get(
+        const response = await http.get(
           `https://api.zippopotam.us/us/${encodeURIComponent(normalizedZip)}`,
           {
-            timeout: 5000,
+            timeoutMs: 5000,
             headers: {
               Accept: "application/json",
               "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
@@ -243,7 +302,10 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
             signal,
           },
         );
-        const place = response.data?.places?.[0];
+        const place = readOne(zipLookupSchema, response.data, {
+          service: "Zippopotam",
+          endpoint: "/us",
+        }).places?.[0];
         if (place) {
           const location: NearbyLocation = {
             source: "zip",
@@ -263,8 +325,8 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
       }
     } catch {}
     try {
-      const response = await axios.get("https://nominatim.openstreetmap.org/search", {
-        params: {
+      const response = await http.get("https://nominatim.openstreetmap.org/search", {
+        query: {
           postalcode: normalizedZip,
           countrycodes:
             normalizedCountryCode?.toLowerCase() ||
@@ -273,7 +335,7 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
           addressdetails: 1,
           limit: 1,
         },
-        timeout: 6000,
+        timeoutMs: 6000,
         headers: {
           Accept: "application/json",
           "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
@@ -311,27 +373,28 @@ const resolveIpLocation = async (publicIp: string) => {
   if (cached) return cached;
   const endpoint = publicIp ? `/${publicIp}/json/` : "/json/";
   return runSharedInflight(nearbyShowsInflight, `ip:${cacheKey}`, async (signal) => {
-    const response = await axios.get(`https://ipapi.co${endpoint}`, {
-      timeout: 5000,
+    const response = await http.get(`https://ipapi.co${endpoint}`, {
+      timeoutMs: 5000,
       headers: {
         Accept: "application/json",
         "User-Agent": "Aurral/1.0 (+https://github.com/lklynet/aurral)",
       },
       signal,
     });
-    if (response.data?.error) {
-      throw new Error(response.data.reason || "IP lookup failed");
+    const data = readOne(ipLookupSchema, response.data, { service: "ipapi", endpoint });
+    if (data.error) {
+      throw new Error(data.reason || "IP lookup failed");
     }
     const location: NearbyLocation = {
       source: "ip",
       resolved: true,
-      postalCode: sanitizeZipCode(response.data?.postal),
-      city: response.data?.city || null,
-      region: response.data?.region || null,
-      regionCode: response.data?.region_code || null,
-      countryCode: response.data?.country_code || null,
-      latitude: response.data?.latitude != null ? Number(response.data.latitude) : null,
-      longitude: response.data?.longitude != null ? Number(response.data.longitude) : null,
+      postalCode: sanitizeZipCode(data.postal),
+      city: data.city || null,
+      region: data.region || null,
+      regionCode: data.region_code || null,
+      countryCode: data.country_code || null,
+      latitude: data.latitude != null ? Number(data.latitude) : null,
+      longitude: data.longitude != null ? Number(data.longitude) : null,
     };
     location.label = buildLocationLabel(location);
     ipLocationCache.set(cacheKey, location);
@@ -370,13 +433,15 @@ const fetchTicketmasterEvents = async ({
     };
     const listedEvents: TicketmasterEvent[] = [];
     for (let page = 0; page < MAX_EVENT_PAGES; page++) {
-      const response = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
-        params: { ...params, page },
-        timeout: 10000,
+      const response = await http.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+        query: { ...params, page },
+        timeoutMs: 10000,
         signal,
       });
-      listedEvents.push(...(response.data?._embedded?.events || []));
-      if (page + 1 >= (response.data?.page?.totalPages ?? 0)) break;
+      const source = { service: "Ticketmaster", endpoint: "/events.json" };
+      const data = readOne(ticketmasterPageSchema, response.data, source);
+      listedEvents.push(...readMany(ticketmasterEventSchema, data._embedded?.events ?? [], source));
+      if (page + 1 >= (data.page?.totalPages ?? 0)) break;
     }
     const events = listedEvents
       .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))

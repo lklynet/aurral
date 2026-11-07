@@ -20,7 +20,7 @@ const [
   { downloadWorker },
   { flowTrackSource },
   { api },
-  { default: axios },
+  { http },
 ] = await setupIsolatedBackend(
   "flow-auto-download",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -31,7 +31,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../lib/axiosFetch.ts"),
+  () => import("../../lib/http.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -189,7 +189,7 @@ test("a track that is not downloaded plays its Deezer preview", async () => {
     .find((entry) => entry.trackName === "New Track");
   assert.ok(job);
   const clip = "https://cdnt-preview.dzcdn.net/42.mp3";
-  vi.spyOn(axios, "get").mockImplementation(async (url) => ({
+  vi.spyOn(http, "get").mockImplementation(async (url) => ({
     status: 200,
     statusText: "OK",
     headers: {},

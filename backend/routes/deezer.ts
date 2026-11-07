@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { getDeezerPreviewLink } from "../services/apiClients/index.ts";
 
@@ -15,8 +15,9 @@ export default new Hono<AppEnv>()
       if (!link) return c.json(previewNotFound, 404);
       c.header("Cache-Control", "no-store");
       if (c.req.query("download") === undefined) return c.redirect(link, 302);
-      const clip = await axios.get(link, { responseType: "arraybuffer", timeout: 20_000 });
-      return c.body(clip.data, 200, { "Content-Type": "audio/mpeg" });
+      const clip = await http.get(link, { responseType: "buffer", timeoutMs: 20_000 });
+      if (!Buffer.isBuffer(clip.data)) return c.json(previewNotFound, 404);
+      return c.body(new Uint8Array(clip.data), 200, { "Content-Type": "audio/mpeg" });
     } catch {
       return c.json({ error: "Deezer is unavailable" }, 502);
     }

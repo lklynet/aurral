@@ -1,14 +1,14 @@
 import { listeningAddress } from "./backendTestHarness.ts";
 import { asAppError } from "../../lib/errors.ts";
 import assert from "node:assert/strict";
-import http from "node:http";
+import { createServer } from "node:http";
 import { spawnSync } from "node:child_process";
 import v8 from "node:v8";
 import { runInNewContext } from "node:vm";
 import { test, vi } from "vite-plus/test";
 import createCache from "../../backend/services/apiClients/simpleCache.ts";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.ts";
-import axios from "../../lib/axiosFetch.ts";
+import { HttpError, http } from "../../lib/http.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 const settleWithFakeTimers = async (
@@ -166,47 +166,32 @@ test("idle TTL caches release expired payloads while keeping stale and live valu
   assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
 });
 
-test("fetch transport failures expose axios-compatible request metadata", async () => {
+test("fetch transport failures name the request that failed", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     throw new TypeError("fetch failed");
   };
   try {
     await assert.rejects(
-      axios.get("http://lidarr.invalid/api/v1/status"),
-      (error: { request?: { url?: string; method?: string } }) =>
-        error.request?.url === "http://lidarr.invalid/api/v1/status" &&
-        error.request?.method === "GET",
+      http.get("http://lidarr.invalid/api/v1/status"),
+      (error) =>
+        error instanceof HttpError &&
+        error.url === "http://lidarr.invalid/api/v1/status" &&
+        error.method === "GET",
     );
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("fetch timeouts expose an axios-compatible timeout code", async () => {
-  const server = http.createServer(() => {});
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = listeningAddress(server);
-
-  try {
-    await assert.rejects(
-      axios.get(`http://127.0.0.1:${port}`, { timeout: 10 }),
-      (error) => asAppError(error)?.code === "ECONNABORTED",
-    );
-  } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
-
 test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async () => {
   let targetHits = 0;
   let proxyHits = 0;
-  const target = http.createServer((_request, response) => {
+  const target = createServer((_request, response) => {
     targetHits += 1;
     response.end("direct");
   });
-  const proxy = http.createServer((_request, response) => {
+  const proxy = createServer((_request, response) => {
     proxyHits += 1;
     response.end("proxied");
   });
@@ -243,14 +228,14 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
     process.env.NO_PROXY = "";
     process.env.no_proxy = "";
 
-    const response = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
+    const response = await http.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(response.data, "proxied");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 0);
 
     process.env.NO_PROXY = "127.0.0.1";
     process.env.no_proxy = "127.0.0.1";
-    const noProxyResponse = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
+    const noProxyResponse = await http.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(noProxyResponse.data, "direct");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 1);
@@ -258,7 +243,7 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
     delete process.env.NODE_USE_ENV_PROXY;
     process.env.NO_PROXY = "";
     process.env.no_proxy = "";
-    const disabledResponse = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
+    const disabledResponse = await http.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(disabledResponse.data, "direct");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 2);
@@ -272,7 +257,7 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
 });
 
 test("public-only transport rejects socket failures without an uncaught exception", () => {
-  const moduleUrl = new URL("../../lib/axiosFetch.ts", import.meta.url).href;
+  const moduleUrl = new URL("../../lib/http.ts", import.meta.url).href;
   const result = spawnSync(
     process.execPath,
     [
@@ -296,15 +281,15 @@ test("public-only transport rejects socket failures without an uncaught exceptio
       return this;
     };
 
-    const { default: axios } = await import(${JSON.stringify(moduleUrl)});
+    const { http } = await import(${JSON.stringify(moduleUrl)});
     try {
-      await axios.get("https://example.test", { publicOnly: true, timeout: 1000 });
+      await http.get("https://example.test", { publicOnly: true, timeoutMs: 1000 });
       process.exitCode = 2;
     } catch (error) {
       console.log(JSON.stringify({
-        code: error.cause?.code || error.code,
+        code: error.code,
         publicLookups,
-        request: error.request,
+        request: { method: error.method, url: error.url },
       }));
     }
   `,

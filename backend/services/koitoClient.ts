@@ -1,4 +1,4 @@
-import axios from "../../lib/axiosFetch.ts";
+import { http, isTransientNetworkError } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import createRateLimiter from "./apiClients/rateLimiter.ts";
@@ -66,24 +66,17 @@ const koitoRequest = koitoLimiter.wrap(
       let lastError = null;
       for (let retryCount = 0; retryCount <= KOITO_MAX_RETRIES; retryCount++) {
         try {
-          const response = await axios.get(`${normalizedBaseUrl}${path}`, {
-            params,
-            timeout: KOITO_TIMEOUT_MS,
-            validateStatus: (status) => status >= 200 && status < 300,
+          const response = await http.get(`${normalizedBaseUrl}${path}`, {
+            query: params,
+            timeoutMs: KOITO_TIMEOUT_MS,
           });
           koitoCache.set(cacheKey, response.data);
           return response.data;
         } catch (error) {
           lastError = error;
-          const failure = asAppError(error);
-          const status = failure?.response?.status;
-          const code = failure?.code;
+          const status = asAppError(error)?.response?.status;
           const retryable =
-            code === "ECONNABORTED" ||
-            code === "ETIMEDOUT" ||
-            code === "ECONNRESET" ||
-            code === "ENOTFOUND" ||
-            code === "EAI_AGAIN" ||
+            isTransientNetworkError(error) ||
             (status !== undefined && [408, 425, 429, 500, 502, 503, 504].includes(status));
           if (retryCount < KOITO_MAX_RETRIES && retryable) {
             const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;

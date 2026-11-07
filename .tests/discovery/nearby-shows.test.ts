@@ -1,6 +1,6 @@
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 
 import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.ts";
 import { getNearbyShows } from "../../backend/services/nearbyShowsService.ts";
@@ -66,7 +66,7 @@ test("includes all artist inputs in the shows response cache key", () => {
 
 test("matches event performers to library and Discover artists by name", async (t: import("vite-plus/test").TestContext) => {
   withTicketmasterKey(t);
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     if (url.includes("zippopotam")) {
       return {
         status: 200,
@@ -129,7 +129,7 @@ test("matches event performers to library and Discover artists by name", async (
 
 test("looks up the server location for private, invalid, or spoofed client addresses", async () => {
   const lookups: string[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     lookups.push(url);
     return {
       status: 200,
@@ -151,7 +151,7 @@ test("looks up the server location for private, invalid, or spoofed client addre
 });
 
 test("marks an unresolved postal code instead of returning a normal empty location", async () => {
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     assert.equal(url, "https://nominatim.openstreetmap.org/search");
     return { status: 200, statusText: "OK", headers: {}, data: [] };
   });
@@ -164,11 +164,11 @@ test("marks an unresolved postal code instead of returning a normal empty locati
 
 test("uses an explicit country when resolving an ambiguous postal code", async () => {
   let nominatimParams: Record<string, string | number | boolean | null | undefined> | undefined;
-  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
     if (url.includes("zippopotam"))
       return { status: 200, statusText: "OK", headers: {}, data: { places: [] } };
     if (url === "https://nominatim.openstreetmap.org/search") {
-      nominatimParams = options.params;
+      nominatimParams = options.query;
       return {
         status: 200,
         statusText: "OK",
@@ -198,14 +198,14 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
 const ok = (data: unknown) => ({ status: 200, statusText: "OK", headers: {}, data });
 
 test("looks up a postal code in the requester's country when no country is given", async () => {
-  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
     if (url.startsWith("https://ipapi.co/")) return ok({ country_code: "DE" });
     if (url.includes("zippopotam")) {
       return ok({ places: [{ "place name": "New York", latitude: "40.7", longitude: "-74" }] });
     }
     if (url === "https://nominatim.openstreetmap.org/search") {
       return ok(
-        options.params?.countrycodes === "de"
+        options.query?.countrycodes === "de"
           ? [{ address: { city: "Berlin", country_code: "de" }, lat: "52.53", lon: "13.38" }]
           : [],
       );
@@ -220,7 +220,7 @@ test("looks up a postal code in the requester's country when no country is given
 });
 
 test("finds a postal code outside the requester's country", async () => {
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     if (url.startsWith("https://ipapi.co/")) return ok({ country_code: "DE" });
     if (url.includes("zippopotam")) {
       return ok({
@@ -239,16 +239,16 @@ test("finds a postal code outside the requester's country", async () => {
 
 test("searches Ticketmaster by postal code when the location has no coordinates", async (t: import("vite-plus/test").TestContext) => {
   withTicketmasterKey(t);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
     if (url.startsWith("https://ipapi.co/")) {
       return ok({ city: "Berlin", postal: "10115", country_code: "DE" });
     }
     if (url.includes("ticketmaster.com")) {
-      if (String(options.params?.sort).startsWith("distance") && !options.params?.latlong) {
+      if (String(options.query?.sort).startsWith("distance") && !options.query?.latlong) {
         throw new Error('Query param "latlong" is required for sorting by distance');
       }
       const events =
-        options.params?.postalCode === "10115"
+        options.query?.postalCode === "10115"
           ? [ticketmasterEvent("berlin", "2026-11-03", ["Library Band"])]
           : [];
       return ok({ _embedded: { events } });
@@ -270,14 +270,14 @@ test("searches Ticketmaster by postal code when the location has no coordinates"
 test("matches shows from every Ticketmaster results page, not just the nearest", async (t: import("vite-plus/test").TestContext) => {
   withTicketmasterKey(t);
   const requestedPages: unknown[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
     if (url.includes("zippopotam")) {
       return ok({
         places: [{ "place name": "Daytona Beach", latitude: "29.2", longitude: "-81.0" }],
       });
     }
     if (url.includes("ticketmaster.com")) {
-      const page = Number(options.params?.page);
+      const page = Number(options.query?.page);
       requestedPages.push(page);
       const events = [
         [ticketmasterEvent("nearby", "2026-11-03", ["Library Band"])],

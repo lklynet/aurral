@@ -2,7 +2,7 @@ import { requireFixture } from "../playlists/fixtures.ts";
 import { beforeEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.ts";
 import {
@@ -86,7 +86,7 @@ function stubBrainzMash(
 ) {
   const albumRequests: string[] = [];
   let requests = 0;
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     requests += 1;
     const [, kind, mbid] = new URL(String(url)).pathname.match(/^\/(artist|album)\/([^/]+)$/) || [];
     assert.ok(kind !== undefined && mbid !== undefined);

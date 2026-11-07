@@ -207,7 +207,7 @@ async function cancelSlskdWork(
       "Could not cancel a removed playlist search",
       { searchId },
       async () => {
-        const result = await client.deleteSearch(searchId, { timeout: 20000 });
+        const result = await client.deleteSearch(searchId, { timeoutMs: 20000 });
         if (!result) throw new Error("slskd did not confirm search cancellation");
         return result;
       },

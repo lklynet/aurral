@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -80,10 +80,10 @@ export async function startPlexSignIn(userId: number) {
   for (const [id, pending] of pendingSignIns)
     if (pending.expiresAt <= now) pendingSignIns.delete(id);
   const clientId = crypto.randomUUID();
-  const { data } = await axios.post(`${PLEX_TV}/api/v2/pins`, null, {
-    params: { strong: true },
+  const { data } = await http.post(`${PLEX_TV}/api/v2/pins`, null, {
+    query: { strong: true },
     headers: plexHeaders(undefined, clientId),
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   const pin = object(data);
   const id = text(pin.id);
@@ -102,10 +102,10 @@ export async function finishPlexSignIn(userId: number, id: string) {
   const pending = pendingSignIns.get(id);
   if (!pending || pending.userId !== userId || pending.expiresAt <= Date.now())
     throw new PlexError("The Plex sign-in expired. Try again.");
-  const { data } = await axios.get(`${PLEX_TV}/api/v2/pins/${encodeURIComponent(id)}`, {
-    params: { code: pending.code },
+  const { data } = await http.get(`${PLEX_TV}/api/v2/pins/${encodeURIComponent(id)}`, {
+    query: { code: pending.code },
     headers: plexHeaders(undefined, pending.clientId),
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   const token = text(object(data).authToken);
   if (token) pendingSignIns.delete(id);
@@ -113,9 +113,9 @@ export async function finishPlexSignIn(userId: number, id: string) {
 }
 
 async function plexTvUser(token: string) {
-  const { data } = await axios.get(`${PLEX_TV}/api/v2/user`, {
+  const { data } = await http.get(`${PLEX_TV}/api/v2/user`, {
     headers: plexHeaders(token),
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   const user = object(data);
   const id = text(user.id);
@@ -125,9 +125,9 @@ async function plexTvUser(token: string) {
 
 async function serverAccounts(url: string, token: string) {
   try {
-    const { data } = await axios.get(`${url}/accounts`, {
+    const { data } = await http.get(`${url}/accounts`, {
       headers: plexHeaders(token),
-      timeout: TIMEOUT_MS,
+      timeoutMs: TIMEOUT_MS,
     });
     return list(object(object(data).MediaContainer).Account).map((account) =>
       text(object(account).id),
@@ -162,9 +162,9 @@ export async function plexHistoryAccount(server: PlexServer, userToken: string) 
 }
 
 async function musicSectionFor(server: PlexServer, folder: string) {
-  const { data } = await axios.get(`${server.url}/library/sections`, {
+  const { data } = await http.get(`${server.url}/library/sections`, {
     headers: plexHeaders(server.token),
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   const section = list(object(object(data).MediaContainer).Directory)
     .map(object)
@@ -181,10 +181,10 @@ async function musicSectionFor(server: PlexServer, folder: string) {
 }
 
 async function plexPlaylistKeys(server: PlexServer, title: string) {
-  const { data } = await axios.get(`${server.url}/playlists`, {
-    params: { playlistType: "audio" },
+  const { data } = await http.get(`${server.url}/playlists`, {
+    query: { playlistType: "audio" },
     headers: plexHeaders(server.token),
-    timeout: TIMEOUT_MS,
+    timeoutMs: TIMEOUT_MS,
   });
   return list(object(object(data).MediaContainer).Metadata)
     .map(object)
@@ -194,9 +194,9 @@ async function plexPlaylistKeys(server: PlexServer, title: string) {
 
 async function deletePlexPlaylist(server: PlexServer, title: string) {
   for (const key of await plexPlaylistKeys(server, title)) {
-    await axios.delete(`${server.url}/playlists/${encodeURIComponent(key)}`, {
+    await http.delete(`${server.url}/playlists/${encodeURIComponent(key)}`, {
       headers: plexHeaders(server.token),
-      timeout: TIMEOUT_MS,
+      timeoutMs: TIMEOUT_MS,
     });
   }
 }
@@ -228,10 +228,10 @@ export async function sendPlaylistsToPlex(
     for (const file of files) {
       if (!stillSending()) return;
       try {
-        await axios.post(`${server.url}/playlists/upload`, null, {
-          params: { sectionID: sectionId, path: file.path },
+        await http.post(`${server.url}/playlists/upload`, null, {
+          query: { sectionID: sectionId, path: file.path },
           headers: plexHeaders(server.token),
-          timeout: TIMEOUT_MS,
+          timeoutMs: TIMEOUT_MS,
         });
       } catch (error) {
         if (Number(asAppError(error)?.response?.status) !== 500) throw error;

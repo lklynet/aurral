@@ -5,7 +5,7 @@ import { afterAll, beforeAll, test } from "vite-plus/test";
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 import type { LogEntry } from "../../backend/services/logger.ts";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -142,9 +142,9 @@ test("failed integration calls are saved without their query string or path toke
     response.writeHead(503).end("busy");
   });
   try {
-    await assert.rejects(axios.get(`${lidarr.url}/api/v1/album?apikey=hunter2`));
+    await assert.rejects(http.get(`${lidarr.url}/api/v1/album?apikey=hunter2`));
     await assert.rejects(
-      axios.post(`${lidarr.url}/api/webhooks/123456789/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789`, {}),
+      http.post(`${lidarr.url}/api/webhooks/123456789/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789`, {}),
     );
   } finally {
     await lidarr.close();
@@ -167,7 +167,7 @@ test("a failed connection is saved with the network error behind it", async () =
   const closed = await createMockHttpServer(() => {});
   await closed.close();
 
-  await assert.rejects(axios.get(`${closed.url}/feed`));
+  await assert.rejects(http.get(`${closed.url}/feed`));
 
   assert.partialDeepStrictEqual(reported.at(-1), {
     level: "warn",
@@ -180,9 +180,9 @@ test("a failed connection is saved with the network error behind it", async () =
 test("failures from one host group as one problem whatever the network said", async () => {
   logOutgoingFailures();
   const flaky = await createMockHttpServer((request) => request.socket.destroy());
-  await assert.rejects(axios.get(`${flaky.url}/feed`));
+  await assert.rejects(http.get(`${flaky.url}/feed`));
   await flaky.close();
-  await assert.rejects(axios.get(`${flaky.url}/feed`));
+  await assert.rejects(http.get(`${flaky.url}/feed`));
 
   const [dropped, refused] = reported.slice(-2);
   assert.ok(dropped && refused);

@@ -1,7 +1,7 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
@@ -91,14 +91,14 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
     dbOps.updateSettings(originalSettings);
   });
 
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     const path = new URL(url).pathname;
     if (path === "/search/album") {
       return {
         status: 200,
         statusText: "OK",
         headers: {},
-        data: options?.params?.artist
+        data: options?.query?.artist
           ? [
               {
                 id: "wrong-album",
@@ -213,7 +213,7 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  const get = vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  const get = vi.spyOn(http, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/b1392450-e666-3926-a536-22c65f834433");
     return {
       status: 200,
@@ -326,7 +326,7 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     mediumnumber,
     durationms: 200000,
   });
-  vi.spyOn(axios, "get").mockImplementation(async () => ({
+  vi.spyOn(http, "get").mockImplementation(async () => ({
     status: 200,
     statusText: "OK",
     headers: {},
@@ -396,7 +396,7 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/legacy-album");
     return {
       status: 200,
@@ -446,7 +446,7 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
 test("resolveTrackSearchContext drops an unverified stored recording ID", async (t: import("vite-plus/test").TestContext) => {
   clearMetadataProviderCaches();
   t.onTestFinished(() => clearMetadataProviderCaches());
-  vi.spyOn(axios, "get").mockImplementation(async () => {
+  vi.spyOn(http, "get").mockImplementation(async () => {
     const error = Object.assign(new Error("metadata unavailable"), { response: { status: 503 } });
 
     throw error;
@@ -487,8 +487,8 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
-    if (options?.params?.method === "track.getInfo") {
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (options?.query?.method === "track.getInfo") {
       return {
         status: 200,
         statusText: "OK",
@@ -551,7 +551,7 @@ function stubMetadata(
   t: import("vite-plus/test").TestContext,
   respond: (
     path: string,
-    params: NonNullable<NonNullable<Parameters<typeof axios.get>[1]>["params"]>,
+    params: NonNullable<NonNullable<Parameters<typeof http.get>[1]>["query"]>,
   ) => unknown,
 ) {
   const originalSettings = dbOps.getSettings();
@@ -573,11 +573,11 @@ function stubMetadata(
     clearReleaseManifests();
     dbOps.updateSettings(originalSettings);
   });
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => ({
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => ({
     status: 200,
     statusText: "OK",
     headers: {},
-    data: respond(new URL(url).pathname, options?.params || {}) ?? {},
+    data: respond(new URL(url).pathname, options?.query || {}) ?? {},
   }));
 }
 

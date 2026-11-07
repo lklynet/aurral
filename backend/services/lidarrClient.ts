@@ -1,7 +1,5 @@
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
-import http from "http";
-import https from "https";
+import { HttpError, http } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { AppSettings } from "../db/helpers/settings.ts";
 import type { UserRecord } from "../db/helpers/users.ts";
@@ -41,7 +39,6 @@ const VALID_MONITOR_OPTIONS = new Set([
   "first",
 ]);
 
-type LidarrAxiosConfig = Parameters<typeof axios>[0];
 type LidarrHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 export interface LidarrPage<T> {
@@ -269,7 +266,6 @@ type LidarrAlbumListOptions = LidarrRequestOptions & { artistIds: Array<number |
 interface LidarrRequestFailure {
   code?: string;
   message?: unknown;
-  request?: unknown;
   response?: {
     status?: number;
     statusText?: string;
@@ -504,9 +500,6 @@ export class LidarrClient {
   declare _statusCache: Map<string, LidarrCacheEntry>;
   declare _rootFoldersCache: { data: LidarrRootFolder[]; at: number } | null;
   declare _inflightGets: Map<string, Promise<unknown>>;
-  declare _httpAgent: http.Agent;
-  declare _httpsAgent: https.Agent;
-  declare _httpsInsecureAgent: https.Agent;
 
   constructor({ persistRootFolderPaths = true }: { persistRootFolderPaths?: boolean } = {}) {
     this._persistRootFolderPaths = persistRootFolderPaths;
@@ -525,25 +518,6 @@ export class LidarrClient {
     this._statusCache = new BoundedMap(LIDARR_STATUS_CACHE_MAX);
     this._rootFoldersCache = null;
     this._inflightGets = new Map();
-    this._httpAgent = new http.Agent({
-      keepAlive: true,
-      maxSockets: LIDARR_MAX_CONCURRENT,
-      maxFreeSockets: 2,
-      timeout: 60000,
-    });
-    this._httpsAgent = new https.Agent({
-      keepAlive: true,
-      maxSockets: LIDARR_MAX_CONCURRENT,
-      maxFreeSockets: 2,
-      timeout: 60000,
-    });
-    this._httpsInsecureAgent = new https.Agent({
-      rejectUnauthorized: false,
-      keepAlive: true,
-      maxSockets: LIDARR_MAX_CONCURRENT,
-      maxFreeSockets: 2,
-      timeout: 60000,
-    });
     this.updateConfig();
   }
 
@@ -887,43 +861,17 @@ export class LidarrClient {
       try {
         await this._acquireSlot();
         try {
-          const fullUrl = `${this.config.url}${this.apiPath}${endpoint}`;
-
-          const isHttps = fullUrl.startsWith("https:") || fullUrl.startsWith("HTTPS:");
-
-          const requestConfig: LidarrAxiosConfig & { httpAgent: http.Agent } = {
+          const response = await http.request(`${this.config.url}${this.apiPath}${endpoint}`, {
             method,
-            url: fullUrl,
             headers: {
               ...authHeaders,
               "Content-Type": "application/json",
               Accept: "application/json",
             },
-            timeout: this.config.timeoutMs,
-            httpAgent: this._httpAgent,
-            httpsAgent:
-              isHttps && this.config.insecure ? this._httpsInsecureAgent : this._httpsAgent,
-            validateStatus: function (status) {
-              return status < 500;
-            },
-          };
-
-          if (data) {
-            requestConfig.data = data;
-          }
-
-          const response = await axios(requestConfig);
-
-          if (response.status >= 400) {
-            throw {
-              response: {
-                status: response.status,
-                statusText: response.statusText,
-                data: response.data,
-                headers: response.headers,
-              },
-            };
-          }
+            timeoutMs: this.config.timeoutMs,
+            insecureTls: this.config.insecure,
+            body: data || undefined,
+          });
 
           const body = options.parse ? options.parse(response.data, endpoint) : response.data;
 
@@ -954,8 +902,7 @@ export class LidarrClient {
         const error: LidarrRequestFailure = raw && typeof raw === "object" ? raw : {};
         const status = error.response?.status;
         const msg = error.message != null ? String(error.message) : String(raw);
-        const isTimeout = error.code === "ECONNABORTED" || msg.toLowerCase().includes("timeout");
-        const isNoResponse = !error.response && (error.request || isTimeout);
+        const isNoResponse = raw instanceof HttpError && !raw.response;
         const isTransientStatus = typeof status === "number" && status >= 500;
 
         if (attempt < LIDARR_RETRY_ATTEMPTS && (isNoResponse || isTransientStatus)) {
@@ -1065,7 +1012,7 @@ export class LidarrClient {
           );
           userError.response = error.response;
           throw userError;
-        } else if (error.request) {
+        } else if (isNoResponse) {
           logger.error("library", "Lidarr API request failed with no response", {
             endpoint: endpoint.split("?")[0],
             method,

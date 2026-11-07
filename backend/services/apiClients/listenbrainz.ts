@@ -1,4 +1,6 @@
-import axios from "../../../lib/axiosFetch.ts";
+import * as v from "valibot";
+import { http, isTransientNetworkError, type HttpOptions } from "../../../lib/http.ts";
+import { readOne } from "../integrationData.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
@@ -70,17 +72,21 @@ const listenbrainzWrite = async (
   { token, data }: { token?: string | null; data?: unknown } = {},
 ) => {
   const response = await listenbrainzLimiter.schedule(() =>
-    axios.post(`${String(baseUrl).replace(/\/+$/, "")}${path}`, data, {
+    http.post(`${String(baseUrl).replace(/\/+$/, "")}${path}`, data, {
       headers: {
         Authorization: `Token ${String(token || "").trim()}`,
         "User-Agent": LISTENBRAINZ_USER_AGENT,
       },
-      timeout: LISTENBRAINZ_TIMEOUT_MS,
-      validateStatus: (status) => status >= 200 && status < 300,
+      timeoutMs: LISTENBRAINZ_TIMEOUT_MS,
     }),
   );
   return response.data;
 };
+
+const tokenValidationSchema = v.looseObject({
+  valid: v.optional(v.boolean()),
+  user_name: v.optional(v.string()),
+});
 
 export const listenbrainzValidateToken = async (
   token: string | null | undefined,
@@ -88,16 +94,18 @@ export const listenbrainzValidateToken = async (
 ) => {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const response = await listenbrainzLimiter.schedule(() =>
-    axios.get(`${root}/1/validate-token`, {
+    http.get(`${root}/1/validate-token`, {
       headers: {
         Authorization: `Token ${String(token || "").trim()}`,
         "User-Agent": LISTENBRAINZ_USER_AGENT,
       },
-      timeout: LISTENBRAINZ_TIMEOUT_MS,
-      validateStatus: (status) => status >= 200 && status < 300,
+      timeoutMs: LISTENBRAINZ_TIMEOUT_MS,
     }),
   );
-  return response.data;
+  return readOne(tokenValidationSchema, response.data, {
+    service: "ListenBrainz",
+    endpoint: "/1/validate-token",
+  });
 };
 
 export const listenbrainzSubmit = async ({
@@ -164,15 +172,9 @@ export async function listenbrainzRequest(
 
   const requestPromise = (async () => {
     const isRetryable = (error: unknown) => {
-      const failure = asAppError(error);
-      const status = failure?.response?.status;
-      const code = failure?.code;
+      const status = asAppError(error)?.response?.status;
       return (
-        code === "ECONNABORTED" ||
-        code === "ETIMEDOUT" ||
-        code === "ECONNRESET" ||
-        code === "ENOTFOUND" ||
-        code === "EAI_AGAIN" ||
+        isTransientNetworkError(error) ||
         (status !== undefined && [408, 425, 500, 502, 503, 504].includes(status))
       );
     };
@@ -191,18 +193,17 @@ export async function listenbrainzRequest(
     for (let retryCount = 0; retryCount <= LISTENBRAINZ_MAX_RETRIES; retryCount++) {
       try {
         const response = await listenbrainzLimiter.schedule(() => {
-          const config = {
-            params,
+          const config: HttpOptions = {
+            query: params,
             headers: {
               "User-Agent": LISTENBRAINZ_USER_AGENT,
               ...(isAuthenticated && { Authorization: `Token ${String(token).trim()}` }),
             },
-            timeout: timeoutMs,
-            validateStatus: (status: number) => (status >= 200 && status < 300) || status === 204,
+            timeoutMs,
           };
           return data
-            ? axios.post(`${root}${path}`, data, config)
-            : axios.get(`${root}${path}`, config);
+            ? http.post(`${root}${path}`, data, config)
+            : http.get(`${root}${path}`, config);
         });
         const payload = response.status === 204 ? null : response.data;
         if (cacheKey) listenbrainzCache.set(cacheKey, payload);

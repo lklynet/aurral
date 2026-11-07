@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import * as v from "valibot";
-import { onRequestFailure } from "../../lib/axiosFetch.ts";
+import { onRequestFailure } from "../../lib/http.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";

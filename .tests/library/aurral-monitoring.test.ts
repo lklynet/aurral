@@ -28,7 +28,7 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  { default: axios },
+  { http },
   { api },
   libraryStore,
   managementStore,
@@ -45,7 +45,7 @@ const [
   "aurral-monitoring",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../lib/axiosFetch.ts"),
+  () => import("../../lib/http.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
@@ -1204,8 +1204,8 @@ test("top tracks queue the artist's popular songs that monitored releases do not
     "Owned Featured Song",
     "Deep Cut",
   ];
-  const providerGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  const providerGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (!String(url).startsWith("https://api.deezer.com/")) return providerGet(url, options);
     deezerRequests.push(url);
     if (url === "https://api.deezer.com/search/artist") {
@@ -1222,7 +1222,7 @@ test("top tracks queue the artist's popular songs that monitored releases do not
         statusText: "OK",
         headers: {},
         data: {
-          data: topTracks.slice(0, Number(options?.params?.limit)).map((title, index) => ({
+          data: topTracks.slice(0, Number(options?.query?.limit)).map((title, index) => ({
             id: index + 1,
             title,
             duration: 200,

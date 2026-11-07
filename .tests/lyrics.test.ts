@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, test, vi } from "vite-plus/test";
 
-import axios from "../lib/axiosFetch.ts";
+import { http } from "../lib/http.ts";
 import { lrclibCache } from "../backend/services/apiClients/lrclib.ts";
 import { findTrackLyrics } from "../backend/services/lyricsService.ts";
 
@@ -19,8 +19,8 @@ const track = {
 
 function lrclib(data: unknown) {
   const requests: unknown[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (_url, config) => {
-    requests.push(config?.params);
+  vi.spyOn(http, "get").mockImplementation(async (_url, config) => {
+    requests.push(config?.query);
     return { status: data ? 200 : 404, statusText: "", headers: {}, data: data ?? {} };
   });
   return requests;

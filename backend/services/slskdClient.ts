@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
+import { createHttpClient, type HttpOptions } from "../../lib/http.ts";
 import { randomUUID } from "crypto";
 import { dbOps } from "../db/helpers/index.ts";
 import { withLock } from "./jobs/queue.ts";
@@ -23,7 +23,7 @@ const SOULSEEK_LOGGED_OUT_CODE = "SLSKD_SOULSEEK_LOGGED_OUT";
 export const SOULSEEK_LOGGED_OUT_MESSAGE = "slskd is not logged in to Soulseek";
 
 type SlskdConfig = NonNullable<StoredIntegrations["slskd"]>;
-type SlskdRequestOptions = { timeout?: number; signal?: AbortSignal };
+type SlskdRequestOptions = Pick<HttpOptions, "timeoutMs" | "signal">;
 type SlskdTransferRef = { username?: string | null; transferId?: string; id?: string };
 type CodedError = Error & { code?: string };
 
@@ -292,11 +292,11 @@ function buildClientFromCredentials(url: string, apiKey: string) {
   if (trimmedKey) {
     headers["X-API-KEY"] = trimmedKey;
   }
-  return axios.create({
-    baseURL: trimmedUrl,
-    timeout: 60000,
+  return createHttpClient({
+    baseUrl: trimmedUrl,
+    timeoutMs: 60000,
     headers,
-    validateStatus: () => true,
+    okStatus: () => true,
   });
 }
 
@@ -528,7 +528,7 @@ class SearchMonitor {
   async stop() {
     try {
       const deleted = await this.client.deleteSearch(this.searchId, {
-        timeout: Math.max(1, Number(this.cleanupTimeoutMs) || 20000),
+        timeoutMs: Math.max(1, Number(this.cleanupTimeoutMs) || 20000),
       });
       if (deleted) this.onSearchSettled?.(this.searchId);
       else logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId });
@@ -862,7 +862,7 @@ export class SlskdClient {
                       ...body,
                       searchTimeout: Math.min(searchTimeoutMs, remaining),
                     },
-                    { timeout: Math.min(60000, remaining), signal: control.signal },
+                    { timeoutMs: Math.min(60000, remaining), signal: control.signal },
                   );
                 } catch (error) {
                   options.onSearchCreated?.(id);
@@ -903,7 +903,7 @@ export class SlskdClient {
         try {
           if (
             await this.deleteSearch(id, {
-              timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000),
+              timeoutMs: Math.max(1, Number(options.cleanupTimeoutMs) || 20000),
             })
           ) {
             options.onSearchSettled?.(id);
@@ -924,7 +924,7 @@ export class SlskdClient {
   async getSearch(searchId: string, options: SlskdRequestOptions = {}): Promise<SlskdSearch> {
     const client = buildClient(this._config);
     const response = await client.get(`/api/v0/searches/${searchId}`, {
-      params: { includeResponses: true },
+      query: { includeResponses: true },
       ...options,
     });
     if (response.status !== 200) {
@@ -1137,7 +1137,7 @@ export class SlskdClient {
     const response = await client.delete(
       `/api/v0/transfers/downloads/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedId)}`,
       {
-        params: remove ? { remove: true } : undefined,
+        query: remove ? { remove: true } : undefined,
       },
     );
     return [200, 202, 204, 404].includes(response.status);
@@ -1146,7 +1146,7 @@ export class SlskdClient {
   async getEvents(offset = 0, limit = 50) {
     const client = buildClient(this._config);
     const response = await client.get("/api/v0/events", {
-      params: { offset, limit },
+      query: { offset, limit },
     });
     if (response.status !== 200) {
       return { events: [], count: 0, totalCount: 0 };
@@ -1188,7 +1188,7 @@ export class SlskdClient {
     const client = buildClient(this._config);
     const endpoint = `/api/v0/searches/${encodeURIComponent(id)}`;
     const signal = untilDeadline(
-      Date.now() + Math.max(1, Number(options.timeout) || 20000),
+      Date.now() + Math.max(1, Number(options.timeoutMs) || 20000),
       options.signal,
     );
     try {
@@ -1198,7 +1198,7 @@ export class SlskdClient {
       while (!signal?.aborted) {
         const response = await client.get(endpoint, {
           signal,
-          params: { includeResponses: false },
+          query: { includeResponses: false },
         });
         if (response.status === 404) return true;
         if (response.status !== 200) return false;

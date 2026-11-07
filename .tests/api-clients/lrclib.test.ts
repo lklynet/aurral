@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vite-plus/test";
 
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 import { lrclibCache, lrclibGetLyrics } from "../../backend/services/apiClients/lrclib.ts";
 
 const song = { artist: "Radiohead", title: "Karma Police", album: "OK Computer", durationSec: 264 };
 
 function lrclib(respond: () => { status: number; data: unknown } | Promise<never>) {
   const requests: Record<string, unknown>[] = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, config) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
     assert.equal(url, "https://lrclib.net/api/get");
-    requests.push({ ...(config?.params || {}) });
+    requests.push({ ...(config?.query || {}) });
     return { statusText: "", headers: {}, ...(await respond()) };
   });
   return requests;

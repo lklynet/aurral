@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { vi, type TestContext } from "vite-plus/test";
-import axios from "../../lib/axiosFetch.ts";
+import { http } from "../../lib/http.ts";
 
 const METADATA_HOST = "brainzmash.example.test";
 
@@ -115,13 +115,13 @@ export async function serveGroups<Group extends { id: string; title?: string; re
   clearApiCaches();
   t.onTestFinished(() => clearApiCaches());
   const byPath = new Map(groups.map((group) => [`/album/${group.id}`, group]));
-  const original = axios.get;
-  return vi.spyOn(axios, "get").mockImplementation(async (url, ...rest) => {
+  const original = http.get;
+  return vi.spyOn(http, "get").mockImplementation(async (url, ...rest) => {
     const parsed = new URL(url);
-    if (parsed.hostname !== METADATA_HOST) return original.call(axios, url, ...rest);
+    if (parsed.hostname !== METADATA_HOST) return original.call(http, url, ...rest);
     const down = unavailable(parsed.pathname);
     const query = String(
-      rest[0]?.params?.query ?? parsed.searchParams.get("query") ?? "",
+      rest[0]?.query?.query ?? parsed.searchParams.get("query") ?? "",
     ).toLowerCase();
     const found =
       searchable && parsed.pathname === "/search/album"

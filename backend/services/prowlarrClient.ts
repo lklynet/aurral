@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import axios from "../../lib/axiosFetch.ts";
+import { createHttpClient, http } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { readMany, readOne } from "./integrationData.ts";
@@ -189,14 +189,14 @@ function buildClientFromCredentials(url: string, apiKey: string) {
   if (!trimmedUrl || !trimmedKey) {
     throw new Error("Prowlarr not configured");
   }
-  return axios.create({
-    baseURL: trimmedUrl,
-    timeout: 45000,
+  return createHttpClient({
+    baseUrl: trimmedUrl,
+    timeoutMs: 45000,
     headers: {
       "X-Api-Key": trimmedKey,
       Accept: "application/json",
     },
-    validateStatus: () => true,
+    okStatus: () => true,
   });
 }
 
@@ -504,10 +504,10 @@ export class ProwlarrClient {
     const limitKey = String(indexerId ?? "").trim();
     const limitedUntil = nzbLimitedUntil.get(limitKey) || 0;
     if (limitKey && limitedUntil > Date.now()) throw nzbLimitError(indexer, limitedUntil);
-    const response = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 60000,
-      validateStatus: () => true,
+    const response = await http.get(url, {
+      responseType: "buffer",
+      timeoutMs: 60000,
+      okStatus: () => true,
     });
     if (response.status === 429) {
       const until = Date.now() + readRetryAfterMs(response.headers?.["retry-after"]);
@@ -517,7 +517,7 @@ export class ProwlarrClient {
     if (response.status !== 200) {
       throw new Error(`The indexer did not return the NZB: HTTP ${response.status}`);
     }
-    const content = Buffer.from(response.data || []);
+    const content = Buffer.isBuffer(response.data) ? response.data : Buffer.alloc(0);
     const head = content.subarray(0, 65536).toString("utf8");
     if (!/<nzb[\s>]/iu.test(head)) {
       const error: Error & { nzbGrabSpent?: boolean } = new Error(

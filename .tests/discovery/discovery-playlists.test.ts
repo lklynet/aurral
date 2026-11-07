@@ -22,21 +22,15 @@ vi.mock("../../backend/services/discovery/freshReleases.ts", () => ({
     })),
 }));
 
-const [
-  ,
-  { db },
-  store,
-  { buildDiscoveryPlaylists, getDiscoveryPlaylist },
-  deezer,
-  { default: axios },
-] = await setupIsolatedBackend(
-  "discovery-playlists",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/discovery/discoveryPlaylists.ts"),
-  () => import("../../backend/services/apiClients/deezer.ts"),
-  () => import("../../lib/axiosFetch.ts"),
-);
+const [, { db }, store, { buildDiscoveryPlaylists, getDiscoveryPlaylist }, deezer, { http }] =
+  await setupIsolatedBackend(
+    "discovery-playlists",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/discovery/discoveryPlaylists.ts"),
+    () => import("../../backend/services/apiClients/deezer.ts"),
+    () => import("../../lib/http.ts"),
+  );
 
 const ARTISTS = ["Mogwai", "Slowdive", "Low", "Lush"];
 const NOW = Date.UTC(2026, 10, 5, 12);
@@ -44,10 +38,10 @@ const NOW = Date.UTC(2026, 10, 5, 12);
 const ok = (data: unknown) => ({ status: 200, statusText: "OK", headers: {}, data });
 
 function stubDeezer() {
-  vi.spyOn(axios, "get").mockImplementation(async (url, config) => {
+  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
     const path = String(url).replace("https://api.deezer.com", "");
     if (path === "/search/artist") {
-      const name = String(config?.params?.q);
+      const name = String(config?.query?.q);
       return ok({ data: [{ id: ARTISTS.indexOf(name) + 1, name }] });
     }
     if (/^\/artist\/\d+\/albums$/.test(path)) {
@@ -152,7 +146,7 @@ test("a rebuild that can't reach Deezer keeps last week's playlist", async () =>
   deezer.deezerTopTrackCache.flushAll();
   deezer.deezerAlbumCache.flushAll();
   deezer.deezerAlbumTrackCache.flushAll();
-  vi.spyOn(axios, "get").mockRejectedValue(new Error("offline"));
+  vi.spyOn(http, "get").mockRejectedValue(new Error("offline"));
   await buildDiscoveryPlaylists(userId, NOW + 7 * 24 * 60 * 60 * 1000);
 
   assert.deepEqual(
