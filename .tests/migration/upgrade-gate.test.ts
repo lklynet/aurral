@@ -48,11 +48,20 @@ test.each([
   ["a database 3.0 already opened", () => databaseWith({ schemaVersion: 5 }), []],
   ["a database that finished 2.x", () => databaseWith(FINISHED_2X), []],
   [
-    "folder items still waiting for review",
+    "a folder move that left items for review",
     () =>
       databaseWith({
         ...FINISHED_2X,
         aurralDownloadFolderMigration: { version: 1, status: "needs-review" },
+      }),
+    [],
+  ],
+  [
+    "an interrupted folder move",
+    () =>
+      databaseWith({
+        ...FINISHED_2X,
+        aurralDownloadFolderMigration: { version: 1, status: "pending" },
       }),
     ["aurralDownloadFolderMigration"],
   ],

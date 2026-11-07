@@ -28,7 +28,7 @@ const SETTINGS_MARKERS: [key: string, done: (value: unknown) => boolean][] = [
   ["playlistStartupMigration", (value) => v.is(versioned, value) && value.version >= 1],
   [
     "aurralDownloadFolderMigration",
-    (value) => v.is(versioned, value) && value.version >= 1 && value.status === "complete",
+    (value) => v.is(versioned, value) && value.version >= 1 && value.status !== "pending",
   ],
   ...ONE_TIME_MIGRATIONS.map((name): [string, () => boolean] => [`migration:${name}`, () => true]),
 ];
