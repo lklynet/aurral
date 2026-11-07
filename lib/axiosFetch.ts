@@ -37,6 +37,7 @@ interface AxiosRequestConfig {
   auth?: AxiosBasicAuth;
   data?: unknown;
   timeout?: number;
+  bodyTimeout?: number;
   maxRedirects?: 5;
   signal?: AbortSignal;
   responseType?: "arraybuffer" | "stream";
@@ -216,15 +217,17 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
   } else {
     externalSignal?.addEventListener("abort", handleExternalAbort, { once: true });
   }
-  const timeoutMs = Number(config.timeout || 0);
-  let timer = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let timeoutTriggered = false;
-  if (timeoutMs > 0) {
+  const startTimer = (ms: number) => {
+    clearTimeout(timer);
+    if (ms <= 0) return;
     timer = setTimeout(() => {
       timeoutTriggered = true;
       controller.abort();
-    }, timeoutMs);
-  }
+    }, ms);
+  };
+  startTimer(Number(config.timeout || 0));
 
   const startedAt = Date.now();
   const publicDispatchers = [];
@@ -288,6 +291,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
         publicDispatchers.push(init.dispatcher);
       }
     }
+    if (config.bodyTimeout) startTimer(config.bodyTimeout);
     const data = await readBody(response, config);
     controller.signal.throwIfAborted();
     const axiosResponse = {
@@ -342,7 +346,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     }
     throw error;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
     externalSignal?.removeEventListener("abort", handleExternalAbort);
     await Promise.allSettled(publicDispatchers.map((dispatcher) => dispatcher.close()));
   }

@@ -4,7 +4,10 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 
 import axios from "../lib/axiosFetch.ts";
+import { useFakeClock } from "./helpers/fakeClock.ts";
 import { requireFixture } from "./playlists/fixtures.ts";
+
+useFakeClock();
 
 async function listen(handler: http.RequestListener) {
   const server = http.createServer(handler);
@@ -76,4 +79,23 @@ test("five redirects still reach the final response", async () => {
 
   const response = await axios.get(`${server.origin}/hop-0`);
   assert.equal(response.data, "done");
+});
+
+test("timeout covers the wait for headers, and bodyTimeout bounds the download", async () => {
+  let finishBody = () => {};
+  await using server = await listen((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write('{"ok":');
+    finishBody = () => res.end("true}");
+    if (req.url === "/slow") setTimeout(finishBody, 2_000);
+  });
+
+  const slow = await axios.get(`${server.origin}/slow`, { timeout: 1_000, bodyTimeout: 5_000 });
+  assert.deepEqual(slow.data, { ok: true });
+
+  await assert.rejects(
+    axios.get(`${server.origin}/stalled`, { timeout: 1_000, bodyTimeout: 5_000 }),
+    { code: "ECONNABORTED" },
+  );
+  finishBody();
 });
