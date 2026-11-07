@@ -1286,8 +1286,8 @@ export class LibraryManager {
             artistMbid: mappedArtist.mbid || mbid,
           }),
         )
-        .catch((err) => {
-          logger.warn("library", err);
+        .catch((err: unknown) => {
+          logger.warn("library", asAppError(err)?.message || String(err));
         });
       return mappedArtist;
     } catch (error) {

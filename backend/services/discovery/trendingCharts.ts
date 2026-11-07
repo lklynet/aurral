@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { lenient, lenientText } from "../integrationData.ts";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { deezerArtistSchema, deezerPreviewPath, deezerTrackSchema } from "../apiClients/deezer.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
@@ -43,14 +44,24 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const infosSchema = v.looseObject({ country_iso: v.optional(v.string()) });
 
-interface AppleAlbumPayload {
-  id?: string;
-  name?: string;
-  artistName?: string;
-  artworkUrl100?: string;
-  releaseDate?: string;
-  genres?: { name?: string }[];
-}
+const appleAlbumSchema = v.fallback(
+  v.looseObject({
+    id: lenientText,
+    name: lenientText,
+    artistName: lenientText,
+    artworkUrl100: lenientText,
+    releaseDate: lenientText,
+    genres: lenient(v.array(v.fallback(v.looseObject({ name: lenientText }), {}))),
+  }),
+  {},
+);
+const appleFeedSchema = v.fallback(
+  v.looseObject({
+    feed: lenient(v.looseObject({ results: lenient(v.array(appleAlbumSchema)) })),
+  }),
+  {},
+);
+type AppleAlbumPayload = v.InferOutput<typeof appleAlbumSchema>;
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -211,10 +222,8 @@ async function fetchAppleAlbums(storefront: string) {
     `${APPLE_FEED_URL}/${storefront}/music/most-played/${ALBUM_LIMIT}/albums.json`,
   );
   if (!response.ok) throw new Error(`Apple Music returned ${response.status}`);
-  const body: { feed?: { results?: AppleAlbumPayload[] } } | null = await response
-    .json()
-    .catch(() => null);
-  const items = uniqueByKey((body?.feed?.results || []).map(toAlbum).filter(isPresent));
+  const body = v.parse(appleFeedSchema, await response.json().catch(() => null));
+  const items = uniqueByKey((body.feed?.results || []).map(toAlbum).filter(isPresent));
   if (items.length === 0) throw new Error("Apple Music returned an empty chart");
   return { items };
 }

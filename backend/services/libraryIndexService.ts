@@ -167,17 +167,17 @@ async function canonicalizeAurralArtistNames(
   jobMetadataByPath: Map<string, AurralJobMetadata>,
   paths: string[] | null = null,
 ) {
-  const candidates = new Map();
+  const candidates = new Set<string>();
   for (const [filePath, metadata] of jobMetadataByPath) {
     if (Array.isArray(paths) && !paths.some((rootPath) => isPathWithin(rootPath, filePath)))
       continue;
     const artistMbid = String(metadata?.artistMbid || "").trim();
     const artistName = String(metadata?.artistName || "").trim();
     if (!artistMbid || !/[;,×!]/.test(artistName) || candidates.has(artistMbid)) continue;
-    candidates.set(artistMbid, artistName);
+    candidates.add(artistMbid);
   }
 
-  for (const artistMbid of candidates.keys()) {
+  for (const artistMbid of candidates) {
     const existing = db
       .prepare<[string], Pick<LibraryArtistsRow, "id">>(
         "SELECT id FROM library_artists WHERE mbid = ?",

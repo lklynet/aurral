@@ -53,7 +53,8 @@ type FilesystemPathless<T> = T extends readonly (infer U)[]
 
 export function stripFilesystemPaths<T>(value: T): FilesystemPathless<T>;
 export function stripFilesystemPaths(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripFilesystemPaths);
+  if (Array.isArray(value))
+    return value.map((item: unknown): unknown => stripFilesystemPaths(item));
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
     Object.entries(value)

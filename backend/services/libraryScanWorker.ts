@@ -10,6 +10,7 @@ import { resolveLibraryScanChangedPaths, type LibraryScanRequest } from "./libra
 import type { SettingsRow } from "../db/rows.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { websocketService } from "./websocketService.ts";
+import { unknownList } from "../../lib/unknownList.ts";
 
 const LIBRARY_SCAN_REGISTRY_KEY = "pendingLibraryScanJob";
 const MAX_CHANGED_PATHS = 4096;
@@ -119,10 +120,7 @@ function copyRegistryKey<K extends keyof ScanRegistry>(
 }
 
 function mergeChangedPaths(left: unknown, right: unknown) {
-  return normalizeChangedPaths([
-    ...(Array.isArray(left) ? left : []),
-    ...(Array.isArray(right) ? right : []),
-  ]);
+  return normalizeChangedPaths([...unknownList(left), ...unknownList(right)]);
 }
 
 function hasLiveScanJob(jobId: number) {

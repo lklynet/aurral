@@ -274,7 +274,7 @@ const recordHistory = <
       (history[method] as (...callArgs: Parameters<DiscoveryHistory[Method]>) => unknown)(...args),
     )
     .catch((err) => {
-      logger.warn("discovery", err);
+      logger.warn("discovery", asAppError(err)?.message || String(err));
     });
 
 const publishGlobalDiscovery = (discoveryData: DiscoveryCacheUpdate) => {

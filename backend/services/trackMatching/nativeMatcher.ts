@@ -406,7 +406,7 @@ export function decideRecording(
   policy: MatchPolicy = MATCH_POLICY,
 ) {
   const prepared = prepareRecordingRequest(request);
-  const labels = new Map();
+  const labels = new Map<string, string[][] | null>();
   const assessed = candidates.map((candidate, index) => ({
     index,
     candidate,
@@ -452,18 +452,18 @@ export function decideRecording(
 function maximumWeightColumns(weights: number[][]) {
   const rowCount = weights.length;
   const columnCount = weights[0]?.length || 0;
-  const rowPotential = new Array(rowCount + 1).fill(0);
-  const columnPotential = new Array(columnCount + 1).fill(0);
-  const rowForColumn = new Array(columnCount + 1).fill(0);
-  const previousColumn = new Array(columnCount + 1).fill(0);
+  const rowPotential = new Array<number>(rowCount + 1).fill(0);
+  const columnPotential = new Array<number>(columnCount + 1).fill(0);
+  const rowForColumn = new Array<number>(columnCount + 1).fill(0);
+  const previousColumn = new Array<number>(columnCount + 1).fill(0);
   for (let row = 1; row <= rowCount; row += 1) {
     rowForColumn[0] = row;
     let column = 0;
-    const distance = new Array(columnCount + 1).fill(Infinity);
-    const visited = new Array(columnCount + 1).fill(false);
+    const distance = new Array<number>(columnCount + 1).fill(Infinity);
+    const visited = new Array<boolean>(columnCount + 1).fill(false);
     do {
       visited[column] = true;
-      const currentRow = rowForColumn[column];
+      const currentRow = rowForColumn[column] ?? 0;
       const currentWeights = weights[currentRow - 1] ?? [];
       let nextColumn = 0;
       let smallest = Infinity;
@@ -471,36 +471,40 @@ function maximumWeightColumns(weights: number[][]) {
         if (visited[candidate]) continue;
         const reducedCost =
           -(currentWeights[candidate - 1] ?? 0) -
-          rowPotential[currentRow] -
-          columnPotential[candidate];
-        if (reducedCost < distance[candidate]) {
+          (rowPotential[currentRow] ?? 0) -
+          (columnPotential[candidate] ?? 0);
+        const known = distance[candidate] ?? Infinity;
+        if (reducedCost < known) {
           distance[candidate] = reducedCost;
           previousColumn[candidate] = column;
         }
-        if (distance[candidate] < smallest) {
-          smallest = distance[candidate];
+        const reached = Math.min(known, reducedCost);
+        if (reached < smallest) {
+          smallest = reached;
           nextColumn = candidate;
         }
       }
       for (let candidate = 0; candidate <= columnCount; candidate += 1) {
         if (visited[candidate]) {
-          rowPotential[rowForColumn[candidate]] += smallest;
-          columnPotential[candidate] -= smallest;
+          const visitedRow = rowForColumn[candidate] ?? 0;
+          rowPotential[visitedRow] = (rowPotential[visitedRow] ?? 0) + smallest;
+          columnPotential[candidate] = (columnPotential[candidate] ?? 0) - smallest;
         } else {
-          distance[candidate] -= smallest;
+          distance[candidate] = (distance[candidate] ?? Infinity) - smallest;
         }
       }
       column = nextColumn;
     } while (rowForColumn[column] !== 0);
     do {
-      const nextColumn = previousColumn[column];
-      rowForColumn[column] = rowForColumn[nextColumn];
+      const nextColumn = previousColumn[column] ?? 0;
+      rowForColumn[column] = rowForColumn[nextColumn] ?? 0;
       column = nextColumn;
     } while (column !== 0);
   }
-  const columns = new Array(rowCount).fill(-1);
+  const columns = new Array<number>(rowCount).fill(-1);
   for (let column = 1; column <= columnCount; column += 1) {
-    if (rowForColumn[column]) columns[rowForColumn[column] - 1] = column - 1;
+    const row = rowForColumn[column];
+    if (row) columns[row - 1] = column - 1;
   }
   return columns;
 }
@@ -545,12 +549,12 @@ export function pairTracksWithFiles<Edge extends { fileIndex: number; score: num
 ) {
   const cardinalityBonus = edges.length + 1;
   const weights = edges.map((trackEdges) => {
-    const row = new Array(fileCount + edges.length).fill(0);
+    const row = new Array<number>(fileCount + edges.length).fill(0);
     for (const edge of trackEdges) row[edge.fileIndex] = cardinalityBonus + edge.score;
     return row;
   });
   const assignedColumns = edges.length && fileCount ? maximumWeightColumns(weights) : [];
-  const trackForFile = new Array(fileCount).fill(-1);
+  const trackForFile = new Array<number>(fileCount).fill(-1);
   const pairs = assignedColumns.flatMap((fileIndex, trackIndex) => {
     const edge =
       fileIndex < fileCount

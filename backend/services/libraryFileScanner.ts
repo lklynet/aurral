@@ -93,7 +93,7 @@ export function isLibraryScanExcludedDirectory(name: unknown) {
 
 const text = (value: unknown) => String(value || "").trim();
 
-const first = (value: unknown) => (Array.isArray(value) ? value[0] : value);
+const first = (value: unknown): unknown => (Array.isArray(value) ? value[0] : value);
 
 const numberPart = (value: { no?: number | null } | null | undefined, fallback = 0) => {
   const number = Number(value?.no ?? value);

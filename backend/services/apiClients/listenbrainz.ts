@@ -44,7 +44,7 @@ const LISTENBRAINZ_MAX_RETRIES = 2;
 const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 
 const listenbrainzInflightRequests = new Map<string, Promise<unknown>>();
-const listenbrainzErrorLogAt = new Map();
+const listenbrainzErrorLogAt = new Map<string, number>();
 
 const getRateLimitWaitMs = (error: unknown) => {
   const failure = asAppError(error);
@@ -226,17 +226,18 @@ export async function listenbrainzRequest(
     }
 
     const failure = asAppError(lastError);
-    const responseData = failure?.response?.data;
+    const responseData: unknown = failure?.response?.data;
+    const payloadError: unknown =
+      (typeof responseData === "object" &&
+        responseData !== null &&
+        (Reflect.get(responseData, "error") || Reflect.get(responseData, "message"))) ||
+      null;
     const details = {
       path,
       status: failure?.response?.status || null,
       code: failure?.code || null,
       message: failure?.message || "Unknown ListenBrainz error",
-      error:
-        (typeof responseData === "object" &&
-          responseData !== null &&
-          (Reflect.get(responseData, "error") || Reflect.get(responseData, "message"))) ||
-        null,
+      error: payloadError,
     };
     logFailure(details);
     throw lastError;

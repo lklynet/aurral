@@ -6,7 +6,7 @@ import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
 import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
 import { matchTrackByTitle } from "./downloadJobs/trackSearchContext.ts";
-import { readOne } from "./integrationData.ts";
+import { lenient, lenientText, readOne } from "./integrationData.ts";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const LOOKUP_CACHE_TTL_SECONDS = 24 * 60 * 60;
@@ -74,21 +74,45 @@ interface LinkLookup {
   deezerAlbumId?: string | number | null;
 }
 
-interface SonglinkPageData {
-  entityData?: { type?: string; artistName?: string; title?: string };
-  sections?: { links?: { platform?: string; url?: string }[] }[];
-}
+const lenientList = <Item extends v.GenericSchema>(item: Item) =>
+  lenient(v.array(v.fallback(item, {})));
 
-interface NextData {
-  props?: { pageProps?: { error?: unknown; pageData?: SonglinkPageData } };
-}
+const nextDataSchema = v.fallback(
+  v.looseObject({
+    props: lenient(
+      v.looseObject({
+        pageProps: lenient(
+          v.looseObject({
+            error: v.optional(v.unknown()),
+            pageData: lenient(
+              v.looseObject({
+                entityData: lenient(
+                  v.looseObject({ type: lenientText, artistName: lenientText, title: lenientText }),
+                ),
+                sections: lenientList(
+                  v.looseObject({
+                    links: lenientList(v.looseObject({ platform: lenientText, url: lenientText })),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        ),
+      }),
+    ),
+  }),
+  {},
+);
 
-interface JsonLdItem {
-  "@id"?: string;
-  name?: string;
-  byArtist?: { name?: string }[];
-  inAlbum?: { name?: string };
-}
+const jsonLdItemSchema = v.fallback(
+  v.looseObject({
+    "@id": lenientText,
+    name: lenientText,
+    byArtist: lenientList(v.looseObject({ name: lenientText })),
+    inAlbum: lenient(v.looseObject({ name: lenientText })),
+  }),
+  {},
+);
 
 const deezerLinkSchema = v.looseObject({
   id: v.number(),
@@ -98,14 +122,21 @@ const deezerLinkSchema = v.looseObject({
   album: v.optional(v.looseObject({ title: v.optional(v.string()), id: v.optional(v.number()) })),
 });
 
-interface AppleLookupBody {
-  results?: {
-    wrapperType?: string;
-    artistName?: string;
-    collectionName?: string;
-    trackName?: string;
-  }[];
-}
+const appleLookupSchema = v.fallback(
+  v.looseObject({
+    results: lenientList(
+      v.looseObject({
+        wrapperType: lenientText,
+        artistName: lenientText,
+        collectionName: lenientText,
+        trackName: lenientText,
+      }),
+    ),
+  }),
+  {},
+);
+
+const spotifyOembedSchema = v.fallback(v.looseObject({ title: lenientText }), {});
 
 const linkError = (message: string, statusCode: number, code: string) =>
   Object.assign(new Error(message), { statusCode, code });
@@ -233,7 +264,7 @@ async function fetchUpstream(
   }
 }
 
-async function fetchJson<T = unknown>(source: Source, url: string | URL): Promise<T> {
+async function fetchJson(source: Source, url: string | URL): Promise<unknown> {
   const text = await fetchUpstream(source, url);
   try {
     return JSON.parse(text);
@@ -265,13 +296,15 @@ function readMetaTags(html: string) {
   return tags;
 }
 
-function readJsonLd(html: string): JsonLdItem[] {
-  const items: JsonLdItem[] = [];
+function readJsonLd(html: string) {
+  const items: v.InferOutput<typeof jsonLdItemSchema>[] = [];
   for (const [, body = ""] of html.matchAll(
     /<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi,
   )) {
     try {
-      items.push(...[JSON.parse(body)].flat());
+      const parsed: unknown = JSON.parse(body);
+      const entries: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+      items.push(...entries.map((entry) => v.parse(jsonLdItemSchema, entry)));
     } catch {
       continue;
     }
@@ -279,11 +312,11 @@ function readJsonLd(html: string): JsonLdItem[] {
   return items;
 }
 
-function readNextData(html: string): NextData | null {
+function readNextData(html: string) {
   const json = html.match(/<script\b[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)?.[1];
   if (!json) return null;
   try {
-    return JSON.parse(json);
+    return v.parse(nextDataSchema, JSON.parse(json));
   } catch {
     return null;
   }
@@ -329,10 +362,8 @@ async function lookupAppleMusic({ kind, id, country }: StreamingLink) {
   const url = new URL("https://itunes.apple.com/lookup");
   url.searchParams.set("id", id);
   url.searchParams.set("country", country!);
-  const body = await fetchJson<AppleLookupBody>("appleMusic", url);
-  const item = (Array.isArray(body?.results) ? body.results : []).find(
-    (entry) => entry?.wrapperType === APPLE_WRAPPERS[kind!],
-  );
+  const body = v.parse(appleLookupSchema, await fetchJson("appleMusic", url));
+  const item = (body.results ?? []).find((entry) => entry.wrapperType === APPLE_WRAPPERS[kind!]);
   if (!item) throw notFound("appleMusic");
   const albumTitle = clean(String(item.collectionName || "").replace(/ - (?:Single|EP)$/, ""));
   if (kind === "artist") return { kind, artistName: clean(item.artistName) };
@@ -361,9 +392,9 @@ async function lookupSonglinkPage(source: Source, pageUrl: string) {
       ? { albumTitle: clean(entity!.title) }
       : { trackTitle: clean(entity!.title) }),
   };
-  const deezerUrl = (Array.isArray(pageData!.sections) ? pageData!.sections : [])
-    .flatMap((section) => (Array.isArray(section?.links) ? section.links : []))
-    .find((link) => link?.platform === "deezer" && link.url)?.url;
+  const deezerUrl = (pageData?.sections ?? [])
+    .flatMap((section) => section.links ?? [])
+    .find((link) => link.platform === "deezer" && link.url)?.url;
   let deezer: StreamingLink | null = null;
   try {
     deezer = deezerUrl ? parseStreamingLink(deezerUrl) : null;
@@ -387,14 +418,14 @@ async function lookupSpotify({ kind, id }: StreamingLink) {
   }
   const url = new URL("https://open.spotify.com/oembed");
   url.searchParams.set("url", `https://open.spotify.com/artist/${id}`);
-  const body = await fetchJson<{ title?: string }>("spotify", url);
-  return { kind, artistName: clean(body?.title) };
+  const body = v.parse(spotifyOembedSchema, await fetchJson("spotify", url));
+  return { kind, artistName: clean(body.title) };
 }
 
 async function lookupTidal({ kind, id }: StreamingLink) {
   const pageUrl = `https://tidal.com/${kind}/${id}`;
   const item = readJsonLd(await fetchHtml("tidal", pageUrl)).find(
-    (entry) => entry?.["@id"] === pageUrl,
+    (entry) => entry["@id"] === pageUrl,
   );
   if (!item) throw notFound("tidal");
   const artistName = kind === "artist" ? clean(item.name) : clean(item.byArtist?.[0]?.name);

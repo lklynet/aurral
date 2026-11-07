@@ -102,7 +102,7 @@ export default new Hono<AppEnv>()
           return c.json({ error: "Spotify tokens are required" }, 400);
         }
         const expiresAt = parseExpiresAt(body.expiresIn ?? body.expires_in);
-        let displayName = null;
+        let displayName: string | null = null;
         try {
           const response = await fetch(`${SPOTIFY_API_BASE}/me`, {
             headers: {
@@ -111,8 +111,12 @@ export default new Hono<AppEnv>()
             },
           });
           if (response.ok) {
-            const profile = await response.json();
-            displayName = profile?.display_name || null;
+            const profile: unknown = await response.json();
+            const name =
+              profile && typeof profile === "object" && "display_name" in profile
+                ? profile.display_name
+                : null;
+            displayName = typeof name === "string" && name ? name : null;
           }
         } catch (error) {
           logger.warn(

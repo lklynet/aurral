@@ -4,6 +4,7 @@ import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
 import { lidarrClient } from "./lidarrClient.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 import type { NzbgetClient } from "./nzbgetClient.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 type NzbgetHistoryItem = { DestDir?: string | null; FinalDir?: string | null };
 type NzbgetDownloadDirectories = Partial<
@@ -39,8 +40,8 @@ export async function removeNzbgetDownloadFolder(
     throw new Error("A post-processing script moved the NZBGet download");
   }
 
-  const stat = await fs.lstat(target).catch((error) => {
-    if (error.code === "ENOENT") return null;
+  const stat = await fs.lstat(target).catch((error: unknown) => {
+    if (asAppError(error)?.code === "ENOENT") return null;
     throw error;
   });
   if (!stat) return;

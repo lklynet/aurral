@@ -1,9 +1,5 @@
 import { asAppError } from "./errors.ts";
-
-interface RegistryManifest {
-  manifests?: { digest?: string; platform?: { os?: string; architecture?: string } }[];
-  config?: { digest?: string };
-}
+import { unknownList } from "./unknownList.ts";
 
 const MANIFEST_TYPES = [
   "application/vnd.oci.image.index.v1+json",
@@ -12,8 +8,11 @@ const MANIFEST_TYPES = [
   "application/vnd.docker.distribution.manifest.v2+json",
 ].join(", ");
 
-function requireDigest(value: string | undefined) {
-  if (!/^sha256:[0-9a-f]{64}$/.test(value || "")) {
+const field = (value: unknown, key: string): unknown =>
+  value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+
+function requireDigest(value: unknown) {
+  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) {
     throw new Error("Invalid nightly image digest");
   }
   return value;
@@ -24,7 +23,7 @@ export async function getPublishedNightlyImage(repository: string | undefined) {
     throw new Error("Invalid nightly image repository");
   }
   const signal = AbortSignal.timeout(15000);
-  const request = async (url: string, headers: Record<string, string> = {}) => {
+  const request = async (url: string, headers: Record<string, string> = {}): Promise<unknown> => {
     const response = await fetch(url, { headers, signal });
     if (!response.ok) {
       const error: Error & { status?: number } = new Error(
@@ -35,30 +34,37 @@ export async function getPublishedNightlyImage(repository: string | undefined) {
     }
     return response.json();
   };
-  const auth: { token?: string } = await request(
-    `https://ghcr.io/token?service=ghcr.io&scope=repository:${repository}:pull`,
+  const token = field(
+    await request(`https://ghcr.io/token?service=ghcr.io&scope=repository:${repository}:pull`),
+    "token",
   );
-  if (!auth.token) throw new Error("Nightly registry authentication failed");
-  const headers = { Authorization: `Bearer ${auth.token}`, Accept: MANIFEST_TYPES };
+  if (typeof token !== "string" || !token) {
+    throw new Error("Nightly registry authentication failed");
+  }
+  const headers = { Authorization: `Bearer ${token}`, Accept: MANIFEST_TYPES };
   const base = `https://ghcr.io/v2/${repository}`;
-  let manifest: RegistryManifest;
+  let manifest: unknown;
   try {
     manifest = await request(`${base}/manifests/nightly`, headers);
   } catch (error) {
     if (asAppError(error)?.status === 404) return null;
     throw error;
   }
-  if (Array.isArray(manifest.manifests)) {
-    const image = manifest.manifests.find(
-      (item) => item.platform?.os === "linux" && item.platform?.architecture === "amd64",
-    );
-    manifest = await request(`${base}/manifests/${requireDigest(image?.digest)}`, headers);
+  const manifests = field(manifest, "manifests");
+  if (Array.isArray(manifests)) {
+    const image = unknownList(manifests).find((item) => {
+      const platform = field(item, "platform");
+      return field(platform, "os") === "linux" && field(platform, "architecture") === "amd64";
+    });
+    manifest = await request(`${base}/manifests/${requireDigest(field(image, "digest"))}`, headers);
   }
-  const image: { config?: { Env?: string[] } } = await request(
-    `${base}/blobs/${requireDigest(manifest.config?.digest)}`,
+  const image = await request(
+    `${base}/blobs/${requireDigest(field(field(manifest, "config"), "digest"))}`,
     headers,
   );
-  const version = image.config?.Env?.find((item) => item.startsWith("APP_VERSION="))?.slice(12);
+  const version = unknownList(field(field(image, "config"), "Env"))
+    .find((item): item is string => typeof item === "string" && item.startsWith("APP_VERSION="))
+    ?.slice(12);
   const match = /^nightly\.\d+\+([0-9a-f]{7,40})$/.exec(version || "");
   if (!match) throw new Error("Published nightly image has no valid version");
   return { version, sha: match[1] };

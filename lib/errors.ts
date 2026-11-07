@@ -18,7 +18,7 @@ export function asAppError(error: unknown): AppError | undefined {
 
 export function errorResponseText(
   error: AppError | undefined,
-  key: "message" | "error",
+  key: "message" | "error" | "description",
 ): string | undefined {
   const data = error?.response?.data;
   if (typeof data !== "object" || data === null) return undefined;

@@ -20,7 +20,9 @@ export const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp",
 
 async function digest(filePath: string) {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  for await (const chunk of createReadStream(filePath)) {
+    if (Buffer.isBuffer(chunk)) hash.update(chunk);
+  }
   return hash.digest("hex");
 }
 

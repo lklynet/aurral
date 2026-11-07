@@ -172,7 +172,7 @@ export async function removeCustomArtwork(kind: string, id: string | number) {
   return withTargetOperation(kind, id, async (target) => {
     const removed = deleteArtworkStmt.run(target.entityKind, target.entityId).changes > 0;
     await fs.promises.unlink(artworkPath(target.entityKind, target.entityId)).catch((error) => {
-      if (error?.code !== "ENOENT") throw error;
+      if (asAppError(error)?.code !== "ENOENT") throw error;
     });
     if (removed) advanceArtworkRevision(target.entityKind);
   });

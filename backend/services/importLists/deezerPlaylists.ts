@@ -225,7 +225,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
     });
     positions.push(position);
   }
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const [index, track] of raw.entries()) {
     const identity = buildPlaylistTrackIdentity(track);
     if (seen.has(identity)) {
@@ -239,7 +239,10 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
     }
     seen.add(identity);
   }
-  const deezerFields = new Map();
+  const deezerFields = new Map<
+    string,
+    Pick<(typeof raw)[number], "preview_url" | "artworkUrl" | "deezerAlbumId">
+  >();
   for (const { preview_url, artworkUrl, deezerAlbumId, ...track } of raw) {
     const identity = buildPlaylistTrackIdentity(track);
     if (!deezerFields.has(identity)) {
@@ -248,7 +251,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
   }
   const tracks = dedupePlaylistTracks(raw).map((track) => ({
     ...track,
-    ...deezerFields.get(buildPlaylistTrackIdentity(track)),
+    ...deezerFields.get(buildPlaylistTrackIdentity(track))!,
   }));
   excluded.sort((left, right) => left.position - right.position);
   return { tracks, stats, excluded };

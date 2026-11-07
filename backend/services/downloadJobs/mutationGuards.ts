@@ -1,4 +1,5 @@
 import { downloadTracker } from "./downloadTracker.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 import { downloadWorker } from "./downloadWorker.ts";
 import { withLock } from "../jobs/queue.ts";
 import { isDownloadOwnerProcess, requestDownloadOwner } from "./downloadOwnerClient.ts";
@@ -171,7 +172,7 @@ export function withDownloadStepLock<T>(ownerIds: unknown, operation: () => T | 
 function payloadOwners(payload: OwnedPayload | null) {
   const owners = [payload?.playlistId];
   const groupJobIds = payload?.albumGroupJobIds;
-  const jobIds = [payload?.jobId, ...(Array.isArray(groupJobIds) ? groupJobIds : [])];
+  const jobIds = [payload?.jobId, ...unknownList(groupJobIds)];
   for (const id of jobIds.filter((value): value is string => typeof value === "string")) {
     const job = downloadTracker.getJob(id);
     if (job) owners.push(job.playlistId || job.playlistType);

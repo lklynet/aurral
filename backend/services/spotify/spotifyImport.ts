@@ -47,7 +47,7 @@ export const getSpotifyImportSummary = (userId: number) => {
 };
 
 export const saveSpotifyImport = db.transaction(
-  (userId: number, artists: SpotifyImportArtist[], importedAt = Date.now()) => {
+  (userId: number, artists: SpotifyImportArtist[], importedAt: number = Date.now()) => {
     deleteStmt.run(userId);
     for (const artist of artists) {
       insertStmt.run(

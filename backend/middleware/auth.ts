@@ -44,7 +44,7 @@ function createSubsonicToken(password: string, salt: unknown) {
 
 const DEFAULT_PROXY_HEADER = "x-forwarded-user";
 const STREAM_TOKEN_TTL_MS = 2 * 60 * 1000;
-const streamTokenStore = new Map();
+const streamTokenStore = new Map<string, { user: RequestUser; expiresAt: number }>();
 const LOOPBACK_IPS = new Set(["127.0.0.1", "::1"]);
 const privateLanAddresses = new net.BlockList();
 for (const [address, prefix] of [

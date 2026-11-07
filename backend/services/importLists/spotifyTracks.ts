@@ -1,19 +1,29 @@
+import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
+import { lenient, lenientText } from "../integrationData.ts";
 
-interface SpotifyPlaylistTrack {
-  type?: string;
-  name?: string;
-  duration_ms?: number;
-  artists?: { name?: string }[];
-  album?: { name?: string };
-}
+const spotifyPlaylistTrackSchema = lenient(
+  v.nullable(
+    v.looseObject({
+      type: lenientText,
+      name: lenientText,
+      duration_ms: lenient(v.number()),
+      artists: lenient(v.array(v.fallback(v.looseObject({ name: lenientText }), {}))),
+      album: lenient(v.looseObject({ name: lenientText })),
+    }),
+  ),
+);
 
-interface SpotifyPlaylistItem {
-  item?: SpotifyPlaylistTrack | null;
-  track?: SpotifyPlaylistTrack | null;
-}
+export const spotifyPlaylistItemSchema = v.fallback(
+  v.nullable(
+    v.looseObject({ item: spotifyPlaylistTrackSchema, track: spotifyPlaylistTrackSchema }),
+  ),
+  null,
+);
 
-export function parseSpotifyPlaylistItems(items: (SpotifyPlaylistItem | null)[] = []) {
+export type SpotifyPlaylistItem = v.InferOutput<typeof spotifyPlaylistItemSchema>;
+
+export function parseSpotifyPlaylistItems(items: SpotifyPlaylistItem[] = []) {
   const stats = {
     sourceItems: items.length,
     itemOnly: 0,
@@ -57,7 +67,7 @@ export function parseSpotifyPlaylistItems(items: (SpotifyPlaylistItem | null)[] 
   }
   const tracks = dedupePlaylistTracks(raw);
   stats.duplicate = Math.max(0, raw.length - tracks.length);
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const [index, track] of raw.entries()) {
     const identity = buildPlaylistTrackIdentity(track);
     if (seen.has(identity)) {

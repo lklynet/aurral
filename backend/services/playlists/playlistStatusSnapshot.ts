@@ -237,7 +237,7 @@ function buildOwnerMap(
       ownerIds.add(ownerUserId);
     }
   }
-  const ownerMap = new Map();
+  const ownerMap = new Map<number, string>();
   for (const ownerUserId of ownerIds) {
     const owner = userOps.getUserById(ownerUserId);
     if (owner?.username) {

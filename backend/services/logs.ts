@@ -86,8 +86,8 @@ function enabledIntegrations() {
     Object.entries(dbOps.getSettings().integrations ?? {})
       .filter(([, service]) => {
         if (!service || typeof service !== "object") return false;
-        const enabled = Reflect.get(service, "enabled");
-        const url = Reflect.get(service, "url");
+        const enabled: unknown = Reflect.get(service, "enabled");
+        const url: unknown = Reflect.get(service, "url");
         return enabled === true || (enabled !== false && typeof url === "string" && url.length > 0);
       })
       .map(([name]) => name),

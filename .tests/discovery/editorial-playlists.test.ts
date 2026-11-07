@@ -329,10 +329,11 @@ test("duplicate Deezer tracks keep the preview and artwork of the first entry", 
 
   const { tracks } = await getEditorialPlaylist(OWNER, "1306931615");
 
+  const [track] = tracks;
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].preview_url, "/api/deezer/preview/101.mp3");
-  assert.equal(tracks[0].artworkUrl, "https://c/first.jpg");
-  assert.equal(tracks[0].deezerAlbumId, "1");
+  assert.equal(track?.preview_url, "/api/deezer/preview/101.mp3");
+  assert.equal(track?.artworkUrl, "https://c/first.jpg");
+  assert.equal(track?.deezerAlbumId, "1");
 });
 
 test("a Deezer playlist whose name is taken gets a distinct library name", async (t: import("vite-plus/test").TestContext) => {

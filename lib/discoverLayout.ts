@@ -35,13 +35,14 @@ export const normalizeDiscoverLayout = (value: unknown): DiscoverLayoutEntry[] |
   if (!Array.isArray(value)) return null;
   const remaining = new Set<DiscoverSectionId>(DISCOVER_SECTION_IDS);
   const normalized: DiscoverLayoutEntry[] = [];
-  for (const item of value) {
+  const items: unknown[] = value;
+  for (const item of items) {
     if (typeof item !== "object" || item === null) continue;
     const id: unknown = "id" in item && typeof item.id === "string" ? item.id.trim() : null;
     if (!isSectionId(id) || !remaining.has(id)) continue;
     remaining.delete(id);
     const enabled = "enabled" in item && typeof item.enabled === "boolean" ? item.enabled : true;
-    const style = "style" in item ? item.style : undefined;
+    const style: unknown = "style" in item ? item.style : undefined;
     normalized.push(
       isStyledSection(id) && isFeedStyle(style) ? { id, enabled, style } : { id, enabled },
     );

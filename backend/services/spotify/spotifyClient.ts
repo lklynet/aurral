@@ -1,4 +1,10 @@
+import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
+import { lenient, lenientText } from "../integrationData.ts";
+import {
+  spotifyPlaylistItemSchema,
+  type SpotifyPlaylistItem,
+} from "../importLists/spotifyTracks.ts";
 import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.ts";
 import { spotifyConnectionStore, type SpotifyConnection } from "./spotifyConnectionStore.ts";
 import createCache from "../apiClients/simpleCache.ts";
@@ -13,49 +19,44 @@ interface SpotifyError extends Error {
   fetchedCount?: number;
 }
 
-interface SpotifyTokenPayload {
-  access_token?: string;
-  accessToken?: string;
-  refresh_token?: string;
-  refreshToken?: string;
-  expires_in?: number;
-  expiresIn?: number;
-}
+const spotifyTokenSchema = v.fallback(
+  v.looseObject({
+    access_token: lenientText,
+    accessToken: lenientText,
+    refresh_token: lenientText,
+    refreshToken: lenientText,
+    expires_in: lenient(v.number()),
+    expiresIn: lenient(v.number()),
+  }),
+  {},
+);
 
-interface SpotifyTrackItem {
-  type: "track";
-  name?: string;
-  duration_ms?: number;
-  artists?: { name?: string }[];
-  album?: { name?: string };
-}
+const spotifyTotalSchema = lenient(v.looseObject({ total: lenient(v.number()) }));
 
-interface SpotifyEpisodeItem {
-  type: "episode";
-  name?: string;
-}
+const spotifyPlaylistSummarySchema = v.fallback(
+  v.looseObject({
+    images: lenient(
+      v.array(
+        v.fallback(v.looseObject({ url: lenientText, width: lenient(v.nullable(v.number())) }), {}),
+      ),
+    ),
+    id: lenientText,
+    name: lenientText,
+    items: spotifyTotalSchema,
+    tracks: spotifyTotalSchema,
+  }),
+  {},
+);
 
-type SpotifyTrack = SpotifyTrackItem | SpotifyEpisodeItem;
-
-interface SpotifyPlaylistItem {
-  item?: SpotifyTrack | null;
-  track?: SpotifyTrack | null;
-}
-
-interface SpotifyPlaylistSummary {
-  images?: { url?: string; width?: number | null; height?: number | null }[];
-  id?: string;
-  name?: string;
-  items?: { total?: number };
-  tracks?: { total?: number };
-}
-
-interface SpotifyPage<T> {
-  items?: T[];
-  next?: string | null;
-  total?: number;
-  offset?: number;
-}
+const spotifyPageSchema = <Item extends v.GenericSchema>(item: Item) =>
+  lenient(
+    v.looseObject({
+      items: lenient(v.array(item)),
+      next: lenient(v.nullable(v.string())),
+      total: lenient(v.number()),
+      offset: lenient(v.number()),
+    }),
+  );
 
 interface SpotifyPageSummary {
   offset: number | null;
@@ -72,7 +73,6 @@ interface SpotifyRequestOptions {
 
 interface FetchAllPagesOptions {
   searchParams?: SpotifySearchParams;
-  itemsKey?: "items";
   onPage?: (page: SpotifyPageSummary) => void;
 }
 
@@ -80,8 +80,8 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
 export const SPOTIFY_LIKED_SONGS_ID = "liked";
 const INVALID_GRANT = "invalid_grant";
-const playlistTrackCache = createCache<(SpotifyPlaylistItem | null)[]>(2 * 60, 200);
-const playlistTrackInflight = new Map<string, Promise<(SpotifyPlaylistItem | null)[]>>();
+const playlistTrackCache = createCache<SpotifyPlaylistItem[]>(2 * 60, 200);
+const playlistTrackInflight = new Map<string, Promise<SpotifyPlaylistItem[]>>();
 const playlistTrackGeneration = new Map<string, number>();
 const tokenRefreshInflight: InflightRequests = new Map();
 
@@ -179,12 +179,12 @@ async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
     }
     throw error;
   }
-  const payload: SpotifyTokenPayload = await response.json();
-  const accessToken = String(payload?.access_token || payload?.accessToken || "").trim();
+  const payload = v.parse(spotifyTokenSchema, await response.json());
+  const accessToken = String(payload.access_token || payload.accessToken || "").trim();
   const nextRefreshToken = String(
-    payload?.refresh_token || payload?.refreshToken || refreshToken,
+    payload.refresh_token || payload.refreshToken || refreshToken,
   ).trim();
-  const expiresIn = Number(payload?.expires_in ?? payload?.expiresIn ?? 3600);
+  const expiresIn = Number(payload.expires_in ?? payload.expiresIn ?? 3600);
   if (!accessToken) {
     throw new Error("Spotify token refresh returned no access token");
   }
@@ -236,7 +236,7 @@ async function spotifyRequest(
   userId: number | undefined,
   path: string | null,
   { searchParams, url: absoluteUrl }: SpotifyRequestOptions = {},
-) {
+): Promise<unknown> {
   const connection = await getValidConnection(userId);
   const url = absoluteUrl ? new URL(absoluteUrl) : new URL(`${SPOTIFY_API_BASE}${path}`);
   if (!absoluteUrl && searchParams && typeof searchParams === "object") {
@@ -286,27 +286,24 @@ async function spotifyRequest(
   return response.json();
 }
 
-async function fetchAllPages<T>(
+async function fetchAllPages<Item extends v.GenericSchema>(
   userId: number | undefined,
   path: string,
-  { searchParams, itemsKey = "items", onPage }: FetchAllPagesOptions = {},
-): Promise<T[]> {
-  const items: T[] = [];
+  item: Item,
+  { searchParams, onPage }: FetchAllPagesOptions = {},
+) {
+  const pageSchema = spotifyPageSchema(item);
+  const items: v.InferOutput<Item>[] = [];
   let nextUrl: string | null = null;
   while (true) {
-    const payload: SpotifyPage<T> = nextUrl
+    const response: unknown = nextUrl
       ? await spotifyRequest(userId, null, { url: nextUrl })
       : await spotifyRequest(userId, path, { searchParams });
-    const pageItems = Array.isArray(payload?.[itemsKey]) ? payload[itemsKey] : [];
+    const payload = v.parse(pageSchema, response);
+    const pageItems = payload?.items ?? [];
     onPage?.({
-      offset:
-        payload?.offset != null && Number.isFinite(Number(payload.offset))
-          ? Number(payload.offset)
-          : null,
-      total:
-        payload?.total != null && Number.isFinite(Number(payload.total))
-          ? Number(payload.total)
-          : null,
+      offset: payload?.offset ?? null,
+      total: payload?.total ?? null,
       itemCount: pageItems.length,
     });
     items.push(...pageItems);
@@ -317,16 +314,15 @@ async function fetchAllPages<T>(
 }
 
 export const spotifyClient = {
-  getProfile(userId: number) {
-    return spotifyRequest(userId, "/me");
-  },
-
   async listPlaylists(userId: number) {
-    const playlists = await fetchAllPages<SpotifyPlaylistSummary | null>(userId, "/me/playlists", {
+    const playlists = await fetchAllPages(userId, "/me/playlists", spotifyPlaylistSummarySchema, {
       searchParams: { limit: 50 },
     });
-    const liked: SpotifyPage<unknown> | null = canReadLikedSongs(userId)
-      ? await spotifyRequest(userId, "/me/tracks", { searchParams: { limit: 1 } })
+    const liked = canReadLikedSongs(userId)
+      ? v.parse(
+          spotifyPageSchema(v.unknown()),
+          await spotifyRequest(userId, "/me/tracks", { searchParams: { limit: 1 } }),
+        )
       : null;
     const connection = spotifyConnectionStore.getPublicStatus(userId);
     return {
@@ -339,9 +335,9 @@ export const spotifyClient = {
         },
         ...playlists
           .map((playlist) => ({
-            id: String(playlist?.id || "").trim(),
-            name: String(playlist?.name || "").trim(),
-            trackCount: Number(playlist?.items?.total ?? playlist?.tracks?.total ?? 0),
+            id: String(playlist.id || "").trim(),
+            name: String(playlist.name || "").trim(),
+            trackCount: Number(playlist.items?.total ?? playlist.tracks?.total ?? 0),
           }))
           .filter((playlist) => playlist.id && playlist.name)
           .sort((a, b) => a.name.localeCompare(b.name)),
@@ -351,10 +347,11 @@ export const spotifyClient = {
 
   async getPlaylistArtworkUrl(userId: number | undefined, playlistId: string) {
     if (playlistId === SPOTIFY_LIKED_SONGS_ID) return null;
-    const playlist: SpotifyPlaylistSummary = await spotifyRequest(
-      userId,
-      `/playlists/${encodeURIComponent(playlistId)}`,
-      { searchParams: { fields: "images" } },
+    const playlist = v.parse(
+      spotifyPlaylistSummarySchema,
+      await spotifyRequest(userId, `/playlists/${encodeURIComponent(playlistId)}`, {
+        searchParams: { fields: "images" },
+      }),
     );
     return (
       [...(playlist.images || [])]
@@ -367,7 +364,7 @@ export const spotifyClient = {
     userId: number | undefined,
     playlistId: string,
     { forceRefresh = false }: { forceRefresh?: boolean } = {},
-  ): Promise<(SpotifyPlaylistItem | null)[]> {
+  ): Promise<SpotifyPlaylistItem[]> {
     await getValidConnection(userId);
     if (playlistId === SPOTIFY_LIKED_SONGS_ID && !canReadLikedSongs(userId)) {
       throw createAuthRequiredError("Connect Spotify again to import Liked Songs.");
@@ -385,13 +382,14 @@ export const spotifyClient = {
     const onPage = (page: SpotifyPageSummary) => pages.push(page);
     const request = (
       playlistId === SPOTIFY_LIKED_SONGS_ID
-        ? fetchAllPages<SpotifyPlaylistItem | null>(userId, "/me/tracks", {
+        ? fetchAllPages(userId, "/me/tracks", spotifyPlaylistItemSchema, {
             searchParams: { limit: 50 },
             onPage,
           })
-        : fetchAllPages<SpotifyPlaylistItem | null>(
+        : fetchAllPages(
             userId,
             `/playlists/${encodeURIComponent(playlistId)}/items`,
+            spotifyPlaylistItemSchema,
             {
               searchParams: {
                 limit: 50,

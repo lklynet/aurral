@@ -1,4 +1,5 @@
 import path from "path";
+import * as v from "valibot";
 import fs from "fs/promises";
 import type { ICommonTagsResult, IAudioMetadata } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
@@ -30,7 +31,22 @@ export type DownloadTrackFields = {
   manualReplacementSearch?: boolean;
 };
 
-export type AurralIdentity = { artistMbid?: string; albumMbid?: string; trackMbid?: string };
+const aurralIdentitySchema = v.object({
+  artistMbid: v.optional(v.string()),
+  albumMbid: v.optional(v.string()),
+  trackMbid: v.optional(v.string()),
+});
+
+export type AurralIdentity = v.InferOutput<typeof aurralIdentitySchema>;
+
+const parseIdentity = (text: string) => {
+  try {
+    const parsed = v.safeParse(aurralIdentitySchema, JSON.parse(text));
+    return parsed.success ? parsed.output : null;
+  } catch {
+    return null;
+  }
+};
 
 export type IdentitySource = {
   native?: IAudioMetadata["native"];
@@ -93,23 +109,25 @@ export function stringifyStringListJson(value: unknown) {
 }
 
 export function buildAurralIdentity(metadata: DownloadTrackFields = {}) {
-  const identity = Object.fromEntries(
-    (["artistMbid", "albumMbid", "trackMbid"] as const)
-      .map((key) => [key, String(metadata?.[key] || "").trim()])
-      .filter(([, value]) => value),
-  );
+  const identity: AurralIdentity = {};
+  for (const key of ["artistMbid", "albumMbid", "trackMbid"] as const) {
+    const value = String(metadata?.[key] || "").trim();
+    if (value) identity[key] = value;
+  }
   return Object.keys(identity).length > 0 ? identity : null;
 }
 
-export function parseAurralIdentityComment(value: unknown) {
-  const comments = Array.isArray(value) ? value : [value];
-  for (const entry of comments) {
-    const text = String(typeof entry === "object" ? entry?.text || "" : entry || "").trim();
+const commentText = (entry: unknown) =>
+  String(
+    entry && typeof entry === "object" ? ("text" in entry && entry.text) || "" : entry || "",
+  ).trim();
+
+function parseAurralIdentityComment(value: unknown) {
+  for (const entry of Array.isArray(value) ? value : [value]) {
+    const text = commentText(entry);
     if (!text.startsWith(AURRAL_IDENTITY_PREFIX)) continue;
-    try {
-      const parsed = JSON.parse(text.slice(AURRAL_IDENTITY_PREFIX.length));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-    } catch {}
+    const identity = parseIdentity(text.slice(AURRAL_IDENTITY_PREFIX.length));
+    if (identity) return identity;
   }
   return null;
 }
@@ -118,27 +136,23 @@ const nativeTags = (metadata: IdentitySource) =>
   Object.values(metadata?.native || {}).flatMap((tags) => (Array.isArray(tags) ? tags : []));
 
 // Older versions kept the marker in the comment, then the grouping tag.
-export function readLegacyAurralIdentity(metadata: IdentitySource) {
-  const nativeComments = nativeTags(metadata)
+function readLegacyAurralIdentity(metadata: IdentitySource) {
+  const nativeComments: unknown[] = nativeTags(metadata)
     .filter((tag) => ["txxx:comment", "comm"].includes(String(tag?.id || "").toLowerCase()))
     .map((tag) => tag.value);
   const found = [
     parseAurralIdentityComment(nativeComments),
     parseAurralIdentityComment(metadata?.common?.comment),
     parseAurralIdentityComment(metadata?.common?.grouping),
-  ].filter(Boolean);
-  return found.length ? Object.assign({}, ...found) : null;
+  ].filter((identity) => identity !== null);
+  return found.length ? found.reduce((merged, identity) => ({ ...merged, ...identity })) : null;
 }
 
 const OWN_IDENTITY_TAG = new RegExp(`(^|:)${AURRAL_IDENTITY_TAG}$`, "i");
 
 export function readAurralIdentity(metadata: IdentitySource): AurralIdentity | null {
   const tag = nativeTags(metadata).find((entry) => OWN_IDENTITY_TAG.test(String(entry?.id || "")));
-  let own = null;
-  try {
-    const parsed = JSON.parse(String(tag?.value ?? ""));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) own = parsed;
-  } catch {}
+  const own = parseIdentity(String(tag?.value ?? ""));
   const legacy = readLegacyAurralIdentity(metadata);
   return own || legacy ? { ...(legacy || {}), ...(own || {}) } : null;
 }

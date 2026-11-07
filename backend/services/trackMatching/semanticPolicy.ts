@@ -456,7 +456,7 @@ function asList(value: unknown) {
     .filter(Boolean);
 }
 
-const namePatterns = new Map();
+const namePatterns = new Map<string, { first: string; pattern: RegExp } | null>();
 
 function namePattern(name: string) {
   if (!namePatterns.has(name)) {
@@ -464,7 +464,7 @@ function namePattern(name: string) {
     if (namePatterns.size >= 4096) namePatterns.clear();
     namePatterns.set(
       name,
-      words.length
+      words[0]
         ? {
             first: words[0],
             pattern: new RegExp(
@@ -772,7 +772,9 @@ export function isPromoGroup(inner: string) {
 // compares core titles after variant compatibility is checked.
 export function stripPromoDescriptors(value: string | null | undefined) {
   let text = String(value || "").trim();
-  text = text.replace(/[([]([^)\]]*)[)\]]/g, (group, inner) => (isPromoGroup(inner) ? " " : group));
+  text = text.replace(/[([]([^)\]]*)[)\]]/g, (group: string, inner: string) =>
+    isPromoGroup(inner) ? " " : group,
+  );
   return text.replace(/\s+/g, " ").trim();
 }
 
@@ -782,7 +784,7 @@ export function getCoreTitle(value: string | null | undefined) {
   // Leading track numbers ("07. Song", "01 - Song"). A bare space after the
   // number is not enough, so numeric artist names ("50 Cent") survive.
   text = text.replace(/^\d{1,3}(?:\s*[-._)\]]|\s+-\s+)\s*/, "");
-  text = text.replace(/[([]([^)\]]*)[)\]]/g, (group, inner) =>
+  text = text.replace(/[([]([^)\]]*)[)\]]/g, (group: string, inner: string) =>
     isDescriptorGroup(inner) ? " " : group,
   );
   // Trailing dash-separated descriptors: "Song - Live at Wembley",

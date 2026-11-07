@@ -13,7 +13,8 @@ type InflightEntry = {
 
 export type InflightRequests = Map<string, InflightEntry>;
 
-const getAbortReason = (signal: AbortSignal | undefined) => signal?.reason || createAbortError();
+const getAbortReason = (signal: AbortSignal | undefined): unknown =>
+  signal?.reason || createAbortError();
 
 export const runSharedInflight = <T>(
   inflight: InflightRequests,

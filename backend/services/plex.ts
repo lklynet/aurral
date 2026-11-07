@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { unknownList } from "../../lib/unknownList.ts";
 import * as v from "valibot";
 import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -24,7 +25,6 @@ const playlistStatusSchema = v.nullable(v.object({ error: v.nullable(v.string())
 const pendingRemovalsSchema = v.nullable(v.array(v.string()));
 const record = v.record(v.string(), v.unknown());
 const object = (value: unknown) => (v.is(record, value) ? value : {});
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown) =>
   typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
 
@@ -129,7 +129,7 @@ async function serverAccounts(url: string, token: string) {
       headers: plexHeaders(token),
       timeoutMs: TIMEOUT_MS,
     });
-    return list(object(object(data).MediaContainer).Account).map((account) =>
+    return unknownList(object(object(data).MediaContainer).Account).map((account) =>
       text(object(account).id),
     );
   } catch (error) {
@@ -166,12 +166,12 @@ async function musicSectionFor(server: PlexServer, folder: string) {
     headers: plexHeaders(server.token),
     timeoutMs: TIMEOUT_MS,
   });
-  const section = list(object(object(data).MediaContainer).Directory)
+  const section = unknownList(object(object(data).MediaContainer).Directory)
     .map(object)
     .find(
       (directory) =>
         directory.type === "artist" &&
-        list(directory.Location).some((location) => {
+        unknownList(directory.Location).some((location) => {
           const root = text(object(location).path).replace(/\/+$/, "");
           return root && (folder === root || folder.startsWith(`${root}/`));
         }),
@@ -186,7 +186,7 @@ async function plexPlaylistKeys(server: PlexServer, title: string) {
     headers: plexHeaders(server.token),
     timeoutMs: TIMEOUT_MS,
   });
-  return list(object(object(data).MediaContainer).Metadata)
+  return unknownList(object(object(data).MediaContainer).Metadata)
     .map(object)
     .filter((playlist) => playlist.title === title && playlist.smart !== true)
     .map((playlist) => text(playlist.ratingKey));

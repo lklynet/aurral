@@ -86,6 +86,22 @@ const zipLookupSchema = v.looseObject({
   ),
 });
 
+const nominatimSearchSchema = v.array(
+  v.looseObject({
+    lat: coordinateSchema,
+    lon: coordinateSchema,
+    address: v.optional(
+      v.looseObject({
+        city: optionalString,
+        town: optionalString,
+        village: optionalString,
+        state: optionalString,
+        country_code: optionalString,
+      }),
+    ),
+  }),
+);
+
 const ipLookupSchema = v.looseObject({
   error: v.optional(v.unknown()),
   reason: v.nullish(v.string()),
@@ -345,9 +361,12 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
         },
         signal,
       });
-      const result = Array.isArray(response.data) ? response.data[0] : null;
+      const [result] = readOne(nominatimSearchSchema, response.data, {
+        service: "Nominatim",
+        endpoint: "/search",
+      });
       if (!result) return null;
-      const address = result.address || {};
+      const address = result.address ?? {};
       const location: NearbyLocation = {
         source: "zip",
         resolved: true,
@@ -355,9 +374,7 @@ const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
         city: address.city || address.town || address.village || null,
         region: address.state || null,
         regionCode: null,
-        countryCode: address.country_code
-          ? String(address.country_code).toUpperCase()
-          : normalizedCountryCode || null,
+        countryCode: address.country_code?.toUpperCase() || normalizedCountryCode || null,
         latitude: result.lat != null ? Number(result.lat) : null,
         longitude: result.lon != null ? Number(result.lon) : null,
       };
