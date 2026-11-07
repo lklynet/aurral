@@ -11,21 +11,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 2,
-    "features": [
-      "discover",
-      "flows",
-      "activity",
-      "review",
-      "trackDownloads",
-      "linkSearch",
-      "downloadCancel",
-      "shareImports",
-      "trending",
-      "flowAutoDownload",
-      "pluginActions",
-      "radio",
-      "playQueue"
-    ]
+    "features": []
   }
 }
 ```
@@ -38,11 +24,14 @@ Clients ignore unknown fields and feature names.
 `appVersion` identifies the Aurral build. Nightly and preview build identifiers
 are not API versions. The Subsonic protocol version is separate.
 
-Feature names describe implemented server capabilities. They do not grant a
-permission or guarantee that an optional service is configured or available.
-The feature list is the same before and after sign-in.
+Feature names describe server capabilities added after version 2. They do not
+grant a permission or guarantee that an optional service is configured or
+available. The feature list is the same before and after sign-in.
 
-| Feature                  | Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+Every version 2 server has the capabilities below, so `features` does not list
+them. Version 1 servers listed each one under its feature name.
+
+| Version 1 feature        | Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `discover`               | Discover recommendations and trending artists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `flows`                  | Flow creation and playlist status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -63,9 +52,9 @@ The feature list is the same before and after sign-in.
 | `browsePlaylists`        | Playlists to browse. `GET /api/discover/playlists/made-for-you` returns arrays `discovery` and `mixes`, built for the signed-in user. `GET /api/discover/playlists` returns arrays `forYou` and `categories`; each category has `id`, `name`, `group` (`genre`, `mood`, or `decade`), and `playlists`. Every playlist has `provider` (`deezer`, `mix`, or `discovery`), `id`, `name`, numeric `trackCount`, and nullable `description`, `curator`, and `artworkUrl`. `GET /api/discover/playlists/:provider/:playlistId` adds `tracks`, where a track in the Library has `owned` in the shape radio returns and other tracks play `preview_url`. `POST` to the same path plus `/library` saves it: a Deezer playlist syncs daily, a discovery playlist downloads its missing songs, and a mix saves its Library tracks. Mixes are also read-only Subsonic playlists with `mix:` ids. |
 | `playlistTrackArtwork`   | Every track from `GET /api/playlists/jobs/:playlistId` has nullable `artworkUrl`: the track's custom artwork, or else its album cover. A track with custom artwork also has `customArtworkUrl` and nullable `defaultArtworkUrl`, the album cover. Album covers come from `GET /api/artists/release-group/:mbid/cover/image`, which redirects to the image and returns `404` when the album has none.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-Clients check for a feature before using its routes. An absent name means the
-server does not promise that capability. Features implemented in later releases
-receive their own names. Aurral adds each name only when its routes are available.
+Each capability added after version 2 gets its own name, and Aurral adds the
+name only when its routes are available. Clients check for that name before
+using those routes. An absent name means the server does not promise it.
 
 The registry is `backend/config/apiContract.ts`. A capability change updates that
 registry and this reference. The response checks in `.tests/api/` pin the fields

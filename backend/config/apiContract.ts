@@ -1,23 +1,4 @@
-export const API_CONTRACT = {
+export const API_CONTRACT: { version: number; features: string[] } = {
   version: 2,
-  features: [
-    "discover",
-    "flows",
-    "playlistCoverTemplates",
-    "activity",
-    "review",
-    "trackDownloads",
-    "linkSearch",
-    "downloadCancel",
-    "shareImports",
-    "trending",
-    "flowAutoDownload",
-    "pluginActions",
-    "radio",
-    "playQueue",
-    "loudness",
-    "albumPlaySorts",
-    "browsePlaylists",
-    "playlistTrackArtwork",
-  ],
+  features: [],
 };
