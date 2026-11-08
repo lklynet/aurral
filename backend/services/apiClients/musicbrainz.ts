@@ -290,7 +290,7 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
     Math.max(0, Number.isFinite(parsedScanPageBudget) ? parsedScanPageBudget : 1),
   );
 
-  let state = musicbrainzAppearsOnCache.get(mbid) || {
+  let state: AppearsOnScanState = musicbrainzAppearsOnCache.get(mbid) || {
     byReleaseGroupId: new Map(),
     nextOffset: 0,
     complete: false,

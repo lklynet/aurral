@@ -55,6 +55,7 @@ import { useArtistTint } from "../components/CollectionHeader";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
 import StatePanel from "../components/StatePanel";
+import { asApiError } from "../utils/api/core.ts";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
 const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$get());
@@ -299,8 +300,8 @@ function DiscoverPage() {
   };
 
   const handleDiscoverSave = () => {
-    saveDiscoverLayout(draftSections).catch((err) => {
-      showError(err?.message || "Failed to save layout");
+    saveDiscoverLayout(draftSections).catch((err: unknown) => {
+      showError(asApiError(err)?.message || "Failed to save layout");
     });
   };
 

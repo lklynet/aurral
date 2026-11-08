@@ -47,6 +47,7 @@ import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
 import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
+import { routeStateOf } from "../../navigation/routeState.ts";
 
 interface PlaylistDetailProps {
   playlist: StaticPlaylist;
@@ -80,7 +81,7 @@ export default function PlaylistDetailPage() {
   useDocumentTitle(playlist?.name || "Playlist");
 
   if (!playlist) {
-    const waiting = (loading && !status) || location.state?.created;
+    const waiting = (loading && !status) || Boolean(routeStateOf(location.state).created);
     return (
       <div className="library-page native-library-page playlist-page">
         <div className="native-library-content">

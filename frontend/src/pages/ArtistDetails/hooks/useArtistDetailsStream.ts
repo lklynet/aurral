@@ -600,8 +600,8 @@ export function useArtistDetailsStream(
     const releaseGroups = [...(artistReleaseGroups || []), ...(artistAppearsOnReleaseGroups || [])];
     const seeded: Record<string, string> = {};
     for (const releaseGroup of releaseGroups) {
-      const coverUrl = releaseGroup?.coverUrl || releaseGroup?._coverUrl;
-      if (releaseGroup?.id && coverUrl) {
+      const coverUrl = "coverUrl" in releaseGroup ? releaseGroup.coverUrl : null;
+      if (releaseGroup.id && typeof coverUrl === "string" && coverUrl) {
         seeded[releaseGroup.id] = coverUrl;
       }
     }

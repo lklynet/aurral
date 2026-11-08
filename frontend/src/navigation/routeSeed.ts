@@ -1,3 +1,6 @@
+import { isRecord } from "../../../lib/isRecord.ts";
+import { routeStateOf } from "./routeState.ts";
+
 export type RouteSeed = {
   name?: string;
   title?: string;
@@ -7,5 +10,17 @@ export type RouteSeed = {
   trackCount?: number;
 };
 
-export const readRouteSeed = (state: { seed?: RouteSeed } | null | undefined) =>
-  state?.seed && typeof state.seed === "object" && !Array.isArray(state.seed) ? state.seed : null;
+const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+
+export const readRouteSeed = (state: unknown): RouteSeed | null => {
+  const seed = routeStateOf(state).seed;
+  if (!isRecord(seed)) return null;
+  return {
+    name: text(seed.name),
+    title: text(seed.title),
+    artistName: text(seed.artistName),
+    artworkUrl: text(seed.artworkUrl),
+    coverUrl: text(seed.coverUrl),
+    trackCount: typeof seed.trackCount === "number" ? seed.trackCount : undefined,
+  };
+};

@@ -41,6 +41,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import { useNavBeta } from "../navigation/navBeta.ts";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
@@ -213,7 +214,8 @@ function Layout({ children, headerActions }: LayoutProps) {
   }, [bootstrap?.ticketmasterConfigured, user]);
 
   const handleMobileBack = useCallback(() => {
-    if ((window.history.state?.idx ?? 0) > 0) {
+    const historyState: unknown = window.history.state;
+    if (isRecord(historyState) && Number(historyState.idx) > 0) {
       navigate(-1);
       return;
     }

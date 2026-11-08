@@ -1,3 +1,5 @@
+import { isRecord } from "../../lib/isRecord.ts";
+
 const DOCUMENT_VERSION = 2;
 const APPEARANCES: ReadonlySet<unknown> = new Set(["system", "light", "dark"]);
 const MODES = ["light", "dark"] as const;
@@ -18,9 +20,6 @@ export class ThemeValidationError extends Error {}
 type SeedRole = (typeof SEED_ROLES)[number];
 type ThemeSeed = Partial<Record<SeedRole, string>>;
 type UserTheme = { id: string; name: string; light?: ThemeSeed; dark?: ThemeSeed };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 function normalizeColor(value: unknown) {
   if (typeof value !== "string") return null;

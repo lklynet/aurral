@@ -389,7 +389,7 @@ const appRoutes = createRoutesFromElements(
   </Route>,
 );
 
-let appRouter = null;
+let appRouter: ReturnType<typeof createBrowserRouter> | null = null;
 
 function AppRouter() {
   appRouter ??= createBrowserRouter(appRoutes, {

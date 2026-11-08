@@ -26,7 +26,7 @@ import { useArtworkWash } from "../../utils/imageColors";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
-import { useParams, useLocation } from "react-router";
+import { useParams } from "react-router";
 import { AlertCircle, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
@@ -35,6 +35,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
+import { useArtistRouteState } from "./hooks/useArtistRouteState.ts";
 import { usePreviewPlayer } from "./hooks/usePreviewPlayer";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
 import { ARTIST_DETAILS_APPEARS_ON_LIMIT, allReleaseTypes } from "./constants";
@@ -64,16 +65,11 @@ const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 function ArtistDetailsPage() {
   const { mbid } = useParams();
-  const { state: locationState } = useLocation();
-  const artistNameFromNav = locationState?.artistName;
-  const initialLibraryHint = useMemo(
-    () => ({
-      existsInLibrary:
-        typeof locationState?.inLibrary === "boolean" ? locationState.inLibrary : undefined,
-      libraryArtist: locationState?.libraryArtist || null,
-    }),
-    [locationState?.inLibrary, locationState?.libraryArtist],
-  );
+  const {
+    artistName: artistNameFromNav,
+    artistImage: artistImageFromNav,
+    initialLibraryHint,
+  } = useArtistRouteState();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { hasPermission } = useAuth();
@@ -131,10 +127,7 @@ function ArtistDetailsPage() {
     ],
     initialLibraryHint,
     appearsOnLimit: ARTIST_DETAILS_APPEARS_ON_LIMIT,
-    seedImage:
-      typeof locationState?.artistImage === "string"
-        ? normalizeMediaUrl(locationState.artistImage) || null
-        : null,
+    seedImage: artistImageFromNav ? normalizeMediaUrl(artistImageFromNav) || null : null,
   });
   const canAddArtist = hasPermission("addArtist");
   const {

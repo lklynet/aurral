@@ -49,7 +49,7 @@ function libraryRefs(item: ShareItem | undefined) {
       "artistName",
       "albumTitle",
     ]
-      .map((field) => [field, item?.[field] == null ? "" : String(item[field]).trim()])
+      .map((field) => [field, item?.[field] == null ? "" : String(item[field]).trim()] as const)
       .filter(([, value]) => value),
   );
 }

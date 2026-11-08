@@ -1,4 +1,5 @@
 import { UUID_REGEX } from "../../../lib/uuid.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 export const DISCOVERY_MANUAL_REFRESH_KEY = "aurral.discovery.manualRefreshPending";
 
@@ -20,10 +21,8 @@ export function shouldTrackDiscoverPath(path: unknown) {
   return Boolean(getDiscoverArtistPath(path));
 }
 
-export function pickDiscoverRecentPageState(
-  state: DiscoverRecentPageState | null | undefined,
-): DiscoverRecentPageState {
-  if (!state || typeof state !== "object") return {};
+export function pickDiscoverRecentPageState(state: unknown): DiscoverRecentPageState {
+  if (!isRecord(state)) return {};
   const next: DiscoverRecentPageState = {};
   if (state.artistName) next.artistName = String(state.artistName);
   if (typeof state.inLibrary === "boolean") next.inLibrary = state.inLibrary;

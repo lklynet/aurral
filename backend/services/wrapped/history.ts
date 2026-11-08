@@ -24,11 +24,10 @@ import {
   type WrappedPeriod,
   type WrappedPlay,
 } from "./metrics.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 const MAX_PLAYS = 100_000;
 const PAGE_SIZE = 500;
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 const object = (value: unknown) => (isRecord(value) ? value : {});
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 const number = (value: unknown) => (Number.isFinite(Number(value)) ? Number(value) : 0);

@@ -7,6 +7,8 @@ import {
   pickDiscoverRecentPageState,
   shouldTrackDiscoverPath,
 } from "../utils/discoverRecentNavigation";
+import { isRecord } from "../../../lib/isRecord.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 const DISCOVER_RECENT_PAGES_KEY = "aurral.discover.recentPages";
 const DISCOVER_FLOW_ACTIVE_KEY = "aurral.discover.flowActive";
@@ -28,7 +30,7 @@ type DiscoverRecentValue = {
   recentPages: DiscoverRecentPage[];
   discoverFlowActive: boolean;
   isDiscoverSectionActive: boolean;
-  addRecentPage: (path: string, state?: DiscoverRouteState) => void;
+  addRecentPage: (path: string, state?: unknown) => void;
   clearRecentPages: () => void;
   shouldRecordNavigation: (fromLocation?: RouterLocation) => boolean;
 };
@@ -211,17 +213,22 @@ function readDiscoverRecentPages() {
   try {
     const raw = localStorage.getItem(DISCOVER_RECENT_PAGES_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return filterDiscoverRecentPages(parsed)
-      .filter((entry) => entry?.label)
-      .slice(0, DISCOVER_RECENT_PAGES_LIMIT)
-      .map((entry) => ({
-        id: entry.id || entry.path,
-        path: normalizeDiscoverPath(entry.path),
-        label: String(entry.label),
-        state: pickDiscoverRecentPageState(entry.state),
-      }));
+    const parsed: unknown = JSON.parse(raw);
+    return unknownList(parsed)
+      .filter(isRecord)
+      .flatMap((entry) =>
+        typeof entry.path === "string" && isDiscoverRecentArtistPath(entry.path) && entry.label
+          ? [
+              {
+                id: typeof entry.id === "string" && entry.id ? entry.id : entry.path,
+                path: normalizeDiscoverPath(entry.path),
+                label: String(entry.label),
+                state: pickDiscoverRecentPageState(entry.state),
+              },
+            ]
+          : [],
+      )
+      .slice(0, DISCOVER_RECENT_PAGES_LIMIT);
   } catch {
     return [];
   }
@@ -244,7 +251,7 @@ function DiscoverFlowLocationSync({
 }: {
   recentPages: DiscoverRecentPage[];
   setDiscoverFlowActive: (active: boolean) => void;
-  addRecentPage: (path: string, state?: DiscoverRouteState) => void;
+  addRecentPage: (path: string, state?: unknown) => void;
 }) {
   const location = useLocation();
 
@@ -268,7 +275,7 @@ function DiscoverFlowLocationSync({
     }
 
     if (isDiscoverBrowsePath(pathname) && shouldTrackDiscoverPath(path)) {
-      addRecentPage(normalizedPath, location.state || {});
+      addRecentPage(normalizedPath, location.state);
     }
   }, [addRecentPage, location, recentPages, setDiscoverFlowActive]);
 
@@ -308,12 +315,12 @@ export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
   }, [syncFromStorage]);
 
   const addRecentPage = useCallback(
-    (path: string, state: DiscoverRouteState = {}) => {
+    (path: string, state?: unknown) => {
       const normalizedPath = normalizeDiscoverPath(path);
       if (!normalizedPath || !shouldTrackDiscoverPath(normalizedPath)) return;
 
-      const label = buildDiscoverRecentLabel(normalizedPath, state);
       const pageState = pickDiscoverRecentPageState(state);
+      const label = buildDiscoverRecentLabel(normalizedPath, pageState);
       setRecentPages((current) => {
         if (
           current[0]?.path === normalizedPath &&

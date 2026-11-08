@@ -117,7 +117,7 @@ type AlbumLibraryState =
 const EMPTY_SEARCH_PAGES: CatalogSearchPage[] = [];
 const EMPTY_COVERS: SearchImageMap = {};
 const combineLibraryLookup = (queries: { data?: ArtistsInLibrary }[]): ArtistsInLibrary =>
-  Object.assign({}, ...queries.map((query) => query.data || {}));
+  queries.reduce<ArtistsInLibrary>((merged, query) => ({ ...merged, ...query.data }), {});
 const toCoverMap = (covers: Awaited<ReturnType<typeof getReleaseGroupCoversBatch>>) =>
   Object.fromEntries(
     Object.entries(covers).map(([mbid, cover]): [string, string | null] => [

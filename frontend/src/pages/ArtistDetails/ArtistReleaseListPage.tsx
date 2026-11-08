@@ -1,7 +1,7 @@
 import ArtworkImage from "../../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Link, useLocation, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { DotLoader } from "../../components/DotLoader";
 import { SkeletonReleaseCard, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import {
@@ -25,6 +25,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
+import { useArtistRouteState } from "./hooks/useArtistRouteState.ts";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
 import { getReleaseGroupLink } from "../../utils/searchNavigation";
 import { OptionalLink } from "../../components/RouteLink";
@@ -98,7 +99,7 @@ const sortReleaseGroups = <T extends ReleaseGroup>(
 function ArtistReleaseListPage({ mode = "releases" }) {
   const isAppearsOn = mode === "appearsOn";
   const { mbid } = useParams();
-  const { state } = useLocation();
+  const { state, artistName: artistNameFromNav = "", initialLibraryHint } = useArtistRouteState();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
@@ -138,15 +139,11 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     mbid: null,
     offset: null,
   });
-  const artistNameFromNav = state?.artistName || "";
   const canAddAlbum = hasPermission("addAlbum");
 
   const stream = useArtistDetailsStream(mbid, artistNameFromNav, {
     visibleCoverIds,
-    initialLibraryHint: {
-      existsInLibrary: typeof state?.inLibrary === "boolean" ? state.inLibrary : undefined,
-      libraryArtist: state?.libraryArtist || null,
-    },
+    initialLibraryHint,
     appearsOnLimit: isAppearsOn ? RELEASE_PAGE_SIZE : null,
   });
 

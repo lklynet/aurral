@@ -51,6 +51,7 @@ import {
   mediaSessionArtwork,
   mediaSessionPosition,
 } from "../utils/mediaSession";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
 const SHARED_MUTED_KEY = "aurral.preview.muted";
@@ -792,8 +793,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof BroadcastChannel === "undefined") return undefined;
     const channel = new BroadcastChannel(PLAYER_CHANNEL);
-    channel.onmessage = (event) => {
-      if (event.data?.type !== "playing") return;
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (!isRecord(event.data) || event.data.type !== "playing") return;
       ownsQueueRef.current = false;
       const snapshot = engine.getSnapshot();
       if (snapshot.isPlaying || snapshot.isStarting) engine.pause();

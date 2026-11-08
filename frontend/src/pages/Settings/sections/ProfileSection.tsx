@@ -40,9 +40,10 @@ function useConnectedNotice() {
     if (!provider) return;
     showSuccess(`Connected your ${CONNECTED_LABELS[provider] || provider} account.`);
     params.delete("connected");
+    const state: unknown = location.state;
     navigate(
       { pathname: location.pathname, search: `?${params}`, hash: location.hash },
-      { replace: true, state: location.state },
+      { replace: true, state },
     );
   }, [location, navigate, showSuccess]);
 }
