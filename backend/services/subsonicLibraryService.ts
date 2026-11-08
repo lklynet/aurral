@@ -577,7 +577,10 @@ function toPlaylistSong(
     : null;
   if (owned) {
     return {
-      ...toSong(indexFocusedLibrary(owned.library, viewer), owned.track),
+      ...toSong(
+        { ...owned.library, starredAt: viewer.starredAt, ratings: viewer.ratings },
+        owned.track,
+      ),
       parent: idFor(kind, playlist.id),
       ...(customCoverArt && { coverArt: customCoverArt }),
     };
