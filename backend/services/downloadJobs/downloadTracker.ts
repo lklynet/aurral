@@ -118,8 +118,19 @@ const liveJobStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE id = ?`,
 );
 const liveJobsByIdStmt = db.prepare<[string], DownloadJobsRow>(
-  `SELECT * FROM ${JOBS_TABLE} WHERE id IN (SELECT value FROM json_each(?))`,
+  `SELECT * FROM ${JOBS_TABLE} WHERE id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`,
 );
+const liveDoneNamesStmt = db.prepare<[], Pick<DownloadJobsRow, "id" | "track_name">>(
+  `SELECT id, track_name FROM ${JOBS_TABLE} WHERE status = 'done' AND final_path IS NOT NULL`,
+);
+const liveDonePathsStmt = db.prepare<[string], Pick<DownloadJobsRow, "id" | "final_path">>(
+  `SELECT id, final_path FROM ${JOBS_TABLE}
+   WHERE status = 'done' AND final_path IS NOT NULL AND instr(final_path, ?) > 0`,
+);
+const trackNameKey = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const requestGroupStatusesStmt = db.prepare<[string], Pick<DownloadJobsRow, "status">>(
   `SELECT status FROM ${JOBS_TABLE} WHERE request_group_id = ? AND upgrade_for_job_id IS NULL`,
 );
@@ -2057,6 +2068,26 @@ export class DownloadTracker {
     return Boolean(liveJobStmt.get(id ?? null));
   }
 
+  getDoneByTrackName(trackName: string | null | undefined) {
+    const key = trackNameKey(trackName);
+    return [...this.jobs.values()].filter(
+      (job) =>
+        job.status === "done" &&
+        typeof job.finalPath === "string" &&
+        trackNameKey(job.trackName) === key,
+    );
+  }
+
+  getDoneByFinalPath(finalPath: string) {
+    const resolved = path.resolve(finalPath);
+    return [...this.jobs.values()].filter(
+      (job) =>
+        job.status === "done" &&
+        typeof job.finalPath === "string" &&
+        path.resolve(job.finalPath) === resolved,
+    );
+  }
+
   getDoneWithFinalPath(limit = 500) {
     const max =
       Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 500;
@@ -2173,6 +2204,8 @@ export class DownloadTracker {
 }
 
 const liveJobs = (rows: DownloadJobsRow[]) => rows.map(rowToJob);
+const liveJobsById = (rows: Pick<DownloadJobsRow, "id">[]) =>
+  rows.length ? liveJobs(liveJobsByIdStmt.all(JSON.stringify(rows.map((row) => row.id)))) : [];
 const emptyLiveStats = () => ({
   total: 0,
   pending: 0,
@@ -2199,6 +2232,20 @@ function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
     return new Map(liveJobs(rows).map((job) => [job.id, job]));
   }
   if (name === "getAll") return liveJobs(selectAllStmt.all());
+  if (name === "getDoneByTrackName") {
+    const key = trackNameKey(first);
+    return liveJobsById(
+      liveDoneNamesStmt.all().filter((row) => trackNameKey(row.track_name) === key),
+    );
+  }
+  if (name === "getDoneByFinalPath") {
+    const resolved = path.resolve(String(first));
+    return liveJobsById(
+      liveDonePathsStmt
+        .all(path.basename(resolved))
+        .filter((row) => row.final_path !== null && path.resolve(row.final_path) === resolved),
+    );
+  }
   if (name === "getByPlaylistType") {
     const limit = Number(second);
     const rows =
@@ -2265,6 +2312,8 @@ const LIVE_READ_METHODS = new Set([
   "getJob",
   "getJobs",
   "getAll",
+  "getDoneByTrackName",
+  "getDoneByFinalPath",
   "getByPlaylistType",
   "getByPlaylistId",
   "getByStatus",

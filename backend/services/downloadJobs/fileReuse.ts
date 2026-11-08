@@ -257,8 +257,7 @@ async function findAurralSource(
       .filter(Boolean),
   );
   const candidates = [];
-  for (const job of downloadTracker.getAll()) {
-    if (!job || job.status !== "done") continue;
+  for (const job of downloadTracker.getDoneByTrackName(track.trackName)) {
     if (options.allowLidarr === false && job.managedBy === "lidarr") continue;
     if (excludeJobIds.has(String(job.id || ""))) continue;
     if (!job.finalPath || typeof job.finalPath !== "string") continue;
@@ -296,16 +295,9 @@ export function jobDownloadedItsFile(job: DownloadJob | null | undefined) {
 }
 
 function noPlaylistDownloadedFile(filePath: string, jobId: string) {
-  const resolved = path.resolve(filePath);
   return !downloadTracker
-    .getAll()
-    .some(
-      (job) =>
-        job?.id !== jobId &&
-        job.playlistType !== "library" &&
-        jobDownloadedItsFile(job) &&
-        path.resolve(job.finalPath!) === resolved,
-    );
+    .getDoneByFinalPath(filePath)
+    .some((job) => job.id !== jobId && job.playlistType !== "library" && jobDownloadedItsFile(job));
 }
 
 function retargetJobsToPath(oldPath: string, newPath: string, albumName: string | null = null) {
@@ -1000,16 +992,15 @@ export async function reuseTrackForPlaylist(
         .map((id) => String(id || "").trim())
         .filter(Boolean),
     );
-    const activeSource = downloadTracker
-      .getAll()
-      .find(
-        (job) =>
-          job &&
-          (job.status === "pending" || job.status === "downloading") &&
-          !excluded.has(String(job.id || "")) &&
-          job.playlistType !== "library" &&
-          tracksShareLibraryMembership(track, job),
-      );
+    const activeSource = sortReusableJobs([
+      ...downloadTracker.getByStatus("pending"),
+      ...downloadTracker.getByStatus("downloading"),
+    ]).find(
+      (job) =>
+        !excluded.has(String(job.id || "")) &&
+        job.playlistType !== "library" &&
+        tracksShareLibraryMembership(track, job),
+    );
     if (activeSource) {
       return {
         reused: false,
