@@ -795,11 +795,20 @@ test("restart reuses the queued album pipeline instead of submitting another gra
 test("a web-side tracker reads job changes made by the flow owner", () => {
   const tracker = new DownloadTracker();
   const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
+  const accented = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Ébène" },
+    "playlist",
+  );
+  const withNul = createTrackedJob(tracker, { artistName: "Artist", trackName: "Nul" }, "playlist");
   const flowConnection = new Database(isolatedState.dbPath);
   try {
-    flowConnection
-      .prepare("UPDATE download_jobs SET status = 'done', final_path = ? WHERE id = ?")
-      .run("/music/Artist/Song.flac", id);
+    const finish = flowConnection.prepare(
+      "UPDATE download_jobs SET status = 'done', final_path = ?, track_name = ? WHERE id = ?",
+    );
+    finish.run("/music/Artist/Song.flac", "Song", id);
+    finish.run("/music/Artist/Ebene.flac", "\tÉBÈNE ", accented);
+    finish.run("/music/Artist/Nul.flac", "SONG\u0000É", withNul);
     const previousEnv = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = "production";
@@ -808,20 +817,25 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
         [
           tracker.getDoneByTrackName("  SONG ").map((job) => job.id),
           tracker.getDoneByTrackName("Other").map((job) => job.id),
+          tracker.getDoneByTrackName("ébène").map((job) => job.id),
+          tracker.getDoneByTrackName("song\u0000é").map((job) => job.id),
           tracker.getDoneByFinalPath("/music/Artist/../Artist/Song.flac").map((job) => job.id),
           tracker.getDoneByFinalPath("/music/Other.flac").map((job) => job.id),
         ],
-        [[id], [], [id], []],
+        [[id], [], [accented], [withNul], [id], []],
       );
       assert.deepEqual(
         [...tracker.getJobs([id, "missing"])].map(([key, job]) => [key, job.status]),
         [[id, "done"]],
       );
-      assert.equal(tracker.getStats().done, 1);
-      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist?.done, 1);
+      assert.equal(tracker.getStats().done, 3);
+      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist?.done, 3);
       assert.deepEqual(
-        tracker.getByPlaylistType("playlist").map((job) => job.id),
-        [id],
+        tracker
+          .getByPlaylistType("playlist")
+          .map((job) => job.id)
+          .sort(),
+        [id, accented, withNul].sort(),
       );
     } finally {
       process.env.NODE_ENV = previousEnv;
