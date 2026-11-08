@@ -117,6 +117,9 @@ const persistedRevisionStmt = db.prepare<[], Pick<DownloadJobsRevisionRow, "revi
 const liveJobStmt = db.prepare<unknown[], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE id = ?`,
 );
+const liveJobsByIdStmt = db.prepare<[string], DownloadJobsRow>(
+  `SELECT * FROM ${JOBS_TABLE} WHERE id IN (SELECT value FROM json_each(?))`,
+);
 const requestGroupStatusesStmt = db.prepare<[string], Pick<DownloadJobsRow, "status">>(
   `SELECT status FROM ${JOBS_TABLE} WHERE request_group_id = ? AND upgrade_for_job_id IS NULL`,
 );
@@ -1582,6 +1585,10 @@ export class DownloadTracker {
     return this.jobs.get(id!) || null;
   }
 
+  getJobs(ids: string[]) {
+    return new Map(ids.flatMap((id) => this.jobs.get(id) ?? []).map((job) => [job.id, job]));
+  }
+
   removeJob(id: string) {
     const job = this.jobs.get(id);
     if (!job) return false;
@@ -2187,6 +2194,10 @@ function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
     const row = liveJobStmt.get(first ?? null);
     return row ? rowToJob(row) : null;
   }
+  if (name === "getJobs") {
+    const rows = liveJobsByIdStmt.all(JSON.stringify(unknownList(first).map(String)));
+    return new Map(liveJobs(rows).map((job) => [job.id, job]));
+  }
   if (name === "getAll") return liveJobs(selectAllStmt.all());
   if (name === "getByPlaylistType") {
     const limit = Number(second);
@@ -2252,6 +2263,7 @@ function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
 
 const LIVE_READ_METHODS = new Set([
   "getJob",
+  "getJobs",
   "getAll",
   "getByPlaylistType",
   "getByPlaylistId",

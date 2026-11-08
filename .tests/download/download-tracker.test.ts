@@ -802,6 +802,10 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
     try {
       process.env.NODE_ENV = "production";
       assert.equal(tracker.getJob(id)?.status, "done");
+      assert.deepEqual(
+        [...tracker.getJobs([id, "missing"])].map(([key, job]) => [key, job.status]),
+        [[id, "done"]],
+      );
       assert.equal(tracker.getStats().done, 1);
       assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist?.done, 1);
       assert.deepEqual(
