@@ -195,7 +195,7 @@ export async function reclassifyQualityJobs({ enqueue = false }: { enqueue?: boo
   return { classified, queued };
 }
 
-const UPGRADE_SOURCE_IDS = new Set(["slskd", "usenet", "deemix"]);
+const UPGRADE_SOURCE_IDS = new Set(["slskd", "usenet", "tidarr", "deemix"]);
 
 function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));

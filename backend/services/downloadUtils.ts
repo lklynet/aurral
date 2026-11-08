@@ -7,6 +7,7 @@ import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 import { getAlbumByMbid } from "./providers/brainzmashProvider.ts";
+import { isNzbSource } from "./usenetClientCommon.ts";
 import { musicbrainzGetReleaseTrackCredits } from "./apiClients/musicbrainz.ts";
 import { formatArtistCredit } from "../../lib/artistCredit.ts";
 
@@ -197,11 +198,11 @@ export function resolveBlockedJobSourceFilename(job: BlockedJobFields) {
   const remote = String(job?.remoteFilename || "").trim() || null;
   const staging = String(job?.stagingPath || "").trim();
   const staged = staging ? path.basename(staging) || null : null;
-  return job?.downloadSource === "usenet" ? staged || remote : remote || staged;
+  return isNzbSource(job?.downloadSource) ? staged || remote : remote || staged;
 }
 
 export function resolveBlockedJobReleaseTitle(job: BlockedJobFields) {
-  if (job?.downloadSource !== "usenet") return null;
+  if (!isNzbSource(job?.downloadSource)) return null;
   return String(job?.releaseTitle || "").trim() || null;
 }
 

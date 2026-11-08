@@ -70,6 +70,7 @@ export default defineConfig({
             { slug: "integrations/slskd" },
             { slug: "integrations/ytdlp" },
             { slug: "integrations/deemix" },
+            { slug: "integrations/tidarr" },
             { slug: "integrations/usenet" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },

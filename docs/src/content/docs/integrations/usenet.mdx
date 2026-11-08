@@ -1,6 +1,6 @@
 ---
-title: Usenet (Prowlarr and SABnzbd, NZBGet, or Tidarr)
-description: Download tracks and albums from Usenet through Prowlarr and SABnzbd or NZBGet, or from Tidal through Tidarr.
+title: Usenet (Prowlarr and SABnzbd or NZBGet)
+description: Download tracks and albums from Usenet through Prowlarr and SABnzbd or NZBGet.
 ---
 
 Usenet downloads need two parts:
@@ -37,7 +37,7 @@ Settings save automatically after each change.
 
 After the connection test, Aurral lists the Usenet indexers from Prowlarr. Open each indexer and set its **Priority**. A lower number has a higher priority.
 
-Each indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected, or to Tidarr when neither is. Choose a client to send every release from that indexer to it, even from a manual search with another client.
+Each indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected. Choose a client to send every release from that indexer to it, even from a manual search with another client.
 
 ## SABnzbd
 
@@ -65,18 +65,6 @@ Each indexer also has a **Download client**. **Automatic** sends its releases to
 Aurral skips NZBGet's duplicate check for the releases it sends. Upgrading tracks one at a time can grab the same album release more than once, and NZBGet would otherwise delete the repeat as a duplicate.
 
 If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **NZBGet**.
-
-## Tidarr
-
-[Tidarr](https://github.com/cstaelen/tidarr) downloads albums from Tidal. It needs Tidarr 1.2.9 or later. It works like a Usenet indexer and a SABnzbd client, so Aurral reaches it through Prowlarr.
-
-1. In Prowlarr, add a **Generic Newznab** indexer. Set **URL** to the Tidarr URL, for example `http://tidarr:8484`, **API Path** to `/api/lidarr`, and **API Key** to Tidarr's API key from **Settings > Security** in Tidarr.
-2. In Aurral, open **Settings > Downloads** and add **Tidarr** with the same URL and API key.
-3. If you also use SABnzbd or NZBGet, set the Tidarr indexer's **Download client** in **Settings > Downloads > Prowlarr** to **Tidarr**.
-
-Tidarr saves each album under `/shared/nzb_downloads` and reports it to Aurral under `/downloads`. Mount Tidarr's `/shared/nzb_downloads` folder in Aurral at `/downloads`. To mount it elsewhere, add a mapping in **Settings > Downloads > Remote path mappings** from `/downloads`, with **Applies to** set to **Tidarr**.
-
-Tidarr lists each album in four qualities, from FLAC 24-bit to 96 kbps M4A. Aurral downloads each album once, in the best quality your quality profile allows, and moves on to another album or source if it does not fill the request. Tidarr removes an album's files when Aurral removes the download.
 
 ## Behavior
 
@@ -110,18 +98,19 @@ Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playl
 
 ## Download source priority and fallback
 
-Aurral can use slskd, Usenet, deemix, and yt-dlp together. Each source has a **Source priority**, and Aurral tries lower numbers first. The defaults are:
+Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source has a **Source priority**, and Aurral tries lower numbers first. The defaults are:
 
-| Source                     | Default priority |
-| -------------------------- | ---------------- |
-| slskd                      | `10`             |
-| deemix                     | `15`             |
-| SABnzbd, NZBGet, or Tidarr | `20`             |
-| yt-dlp                     | `50`             |
+| Source            | Default priority |
+| ----------------- | ---------------- |
+| slskd             | `10`             |
+| deemix            | `15`             |
+| SABnzbd or NZBGet | `20`             |
+| Tidarr            | `20`             |
+| yt-dlp            | `50`             |
 
 If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
 
-Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, and deemix, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, and deemix, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
+Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, Tidarr, and deemix, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, Tidarr, and deemix, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
 
 The release is the edition that Aurral asked for, with its full tracklist. A source supplies it only when its folder, album, or download holds every track of that release and no other song. A deluxe edition with a bonus track and a shorter edition are different releases. A second copy of a song in another format is fine. Aurral downloads or imports only the tracks you want from it. Tracks that no release fills continue on their own through all sources, in priority order. If the metadata service cannot be reached before the release step, Aurral checks again each minute for up to 30 minutes, then searches for each track. If it cannot be reached after a release has finished downloading, Aurral keeps the download and checks again each minute for up to 30 minutes before it searches for each track.
 

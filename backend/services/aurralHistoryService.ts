@@ -129,6 +129,7 @@ const resolveTrackDownloadHistorySource = (downloadSource: unknown, downloadClie
       .toLowerCase();
     return client === "sabnzbd" || client === "tidarr" ? client : "nzbget";
   }
+  if (normalized === "tidarr") return "tidarr";
   if (normalized === "ytdlp") return "ytdlp";
   if (normalized === "deemix") return "deemix";
   if (normalized === "slskd") return "slskd";

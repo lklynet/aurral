@@ -45,6 +45,7 @@ import { discardHeldFile } from "./downloadJobs/reviewFiles.ts";
 import { processShareDownload } from "./shareLinks/download.ts";
 import { processPluginPipelinePayload } from "./plugins/pluginDownloadSource.ts";
 import { pluginIdFromSource } from "./plugins/pluginStore.ts";
+import { isNzbSource } from "./usenetClientCommon.ts";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
@@ -461,7 +462,7 @@ async function awaitAttemptRelease(payload: PipelinePayload) {
 
 async function discardSourceWork(payload: PipelinePayload) {
   if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
-  else if (payload.source === "usenet") await discardUsenetWork(payload as UsenetStepPayload);
+  else if (isNzbSource(payload.source)) await discardUsenetWork(payload as UsenetStepPayload);
   else if (payload.source === "deemix") await discardDeemixWork(payload as DeemixStepPayload);
 }
 
@@ -570,10 +571,12 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
         )
       : null;
   }
-  if (payload.source === "usenet") {
-    if (!isSourceConfigured("usenet")) {
+  if (isNzbSource(payload.source)) {
+    if (!isSourceConfigured(payload.source)) {
       const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "Usenet is not configured") : null;
+      return job
+        ? failOrTryNextSource(payload, job, `${getSourceLabel(payload.source)} is not configured`)
+        : null;
     }
     return processUsenetPipelinePayload(payload as UsenetStepPayload, { failOrTryNextSource });
   }

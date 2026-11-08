@@ -28,6 +28,7 @@ const indexerSchema = v.looseObject({
   enable: v.optional(v.boolean()),
   supportsSearch: v.optional(v.boolean()),
   priority: v.optional(v.number()),
+  fields: v.nullish(v.array(v.looseObject({ name: v.string(), value: v.unknown() }))),
   capabilities: v.nullish(
     v.looseObject({
       categories: categoriesSchema,
@@ -222,6 +223,24 @@ function hasMusicCategory(supported: number[], configuredCategories = DEFAULT_MU
   );
 }
 
+// Aurral searches Tidarr itself, so a Tidarr indexer in Prowlarr is left out.
+const isTidarrIndexer = (indexer: ProwlarrIndexer) =>
+  indexer.fields?.some(
+    (field) => field.name === "apiPath" && /\/api\/lidarr\/*$/u.test(String(field.value ?? "")),
+  ) === true;
+
+function listMusicUsenetIndexers(indexers: ProwlarrIndexer[], settings: ProwlarrSettings) {
+  return indexers
+    .filter((indexer) => !isTidarrIndexer(indexer))
+    .map((indexer) => normalizeIndexer(indexer, settings))
+    .filter(
+      (entry) =>
+        entry.protocol === "usenet" &&
+        entry.supportsSearch &&
+        hasMusicCategory(entry.categories, settings.categories),
+    );
+}
+
 function normalizeIndexer(indexer: ProwlarrIndexer, settings: ProwlarrSettings = getSettings()) {
   const override = settings.indexers[String(indexer.id)];
   const musicParams = indexer.capabilities?.musicSearchParams ?? [];
@@ -391,14 +410,7 @@ export class ProwlarrClient {
         service: "Prowlarr",
         endpoint: "/api/v1/indexer",
       });
-      const usenet = indexers
-        .map((entry) => normalizeIndexer(entry, settings))
-        .filter(
-          (entry) =>
-            entry.protocol === "usenet" &&
-            entry.supportsSearch &&
-            hasMusicCategory(entry.categories, settings.categories),
-        );
+      const usenet = listMusicUsenetIndexers(indexers, settings);
       const result = {
         ok: true,
         configured: true,
@@ -445,18 +457,10 @@ export class ProwlarrClient {
         }),
       };
     }
-    return indexerCache.indexers
-      .map((entry) => normalizeIndexer(entry, settings))
-      .filter(
-        (entry) =>
-          entry.protocol === "usenet" &&
-          entry.supportsSearch &&
-          hasMusicCategory(entry.categories, settings.categories),
-      )
-      .sort((left, right) => {
-        if (left.priority !== right.priority) return left.priority - right.priority;
-        return left.name.localeCompare(right.name);
-      });
+    return listMusicUsenetIndexers(indexerCache.indexers, settings).sort((left, right) => {
+      if (left.priority !== right.priority) return left.priority - right.priority;
+      return left.name.localeCompare(right.name);
+    });
   }
 
   async getEnabledUsenetIndexers() {

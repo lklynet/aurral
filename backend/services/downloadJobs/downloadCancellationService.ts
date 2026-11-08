@@ -3,7 +3,7 @@ import { unknownList } from "../../../lib/unknownList.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import type { UsenetClientKey } from "../usenetClientCommon.ts";
+import { isNzbSource, type UsenetClientKey } from "../usenetClientCommon.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { DownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
@@ -265,7 +265,7 @@ async function cancelDeemixWork(payloads: CancellationPayload[], jobs: Cancellat
 }
 
 async function cancelUsenetWork(
-  clientKey: UsenetClientKey,
+  clientKey: UsenetClientKey | "tidarr",
   label: string,
   payloads: CancellationPayload[],
   jobs: CancellationJob[],
@@ -279,7 +279,7 @@ async function cancelUsenetWork(
   );
   const failures: unknown[] = [];
   for (const payload of payloads) {
-    if (payload?.source === "usenet" && payload?.downloadClient === clientKey) {
+    if (isNzbSource(payload?.source) && payload?.downloadClient === clientKey) {
       const id = normalizeId(payload.nzbId);
       if (id) ids.add(id);
     }

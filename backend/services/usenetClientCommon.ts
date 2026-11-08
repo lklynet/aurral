@@ -1,9 +1,16 @@
-export const USENET_CLIENT_KEYS = ["sabnzbd", "nzbget", "tidarr"] as const;
+export const USENET_CLIENT_KEYS = ["sabnzbd", "nzbget"] as const;
 
 export type UsenetClientKey = (typeof USENET_CLIENT_KEYS)[number];
 
 export const isUsenetClientKey = (key: unknown): key is UsenetClientKey =>
   USENET_CLIENT_KEYS.some((entry) => entry === key);
+
+export const NZB_SOURCE_IDS = ["usenet", "tidarr"] as const;
+
+export type NzbSourceId = (typeof NZB_SOURCE_IDS)[number];
+
+export const isNzbSource = (source: unknown): source is NzbSourceId =>
+  NZB_SOURCE_IDS.some((entry) => entry === source);
 
 export function normalizeBaseUrl(value: unknown) {
   return String(value || "")

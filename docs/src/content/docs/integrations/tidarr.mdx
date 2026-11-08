@@ -1,0 +1,31 @@
+---
+title: Tidarr
+description: Download albums from Tidal through Tidarr.
+---
+
+[Tidarr](https://github.com/cstaelen/tidarr) downloads albums from Tidal. Aurral searches Tidarr and sends it downloads directly, so it does not need Prowlarr. It needs Tidarr 1.2.9 or later, signed in to Tidal.
+
+## Setup
+
+1. Run Tidarr and sign in to Tidal from its web UI.
+2. Mount Tidarr's `/shared/nzb_downloads` folder in Aurral at `/downloads`.
+3. Open **Settings > Downloads > Tidarr** and turn on **Enable Tidarr**.
+4. Set **Server URL** to your Tidarr address, for example `http://tidarr:8484`, and **API key** to the key from **Settings > Security** in Tidarr.
+5. If necessary, set **Source priority**. The default is `20`.
+6. Select **Test connection**. It warns you when Tidarr is not signed in to Tidal.
+
+If you added Tidarr to Prowlarr as an indexer before, Aurral leaves that indexer out. You can remove it.
+
+## Path mapping
+
+Tidarr saves each album under `/shared/nzb_downloads` and reports it to Aurral under `/downloads`. To mount the folder elsewhere, add a mapping in **Settings > Downloads > Remote path mappings** from `/downloads`, with **Applies to** set to **Tidarr**.
+
+## Behavior
+
+Tidarr lists each album in four qualities, from FLAC 24-bit to 96 kbps M4A. Aurral downloads each album once, in the best quality your quality profile allows.
+
+Tidarr downloads whole albums. For a release, Aurral tries only Tidal albums with as many tracks as the release, and checks the downloaded files like any other source. For a single track, Aurral downloads at most two albums that hold it, then tries the next source.
+
+After Aurral processes an album, it removes the album from Tidarr along with the files it did not import.
+
+See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

@@ -19,7 +19,8 @@ const [
   { downloadTracker },
   { processUsenetPipelinePayload },
   { nzbgetClient },
-  { SabnzbdClient, sabnzbdClient, tidarrClient },
+  { SabnzbdClient, sabnzbdClient },
+  { TidarrClient },
   { getEnabledDownloadSources },
   { rankUsenetReleases, selectRankedUsenetCandidates },
   { dbOps },
@@ -31,6 +32,7 @@ const [
   () => import("../../backend/services/usenetOrchestrator.ts"),
   () => import("../../backend/services/nzbgetClient.ts"),
   () => import("../../backend/services/sabnzbdClient.ts"),
+  () => import("../../backend/services/tidarrClient.ts"),
   () => import("../../backend/services/downloadSourceService.ts"),
   () => import("../../backend/services/downloadJobs/usenetReleaseSearch.ts"),
   () => import("../../backend/db/helpers/index.ts"),
@@ -78,6 +80,19 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
           protocol: "usenet",
           supportsSearch: true,
           priority: 10,
+          capabilities: { categories: [{ id: 3000 }] },
+        },
+        {
+          id: 5,
+          name: "Tidarr",
+          enable: true,
+          protocol: "usenet",
+          supportsSearch: true,
+          priority: 1,
+          fields: [
+            { name: "baseUrl", value: "http://tidarr:8484" },
+            { name: "apiPath", value: "/api/lidarr" },
+          ],
           capabilities: { categories: [{ id: 3000 }] },
         },
         {
@@ -266,7 +281,7 @@ async function runPipeline(payload: UsenetPayload): Promise<UsenetResult> {
   if (failure) return failure;
   assert.ok(result);
   assert.equal(result.jobId, payload.jobId);
-  assert.equal(result.source, "usenet");
+  assert.equal(result.source, payload.source);
   return result as UsenetResult;
 }
 
@@ -537,16 +552,69 @@ test("SABnzbd client does not claim a failed queue or history deletion succeeded
   assert.equal(await client.deleteHistoryItem("SABnzbd_nzo_history"), false);
 });
 
-test("Tidarr takes NZBs through the SABnzbd calls it answers", async () => {
-  const modes: (string | null)[] = [];
+const TIDARR_QUALITIES = [
+  ["hires_lossless", "FLAC 24bit", "3040"],
+  ["lossless", "FLAC", "3040"],
+  ["high", "AAC-320", "3010"],
+  ["low", "MP3-96", "3050"],
+] as const;
+
+// Tidarr 1.2.9 lists each album once per quality, as its /api/lidarr search writes it.
+function tidarrFeed(albums: { id: string; artist: string; title: string; tracks: number }[]) {
+  const items = albums.flatMap((album) =>
+    TIDARR_QUALITIES.map(
+      ([quality, name, category]) => `    <item>
+      <title>${album.artist} - ${album.title} (2020)  ${name} [WEB]-Tidarr (${album.tracks} tracks)</title>
+      <guid isPermaLink="false">${album.id}-${quality}</guid>
+      <link>http://tidarr/album/${album.id}</link>
+      <category>Audio &gt; Lossless</category>
+      <enclosure url="http://tidarr/api/lidarr/download/${album.id}/${quality}" length="1000" type="application/x-nzb"/>
+      <newznab:attr name="artist" value="${album.artist}"/>
+      <newznab:attr name="album" value="${album.title}"/>
+      <newznab:attr name="size" value="${album.tracks * 40 * 1024 * 1024}"/>
+      <newznab:attr name="category" value="${category}"/>
+      <newznab:attr name="year" value="2020"/>
+      <newznab:attr name="tracks" value="${album.tracks}"/>
+      <newznab:attr name="type" value="ALBUM"/>
+    </item>`,
+    ),
+  );
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newzbin.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <title>Tidarr</title>
+    <newznab:response offset="0" total="${albums.length}"/>
+${items.join("\n")}
+  </channel>
+</rss>`;
+}
+
+async function fakeTidarr(
+  albums: Parameters<typeof tidarrFeed>[0],
+  { noToken = false }: { noToken?: boolean } = {},
+) {
+  const searches: (string | null)[] = [];
   const server = await createMockHttpServer((req, res) => {
     const url = new URL(req.url || "/", "http://mock");
-    const mode = url.searchParams.get("mode");
-    modes.push(mode);
     const chunks: Buffer[] = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
+      if (url.searchParams.get("apikey") !== "tidarr-key") return sendJson(res, 403, {});
+      if (url.pathname === "/api/settings") return sendJson(res, 200, { noToken });
+      if (url.pathname === "/api/lidarr") {
+        searches.push(url.searchParams.get("q"));
+        res.writeHead(200, { "Content-Type": "application/xml" });
+        return res.end(tidarrFeed(albums));
+      }
+      const download = /^\/api\/lidarr\/download\/(\d+)\/(\w+)$/.exec(url.pathname);
+      if (download) {
+        res.writeHead(200, { "Content-Type": "application/x-nzb" });
+        return res.end(
+          `<nzb><head><meta type="title">Tidarr Album ${download[1]}|${download[2]}</meta></head></nzb>`,
+        );
+      }
       if (url.pathname !== "/api/sabnzbd/api") return sendJson(res, 404, {});
+      const mode = url.searchParams.get("mode");
       if (mode === "version") return sendJson(res, 200, { version: "3.0.0" });
       if (mode === "get_config") {
         return sendJson(res, 200, {
@@ -563,39 +631,59 @@ test("Tidarr takes NZBs through the SABnzbd calls it answers", async () => {
       sendJson(res, 400, { error: "Invalid mode" });
     });
   });
+  return { ...server, searches };
+}
+
+const useTidarr = (url: string) =>
+  dbOps.updateSettings({
+    integrations: { tidarr: { enabled: true, url, apiKey: "tidarr-key" } },
+  });
+
+test("Tidarr searches Tidal, hands over its NZB, and warns when it is not signed in", async () => {
+  const server = await fakeTidarr(
+    [{ id: "123", artist: "Daft Punk", title: "Discovery", tracks: 14 }],
+    { noToken: true },
+  );
   try {
-    const client = new SabnzbdClient(
-      { enabled: true, url: server.url, apiKey: "tidarr-key" },
-      "tidarr",
-    );
+    const client = new TidarrClient({ enabled: true, url: server.url, apiKey: "tidarr-key" });
     const status = await client.testConnection({ force: true });
     assert.equal(status.ok, true, status.message);
     assert.equal(status.downloadPath, "/downloads");
+    assert.equal("warning" in status && status.warning, true);
+    assert.match(status.message, /not signed in to Tidal/);
+
+    const releases = await client.search("Daft Punk Discovery");
+    assert.deepEqual(
+      releases.map((release) => [release.guid, release.tracks, release.categories]),
+      TIDARR_QUALITIES.map(([quality, , category]) => [`123-${quality}`, 14, [Number(category)]]),
+    );
+    assert.equal(
+      releases[0]?.title,
+      "Daft Punk - Discovery (2020)  FLAC 24bit [WEB]-Tidarr (14 tracks)",
+    );
+
     const appended = await client.appendNzb({
-      name: "Daft Punk - Discovery (2001) FLAC [WEB]-Tidarr (14 tracks)",
-      content: Buffer.from(
-        '<nzb><head><meta type="title">Tidarr Album 123|lossless</meta></head></nzb>',
-      ),
+      name: releases[1]?.title,
+      content: await client.fetchNzb(releases[1]?.guid),
     });
     assert.equal(appended.nzbId, "tidarr_nzo_123");
-    assert.ok(modes.every((mode) => ["version", "get_config", "addfile"].includes(mode || "")));
   } finally {
     await server.close();
   }
 });
 
 test("an indexer's download client takes its releases, and other indexers keep the automatic one", async () => {
-  const configure = (tidarrEnabled: boolean) =>
+  const configure = (nzbgetEnabled: boolean) =>
     dbOps.updateSettings({
       integrations: {
         prowlarr: {
           enabled: true,
           url: "http://prowlarr.local",
           apiKey: "prowlarr-key",
-          indexers: { "2": { enabled: true, priority: 25, downloadClient: "tidarr" } },
+          indexers: { "2": { enabled: true, priority: 25, downloadClient: "nzbget" } },
         },
         sabnzbd: { enabled: true, url: "http://sabnzbd.local", apiKey: "sab-key" },
-        tidarr: { enabled: tidarrEnabled, url: "http://tidarr.local", apiKey: "tidarr-key" },
+        nzbget: { enabled: nzbgetEnabled, url: "http://nzbget.local" },
       },
     });
   configure(true);
@@ -606,8 +694,8 @@ test("an indexer's download client takes its releases, and other indexers keep t
     nzbId: "SABnzbd_nzo_1",
     nzbName: "release.nzb",
   }));
-  vi.spyOn(tidarrClient, "appendNzb").mockImplementation(async () => ({
-    nzbId: "tidarr_nzo_123",
+  vi.spyOn(nzbgetClient, "appendNzb").mockImplementation(async () => ({
+    nzbId: 123,
     nzbName: "release.nzb",
   }));
   const download = (indexerId: number, manualDownloadClient: string | null = null) =>
@@ -637,12 +725,12 @@ test("an indexer's download client takes its releases, and other indexers keep t
     });
 
   assert.equal((await download(1)).downloadClient, "sabnzbd");
-  assert.equal((await download(2)).downloadClient, "tidarr");
-  assert.equal((await download(2, "sabnzbd")).downloadClient, "tidarr");
+  assert.equal((await download(2)).downloadClient, "nzbget");
+  assert.equal((await download(2, "sabnzbd")).downloadClient, "nzbget");
 
   configure(false);
   const nzbsFetched = nzbRequests.mock.calls.length;
-  assert.equal((await download(2)).error, "Tidarr is not set up");
+  assert.equal((await download(2)).error, "NZBGet is not set up");
   assert.equal(nzbRequests.mock.calls.length, nzbsFetched);
 });
 
@@ -674,6 +762,18 @@ test("download source selection orders enabled sources by priority", () => {
   assert.deepEqual(
     getEnabledDownloadSources().map((source) => source.id),
     ["usenet", "slskd"],
+  );
+
+  dbOps.updateSettings({
+    integrations: {
+      prowlarr: { enabled: true, url: "http://prowlarr.local", apiKey: "prowlarr-key" },
+      tidarr: { enabled: true, url: "http://tidarr.local", apiKey: "tidarr-key", priority: 7 },
+      ytdlp: { enabled: false },
+    },
+  });
+  assert.deepEqual(
+    getEnabledDownloadSources().map((source) => [source.id, source.priority]),
+    [["tidarr", 7]],
   );
 });
 
@@ -767,46 +867,84 @@ for (const albumGrab of [false, true]) {
   });
 }
 
-test("Usenet tries each Tidarr album once, at its best allowed quality", async () => {
-  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [
-    musicIndexer,
+test("Tidarr tries each album once, at its best allowed quality", async () => {
+  const server = await fakeTidarr([
+    { id: "123", artist: "Tidal Band", title: "Album", tracks: 10 },
+    { id: "456", artist: "Tidal Band", title: "Album", tracks: 10 },
   ]);
-  const qualities = [
-    ["hires_lossless", "FLAC 24bit", 3040],
-    ["lossless", "FLAC", 3040],
-    ["high", "AAC-320", 3010],
-    ["low", "MP3-96", 3050],
-  ] as const;
-  const search = vi.spyOn(prowlarrClient, "search").mockImplementation(async () =>
-    ["123", "456"].flatMap((album) =>
-      qualities.map(([quality, name, category]) =>
-        releaseFixture({
-          guid: `${album}-${quality}`,
-          title: `Tidal Band - Album (2020)  ${name} [WEB]-Tidarr (10 tracks)`,
-          downloadUrl: `https://prowlarr.invalid/1/download?album=${album}&quality=${quality}`,
-          indexerId: 1,
-          size: 100 * 1024 * 1024,
-          categories: [category],
-        }),
-      ),
-    ),
-  );
-  for (const [denied, expected] of [
-    [null, ["123-hires_lossless", "456-hires_lossless"]],
-    ["123-hires_lossless", ["456-hires_lossless"]],
-  ] as const) {
-    const jobId = createTrackedJob(
-      downloadTracker,
-      { artistName: "Tidal Band", trackName: "First", albumName: "Album", durationMs: 180000 },
-      "usenet-tidarr",
-    );
-    assert.ok(jobId != null);
-    if (denied) downloadTracker.recordDeniedSource(jobId, "usenet", denied);
-    const result = await searchUntilDone({ phase: "search", source: "usenet", jobId });
-    assert.ok(result.candidates);
-    assert.deepEqual(result.candidates.map((entry) => entry.raw.guid).sort(), expected);
+  try {
+    useTidarr(server.url);
+    for (const [denied, expected] of [
+      [null, ["123-hires_lossless", "456-hires_lossless"]],
+      ["123-hires_lossless", ["456-hires_lossless"]],
+    ] as const) {
+      const jobId = createTrackedJob(
+        downloadTracker,
+        { artistName: "Tidal Band", trackName: "First", albumName: "Album", durationMs: 180000 },
+        "tidarr-qualities",
+      );
+      assert.ok(jobId != null);
+      if (denied) downloadTracker.recordDeniedSource(jobId, "tidarr", denied);
+      const result = await searchUntilDone({ phase: "search", source: "tidarr", jobId });
+      assert.ok(result.candidates);
+      assert.deepEqual(result.candidates.map((entry) => entry.raw.guid).sort(), expected);
+    }
+    assert.equal(server.searches[0], "Tidal Band Album");
+  } finally {
+    await server.close();
   }
-  search.mockRestore();
+});
+
+test("a Tidarr album grab skips albums whose track count differs from the release", async (t) => {
+  const server = await fakeTidarr([
+    { id: "123", artist: "Tidal Duo", title: "Album", tracks: 3 },
+    { id: "456", artist: "Tidal Duo", title: "Album", tracks: 2 },
+  ]);
+  try {
+    useTidarr(server.url);
+    const ids = ["First", "Second"].map((trackName, index) =>
+      createTrackedJob(
+        downloadTracker,
+        {
+          artistName: "Tidal Duo",
+          trackName,
+          trackNumber: index + 1,
+          durationMs: 180000,
+          albumName: "Album",
+          albumMbid: "tidarr-album",
+          requestGroupId: "tidarr-album",
+        },
+        "library",
+      ),
+    );
+    await serveGroups(t, [
+      brainzmashGroup({
+        id: "tidarr-album",
+        title: "Album",
+        artist: "Tidal Duo",
+        releases: [
+          {
+            id: "tidarr-album-release",
+            tracks: ["First", "Second"].map((title) => ({ title, durationMs: 180000 })),
+          },
+        ],
+      }),
+    ]);
+    const result = await searchUntilDone({
+      phase: "search",
+      source: "tidarr",
+      jobId: requireFixture(ids[0]),
+      albumGrab: true,
+      releaseMbid: "tidarr-album-release",
+    });
+    assert.ok(result.candidates);
+    assert.deepEqual(
+      result.candidates.map((entry) => entry.raw.guid),
+      ["456-hires_lossless"],
+    );
+  } finally {
+    await server.close();
+  }
 });
 
 test("a Usenet track search tries the requested album before a single of the track within a quality tier", async () => {

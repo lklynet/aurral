@@ -4,6 +4,7 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
+import { isNzbSource } from "../usenetClientCommon.ts";
 import type { DownloadJob, HeldForReviewDraft } from "./downloadTracker.ts";
 
 type ReviewFileJob = Pick<
@@ -43,7 +44,7 @@ export async function discardReviewFile(job: ReviewFileJob) {
           reason: safeLogDiagnostic(error),
         });
       });
-    } else if (job.downloadSource === "usenet") {
+    } else if (isNzbSource(job.downloadSource)) {
       const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
       preserveSource = (await removeReviewedUsenetDownload(job)) === false;
     }

@@ -67,60 +67,6 @@ export const sabnzbdSettings = Object.freeze({
   testConnection: true,
 });
 
-export const tidarrSettings = Object.freeze({
-  key: "tidarr",
-  label: "Tidarr",
-  subtitle: "Tidal",
-  enabledDefault: false,
-  testRequiresEnabled: true,
-  fields: Object.freeze([
-    Object.freeze({ key: "enabled", label: "Enable Tidarr", type: "toggle" }),
-    Object.freeze({
-      key: "url",
-      label: "Server URL",
-      type: "url",
-      required: true,
-      section: "Connection",
-      placeholder: "http://localhost:8484",
-    }),
-    Object.freeze({
-      key: "apiKey",
-      label: "API key",
-      type: "password",
-      required: true,
-      secret: true,
-      section: "Connection",
-    }),
-    Object.freeze({
-      key: "priority",
-      label: "Source priority",
-      type: "number",
-      min: 1,
-      max: 1000,
-      section: "Downloads",
-    }),
-  ]),
-  defaults: Object.freeze({
-    enabled: false,
-    url: "",
-    apiKey: "",
-    priority: 20,
-  }),
-  validation: Object.freeze({ required: ["url", "apiKey"], url: ["url"] }),
-  testConnection: true,
-});
-
-const TIDARR_RELEASE_GUID = /^(\d+)-(?:hires_lossless|lossless|high|low)$/;
-
-// Tidarr lists an album once per quality, and every listing downloads as the same item.
-export function usenetReleaseIdentity(guid: string | null | undefined) {
-  const id = String(guid || "")
-    .trim()
-    .toLowerCase();
-  const tidalAlbum = TIDARR_RELEASE_GUID.exec(id)?.[1];
-  return tidalAlbum ? `tidarr:${tidalAlbum}` : id;
-}
-
 const SABNZBD_API_CLIENTS = {
   sabnzbd: { name: "SABnzbd", apiPath: "/api" },
   tidarr: { name: "Tidarr", apiPath: "/api/sabnzbd/api" },
@@ -143,6 +89,7 @@ type SabnzbdConnection = {
   configured: boolean;
   connected: boolean;
   message: string;
+  warning?: boolean;
   version?: string | null;
   downloadPath?: string | null;
   directories?: Awaited<ReturnType<SabnzbdClient["getDownloadDirectories"]>>;
@@ -501,4 +448,3 @@ export class SabnzbdClient {
 }
 
 export const sabnzbdClient = new SabnzbdClient();
-export const tidarrClient = new SabnzbdClient(null, "tidarr");

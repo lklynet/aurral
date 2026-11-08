@@ -7,6 +7,7 @@ import { activePluginSources, pluginSourceLabel } from "./plugins/pluginStore.ts
 const SOURCE_LABELS = {
   slskd: "Soulseek",
   usenet: "Usenet",
+  tidarr: "Tidarr",
   deemix: "deemix",
   ytdlp: "yt-dlp",
   share: "Aurral share",
@@ -37,6 +38,10 @@ function getUsenetPriority() {
   return normalizePriority(dbOps.getSettings()?.integrations?.[key]?.priority, 20);
 }
 
+function getTidarrPriority() {
+  return normalizePriority(getIntegrations().tidarr?.priority, 20);
+}
+
 function getDeemixPriority() {
   const deemix = getIntegrations().deemix || {};
   return normalizePriority(deemix.priority, 15);
@@ -59,8 +64,7 @@ export function getDownloadSourceStatus() {
   const nzbgetConfigured = nzbgetClient.isConfigured();
   const sabnzbdConfigured = sabnzbdClient.isConfigured();
   const tidarrConfigured = tidarrClient.isConfigured();
-  const usenetConfigured =
-    prowlarrConfigured && (nzbgetConfigured || sabnzbdConfigured || tidarrConfigured);
+  const usenetConfigured = prowlarrConfigured && (nzbgetConfigured || sabnzbdConfigured);
   const ytdlpConfigured = ytdlpClient.isConfigured();
   const deemixConfigured = deemixClient.isConfigured();
   return {
@@ -80,7 +84,13 @@ export function getDownloadSourceStatus() {
       prowlarrConfigured,
       nzbgetConfigured,
       sabnzbdConfigured,
-      tidarrConfigured,
+    },
+    tidarr: {
+      id: "tidarr",
+      label: SOURCE_LABELS.tidarr,
+      enabled: getIntegrations().tidarr?.enabled === true,
+      configured: tidarrConfigured,
+      priority: getTidarrPriority(),
     },
     deemix: {
       id: "deemix",
@@ -104,6 +114,7 @@ export function getEnabledDownloadSources() {
   const sources = [];
   if (status.slskd.configured) sources.push(status.slskd);
   if (status.usenet.configured) sources.push(status.usenet);
+  if (status.tidarr.configured) sources.push(status.tidarr);
   if (status.deemix.configured) sources.push(status.deemix);
   if (status.ytdlp.configured) sources.push(status.ytdlp);
   sources.push(...activePluginSources());
@@ -113,7 +124,7 @@ export function getEnabledDownloadSources() {
   });
 }
 
-const ALBUM_GRAB_SOURCE_IDS = ["slskd", "usenet", "deemix"];
+const ALBUM_GRAB_SOURCE_IDS = ["slskd", "usenet", "tidarr", "deemix"];
 
 export const isAlbumGrabSource = (source: { id: string; albums?: boolean }) =>
   ALBUM_GRAB_SOURCE_IDS.includes(source.id) || source.albums === true;
@@ -143,7 +154,8 @@ export function getDownloadSourceNotConfiguredMessage() {
   const status = getDownloadSourceStatus();
   const pieces = [];
   if (!status.slskd.configured) pieces.push("slskd");
-  if (!status.usenet.configured) pieces.push("Prowlarr + SABnzbd/NZBGet/Tidarr");
+  if (!status.usenet.configured) pieces.push("Prowlarr + SABnzbd/NZBGet");
+  if (!status.tidarr.configured) pieces.push("Tidarr");
   if (!status.deemix.configured) pieces.push("deemix");
   if (!status.ytdlp.configured) pieces.push("yt-dlp");
   return `No download source is configured. Configure ${pieces.join(" or ")} in Settings → Downloads, or turn on a download source plugin, to enable downloads for flows and playlists.`;
