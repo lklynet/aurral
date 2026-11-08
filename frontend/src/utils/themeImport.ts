@@ -5,6 +5,7 @@ import {
   THEME_DOCUMENT_VERSION,
   THEME_MODES,
 } from "./theme.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 export const THEME_GALLERY_URL = "https://tinted-theming.github.io/tinted-gallery/";
 export const MAX_THEME_FILE_BYTES = 64 * 1024;
@@ -65,12 +66,13 @@ export function parseThemeText(text: string) {
     throw new Error("That file is too large to be a theme.");
   }
   if (source.startsWith("{")) {
-    let value: Record<string, unknown>;
+    let value: unknown;
     try {
       value = JSON.parse(source);
     } catch {
       throw new Error("That theme file isn't valid JSON.");
     }
+    if (!isRecord(value)) throw new Error("That theme file isn't valid JSON.");
     const { id: _id, ...theme } = normalizeTheme({ ...parseThemeFile(value), id: "import" });
     return theme;
   }

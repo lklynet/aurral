@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import * as v from "valibot";
 import { fileURLToPath } from "node:url";
 
 const RULES = [
@@ -44,7 +45,10 @@ if (update) {
   process.exit(0);
 }
 
-const baseline: Record<string, number> = JSON.parse(readFileSync(baselinePath, "utf8"));
+const baseline = v.parse(
+  v.record(v.string(), v.number()),
+  JSON.parse(readFileSync(baselinePath, "utf8")),
+);
 const worse = Object.entries(sorted).filter(([file, count]) => count > (baseline[file] ?? 0));
 const better = Object.entries(baseline).filter(([file, count]) => (sorted[file] ?? 0) < count);
 

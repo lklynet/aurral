@@ -72,8 +72,9 @@ const RouteLink = forwardRef<HTMLAnchorElement, LinkProps>(function RouteLink(
         }
         event.preventDefault();
         markSharedArtwork(event.currentTarget, to.split(/[?#]/)[0] ?? to);
+        const state: unknown = props.state;
         void navigate(to, {
-          state: props.state,
+          state,
           replace: props.replace ?? to === location.pathname + location.search + location.hash,
           preventScrollReset: props.preventScrollReset,
           viewTransition: true,

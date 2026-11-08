@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import * as v from "valibot";
 import { env, graphql } from "./github.ts";
 
 type Channel = "nightly" | "stable";
@@ -11,32 +12,38 @@ export interface StatusItem {
   labels: string[];
 }
 
-interface Labels {
-  labels: { nodes: { name: string }[] };
-}
+const nodes = <TItem extends v.GenericSchema>(item: TItem) => v.object({ nodes: v.array(item) });
 
-interface ChangesPage {
-  repository: {
-    nightly: { id: string } | null;
-    released: { id: string } | null;
-    ref: {
-      compare: {
-        commits: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-          nodes: {
-            associatedPullRequests: {
-              nodes: (Labels & {
-                id: string;
-                number: number;
-                closingIssuesReferences: { nodes: (Labels & { id: string; number: number })[] };
-              })[];
-            };
-          }[];
-        };
-      };
-    } | null;
-  };
-}
+const labeled = {
+  id: v.string(),
+  number: v.number(),
+  labels: nodes(v.object({ name: v.string() })),
+};
+
+const labelId = v.nullable(v.object({ id: v.string() }));
+
+const changesPage = v.object({
+  repository: v.object({
+    nightly: labelId,
+    released: labelId,
+    ref: v.nullable(
+      v.object({
+        compare: v.object({
+          commits: v.object({
+            pageInfo: v.object({ hasNextPage: v.boolean(), endCursor: v.nullable(v.string()) }),
+            nodes: v.array(
+              v.object({
+                associatedPullRequests: nodes(
+                  v.object({ ...labeled, closingIssuesReferences: nodes(v.object(labeled)) }),
+                ),
+              }),
+            ),
+          }),
+        }),
+      }),
+    ),
+  }),
+});
 
 const CHANGES_QUERY = `query($owner: String!, $repo: String!, $base: String!, $head: String!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
@@ -66,7 +73,8 @@ const CHANGES_QUERY = `query($owner: String!, $repo: String!, $base: String!, $h
 
 const MUTATIONS_PER_REQUEST = 30;
 
-const labelNames = (node: Labels) => node.labels.nodes.map((label) => label.name);
+const labelNames = (node: { labels: { nodes: { name: string }[] } }) =>
+  node.labels.nodes.map((label) => label.name);
 
 export function planStatus(items: StatusItem[], channel: Channel) {
   const target: StatusLabel = channel === "stable" ? "released" : "nightly";
@@ -89,13 +97,11 @@ async function listChanges(repository: string, base: string, head: string) {
   let labelIds: Record<StatusLabel, string> | null = null;
   let cursor: string | null = null;
   do {
-    const page: ChangesPage = await graphql(CHANGES_QUERY, {
-      owner,
-      repo,
-      base: `refs/tags/${base}`,
-      head,
-      cursor,
-    });
+    const page: v.InferOutput<typeof changesPage> = await graphql(
+      CHANGES_QUERY,
+      { owner, repo, base: `refs/tags/${base}`, head, cursor },
+      changesPage,
+    );
     const { nightly, released, ref } = page.repository;
     if (!nightly || !released) throw new Error("The nightly and released labels must exist");
     if (!ref) throw new Error(`Tag ${base} was not found`);
@@ -197,7 +203,7 @@ if (import.meta.main) {
   const plan = planStatus(items, channel);
   const body = commentBody(channel, repository);
   for (const mutation of statusMutations(plan, labelIds)) {
-    await graphql(mutation, mutation.includes("$body") ? { body } : {});
+    await graphql(mutation, mutation.includes("$body") ? { body } : {}, v.unknown());
   }
   console.log(
     `${base}...${head.slice(0, 7)}: ${items.length} pull requests and issues, updated ${plan.map((step) => `#${step.number}`).join(" ") || "none"}.`,

@@ -63,8 +63,10 @@ type LibraryInfoItem = {
 
 const text = (value: unknown) => String(value ?? "").trim();
 
+const toList = (value: unknown): unknown[] => (Array.isArray(value) ? value : [value]);
+
 const formatList = (value: unknown) =>
-  (Array.isArray(value) ? value : [value])
+  toList(value)
     .map(text)
     .filter(Boolean)
     .filter((entry, index, values) => values.indexOf(entry) === index)
@@ -73,10 +75,10 @@ const formatList = (value: unknown) =>
 const metadataGenres = (entity: LibraryInfoEntity | null | undefined) => {
   const metadata = entity?.metadata || {};
   return formatList([
-    ...(Array.isArray(metadata.genres) ? metadata.genres : [metadata.genres]),
-    ...(Array.isArray(metadata.genre) ? metadata.genre : [metadata.genre]),
-    ...(Array.isArray(metadata.common?.genre) ? metadata.common.genre : [metadata.common?.genre]),
-    ...(Array.isArray(metadata.tags?.genre) ? metadata.tags.genre : [metadata.tags?.genre]),
+    ...toList(metadata.genres),
+    ...toList(metadata.genre),
+    ...toList(metadata.common?.genre),
+    ...toList(metadata.tags?.genre),
   ]);
 };
 
@@ -251,7 +253,9 @@ export default function LibraryInfoModal({
               <dt>{label}</dt>
               <dd>
                 {Array.isArray(value)
-                  ? value.map((entry) => <div key={entry}>{entry}</div>)
+                  ? toList(value)
+                      .map(text)
+                      .map((entry) => <div key={entry}>{entry}</div>)
                   : text(value)}
               </dd>
             </div>

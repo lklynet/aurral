@@ -1,15 +1,16 @@
 import { readFile } from "node:fs/promises";
+import * as v from "valibot";
 import { env, github } from "./github.ts";
 
-interface PullRequestEvent {
-  pull_request: {
-    number: number;
-    title: string;
-    additions: number;
-    deletions: number;
-    labels: { name: string }[];
-  };
-}
+const pullRequestEvent = v.object({
+  pull_request: v.object({
+    number: v.number(),
+    title: v.string(),
+    additions: v.number(),
+    deletions: v.number(),
+    labels: v.array(v.object({ name: v.string() })),
+  }),
+});
 
 const TYPE_LABELS = new Map([
   ["feat", "enhancement"],
@@ -25,7 +26,10 @@ const SIZE_LABELS = [
   { below: Infinity, label: "size:XXL" },
 ];
 
-const event: PullRequestEvent = JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8"));
+const event = v.parse(
+  pullRequestEvent,
+  JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8")),
+);
 const { number, title, additions, deletions } = event.pull_request;
 const current = event.pull_request.labels.map((label) => label.name);
 

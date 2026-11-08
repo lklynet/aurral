@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import * as v from "valibot";
 
 export function env(name: string) {
   const value = process.env[name];
@@ -34,13 +35,22 @@ export async function github(path: string, init: RequestInit = {}) {
   }
 }
 
-export async function graphql<T>(query: string, variables: Record<string, unknown> = {}) {
+const graphqlResponse = v.object({
+  data: v.unknown(),
+  errors: v.optional(v.array(v.object({ message: v.string() }))),
+});
+
+export async function graphql<TSchema extends v.GenericSchema>(
+  query: string,
+  variables: Record<string, unknown>,
+  schema: TSchema,
+) {
   const response = await github("/graphql", {
     method: "POST",
     body: JSON.stringify({ query, variables }),
   });
-  const result: { data: T; errors?: { message: string }[] } = await response.json();
+  const result = v.parse(graphqlResponse, await response.json());
   if (result.errors?.length)
     throw new Error(result.errors.map((error) => error.message).join("\n"));
-  return result.data;
+  return v.parse(schema, result.data);
 }

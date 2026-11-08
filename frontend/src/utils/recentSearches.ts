@@ -1,3 +1,4 @@
+import { unknownList } from "../../../lib/unknownList.ts";
 const STORAGE_KEY = "aurral:recent-searches";
 const MAX_RECENT = 8;
 
@@ -11,11 +12,10 @@ export function readRecentSearches() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const seen = new Set();
-    const items = [];
-    for (const entry of parsed) {
+    const parsed: unknown = JSON.parse(raw);
+    const seen = new Set<string>();
+    const items: string[] = [];
+    for (const entry of unknownList(parsed)) {
       const query = normalizeQuery(entry);
       if (!query) continue;
       const key = query.toLowerCase();
