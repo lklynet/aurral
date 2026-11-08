@@ -3,6 +3,7 @@ export type PerfContext = {
   albumId: number;
   lastAlbumPage: number;
   playlistId: string;
+  editPlaylist: { id: string; songIds: string[][] };
 };
 
 const library = (params: Record<string, string | number | boolean>) =>
@@ -21,8 +22,11 @@ const homeRails = ["plays", "random", "newest", "played", "released"].map((sort)
 export type Scenario = {
   name: string;
   random?: true;
+  writes?: true;
   requests: (context: PerfContext) => string[];
 };
+
+let playlistEdits = 0;
 
 export const scenarios: Scenario[] = [
   { name: "app shell", requests: () => ["/api/health/bootstrap", "/api/auth/me"] },
@@ -132,5 +136,15 @@ export const scenarios: Scenario[] = [
       "/rest/getPlaylists",
       `/rest/getPlaylist?id=${encodeURIComponent(playlistId)}`,
     ],
+  },
+  {
+    name: "subsonic edit playlist",
+    writes: true,
+    requests: ({ editPlaylist }) => {
+      const songIds = editPlaylist.songIds[playlistEdits++];
+      if (!songIds) throw new Error("subsonic edit playlist ran out of unlinked songs");
+      const songs = songIds.map((id) => `&songId=${encodeURIComponent(id)}`).join("");
+      return [`/rest/createPlaylist?playlistId=${encodeURIComponent(editPlaylist.id)}${songs}`];
+    },
   },
 ];

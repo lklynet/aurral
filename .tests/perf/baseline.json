@@ -113,11 +113,13 @@
   },
   "playlists": {
     "queries": {
-      "cold": 28,
-      "warm": 8
+      "cold": 2111,
+      "warm": 2090
     },
-    "bytes": 4100,
-    "scans": []
+    "bytes": 4503,
+    "scans": [
+      "download_jobs"
+    ]
   },
   "listening history": {
     "queries": {
@@ -201,12 +203,22 @@
   },
   "subsonic playlists": {
     "queries": {
-      "cold": 118,
-      "warm": 38
+      "cold": 2669,
+      "warm": 2589
     },
-    "bytes": 431441,
+    "bytes": 431712,
     "scans": [
       "library_artists"
+    ]
+  },
+  "subsonic edit playlist": {
+    "queries": {
+      "cold": 911,
+      "warm": 962
+    },
+    "bytes": 23182,
+    "scans": [
+      "download_jobs"
     ]
   }
 }

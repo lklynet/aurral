@@ -2277,10 +2277,11 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
     name,
     function (this: DownloadTracker, ...args: unknown[]): unknown {
       if (
-        process.env.NODE_ENV !== "test" &&
-        process.env.AURRAL_TEST_SERVER !== "1" &&
-        process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads" &&
-        LIVE_READ_METHODS.has(name)
+        LIVE_READ_METHODS.has(name) &&
+        (process.env.AURRAL_LIVE_DOWNLOAD_READS === "1" ||
+          (process.env.NODE_ENV !== "test" &&
+            process.env.AURRAL_TEST_SERVER !== "1" &&
+            process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads"))
       ) {
         return readTrackerFromDatabase(name, args);
       }

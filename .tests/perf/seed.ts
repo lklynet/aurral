@@ -216,6 +216,10 @@ export function seedPerfListening(
   })();
 }
 
+const HISTORY_JOBS = 5_000;
+const EDIT_SONGS = 25;
+export const EDIT_SETS = 16;
+
 export function seedPerfPlaylistJobs(
   db: Database.Database,
   library: Pick<PerfLibrary, "trackRows">,
@@ -244,14 +248,33 @@ export function seedPerfPlaylistJobs(
         now,
       );
     }
+    for (let index = 0; index < HISTORY_JOBS; index += 1) {
+      insertJob.run(
+        `perf-history-${index}`,
+        `History Artist ${index % 997}`,
+        `History Song ${index}`,
+        `History Album ${index % 3001}`,
+        `/history/${index}.flac`,
+        now,
+        now,
+      );
+    }
   })();
-  return playlists.map((tracks) =>
-    tracks.map((track) => ({
-      artistName: track.artist,
-      trackName: track.title,
-      albumName: track.album,
-      canonicalJobId: `perf-job-${track.id}`,
-      path: track.path!,
-    })),
-  );
+  const unlinked = library.trackRows.filter((track) => track.path).slice(-EDIT_SONGS * EDIT_SETS);
+  return {
+    playlists: playlists.map((tracks) =>
+      tracks.map((track) => ({
+        artistName: track.artist,
+        trackName: track.title,
+        albumName: track.album,
+        canonicalJobId: `perf-job-${track.id}`,
+        path: track.path!,
+      })),
+    ),
+    editSongs: Array.from({ length: EDIT_SETS }, (_, set) =>
+      unlinked
+        .slice(set * EDIT_SONGS, (set + 1) * EDIT_SONGS)
+        .map((track) => ({ id: `song:${track.key}`, path: track.path! })),
+    ),
+  };
 }
