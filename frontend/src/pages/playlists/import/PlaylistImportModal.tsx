@@ -30,6 +30,7 @@ import {
 import { reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
+import { isRecord } from "../../../../../lib/isRecord.ts";
 
 declare global {
   interface Window {
@@ -150,22 +151,16 @@ function ImportTracks({
   );
 }
 
-type HandoffPayload = {
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expires_in?: string | number | null;
-};
-
-function tokensFromHandoffPayload(
-  payload: HandoffPayload | null | undefined,
-): SpotifyTokens | null {
-  const accessToken = String(payload?.access_token || "").trim();
-  const refreshToken = String(payload?.refresh_token || "").trim();
+function tokensFromHandoffPayload(payload: unknown): SpotifyTokens | null {
+  const fields = isRecord(payload) ? payload : {};
+  const accessToken = String(fields.access_token || "").trim();
+  const refreshToken = String(fields.refresh_token || "").trim();
   if (!accessToken || !refreshToken) return null;
+  const expiresIn = fields.expires_in;
   return {
     accessToken,
     refreshToken,
-    expiresIn: payload?.expires_in,
+    expiresIn: typeof expiresIn === "string" || typeof expiresIn === "number" ? expiresIn : null,
   };
 }
 
@@ -207,9 +202,9 @@ function openSpotifyOAuthPopup(oauthUrl: string) {
 
     try {
       channel = new BroadcastChannel(SPOTIFY_OAUTH_BROADCAST_CHANNEL);
-      channel.onmessage = (event) => {
-        if (event.data?.type !== "ready") return;
-        const tokens = tokensFromHandoffPayload(event.data?.payload);
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        if (!isRecord(event.data) || event.data.type !== "ready") return;
+        const tokens = tokensFromHandoffPayload(event.data.payload);
         if (tokens) finish(tokens);
       };
     } catch (_) {

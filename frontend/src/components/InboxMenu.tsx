@@ -21,6 +21,9 @@ import { queryClient, queryKeys } from "../queryClient.ts";
 import Tooltip from "./Tooltip";
 import RelativeTime from "./RelativeTime";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
+import { getApiErrorText } from "../utils/api/errors.ts";
+import { asApiError } from "../utils/api/core.ts";
 
 type InboxListResponse = InferResponseType<typeof inboxClient.$get, 200>;
 type InboxListItem = NonNullable<InboxListResponse["items"][number]> & { id: string };
@@ -171,8 +174,10 @@ function InboxMenu() {
 
   useEffect(() => {
     const handleSettingsUpdated = (event: Event) => {
-      if (event instanceof CustomEvent && typeof event.detail?.inboxEnabled === "boolean")
-        setInboxEnabled(event.detail.inboxEnabled);
+      const detail: unknown = event instanceof CustomEvent ? event.detail : null;
+      if (isRecord(detail) && typeof detail.inboxEnabled === "boolean") {
+        setInboxEnabled(detail.inboxEnabled);
+      }
     };
     window.addEventListener("aurral:settings-updated", handleSettingsUpdated);
     return () => window.removeEventListener("aurral:settings-updated", handleSettingsUpdated);
@@ -263,8 +268,12 @@ function InboxMenu() {
 
   const handleOpen = (item: InboxListItem) => {
     if (!item.isRead) {
-      void itemMutation.mutateAsync({ id: item.id, action: "read" }).catch((error) => {
-        showError(error?.response?.data?.error || error?.message || `Failed to read ${item.title}`);
+      void itemMutation.mutateAsync({ id: item.id, action: "read" }).catch((error: unknown) => {
+        showError(
+          getApiErrorText(error, "error") ||
+            asApiError(error)?.message ||
+            `Failed to read ${item.title}`,
+        );
       });
     }
     if (item.href) setOpen(false);

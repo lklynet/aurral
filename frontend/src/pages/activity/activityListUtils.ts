@@ -274,8 +274,8 @@ export const formatTimelineTime = (value: string | number | null | undefined) =>
   });
 };
 
-const formatReviewDuration = (ms: number) => {
-  if (!Number.isFinite(ms) || ms < 0) return null;
+const formatReviewDuration = (ms: number | undefined) => {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
   const totalSeconds = Math.round(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -287,20 +287,20 @@ export const formatReviewReasonSummary = (subtitle: string | null | undefined) =
   if (!raw) return null;
   const colon = raw.indexOf(":");
   const code = (colon === -1 ? raw : raw.slice(0, colon)).trim();
-  const fields = Object.create(null);
+  const fields = new Map<string, number>();
   for (const part of (colon === -1 ? "" : raw.slice(colon + 1)).split(",")) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
     const key = part.slice(0, eq).trim();
     const value = Number(part.slice(eq + 1).trim());
-    if (key && Number.isFinite(value)) fields[key] = value;
+    if (key && Number.isFinite(value)) fields.set(key, value);
   }
   const parts = [code.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase())];
-  if (Number.isFinite(fields.title)) parts.push(`title ${fields.title}`);
-  if (Number.isFinite(fields.artist)) parts.push(`artist ${fields.artist}`);
-  if (Number.isFinite(fields.album)) parts.push(`album ${fields.album}`);
-  const actual = formatReviewDuration(fields.actualDurationMs);
-  const expected = formatReviewDuration(fields.expectedDurationMs);
+  for (const key of ["title", "artist", "album"]) {
+    if (fields.has(key)) parts.push(`${key} ${fields.get(key)}`);
+  }
+  const actual = formatReviewDuration(fields.get("actualDurationMs"));
+  const expected = formatReviewDuration(fields.get("expectedDurationMs"));
   if (actual && expected) parts.push(`${actual} vs ${expected}`);
   else if (actual) parts.push(actual);
   return parts.join(" · ");

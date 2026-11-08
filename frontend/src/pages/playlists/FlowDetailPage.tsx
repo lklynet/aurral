@@ -48,6 +48,7 @@ import {
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
+import { routeStateOf } from "../../navigation/routeState.ts";
 
 const FlowEditor = lazy(() => import("./FlowEditor.tsx"));
 
@@ -111,7 +112,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
       recordHistory: flow.recordHistory !== false,
     },
   });
-  const [editOpen, setEditOpen] = useState(location.state?.edit === true);
+  const [editOpen, setEditOpen] = useState(routeStateOf(location.state).edit === true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);

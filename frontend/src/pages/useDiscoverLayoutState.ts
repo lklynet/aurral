@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DiscoverSection, DiscoverUserId } from "./discoverUtils";
+import { getApiErrorText } from "../utils/api/errors.ts";
 
 interface DiscoverLayoutResponse {
   layout?: unknown;
@@ -87,8 +88,8 @@ export function useDiscoverLayoutState({
           setShowDiscoverModal(false);
           return savedLayout;
         })
-        .catch((err) => {
-          showError(err.response?.data?.message || "Failed to save discover layout");
+        .catch((err: unknown) => {
+          showError(getApiErrorText(err, "message") || "Failed to save discover layout");
           throw err;
         })
         .finally(() => {

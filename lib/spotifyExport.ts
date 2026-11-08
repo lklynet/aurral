@@ -1,3 +1,5 @@
+import { isRecord } from "./isRecord.ts";
+
 export const SPOTIFY_IMPORT_MAX_ARTISTS = 5000;
 
 const MIN_PLAY_MS = 30_000;
@@ -18,8 +20,6 @@ export type SpotifyImportArtist = {
 type Play = { artist: string; playedAt: number };
 type FileKind = "extended" | "account" | "library";
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 const records = (value: unknown) => (Array.isArray(value) ? value.filter(isRecord) : []);
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 

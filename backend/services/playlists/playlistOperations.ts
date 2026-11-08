@@ -58,6 +58,7 @@ import type {
 } from "../../db/rows.ts";
 import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 const operationTokenKey = (scope: string) => `playlistOperationTokens:${encodeURIComponent(scope)}`;
 
@@ -120,9 +121,6 @@ const isOwnerActive = (ownerUserId: unknown) => {
 };
 
 type OperationPayload = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 interface FlowOutcome {
   cancelled?: boolean;

@@ -1,4 +1,5 @@
 import { UUID_REGEX } from "./uuid.ts";
+import { isRecord } from "./isRecord.ts";
 
 export const MAX_SHARE_TRACKS = 2000;
 export const MAX_SHARE_BYTES = 768 * 1024;
@@ -7,8 +8,6 @@ export const SHARE_CODE_PATTERN = /^s[A-Za-z0-9_-]{15}$/;
 
 export const getShareCode = (token: string) => `s${token.slice(0, 15)}`;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown) =>
   typeof value === "string"
     ? value

@@ -24,6 +24,7 @@ import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
+import { routeStateOf } from "../../navigation/routeState.ts";
 
 type ImportRequest = Pick<ComponentProps<typeof PlaylistImportModal>, "initialShareUrl">;
 
@@ -61,8 +62,8 @@ export default function PlaylistsPage() {
   const [createError, setCreateError] = useState("");
 
   useEffect(() => {
-    if (!location.state?.openImport) return;
-    const shareUrl = location.state.shareUrl;
+    const { openImport, shareUrl } = routeStateOf(location.state);
+    if (!openImport) return;
     setImportRequest(typeof shareUrl === "string" ? { initialShareUrl: shareUrl } : {});
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.pathname, location.state, navigate]);

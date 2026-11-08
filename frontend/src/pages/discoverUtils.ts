@@ -127,10 +127,10 @@ const readStoredAt = (key: string) => {
 
 const getStoredArraySourceKey = (primaryKey: string, fallbackKey: string) => {
   try {
-    const primary = JSON.parse(localStorage.getItem(primaryKey) || "null");
+    const primary: unknown = JSON.parse(localStorage.getItem(primaryKey) || "null");
     if (Array.isArray(primary)) return primaryKey;
     if (primaryKey === fallbackKey) return null;
-    const fallback = JSON.parse(localStorage.getItem(fallbackKey) || "null");
+    const fallback: unknown = JSON.parse(localStorage.getItem(fallbackKey) || "null");
     return Array.isArray(fallback) ? fallbackKey : null;
   } catch {
     return null;

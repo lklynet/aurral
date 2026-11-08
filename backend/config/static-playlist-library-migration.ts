@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { DownloadJobsRow, JobsRow } from "../db/rows.ts";
 import { logger } from "../services/logger.ts";
 import { pairJobsWithPlaylistTracks } from "../services/playlists/playlistTracks.ts";
+import { isRecord } from "../../lib/isRecord.ts";
 
 const MIGRATION_KEY = "migration:static-playlists-reference-library-v1";
 
@@ -23,9 +24,6 @@ type OwnedRow = Pick<
   | "upgrade_for_job_id"
   | "created_at"
 > & { id: string };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const playlistTrack = (row: OwnedRow) => ({
   id: row.id,

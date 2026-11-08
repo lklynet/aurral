@@ -49,6 +49,7 @@ import { RotateCcw, Volume2, VolumeX, X } from "../components/icons.tsx";
 import TooltipButton from "../components/TooltipButton.tsx";
 import WrappedIntro from "./WrappedIntro.tsx";
 import "./wrapped.css";
+import { routeStateOf } from "../navigation/routeState.ts";
 
 type Slide = {
   kind:
@@ -1501,7 +1502,7 @@ export default function WrappedPage() {
   const prepared = usePreparedStory(summary, user?.username ?? "");
   const [sharing, setSharing] = useState(false);
   const close = () => {
-    const from: unknown = location.state?.wrappedFrom;
+    const from = routeStateOf(location.state).wrappedFrom;
     navigate(
       typeof from === "string" &&
         from.startsWith("/") &&

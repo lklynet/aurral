@@ -18,7 +18,8 @@ export type ReleaseListViewMode = "grid" | "list";
 
 export type ReleaseRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
-export type ReleaseGroup = Partial<LegacyReleaseGroupSummary> & {
+export type ReleaseGroup = Partial<Omit<LegacyReleaseGroupSummary, "artist-credit">> & {
+  "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
   mbid?: string | null;
   foreignAlbumId?: string | null;
   releaseDate?: string | null;

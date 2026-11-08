@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { hashKey, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { settingsClient } from "../utils/api/clients/settings.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
@@ -31,13 +31,7 @@ export function getStorageHealthCache() {
 
 export function subscribeStorageHealth(listener: (snapshot: StorageHealthSnapshot) => void) {
   return queryClient.getQueryCache().subscribe((event) => {
-    const queryKey = event.query?.queryKey;
-    if (
-      !queryKey ||
-      queryKey.length !== queryKeys.storageHealth.length ||
-      queryKey.some((value: unknown, index: number) => value !== queryKeys.storageHealth[index])
-    )
-      return;
+    if (event.query?.queryHash !== hashKey(queryKeys.storageHealth)) return;
     listener(getStorageHealthCache());
   });
 }

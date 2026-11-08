@@ -3,6 +3,7 @@ import { logger } from "../../services/logger.ts";
 import { USENET_CLIENT_KEYS } from "../../services/usenetClientCommon.ts";
 import { NOTIFICATION_EVENTS } from "../../../lib/notificationEvents.ts";
 import { lenient, listOf, recordOf } from "./storedSchemas.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 
 const number = v.pipe(
   v.union([v.number(), v.pipe(v.string(), v.trim(), v.nonEmpty(), v.transform(Number))]),
@@ -133,9 +134,6 @@ export const integrationSettingsSchema = v.looseObject({
 });
 
 export type StoredIntegrations = v.InferOutput<typeof integrationSettingsSchema>;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 function droppedPaths(stored: unknown, read: unknown, path: string): string[] {
   if (stored == null || stored === "") return [];
