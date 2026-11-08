@@ -1,0 +1,72 @@
+name: Perf report
+
+on:
+  workflow_run:
+    workflows: [Perf]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Comment results
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: perf-report-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: true
+    steps:
+      # This token can write to any PR, so it only runs main's renderer on data the PR uploaded.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .nvmrc
+            package.json
+            scripts/perf-report.mts
+            .tests/perf/judge.ts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - id: download
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: perf-report
+          path: ${{ runner.temp }}/perf-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Update the PR comment
+        if: steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPORT_DIR: ${{ runner.temp }}/perf-report
+        run: |
+          if [ ! -f "$REPORT_DIR/comparison.json" ]; then
+            echo "The Perf run finished without a comparison"
+            exit 0
+          fi
+          pr=$(head -c 12 "$REPORT_DIR/pr" | tr -d '[:space:]')
+          case "$pr" in '' | *[!0-9]*) echo "The report has no readable PR number"; exit 1 ;; esac
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq .head.sha)" != "$HEAD_SHA" ]; then
+            echo "PR #$pr has moved past $HEAD_SHA, so this report is stale"
+            exit 0
+          fi
+          marker='<!-- aurral-perf-report -->'
+          { echo "$marker"; node scripts/perf-report.mts "$REPORT_DIR/comparison.json"; } > "$RUNNER_TEMP/body.md"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          fi

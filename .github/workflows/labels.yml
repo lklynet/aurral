@@ -76,6 +76,7 @@ jobs:
           needs-triage|fbca04|Issue needs maintainer review and initial categorization.
           dependencies|0366d6|Dependency update or maintenance work.
           skip-changelog|ededed|Do not include this change in release notes.
+          perf-accepted|c5def5|A maintainer accepted the slowdown the Perf check found.
           nightly|0e8a16|The change is available in nightly but not in a stable release.
           released|5319e7|The change is included in a stable release.
           size:XS|0e8a16|0-9 changed lines.
