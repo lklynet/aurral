@@ -454,19 +454,18 @@ function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
   );
 }
 
+const albumHasMbid = (album: ReadAlbum, albumMbid: string) =>
+  [album.mbid, album.foreignAlbumId, album.releaseGroupMbid].some(
+    (value) => String(value || "").trim() === albumMbid,
+  );
+
 function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
   const albumMbid = String(track?.albumMbid || "").trim();
   const albumKey = normalizeText(track?.albumName);
   return [...albums].sort((left, right) => {
     const score = (album: ReadAlbum) => {
       let total = 0;
-      if (
-        albumMbid &&
-        (String(album?.mbid || "").trim() === albumMbid ||
-          String(album?.foreignAlbumId || "").trim() === albumMbid)
-      ) {
-        total += 100;
-      }
+      if (albumMbid && albumHasMbid(album, albumMbid)) total += 100;
       if (albumKey && normalizeText(album?.albumName || album?.title) === albumKey) {
         total += 50;
       }
@@ -544,12 +543,7 @@ async function findLibraryFolderSource(
   const albumsToCheck = strictAlbum
     ? rankedAlbums.filter((album) => {
         const albumMbid = String(track?.albumMbid || "").trim();
-        if (albumMbid) {
-          return (
-            String(album?.mbid || "").trim() === albumMbid ||
-            String(album?.foreignAlbumId || "").trim() === albumMbid
-          );
-        }
+        if (albumMbid) return albumHasMbid(album, albumMbid);
         const albumName = normalizeText(track?.albumName);
         return !albumName || normalizeText(album?.albumName || album?.title) === albumName;
       })
