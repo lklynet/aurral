@@ -81,7 +81,7 @@
   ".tests/library/download-album-route.test.ts": 1,
   ".tests/library/download-queue-progress.test.ts": 1,
   ".tests/library/download-status-query.test.ts": 1,
-  ".tests/library/favorites-routes.test.ts": 12,
+  ".tests/library/favorites-routes.test.ts": 11,
   ".tests/library/library-ingest.test.ts": 1,
   ".tests/library/library-page-query.test.ts": 1,
   ".tests/library/library-read-routes.test.ts": 4,

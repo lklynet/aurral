@@ -97,10 +97,10 @@
   },
   "favorites": {
     "queries": {
-      "cold": 21,
-      "warm": 21
+      "cold": 22,
+      "warm": 22
     },
-    "bytes": 1601986,
+    "bytes": 258768,
     "scans": []
   },
   "search": {

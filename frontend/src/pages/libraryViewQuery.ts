@@ -101,11 +101,7 @@ const favoriteIdsFromPages = (pages: LibraryPage[]) =>
   );
 
 const favoriteIdsFromFavorites = (favorites: LibraryFavoritesResponse) =>
-  new Set(
-    (["artist", "album", "song"] as const).flatMap((kind) =>
-      (Array.isArray(favorites?.[kind]) ? favorites[kind] : []).map((entry) => entry.id),
-    ),
-  );
+  new Set([...favorites.artistIds, ...favorites.albumIds, ...favorites.songIds]);
 
 type LibraryViewRequest = {
   section?: LibraryViewId;

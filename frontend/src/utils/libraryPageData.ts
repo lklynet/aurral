@@ -103,7 +103,7 @@ export const favoriteLibraryFromResponse = (
   favorites:
     | {
         library?: Partial<LibraryData> | null;
-        song?:
+        playlistSongs?:
           | {
               id: string;
               title?: unknown;
@@ -118,7 +118,7 @@ export const favoriteLibraryFromResponse = (
     | undefined,
 ) => {
   const library = normalizeLibraryPages([favorites?.library || EMPTY_LIBRARY]);
-  const playlistTracks = (Array.isArray(favorites?.song) ? favorites.song : [])
+  const playlistTracks = (Array.isArray(favorites?.playlistSongs) ? favorites.playlistSongs : [])
     .filter((track) => /^(flow|shared)-song:/.test(text(track?.id)))
     .map((track) => {
       const jobId = decodeURIComponent(track.id.slice(track.id.indexOf(":") + 1))

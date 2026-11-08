@@ -65,7 +65,7 @@ test("library favorites include playlist-backed Subsonic songs", () => {
       albums: [],
       tracks: [libraryTrack({ id: 1, identityKey: "canonical-song", title: "Canonical Favorite" })],
     },
-    song: [{ id: "song:canonical-song", title: "Canonical Favorite" }, playlistSong],
+    playlistSongs: [playlistSong],
   });
 
   assert.deepEqual(

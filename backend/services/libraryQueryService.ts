@@ -3221,7 +3221,7 @@ function getAlbumTrackPage(
   };
 }
 
-function getAlbumStats(
+export function getAlbumStats(
   albumIds: number[],
   sourceFilter: string | null,
 ): Map<string, { trackCount: number; availableTrackCount: number }> {
