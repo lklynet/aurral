@@ -48,6 +48,7 @@ import {
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
+import { copyText } from "../../utils/shareLink.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
 
 const FlowEditor = lazy(() => import("./FlowEditor.tsx"));
@@ -243,7 +244,8 @@ function FlowDetail({ flow }: { flow: Flow }) {
         window.location.origin,
       );
       url.searchParams.set("token", token);
-      await navigator.clipboard.writeText(url.toString());
+      if (!(await copyText(url.toString())))
+        throw new Error("Could not copy the Lidarr import URL");
       showSuccess("Copied Lidarr import URL");
     } catch (err) {
       showError(asApiError(err)?.message || "Failed to copy Lidarr import URL");

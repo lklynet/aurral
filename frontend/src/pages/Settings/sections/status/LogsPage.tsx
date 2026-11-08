@@ -14,6 +14,7 @@ import { logsClient } from "../../../../utils/api/clients/logs.ts";
 import { API_BASE_URL } from "../../../../utils/api/core.ts";
 import { getApiErrorMessage } from "../../../../utils/api/errors.ts";
 import { formatDate, formatTime } from "../../../../utils/dateTime.ts";
+import { copyText } from "../../../../utils/shareLink.ts";
 import { useServerSettings } from "../../SettingsProviders";
 import {
   SettingsGroup,
@@ -345,7 +346,9 @@ export function LogsPage() {
     onError: (error) => showError(getApiErrorMessage(error, "Couldn't change debug logging.")),
   });
   const copy = useMutation({
-    mutationFn: async () => navigator.clipboard.writeText(await exportText("warn")),
+    mutationFn: async () => {
+      if (!(await copyText(await exportText("warn")))) throw new Error("Couldn't copy the log.");
+    },
     onSuccess: () => showSuccess("Copied the last day of warnings and errors."),
     onError: (error) => showError(getApiErrorMessage(error, "Couldn't copy the log.")),
   });
@@ -354,12 +357,8 @@ export function LogsPage() {
     queryFn: ({ signal }) => parseResponse(authClient["api-key"].$get({}, { init: { signal } })),
   });
   const copyTriage = async (key: string) => {
-    try {
-      await navigator.clipboard.writeText(triagePrompt(key));
-      showSuccess("Copied a prompt with your admin API key.");
-    } catch {
-      showError("Couldn't copy the prompt.");
-    }
+    if (await copyText(triagePrompt(key))) showSuccess("Copied a prompt with your admin API key.");
+    else showError("Couldn't copy the prompt.");
   };
   const download = useMutation({
     mutationFn: async () => {
