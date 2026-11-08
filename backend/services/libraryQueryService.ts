@@ -2064,9 +2064,8 @@ export function getLibraryArtistPage({
   const mediaJoin = sourceFilter || availableOnly === true ? "JOIN" : "LEFT JOIN";
   aggregateParameters.push(...ids);
   const albumJoin = shownAlbums
-    ? `LEFT JOIN (library_albums AS album
-       JOIN library_album_tracks AS album_track ON album_track.album_id = album.id)
-       ON album.artist_id = artist.id AND ${shownAlbums.sql}`
+    ? `LEFT JOIN library_albums AS album ON album.artist_id = artist.id AND ${shownAlbums.sql}
+     LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id`
     : `JOIN library_albums AS album ON album.artist_id = artist.id
      JOIN library_album_tracks AS album_track ON album_track.album_id = album.id`;
   const rows = db
@@ -2078,7 +2077,7 @@ export function getLibraryArtistPage({
        artist.name AS artist_name,
        artist.sort_name AS artist_sort_name,
        artist.metadata_json AS artist_metadata_json,
-       COUNT(DISTINCT album.id) AS album_count,
+       COUNT(DISTINCT album_track.album_id) AS album_count,
        COUNT(DISTINCT album_track.track_id) AS track_count,
        COALESCE(SUM(media.size), 0) AS size_on_disk,
        GROUP_CONCAT(DISTINCT media.source) AS sources,
