@@ -10,7 +10,7 @@ const indexFinishedDownloadNames: Migration = (db) =>
       WHERE status = 'done' AND final_path IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_download_jobs_done_unicode_name
       ON download_jobs(id)
-      WHERE status = 'done' AND final_path IS NOT NULL AND track_name GLOB '*[^ -~]*';
+      WHERE status = 'done' AND final_path IS NOT NULL AND (track_name GLOB '*[^ -~]*' OR length(track_name) <> length(CAST(track_name AS BLOB)));
   `);
 
 export const migrations: Migration[] = [createAurral3Schema, indexFinishedDownloadNames];

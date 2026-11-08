@@ -122,14 +122,15 @@ const liveJobsByIdStmt = db.prepare<[string], DownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`,
 );
 // SQLite's lower() and trim() only match JavaScript's for printable ASCII, so
-// names with other characters come back too and are compared in JavaScript.
+// names with any other character, including NUL, which GLOB stops at, come back
+// too and are compared in JavaScript.
 const liveDoneNamesStmt = db.prepare<[string], Pick<DownloadJobsRow, "id" | "track_name">>(
   `SELECT id, track_name FROM ${JOBS_TABLE} INDEXED BY idx_download_jobs_done_name
    WHERE status = 'done' AND final_path IS NOT NULL
      AND lower(trim(coalesce(track_name, ''))) = ?
    UNION
    SELECT id, track_name FROM ${JOBS_TABLE} INDEXED BY idx_download_jobs_done_unicode_name
-   WHERE status = 'done' AND final_path IS NOT NULL AND track_name GLOB '*[^ -~]*'`,
+   WHERE status = 'done' AND final_path IS NOT NULL AND (track_name GLOB '*[^ -~]*' OR length(track_name) <> length(CAST(track_name AS BLOB)))`,
 );
 const liveDonePathsStmt = db.prepare<[string], Pick<DownloadJobsRow, "id" | "final_path">>(
   `SELECT id, final_path FROM ${JOBS_TABLE}
