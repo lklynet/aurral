@@ -46,7 +46,7 @@ Each indexer also has a **Download client**. **Automatic** sends its releases to
 - **Server URL**: the SABnzbd URL that Aurral can reach, for example `http://sabnzbd:8080` in Docker.
 - **API key**: the SABnzbd API key.
 - **Category**: the SABnzbd category for Aurral jobs. The default is `aurral`.
-- **Source priority**: the order among download sources. The default is `20`.
+- **Track priority** and **Album priority**: the order among download sources. The default track priority is `20`. See [Download source priority and fallback](#download-source-priority-and-fallback).
 - **Add NZBs paused**: sends jobs to SABnzbd paused.
 
 ## NZBGet
@@ -56,7 +56,7 @@ Each indexer also has a **Download client**. **Automatic** sends its releases to
 - **Server URL**: the NZBGet URL that Aurral can reach, for example `http://nzbget:6789` in Docker.
 - **Username** and **Password**.
 - **Category**: the NZBGet category for Aurral jobs. The default is `aurral`.
-- **Source priority**: the order among download sources. The default is `20`.
+- **Track priority** and **Album priority**: the order among download sources. The default track priority is `20`. See [Download source priority and fallback](#download-source-priority-and-fallback).
 - **NZB priority**: the queue priority that Aurral sends to NZBGet.
 - **Delete leftover files**: deletes a download's folder once Aurral is done with it. Enabled by default.
 - **Completed download path**: the folder of finished downloads. Set it only when Aurral cannot find that folder by itself.
@@ -98,7 +98,7 @@ Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playl
 
 ## Download source priority and fallback
 
-Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source has a **Source priority**, and Aurral tries lower numbers first. The defaults are:
+Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source has a **Track priority** (**Source priority** for yt-dlp), and Aurral tries lower numbers first. The defaults are:
 
 | Source            | Default priority |
 | ----------------- | ---------------- |
@@ -109,6 +109,8 @@ Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source h
 | yt-dlp            | `50`             |
 
 If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
+
+slskd, Usenet, Tidarr, and deemix also have an optional **Album priority**. An album you download uses it, and so do upgrades that look for one release for several tracks of an album at once. Every other download uses track priority, as does a source whose album priority is empty. For example, to get albums from Usenet in one download while flow and playlist tracks come from Soulseek file by file, set slskd's album priority to `20` and Usenet's to `10`.
 
 Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, Tidarr, and deemix, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, Tidarr, and deemix, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
 

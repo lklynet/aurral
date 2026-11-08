@@ -40,11 +40,20 @@ export const sabnzbdSettings = Object.freeze({
     }),
     Object.freeze({
       key: "priority",
-      label: "Source priority",
+      label: "Track priority",
       type: "number",
       min: 1,
       max: 1000,
       section: "Downloads",
+    }),
+    Object.freeze({
+      key: "albumPriority",
+      label: "Album priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Downloads",
+      hint: "Empty uses track priority.",
     }),
     Object.freeze({
       key: "addPaused",

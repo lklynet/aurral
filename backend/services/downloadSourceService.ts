@@ -19,6 +19,12 @@ function normalizePriority(value: unknown, fallback: number) {
   return Math.trunc(parsed);
 }
 
+function normalizeAlbumPriority(value: unknown) {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
 function getIntegrations() {
   return dbOps.getSettings()?.integrations || {};
 }
@@ -40,6 +46,11 @@ function getUsenetPriority() {
 
 function getTidarrPriority() {
   return normalizePriority(getIntegrations().tidarr?.priority, 20);
+}
+
+function getUsenetAlbumPriority() {
+  const { key } = getUsenetClient();
+  return normalizeAlbumPriority(dbOps.getSettings()?.integrations?.[key]?.albumPriority);
 }
 
 function getDeemixPriority() {
@@ -74,6 +85,7 @@ export function getDownloadSourceStatus() {
       enabled: isSlskdEnabled(),
       configured: slskdConfigured,
       priority: getSlskdPriority(),
+      albumPriority: normalizeAlbumPriority(getIntegrations().slskd?.albumPriority),
     },
     usenet: {
       id: "usenet",
@@ -81,6 +93,7 @@ export function getDownloadSourceStatus() {
       enabled: usenetConfigured,
       configured: usenetConfigured,
       priority: getUsenetPriority(),
+      albumPriority: getUsenetAlbumPriority(),
       prowlarrConfigured,
       nzbgetConfigured,
       sabnzbdConfigured,
@@ -91,6 +104,7 @@ export function getDownloadSourceStatus() {
       enabled: getIntegrations().tidarr?.enabled === true,
       configured: tidarrConfigured,
       priority: getTidarrPriority(),
+      albumPriority: normalizeAlbumPriority(getIntegrations().tidarr?.albumPriority),
     },
     deemix: {
       id: "deemix",
@@ -98,6 +112,7 @@ export function getDownloadSourceStatus() {
       enabled: deemixClient.isEnabled(),
       configured: deemixConfigured,
       priority: getDeemixPriority(),
+      albumPriority: normalizeAlbumPriority(getIntegrations().deemix?.albumPriority),
     },
     ytdlp: {
       id: "ytdlp",
@@ -109,7 +124,14 @@ export function getDownloadSourceStatus() {
   };
 }
 
-export function getEnabledDownloadSources() {
+export type SourceOrder = "track" | "album";
+
+const sourceRank = (
+  source: { priority: number; albumPriority?: number | null },
+  order: SourceOrder,
+) => (order === "album" ? (source.albumPriority ?? source.priority) : source.priority);
+
+export function getEnabledDownloadSources(order: SourceOrder = "track") {
   const status = getDownloadSourceStatus();
   const sources = [];
   if (status.slskd.configured) sources.push(status.slskd);
@@ -118,10 +140,10 @@ export function getEnabledDownloadSources() {
   if (status.deemix.configured) sources.push(status.deemix);
   if (status.ytdlp.configured) sources.push(status.ytdlp);
   sources.push(...activePluginSources());
-  return sources.sort((left, right) => {
-    if (left.priority !== right.priority) return left.priority - right.priority;
-    return left.id.localeCompare(right.id);
-  });
+  return sources.sort(
+    (left, right) =>
+      sourceRank(left, order) - sourceRank(right, order) || left.id.localeCompare(right.id),
+  );
 }
 
 const ALBUM_GRAB_SOURCE_IDS = ["slskd", "usenet", "tidarr", "deemix"];
