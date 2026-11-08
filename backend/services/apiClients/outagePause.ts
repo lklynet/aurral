@@ -11,38 +11,31 @@ export function createOutagePause(service: string) {
   let pausedUntil = 0;
   const pause = {
     paused: () => Date.now() < pausedUntil,
-    answered() {
-      failuresInARow = 0;
-    },
-    failed(error: unknown) {
-      if (!(error instanceof HttpError) || error.response || error.code === "ABORTED") {
-        failuresInARow = 0;
-        return false;
-      }
-      failuresInARow += 1;
-      if (failuresInARow < PAUSE_AFTER_FAILURES) return false;
-      failuresInARow = 0;
-      pausedUntil = Date.now() + PAUSE_MS;
-      logger.warn("api", `${service} is not responding, pausing requests for a minute`, {
-        code: error.code ?? null,
-        message: error.message,
-      });
-      return true;
+    check() {
+      if (!pause.paused()) return;
+      throw new HttpError(
+        `${service} is not responding`,
+        { method: "GET", url: service },
+        { code: "PAUSED" },
+      );
     },
     async run<T>(request: () => Promise<T>) {
-      if (pause.paused()) {
-        throw new HttpError(
-          `${service} is not responding`,
-          { method: "GET", url: service },
-          { code: "PAUSED" },
-        );
-      }
+      pause.check();
       try {
         const result = await request();
-        pause.answered();
+        failuresInARow = 0;
         return result;
       } catch (error) {
-        pause.failed(error);
+        if (!(error instanceof HttpError) || error.response || error.code === "ABORTED") {
+          failuresInARow = 0;
+        } else if (++failuresInARow >= PAUSE_AFTER_FAILURES) {
+          failuresInARow = 0;
+          pausedUntil = Date.now() + PAUSE_MS;
+          logger.warn("api", `${service} is not responding, pausing requests for a minute`, {
+            code: error.code ?? null,
+            message: error.message,
+          });
+        }
         throw error;
       }
     },

@@ -182,7 +182,9 @@ export async function listenbrainzRequest(
     if (inflight) return inflight;
   }
 
-  const requestPromise = listenbrainzPause(root).run(async () => {
+  const pause = listenbrainzPause(root);
+  pause.check();
+  const requestPromise = (async () => {
     const isRetryable = (error: unknown) => {
       const status = asAppError(error)?.response?.status;
       return (
@@ -213,9 +215,9 @@ export async function listenbrainzRequest(
             },
             timeoutMs,
           };
-          return data
-            ? http.post(`${root}${path}`, data, config)
-            : http.get(`${root}${path}`, config);
+          return pause.run(() =>
+            data ? http.post(`${root}${path}`, data, config) : http.get(`${root}${path}`, config),
+          );
         });
         const payload = response.status === 204 ? null : response.data;
         if (cacheKey) listenbrainzCache.set(cacheKey, payload);
@@ -248,9 +250,9 @@ export async function listenbrainzRequest(
       message: failure?.message || "Unknown ListenBrainz error",
       error: payloadError,
     };
-    logFailure(details);
+    if (details.code !== "PAUSED") logFailure(details);
     throw lastError;
-  });
+  })();
 
   if (cacheKey) listenbrainzInflightRequests.set(cacheKey, requestPromise);
   try {

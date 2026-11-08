@@ -44,20 +44,24 @@ const request = (
   path: string,
   params: Record<string, string | number>,
   signal: AbortSignal | undefined,
-) =>
-  musicbrainzLimiter.schedule(
+) => {
+  musicbrainzPause.check();
+  return musicbrainzLimiter.schedule(
     async (): Promise<unknown> => {
       signal?.throwIfAborted();
-      const response = await http.get(`${MUSICBRAINZ_API}${path}`, {
-        query: { fmt: "json", ...params },
-        headers: { "User-Agent": userAgent() },
-        timeoutMs: 8000,
-        signal,
-      });
+      const response = await musicbrainzPause.run(() =>
+        http.get(`${MUSICBRAINZ_API}${path}`, {
+          query: { fmt: "json", ...params },
+          headers: { "User-Agent": userAgent() },
+          timeoutMs: 8000,
+          signal,
+        }),
+      );
       return response.data;
     },
     { signal },
   );
+};
 
 export async function musicbrainzGet<Schema extends v.GenericSchema>(
   schema: Schema,
@@ -65,12 +69,10 @@ export async function musicbrainzGet<Schema extends v.GenericSchema>(
   params: Record<string, string | number>,
   { signal }: { signal?: AbortSignal } = {},
 ) {
-  const data = await musicbrainzPause.run(() =>
-    request(path, params, signal).catch((error: unknown) => {
-      if (asAppError(error)?.response?.status !== 503) throw error;
-      musicbrainzLimiter.pauseFor(MUSICBRAINZ_BUSY_BACKOFF_MS);
-      return request(path, params, signal);
-    }),
-  );
+  const data = await request(path, params, signal).catch((error: unknown) => {
+    if (asAppError(error)?.response?.status !== 503) throw error;
+    musicbrainzLimiter.pauseFor(MUSICBRAINZ_BUSY_BACKOFF_MS);
+    return request(path, params, signal);
+  });
   return readOne(schema, data, { service: "MusicBrainz", endpoint: path });
 }

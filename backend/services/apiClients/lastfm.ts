@@ -196,18 +196,19 @@ export async function lastfmRequest(
         if (lastfmPause.paused()) return null;
         try {
           const response = await lastfmLimiter.schedule(() =>
-            http.get(LASTFM_API, {
-              query: {
-                method,
-                api_key: apiKey,
-                format: "json",
-                ...params,
-              },
-              timeoutMs,
-              signal: sharedSignal,
-            }),
+            lastfmPause.run(() =>
+              http.get(LASTFM_API, {
+                query: {
+                  method,
+                  api_key: apiKey,
+                  format: "json",
+                  ...params,
+                },
+                timeoutMs,
+                signal: sharedSignal,
+              }),
+            ),
           );
-          lastfmPause.answered();
           const data = readOne(lastfmResponseSchema, response.data, {
             service: "Last.fm",
             endpoint: method,
@@ -240,9 +241,10 @@ export async function lastfmRequest(
         message: failure?.message || "Unknown Last.fm error",
         error: payloadError,
       };
-      if (!lastfmPause.failed(lastError)) {
-        const kind = details.code === "TIMEOUT" ? "timeout" : "error";
-        logFailure(`Last.fm API ${kind} (${method})`, details);
+      if (details.code === "TIMEOUT") {
+        logFailure(`Last.fm API timeout (${method})`, details);
+      } else if (details.code !== "PAUSED") {
+        logFailure(`Last.fm API error (${method})`, details);
       }
       return null;
     },
