@@ -28,6 +28,7 @@ export type Scenario = {
 
 const DISCOVER_ARTIST = "90000000-0000-4000-8000-000000000001";
 const DISCOVER_ALBUM = "90000000-0000-4000-8000-000000000002";
+const SIMILAR_ARTIST = "90000000-0000-4000-8000-000000000003";
 
 let playlistEdits = 0;
 
@@ -100,6 +101,7 @@ export const scenarios: Scenario[] = [
   { name: "discover artist", requests: () => [`/api/artists/${DISCOVER_ARTIST}?mode=core`] },
   { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
+  { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },
   { name: "listening history", requests: () => ["/api/users/me/listening-history"] },
   { name: "subsonic getArtists", requests: () => ["/rest/getArtists"] },

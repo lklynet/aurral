@@ -153,6 +153,28 @@
       }
     }
   },
+  "similar artists": {
+    "queries": {
+      "cold": 29,
+      "warm": 5
+    },
+    "bytes": 14,
+    "scans": [],
+    "calls": {
+      "api.deezer.com": {
+        "cold": 2,
+        "warm": 1
+      },
+      "brainzmash": {
+        "cold": 2,
+        "warm": 0
+      },
+      "labs.api.listenbrainz.org": {
+        "cold": 1,
+        "warm": 1
+      }
+    }
+  },
   "playlists": {
     "queries": {
       "cold": 40,
