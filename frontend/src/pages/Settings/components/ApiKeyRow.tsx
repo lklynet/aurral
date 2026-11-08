@@ -5,6 +5,7 @@ import { ConfirmModal } from "../../../components/ConfirmModal";
 import { DotLoader } from "../../../components/DotLoader";
 import TooltipButton from "../../../components/TooltipButton";
 import { useToast } from "../../../contexts/ToastContext";
+import { copyText } from "../../../utils/shareLink.ts";
 import { SettingsNote, SettingsRow } from "../SettingsLayout";
 
 type ApiKeyState = { apiKey: string; managedByEnv?: boolean };
@@ -42,13 +43,12 @@ export function ApiKeyRow({
 
   const copy = async () => {
     if (!apiKey) return;
-    try {
-      await navigator.clipboard.writeText(apiKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
+    if (!(await copyText(apiKey))) {
       showError(COPY_FAILED);
+      return;
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
