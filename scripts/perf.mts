@@ -58,7 +58,9 @@ async function run(): Promise<RunResult> {
   const { startPerfApp } = await import("../.tests/perf/harness.ts");
   const { scenarios } = await import("../.tests/perf/scenarios.ts");
   const { startServerProcess } = await import("../.tests/helpers/backendTestHarness.ts");
+  const { EDIT_SETS } = await import("../.tests/perf/seed.ts");
   const samples = Number(options.samples);
+  if (samples >= EDIT_SETS) throw new Error(`--samples can be at most ${EDIT_SETS - 1}`);
   const app = await startPerfApp({ artists: Number(options.artists) });
   const metrics: RunResult["metrics"] = {};
   try {
