@@ -28,7 +28,7 @@ const indexerSchema = v.looseObject({
   enable: v.optional(v.boolean()),
   supportsSearch: v.optional(v.boolean()),
   priority: v.optional(v.number()),
-  fields: v.nullish(v.array(v.looseObject({ name: v.string(), value: v.unknown() }))),
+  fields: v.nullish(v.array(v.looseObject({ name: v.string(), value: v.optional(v.unknown()) }))),
   capabilities: v.nullish(
     v.looseObject({
       categories: categoriesSchema,

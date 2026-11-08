@@ -71,6 +71,7 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
           protocol: "usenet",
           supportsSearch: true,
           priority: 5,
+          fields: [{ name: "baseUrl", value: "https://nzb.example" }, { name: "apiPath" }],
           capabilities: { categories: [{ id: 3010 }] },
         },
         {
