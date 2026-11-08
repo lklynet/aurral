@@ -797,11 +797,22 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
   const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
   const flowConnection = new Database(isolatedState.dbPath);
   try {
-    flowConnection.prepare("UPDATE download_jobs SET status = 'done' WHERE id = ?").run(id);
+    flowConnection
+      .prepare("UPDATE download_jobs SET status = 'done', final_path = ? WHERE id = ?")
+      .run("/music/Artist/Song.flac", id);
     const previousEnv = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = "production";
       assert.equal(tracker.getJob(id)?.status, "done");
+      assert.deepEqual(
+        [
+          tracker.getDoneByTrackName("  SONG ").map((job) => job.id),
+          tracker.getDoneByTrackName("Other").map((job) => job.id),
+          tracker.getDoneByFinalPath("/music/Artist/../Artist/Song.flac").map((job) => job.id),
+          tracker.getDoneByFinalPath("/music/Other.flac").map((job) => job.id),
+        ],
+        [[id], [], [id], []],
+      );
       assert.deepEqual(
         [...tracker.getJobs([id, "missing"])].map(([key, job]) => [key, job.status]),
         [[id, "done"]],
