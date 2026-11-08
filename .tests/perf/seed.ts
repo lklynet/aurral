@@ -218,7 +218,7 @@ export function seedPerfListening(
 
 const HISTORY_JOBS = 5_000;
 const EDIT_SONGS = 25;
-const EDIT_SETS = 8;
+const EDIT_SETS = 16;
 
 export function seedPerfPlaylistJobs(
   db: Database.Database,

@@ -139,7 +139,8 @@ export const scenarios: Scenario[] = [
   {
     name: "subsonic edit playlist",
     requests: ({ editPlaylist }) => {
-      const songIds = editPlaylist.songIds[playlistEdits++ % editPlaylist.songIds.length] ?? [];
+      const songIds = editPlaylist.songIds[playlistEdits++];
+      if (!songIds) throw new Error("subsonic edit playlist ran out of unlinked songs");
       const songs = songIds.map((id) => `&songId=${encodeURIComponent(id)}`).join("");
       return [`/rest/createPlaylist?playlistId=${encodeURIComponent(editPlaylist.id)}${songs}`];
     },
