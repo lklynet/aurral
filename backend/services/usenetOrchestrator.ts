@@ -1,5 +1,6 @@
 import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
+import { CompletedNzbReuse } from "./completedNzbReuse.ts";
 import { asAppError } from "../../lib/errors.ts";
 import fs from "fs/promises";
 import {
@@ -64,6 +65,10 @@ const MAX_UNREAD_POLLS = 60;
 type NzbId = number | string;
 
 interface UsenetHistoryItem {
+  NZBID?: number;
+  ID?: number;
+  NZBName?: string;
+  HistoryTime?: number;
   Status?: string | null;
   status?: string | null;
   FinalDir?: string | null;
@@ -87,6 +92,7 @@ type UsenetJob = Pick<DownloadJob, "id"> &
     | "downloadClient"
     | "downloadClientId"
     | "releaseGuid"
+    | "releaseTitle"
     | "heldForReview"
   >;
 
@@ -131,6 +137,8 @@ interface UsenetPayload extends Omit<TrackerPayload, "candidates"> {
   searchError?: string | null;
   candidates?: UsenetCandidate[];
   candidateIndex?: number;
+  cacheUnavailable?: boolean;
+  cacheUnreadPolls?: number;
   pollAttempts?: number;
   missingPolls?: number;
   unreadPolls?: number;
@@ -216,6 +224,23 @@ function consumersForNzb(
   return consumers;
 }
 
+const completedNzbs = new CompletedNzbReuse({
+  consumers: (id) => trackedConsumers("nzbget", id).length > 0,
+  history: (id) => getUsenetClient("nzbget").getHistoryItem(id),
+  histories: () => {
+    const client = getUsenetClient("nzbget");
+    if (client.key !== "nzbget") throw new Error("Completed NZB client unavailable");
+    return client.history(false);
+  },
+  hasFiles: async (history) => (await collectDownloadedAudioFiles(history, "nzbget")).length > 0,
+  remove: async (id, history) => {
+    const client = getUsenetClient("nzbget");
+    retireNzb(nzbKey(client.key, id));
+    await client.deleteQueueItem(id);
+    await client.deleteHistoryItem(id, { deleteFiles: true, historyItem: history });
+  },
+});
+
 function hasOtherNzbConsumers(clientKey: string, nzbId: NzbId | null | undefined, jobId: string) {
   return [...consumersForNzb(clientKey, nzbId, jobId)].some((id) => id !== jobId);
 }
@@ -258,6 +283,7 @@ async function removeUsenetItem(
   jobId: string,
   options: UsenetRemoveOptions = {},
 ) {
+  return completedNzbs.run(async () => {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const key = nzbKey(client.key, payload.nzbId);
   releasedNzbs.add(`${jobId}\0${key}`);
@@ -265,6 +291,13 @@ async function removeUsenetItem(
     const consumers = consumersForNzb(client.key, payload.nzbId, jobId);
     consumers.delete(jobId);
     if (consumers.size > 0) return false;
+  }
+  if (payload.albumGrab !== true && client.key === "nzbget") {
+    try { if (completedNzbs.preserves(client.key, payload.nzbId)) return false; }
+    catch (error) {
+      logger.warn("usenet", "Completed source ownership unavailable; cleanup deferred", { jobId });
+      return false;
+    }
   }
   retireNzb(key);
   for (const [entry, remove] of [
@@ -279,6 +312,7 @@ async function removeUsenetItem(
     });
   }
   return true;
+  });
 }
 
 export async function discardUsenetWork(payload: UsenetPayload) {
@@ -302,7 +336,8 @@ export async function removeReviewedUsenetDownload(
 export function shouldPreserveReviewedUsenetSource(job: UsenetJob | null | undefined) {
   if (!isNzbSource(job?.downloadSource) || !job.downloadClientId || !job.id) return false;
   const client = getUsenetClient(job.downloadClient);
-  return hasOtherNzbConsumers(client.key, job.downloadClientId, job.id);
+  return completedNzbs.shouldCopy(client.key, job.downloadClientId) ||
+    hasOtherNzbConsumers(client.key, job.downloadClientId, job.id);
 }
 
 const RELEASE_RESET = Object.freeze({
@@ -631,6 +666,15 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
   };
 }
 
+function deferCompletedCache(payload: UsenetPayload, job: UsenetJob): UsenetPayload | null {
+  const attempts = Math.min(MAX_UNREAD_POLLS, Number(payload.cacheUnreadPolls || 0) + 1);
+  if (attempts >= MAX_UNREAD_POLLS) {
+    downloadTracker.setFailed(job.id, "Completed release cache unavailable; retry this request after NZBGet or cache storage recovers");
+    return null;
+  }
+  return { ...payload, cacheUnavailable: true, cacheUnreadPolls: attempts, delaySeconds: UNREAD_POLL_DELAY_SECONDS };
+}
+
 async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
@@ -673,6 +717,8 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
     nzbId,
     candidate,
     candidateIndex: index,
+    cacheUnavailable: false,
+    cacheUnreadPolls: 0,
     pollAttempts: 0,
     missingPolls: 0,
     unreadPolls: 0,
@@ -707,6 +753,27 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   }
   let submission;
   try {
+    if (shareable) {
+      let reused;
+      try {
+        reused = await completedNzbs.run(() => completedNzbs.attach(
+          clientKey, String(release.guid).trim(), String(release.title || ""),
+          (id) => {
+            if (!isPipelinePayloadActive(payload)) return;
+            releasedNzbs.delete(`${job.id}\0${nzbKey(clientKey, id)}`);
+            downloadTracker.updateDownloadMetadata(job.id, { ...releaseMetadata, downloadClientId: id });
+          },
+        ));
+      } catch (error) {
+        logger.warn("usenet", "Completed release cache unavailable; same candidate deferred", { jobId: job.id });
+        return deferCompletedCache(payload, job);
+      }
+      if (reused != null) {
+        if (!isPipelinePayloadActive(payload)) return null;
+        submission = { cancelled: false, result: { nzbId: reused } };
+        return pollPayload(reused);
+      }
+    }
     if (indexerClient && !client.isConfigured()) throw new Error(`${client.name} is not set up`);
     const nzb = tidarr
       ? await getDownloadClient("tidarr").fetchNzb(release.guid)
@@ -911,13 +978,22 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
   const finalPath = path.join(finalDir, finalName);
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
+  let retained = false;
+  try {
+    retained = await completedNzbs.run(() => completedNzbs.retain(
+      client.key, String(job.releaseGuid || "").trim(), payload.nzbId!, String(job.releaseTitle || ""),
+    ));
+  } catch (error) {
+    logger.warn("usenet", "Completed release retention unavailable; finalize deferred", { jobId: job.id });
+    return deferCompletedCache(payload, job);
+  }
   const committed = await withPipelineCommitLock(payload, async () => {
     import("./aurralHistoryService.ts")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
       .catch((err) => {
         console.warn(err);
       });
-    const preserveSource = hasOtherNzbConsumers(client.key, payload.nzbId, job.id);
+    const preserveSource = retained || completedNzbs.preserves(client.key, payload.nzbId) || hasOtherNzbConsumers(client.key, payload.nzbId, job.id);
     // Once the last consumer commits, no later job may attach to a source
     // that this operation is about to move away.
     if (!preserveSource) retireNzb(nzbKey(client.key, payload.nzbId));
