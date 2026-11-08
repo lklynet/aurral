@@ -4,10 +4,12 @@ import { asAppError } from "../../../lib/errors.ts";
 import { APP_NAME, APP_VERSION, MUSICBRAINZ_API } from "../../config/constants.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { readOne } from "../integrationData.ts";
+import { createOutagePause } from "./outagePause.ts";
 import createRateLimiter from "./rateLimiter.ts";
 
 const MUSICBRAINZ_BUSY_BACKOFF_MS = 2000;
 const musicbrainzLimiter = createRateLimiter(1000);
+const musicbrainzPause = createOutagePause("MusicBrainz");
 
 export const artistCreditSchema = v.optional(
   v.array(
@@ -63,10 +65,12 @@ export async function musicbrainzGet<Schema extends v.GenericSchema>(
   params: Record<string, string | number>,
   { signal }: { signal?: AbortSignal } = {},
 ) {
-  const data = await request(path, params, signal).catch((error: unknown) => {
-    if (asAppError(error)?.response?.status !== 503) throw error;
-    musicbrainzLimiter.pauseFor(MUSICBRAINZ_BUSY_BACKOFF_MS);
-    return request(path, params, signal);
-  });
+  const data = await musicbrainzPause.run(() =>
+    request(path, params, signal).catch((error: unknown) => {
+      if (asAppError(error)?.response?.status !== 503) throw error;
+      musicbrainzLimiter.pauseFor(MUSICBRAINZ_BUSY_BACKOFF_MS);
+      return request(path, params, signal);
+    }),
+  );
   return readOne(schema, data, { service: "MusicBrainz", endpoint: path });
 }

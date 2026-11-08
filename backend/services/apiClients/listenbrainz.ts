@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { http, isTransientNetworkError, type HttpOptions } from "../../../lib/http.ts";
 import { lenient, lenientCount, lenientText, readOne } from "../integrationData.ts";
 import createRateLimiter from "./rateLimiter.ts";
+import { createOutagePause } from "./outagePause.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -45,6 +46,14 @@ const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 
 const listenbrainzInflightRequests = new Map<string, Promise<unknown>>();
 const listenbrainzErrorLogAt = new Map<string, number>();
+const listenbrainzPauses = new Map<string, ReturnType<typeof createOutagePause>>();
+
+const listenbrainzPause = (root: string) => {
+  const host = new URL(root).host;
+  const pause = listenbrainzPauses.get(host) ?? createOutagePause(host);
+  listenbrainzPauses.set(host, pause);
+  return pause;
+};
 
 const getRateLimitWaitMs = (error: unknown) => {
   const failure = asAppError(error);
@@ -173,7 +182,7 @@ export async function listenbrainzRequest(
     if (inflight) return inflight;
   }
 
-  const requestPromise = (async () => {
+  const requestPromise = listenbrainzPause(root).run(async () => {
     const isRetryable = (error: unknown) => {
       const status = asAppError(error)?.response?.status;
       return (
@@ -241,7 +250,7 @@ export async function listenbrainzRequest(
     };
     logFailure(details);
     throw lastError;
-  })();
+  });
 
   if (cacheKey) listenbrainzInflightRequests.set(cacheKey, requestPromise);
   try {
