@@ -80,7 +80,13 @@ async function run(): Promise<RunResult> {
     }
     const guard = pathToFileURL(path.join(repoRoot, ".tests", "offline-guard.ts")).href;
     const started = performance.now();
-    const server = await startServerProcess({ extraEnv: { NODE_OPTIONS: `--import=${guard}` } });
+    const server = await startServerProcess({
+      extraEnv: {
+        NODE_OPTIONS: `--import=${guard}`,
+        NODE_ENV: "production",
+        AURRAL_TEST_SERVER: "",
+      },
+    });
     metrics["server startup"] = {
       kind: "time",
       samples: [Number((performance.now() - started).toFixed(1))],
