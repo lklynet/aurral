@@ -133,20 +133,12 @@
   ".tests/web/share-instances.test.ts": 14,
   ".tests/web/updates.test.ts": 2,
   "backend/services/flows/flowPlanProcess.ts": 1,
-  "frontend/src/components/RouteLink.tsx": 1,
   "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsStream.ts": 10,
   "frontend/src/pages/discoverUtils.ts": 5,
-  "frontend/src/pages/LibraryInfoModal.tsx": 5,
-  "frontend/src/pages/LibraryPage.tsx": 1,
   "frontend/src/pages/useDiscoverData.ts": 6,
   "frontend/src/utils/queueStorage.ts": 7,
-  "frontend/src/utils/recentSearches.ts": 1,
   "frontend/src/utils/theme.ts": 6,
-  "frontend/src/utils/themeImport.ts": 1,
   "frontend/src/utils/webSocketConnection.ts": 9,
-  "scripts/benchmark-library.mts": 3,
   "scripts/github.ts": 1,
-  "scripts/label-pr.ts": 1,
-  "scripts/lint-any.mts": 1,
-  "scripts/typecheck.mts": 1
+  "scripts/label-pr.ts": 1
 }

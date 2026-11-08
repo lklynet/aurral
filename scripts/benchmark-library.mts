@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as v from "valibot";
 import { performance } from "node:perf_hooks";
 import { spawn } from "node:child_process";
 import type * as DbSqlite from "../backend/config/db-sqlite.ts";
@@ -355,14 +356,17 @@ function collectPageSamples(getPage: () => LibraryPage, invalidate: () => void, 
   };
 }
 
-type ChildProbe = {
-  jsonBytes: number;
-  rssDeltaBytes: number;
-  heapDeltaBytes: number;
-  rssBytes: number;
-  heapUsedBytes: number;
-  counts: Record<string, number>;
-};
+const childProbe = v.object({
+  elapsedMs: v.number(),
+  jsonBytes: v.number(),
+  rssDeltaBytes: v.number(),
+  heapDeltaBytes: v.number(),
+  rssBytes: v.number(),
+  heapUsedBytes: v.number(),
+  counts: v.record(v.string(), v.number()),
+});
+
+type ChildProbe = v.InferOutput<typeof childProbe>;
 
 type ChildResult =
   | ({ status: "completed"; elapsedMs: number } & ChildProbe)
@@ -444,7 +448,7 @@ function runChild({
       const lines = stdout.trim().split("\n").filter(Boolean);
       let value: ChildProbe | null = null;
       try {
-        value = JSON.parse(lines.at(-1) || "null");
+        value = v.parse(childProbe, JSON.parse(lines.at(-1) || "null"));
       } catch {
         value = null;
       }
@@ -458,7 +462,7 @@ function runChild({
         });
         return;
       }
-      resolve({ status: "completed", elapsedMs, ...value });
+      resolve({ status: "completed", ...value });
     });
   });
 }
@@ -913,6 +917,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error.stack || error.message);
+  console.error(error instanceof Error ? error.stack || error.message : error);
   process.exitCode = 1;
 });
