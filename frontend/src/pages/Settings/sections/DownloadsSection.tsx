@@ -91,9 +91,7 @@ export function DownloadsSection() {
               key={definition.key}
               to={`downloads/${definition.key}`}
               name={definition.label}
-              status={
-                configured && priority ? { ...status, label: `On, priority ${priority}` } : status
-              }
+              status={configured && priority ? { ...status, label: `On, ${priority}` } : status}
             />
           );
         })}

@@ -317,6 +317,29 @@ test("every album source is searched by release in priority order before any tra
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "failed");
 });
 
+test("album requests and upgrades of several tracks of a release try sources in album priority order", () => {
+  useSources({
+    slskd: { enabled: true, url: "http://127.0.0.1:9", priority: 10, albumPriority: 30 },
+    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+    nzbget: { enabled: true, url: "http://127.0.0.1:9", priority: 20, albumPriority: 5 },
+  });
+  const group = album("order", "Order Band", [
+    { id: "order-release", tracks: ["First", "Second", "Third"] },
+  ]);
+  const [track, sibling] = libraryJobs(group, ["First", "Second"]);
+  const [whole] = libraryJobs(group, ["Third"], { requestKind: "album" });
+  assert.ok(track !== undefined && sibling !== undefined && whole !== undefined);
+  const firstSource = (payload: Parameters<typeof buildNextSourcePayload>[0]) =>
+    buildNextSourcePayload(payload)?.source;
+  const upgrade = { jobId: track, albumGrab: true, upgrade: true };
+
+  assert.equal(firstSource({ jobId: track }), "slskd");
+  assert.equal(firstSource({ jobId: whole }), "usenet");
+  assert.equal(firstSource({ jobId: whole, albumGrab: true }), "usenet");
+  assert.equal(firstSource({ ...upgrade, albumGroupJobIds: [track, sibling] }), "usenet");
+  assert.equal(firstSource({ ...upgrade, albumGroupJobIds: [track] }), "slskd");
+});
+
 // yt-dlp ranked above Soulseek, with every search logged in order and
 // whether a release attempt made it.
 function useQuickSources() {

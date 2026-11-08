@@ -51,7 +51,11 @@ export function clientPriority(
 ) {
   if (!definition.fields.some((field) => field.key === "priority")) return null;
   const priority = config.priority ?? definition.defaults?.priority;
-  return priority == null ? null : String(priority);
+  if (priority == null) return null;
+  const albumPriority = config.albumPriority;
+  return albumPriority == null || albumPriority === ""
+    ? `priority ${priority}`
+    : `tracks ${priority}, albums ${albumPriority}`;
 }
 
 function missingRequiredFields(

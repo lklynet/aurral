@@ -100,6 +100,11 @@ const clampedInteger = (value: unknown, min: number, max: number, fallback: numb
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 };
 
+const optionalPriority = (value: unknown) => {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? Math.min(1000, Math.max(1, parsed)) : undefined;
+};
+
 export function readAppSettings() {
   const settings = dbOps.getSettings();
   if (settings?.integrations?.musicbrainz) {
@@ -274,6 +279,7 @@ function normalizeIntegrationPatch(
     nextNzbget.password = typeof nextNzbget.password === "string" ? nextNzbget.password : "";
     nextNzbget.category = String(nextNzbget.category || "aurral").trim() || "aurral";
     nextNzbget.priority = clampedInteger(nextNzbget.priority, 1, 1000, 20);
+    nextNzbget.albumPriority = optionalPriority(nextNzbget.albumPriority);
     nextNzbget.nzbPriority = clampedInteger(nextNzbget.nzbPriority, -100, 900, 0);
     nextNzbget.addPaused = nextNzbget.addPaused === true;
     nextNzbget.deleteLeftovers = nextNzbget.deleteLeftovers !== false;
@@ -299,6 +305,7 @@ function normalizeIntegrationPatch(
     nextSlskd.apiKey = typeof nextSlskd.apiKey === "string" ? nextSlskd.apiKey.trim() : "";
     nextSlskd.enabled = nextSlskd.enabled === true;
     nextSlskd.priority = clampedInteger(nextSlskd.priority, 1, 1000, 10);
+    nextSlskd.albumPriority = optionalPriority(nextSlskd.albumPriority);
     nextSlskd.cleanupAfterRuns = nextSlskd.cleanupAfterRuns === true;
     integrations.slskd = nextSlskd;
   }
@@ -322,6 +329,7 @@ function normalizeIntegrationPatch(
     nextSabnzbd.category = String(nextSabnzbd.category || "aurral").trim() || "aurral";
     nextSabnzbd.deleteLeftovers = nextSabnzbd.deleteLeftovers !== false;
     nextSabnzbd.priority = clampedInteger(nextSabnzbd.priority, 1, 1000, 20);
+    nextSabnzbd.albumPriority = optionalPriority(nextSabnzbd.albumPriority);
     nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
     integrations.sabnzbd = nextSabnzbd;
   }
@@ -343,6 +351,7 @@ function normalizeIntegrationPatch(
     nextTidarr.apiKey = typeof nextTidarr.apiKey === "string" ? nextTidarr.apiKey.trim() : "";
     nextTidarr.enabled = nextTidarr.enabled === true;
     nextTidarr.priority = clampedInteger(nextTidarr.priority, 1, 1000, 20);
+    nextTidarr.albumPriority = optionalPriority(nextTidarr.albumPriority);
     integrations.tidarr = nextTidarr;
   }
 
@@ -364,6 +373,7 @@ function normalizeIntegrationPatch(
     const bitrate = Number.parseInt(String(nextDeemix.bitrate), 10);
     nextDeemix.bitrate = [1, 3, 9].includes(bitrate) ? bitrate : 9;
     nextDeemix.priority = clampedInteger(nextDeemix.priority, 1, 1000, 15);
+    nextDeemix.albumPriority = optionalPriority(nextDeemix.albumPriority);
     integrations.deemix = nextDeemix;
   }
 

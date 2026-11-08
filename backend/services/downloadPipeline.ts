@@ -37,6 +37,7 @@ import {
   isAlbumGrabSourceId,
   getSourceLabel,
   isAnyDownloadSourceConfigured,
+  type SourceOrder,
 } from "./downloadSourceService.ts";
 import { blockPipelineJobForReview, SEARCH_RESET } from "./pipelineHelpers.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
@@ -85,6 +86,9 @@ export type PipelinePayload = TrackerPayload &
 type SourceFields = Partial<
   Pick<
     PipelinePayload,
+    | "jobId"
+    | "upgrade"
+    | "albumGroupJobIds"
     | "manualSelection"
     | "allowedSources"
     | "albumGrab"
@@ -183,6 +187,14 @@ function isSourceConfigured(sourceId: string) {
   return getEnabledDownloadSources().some((source) => source.id === sourceId);
 }
 
+const sourceOrder = (payload: SourceFields): SourceOrder =>
+  (payload.jobId && downloadTracker.getJob(payload.jobId)?.requestKind === "album") ||
+  (payload.albumGrab === true &&
+    payload.upgrade === true &&
+    (payload.albumGroupJobIds?.length ?? 0) > 1)
+    ? "album"
+    : "track";
+
 export function buildNextSourcePayload<Payload extends SourceFields>(
   payload: Payload,
   failedSource: string | null = null,
@@ -192,7 +204,7 @@ export function buildNextSourcePayload<Payload extends SourceFields>(
   const allowedSources = Array.isArray(payload?.allowedSources)
     ? new Set(payload.allowedSources)
     : null;
-  const sources = getEnabledDownloadSources().filter(
+  const sources = getEnabledDownloadSources(sourceOrder(payload)).filter(
     (source) =>
       (!allowedSources || allowedSources.has(source.id)) &&
       (payload?.albumGrab !== true || isAlbumGrabSource(source)),
