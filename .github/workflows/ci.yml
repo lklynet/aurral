@@ -202,7 +202,7 @@ jobs:
           PR_NUMBER: ${{ github.event.number }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --edit-last --create-if-none --body "$(cat <<EOF
+          cat > "$RUNNER_TEMP/preview.md" <<EOF
           ## Preview image
 
           Built from \`${VERSION}\`. Each push replaces it.
@@ -213,7 +213,13 @@ jobs:
 
           Back up your Aurral config, point your compose service at this image, then \`docker compose pull aurral && docker compose up -d aurral\`. Switch back to your usual tag when you're done.
           EOF
-          )"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("## Preview image"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$RUNNER_TEMP/preview.md" > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -F body=@"$RUNNER_TEMP/preview.md" > /dev/null
+          fi
 
   validate:
     if: ${{ !cancelled() }}
