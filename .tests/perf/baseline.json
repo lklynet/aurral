@@ -129,8 +129,8 @@
   },
   "subsonic getArtists": {
     "queries": {
-      "cold": 128,
-      "warm": 128
+      "cold": 9,
+      "warm": 9
     },
     "bytes": 43903,
     "scans": []
@@ -169,8 +169,8 @@
   },
   "subsonic getStarred2": {
     "queries": {
-      "cold": 2319,
-      "warm": 2319
+      "cold": 2295,
+      "warm": 2295
     },
     "bytes": 302687,
     "scans": []
