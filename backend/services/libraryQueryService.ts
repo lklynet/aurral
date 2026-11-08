@@ -88,6 +88,7 @@ type LibraryCanonicalRow = {
   track_artist_name: LibraryTracksRow["artist_name"];
   track_monitored: LibraryTracksRow["monitored"];
   track_created_at: LibraryTracksRow["created_at"];
+  track_metadata_json: LibraryTracksRow["metadata_json"];
   disc_number: LibraryAlbumTracksRow["disc_number"];
   track_number: LibraryAlbumTracksRow["track_number"];
 } & LibraryCanonicalMedia;
@@ -139,18 +140,42 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
 const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
 const TRACK_OWNERSHIP_BATCH_SIZE = 200;
-const artistMetadataStmt = db.prepare<[number], Pick<LibraryArtistsRow, "metadata_json">>(
-  "SELECT metadata_json FROM library_artists WHERE id = ?",
+const artistMetadataStmt = db.prepare<[string], Pick<LibraryArtistsRow, "id" | "metadata_json">>(
+  "SELECT id, metadata_json FROM library_artists WHERE id IN (SELECT value FROM json_each(?))",
 );
-const albumMetadataStmt = db.prepare<[number], Pick<LibraryAlbumsRow, "metadata_json">>(
-  "SELECT metadata_json FROM library_albums WHERE id = ?",
+const albumMetadataStmt = db.prepare<[string], Pick<LibraryAlbumsRow, "id" | "metadata_json">>(
+  "SELECT id, metadata_json FROM library_albums WHERE id IN (SELECT value FROM json_each(?))",
 );
-const trackMetadataStmt = db.prepare<[number], Pick<LibraryTracksRow, "metadata_json">>(
-  "SELECT metadata_json FROM library_tracks WHERE id = ?",
+const albumCreditsStmt = db.prepare<[string], LibraryAlbumCreditsRow>(
+  `SELECT album_id, artist_mbid FROM library_album_credits
+   WHERE album_id IN (SELECT value FROM json_each(?))
+   ORDER BY album_id, artist_mbid`,
 );
-const albumCreditsStmt = db.prepare<[number], Pick<LibraryAlbumCreditsRow, "artist_mbid">>(
-  "SELECT artist_mbid FROM library_album_credits WHERE album_id = ?",
-);
+
+const metadataByIds = (
+  statement: typeof artistMetadataStmt | typeof albumMetadataStmt,
+  ids: Iterable<number>,
+) =>
+  new Map(
+    statement
+      .all(JSON.stringify([...ids]))
+      .map((row) => [row.id, readLibraryMetadata(row.metadata_json)]),
+  );
+
+const creditsByAlbumIds = (ids: Iterable<number>) => {
+  const credits = new Map<number, string[]>();
+  for (const { album_id, artist_mbid } of albumCreditsStmt.all(JSON.stringify([...ids]))) {
+    credits.set(album_id, [...(credits.get(album_id) ?? []), artist_mbid]);
+  }
+  return credits;
+};
+
+const metadataFields = (metadata: LibraryMetadata | null) => ({
+  metadata,
+  providerId: metadata?.id ?? null,
+  monitored: metadata?.monitored === true,
+  monitorOption: metadata?.monitor || metadata?.addOptions?.monitor || "none",
+});
 
 const parseSources = (value: string | null): string[] =>
   String(value || "")
@@ -189,6 +214,7 @@ const CANONICAL_SELECT = `SELECT
   track.artist_name AS track_artist_name,
   track.monitored AS track_monitored,
   track.created_at AS track_created_at,
+  track.metadata_json AS track_metadata_json,
   album_track.disc_number,
   album_track.track_number,
   media.id AS media_id,
@@ -312,19 +338,13 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
   for (const row of rows) {
     let artist = artists.get(row.artist_id);
     if (!artist) {
-      const artistMetadata = readLibraryMetadata(
-        artistMetadataStmt.get(row.artist_id)?.metadata_json,
-      );
       artist = {
         id: row.artist_id,
         identityKey: row.artist_identity_key,
         mbid: row.artist_mbid,
         name: row.artist_name,
         sortName: row.artist_sort_name,
-        metadata: artistMetadata,
-        providerId: artistMetadata?.id ?? null,
-        monitored: artistMetadata?.monitored === true,
-        monitorOption: artistMetadata?.monitor || artistMetadata?.addOptions?.monitor || "none",
+        ...metadataFields(null),
         albumIds: [],
         sources: [],
         available: false,
@@ -335,7 +355,6 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
     let album = albums.get(row.album_id);
     if (!album) {
-      const albumMetadata = readLibraryMetadata(albumMetadataStmt.get(row.album_id)?.metadata_json);
       album = {
         id: row.album_id,
         identityKey: row.album_identity_key,
@@ -346,23 +365,18 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
         albumArtist: row.album_artist,
         releaseDate: row.album_release_date,
         createdAt: row.album_created_at,
-        metadata: albumMetadata,
-        providerId: albumMetadata?.id ?? null,
-        monitored: albumMetadata?.monitored === true,
-        monitorOption: albumMetadata?.monitor || albumMetadata?.addOptions?.monitor || "none",
+        ...metadataFields(null),
         trackIds: [],
         sources: [],
         available: false,
       };
-      const credits = albumCreditsStmt.all(row.album_id).map((credit) => credit.artist_mbid);
-      if (credits.length) album.creditedArtistMbids = credits;
       albums.set(row.album_id, album);
     }
     album.managedBy = albumManagement.get(row.album_id)?.managedBy ?? null;
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
     let track = tracks.get(row.track_id);
     if (!track) {
-      const trackMetadata = readLibraryMetadata(trackMetadataStmt.get(row.track_id)?.metadata_json);
+      const trackMetadata = readLibraryMetadata(row.track_metadata_json);
       track = {
         id: row.track_id,
         identityKey: row.track_identity_key,
@@ -430,6 +444,17 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
     }
   }
 
+  const artistMetadata = metadataByIds(artistMetadataStmt, artists.keys());
+  for (const artist of artists.values()) {
+    Object.assign(artist, metadataFields(artistMetadata.get(artist.id) ?? null));
+  }
+  const albumMetadata = metadataByIds(albumMetadataStmt, albums.keys());
+  const albumCredits = creditsByAlbumIds(albums.keys());
+  for (const album of albums.values()) {
+    Object.assign(album, metadataFields(albumMetadata.get(album.id) ?? null));
+    const credits = albumCredits.get(album.id);
+    if (credits) album.creditedArtistMbids = credits;
+  }
   for (const entities of [artists, albums, tracks]) {
     for (const entity of entities.values()) {
       entity.sources.sort();
@@ -3063,7 +3088,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
   const albumManagement = getManagedByMap("album").get(row.album_id) || null;
   const artistMetadata = readLibraryMetadata(row.artist_metadata_json);
   const albumMetadata = readLibraryMetadata(row.album_metadata_json);
-  const albumCredits = albumCreditsStmt.all(row.album_id).map((credit) => credit.artist_mbid);
+  const albumCredits = creditsByAlbumIds([row.album_id]).get(row.album_id) ?? [];
   return {
     artist: {
       id: row.artist_id,
