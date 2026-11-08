@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ApiError } from "../../utils/api/core.ts";
 import { getApiErrorMessage, getApiErrorText } from "../../utils/api/errors.ts";
 import {
   AlertCircle,
@@ -34,7 +33,6 @@ import {
   isCutoffUnmetAurralJob,
   isMissingAurralJob,
   sortMissingJobs,
-  type MissingJob,
 } from "./activityMissingUtils.ts";
 import Tooltip from "../../components/Tooltip";
 import type { PlaylistStatus } from "../playlists/playlistStats.ts";
@@ -44,16 +42,12 @@ const WANTED_PAGE_SIZE = 25;
 
 type MissingActionState = "working" | "queued";
 
-type MissingPageJob = MissingJob & {
-  id: string;
-  status: string;
-  playlistType: string;
-  artistName?: string | null;
-  albumName?: string | null;
-  error?: string | null;
-  qualityLabel?: string | null;
-  upgradeQueued?: boolean;
-};
+const fetchMissingJobs = (signal?: AbortSignal) =>
+  parseResponse(playlistJobsClient.jobs.$get({ query: {} }, { init: { signal } })).then((jobs) =>
+    jobs.map(withAuthenticatedTrackArtwork),
+  );
+
+type MissingPageJob = Awaited<ReturnType<typeof fetchMissingJobs>>[number];
 
 type MissingInfoJob = MissingPageJob & { playlistName: string };
 
@@ -220,19 +214,13 @@ export default function ActivityMissingPage() {
   const [searchingAll, setSearchingAll] = useState(false);
   const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
   const jobsQueryKey = queryKeys.playlistJobs();
-  const jobsQuery = useQuery<unknown, ApiError>({
+  const jobsQuery = useQuery({
     queryKey: jobsQueryKey,
-    queryFn: ({ signal }) =>
-      parseResponse(playlistJobsClient.jobs.$get({ query: {} }, { init: { signal } })).then(
-        (jobs) => jobs.map(withAuthenticatedTrackArtwork),
-      ),
+    queryFn: ({ signal }) => fetchMissingJobs(signal),
     staleTime: 15_000,
   });
   const statusQuery = usePlaylistStatusQuery();
-  const allJobs: MissingPageJob[] = useMemo(
-    () => (Array.isArray(jobsQuery.data) ? jobsQuery.data : []),
-    [jobsQuery.data],
-  );
+  const allJobs = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data]);
   const playlistInfo = useMemo(() => toPlaylistInfo(statusQuery.data), [statusQuery.data]);
   const jobs = useMemo(() => {
     const upgradeJobIds = new Set(
@@ -331,8 +319,8 @@ export default function ActivityMissingPage() {
                 param: { flowId: playlistId, jobId },
               }),
         );
-        queryClient.setQueryData(jobsQueryKey, (current) =>
-          (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
+        queryClient.setQueryData<MissingPageJob[]>(jobsQueryKey, (current) =>
+          (current ?? []).filter((entry) => getMissingJobKey(entry) !== id),
         );
         setActionStates((current) => {
           const next = { ...current };
@@ -373,7 +361,7 @@ export default function ActivityMissingPage() {
     setActionStates((current) =>
       Object.fromEntries([
         ...Object.entries(current),
-        ...actionableJobs.map((job) => [getMissingJobKey(job), "working"]),
+        ...actionableJobs.map((job) => [getMissingJobKey(job), "working"] as const),
       ]),
     );
     try {
@@ -548,10 +536,8 @@ export default function ActivityMissingPage() {
         onClose={() => setManualSearchJob(null)}
         onQueued={(job) => {
           const id = getMissingJobKey(job);
-          queryClient.setQueryData(jobsQueryKey, (current) =>
-            (Array.isArray(current) ? current : []).filter(
-              (entry) => getMissingJobKey(entry) !== id,
-            ),
+          queryClient.setQueryData<MissingPageJob[]>(jobsQueryKey, (current) =>
+            (current ?? []).filter((entry) => getMissingJobKey(entry) !== id),
           );
           showSuccess(`Downloading ${job.trackName || "selected track"}`);
         }}

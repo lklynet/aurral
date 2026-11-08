@@ -149,10 +149,12 @@ export function classifyAudioQuality(parsed: ParsedAudio, filePath: string) {
   };
 }
 
+export type QualityState = "below-floor" | "upgrade" | "preferred" | "external";
+
 export function getQualityState(
   classification: { tier?: string | null } | null | undefined,
   profile: unknown,
-) {
+): Exclude<QualityState, "external"> {
   const normalized = normalizeQualityProfile(profile);
   const tier = String(classification?.tier || "");
   const enabled = new Set(normalized.enabled);

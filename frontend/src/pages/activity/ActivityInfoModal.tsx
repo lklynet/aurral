@@ -7,6 +7,10 @@ import { lookupLabel, type ActivityRequest } from "./activityListUtils.ts";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
+type ActivityInfoItem = Partial<Omit<ActivityRequest, "completedAt">> & {
+  completedAt?: string | number | null;
+};
+
 const formatTimestamp = (value: string | number | null | undefined) => {
   if (value == null || value === "") return "";
   const raw = text(value);
@@ -21,7 +25,7 @@ const formatTimestamp = (value: string | number | null | undefined) => {
   });
 };
 
-const formatSource = (item: Partial<ActivityRequest>) => {
+const formatSource = (item: ActivityInfoItem) => {
   if (item.sourceSummary) return item.sourceSummary;
   if (item.albumGrab) return text(item.actualDownloadSource) || "Unknown";
   const source = text(item.downloadSource || item.downloadClient || item.source);
@@ -51,7 +55,7 @@ const formatQualityState = (state: string | null | undefined) => {
   return lookupLabel(labels, state) || text(state);
 };
 
-function getRows(item: Partial<ActivityRequest>) {
+function getRows(item: ActivityInfoItem) {
   const requester = item.requestedBy?.username || item.requestedBy?.id;
   const operation = item.playlistName || item.playlistId || item.playlistType;
   const details = item.error || item.subtitle;
@@ -93,7 +97,7 @@ export default function ActivityInfoModal({
   item,
   onClose,
 }: {
-  item: Partial<ActivityRequest> | null | undefined;
+  item: ActivityInfoItem | null | undefined;
   onClose: () => void;
 }) {
   const titleId = useId();

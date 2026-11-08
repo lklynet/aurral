@@ -17,6 +17,7 @@ import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts"
 import {
   classifyAudioQuality,
   getQualityState,
+  type QualityState,
   getQualityTier,
   isQualityUpgrade,
   normalizeQualityProfile,
@@ -96,10 +97,11 @@ function getJobQuality(job: QualityJob, profile: QualityProfile) {
     bitDepth: job.qualityBitDepth ?? null,
   };
   const owned = isAurralOwnedPath(job.finalPath);
+  const qualityState: QualityState | null =
+    job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null;
   return {
     qualityOwned: owned,
-    qualityState:
-      job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null,
+    qualityState,
     qualityLabel: getQualityTier(quality.tier)?.label || "Unknown",
   };
 }

@@ -29,8 +29,7 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useQueueTrackActions } from "../../hooks/useQueueTrackActions";
 import { useShareAction } from "../../hooks/useShareAction";
 import { useDownloadStatuses } from "../../hooks/useDownloadStatuses";
-import type { AlbumRouteState } from "../../navigation/albumRoute.tsx";
-import { readRouteSeed } from "../../navigation/routeSeed.ts";
+import { readAlbumRouteState } from "../../navigation/albumRoute.tsx";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import {
   libraryAlbumLookupQueryOptions,
@@ -81,7 +80,7 @@ function AlbumPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const locationState: AlbumRouteState | null = location.state || null;
+  const locationState = useMemo(() => readAlbumRouteState(location.state), [location.state]);
   const { bootstrap, hasPermission } = useAuth();
   const { showError } = useToast();
   const share = useShareAction();
@@ -147,7 +146,7 @@ function AlbumPage() {
   const releaseGroupMbid = libraryAlbum
     ? libraryAlbum.releaseGroupMbid || null
     : routeReleaseGroupMbid;
-  const routeSeed = readRouteSeed(locationState);
+  const routeSeed = locationState.seed ?? null;
   const focusRelease = locationState?.focusReleaseGroup;
   const baseRelease = useMemo<ReleaseGroup>(
     () => ({
