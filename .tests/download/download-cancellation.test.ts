@@ -26,6 +26,7 @@ const [
   dbHelpersModule,
   downloadFolderConfigModule,
   sabnzbdModule,
+  tidarrModule,
   nzbgetModule,
 ] = await setupIsolatedBackend(
   "download-cancellation",
@@ -41,6 +42,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadFolderConfig.ts"),
   () => import("../../backend/services/sabnzbdClient.ts"),
+  () => import("../../backend/services/tidarrClient.ts"),
   () => import("../../backend/services/nzbgetClient.ts"),
 );
 
@@ -63,7 +65,8 @@ const enqueuePipelineJob = (payload: object) => insertJob(db, "download-pipeline
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
 const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
-const { sabnzbdClient, tidarrClient } = sabnzbdModule;
+const { sabnzbdClient } = sabnzbdModule;
+const { tidarrClient } = tidarrModule;
 const { nzbgetClient } = nzbgetModule;
 
 beforeEach(async () => {

@@ -198,7 +198,7 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
       requireFixture(queued[1]).releaseMbid,
       requireFixture(queued[1]).allowedSources,
     ],
-    [true, [upgradeId], "upgrade-album-release", ["slskd", "usenet", "deemix"]],
+    [true, [upgradeId], "upgrade-album-release", ["slskd", "usenet", "tidarr", "deemix"]],
   );
 
   tracker.releaseFromAlbumGrab(

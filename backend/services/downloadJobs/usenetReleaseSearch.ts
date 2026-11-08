@@ -39,6 +39,7 @@ export interface UsenetRelease {
   indexer?: string | null;
   protocol?: string;
   categories?: number[];
+  tracks?: number | null;
 }
 
 export interface UsenetSearchContext {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isNzbSource } from "./usenetClientCommon.ts";
 import {
   recordAlbumGrabQueued,
   recordAlbumGrabPhase,
@@ -119,8 +120,8 @@ export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJo
       if (file) {
         downloadTracker.recordDeniedSource(job.id, "slskd", `${raw?.user}\0${file.file}`);
       }
-    } else if (payload.source === "usenet" && typeof guid === "string" && guid) {
-      downloadTracker.recordDeniedSource(job.id, "usenet", guid);
+    } else if (isNzbSource(payload.source) && typeof guid === "string" && guid) {
+      downloadTracker.recordDeniedSource(job.id, payload.source, guid);
     } else if (payload.source === "deemix" && raw?.albumId) {
       downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
     } else if (payload.source?.startsWith("plugin:") && typeof raw?.id === "string") {

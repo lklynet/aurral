@@ -19,11 +19,12 @@ import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { pluginIdFromSource } from "../plugins/pluginStore.ts";
+import { isNzbSource } from "../usenetClientCommon.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
 
 async function removeReviewedDownload(job: DownloadJob) {
-  if (job.downloadSource !== "usenet") return;
+  if (!isNzbSource(job.downloadSource)) return;
   const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
   await removeReviewedUsenetDownload(job);
 }
@@ -81,7 +82,7 @@ export async function approveBlockedJob(jobId: string) {
     async () => {
       if (!getBlockedJob(job.id)) return null;
       let preserveSource = false;
-      if (job.downloadSource === "usenet") {
+      if (isNzbSource(job.downloadSource)) {
         const { shouldPreserveReviewedUsenetSource } = await import("../usenetOrchestrator.ts");
         preserveSource = shouldPreserveReviewedUsenetSource(job);
       }
@@ -129,7 +130,7 @@ export async function denyBlockedJob(
       await discardReviewFile(job);
       const deniedSourceKey =
         job.downloadSource &&
-        (["usenet", "ytdlp", "deemix"].includes(job.downloadSource) ||
+        (["usenet", "tidarr", "ytdlp", "deemix"].includes(job.downloadSource) ||
           pluginIdFromSource(job.downloadSource))
           ? String(job.releaseGuid || "").trim()
           : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;

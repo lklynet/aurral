@@ -10,8 +10,9 @@ import {
   type PipelinePayload as TrackerPayload,
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
-import { getUsenetClient } from "./download/downloadClientSettings.ts";
-import { usenetReleaseIdentity } from "./sabnzbdClient.ts";
+import { getDownloadClient, getUsenetClient } from "./download/downloadClientSettings.ts";
+import { releaseIdentity } from "./tidarrClient.ts";
+import { isNzbSource, type NzbSourceId } from "./usenetClientCommon.ts";
 import { logger } from "./logger.ts";
 import {
   buildUsenetSearchQueries,
@@ -49,6 +50,7 @@ import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.ts";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.ts";
 import { attemptTrackRequest } from "./releaseManifest.ts";
 import { attemptRelease } from "./releaseResolver.ts";
+import { getSourceLabel } from "./downloadSourceService.ts";
 
 const searchResults = createSearchResultCache<UsenetRelease>();
 const MIN_USENET_CANDIDATES = 2;
@@ -160,6 +162,9 @@ interface PendingUpgrade {
 const isAutomaticUpgrade = (job: UsenetJob) =>
   Boolean(job?.upgradeForJobId) && !job.manualReplacementSearch;
 
+const nzbSource = (payload: Pick<UsenetPayload, "source">): NzbSourceId =>
+  payload.source === "tidarr" ? "tidarr" : "usenet";
+
 // A job that is done with a shared download no longer counts as using it.
 // A download being removed is retired, so no new track attaches to it while
 // its jobs still point at it. Release-level album attempts stay isolated.
@@ -189,12 +194,12 @@ function trackedConsumers(clientKey: string, nzbId: NzbId | null | undefined) {
     const currentMatches =
       (entry.status === "downloading" || entry.status === "blocked") &&
       !downloadTracker.isInActiveAlbumGrab(entry.id) &&
-      entry.downloadSource === "usenet" &&
+      isNzbSource(entry.downloadSource) &&
       entry.downloadClient === clientKey &&
       String(entry.downloadClientId ?? "").trim() === id;
     const held = entry.heldForReview;
     const heldMatches =
-      held?.source === "usenet" &&
+      isNzbSource(held?.source) &&
       held.metadata?.downloadClient === clientKey &&
       String(held.transferId ?? "").trim() === id;
     return currentMatches || heldMatches;
@@ -230,7 +235,7 @@ function sharedTrackNzb(clientKey: string, release: UsenetRelease, job: UsenetJo
         entry.id !== job.id &&
         downloadTracker.hasPersistedJob(entry.id) &&
         entry.status === "downloading" &&
-        entry.downloadSource === "usenet" &&
+        isNzbSource(entry.downloadSource) &&
         entry.downloadClient === clientKey &&
         entry.releaseGuid === guid &&
         entry.downloadClientId != null &&
@@ -286,7 +291,7 @@ export async function removeReviewedUsenetDownload(
     downloadClientId?: NzbId | null;
   },
 ) {
-  if (job?.downloadSource !== "usenet" || !job.downloadClientId) return;
+  if (!isNzbSource(job?.downloadSource) || !job.downloadClientId) return;
   return removeUsenetItem(
     { downloadClient: job.downloadClient, nzbId: job.downloadClientId },
     job.id,
@@ -295,7 +300,7 @@ export async function removeReviewedUsenetDownload(
 }
 
 export function shouldPreserveReviewedUsenetSource(job: UsenetJob | null | undefined) {
-  if (job?.downloadSource !== "usenet" || !job.downloadClientId || !job.id) return false;
+  if (!isNzbSource(job?.downloadSource) || !job.downloadClientId || !job.id) return false;
   const client = getUsenetClient(job.downloadClient);
   return hasOtherNzbConsumers(client.key, job.downloadClientId, job.id);
 }
@@ -321,7 +326,7 @@ function blockRelease(payload: UsenetPayload, job: UsenetJob) {
   const guid = String(getPayloadCandidate(payload)?.raw?.release?.guid || "").trim();
   if (!guid) return;
   const jobs = payload.albumGrab === true ? albumGrabJobs(payload) : [job];
-  for (const entry of jobs) downloadTracker.recordDeniedSource(entry.id, "usenet", guid);
+  for (const entry of jobs) downloadTracker.recordDeniedSource(entry.id, nzbSource(payload), guid);
 }
 
 function orderCandidates(
@@ -334,7 +339,7 @@ function orderCandidates(
     ranked.filter((entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName)),
     { ...qualityOptions, readName: (entry) => entry?.raw?.release?.title },
   ).filter((entry) => {
-    const id = usenetReleaseIdentity(entry.raw.release.guid);
+    const id = releaseIdentity(entry.raw.release.guid);
     if (!id) return true;
     if (seen.has(id)) return false;
     seen.add(id);
@@ -429,6 +434,7 @@ export async function collectDownloadedAudioFiles(
 }
 
 async function validateDownloadedRelease(
+  source: NzbSourceId,
   audioFilePaths: string[],
   candidate: UsenetCandidate | null | undefined,
   resolvedTrack: ResolvedTrack,
@@ -438,7 +444,7 @@ async function validateDownloadedRelease(
     request: resolvedTrack,
     filePaths: audioFilePaths,
     candidate,
-    source: "usenet",
+    source,
     options,
   });
 }
@@ -462,9 +468,10 @@ async function advanceUsenetSearch(
 ) {
   const aggregated: UsenetRelease[] = [];
   const seen = new Set();
+  const cacheKey = (query: string | undefined) => `${nzbSource(payload)}\0${query}`;
   let index = Number(payload.searchQueryIndex || 0);
   for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
-    const cached = searchResults.get(queries[queryIndex]);
+    const cached = searchResults.get(cacheKey(queries[queryIndex]));
     if (!cached) {
       index = queryIndex;
       break;
@@ -479,21 +486,25 @@ async function advanceUsenetSearch(
     }
     const query = queries[index];
     if (query === undefined) break;
-    let releases = searchResults.get(query);
+    let releases = searchResults.get(cacheKey(query));
     if (!releases) {
       searched = true;
       try {
         releases = await runQuery(query);
-        searchResults.set(query, releases);
+        searchResults.set(cacheKey(query), releases);
       } catch (error) {
         searchError = asAppError(error)?.message || String(error);
-        logger.warn("usenet", "Prowlarr search failed", {
-          jobId: payload.jobId,
-          query,
-          error: searchError,
-        });
+        logger.warn(
+          "usenet",
+          `${payload.source === "tidarr" ? "Tidarr" : "Prowlarr"} search failed`,
+          {
+            jobId: payload.jobId,
+            query,
+            error: searchError,
+          },
+        );
         releases = [];
-        searchResults.set(query, releases);
+        searchResults.set(cacheKey(query), releases);
       }
     }
     mergeSearchResults(aggregated, seen, releases, releaseKey);
@@ -506,10 +517,11 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
+  const source = nzbSource(payload);
   if (!payload.searchQueries) {
     downloadTracker.setDownloading(job.id);
     downloadTracker.updateDownloadMetadata(job.id, {
-      downloadSource: "usenet",
+      downloadSource: source,
     });
     import("./aurralHistoryService.ts")
       .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
@@ -533,8 +545,12 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
   const albumGrab = payload.albumGrab === true;
   const albumJobs = albumGrab ? albumGrabJobs(payload) : [];
   const compilation = albumGrab && release?.compilation === true;
-  const indexers = await prowlarrClient.getEnabledUsenetIndexers().catch(() => []);
-  const musicIndexers = indexers.filter((indexer) => indexer.musicSearch);
+  const tidarr = source === "tidarr";
+  const musicIndexers = tidarr
+    ? []
+    : (await prowlarrClient.getEnabledUsenetIndexers().catch(() => [])).filter(
+        (indexer) => indexer.musicSearch,
+      );
   const searchContext = {
     ...resolvedTrack,
     compilation,
@@ -544,14 +560,22 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
     payload.searchQueries ||
     buildUsenetSearchQueries(searchContext, { musicSearch: musicIndexers.length > 0, albumGrab });
   const runQuery = (query: string) =>
-    isProwlarrMusicQuery(query)
-      ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
-      : prowlarrClient.search(query);
+    tidarr
+      ? getDownloadClient("tidarr").search(query)
+      : isProwlarrMusicQuery(query)
+        ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
+        : prowlarrClient.search(query);
   const deniedReleases = new Set(
-    [...deniedAlbumSources([job, ...albumJobs], "usenet")].map(usenetReleaseIdentity),
+    [...deniedAlbumSources([job, ...albumJobs], source)].map(releaseIdentity),
   );
+  // A release is the exact tracklist, so an album with another track count cannot fill it.
+  const releaseTrackCount = albumGrab ? release?.tracks?.length : undefined;
   const allowed = (releases: UsenetRelease[]) =>
-    releases.filter((release) => !deniedReleases.has(usenetReleaseIdentity(release.guid)));
+    releases.filter(
+      (entry) =>
+        !deniedReleases.has(releaseIdentity(entry.guid)) &&
+        (!releaseTrackCount || entry.tracks == null || entry.tracks === releaseTrackCount),
+    );
   const step = await advanceUsenetSearch(
     { ...payload, searchQueries: queries },
     queries,
@@ -585,8 +609,8 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
   if (candidates.length === 0) {
     const message =
       lastError && aggregated.length === 0
-        ? `Prowlarr search failed: ${lastError}`
-        : "No suitable Usenet search results";
+        ? `${tidarr ? "Tidarr" : "Prowlarr"} search failed: ${lastError}`
+        : `No suitable ${tidarr ? "Tidarr" : "Usenet"} search results`;
     return helpers.failOrTryNextSource(payload, job, message, {
       queryCount,
       rawResultCount: aggregated.length,
@@ -599,7 +623,7 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
     searchQueryIndex: 0,
     searchError: null,
     phase: "download",
-    source: "usenet",
+    source,
     candidates,
     candidateIndex: 0,
     nzbGrabs: 0,
@@ -624,11 +648,15 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
       console.warn(err);
     });
 
-  const indexerClient = prowlarrClient.getIndexerDownloadClient(release.indexerId);
-  const client = getUsenetClient(indexerClient ?? payload.manualDownloadClient);
+  const source = nzbSource(payload);
+  const tidarr = source === "tidarr";
+  const indexerClient = tidarr ? null : prowlarrClient.getIndexerDownloadClient(release.indexerId);
+  const client = tidarr
+    ? getDownloadClient("tidarr")
+    : getUsenetClient(indexerClient ?? payload.manualDownloadClient);
   const clientKey = client.key;
   const releaseMetadata = {
-    downloadSource: "usenet",
+    downloadSource: source,
     downloadClient: clientKey,
     releaseGuid: release.guid,
     releaseTitle: release.title,
@@ -640,7 +668,7 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   const pollPayload = (nzbId: NzbId) => ({
     ...payload,
     phase: "poll",
-    source: "usenet",
+    source,
     downloadClient: clientKey,
     nzbId,
     candidate,
@@ -680,7 +708,9 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   let submission;
   try {
     if (indexerClient && !client.isConfigured()) throw new Error(`${client.name} is not set up`);
-    const nzb = await prowlarrClient.downloadNzb(release.downloadUrl, release);
+    const nzb = tidarr
+      ? await getDownloadClient("tidarr").fetchNzb(release.guid)
+      : await prowlarrClient.downloadNzb(release.downloadUrl, release);
     payload = withNzbGrab(payload);
     if (!isPipelinePayloadActive(payload)) return null;
     submission = await withPipelineCommitLock(payload, async () => {
@@ -777,7 +807,7 @@ async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers
       return helpers.failOrTryNextSource(
         payload,
         job,
-        `Usenet download failed: ${historyItem.Status || historyItem.status || "failed"}`,
+        `${getSourceLabel(payload.source)} download failed: ${historyItem.Status || historyItem.status || "failed"}`,
       );
     }
   }
@@ -791,7 +821,7 @@ async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers
     return helpers.failOrTryNextSource(
       payload,
       job,
-      "The Usenet download left the download client",
+      `The ${getSourceLabel(payload.source)} download left the download client`,
     );
   }
   return {
@@ -818,7 +848,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
     );
     const next = await finishAlbumGrab(payload, {
       filePaths,
-      source: "usenet",
+      source: nzbSource(payload),
       album: candidate?.resolvedAlbumName,
       resetFields: RELEASE_RESET,
     });
@@ -834,10 +864,16 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
     historyItem,
     payload.downloadClient || payload.manualDownloadClient,
   );
-  const found = await validateDownloadedRelease(audioFiles, candidate, resolvedTrack, {
-    manualSelection: payload.manualSelection === true,
-    release,
-  });
+  const found = await validateDownloadedRelease(
+    nzbSource(payload),
+    audioFiles,
+    candidate,
+    resolvedTrack,
+    {
+      manualSelection: payload.manualSelection === true,
+      release,
+    },
+  );
   if (!isPipelinePayloadActive(payload)) {
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     return null;
@@ -848,7 +884,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
     const heldPayload = {
       ...payload,
       heldForReview: holdForReview(job, {
-        source: "usenet",
+        source: nzbSource(payload),
         sourcePath: found.filePath,
         reason: found.validation.reason,
         transferId: payload.nzbId,
@@ -889,7 +925,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
       preserveSource,
     });
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
-      source: "usenet",
+      source: nzbSource(payload),
       jobId: job.id,
     });
     return finalizePipelineJobSuccess({

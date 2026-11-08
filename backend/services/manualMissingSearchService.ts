@@ -5,7 +5,7 @@ import {
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { USENET_CLIENT_KEYS } from "./usenetClientCommon.ts";
+import { isNzbSource, USENET_CLIENT_KEYS } from "./usenetClientCommon.ts";
 import { getDownloadSourceStatus } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -139,7 +139,7 @@ function resultView(source: string, raw: RawSearchResult) {
 }
 
 function toStoredCandidate(source: string, raw: RawSearchResult) {
-  if (source === "usenet") {
+  if (isNzbSource(source)) {
     return { raw: { release: raw }, score: 0 };
   }
   return { raw };
@@ -177,6 +177,7 @@ async function searchSource(source: string, query: string, workContext: ManualWo
     );
   }
   if (source === "usenet") return prowlarrClient.search(query, { limit: MAX_RESULTS });
+  if (source === "tidarr") return getDownloadClient("tidarr").search(query);
   throw new Error("Unknown manual search source");
 }
 
@@ -184,6 +185,7 @@ export function getManualDownloadSources() {
   const status = getDownloadSourceStatus();
   const sources: ManualSource[] = [];
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
+  if (status.tidarr.configured) sources.push({ id: "tidarr", label: "Tidarr", source: "tidarr" });
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   if (status.ytdlp.configured) sources.push({ id: "ytdlp", label: "yt-dlp", source: "ytdlp" });
   if (status.usenet.prowlarrConfigured) {

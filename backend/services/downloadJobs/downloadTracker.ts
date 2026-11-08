@@ -495,7 +495,9 @@ function buildPipelinePayload(job: DownloadJob) {
     upgradeForJobId: job.upgradeForJobId || null,
     manualReplacementSearch: job.manualReplacementSearch === true,
     allowedSources:
-      job.upgradeForJobId && !job.manualReplacementSearch ? ["slskd", "usenet", "deemix"] : null,
+      job.upgradeForJobId && !job.manualReplacementSearch
+        ? ["slskd", "usenet", "tidarr", "deemix"]
+        : null,
     triedSources: [...job.quickSearchedSources],
     heldForReview: job.heldForReview,
   };
@@ -996,7 +998,10 @@ export class DownloadTracker {
     const job = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
     if (!job || job.status !== "failed" || job.upgradeForJobId) return false;
-    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+    if (
+      !candidate?.raw ||
+      !["slskd", "usenet", "tidarr", "deemix", "ytdlp"].includes(normalizedSource)
+    ) {
       return false;
     }
     const payload: PipelinePayload = {
@@ -1031,7 +1036,10 @@ export class DownloadTracker {
     const sourceJob = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
     if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
-    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+    if (
+      !candidate?.raw ||
+      !["slskd", "usenet", "tidarr", "deemix", "ytdlp"].includes(normalizedSource)
+    ) {
       return false;
     }
     const replacementJobId = this.addReplacementSearchJob(sourceJob);

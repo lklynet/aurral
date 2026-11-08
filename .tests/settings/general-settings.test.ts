@@ -126,8 +126,8 @@ test("Tidarr and an indexer's known download client survive a save", async () =>
       tidarr: { enabled: true, url: "http://tidarr.local:8484/", apiKey: " tidarr-key " },
       prowlarr: {
         indexers: {
-          "1": { enabled: true, priority: 5, downloadClient: "tidarr" },
-          "2": { enabled: true, priority: 5, downloadClient: "qbittorrent" },
+          "1": { enabled: true, priority: 5, downloadClient: "nzbget" },
+          "2": { enabled: true, priority: 5, downloadClient: "tidarr" },
         },
       },
     },
@@ -140,7 +140,7 @@ test("Tidarr and an indexer's known download client survive a save", async () =>
     apiKey: "tidarr-key",
     priority: 20,
   });
-  assert.equal(prowlarr?.indexers?.["1"]?.downloadClient, "tidarr");
+  assert.equal(prowlarr?.indexers?.["1"]?.downloadClient, "nzbget");
   assert.equal(prowlarr?.indexers?.["2"]?.downloadClient, undefined);
 });
 

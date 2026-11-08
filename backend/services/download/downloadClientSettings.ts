@@ -5,13 +5,8 @@ import type { DownloadClient } from "./downloadClient.ts";
 import { DownloadClientRegistry } from "./downloadClientRegistry.ts";
 import { SlskdClient, slskdClient, slskdSettings } from "../slskdClient.ts";
 import { NzbgetClient, nzbgetClient, nzbgetSettings } from "../nzbgetClient.ts";
-import {
-  SabnzbdClient,
-  sabnzbdClient,
-  sabnzbdSettings,
-  tidarrClient,
-  tidarrSettings,
-} from "../sabnzbdClient.ts";
+import { SabnzbdClient, sabnzbdClient, sabnzbdSettings } from "../sabnzbdClient.ts";
+import { TidarrClient, tidarrClient, tidarrSettings } from "../tidarrClient.ts";
 import { YtdlpClient, ytdlpClient, ytdlpSettings } from "../ytdlpClient.ts";
 import { DeemixClient, deemixClient, deemixSettings } from "../deemixClient.ts";
 
@@ -29,7 +24,7 @@ const factories = {
   ytdlp: () => new YtdlpClient(),
   nzbget: () => new NzbgetClient(),
   sabnzbd: () => new SabnzbdClient(),
-  tidarr: () => new SabnzbdClient(null, "tidarr"),
+  tidarr: () => new TidarrClient(),
   deemix: () => new DeemixClient(),
 };
 
@@ -51,7 +46,7 @@ type BuiltInDownloadClients = {
   ytdlp: YtdlpClient;
   nzbget: NzbgetClient;
   sabnzbd: SabnzbdClient;
-  tidarr: SabnzbdClient;
+  tidarr: TidarrClient;
   deemix: DeemixClient;
 };
 
@@ -74,8 +69,9 @@ export async function testDownloadClient(key: string, config: Record<string, unk
   return client.testConnection({ force: true });
 }
 
+// A download remembers its client, so Tidarr's own downloads find it by key.
 export function getUsenetClient(key: string | null = null) {
-  if (isUsenetClientKey(key)) return getDownloadClient(key);
+  if (key === "tidarr" || isUsenetClientKey(key)) return getDownloadClient(key);
   const clients = USENET_CLIENT_KEYS.map((entry) => getDownloadClient(entry));
   return clients.find((client) => client.isConfigured()) ?? getDownloadClient("nzbget");
 }

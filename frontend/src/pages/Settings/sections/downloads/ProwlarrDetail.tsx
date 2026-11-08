@@ -25,7 +25,6 @@ type TestStatus = { tone: "success" | "error"; message: string };
 const DOWNLOAD_CLIENT_OPTIONS: { value: UsenetClientKey; label: string }[] = [
   { value: "sabnzbd", label: "SABnzbd" },
   { value: "nzbget", label: "NZBGet" },
-  { value: "tidarr", label: "Tidarr" },
 ];
 
 function toNumber(value: string, fallback: number) {
