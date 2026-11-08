@@ -3,6 +3,7 @@ import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { createHash } from "node:crypto";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
+import { createOutagePause } from "./outagePause.ts";
 import { logger } from "../logger.ts";
 import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
@@ -87,13 +88,10 @@ const lastfmLimiter = createRateLimiter(200);
 const LASTFM_TIMEOUT_MS =
   Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;
 const LASTFM_MAX_RETRIES = 2;
-const LASTFM_PAUSE_AFTER_FAILURES = 3;
-const LASTFM_PAUSE_MS = 60_000;
 
 const lastfmInflightRequests: InflightRequests = new Map();
 const lastfmErrorLogAt = new Map<string, number>();
-let lastfmFailuresInARow = 0;
-let lastfmPausedUntil = 0;
+const lastfmPause = createOutagePause("Last.fm");
 
 const signedLastfmRequest = async (
   method: string,
@@ -195,21 +193,22 @@ export async function lastfmRequest(
       let lastError: unknown = null;
       for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
         sharedSignal.throwIfAborted?.();
-        if (Date.now() < lastfmPausedUntil) return null;
+        if (lastfmPause.paused()) return null;
         try {
           const response = await lastfmLimiter.schedule(() =>
-            http.get(LASTFM_API, {
-              query: {
-                method,
-                api_key: apiKey,
-                format: "json",
-                ...params,
-              },
-              timeoutMs,
-              signal: sharedSignal,
-            }),
+            lastfmPause.run(() =>
+              http.get(LASTFM_API, {
+                query: {
+                  method,
+                  api_key: apiKey,
+                  format: "json",
+                  ...params,
+                },
+                timeoutMs,
+                signal: sharedSignal,
+              }),
+            ),
           );
-          lastfmFailuresInARow = 0;
           const data = readOne(lastfmResponseSchema, response.data, {
             service: "Last.fm",
             endpoint: method,
@@ -242,14 +241,9 @@ export async function lastfmRequest(
         message: failure?.message || "Unknown Last.fm error",
         error: payloadError,
       };
-      lastfmFailuresInARow = status === null ? lastfmFailuresInARow + 1 : 0;
-      if (lastfmFailuresInARow >= LASTFM_PAUSE_AFTER_FAILURES) {
-        lastfmFailuresInARow = 0;
-        lastfmPausedUntil = Date.now() + LASTFM_PAUSE_MS;
-        logger.warn("api", "Last.fm is not responding, pausing requests for a minute", details);
-      } else if (details.code === "TIMEOUT") {
+      if (details.code === "TIMEOUT") {
         logFailure(`Last.fm API timeout (${method})`, details);
-      } else {
+      } else if (details.code !== "PAUSED") {
         logFailure(`Last.fm API error (${method})`, details);
       }
       return null;

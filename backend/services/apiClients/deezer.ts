@@ -3,6 +3,7 @@ import { http, type HttpOptions } from "../../../lib/http.ts";
 import { readMany, readOne } from "../integrationData.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
+import { createOutagePause } from "./outagePause.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;
@@ -198,6 +199,7 @@ export function clearDeezerCaches() {
     cache.flushAll();
 }
 export const deezerLimiter = createRateLimiter(110);
+const deezerPause = createOutagePause("Deezer");
 
 type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & { timeoutMs: number };
 
@@ -206,7 +208,7 @@ async function deezerGet<Schema extends v.GenericSchema>(
   path: string,
   config: DeezerRequest,
 ) {
-  const { data } = await http.get(`${DEEZER_API_URL}${path}`, config);
+  const { data } = await deezerPause.run(() => http.get(`${DEEZER_API_URL}${path}`, config));
   const failure = v.safeParse(deezerErrorSchema, data);
   if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
   if (failure.output.error.code === DEEZER_NO_DATA_CODE) return null;

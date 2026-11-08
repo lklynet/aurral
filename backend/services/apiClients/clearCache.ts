@@ -15,6 +15,7 @@ import { youtubeVideoCache } from "./youtube.ts";
 import { lrclibCache } from "./lrclib.ts";
 import { clearMetadataProviderCaches } from "../providers/brainzmashProvider.ts";
 import { clearReleaseManifests } from "../releaseResolver.ts";
+import { resumePausedServices } from "./outagePause.ts";
 
 export function clearApiCaches() {
   clearMetadataProviderCaches();
@@ -30,4 +31,5 @@ export function clearApiCaches() {
   musicbrainzTagArtistsCache.flushAll();
   youtubeVideoCache.flushAll();
   lrclibCache.flushAll();
+  resumePausedServices();
 }

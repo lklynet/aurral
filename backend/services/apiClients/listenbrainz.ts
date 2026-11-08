@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { http, isTransientNetworkError, type HttpOptions } from "../../../lib/http.ts";
 import { lenient, lenientCount, lenientText, readOne } from "../integrationData.ts";
 import createRateLimiter from "./rateLimiter.ts";
+import { createOutagePause } from "./outagePause.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -45,6 +46,14 @@ const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 
 const listenbrainzInflightRequests = new Map<string, Promise<unknown>>();
 const listenbrainzErrorLogAt = new Map<string, number>();
+const listenbrainzPauses = new Map<string, ReturnType<typeof createOutagePause>>();
+
+const listenbrainzPause = (root: string) => {
+  const host = new URL(root).host;
+  const pause = listenbrainzPauses.get(host) ?? createOutagePause(host);
+  listenbrainzPauses.set(host, pause);
+  return pause;
+};
 
 const getRateLimitWaitMs = (error: unknown) => {
   const failure = asAppError(error);
@@ -173,6 +182,8 @@ export async function listenbrainzRequest(
     if (inflight) return inflight;
   }
 
+  const pause = listenbrainzPause(root);
+  pause.check();
   const requestPromise = (async () => {
     const isRetryable = (error: unknown) => {
       const status = asAppError(error)?.response?.status;
@@ -204,9 +215,9 @@ export async function listenbrainzRequest(
             },
             timeoutMs,
           };
-          return data
-            ? http.post(`${root}${path}`, data, config)
-            : http.get(`${root}${path}`, config);
+          return pause.run(() =>
+            data ? http.post(`${root}${path}`, data, config) : http.get(`${root}${path}`, config),
+          );
         });
         const payload = response.status === 204 ? null : response.data;
         if (cacheKey) listenbrainzCache.set(cacheKey, payload);
@@ -239,7 +250,7 @@ export async function listenbrainzRequest(
       message: failure?.message || "Unknown ListenBrainz error",
       error: payloadError,
     };
-    logFailure(details);
+    if (details.code !== "PAUSED") logFailure(details);
     throw lastError;
   })();
 
