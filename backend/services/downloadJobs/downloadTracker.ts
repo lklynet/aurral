@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { unknownList } from "../../../lib/unknownList.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import path from "node:path";
 import * as v from "valibot";
@@ -441,7 +442,7 @@ const sortByCreatedAt = <T extends DownloadJob>(jobs: T[]): T[] =>
 
 // The order upgrade release attempts started in, by attempt ID, while each
 // still downloads its release.
-const upgradeAttemptOrder = new Map();
+const upgradeAttemptOrder = new Map<string | null | undefined, number>();
 const MAX_UPGRADE_ATTEMPTS_ORDERED = 1000;
 let upgradeAttemptsStarted = 0;
 
@@ -2172,7 +2173,7 @@ const isAlbumMatcher = (value: unknown): value is (albumMbid: string) => boolean
 const isLiveStatus = (status: string): status is keyof ReturnType<typeof emptyLiveStats> =>
   status in emptyLiveStats();
 
-function readTrackerFromDatabase(name: string, args: unknown[]) {
+function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
   const [first, second] = args;
   if (name === "getJob") {
     const row = liveJobStmt.get(first ?? null);
@@ -2234,8 +2235,9 @@ function readTrackerFromDatabase(name: string, args: unknown[]) {
     }
     if (name === "getStats") return totals;
     if (name === "getPlaylistTypeStats") return byPlaylist[String(first)] || emptyLiveStats();
-    if (!Array.isArray(first) || first.length === 0) return byPlaylist;
-    return Object.fromEntries(first.map((id) => [id, byPlaylist[id] || emptyLiveStats()]));
+    const ids = unknownList(first).map(String);
+    if (ids.length === 0) return byPlaylist;
+    return Object.fromEntries(ids.map((id) => [id, byPlaylist[id] || emptyLiveStats()]));
   }
   return undefined;
 }
@@ -2265,7 +2267,7 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
   Reflect.set(
     DownloadTracker.prototype,
     name,
-    function (this: DownloadTracker, ...args: unknown[]) {
+    function (this: DownloadTracker, ...args: unknown[]): unknown {
       if (
         process.env.NODE_ENV !== "test" &&
         process.env.AURRAL_TEST_SERVER !== "1" &&
@@ -2275,7 +2277,8 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
         return readTrackerFromDatabase(name, args);
       }
       this._refreshExternalChanges();
-      return original.apply(this, args);
+      const result: unknown = original.apply(this, args);
+      return result;
     },
   );
 }

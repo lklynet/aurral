@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { FSWatcher } from "node:fs";
 import type { WatchMessage } from "./libraryWatchProcess.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
-import { resolveLocalPath } from "./pathMappings.ts";
+import { normalizePathMappings, resolveLocalPath } from "./pathMappings.ts";
 
 let watcher: FSWatcher | undefined;
 
@@ -26,7 +26,10 @@ function fail(error: AppError) {
 process.on("disconnect", stop);
 
 try {
-  const root = resolveLocalPath(process.argv[2], JSON.parse(process.argv[3] || "[]"));
+  const root = resolveLocalPath(
+    process.argv[2],
+    normalizePathMappings(JSON.parse(process.argv[3] || "[]")),
+  );
   // Node.js 24+ can return an idle recursive watcher for a missing Linux root.
   fs.statSync(root);
   watcher = fs.watch(root, { recursive: true }, (eventType, filename) => {

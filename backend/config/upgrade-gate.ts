@@ -33,7 +33,7 @@ const SETTINGS_MARKERS: [key: string, done: (value: unknown) => boolean][] = [
   ...ONE_TIME_MIGRATIONS.map((name): [string, () => boolean] => [`migration:${name}`, () => true]),
 ];
 
-const parse = (text: string) => {
+const parse = (text: string): unknown => {
   try {
     return JSON.parse(text);
   } catch {

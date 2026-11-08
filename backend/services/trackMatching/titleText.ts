@@ -56,7 +56,7 @@ export function coreAlbumTitle(value: string | null | undefined) {
   const text = String(value || "")
     .replace(/\s+(?:-|–|—)\s+(?:single|ep|album)\s*$/iu, "")
     .replace(/\s+[[(](?:single|ep|album)[)\]]\s*$/iu, "")
-    .replace(/\s*[[(]([^\])]*)[\])]/gu, (segment, inner) =>
+    .replace(/\s*[[(]([^\])]*)[\])]/gu, (segment: string, inner: string) =>
       EDITION_WORDS.test(inner) || SOUNDTRACK_WORDS.test(inner) ? " " : segment,
     );
   const segments = text.split(/\s*:\s+|\s+(?:-|–|—)\s+/u);

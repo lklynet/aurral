@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { unknownList } from "../../../lib/unknownList.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
@@ -89,10 +90,10 @@ function jsonObject(value: unknown) {
 function readTransferEntries(payload: CancellationPayload) {
   const entries: unknown[] = [];
   if (payload?.legacyTransfer) entries.push(payload.legacyTransfer);
-  if (Array.isArray(payload?.albumTransfers)) entries.push(...payload.albumTransfers);
+  entries.push(...unknownList(payload?.albumTransfers));
   const batch = jsonObject(payload?.batch);
   const batchTransfers = batch?.transfers || batch?.Transfers;
-  if (Array.isArray(batchTransfers)) entries.push(...batchTransfers);
+  entries.push(...unknownList(batchTransfers));
   if (payload?.transfer) entries.push(payload.transfer);
   return entries;
 }
@@ -108,10 +109,7 @@ function readTransferUsername(
   job: CancellationJob | null,
 ) {
   const entry = jsonObject(transfer);
-  const candidates = payload?.candidates;
-  const indexedCandidate = Array.isArray(candidates)
-    ? candidates[Number(payload?.candidateIndex || 0)]
-    : undefined;
+  const indexedCandidate = unknownList(payload?.candidates)[Number(payload?.candidateIndex || 0)];
   return normalizeId(
     entry?.username ||
       entry?.Username ||
@@ -122,11 +120,7 @@ function readTransferUsername(
 }
 
 function readSearchIds(payload: CancellationPayload, job: CancellationJob | null) {
-  return [
-    ...(Array.isArray(payload?.searchIds) ? payload.searchIds : []),
-    payload?.searchId,
-    job?.slskdSearchId,
-  ]
+  return [...unknownList(payload?.searchIds), payload?.searchId, job?.slskdSearchId]
     .map(normalizeId)
     .filter(Boolean);
 }
@@ -369,7 +363,7 @@ async function cancelProviderWork(
   ]);
   const failures = results
     .filter((result) => result.status === "rejected")
-    .map((result) => result.reason);
+    .map((result): unknown => result.reason);
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }

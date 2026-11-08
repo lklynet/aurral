@@ -664,17 +664,19 @@ export async function finishCleanup(operation: LibraryFileOperation) {
         )
         .raw()
         .all(operation.id);
-  const folders = new Map();
+  const folders = new Map<string, Set<string>>();
   for (const [from, to] of moves) {
     const folder = path.dirname(from);
-    const targets = folders.get(folder) || new Set();
+    const targets = folders.get(folder) || new Set<string>();
     targets.add(path.dirname(to));
     folders.set(folder, targets);
   }
   const deepestFirst = [...folders.keys()].sort((left, right) => right.length - left.length);
   for (const folder of deepestFirst) {
-    const targets = folders.get(folder);
-    if (targets.size === 1 && folder !== root) await moveAlbumImages(folder, [...targets][0]);
+    const [onlyTarget, ...otherTargets] = folders.get(folder) ?? [];
+    if (onlyTarget && !otherTargets.length && folder !== root) {
+      await moveAlbumImages(folder, onlyTarget);
+    }
     await removeEmptyDirectories(folder, root);
   }
   if (moves.length) {

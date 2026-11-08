@@ -5,7 +5,7 @@ import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetCli
 import { http } from "../../lib/http.ts";
 import { removeSabnzbdDownloadFolder } from "./sabnzbdCleanup.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { readOne } from "./integrationData.ts";
+import { lenient, readOne } from "./integrationData.ts";
 
 export const sabnzbdSettings = Object.freeze({
   key: "sabnzbd",
@@ -154,6 +154,18 @@ const slotSchema = v.looseObject({
   status: v.optional(v.string()),
 });
 const slotsSchema = v.optional(v.looseObject({ slots: v.optional(v.array(slotSchema)) }));
+const configEntrySchema = v.fallback(
+  v.looseObject({
+    name: lenient(v.unknown()),
+    value: lenient(v.unknown()),
+    dir: lenient(v.unknown()),
+  }),
+  {},
+);
+const configSectionSchema = lenient(
+  v.union([v.array(configEntrySchema), v.record(v.string(), v.unknown())]),
+);
+type ConfigSection = v.InferOutput<typeof configSectionSchema>;
 const sabnzbdResponseSchema = v.looseObject({
   status: v.optional(v.unknown()),
   error: v.optional(v.unknown()),
@@ -161,9 +173,7 @@ const sabnzbdResponseSchema = v.looseObject({
   nzo_ids: v.optional(v.array(v.string())),
   queue: slotsSchema,
   history: slotsSchema,
-  config: v.optional(
-    v.looseObject({ misc: v.optional(v.unknown()), categories: v.optional(v.unknown()) }),
-  ),
+  config: v.optional(v.looseObject({ misc: configSectionSchema, categories: configSectionSchema })),
 });
 
 type SabnzbdSlot = v.InferOutput<typeof slotSchema>;
@@ -221,33 +231,29 @@ function buildNzbUpload(fileName: string, content: Buffer) {
   };
 }
 
-function readConfigValue(entries: unknown, name: string) {
+function readConfigValue(entries: ConfigSection, name: string) {
   const key = String(name || "").toLowerCase();
   if (Array.isArray(entries)) {
-    const entry = entries.find((item) => String(item?.name || "").toLowerCase() === key);
-    return entry?.value ?? "";
+    const entry = entries.find((item) => String(item.name || "").toLowerCase() === key);
+    return String(entry?.value ?? "");
   }
-  if (entries && typeof entries === "object") {
-    for (const [k, v] of Object.entries(entries)) {
-      if (String(k).toLowerCase() === key) return String(v ?? "");
-    }
+  for (const [k, value] of Object.entries(entries ?? {})) {
+    if (k.toLowerCase() === key) return String(value ?? "");
   }
   return "";
 }
 
-function readCategoryDirectory(entries: unknown, category: unknown) {
+function readCategoryDirectory(entries: ConfigSection, category: unknown) {
   const wanted = String(category || "")
     .trim()
     .toLowerCase();
   if (!wanted) return "";
   const categories = Array.isArray(entries)
     ? entries
-    : entries && typeof entries === "object"
-      ? Object.values(entries)
-      : [];
+    : Object.values(entries ?? {}).map((entry) => v.parse(configEntrySchema, entry));
   const match = categories.find(
-    (entry: { name?: unknown; dir?: unknown } | null | undefined) =>
-      String(entry?.name || "")
+    (entry) =>
+      String(entry.name || "")
         .trim()
         .toLowerCase() === wanted,
   );
@@ -430,7 +436,7 @@ export class SabnzbdClient {
       this.api("get_config", { section: "misc" }).catch(() => null),
       this.api("get_config", { section: "categories" }).catch(() => null),
     ]);
-    const entries = miscResult?.config?.misc || [];
+    const entries = miscResult?.config?.misc;
     return {
       completedPath: "",
       categoryDestDir: readCategoryDirectory(categoryResult?.config?.categories, settings.category),

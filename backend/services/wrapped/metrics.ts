@@ -336,7 +336,7 @@ export function calculateWrapped(
       .map((month) => ({
         month,
         plays: months.get(month)?.plays ?? 0,
-        topArtist: leader(months.get(month)?.artists ?? new Map(), artists),
+        topArtist: leader(months.get(month)?.artists ?? new Map<string, number>(), artists),
       })),
     hours,
     calendar: Array.from(

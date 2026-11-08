@@ -203,7 +203,10 @@ export async function syncStaticPlaylistImportHere({
 export async function runDueImportSourceSyncs() {
   const playlists = flowPlaylistConfig.getStaticPlaylists();
   const results = [];
-  const disconnected = new Map();
+  const disconnected = new Map<
+    string,
+    { provider: string; ownerUserId: number; playlistCount: number }
+  >();
   const rejected = new Set<string>();
   for (const playlist of playlists) {
     if (!playlist?.importSource?.syncEnabled) continue;

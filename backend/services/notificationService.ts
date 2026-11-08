@@ -134,7 +134,7 @@ async function sendWebhookDirect(webhook: WebhookTarget, event: string, vars: We
   try {
     if (rawBody) {
       const interpolated = interpolateBody(rawBody, { ...vars, event });
-      let parsed;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(interpolated);
       } catch {

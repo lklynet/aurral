@@ -151,7 +151,7 @@ function renderXmlElement(name: string, value: unknown): string {
     return `<${name}>${escapeXml(value)}</${name}>`;
   }
 
-  const text = Object.hasOwn(value, "value") ? Reflect.get(value, "value") : null;
+  const text: unknown = Object.hasOwn(value, "value") ? Reflect.get(value, "value") : null;
   const attributes = [];
   const children = [];
   for (const [key, entry] of Object.entries(value)) {

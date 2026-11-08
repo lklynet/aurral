@@ -217,10 +217,10 @@ function spawnYtdlp(
       clearTimers();
       reject(error);
     }
-    child.stdout.on("data", (chunk) => {
+    child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
     });
-    child.stderr.on("data", (chunk) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
     child.on("error", (error) => {
@@ -280,7 +280,8 @@ function readJsonLines(stdout: string): YtdlpJsonEntry[] {
     .split("\n")
     .flatMap((line) => {
       try {
-        return line.trim() ? [JSON.parse(line)] : [];
+        const entry: unknown = line.trim() ? JSON.parse(line) : null;
+        return entry && typeof entry === "object" ? [entry] : [];
       } catch {
         return [];
       }

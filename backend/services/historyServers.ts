@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { unknownList } from "../../lib/unknownList.ts";
 import * as v from "valibot";
 import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -44,7 +45,6 @@ const OVERLAP_MS = 24 * 60 * 60 * 1000;
 
 const record = v.record(v.string(), v.unknown());
 const object = (value: unknown) => (v.is(record, value) ? value : {});
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 const number = (value: unknown) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const sameName = (left: unknown, right: string) => text(left).toLowerCase() === right.toLowerCase();
@@ -102,7 +102,7 @@ const navidrome: Provider = {
           headers,
           timeoutMs: TIMEOUT_MS,
         });
-        for (const song of list(found.data).map(object)) songs.set(text(song.id), song);
+        for (const song of unknownList(found.data).map(object)) songs.set(text(song.id), song);
       }
       yield rows.map((row) => {
         const song = songs.get(text(row.mediaFileId)) ?? {};
@@ -148,7 +148,7 @@ async function navidromeFavorites({
   }
   const starred = object(response.starred2);
   const rows = (key: string) =>
-    list(starred[key])
+    unknownList(starred[key])
       .map(object)
       .map((row) => ({
         row,
@@ -202,7 +202,7 @@ const readPlex: Reader = async function* ({ url, secret, accountId }, since, unt
     const container = object(object(data).MediaContainer);
     if (!Array.isArray(container.Metadata) && container.size !== 0)
       throw new HistoryServerError("Plex history is unavailable");
-    const rows = list(container.Metadata).map(object);
+    const rows = unknownList(container.Metadata).map(object);
     yield rows
       .filter((row) => row.type === "track")
       .map((row) => ({
@@ -230,7 +230,7 @@ async function playbackReporting({ url, secret }: Connection, sql: string) {
     );
     const result = object(data);
     if (!Array.isArray(result.results)) throw new Error(text(result.message));
-    return result.results.map(list);
+    return result.results.map(unknownList);
   } catch (error) {
     if (Number(asAppError(error)?.response?.status) === 404)
       throw new HistoryServerError("Install the Playback Reporting plugin in Jellyfin");
@@ -255,7 +255,7 @@ const jellyfin: Provider = {
       headers: jellyfinHeaders(connection.secret),
       timeoutMs: TIMEOUT_MS,
     });
-    const user = list(data)
+    const user = unknownList(data)
       .map(object)
       .find((candidate) => sameName(candidate.Name, connection.username));
     if (!user) throw new HistoryServerError(`Jellyfin has no user named ${connection.username}`);
@@ -284,7 +284,8 @@ const jellyfin: Provider = {
           headers: jellyfinHeaders(connection.secret),
           timeoutMs: TIMEOUT_MS,
         });
-        for (const item of list(object(data).Items).map(object)) items.set(text(item.Id), item);
+        for (const item of unknownList(object(data).Items).map(object))
+          items.set(text(item.Id), item);
       }
       yield rows.map((row) => {
         const item = items.get(text(row[1])) ?? {};
@@ -294,7 +295,7 @@ const jellyfin: Provider = {
           trackId: text(row[1]),
           playedAt: number(row[2]) * 1000,
           title: text(item.Name),
-          artist: text(list(item.Artists)[0]),
+          artist: text(unknownList(item.Artists)[0]),
           album: text(item.Album),
           durationMs: number(item.RunTimeTicks) / 10_000 || undefined,
         };

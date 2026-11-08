@@ -160,8 +160,9 @@ export class DownloadWorker {
     return error;
   }
 
-  _isControlFlowError(error: { code?: unknown } | null | undefined) {
-    const code = String(error?.code || "");
+  _isControlFlowError(error: unknown) {
+    const code =
+      error && typeof error === "object" && "code" in error ? String(error.code || "") : "";
     return code === WORKER_STOPPED_CODE || code === PLAYLIST_MUTATION_CODE;
   }
 

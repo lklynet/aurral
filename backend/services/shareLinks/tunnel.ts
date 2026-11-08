@@ -150,7 +150,7 @@ export async function stopShareTunnel() {
   }
 }
 
-let cloudflaredCheck = null;
+let cloudflaredCheck: Promise<boolean> | null = null;
 
 export function hasCloudflared() {
   cloudflaredCheck ??= new Promise<boolean>((resolve) => {

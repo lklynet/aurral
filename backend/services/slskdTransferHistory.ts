@@ -171,7 +171,7 @@ function deserializeSearchIds(value: unknown) {
   if (!text) return [];
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text);
+      const parsed: unknown = JSON.parse(text);
       return normalizeSearchIds(parsed);
     } catch {}
   }

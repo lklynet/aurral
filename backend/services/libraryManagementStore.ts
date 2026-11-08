@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryManagementRow } from "../db/rows.ts";
 
@@ -59,8 +60,8 @@ function isLibraryOwner(value: string): value is LibraryOwner {
 function parseRules(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : null;
+    const parsed = v.safeParse(v.record(v.string(), v.unknown()), JSON.parse(value));
+    return parsed.success ? parsed.output : null;
   } catch {
     return null;
   }

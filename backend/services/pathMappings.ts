@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import * as v from "valibot";
+import { unknownList } from "../../lib/unknownList.ts";
 
 let storedPathMappings: PathMapping[] = [];
 const PATH_MAPPING_SOURCES = new Set([
@@ -38,16 +40,24 @@ function isExplicitPathMappingSource(value: unknown) {
   );
 }
 
-type PathMappingInput = { source?: unknown; remote?: unknown; local?: unknown } | null | undefined;
+const pathMappingInputSchema = v.fallback(
+  v.looseObject({
+    source: v.optional(v.unknown()),
+    remote: v.optional(v.unknown()),
+    local: v.optional(v.unknown()),
+  }),
+  {},
+);
 
-function normalizePathMappingEntry(entry: PathMappingInput) {
-  const named = String(entry?.source ?? "")
+function normalizePathMappingEntry(input: unknown) {
+  const entry = v.parse(pathMappingInputSchema, input);
+  const named = String(entry.source ?? "")
     .trim()
     .toLowerCase();
   if (named && !PATH_MAPPING_SOURCES.has(named)) return null;
-  const source = normalizePathMappingSource(entry?.source);
-  const remote = normalizePathSeparators(entry?.remote);
-  const localRaw = String(entry?.local || "").trim();
+  const source = normalizePathMappingSource(entry.source);
+  const remote = normalizePathSeparators(entry.remote);
+  const localRaw = String(entry.local || "").trim();
   if (!remote || !localRaw) return null;
   const local = path.resolve(localRaw);
   return { source, remote, local };
@@ -56,10 +66,9 @@ function normalizePathMappingEntry(entry: PathMappingInput) {
 export type PathMapping = NonNullable<ReturnType<typeof normalizePathMappingEntry>>;
 
 export function normalizePathMappings(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set();
+  const seen = new Set<string>();
   const result = [];
-  for (const entry of value) {
+  for (const entry of unknownList(value)) {
     const normalized = normalizePathMappingEntry(entry);
     if (!normalized) continue;
     const key = `${normalized.source}\0${normalized.remote.toLowerCase()}\0${normalized.local}`;

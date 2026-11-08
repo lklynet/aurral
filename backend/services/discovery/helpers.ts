@@ -189,7 +189,7 @@ export const mapWithConcurrency = async <T, R>(
   worker: (item: T, index: number) => R | Promise<R>,
   { stopOnError = false } = {},
 ) => {
-  const list = Array.isArray(items) ? items : [];
+  const list = items ?? [];
   const options = { concurrency: Math.max(1, Number(concurrency) || 1) };
   if (!stopOnError) return pMap(list, worker, options);
   let firstError: unknown;

@@ -3,6 +3,7 @@ import { asAppError } from "../../../lib/errors.ts";
 import type { Innertube, Types, YTNodes } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{10,150}$/;
 const RATE_LIMIT_FALLBACK_MS = 60_000;
@@ -108,7 +109,7 @@ const getPlaylistArtworkUrl = (playlist: YoutubeMusicPlaylist) => {
   const thumbnails = headers.flatMap((entry) => {
     const value =
       readField(entry, "thumbnails") ?? readField(readField(entry, "thumbnail"), "contents");
-    return Array.isArray(value) ? value : [];
+    return unknownList(value);
   });
   return (
     thumbnails
@@ -143,10 +144,10 @@ const isContinuation = (entry: YoutubePlaylistContent): entry is YTNodes.Continu
   readField(entry?.constructor, "type") === "ContinuationItem";
 
 const getContinuationKey = (entry: YTNodes.ContinuationItem) => {
-  const payload = entry?.endpoint?.payload;
+  const payload: unknown = entry?.endpoint?.payload;
   const key =
-    payload?.continuation ??
-    payload?.continuationCommand?.token ??
+    readField(payload, "continuation") ??
+    readField(readField(payload, "continuationCommand"), "token") ??
     readField(entry, "continuation") ??
     readField(entry, "token");
   if (typeof key === "string" && key) return key;

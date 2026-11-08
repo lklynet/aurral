@@ -3,6 +3,7 @@ import { createHttpClient, http } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { readMany, readOne } from "./integrationData.ts";
+import { unknownList } from "../../lib/unknownList.ts";
 import {
   isUsenetClientKey,
   normalizeBaseUrl,
@@ -59,17 +60,24 @@ type ProwlarrIndexerOverride = {
   downloadClient: UsenetClientKey | null;
 };
 
-type ProwlarrIndexerOverrideInput = {
-  enabled?: unknown;
-  priority?: unknown;
-  downloadClient?: unknown;
-};
+const indexerOverrideInputSchema = v.fallback(
+  v.looseObject({
+    id: v.optional(v.unknown()),
+    enabled: v.optional(v.unknown()),
+    priority: v.optional(v.unknown()),
+    downloadClient: v.optional(v.unknown()),
+  }),
+  {},
+);
 
-const normalizeIndexerOverride = (entry: ProwlarrIndexerOverrideInput | null | undefined) => ({
-  enabled: entry?.enabled !== false,
-  priority: normalizePositiveInteger(entry?.priority, null),
-  downloadClient: isUsenetClientKey(entry?.downloadClient) ? entry.downloadClient : null,
-});
+const normalizeIndexerOverride = (input: unknown) => {
+  const entry = v.parse(indexerOverrideInputSchema, input);
+  return {
+    enabled: entry.enabled !== false,
+    priority: normalizePositiveInteger(entry.priority, null),
+    downloadClient: isUsenetClientKey(entry.downloadClient) ? entry.downloadClient : null,
+  };
+};
 
 type ProwlarrSettings = ReturnType<typeof getSettings>;
 
@@ -152,13 +160,10 @@ function normalizeCategoryList(value: unknown) {
 function normalizeIndexerOverrides(value: unknown): Record<string, ProwlarrIndexerOverride> {
   if (Array.isArray(value)) {
     return Object.fromEntries(
-      value
-        .map((entry): [string, ProwlarrIndexerOverride] | null => {
-          const id = normalizeInteger(entry?.id, null);
-          if (id == null) return null;
-          return [String(id), normalizeIndexerOverride(entry)];
-        })
-        .filter(Boolean) as [string, ProwlarrIndexerOverride][],
+      unknownList(value).flatMap((entry) => {
+        const id = normalizeInteger(v.parse(indexerOverrideInputSchema, entry).id, null);
+        return id == null ? [] : [[String(id), normalizeIndexerOverride(entry)] as const];
+      }),
     );
   }
   if (!value || typeof value !== "object") return {};
@@ -269,7 +274,7 @@ function formatHttpErrorBody(data: unknown): string {
       .slice(0, 500);
   }
   if (typeof data === "object") {
-    const message =
+    const message: unknown =
       Reflect.get(data, "message") ||
       Reflect.get(data, "errorMessage") ||
       Reflect.get(data, "error") ||

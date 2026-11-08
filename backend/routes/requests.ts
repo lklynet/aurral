@@ -23,7 +23,7 @@ type RequestsResponse = Awaited<ReturnType<typeof buildRequestsResponse>>;
 type RequestsCacheEntry = { response: RequestsResponse; at: number; jobsRevision: number };
 
 const requestsCache = new Map<string | null, RequestsCacheEntry>();
-const pendingRequestsRefreshes = new Map();
+const pendingRequestsRefreshes = new Map<string | null, Promise<RequestsResponse>>();
 
 const getRequestsUserId = (user: RequestUser | null | undefined) =>
   user?.id == null ? null : String(user.id);
@@ -113,7 +113,8 @@ const refreshRequestsCache = async (
   options: Parameters<typeof buildRequestsResponse>[1],
 ) => {
   const userId = getRequestsUserId(options?.user);
-  if (pendingRequestsRefreshes.has(userId)) return pendingRequestsRefreshes.get(userId);
+  const pending = pendingRequestsRefreshes.get(userId);
+  if (pending) return pending;
   const jobsRevision = downloadTracker.getRevision();
   const refresh = buildRequestsResponse(lidarrClient, options)
     .then((requests) => updateRequestsCache(requests, options?.user, jobsRevision))

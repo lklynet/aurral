@@ -70,6 +70,7 @@ async function fileCrc(path: string, expectedSize: number) {
   let crc = 0;
   let size = 0;
   for await (const chunk of createReadStream(path)) {
+    if (!Buffer.isBuffer(chunk)) continue;
     crc = zlib.crc32(chunk, crc);
     size += chunk.length;
   }
@@ -165,6 +166,7 @@ async function* zipChunks(plan: ZipPlan) {
     yield localHeader(entry);
     let written = 0;
     for await (const chunk of createReadStream(entry.path)) {
+      if (!Buffer.isBuffer(chunk)) continue;
       written += chunk.length;
       if (written > entry.size) break;
       yield chunk;

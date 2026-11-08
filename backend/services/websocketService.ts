@@ -1,6 +1,7 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
 import { EventEmitter } from "node:events";
+import * as v from "valibot";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { APP_VERSION } from "../config/constants.ts";
@@ -56,7 +57,10 @@ export type WebSocketServerMessage =
   | { type: "pong"; timestamp: number }
   | WebSocketChannelMessage;
 
-type ClientMessage = { type?: string; channels?: string[] };
+const clientMessageSchema = v.fallback(
+  v.object({ type: v.optional(v.string()), channels: v.optional(v.array(v.string())) }),
+  {},
+);
 
 type ClientUser = NonNullable<ReturnType<typeof resolveSessionUserFromToken>>;
 
@@ -177,9 +181,9 @@ class WebSocketService extends EventEmitter {
 
   handleMessage(client: WebSocketClient, rawMessage: RawData) {
     try {
-      const message: ClientMessage | null = JSON.parse(rawMessage.toString());
+      const message = v.parse(clientMessageSchema, JSON.parse(rawMessage.toString()));
 
-      switch (message?.type) {
+      switch (message.type) {
         case "subscribe":
           this.handleSubscribe(client, message.channels || []);
           break;
@@ -190,7 +194,7 @@ class WebSocketService extends EventEmitter {
           this.send(client, { type: "pong", timestamp: Date.now() });
           break;
         default:
-          logger.warn("system", "Unknown WebSocket message type", { messageType: message?.type });
+          logger.warn("system", "Unknown WebSocket message type", { messageType: message.type });
       }
     } catch (error) {
       logger.error("system", "Failed to parse WebSocket message", {

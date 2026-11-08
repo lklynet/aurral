@@ -2242,11 +2242,14 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
     from: "fromTrackId" | "fromAlbumId" | "fromArtistId",
     to: "toTrackId" | "toAlbumId" | "toArtistId",
   ) => {
-    const targets = new Map();
+    const targets = new Map<number, Set<number>>();
     for (const move of moves) {
-      if (move[from] == null || move[to] == null || move[from] === move[to]) continue;
-      if (!targets.has(move[from])) targets.set(move[from], new Set());
-      targets.get(move[from]).add(move[to]);
+      const source = move[from];
+      const target = move[to];
+      if (source == null || target == null || source === target) continue;
+      const known = targets.get(source) ?? new Set<number>();
+      known.add(target);
+      targets.set(source, known);
     }
     return targets;
   };

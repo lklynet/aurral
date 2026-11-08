@@ -118,7 +118,7 @@ function safeLogData(value: unknown, depth = 0, seen = new WeakSet<object>()): u
 }
 
 function describeError(error: Error): LogError {
-  const code = Reflect.get(error, "code");
+  const code: unknown = Reflect.get(error, "code");
   const stack = error.stack
     ?.split("\n")
     .filter((line) => /^\s+at |@\S+:\d+/.test(line))
@@ -304,7 +304,7 @@ function captureConsole() {
   globalThis.__aurralConsoleCaptured = true;
   for (const method of Object.keys(CONSOLE_LEVEL) as ConsoleMethod[]) {
     const original = console[method].bind(console);
-    console[method] = (...args) => {
+    console[method] = (...args: unknown[]) => {
       if (echoing) return original(...args);
       recordConsoleCall(method, args);
       if (verboseEnabled || shouldEmitDefaultConsoleMessage(method, args)) original(...args);

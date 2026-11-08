@@ -91,7 +91,7 @@ const LASTFM_PAUSE_AFTER_FAILURES = 3;
 const LASTFM_PAUSE_MS = 60_000;
 
 const lastfmInflightRequests: InflightRequests = new Map();
-const lastfmErrorLogAt = new Map();
+const lastfmErrorLogAt = new Map<string, number>();
 let lastfmFailuresInARow = 0;
 let lastfmPausedUntil = 0;
 
@@ -229,8 +229,8 @@ export async function lastfmRequest(
       }
       const failure = asAppError(lastError);
       const status = failure?.response?.status || null;
-      const responseData = failure?.response?.data;
-      const payloadError =
+      const responseData: unknown = failure?.response?.data;
+      const payloadError: unknown =
         (typeof responseData === "object" &&
           responseData !== null &&
           (Reflect.get(responseData, "message") || Reflect.get(responseData, "error"))) ||

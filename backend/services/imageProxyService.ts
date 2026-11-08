@@ -502,9 +502,10 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
     throw new Error("Upstream image exceeds the size limit");
   }
 
-  const chunks = [];
+  const chunks: Buffer[] = [];
   let totalBytes = 0;
-  for await (const chunk of response.body || []) {
+  for await (const chunk of response.body ?? []) {
+    if (!(chunk instanceof Uint8Array)) throw new Error("Upstream image sent unreadable data");
     const buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     totalBytes += buffer.length;
     if (totalBytes > MAX_SOURCE_IMAGE_BYTES) {

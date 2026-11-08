@@ -423,7 +423,7 @@ export default new Hono<AppEnv>()
         .filter((album) => libraryReleaseIds.has(album.mbid))
         .slice(0, 6);
       const warmedVisibleCovers = await Promise.all(
-        coverTargets.map(async (album) => {
+        coverTargets.map(async (album): Promise<[string | null, string | null]> => {
           const coverId = album.mbid || album.foreignAlbumId;
           if (!coverId) return [null, null];
 
@@ -447,7 +447,9 @@ export default new Hono<AppEnv>()
       );
 
       const warmedCoverMap = Object.fromEntries(
-        warmedVisibleCovers.filter(([coverId, coverUrl]) => coverId && coverUrl),
+        warmedVisibleCovers.filter((entry): entry is [string, string] =>
+          Boolean(entry[0] && entry[1]),
+        ),
       );
 
       const withCachedCovers = recentMissing.map((album) => {

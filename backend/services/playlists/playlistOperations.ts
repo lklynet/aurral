@@ -57,6 +57,7 @@ import type {
   LibraryTracksRow,
 } from "../../db/rows.ts";
 import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 const operationTokenKey = (scope: string) => `playlistOperationTokens:${encodeURIComponent(scope)}`;
 
@@ -99,8 +100,8 @@ function isLatestPlaylistOperationToken(scope: unknown, token: unknown) {
 }
 
 function normalizeTrackList(value: unknown): PlaylistTrack[] {
-  return (Array.isArray(value) ? value : [])
-    .map((track) => normalizePlaylistTrack(track))
+  return unknownList(value)
+    .map((track) => normalizePlaylistTrack(track && typeof track === "object" ? track : null))
     .filter((track): track is NonNullable<typeof track> => Boolean(track));
 }
 
