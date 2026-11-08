@@ -156,6 +156,12 @@ test("native favorites include only the favorited library entities", async () =>
   ];
   assert.deepEqual(titles(await getFavorites()), [["Favorite Artist"], [], []]);
 
+  const albumId = "album:favorite-album";
+  assert.equal((await postLibrary("/favorites", { ids: [albumId], starred: true })).status, 200);
+  const album = requireFixture((await getFavorites()).library.albums[0]);
+  assert.deepEqual([album.trackCount, album.availableTrackCount], [2, 1]);
+  assert.equal((await postLibrary("/favorites", { ids: [albumId], starred: false })).status, 200);
+
   const song = "song:favorite-track";
   assert.equal((await postLibrary("/favorites", { ids: [song], starred: true })).status, 200);
   const favorites = await getFavorites();

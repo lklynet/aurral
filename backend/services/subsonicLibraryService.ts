@@ -7,6 +7,7 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
 import {
+  getAlbumStats,
   getLibraryAlbumPage,
   getLibraryArtistPage,
   getLibraryFavoriteTargetKeys,
@@ -1739,9 +1740,18 @@ export function getLibraryFavorites(user: SubsonicUser) {
   const favorite = new Set([...ids(starred.artist), ...ids(starred.album), ...ids(starred.song)]);
   const tracks = library.tracks.filter((track) => favorite.has(idFor("song", track.identityKey)));
   const trackAlbumIds = new Set(tracks.flatMap((track) => track.albums.map((ref) => ref.albumId)));
-  const albums = library.albums.filter(
+  const keptAlbums = library.albums.filter(
     (album) => trackAlbumIds.has(album.id) || favorite.has(idFor("album", album.identityKey)),
   );
+  const stats = getAlbumStats(
+    keptAlbums.map((album) => album.id),
+    null,
+  );
+  const albums = keptAlbums.map((album) => ({
+    ...album,
+    trackCount: stats.get(String(album.id))?.trackCount ?? album.trackIds.length,
+    availableTrackCount: stats.get(String(album.id))?.availableTrackCount ?? 0,
+  }));
   const albumArtistIds = new Set(albums.map((album) => album.artistId));
   const artists = library.artists.filter(
     (artist) => albumArtistIds.has(artist.id) || favorite.has(idFor("artist", artist.identityKey)),
