@@ -249,6 +249,14 @@ function selectAlbumFolders(
     {
       manifest: searchOptions.manifest,
       profile: searchOptions.qualityProfile || getQualityProfile(),
+      currentTiers: searchOptions.upgrade
+        ? new Map(
+            (searchOptions.albumJobs ?? []).map((job) => [
+              job.id,
+              downloadTracker.getJob(job.upgradeForJobId)?.qualityTier,
+            ]),
+          )
+        : null,
     },
   );
 }

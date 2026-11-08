@@ -181,6 +181,23 @@ test("Soulseek album selection follows the quality profile", () => {
     profile: flacOnly,
   });
   assert.equal(mp3Only.decision, "skip");
+  const upgradeFromMp3 = new Map(jobs.map((job) => [job.id, "mp3-320"]));
+  assert.equal(
+    selectSoulseekAlbumFolder(copy("mp3", { bitrate: 320 }, "mp3"), jobs, {
+      manifest,
+      profile: flacFirst,
+      currentTiers: upgradeFromMp3,
+    }).decision,
+    "skip",
+  );
+  assert.equal(
+    selectSoulseekAlbumFolder(results, jobs, {
+      manifest,
+      profile: flacFirst,
+      currentTiers: upgradeFromMp3,
+    }).selected?.group.user,
+    "flac",
+  );
 });
 
 test("Soulseek album selection fits a folder without track lengths by title and position", () => {
