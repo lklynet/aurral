@@ -22,6 +22,7 @@ const homeRails = ["plays", "random", "newest", "played", "released"].map((sort)
 export type Scenario = {
   name: string;
   random?: true;
+  writes?: true;
   requests: (context: PerfContext) => string[];
 };
 
@@ -138,6 +139,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "subsonic edit playlist",
+    writes: true,
     requests: ({ editPlaylist }) => {
       const songIds = editPlaylist.songIds[playlistEdits++];
       if (!songIds) throw new Error("subsonic edit playlist ran out of unlinked songs");

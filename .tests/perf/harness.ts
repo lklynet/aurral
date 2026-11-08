@@ -82,6 +82,9 @@ export async function startPerfApp({ artists }: { artists: number }) {
   applyIsolatedBackendEnv(paths);
   process.env.AURRAL_LIVE_DOWNLOAD_READS = "1";
   const { db } = await import("../../backend/config/db-sqlite.ts");
+  await import("../../backend/services/jobs/queues.ts");
+  const { listQueues } = await import("../../backend/services/jobs/queue.ts");
+  for (const queue of listQueues()) queue.start = () => Promise.resolve();
   const { dbOps, userOps } = await import("../../backend/db/helpers/index.ts");
   const { hashPassword } = await import("../../backend/middleware/passwordHash.ts");
   const { createSession } = await import("../../backend/config/session-helpers.ts");

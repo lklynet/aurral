@@ -213,10 +213,10 @@
   },
   "subsonic edit playlist": {
     "queries": {
-      "cold": 916,
-      "warm": 1073
+      "cold": 911,
+      "warm": 962
     },
-    "bytes": 23275,
+    "bytes": 23182,
     "scans": [
       "download_jobs"
     ]

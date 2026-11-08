@@ -62,13 +62,18 @@ async function run(): Promise<RunResult> {
   const app = await startPerfApp({ artists: Number(options.artists) });
   const metrics: RunResult["metrics"] = {};
   try {
-    for (const scenario of scenarios) await app.run(scenario);
-    for (let sample = 0; sample < samples; sample += 1) {
-      for (const scenario of scenarios) {
-        const result = await app.run(scenario);
-        const entry = (metrics[scenario.name] ??= { kind: "time", samples: [] });
-        entry.samples.push(Number(result.ms.toFixed(3)));
-        entry.queries = result.queries;
+    for (const group of [
+      scenarios.filter((scenario) => !scenario.writes),
+      scenarios.filter((scenario) => scenario.writes),
+    ]) {
+      for (const scenario of group) await app.run(scenario);
+      for (let sample = 0; sample < samples; sample += 1) {
+        for (const scenario of group) {
+          const result = await app.run(scenario);
+          const entry = (metrics[scenario.name] ??= { kind: "time", samples: [] });
+          entry.samples.push(Number(result.ms.toFixed(3)));
+          entry.queries = result.queries;
+        }
       }
     }
     const guard = pathToFileURL(path.join(repoRoot, ".tests", "offline-guard.ts")).href;
