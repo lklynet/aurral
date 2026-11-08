@@ -229,7 +229,12 @@ export function selectSoulseekAlbumFolder(
   {
     manifest = null,
     profile = null,
-  }: { manifest?: ReleaseManifest | null; profile?: unknown } = {},
+    currentTiers = null,
+  }: {
+    manifest?: ReleaseManifest | null;
+    profile?: unknown;
+    currentTiers?: ReadonlyMap<string, string | null | undefined> | null;
+  } = {},
 ) {
   if (!Array.isArray(jobs) || !jobs.length || !manifest?.tracks?.length) {
     return { decision: "skip", selected: null, candidates: [] };
@@ -237,10 +242,15 @@ export function selectSoulseekAlbumFolder(
   const { wanted, offManifest } = mapRequest(manifest, jobs);
   if (!wanted.size || offManifest.length)
     return { decision: "skip", selected: null, candidates: [] };
-  const qualityAllowed = (item: SoulseekSearchItem) =>
+  const qualityAllowed = (item: SoulseekSearchItem, jobId: string) =>
     item.locked !== true &&
     item.isLocked !== true &&
-    (!profile || isAdvertisedQualityEligible(item.file, item.bitrate ?? item.bitRate, { profile }));
+    (!profile ||
+      isAdvertisedQualityEligible(item.file, item.bitrate ?? item.bitRate, {
+        profile,
+        currentTier: currentTiers?.get(jobId) ?? null,
+        upgrade: currentTiers !== null,
+      }));
   const options = buildSoulseekReleaseFolders(results, manifest)
     .flatMap(({ group, listing }) => {
       if (listing.files.length < manifest.tracks.length) return [];
@@ -250,7 +260,7 @@ export function selectSoulseekAlbumFolder(
       for (const [trackIndex, jobId] of wanted) {
         const copies: SoulseekSearchItem[] = (assessment.copiesForTrack[trackIndex] ?? [])
           .flatMap((index: number) => listing.files[index]?.raw ?? [])
-          .filter(qualityAllowed);
+          .filter((item) => qualityAllowed(item, jobId));
         copies.sort((left, right) =>
           profile
             ? getAdvertisedQualityRank(left.file, left.bitrate ?? left.bitRate, profile) -
