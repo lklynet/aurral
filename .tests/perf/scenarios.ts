@@ -26,6 +26,9 @@ export type Scenario = {
   requests: (context: PerfContext) => string[];
 };
 
+const DISCOVER_ARTIST = "90000000-0000-4000-8000-000000000001";
+const DISCOVER_ALBUM = "90000000-0000-4000-8000-000000000002";
+
 let playlistEdits = 0;
 
 export const scenarios: Scenario[] = [
@@ -94,6 +97,9 @@ export const scenarios: Scenario[] = [
   },
   { name: "favorites", requests: () => ["/api/library/favorites"] },
   { name: "search", requests: () => ["/api/search/library?q=perf%20track%20001&limit=20"] },
+  { name: "discover artist", requests: () => [`/api/artists/${DISCOVER_ARTIST}?mode=core`] },
+  { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
+  { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },
   { name: "listening history", requests: () => ["/api/users/me/listening-history"] },
   { name: "subsonic getArtists", requests: () => ["/rest/getArtists"] },

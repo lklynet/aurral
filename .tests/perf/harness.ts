@@ -1,4 +1,4 @@
-import "../offline-guard.ts";
+import { blockedHosts } from "../offline-guard.ts";
 import { performance } from "node:perf_hooks";
 import type { Server } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -8,6 +8,7 @@ import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
+  createMockHttpServer,
   listeningAddress,
 } from "../helpers/backendTestHarness.ts";
 import { seedPerfLibrary, seedPerfListening, seedPerfPlaylistJobs } from "./seed.ts";
@@ -73,7 +74,49 @@ function scannedTables(db: Database.Database, executed: Map<string, unknown[]>) 
   return [...tables].sort();
 }
 
-export type ScenarioResult = { queries: number; bytes: number; scans: string[]; ms: number };
+export type ScenarioResult = {
+  queries: number;
+  bytes: number;
+  scans: string[];
+  calls: Record<string, number>;
+  ms: number;
+};
+
+async function startFakeMetadata() {
+  let calls = 0;
+  const server = await createMockHttpServer((request, response) => {
+    calls += 1;
+    const [kind, id] = new URL(request.url ?? "/", "http://metadata").pathname.split("/").slice(1);
+    const body =
+      kind === "search"
+        ? []
+        : kind === "artist" && id
+          ? { id, artistname: "Perf Metadata Artist", Albums: [] }
+          : kind === "album" && id
+            ? { id, title: "Perf Metadata Album", releases: [] }
+            : null;
+    response.statusCode = body ? 200 : 404;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(body ?? { error: "Not found" }));
+  });
+  return {
+    url: server.url,
+    close: server.close,
+    take() {
+      const taken = calls;
+      calls = 0;
+      return taken;
+    },
+  };
+}
+
+function takeCalls(metadata: { take(): number }) {
+  const calls: Record<string, number> = Object.fromEntries(blockedHosts);
+  blockedHosts.clear();
+  const brainzmash = metadata.take();
+  if (brainzmash) calls.brainzmash = brainzmash;
+  return calls;
+}
 
 export type PerfApp = Awaited<ReturnType<typeof startPerfApp>>;
 
@@ -94,9 +137,13 @@ export async function startPerfApp({ artists }: { artists: number }) {
     await import("../../backend/config/library-search-index.ts");
 
   const seedStarted = performance.now();
+  const metadata = await startFakeMetadata();
   dbOps.updateSettings({
     onboardingComplete: true,
-    integrations: { general: { authUser: "test", authPassword: "password" } },
+    integrations: {
+      general: { authUser: "test", authPassword: "password" },
+      metadata: { provider: "brainzmash", baseUrl: metadata.url },
+    },
     security: { localNetworkBypass: { enabled: false } },
   });
   const user = userOps.createUser(
@@ -176,6 +223,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
 
   async function run(scenario: Scenario): Promise<ScenarioResult> {
     statements.take();
+    takeCalls(metadata);
     const started = performance.now();
     const sizes = await Promise.all(scenario.requests(context).map(request));
     const ms = performance.now() - started;
@@ -184,6 +232,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
       queries: count,
       bytes: sizes.reduce((total, size) => total + size, 0),
       scans: scannedTables(db, executed),
+      calls: takeCalls(metadata),
       ms,
     };
   }
@@ -193,6 +242,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
     run,
     async close() {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      await metadata.close();
       await cleanupIsolatedState(paths);
     },
   };

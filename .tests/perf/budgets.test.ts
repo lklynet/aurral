@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { compareBudgets, measureBudgets, readBaseline } from "./budgets.ts";
 
-test("every page load stays within its committed query, size, and scan baseline", async () => {
+test("every page load stays within its committed query, size, scan, and outbound call baseline", async () => {
   const problems = compareBudgets(readBaseline(), await measureBudgets());
   expect(
     problems,

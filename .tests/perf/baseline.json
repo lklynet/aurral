@@ -111,6 +111,48 @@
     "bytes": 11814,
     "scans": []
   },
+  "discover artist": {
+    "queries": {
+      "cold": 22,
+      "warm": 5
+    },
+    "bytes": 379,
+    "scans": [],
+    "calls": {
+      "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
+  },
+  "discover album": {
+    "queries": {
+      "cold": 17,
+      "warm": 3
+    },
+    "bytes": 244,
+    "scans": [],
+    "calls": {
+      "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
+  },
+  "discover search": {
+    "queries": {
+      "cold": 12,
+      "warm": 3
+    },
+    "bytes": 65,
+    "scans": [],
+    "calls": {
+      "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
+  },
   "playlists": {
     "queries": {
       "cold": 40,
