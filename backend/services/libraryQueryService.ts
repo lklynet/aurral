@@ -476,7 +476,8 @@ function getScopedLibrary({
   const where: string[] = [...conditions];
   const values: unknown[] = [...parameters];
   if (sourceFilter) {
-    where.push("media.source = ?");
+    // Unary plus stops SQLite from starting at every media file in the source instead of the requested ids.
+    where.push("+media.source = ?");
     values.push(sourceFilter);
   }
   if (availableOnly === true) where.push("media.available = 1");
