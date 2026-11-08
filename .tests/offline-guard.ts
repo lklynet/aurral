@@ -9,13 +9,16 @@ function connectTarget(
     unknown?,
   ],
 ) {
-  const options = Array.isArray(args[0]) ? args[0][0] : args[0];
+  const options: unknown = Array.isArray(args[0]) ? args[0][0] : args[0];
   if (options && typeof options === "object") {
-    if (options.path) return null;
-    return options.host ?? options.hostname ?? "localhost";
+    if ("path" in options && options.path) return null;
+    const host = ("host" in options && options.host) || ("hostname" in options && options.hostname);
+    return typeof host === "string" ? host : "localhost";
   }
   return typeof args[1] === "string" ? args[1] : "localhost";
 }
+
+export const blockedHosts = new Map<string, number>();
 
 const realConnect = net.Socket.prototype.connect;
 net.Socket.prototype.connect = function offlineConnect(...args) {
@@ -23,6 +26,7 @@ net.Socket.prototype.connect = function offlineConnect(...args) {
   if (host === null || LOOPBACK_HOSTS.has(host) || host.endsWith(".invalid")) {
     return Reflect.apply(realConnect, this, args);
   }
+  blockedHosts.set(host, (blockedHosts.get(host) ?? 0) + 1);
   const error = new Error(
     `Unit tests cannot reach external hosts. Stub the client that requested ${host}.`,
   );

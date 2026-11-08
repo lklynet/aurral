@@ -10,10 +10,12 @@ const budget = v.object({
   queries: v.object({ cold: v.number(), warm: v.number() }),
   bytes: v.number(),
   scans: v.array(v.string()),
+  calls: v.optional(v.record(v.string(), v.object({ cold: v.number(), warm: v.number() }))),
 });
 const baselineFile = v.record(v.string(), budget);
 
 export type Budgets = v.InferOutput<typeof baselineFile>;
+type Calls = NonNullable<Budgets[string]["calls"]>;
 
 export function readBaseline(): Budgets {
   return v.parse(baselineFile, JSON.parse(readFileSync(BASELINE_PATH, "utf8")));
@@ -30,10 +32,19 @@ export async function measureBudgets(): Promise<Budgets> {
     for (const scenario of scenarios) {
       const cold = await app.run(scenario);
       const warm = await app.run(scenario);
+      const hosts = [...new Set([...Object.keys(cold.calls), ...Object.keys(warm.calls)])].sort();
       budgets[scenario.name] = {
         queries: { cold: cold.queries, warm: warm.queries },
         bytes: warm.bytes,
         scans: [...new Set([...cold.scans, ...warm.scans])].sort(),
+        ...(hosts.length && {
+          calls: Object.fromEntries(
+            hosts.map((host) => [
+              host,
+              { cold: cold.calls[host] ?? 0, warm: warm.calls[host] ?? 0 },
+            ]),
+          ),
+        }),
       };
     }
     return budgets;
@@ -48,6 +59,15 @@ const drift = (label: string, measured: number, baseline: number, tolerance: num
   if (measured < baseline - allowed) return `${label} fell from ${baseline} to ${measured}`;
   return null;
 };
+
+const callChanges = (expected: Calls, actual: Calls) =>
+  [...new Set([...Object.keys(expected), ...Object.keys(actual)])].flatMap((host) =>
+    (["cold", "warm"] as const).flatMap((run) => {
+      const before = expected[host]?.[run] ?? 0;
+      const after = actual[host]?.[run] ?? 0;
+      return before === after ? [] : [`${run} calls to ${host} went from ${before} to ${after}`];
+    }),
+  );
 
 export function compareBudgets(baseline: Budgets, measured: Budgets) {
   const problems: string[] = [];
@@ -69,6 +89,7 @@ export function compareBudgets(baseline: Budgets, measured: Budgets) {
       ...expected.scans
         .filter((table) => !actual.scans.includes(table))
         .map((table) => `no longer scans all of ${table}`),
+      ...callChanges(expected.calls ?? {}, actual.calls ?? {}),
     ].filter((change) => change !== null);
     if (changes.length) problems.push(`${name}: ${changes.join(", ")}`);
   }
