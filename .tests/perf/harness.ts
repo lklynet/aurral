@@ -26,6 +26,7 @@ const LARGE_TABLES = new Set([
   "play_events",
   "play_album_stats",
   "subsonic_stars",
+  "download_jobs",
 ]);
 
 function recordStatements(db: Database.Database) {
@@ -79,6 +80,7 @@ export type PerfApp = Awaited<ReturnType<typeof startPerfApp>>;
 export async function startPerfApp({ artists }: { artists: number }) {
   const paths = await createIsolatedStateDir("perf");
   applyIsolatedBackendEnv(paths);
+  process.env.AURRAL_LIVE_DOWNLOAD_READS = "1";
   const { db } = await import("../../backend/config/db-sqlite.ts");
   const { dbOps, userOps } = await import("../../backend/db/helpers/index.ts");
   const { hashPassword } = await import("../../backend/middleware/passwordHash.ts");
@@ -109,7 +111,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
   seedPerfListening(db, user.id, library);
   rebuildLibrarySearchIndex();
   rebuildStoredLibraryGenreStats(db);
-  const playlistTracks = seedPerfPlaylistJobs(db, library);
+  const { playlists: playlistTracks, editSongs } = seedPerfPlaylistJobs(db, library);
   const { flowPlaylistConfig } =
     await import("../../backend/services/playlists/flowPlaylistConfig.ts");
   let playlistId = "";
@@ -125,6 +127,15 @@ export async function startPerfApp({ artists }: { artists: number }) {
     });
     playlistId = `shared:${playlist.id}`;
   }
+  for (const { path } of editSongs.flat()) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, "perf");
+  }
+  const editPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Perf Edited Playlist",
+    ownerUserId: user.id,
+    tracks: [],
+  });
   db.pragma("wal_checkpoint(TRUNCATE)");
   const seedMs = performance.now() - seedStarted;
 
@@ -138,6 +149,10 @@ export async function startPerfApp({ artists }: { artists: number }) {
     albumId: library.albumIds[Math.floor(library.albumIds.length / 2)]!,
     lastAlbumPage: Math.floor(library.albums / 100),
     playlistId,
+    editPlaylist: {
+      id: `shared:${editPlaylist.id}`,
+      songIds: editSongs.map((songs) => songs.map((song) => song.id)),
+    },
   };
 
   async function request(path: string) {
