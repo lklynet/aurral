@@ -44,7 +44,7 @@ jobs:
         run: |
           git worktree add ../base HEAD^1
           if [ ! -f ../base/scripts/perf.mts ]; then
-            cp scripts/perf.mts ../base/scripts/
+            cp scripts/perf.mts scripts/perf-report.mts ../base/scripts/
             cp -r .tests/perf ../base/.tests/
           fi
           cd ../base
@@ -60,9 +60,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.number }}
+          REPORT_DIR: ${{ runner.temp }}/perf-report
         run: |
+          mkdir -p "$REPORT_DIR"
+          echo "$PR_NUMBER" > "$REPORT_DIR/pr"
           if gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' | grep -qx perf-accepted; then
-            node scripts/perf.mts compare ../base --report-only
+            node scripts/perf.mts compare ../base --json "$REPORT_DIR/comparison.json" --report-only
           else
-            node scripts/perf.mts compare ../base
+            node scripts/perf.mts compare ../base --json "$REPORT_DIR/comparison.json"
           fi
+
+      # perf-report.yml turns this into the PR comment.
+      - if: always() && steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: perf-report
+          path: ${{ runner.temp }}/perf-report
+          if-no-files-found: ignore
+          retention-days: 7
