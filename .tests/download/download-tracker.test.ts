@@ -831,7 +831,7 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
   }
 });
 
-test("a web-side tracker does not reset an active flow download on import", () => {
+test("a web-side tracker keeps an active flow download on import and loads jobs before writing", () => {
   const tracker = new DownloadTracker();
   const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
   assert.ok(id != null);
@@ -841,6 +841,8 @@ test("a web-side tracker does not reset an active flow download on import", () =
     process.env.NODE_ENV = "production";
     const webTracker = new DownloadTracker();
     assert.equal(webTracker.getJob(id)?.status, "downloading");
+    webTracker.setFailed(id, "Stopped");
+    assert.equal(webTracker.getJob(id)?.status, "failed");
   } finally {
     process.env.NODE_ENV = previousEnv;
   }

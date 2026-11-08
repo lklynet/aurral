@@ -24,6 +24,7 @@ import {
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
+import { isDownloadOwnerProcess } from "./downloadOwnerClient.ts";
 import { logger } from "../logger.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
 import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.ts";
@@ -589,6 +590,7 @@ export class DownloadTracker {
   declare revision: number;
   declare externalDataVersion: number | undefined;
   declare externalJobsRevision: number | undefined;
+  declare loaded: boolean;
 
   constructor({
     enqueuePipeline = (payload) => downloadPipelineQueue.enqueue(payload),
@@ -603,6 +605,13 @@ export class DownloadTracker {
     this.pendingRetrySet = new Set();
     this.slskdDispatched = new Set();
     this.revision = 0;
+    this.loaded = false;
+    if (isDownloadOwnerProcess()) this._ensureLoaded();
+  }
+
+  _ensureLoaded() {
+    if (this.loaded) return;
+    this.loaded = true;
     this._load();
     this.externalDataVersion = dataVersionStmt.get()?.data_version;
     this.externalJobsRevision = persistedRevisionStmt.get()?.revision;
@@ -2346,6 +2355,7 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
       ) {
         return readTrackerFromDatabase(name, args);
       }
+      this._ensureLoaded();
       this._refreshExternalChanges();
       const result: unknown = original.apply(this, args);
       return result;
