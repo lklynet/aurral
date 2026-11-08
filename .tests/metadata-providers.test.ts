@@ -22,6 +22,7 @@ const [
     clearMetadataRequestStates,
     failMetadataRequest,
     getMetadataProviderBudget,
+    reserveMetadataProviderRequest,
   },
   { db },
   { http },
@@ -508,6 +509,20 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
+  }
+});
+
+test("a metadata request that reaches its turn a moment early by the wall clock is admitted", () => {
+  const baseUrl = "http://slots.invalid";
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 0);
+    vi.advanceTimersByTime(99);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 0);
+    vi.advanceTimersByTime(50);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 50);
+  } finally {
+    vi.useRealTimers();
   }
 });
 
