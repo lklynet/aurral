@@ -159,9 +159,7 @@ export const reserveUniquePlaylistName = (
 ) => {
   const normalizedBase = String(baseName || "").trim() || "Playlist";
   const existing = new Set(
-    (Array.isArray(playlists) ? playlists : [])
-      .map((playlist) => normalizePlaylistNameKey(playlist?.name))
-      .filter(Boolean),
+    (playlists ?? []).map((playlist) => normalizePlaylistNameKey(playlist?.name)).filter(Boolean),
   );
   if (!existing.has(normalizedBase.toLowerCase())) {
     return normalizedBase;

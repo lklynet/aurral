@@ -1,4 +1,4 @@
-export type MissingJobQualityState = "below-floor" | "upgrade" | "preferred" | "external";
+import type { QualityState } from "../../../../backend/services/qualityProfileModel.ts";
 
 export interface MissingJob {
   id?: string | number;
@@ -6,7 +6,7 @@ export interface MissingJob {
   upgradeForJobId?: string | number | null;
   monitored?: boolean;
   qualityOwned?: boolean;
-  qualityState?: MissingJobQualityState | null;
+  qualityState?: QualityState | null;
   createdAt?: number;
   trackName?: string | null;
 }

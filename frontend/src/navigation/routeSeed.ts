@@ -1,5 +1,5 @@
 import { isRecord } from "../../../lib/isRecord.ts";
-import { routeStateOf } from "./routeState.ts";
+import { routeStateOf, stateText as text } from "./routeState.ts";
 
 export type RouteSeed = {
   name?: string;
@@ -9,8 +9,6 @@ export type RouteSeed = {
   coverUrl?: string | null;
   trackCount?: number;
 };
-
-const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 export const readRouteSeed = (state: unknown): RouteSeed | null => {
   const seed = routeStateOf(state).seed;
