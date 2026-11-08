@@ -81,9 +81,9 @@ export function renderComparison({ base, head }: Comparison) {
     if (baseRounds.some((samples) => !samples.length)) return `| ${name} | | | new | |`;
     const headRounds = head.map((result) => result.metrics[name]?.samples ?? []);
     const { baseMedian, headMedian, verdict } = judge(kind, baseRounds, headRounds);
-    const percent = ((headMedian - baseMedian) / baseMedian) * 100;
-    const change =
-      verdict === "same" ? "" : `${verdict} (${percent > 0 ? "+" : ""}${percent.toFixed(0)}%)`;
+    const percent = Math.round(((headMedian - baseMedian) / baseMedian) * 100) || 0;
+    const delta = `${percent > 0 ? "+" : ""}${percent}%`;
+    const change = verdict === "same" ? delta : `**${verdict}** (${delta})`;
     const queries = queryChange(base[0]?.metrics[name]?.queries, firstHead.metrics[name]?.queries);
     return {
       verdict,
