@@ -113,8 +113,8 @@
   },
   "playlists": {
     "queries": {
-      "cold": 2111,
-      "warm": 2090
+      "cold": 40,
+      "warm": 19
     },
     "bytes": 4503,
     "scans": [
@@ -203,8 +203,8 @@
   },
   "subsonic playlists": {
     "queries": {
-      "cold": 2669,
-      "warm": 2589
+      "cold": 129,
+      "warm": 49
     },
     "bytes": 431712,
     "scans": [
@@ -213,8 +213,8 @@
   },
   "subsonic edit playlist": {
     "queries": {
-      "cold": 911,
-      "warm": 962
+      "cold": 888,
+      "warm": 914
     },
     "bytes": 23182,
     "scans": [
