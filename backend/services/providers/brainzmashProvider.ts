@@ -455,29 +455,22 @@ function refreshMetadata<Schema extends v.GenericSchema>(
         try {
           const response = await providerRequestLimiter.schedule(
             async (remainingMs) => {
-              const activeCircuitError = getMetadataCircuitError(baseUrl);
-              if (activeCircuitError) throw activeCircuitError;
               const admissionStarted = Date.now();
-              let waitMs;
-              while (
-                (waitMs = reserveMetadataProviderRequest(
-                  baseUrl,
-                  METADATA_REQUEST_MIN_INTERVAL_MS,
-                )) > 0
-              ) {
-                if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
-                  const error: MetadataError = new Error(
-                    "Metadata provider request deadline exceeded",
-                  );
-                  error.code = "ETIMEDOUT";
-                  throw error;
-                }
-                await delay(waitMs, undefined, { signal: sharedSignal });
-                const waitingCircuit = getMetadataCircuitError(baseUrl);
-                if (waitingCircuit) throw waitingCircuit;
+              const waitMs = reserveMetadataProviderRequest(
+                baseUrl,
+                METADATA_REQUEST_MIN_INTERVAL_MS,
+                remainingMs,
+              );
+              if (waitMs >= remainingMs) {
+                const error: MetadataError = new Error(
+                  "Metadata provider request deadline exceeded",
+                );
+                error.code = "ETIMEDOUT";
+                throw error;
               }
-              const circuitAfterWait = getMetadataCircuitError(baseUrl);
-              if (circuitAfterWait) throw circuitAfterWait;
+              if (waitMs > 0) await delay(waitMs, undefined, { signal: sharedSignal });
+              const circuitError = getMetadataCircuitError(baseUrl);
+              if (circuitError) throw circuitError;
               const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
               if (requestTimeoutMs <= 0) {
                 const error: MetadataError = new Error(

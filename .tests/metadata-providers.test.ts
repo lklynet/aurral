@@ -22,6 +22,7 @@ const [
     clearMetadataRequestStates,
     failMetadataRequest,
     getMetadataProviderBudget,
+    reserveMetadataProviderRequest,
   },
   { db },
   { http },
@@ -508,6 +509,19 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
+  }
+});
+
+test("requests waiting on the metadata provider each hold the next free slot", () => {
+  const baseUrl = "http://slots.invalid";
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const waits = [0, 1, 2].map(() => reserveMetadataProviderRequest(baseUrl, 100));
+    assert.deepEqual(waits, [0, 100, 200]);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100, 300), 300);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 300);
+  } finally {
+    vi.useRealTimers();
   }
 });
 

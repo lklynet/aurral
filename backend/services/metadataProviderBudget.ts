@@ -177,15 +177,19 @@ export function getMetadataProviderBudget(baseUrl: string): Partial<MetadataProv
   return readBudget.get(baseUrl) || {};
 }
 
-const reserveRequest = db.transaction((baseUrl: string, intervalMs: number) => {
+const reserveRequest = db.transaction((baseUrl: string, intervalMs: number, maxWaitMs: number) => {
   const now = Date.now();
-  const next = Math.max(now, Number(readBudget.get(baseUrl)?.next_request_at || 0));
-  if (next === now) reserve.run(baseUrl, now + intervalMs);
-  return next - now;
+  const slot = Math.max(now, Number(readBudget.get(baseUrl)?.next_request_at || 0));
+  if (slot - now < maxWaitMs) reserve.run(baseUrl, slot + intervalMs);
+  return slot - now;
 });
 
-export function reserveMetadataProviderRequest(baseUrl: string, intervalMs: number) {
-  return reserveRequest.immediate(baseUrl, intervalMs);
+export function reserveMetadataProviderRequest(
+  baseUrl: string,
+  intervalMs: number,
+  maxWaitMs = Infinity,
+) {
+  return reserveRequest.immediate(baseUrl, intervalMs, maxWaitMs);
 }
 
 export function setMetadataProviderCooldown(baseUrl: string, status: number, until: number) {
