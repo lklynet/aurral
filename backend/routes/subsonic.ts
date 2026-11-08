@@ -343,8 +343,8 @@ function authenticate(params: SubsonicParams, method: string) {
   return { format, error };
 }
 
-const artistImageSignature = (id: string) =>
-  createHmac("sha256", getSettingsEncryptionKey()).update(`artist-image:${id}`).digest("base64url");
+const artistImageSignature = (id: string, key = getSettingsEncryptionKey()) =>
+  createHmac("sha256", key).update(`artist-image:${id}`).digest("base64url");
 
 const hasArtistImageSignature = (id: string, signature: string) => {
   const expected = Buffer.from(artistImageSignature(id));
@@ -428,8 +428,9 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
   const ok = (data: Record<string, unknown> = {}) =>
     reply(c, renderResponse(format, "ok", null, data));
   const fail = (...failure: SubsonicFailure) => reply(c, failedResponse(format, ...failure));
+  let imageKey: ReturnType<typeof getSettingsEncryptionKey> | undefined;
   const artistImageUrl = (id: string) =>
-    `${c.var.protocol}://${c.req.header("host")}/rest/artistImage?id=${encodeURIComponent(id)}&sig=${artistImageSignature(id)}`;
+    `${c.var.protocol}://${c.req.header("host")}/rest/artistImage?id=${encodeURIComponent(id)}&sig=${artistImageSignature(id, (imageKey ??= getSettingsEncryptionKey()))}`;
   const withImage = <T extends { id: string }>(artist: T) => ({
     ...artist,
     artistImageUrl: artistImageUrl(artist.id),
