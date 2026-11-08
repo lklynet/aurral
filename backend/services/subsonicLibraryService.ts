@@ -1733,6 +1733,28 @@ export function getStarredWithLibrary(
   };
 }
 
+export function getLibraryFavorites(user: SubsonicUser) {
+  const { starred, songIds, library } = getStarredWithLibrary(user);
+  const ids = (entries: { id: string }[]) => entries.map((entry) => entry.id);
+  const favorite = new Set([...ids(starred.artist), ...ids(starred.album), ...ids(starred.song)]);
+  const tracks = library.tracks.filter((track) => favorite.has(idFor("song", track.identityKey)));
+  const trackAlbumIds = new Set(tracks.flatMap((track) => track.albums.map((ref) => ref.albumId)));
+  const albums = library.albums.filter(
+    (album) => trackAlbumIds.has(album.id) || favorite.has(idFor("album", album.identityKey)),
+  );
+  const albumArtistIds = new Set(albums.map((album) => album.artistId));
+  const artists = library.artists.filter(
+    (artist) => albumArtistIds.has(artist.id) || favorite.has(idFor("artist", artist.identityKey)),
+  );
+  return {
+    artistIds: ids(starred.artist),
+    albumIds: ids(starred.album),
+    songIds,
+    playlistSongs: starred.song.filter((song) => /^(flow|shared)-song:/.test(song.id)),
+    library: { artists, albums, tracks },
+  };
+}
+
 export function getStarred(user: SubsonicUser) {
   return getStarredWithLibrary(user, { availableOnly: true }).starred;
 }

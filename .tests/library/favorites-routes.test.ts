@@ -122,7 +122,10 @@ const library = (signedIn: RequestUser | undefined) => signedInAs(signedIn).rout
 
 const pagePath = (query: Record<string, string>) => `/library?${new URLSearchParams(query)}`;
 
-const getFavorites = () => library(user).request("/library/favorites");
+const getFavorites = async () => {
+  const favorites: Favorites = await (await library(user).request("/library/favorites")).json();
+  return favorites;
+};
 
 const getPage = (query: Record<string, string>) => library(user).request(pagePath(query));
 
@@ -142,28 +145,26 @@ test("native favorites return changed identities and reuse Subsonic star identit
   assert.deepEqual(posted.changedIds, [target]);
   assert.equal("library" in posted, false);
 
-  const favorites: Favorites = await (await getFavorites()).json();
-  assert.deepEqual(
-    favorites.artist.map((entry) => entry.id),
-    [target],
-  );
+  assert.deepEqual((await getFavorites()).artistIds, [target]);
 });
 
-test("native favorites include the library favorite subset", async () => {
-  const favorites: Favorites = await (await getFavorites()).json();
-
-  assert.deepEqual(
+test("native favorites include only the favorited library entities", async () => {
+  const titles = (favorites: Favorites) => [
     favorites.library.artists.map((entry) => entry.name),
-    ["Favorite Artist"],
-  );
-  assert.deepEqual(
     favorites.library.albums.map((entry) => entry.title),
-    ["Favorite Album"],
-  );
-  assert.deepEqual(
     favorites.library.tracks.map((entry) => entry.title),
-    ["Favorite Track", "Favorite Track Two"],
-  );
+  ];
+  assert.deepEqual(titles(await getFavorites()), [["Favorite Artist"], [], []]);
+
+  const song = "song:favorite-track";
+  assert.equal((await postLibrary("/favorites", { ids: [song], starred: true })).status, 200);
+  const favorites = await getFavorites();
+  assert.deepEqual(titles(favorites), [
+    ["Favorite Artist"],
+    ["Favorite Album"],
+    ["Favorite Track"],
+  ]);
+  assert.deepEqual(favorites.songIds, [song]);
   assert.equal(
     "path" in requireFixture(requireFixture(favorites.library.tracks[0]).files[0]),
     false,

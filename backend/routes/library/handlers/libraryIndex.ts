@@ -27,7 +27,7 @@ import {
 } from "../../../services/libraryQueryService.ts";
 import {
   getStarredIdentityKeys,
-  getStarredWithLibrary,
+  getLibraryFavorites,
   restoreStars,
   starMany,
   unstarMany,
@@ -293,8 +293,8 @@ export default new Hono<AppEnv>()
   })
   .get("/", ...libraryPage)
   .get("/favorites", requireAuth, noCache, (c) => {
-    const { starred, songIds, library } = getStarredWithLibrary(c.var.user);
-    return c.json({ ...starred, songIds, library: toPublicLibrary(library) }, 200);
+    const { library, ...favorites } = getLibraryFavorites(c.var.user);
+    return c.json({ ...favorites, library: toPublicLibrary(library) }, 200);
   })
   .post(
     "/favorites",

@@ -1905,7 +1905,7 @@ test("playlist favorites resolve to the owned library track", async () => {
       ["Canonical Song"],
     );
     assert.equal(
-      favorites.song.some((song: { id: string }) => /^song:/.test(song.id)),
+      favorites.songIds.some((id: string) => /^song:/.test(id)),
       true,
     );
 
