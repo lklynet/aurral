@@ -512,14 +512,15 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
   }
 });
 
-test("requests waiting on the metadata provider each hold the next free slot", () => {
+test("a metadata request that reaches its turn a moment early by the wall clock is admitted", () => {
   const baseUrl = "http://slots.invalid";
   vi.useFakeTimers({ toFake: ["Date"] });
   try {
-    const waits = [0, 1, 2].map(() => reserveMetadataProviderRequest(baseUrl, 100));
-    assert.deepEqual(waits, [0, 100, 200]);
-    assert.equal(reserveMetadataProviderRequest(baseUrl, 100, 300), 300);
-    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 300);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 0);
+    vi.advanceTimersByTime(99);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 0);
+    vi.advanceTimersByTime(50);
+    assert.equal(reserveMetadataProviderRequest(baseUrl, 100), 50);
   } finally {
     vi.useRealTimers();
   }

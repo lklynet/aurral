@@ -113,7 +113,7 @@
   },
   "discover artist": {
     "queries": {
-      "cold": 21,
+      "cold": 22,
       "warm": 5
     },
     "bytes": 379,
@@ -127,7 +127,7 @@
   },
   "discover album": {
     "queries": {
-      "cold": 16,
+      "cold": 17,
       "warm": 3
     },
     "bytes": 244,
@@ -141,7 +141,7 @@
   },
   "discover search": {
     "queries": {
-      "cold": 11,
+      "cold": 12,
       "warm": 3
     },
     "bytes": 65,
