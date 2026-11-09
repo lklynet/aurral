@@ -62,8 +62,9 @@ export class DownloadSourceError extends Error {}
 // source that downloads on its own returns `pending`, and Aurral asks its
 // `status` until the download is done. An upgrade search names the quality
 // the current file has. A source without `tracks` serves a track from an
-// album download, and one with `albums.files` downloads only that track's
-// file: `list` is null until the source knows the files.
+// album download. One with `albums.files` downloads only the files Aurral
+// keeps: `list` is null until the source knows the files, and then `keep`
+// names the files to download, every file when Aurral can't tell.
 export type DownloadSource = {
   id: string;
   staging: string;
@@ -83,7 +84,7 @@ export type DownloadSource = {
     }) => Promise<v.InferOutput<typeof albumDownloadResult>>;
     files?: {
       list: (id: string) => Promise<v.InferOutput<typeof fileResults>>;
-      keep: (input: { id: string; path: string }) => Promise<void>;
+      keep: (input: { id: string; paths: string[] }) => Promise<void>;
     };
   };
   status: (input: { id: string; directory: string }) => Promise<v.InferOutput<typeof statusResult>>;

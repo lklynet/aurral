@@ -155,13 +155,16 @@ export const qbittorrentSource: DownloadSource = {
         const files = torrent ? await qbittorrentClient.torrentFiles(torrent.hash) : [];
         return files.length > 0 ? files.map(({ name, size }) => ({ path: name, size })) : null;
       },
-      async keep({ id, path: kept }) {
+      // A magnet stops once qBittorrent has its files, so nothing downloads
+      // before Aurral keeps the ones it wants.
+      async keep({ id, paths }) {
         const torrent = await taggedTorrent(id);
         const files = await qbittorrentClient.torrentFiles(torrent.hash);
         await qbittorrentClient.skipFiles(
           torrent.hash,
-          files.filter((file) => file.name !== kept).map((file) => file.index),
+          files.filter((file) => !paths.includes(file.name)).map((file) => file.index),
         );
+        await qbittorrentClient.startTorrent(torrent.hash);
       },
     },
   },

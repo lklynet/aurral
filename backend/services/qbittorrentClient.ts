@@ -221,6 +221,7 @@ export class QbittorrentClient {
     else form.append("torrents", new Blob([new Uint8Array(torrent.file)]), "release.torrent");
     if (category) form.append("category", category);
     form.append("tags", tag);
+    form.append("stopCondition", "MetadataReceived");
     const response = await this._request(
       "/api/v2/torrents/add",
       { method: "POST", body: form },
@@ -258,6 +259,19 @@ export class QbittorrentClient {
       method: "POST",
       body: new URLSearchParams({ hash, id: indexes.join("|"), priority: "0" }),
     });
+  }
+
+  // qBittorrent 5 renamed resume to start.
+  async startTorrent(hash: string) {
+    const body = () => new URLSearchParams({ hashes: hash });
+    const response = await this._request(
+      "/api/v2/torrents/start",
+      { method: "POST", body: body() },
+      false,
+      [404],
+    );
+    if (response.status === 404)
+      await this._request("/api/v2/torrents/resume", { method: "POST", body: body() });
   }
 
   async deleteTorrents(hashes: string[]) {

@@ -20,7 +20,7 @@ When qBittorrent reports its downloads under another path than Aurral sees, add 
 
 ## Behavior
 
-Torrents hold albums, so for a single track Aurral searches for the track's album. It tells qBittorrent to download only the file whose name matches the track. When the file names don't show which file it is, the whole album downloads and Aurral picks the track by its tags.
+Torrents hold albums, so for a single track Aurral searches for the track's album. Once qBittorrent has the torrent's file list, Aurral checks it against the release and tells qBittorrent to download only the tracks you asked for. When the file names don't show the release or the track, the whole album downloads and Aurral checks the files by their tags.
 
 Aurral skips torrents without seeders and tries the best quality your quality profile allows first. An upgrade takes only a torrent better than the file you have. When a torrent finishes, Aurral links its audio files, or copies them when they are on another disk, and checks them like any other source. The torrent stays in qBittorrent to seed. If Aurral stops a download before its torrent finishes, it removes the torrent and its files.
 

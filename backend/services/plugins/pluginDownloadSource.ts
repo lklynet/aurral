@@ -69,7 +69,7 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
           files: {
             list: (id) => call("downloadSource.listFiles", { id }, fileResults, STATUS_TIMEOUT_MS),
             keep: async (input) => {
-              await call("downloadSource.keepFile", input, v.unknown(), STATUS_TIMEOUT_MS);
+              await call("downloadSource.keepFiles", input, v.unknown(), STATUS_TIMEOUT_MS);
             },
           },
         }),

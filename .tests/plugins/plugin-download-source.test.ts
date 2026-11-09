@@ -69,12 +69,12 @@ export default { downloadSource: {
     { path: "Lowlands/01 Tide.flac", size: 30000000 },
     { path: "Lowlands/02 Night Drive.flac", size: 30000000 },
   ],
-  keepFile: ({ id, path }) => { kept[id] = path; },
+  keepFiles: ({ id, paths }) => { kept[id] = paths; },
   status: async ({ settings, id, directory }) => {
     if (id === "a1") throw new Error("the client lost it");
     const { copyFile, mkdir } = await import("node:fs/promises");
     await mkdir(directory + "/Lowlands", { recursive: true });
-    await copyFile(settings.fixture, directory + "/" + kept[id]);
+    for (const path of kept[id]) await copyFile(settings.fixture, directory + "/" + path);
     return { done: true };
   },
   discard: () => {},

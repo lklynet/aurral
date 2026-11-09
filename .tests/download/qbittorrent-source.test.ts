@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import type { ServerResponse } from "node:http";
 import { buffer } from "node:stream/consumers";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -109,6 +110,10 @@ async function startFake() {
           const file = torrent?.files[Number(id)];
           if (file) file.priority = Number(form.get("priority"));
         }
+        return response.end();
+      }
+      if (url.pathname === "/api/v2/torrents/start") {
+        const torrent = byHash(new URLSearchParams(payload.toString()).get("hashes"));
         if (torrent) Object.assign(torrent, { state: "stalledUP", progress: 1 });
         return response.end();
       }
@@ -198,6 +203,7 @@ beforeEach(async () => {
     },
     pathMappings: [{ source: "qbittorrent", remote: "/downloads", local: folder }],
   });
+  qbittorrentClient.updateConfig();
 });
 
 afterEach(async () => {
@@ -265,6 +271,7 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
   assert.equal(fileForm.get("tags"), first?.pending);
   assert.equal(magnetForm.get("urls"), MAGNET);
   assert.equal(magnetForm.get("tags"), second?.pending);
+  assert.equal(magnetForm.get("stopCondition"), "MetadataReceived");
   assert.notEqual(first?.pending, second?.pending);
   await assert.rejects(
     qbittorrentSource.albums!.download({ result: magnet, album: ALBUM, directory }),
@@ -338,19 +345,18 @@ test("discard removes an unfinished torrent and leaves a finished one seeding", 
   assert.deepEqual(fake.deleted, ["partial"]);
 });
 
-test("a track request downloads only the track's file from an album torrent and files it", async () => {
+// An album torrent of Lowlands whose files are on disk, as qBittorrent
+// would save them, and that qBittorrent adds when Aurral sends it.
+async function lowlandsTorrent(name = (title: string, place: number) => `0${place} ${title}`) {
   const album = path.join(folder, "Glass Coast - Lowlands");
   await mkdir(album);
-  await writeFlacFixture(
-    path.join(album, "01 Tide.flac"),
-    { title: "Tide", artist: "Glass Coast", album: "Lowlands", track: 1 },
-    { seconds: 1 },
-  );
-  await writeFlacFixture(
-    path.join(album, "02 Night Drive.flac"),
-    { title: "Night Drive", artist: "Glass Coast", album: "Lowlands", track: 2 },
-    { seconds: 1 },
-  );
+  const titles = ["Tide", "Night Drive"];
+  for (const [index, title] of titles.entries())
+    await writeFlacFixture(
+      path.join(album, `${name(title, index + 1)}.flac`),
+      { title, artist: "Glass Coast", album: "Lowlands", track: index + 1 },
+      { seconds: 1 },
+    );
   fake.releases = [release("lowlands", "Glass Coast - Lowlands (2020) [FLAC]", 5)];
   fake.onAdd = (tags) =>
     fake.torrents.push({
@@ -360,12 +366,32 @@ test("a track request downloads only the track's file from an album torrent and 
       progress: 0,
       tags,
       save_path: "/downloads",
-      files: ["01 Tide.flac", "02 Night Drive.flac"].map((name) => ({
-        name: `Glass Coast - Lowlands/${name}`,
+      files: titles.map((title, index) => ({
+        name: `Glass Coast - Lowlands/${name(title, index + 1)}.flac`,
         size: 30_000_000,
         priority: 1,
       })),
     });
+}
+
+async function runPipeline(start: Payload) {
+  const fail = async (_payload: Payload, _job: unknown, message: string) => {
+    throw new Error(message);
+  };
+  let payload: Payload | null = start;
+  const phases: string[] = [];
+  while (payload && payload.phase !== "done") {
+    phases.push(payload.phase);
+    const next: unknown = await processSourcePipelinePayload(payload, qbittorrentSource, {
+      failOrTryNextSource: fail,
+    });
+    payload = next && typeof next === "object" && "phase" in next ? (next as Payload) : null;
+  }
+  return phases;
+}
+
+test("a track request downloads only the track's file from an album torrent and files it", async () => {
+  await lowlandsTorrent();
   const jobId = createTrackedJob(
     downloadTracker,
     {
@@ -376,21 +402,13 @@ test("a track request downloads only the track's file from an album torrent and 
     },
     "qbittorrent-source",
   );
-  const fail = async (_payload: Payload, _job: unknown, message: string) => {
-    throw new Error(message);
-  };
 
-  let payload: Payload | null = { jobId, phase: "search", source: "qbittorrent" };
-  const phases: string[] = [];
-  while (payload && payload.phase !== "done") {
-    phases.push(payload.phase);
-    const next: unknown = await processSourcePipelinePayload(payload, qbittorrentSource, {
-      failOrTryNextSource: fail,
-    });
-    payload = next && typeof next === "object" && "phase" in next ? (next as Payload) : null;
-  }
-
-  assert.deepEqual(phases, ["search", "download", "poll", "finalize"]);
+  assert.deepEqual(await runPipeline({ jobId, phase: "search", source: "qbittorrent" }), [
+    "search",
+    "download",
+    "poll",
+    "finalize",
+  ]);
   assert.deepEqual(
     fake.torrents[0]?.files.map((file) => file.priority),
     [0, 1],
@@ -398,4 +416,71 @@ test("a track request downloads only the track's file from an album torrent and 
   const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   assert.equal(job.releaseGuid, "album:lowlands");
+});
+
+test("a track request downloads the whole album when the file names don't show the track, and picks it by its tags", async () => {
+  await lowlandsTorrent((_title, place) => `Track ${place}`);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    {
+      artistName: "Glass Coast",
+      trackName: "Night Drive",
+      albumName: "Lowlands",
+      durationMs: 1000,
+    },
+    "qbittorrent-source",
+  );
+
+  await runPipeline({ jobId, phase: "search", source: "qbittorrent" });
+  assert.deepEqual(
+    fake.torrents[0]?.files.map((file) => file.priority),
+    [1, 1],
+  );
+  assert.equal(trackedJob(downloadTracker, jobId).status, "done");
+});
+
+test("an album attempt downloads only its tracks once the torrent's files show the release", async (t) => {
+  await lowlandsTorrent();
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: "lowlands-group",
+      title: "Lowlands",
+      artist: "Glass Coast",
+      releases: [
+        {
+          id: "lowlands-release",
+          tracks: ["Tide", "Night Drive"].map((title) => ({ title, durationMs: 1000 })),
+        },
+      ],
+    }),
+  ]);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    {
+      artistName: "Glass Coast",
+      trackName: "Night Drive",
+      albumName: "Lowlands",
+      albumMbid: "lowlands-group",
+      releaseMbid: "lowlands-release",
+      trackNumber: 2,
+      durationMs: 1000,
+    },
+    "qbittorrent-source",
+  );
+
+  await runPipeline({
+    jobId,
+    phase: "search",
+    source: "qbittorrent",
+    albumGrab: true,
+    albumGroupJobIds: [jobId],
+    releaseMbid: "lowlands-release",
+  });
+  assert.deepEqual(
+    fake.torrents[0]?.files.map((file) => file.priority),
+    [0, 1],
+  );
+  const job = trackedJob(downloadTracker, jobId);
+  assert.equal(job.status, "done");
+  await access(String(job.finalPath));
 });

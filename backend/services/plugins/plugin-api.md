@@ -206,9 +206,9 @@ Set `"downloadSource": { "albums": true }` and export `searchAlbum` and `downloa
 
 Add `"tracks": false` when the plugin can only download albums, like a torrent source, and leave out `search` and `download`. Aurral then gets a single track from its album: it searches for the album, downloads it, and picks the track's file by its tags.
 
-### One track from an album
+### Part of an album
 
-Set `"files": true` and export `listFiles` and `keepFile` when the plugin can download part of an album. When `downloadAlbum` returns `pending` for a single track, Aurral calls `listFiles({ id })` until it returns the album's files, each with `path` and `size` in bytes. Return `null` while the files aren't known yet. Aurral picks the track's file by its name and calls `keepFile({ id, path })` once, so the plugin downloads only that file. `status` then puts only that file in `directory`. When no name matches, Aurral skips `keepFile`, and the whole album downloads.
+Set `"files": true` and export `listFiles` and `keepFiles` when the plugin can download part of an album. When `downloadAlbum` returns `pending`, Aurral calls `listFiles({ id })` until it returns the album's files, each with `path` and `size` in bytes. Return `null` while the files aren't known yet. Aurral then picks the files it wants by their names and calls `keepFiles({ id, paths })` once, so the plugin downloads only those files. For tracks of an album, it keeps them only when the names show the whole release. When Aurral can't tell, `paths` holds every file. The plugin can wait for `keepFiles` before it downloads anything. `status` then puts only the kept files in `directory`.
 
 ### Upgrades
 

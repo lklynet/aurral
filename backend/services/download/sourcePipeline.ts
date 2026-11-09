@@ -19,6 +19,8 @@ import {
 } from "../downloadUtils.ts";
 import { logger } from "../logger.ts";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
+import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
+import { getQualityProfile } from "../qualityProfileService.ts";
 import { isSameCoreAlbum } from "../downloadJobs/deemixSearch.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
 import { attemptRelease } from "../releaseResolver.ts";
@@ -311,22 +313,48 @@ async function albumTrackDownloaded(
   return trackDownloaded(payload, source, found.filePath);
 }
 
-// Before an album downloads for one track, the source keeps only the file
-// whose name matches it. Without a match, the whole album downloads.
-async function keepTrackFile(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
+// Once an album download lists its files, the source keeps only the ones
+// Aurral wants, matched by name like a Soulseek listing. An album attempt
+// keeps its tracks when the listing holds the whole release, which verifies
+// the release, and a single track keeps its file. Otherwise it keeps every
+// file, and the whole album downloads.
+async function keepFiles(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
   const files = source.albums?.files;
-  if (!files || !fromAlbum(payload, source) || payload.filesChecked || !payload.pendingId)
-    return payload;
-  const listed = await files.list(payload.pendingId);
-  if (!listed) return payload;
+  const album = payload.albumGrab === true;
+  if (!files || (!album && !fromAlbum(payload, source)) || payload.filesChecked) return payload;
+  const id = payload.pendingId;
+  const listed = id ? await files.list(id) : null;
+  if (!id || !listed) return payload;
+  const results = listed.map((file) => ({ user: source.id, file: file.path, size: file.size }));
+  const checked = { ...payload, filesChecked: true };
+  const keepAll = async () => {
+    await files.keep({ id, paths: listed.map((file) => file.path) });
+    return checked;
+  };
+  if (album) {
+    const [folder] = selectSoulseekAlbumFolder(results, albumGrabJobs(payload), {
+      manifest: await attemptRelease(payload, job),
+      profile: getQualityProfile(),
+    }).candidates;
+    if (!folder) return keepAll();
+    await files.keep({ id, paths: folder.files.flatMap(({ file }) => file ?? []) });
+    const index = Number(payload.candidateIndex || 0);
+    return {
+      ...checked,
+      candidates: payload.candidates?.map((candidate, at) =>
+        at === index ? { ...candidate, releaseVerified: true } : candidate,
+      ),
+    };
+  }
   const evaluation = await buildSourceCandidates({
     source: "soulseek",
-    results: listed.map((file) => ({ user: source.id, file: file.path, size: file.size })),
+    results,
     request: resolveTrack(payload, job),
   });
   const file = usableEvaluationEntries(evaluation)[0]?.candidate.raw.file;
-  if (typeof file === "string") await files.keep({ id: payload.pendingId, path: file });
-  return { ...payload, filesChecked: true };
+  if (typeof file !== "string") return keepAll();
+  await files.keep({ id, paths: [file] });
+  return checked;
 }
 
 async function downloadFailed(
@@ -396,7 +424,7 @@ async function handleDownload(
         filesChecked: false,
         delaySeconds: POLL_SECONDS,
       };
-      return await keepTrackFile(polling, source, job).catch(() => polling);
+      return await keepFiles(polling, source, job).catch(() => polling);
     }
     if (payload.albumGrab === true)
       return { ...payload, phase: "finalize", candidate, pendingId: null };
@@ -420,7 +448,7 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
   const directory = stagingDir(source, job.id);
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   try {
-    const current = await keepTrackFile(payload, source, job);
+    const current = await keepFiles(payload, source, job);
     const status = await source.status({ id: String(current.pendingId), directory });
     if (!isPipelinePayloadActive(current)) {
       await discardSourceWork(current, source);
