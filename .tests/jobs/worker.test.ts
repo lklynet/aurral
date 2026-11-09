@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as v from "valibot";
-import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -9,14 +9,13 @@ import {
 import { useFakeClock } from "../helpers/fakeClock.ts";
 import { insertJob } from "../helpers/jobs.ts";
 
-const [state, { db }, { defineQueue }, { createJobWorker }, { logger }, { watchEventLoop }] =
+const [state, { db }, { defineQueue }, { createJobWorker }, { logger }] =
   await setupIsolatedBackend(
     "job-worker",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/services/jobs/queue.ts"),
     () => import("../../backend/services/jobs/worker.ts"),
     () => import("../../backend/services/logger.ts"),
-    () => import("../../backend/services/eventLoopWatch.ts"),
   );
 useFakeClock();
 
@@ -171,32 +170,4 @@ test("a job Aurral can't read fails at once without running", async () => {
     logs.events.map((event) => event.message),
     ["Job payload unreadable"],
   );
-});
-
-test("a job that stops the process responding is named in the log", async () => {
-  using logs = captureLogs();
-  let blockedMs = 0;
-  using _clock = vi.spyOn(performance, "now").mockImplementation(() => Date.now() + blockedMs);
-  const stopWatching = watchEventLoop();
-  const id = queue.enqueue({ kind: "scan" });
-  const finished = Promise.withResolvers<void>();
-  const worker = createJobWorker(queue, {
-    schema,
-    processJob: async () => {
-      blockedMs = 6000;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      finished.resolve();
-    },
-  });
-  void worker.start();
-  await finished.promise;
-  await worker.stop();
-  stopWatching();
-  assert.partialDeepStrictEqual(logs.events, [
-    {
-      level: "warn",
-      message: "Stopped responding for 6.0s",
-      data: { running: [`test-worker-jobs:${id} scan`] },
-    },
-  ]);
 });

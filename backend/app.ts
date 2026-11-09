@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
-import { routePath } from "hono/route";
+import { matchedRoutes } from "hono/route";
 import { clientAddress } from "./middleware/clientAddress.ts";
 import { authenticate } from "./middleware/guards.ts";
 import { rateLimit } from "./middleware/rateLimit.ts";
@@ -25,7 +25,11 @@ const signInLimit = rateLimit({
 export const app = new Hono<AppEnv>({ strict: false })
   .use((c, next) =>
     withLogContext({ req: randomUUID().slice(0, 8) }, () =>
-      trackWork(() => `${c.req.method} ${routePath(c, -1)}`, next),
+      trackWork(
+        () =>
+          `${c.req.method} ${matchedRoutes(c).find((route) => route.method !== "ALL")?.path ?? "unmatched"}`,
+        next,
+      ),
     ),
   )
   .use(compress())
