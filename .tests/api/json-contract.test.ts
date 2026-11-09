@@ -383,6 +383,18 @@ test("discovery, search, artist details, and release details preserve their publ
     coverUrl: "string|null",
   });
   assert.equal(release.id, albumMbid);
+  const imageMbid = "c0ffee00-0000-4000-8000-000000000001";
+  dbOps.setImage(imageMbid, "https://assets.fanart.tv/fanart/contract-artist.jpg");
+  const artistImage = `${baseUrl}/api/artists/${imageMbid}/image`;
+  const thumbnail = await fetch(`${artistImage}?token=${token}&w=200`, { redirect: "manual" });
+  assert.equal(thumbnail.status, 302);
+  assert.equal(
+    thumbnail.headers.get("location"),
+    "https://assets.fanart.tv/preview/contract-artist.jpg",
+  );
+  const full = await fetch(`${artistImage}?token=${token}`, { redirect: "manual" });
+  assert.equal(full.headers.get("location"), "https://assets.fanart.tv/fanart/contract-artist.jpg");
+  assert.equal((await fetch(artistImage, { redirect: "manual" })).status, 401);
 });
 
 test("trending charts preserve their public response fields", async () => {

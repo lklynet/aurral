@@ -1,5 +1,4 @@
 import type { InferResponseType } from "hono/client";
-import type { LibraryArtistImage } from "../../../backend/services/libraryMetadata.ts";
 import type { discoveryClient } from "../utils/api/clients/discovery.ts";
 import {
   DISCOVER_SECTION_IDS,
@@ -304,19 +303,4 @@ export const writeStoredDiscoverLayout = (layout: DiscoverSection[], userId: Dis
   } catch {
     console.warn("Failed to write discover layout");
   }
-};
-
-export const getLibraryArtistImage = (
-  artist: { images?: LibraryArtistImage[] | null } | null | undefined,
-) => {
-  const images = (Array.isArray(artist?.images) ? artist.images : []).filter(
-    (image) => image?.remoteUrl || image?.url || image?.Url,
-  );
-  const kind = (image: LibraryArtistImage) =>
-    String(image.coverType || image.kind || image.CoverType || "").toLowerCase();
-  const image =
-    images.find((image) => kind(image) === "poster") ||
-    images.find((image) => kind(image) === "fanart") ||
-    images[0];
-  return image?.remoteUrl || image?.url || image?.Url || null;
 };
