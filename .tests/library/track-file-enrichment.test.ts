@@ -52,7 +52,6 @@ test("enrichLidarrTrackWithFiles attaches trackFile from trackFileId", () => {
       title: "Take the Stairs",
       hasFile: true,
       trackFileId: 10915,
-      path: null,
       trackFile: null,
     },
     index,

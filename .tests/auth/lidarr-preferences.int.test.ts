@@ -33,13 +33,12 @@ const DEFAULT_TAGS = [
 ];
 
 type Artist = NonNullable<Awaited<ReturnType<LidarrClient["getArtist"]>>> & {
-  monitor?: string;
   added?: string;
   qualityProfile?: (typeof DEFAULT_QUALITY_PROFILES)[number] | null;
   statistics?: { albumCount: number; trackCount: number; sizeOnDisk: number };
 };
 type PostedArtist = Partial<Artist>;
-type Command = LidarrCommand & { artistId?: number };
+type Command = LidarrCommand & { albumIds?: number[]; artistId?: number };
 type Preferences = Awaited<ReturnType<LidarrClient["getArtistAddPreferenceSummary"]>>;
 
 function json(
@@ -165,7 +164,6 @@ async function startFakeLidarr() {
         path: `${payload.rootFolderPath}/${payload.artistName}`,
         added: new Date().toISOString(),
         monitored: state.forceUnmonitoredArtistOnPost ? false : payload.monitored,
-        monitor: payload.monitor,
         monitorNewItems: payload.monitorNewItems,
         addOptions: payload.addOptions,
         qualityProfile,
@@ -303,7 +301,6 @@ function assertPostedMonitor(
   posted: PostedArtist | undefined,
   expected: {
     monitored?: boolean;
-    monitor?: string;
     monitorNewItems?: string;
     addMonitor?: string;
     searchForMissingAlbums?: boolean;
@@ -312,7 +309,6 @@ function assertPostedMonitor(
 ) {
   assert.ok(posted);
   if (expected.monitored !== undefined) assert.equal(posted.monitored, expected.monitored);
-  if (expected.monitor !== undefined) assert.equal(posted.monitor, expected.monitor);
   if (expected.monitorNewItems !== undefined) {
     assert.equal(posted.monitorNewItems, expected.monitorNewItems);
   }
@@ -335,7 +331,6 @@ function lidarrArtist(id: number, name: string, mbid: string, extra: Partial<Art
     path: `/music/main/${name}`,
     added: new Date().toISOString(),
     monitored: false,
-    monitor: "none",
     monitorNewItems: "none",
     addOptions: { monitor: "none" },
     qualityProfile: DEFAULT_QUALITY_PROFILES[0],
@@ -589,7 +584,6 @@ test("POST /library/artists applies monitoring options", async () => {
       body: { artistName: "None Monitor Artist" },
       monitor: {
         monitored: true,
-        monitor: "none",
         monitorNewItems: "none",
         addMonitor: "none",
       },
@@ -599,7 +593,6 @@ test("POST /library/artists applies monitoring options", async () => {
       mbid: "58585858-5858-5858-5858-585858585858",
       body: { artistName: "Album Only Artist", releaseGroupMbid: albumMbid },
       monitor: {
-        monitor: "missing",
         addMonitor: "missing",
         searchForMissingAlbums: false,
         albumsToMonitor: [albumMbid],
@@ -610,7 +603,6 @@ test("POST /library/artists applies monitoring options", async () => {
       body: { artistName: "Existing Monitor Artist", monitorOption: "existing" },
       monitor: {
         monitored: true,
-        monitor: "existing",
         monitorNewItems: "none",
         addMonitor: "existing",
       },
@@ -621,7 +613,6 @@ test("POST /library/artists applies monitoring options", async () => {
       body: { artistName: "Default Existing Monitor Artist" },
       monitor: {
         monitored: true,
-        monitor: "existing",
         monitorNewItems: "none",
         addMonitor: "existing",
       },
@@ -631,7 +622,6 @@ test("POST /library/artists applies monitoring options", async () => {
       body: { artistName: `${monitorOption} Monitor Artist`, monitorOption },
       monitor: {
         monitored: true,
-        monitor: expectedMonitor,
         monitorNewItems: expectedMonitorNewItems,
         addMonitor: expectedMonitor,
       },
@@ -656,7 +646,6 @@ test("POST /library/artists repairs Lidarr artist checkbox when none add returns
   assert.equal(fakeLidarr.state.updatedArtists.length >= 1, true);
   assertPostedMonitor(fakeLidarr.state.updatedArtists[0], {
     monitored: true,
-    monitor: "none",
     monitorNewItems: "none",
     addMonitor: "none",
   });
@@ -683,7 +672,6 @@ test("PUT /library/artists/:mbid updates artist monitoring to existing albums", 
   assert.equal(response.status, 200, JSON.stringify(payload));
   assertPostedMonitor(fakeLidarr.state.updatedArtists.at(-1), {
     monitored: true,
-    monitor: "existing",
     monitorNewItems: "none",
     addMonitor: "existing",
   });
@@ -735,7 +723,6 @@ test("POST /library/downloads/album checks artist and monitors only the requeste
   assert.equal(fakeLidarr.state.updatedArtists.length, 1);
   assertPostedMonitor(fakeLidarr.state.updatedArtists[0], {
     monitored: true,
-    monitor: "none",
     monitorNewItems: "none",
   });
   assert.equal(fakeLidarr.state.updatedAlbums.length, 1);
@@ -744,7 +731,6 @@ test("POST /library/downloads/album checks artist and monitors only the requeste
     fakeLidarr.state.artists.find((entry) => entry.id === artist.id),
     {
       monitored: true,
-      monitor: "none",
       monitorNewItems: "none",
     },
   );
@@ -782,7 +768,6 @@ test("POST /library/downloads/album repairs monitoring after Lidarr search flips
     fakeLidarr.state.artists.find((entry) => entry.id === artist.id),
     {
       monitored: true,
-      monitor: "none",
       monitorNewItems: "none",
     },
   );
@@ -817,7 +802,6 @@ test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists
     artistName: "Album Only Artist",
     monitorOption: "none",
   });
-  for (const artist of fakeLidarr.state.artists) delete artist.monitor;
   const aurralOnly = upsertLibraryArtist({
     identityKey: `mbid:${aurralOnlyMbid}`,
     mbid: aurralOnlyMbid,
@@ -830,7 +814,6 @@ test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists
       "15151515-1515-1515-1515-151515151515",
       {
         monitored: true,
-        monitor: undefined,
         addOptions: { monitor: "all" },
       },
     ),

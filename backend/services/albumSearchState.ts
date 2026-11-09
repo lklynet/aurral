@@ -47,12 +47,6 @@ export const getLidarrAlbumsById = async (
   );
 };
 
-const getCommandAlbumIds = (command: LidarrCommand | null | undefined) => {
-  if (Array.isArray(command?.body?.albumIds)) return command.body.albumIds;
-  if (Array.isArray(command?.albumIds)) return command.albumIds;
-  return [];
-};
-
 const IMPORTED_EVENTS = new Set(["downloadimported", "trackfileimported", "artistfolderimported"]);
 const FAILED_EVENTS = new Set(["downloadfailed", "albumimportincomplete", "downloadignored"]);
 const FAILED_QUEUE_STATES = new Set([
@@ -116,7 +110,7 @@ export const parseLidarrSearchContext = ({
       .toLowerCase()
       .trim();
     if (!name.includes("albumsearch")) continue;
-    const albumIds = getCommandAlbumIds(command);
+    const albumIds = command.body?.albumIds ?? [];
     const status = String(command?.status || "")
       .toLowerCase()
       .trim();
@@ -127,9 +121,7 @@ export const parseLidarrSearchContext = ({
       status === "canceled" ||
       status === "cancelled"
     ) {
-      const endedAt = new Date(
-        command?.ended || command?.completedAt || command?.endTime || 0,
-      ).getTime();
+      const endedAt = new Date(command.ended || 0).getTime();
       if (endedAt > 0 && now - endedAt <= RECENT_COMMAND_MS) {
         for (const id of albumIds) {
           if (id != null) recentlyCompletedSearchAlbumIds.add(id);
@@ -150,7 +142,7 @@ export const parseLidarrSearchContext = ({
   for (const record of history) {
     const albumId = record?.albumId;
     if (albumId == null) continue;
-    const recordTime = new Date(record?.date || record?.eventDate || 0).getTime();
+    const recordTime = new Date(record.date || 0).getTime();
     if (!Number.isFinite(recordTime) || now - recordTime > RECENT_HISTORY_MS) {
       continue;
     }

@@ -101,7 +101,7 @@ export const buildLidarrRequests = async (
   for (const record of history) {
     if (record?.albumId == null || !classifyLidarrDownloadEvent(record.eventType)) continue;
     const albumId = String(record.albumId);
-    const recordTime = new Date(record.date || record.eventDate || 0).getTime();
+    const recordTime = new Date(record.date || 0).getTime();
     const existing = latestHistoryByAlbum.get(albumId);
     if (!existing || recordTime > existing.recordTime) {
       latestHistoryByAlbum.set(albumId, { record, recordTime });
@@ -136,7 +136,7 @@ export const buildLidarrRequests = async (
       artistName: record.artist?.artistName || "Artist",
       status: "failed",
       statusLabel: "Failed",
-      requestedAt: toIso(record.date || record.eventDate),
+      requestedAt: toIso(record.date),
       mbid: artistMbid,
       name: albumName,
       image: null,

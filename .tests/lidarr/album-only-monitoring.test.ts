@@ -81,8 +81,6 @@ for (const triggerSearch of [false, true]) {
       assert.ok(artist != null);
       assert.equal(artist.monitorNewItems, "none");
       assert.ok(postedArtist != null);
-      assert.equal(postedArtist.monitor, "missing");
-      assert.ok(postedArtist != null);
       assert.equal(postedArtist.addOptions.monitor, "missing");
       assert.ok(postedArtist != null);
       assert.equal(postedArtist.addOptions.searchForMissingAlbums, triggerSearch);

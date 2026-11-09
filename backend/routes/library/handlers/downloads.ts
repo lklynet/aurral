@@ -206,7 +206,7 @@ const computeLidarrStatusSnapshot = async () => {
   }
   for (const item of history) {
     if (item?.albumId == null) continue;
-    const historyTime = new Date(item?.date || item?.eventDate || 0).getTime();
+    const historyTime = new Date(item?.date || 0).getTime();
     if (historyTime > oneHourAgo) albumIds.add(String(item.albumId));
   }
   for (const albumId of searchContext.searchingAlbumIds) {

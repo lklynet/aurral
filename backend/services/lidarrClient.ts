@@ -131,7 +131,6 @@ const historyItemSchema = v.looseObject({
   artistId: v.optional(v.number()),
   sourceTitle: text,
   date: v.optional(v.string()),
-  eventDate: text,
   eventType: text,
   album: v.nullish(albumSchema),
   artist: v.nullish(artistSchema),
@@ -143,10 +142,7 @@ const commandSchema = v.looseObject({
   commandName: text,
   status: text,
   body: v.nullish(v.looseObject({ albumIds: ids })),
-  albumIds: ids,
   ended: text,
-  completedAt: text,
-  endTime: text,
 });
 
 const rootFolderSchema = v.looseObject({
@@ -1297,7 +1293,6 @@ export class LidarrClient {
       qualityProfileId: qualityProfileId,
       metadataProfileId: metadataProfileId,
       monitored: monitoring.monitored,
-      monitor: monitoring.monitor,
       monitorNewItems: monitoring.monitorNewItems,
       tags: tags,
       addOptions: {
@@ -1427,7 +1422,6 @@ export class LidarrClient {
         }
         const fallbackArtist = {
           ...payload,
-          monitor: "existing",
           addOptions: {
             ...payload.addOptions,
             monitor: "existing",
@@ -1577,7 +1571,6 @@ export class LidarrClient {
     const updated = {
       ...artist,
       monitored: monitoring.monitored,
-      monitor: monitoring.monitor,
       monitorNewItems: monitoring.monitorNewItems,
       addOptions: {
         ...(artist.addOptions || {}),
@@ -1595,7 +1588,6 @@ export class LidarrClient {
       }
       const fallbackUpdated = {
         ...updated,
-        monitor: "existing",
         addOptions: {
           ...(updated.addOptions || {}),
           monitor: "existing",

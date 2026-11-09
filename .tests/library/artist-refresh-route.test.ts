@@ -22,7 +22,7 @@ test("refreshing a monitored artist searches Lidarr by its numeric id", async ()
   >);
   vi.spyOn(libraryManager, "getAlbums").mockResolvedValue([]);
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  const monitoredArtist = { id: 12, monitored: true, monitor: "all" };
+  const monitoredArtist = { id: 12, monitored: true, addOptions: { monitor: "all" } };
   vi.spyOn(lidarrClient, "getArtistByMbid").mockResolvedValue(monitoredArtist);
   const search = vi.spyOn(lidarrClient, "triggerArtistSearch").mockResolvedValue({});
   const response = await app.request(
