@@ -1187,8 +1187,9 @@ export class LidarrClient {
         label: tag.label,
       })),
       savedDefaults: {
-        rootFolderPath: normalizeRootFolderPath(user?.lidarrRootFolderPath),
-        qualityProfileId: normalizeProfileId(user?.lidarrQualityProfileId),
+        rootFolderPath: findRootFolder(rootFolders, user?.lidarrRootFolderPath)?.path ?? null,
+        qualityProfileId:
+          findQualityProfile(qualityProfiles, user?.lidarrQualityProfileId)?.id ?? null,
         tagId: savedTagId,
       },
       fallbacks: {
@@ -1222,8 +1223,6 @@ export class LidarrClient {
 
     const requestedRootFolderPath = normalizeRootFolderPath(options.requestRootFolderPath);
     const requestedQualityProfileId = normalizeProfileId(options.requestQualityProfileId);
-    const savedRootFolderPath = normalizeRootFolderPath(options.savedRootFolderPath);
-    const savedQualityProfileId = normalizeProfileId(options.savedQualityProfileId);
 
     let resolvedRootFolderPath = fallbacks.rootFolderPath;
     let resolvedQualityProfileId = fallbacks.qualityProfileId;
@@ -1239,17 +1238,9 @@ export class LidarrClient {
         );
       }
       resolvedRootFolderPath = requestRootFolder.path;
-    } else if (savedRootFolderPath) {
-      const savedRootFolder = findRootFolder(rootFolders, savedRootFolderPath);
-      if (!savedRootFolder) {
-        throw createPreferenceError(
-          409,
-          "rootFolderPath",
-          `Your saved Lidarr root folder no longer exists: ${savedRootFolderPath}. Update your Library Defaults or use Customize.`,
-          "STALE_ROOT_FOLDER_PATH",
-        );
-      }
-      resolvedRootFolderPath = savedRootFolder.path;
+    } else {
+      resolvedRootFolderPath =
+        findRootFolder(rootFolders, options.savedRootFolderPath)?.path ?? fallbacks.rootFolderPath;
     }
 
     if (requestedQualityProfileId !== null) {
@@ -1263,17 +1254,10 @@ export class LidarrClient {
         );
       }
       resolvedQualityProfileId = requestQualityProfile.id;
-    } else if (savedQualityProfileId !== null) {
-      const savedQualityProfile = findQualityProfile(qualityProfiles, savedQualityProfileId);
-      if (!savedQualityProfile) {
-        throw createPreferenceError(
-          409,
-          "qualityProfileId",
-          `Your saved Lidarr quality profile no longer exists: ${savedQualityProfileId}. Update your Library Defaults or use Customize.`,
-          "STALE_QUALITY_PROFILE_ID",
-        );
-      }
-      resolvedQualityProfileId = savedQualityProfile.id;
+    } else {
+      resolvedQualityProfileId =
+        findQualityProfile(qualityProfiles, options.savedQualityProfileId)?.id ??
+        fallbacks.qualityProfileId;
     }
 
     return {

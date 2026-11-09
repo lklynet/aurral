@@ -437,6 +437,20 @@ test("GET /users/me/lidarr-preferences", async () => {
         });
       },
     },
+    {
+      setup: () =>
+        userOps.updateUser(adminUserId, {
+          lidarrRootFolderPath: "/music/stale",
+          lidarrQualityProfileId: 999,
+        }),
+      assert: (payload: Preferences) => {
+        assert.deepEqual(payload.savedDefaults, {
+          rootFolderPath: null,
+          qualityProfileId: null,
+          tagId: null,
+        });
+      },
+    },
   ];
 
   for (const c of cases) {
@@ -775,21 +789,17 @@ test("POST /library/downloads/album repairs monitoring after Lidarr search flips
   assert.equal(fakeLidarr.state.albums.find((entry) => entry.id === album.id)?.monitored, true);
 });
 
-test("POST /library/artists returns 409 when saved defaults are stale", async () => {
+test("POST /library/artists uses the server defaults when saved defaults are stale", async () => {
   userOps.updateUser(adminUserId, {
     lidarrRootFolderPath: "/music/stale",
     lidarrQualityProfileId: 999,
   });
-  const { payload } = await postLibraryArtist(
-    {
-      foreignArtistId: "44444444-4444-4444-4444-444444444444",
-      artistName: "Stale Artist",
-    },
-    { status: 409 },
-  );
-  assert.equal(payload.field, "rootFolderPath");
-  assert.match(payload.message, /saved Lidarr root folder/i);
-  assert.equal(fakeLidarr.state.postedArtists.length, 0);
+  const { posted } = await postLibraryArtist({
+    foreignArtistId: "44444444-4444-4444-4444-444444444444",
+    artistName: "Stale Artist",
+  });
+  assert.equal(posted?.rootFolderPath, "/music/main");
+  assert.equal(posted?.qualityProfileId, 7);
 });
 
 test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists that follow albums", async () => {
