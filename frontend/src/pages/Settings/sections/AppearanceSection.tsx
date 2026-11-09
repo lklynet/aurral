@@ -6,7 +6,7 @@ import {
   setSidebarStageBackdropEnabled,
 } from "../../../components/SidebarStageBackdrop";
 import { useAuth } from "../../../contexts/AuthContext";
-import { setNavBeta, useNavBeta } from "../../../navigation/navBeta.ts";
+import { setLegacyNav, useLegacyNav } from "../../../navigation/legacyNav.ts";
 import { setArtistVideos, useArtistVideos } from "../../ArtistDetails/artistVideosSetting.ts";
 import { useToast } from "../../../contexts/ToastContext";
 import { ThemeSettings } from "../components/ThemeSettings";
@@ -16,7 +16,7 @@ export function AppearanceSection() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const [sidebarArt, setSidebarArt] = useState(() => getSidebarStageBackdropEnabled(user?.id));
-  const navBeta = useNavBeta();
+  const legacyNav = useLegacyNav();
   const artistVideos = useArtistVideos();
 
   return (
@@ -24,19 +24,15 @@ export function AppearanceSection() {
       <ThemeSettings showSuccess={showSuccess} showError={showError} />
       <SettingsGroup title="Navigation">
         <SettingsRow
-          label={
-            <>
-              New navigation <span className="settings-beta">Beta</span>
-            </>
-          }
-          help="Section tabs in the top bar and your playlists in the sidebar."
-          htmlFor="appearance-nav-beta"
+          label="Legacy navigation"
+          help="The v1 sidebar with nested links instead of section tabs."
+          htmlFor="appearance-nav-legacy"
         >
           <PillToggle
-            id="appearance-nav-beta"
-            checked={navBeta}
-            aria-label="New navigation"
-            onChange={(event) => setNavBeta(user?.id, event.target.checked)}
+            id="appearance-nav-legacy"
+            checked={legacyNav}
+            aria-label="Legacy navigation"
+            onChange={(event) => setLegacyNav(user?.id, event.target.checked)}
           />
         </SettingsRow>
       </SettingsGroup>
