@@ -361,3 +361,20 @@ test("Soulseek album selection fits a compilation folder by its album title", ()
     );
   }
 });
+
+test("Soulseek album selection skips an advertised hires folder its profile rejects", () => {
+  const profile = {
+    order: ["flac-standard", "flac-hires", "mp3-320"],
+    enabled: ["flac-standard", "mp3-320"],
+    cutoff: "flac-standard",
+  };
+  const hires = copy("hires").map((file) => ({ ...file, bitDepth: 24, sampleRate: 44100 }));
+  const standard = copy("standard").map((file) => ({ ...file, bitDepth: 16, sampleRate: 44100 }));
+  assert.equal(selectSoulseekAlbumFolder(hires, jobs, { manifest, profile }).decision, "skip");
+  const selection = selectSoulseekAlbumFolder([...hires, ...standard], jobs, {
+    manifest,
+    profile,
+  });
+  assert.equal(selection.decision, "selectable");
+  assert.equal(selection.selected?.group.user, "standard");
+});

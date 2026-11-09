@@ -27,6 +27,8 @@ export interface SoulseekSearchItem {
   queueLength?: number;
   bitRate?: number | null;
   bitrate?: number | null;
+  bitDepth?: number | null;
+  sampleRate?: number | null;
   length?: number | null;
   extension?: string | null;
   locked?: boolean;

@@ -250,6 +250,7 @@ export function selectSoulseekAlbumFolder(
         profile,
         currentTier: currentTiers?.get(jobId) ?? null,
         upgrade: currentTiers !== null,
+        advertised: item,
       }));
   const options = buildSoulseekReleaseFolders(results, manifest)
     .flatMap(({ group, listing }) => {
@@ -263,8 +264,14 @@ export function selectSoulseekAlbumFolder(
           .filter((item) => qualityAllowed(item, jobId));
         copies.sort((left, right) =>
           profile
-            ? getAdvertisedQualityRank(left.file, left.bitrate ?? left.bitRate, profile) -
-              getAdvertisedQualityRank(right.file, right.bitrate ?? right.bitRate, profile)
+            ? getAdvertisedQualityRank(left.file, left.bitrate ?? left.bitRate, {
+                profile,
+                advertised: left,
+              }) -
+              getAdvertisedQualityRank(right.file, right.bitrate ?? right.bitRate, {
+                profile,
+                advertised: right,
+              })
             : 0,
         );
         if (!copies.length) return [];
@@ -278,7 +285,10 @@ export function selectSoulseekAlbumFolder(
           qualityRank: profile
             ? Math.max(
                 ...files.map((file) =>
-                  getAdvertisedQualityRank(file.file, file.bitrate ?? file.bitRate, profile),
+                  getAdvertisedQualityRank(file.file, file.bitrate ?? file.bitRate, {
+                    profile,
+                    advertised: file,
+                  }),
                 ),
               )
             : 0,

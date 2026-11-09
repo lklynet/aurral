@@ -285,6 +285,13 @@ export async function finishAlbumGrab(
     manifest,
     verified: getPayloadCandidate(payload)?.releaseVerified === true,
   });
+  if (assigned.rejected.length > 0) {
+    logger.info(source, "Album files failed verification", {
+      jobId: payload.jobId,
+      album,
+      rejected: assigned.rejected,
+    });
+  }
   const reasons = new Map(
     assigned.rejected.map(({ jobId, reason }) => [
       jobId,

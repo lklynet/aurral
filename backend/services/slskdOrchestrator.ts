@@ -295,6 +295,7 @@ export function hasSlskdSearchCandidates(
     upgrade: searchOptions?.upgrade === true,
     readName: (entry) => entry?.raw?.file,
     readBitrate: (entry) => entry?.raw?.bitrate ?? entry?.raw?.bitRate,
+    readAdvertised: (entry) => entry?.raw,
   });
   return eligible.length >= MIN_SEARCH_CANDIDATES;
 }
@@ -1118,6 +1119,7 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
     upgrade: payload.upgrade === true,
     readName: (entry) => entry.candidate?.raw?.file,
     readBitrate: (entry) => entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
+    readAdvertised: (entry) => entry.candidate?.raw,
   });
   const profile = getQualityProfile();
   // A copy from a folder of the pinned release is that recording, so it goes
@@ -1130,7 +1132,10 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
       tierRank: getAdvertisedQualityRank(
         entry.candidate?.raw?.file,
         entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
-        profile,
+        {
+          profile,
+          advertised: entry.candidate?.raw,
+        },
       ),
       decisionRank: DECISION_RANKS[entry.decision] ?? 3,
       releaseRank: releaseCopies.has(`${entry.candidate?.raw?.user}\0${entry.candidate?.raw?.file}`)
