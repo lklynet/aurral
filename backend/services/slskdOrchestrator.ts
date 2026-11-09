@@ -1132,8 +1132,10 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
       tierRank: getAdvertisedQualityRank(
         entry.candidate?.raw?.file,
         entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
-        profile,
-        entry.candidate?.raw,
+        {
+          profile,
+          advertised: entry.candidate?.raw,
+        },
       ),
       decisionRank: DECISION_RANKS[entry.decision] ?? 3,
       releaseRank: releaseCopies.has(`${entry.candidate?.raw?.user}\0${entry.candidate?.raw?.file}`)

@@ -197,20 +197,21 @@ function positiveNumber(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+const BRACKETED_FLAC_QUALITY =
+  /[[(]\s*(16|24|32)\s*(?:bit|b)?\s*[-/]\s*(44\.1|48|88\.2|96|176\.4|192|352\.8|384)\s*(?:k?hz)?\s*[\])]/;
+
 function advertisedBitDepth(text: string) {
-  const tagged = /\b(16|24|32)\s*[- ]?\s*(?:bit|b)\b/.exec(text);
+  const tagged = /\b(16|24|32)(?:-?\s*bit\b|b\b)/.exec(text);
   if (tagged?.[1]) return Number(tagged[1]);
-  const paired =
-    /\b(16|24|32)\s*[-/]\s*(?:44\.1|48|88\.2|96|176\.4|192|352\.8|384)(?:\s*k?hz)?\b/.exec(text);
+  const paired = BRACKETED_FLAC_QUALITY.exec(text);
   return paired?.[1] ? Number(paired[1]) : null;
 }
 
 function advertisedSampleRate(text: string) {
   const tagged = /\b(44\.1|48|88\.2|96|176\.4|192|352\.8|384)\s*k?hz\b/.exec(text);
   if (tagged?.[1]) return Math.round(Number(tagged[1]) * 1000);
-  const paired =
-    /\b(?:16|24|32)\s*[-/]\s*(44\.1|48|88\.2|96|176\.4|192|352\.8|384)(?:\s*k?hz)?\b/.exec(text);
-  return paired?.[1] ? Math.round(Number(paired[1]) * 1000) : null;
+  const paired = BRACKETED_FLAC_QUALITY.exec(text);
+  return paired?.[2] ? Math.round(Number(paired[2]) * 1000) : null;
 }
 
 function advertisedFlacTier(text: string, advertised: AdvertisedAudio | null) {
@@ -250,18 +251,16 @@ export function isAdvertisedQualityEligible(
     profile,
     currentTier = null,
     upgrade = false,
-    bitDepth = null,
-    sampleRate = null,
+    advertised = null,
   }: {
     profile?: unknown;
     currentTier?: string | null;
     upgrade?: boolean;
-    bitDepth?: unknown;
-    sampleRate?: unknown;
+    advertised?: AdvertisedAudio | null;
   } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
-  const tier = classifyAdvertisedQuality(fileName, bitrate, { bitDepth, sampleRate });
+  const tier = classifyAdvertisedQuality(fileName, bitrate, advertised);
   if (!tier) {
     const name = String(fileName || "").trim();
     if (NEVER_TIERED_ADVERTISED_EXTENSION.test(name)) return false;
@@ -284,8 +283,13 @@ export function isAdvertisedQualityEligible(
 export function getAdvertisedQualityRank(
   fileName: unknown,
   bitrate: unknown,
-  profile: unknown,
-  advertised: AdvertisedAudio | null = null,
+  {
+    profile,
+    advertised = null,
+  }: {
+    profile?: unknown;
+    advertised?: AdvertisedAudio | null;
+  } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
   const tier = classifyAdvertisedQuality(fileName, bitrate, advertised);
@@ -328,8 +332,7 @@ export function orderAdvertisedQualityCandidates<T>(
         profile: normalized,
         currentTier,
         upgrade,
-        bitDepth: advertised?.bitDepth,
-        sampleRate: advertised?.sampleRate,
+        advertised,
       });
     })
     .sort((left, right) => {

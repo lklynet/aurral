@@ -286,7 +286,7 @@ export async function finishAlbumGrab(
     verified: getPayloadCandidate(payload)?.releaseVerified === true,
   });
   if (assigned.rejected.length > 0) {
-    logger.warn(source, "Album files failed verification", {
+    logger.info(source, "Album files failed verification", {
       jobId: payload.jobId,
       album,
       rejected: assigned.rejected,
