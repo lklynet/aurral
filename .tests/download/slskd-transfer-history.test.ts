@@ -79,3 +79,41 @@ test("a peer that banned Aurral is skipped until it uploads again", () => {
   recordOutcome("strictPeer", "success");
   assert.equal(buildSlskdRankingHistoryOptions().isUserBlacklisted("strictPeer"), false);
 });
+
+test("quality-profile rejections never blacklist a peer or penalize its queue position", () => {
+  for (let index = 0; index < 6; index += 1) {
+    recordOutcome("hiresOnlyPeer", "validation_failed", "quality-below-floor: flac-hires");
+  }
+  for (let index = 0; index < 3; index += 1) {
+    recordOutcome(
+      "noUpgradePeer",
+      "validation_failed",
+      "quality-not-an-upgrade: current=flac-standard, candidate=flac-hires",
+    );
+  }
+
+  const options = buildSlskdRankingHistoryOptions();
+
+  assert.equal(options.isUserBlacklisted("hiresOnlyPeer"), false);
+  assert.equal(options.isUserBlacklisted("noUpgradePeer"), false);
+  assert.equal(options.getUserQueuePenalty("hiresOnlyPeer"), 0);
+  assert.equal(options.getUserQueuePenalty("noUpgradePeer"), 0);
+});
+
+test("unreadable and mismatched files still count against a peer", () => {
+  for (let index = 0; index < 5; index += 1) {
+    recordOutcome("brokenFilesPeer", "validation_failed", "downloaded file is not readable audio");
+  }
+  for (let index = 0; index < 3; index += 1) {
+    recordOutcome(
+      "wrongRecordingPeer",
+      "validation_failed",
+      "downloaded file is 42.0s longer than the requested track",
+    );
+  }
+
+  const options = buildSlskdRankingHistoryOptions();
+
+  assert.equal(options.isUserBlacklisted("brokenFilesPeer"), true);
+  assert.equal(options.isUserBlacklisted("wrongRecordingPeer"), true);
+});
