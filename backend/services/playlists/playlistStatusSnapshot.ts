@@ -281,6 +281,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
       importSource: playlist.importSource
         ? {
             provider: playlist.importSource.provider,
+            externalId: playlist.importSource.externalId,
             ...(playlist.importSource.artworkUrl && {
               artworkUrl: playlist.importSource.artworkUrl,
             }),

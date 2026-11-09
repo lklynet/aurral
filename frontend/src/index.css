@@ -10037,7 +10037,8 @@ button.native-library-genre-row:focus-visible {
   opacity: 0.45;
 }
 
-.playlists-page__synced {
+.playlists-page__synced,
+.playlist-card__claim {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
@@ -10050,9 +10051,21 @@ button.native-library-genre-row:focus-visible {
   background: color-mix(in srgb, var(--aurral-overlay-base) 62%, transparent);
 }
 
-.playlists-page__synced:focus-visible {
+.playlists-page__synced:focus-visible,
+.playlist-card__claim:focus-visible {
   outline: 2px solid var(--aurral-ring);
   outline-offset: 2px;
+}
+
+.playlist-card__claim {
+  z-index: calc(var(--aurral-z-raised) + 1);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 80%, transparent);
+  color: var(--aurral-success);
+}
+
+.playlist-card__claim svg {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .playlists-page__synced-logo {

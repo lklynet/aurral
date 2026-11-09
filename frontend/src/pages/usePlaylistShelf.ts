@@ -1,8 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
-import { madeForYouQueryOptions, playlistShelfQueryOptions } from "../queryOptions.ts";
+import {
+  madeForYouQueryOptions,
+  playlistShelfQueryOptions,
+  playlistStatusQueryOptions,
+} from "../queryOptions.ts";
 import type { ShelfScope } from "../../../backend/services/importLists/deezerPlaylists.ts";
+import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
 
 const GROUP_ORDER = ["mood", "decade", "genre"] as const;
 
@@ -39,6 +44,29 @@ export function usePlaylistCategories() {
     [madeForYou.data, shelf.data, browse],
   );
   return { categories, browse, madeForYou, shelf };
+}
+
+export function usePlaylistClaims() {
+  const { user } = useAuth();
+  const { data: claims } = useQuery({
+    ...playlistStatusQueryOptions(),
+    enabled: false,
+    select: (status) =>
+      new Map(
+        status.staticPlaylists.flatMap(({ ownerUserId, importSource }) =>
+          ownerUserId === user?.id &&
+          importSource?.provider === "deezer-playlist" &&
+          importSource.externalId
+            ? [[importSource.externalId, importSource.syncEnabled ? "synced" : "saved"] as const]
+            : [],
+        ),
+      ),
+  });
+  return useCallback(
+    (playlist: { provider: BrowseProvider; id: string }) =>
+      playlist.provider === "deezer" ? claims?.get(playlist.id) : undefined,
+    [claims],
+  );
 }
 
 export const playlistCategoryPath = (id: string) => `/discover/playlists/${encodeURIComponent(id)}`;
