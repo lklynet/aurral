@@ -38,6 +38,8 @@ When it is unclear, say so and name what would tell the two apart.
 
 Failures that hit many unrelated hosts in the same few minutes, such as `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, or timeouts across news feeds, Last.fm, and BrainzMash at once, point to the network or DNS where Aurral runs, not to Aurral or any one service. On a host without IPv6, an `ENETUNREACH` to an IPv6 address is a side effect: the IPv4 attempt failed or got no address, so check DNS first.
 
+For freezes, slowness, or high CPU, read the `performance` lines. Fetch the export with `level=info`, since only freezes of 5 seconds or more are warnings. A `Stopped responding` line names the process and lists the requests and jobs running at the time. When its `cpuMs` is close to or above `ms`, Aurral was busy computing, which is worth an issue naming what was running. When `cpuMs` is far lower, Aurral was waiting on a slow disk or an overloaded host. `Job used a lot of CPU` names heavy jobs; its CPU count covers the whole process, so other work running at the same time adds to it.
+
 ## 5. Check upstream
 
 Search existing issues at https://github.com/lklynet/aurral/issues (use `gh` if it is installed and logged in). Check the releases at https://github.com/lklynet/aurral/releases for a newer version that already fixed it. If the user is behind and the fix shipped, tell them to update.

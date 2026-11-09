@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
 import { getDatabaseDataVersion } from "../../config/db-sqlite.ts";
+import { cpuMs, trackWork } from "../eventLoopWatch.ts";
 import { logger, withLogContext } from "../logger.ts";
 import { onQueueWake, ownsQueueHere, type ClaimedJob, type Queue } from "./queue.ts";
 
@@ -49,6 +50,7 @@ const INTERRUPTED = "JOB_INTERRUPTED";
 const CANCELLED = "JOB_CANCELLED";
 const HEARTBEAT_MAX_MS = 5000;
 const MAX_TIMER_MS = 2_147_483_647;
+const HEAVY_JOB_CPU_MS = 10_000;
 
 export function jobInterruption(message = "Background job interrupted") {
   return Object.assign(new Error(message), { code: INTERRUPTED });
@@ -92,6 +94,11 @@ function scheduleRestart(name: string, start: () => unknown, shouldRestart: () =
   );
   timer.unref?.();
   restartTimers.set(name, timer);
+}
+
+function jobKind(payload: object) {
+  const kind: unknown = Reflect.get(payload, "kind");
+  return typeof kind === "string" ? kind : null;
 }
 
 function payloadSummary(payload: unknown) {
@@ -179,7 +186,6 @@ export function createJobWorker<Payload extends object>(
 
   async function handleJobFailure(error: unknown, job: TypedJob<Payload>) {
     const message = asAppError(error)?.message || String(error);
-    const kind: unknown = Reflect.get(job.payload, "kind");
     const logFailure = (action: "fail" | "retry") => {
       if (!shouldLogFailure(job)) return;
       logger[action === "fail" ? "error" : "warn"](
@@ -188,7 +194,7 @@ export function createJobWorker<Payload extends object>(
         {
           queue: name,
           jobId: job.id,
-          kind: typeof kind === "string" ? kind : null,
+          kind: jobKind(job.payload),
           attempt: job.attempts,
           reason: message,
           ...(error instanceof Error && { error }),
@@ -240,6 +246,8 @@ export function createJobWorker<Payload extends object>(
     let waitingAttempt = false;
     const resources: { prepared?: PreparedJob | null } = {};
     let announced = false;
+    const startedAt = Date.now();
+    const cpuAtStart = process.cpuUsage();
     activeJobCount += 1;
     try {
       await withLogContext({ job: `${name}:${job.id}` }, async () => {
@@ -281,6 +289,17 @@ export function createJobWorker<Payload extends object>(
       }
     } finally {
       activeJobCount -= 1;
+      const processCpuMs = cpuMs(process.cpuUsage(cpuAtStart));
+      if (processCpuMs >= HEAVY_JOB_CPU_MS) {
+        withLogContext({ job: `${name}:${job.id}` }, () =>
+          logger.info("performance", "Job used a lot of CPU", {
+            queue: name,
+            kind: jobKind(job.payload),
+            processCpuMs,
+            ms: Date.now() - startedAt,
+          }),
+        );
+      }
       clearInterval(heartbeat);
       resources.prepared?.release?.();
       jobController = null;
@@ -312,7 +331,12 @@ export function createJobWorker<Payload extends object>(
           break;
         }
         await reloadChangedCaches();
-        await runJob(job.withPayload(parsed.output));
+        const claimed = job.withPayload(parsed.output);
+        const label = [`${name}:${job.id}`, jobKind(claimed.payload)].filter(Boolean).join(" ");
+        await trackWork(
+          () => label,
+          () => runJob(claimed),
+        );
       }
     } catch (error) {
       failed = true;

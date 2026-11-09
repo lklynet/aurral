@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
+import { matchedRoutes } from "hono/route";
 import { clientAddress } from "./middleware/clientAddress.ts";
 import { authenticate } from "./middleware/guards.ts";
 import { rateLimit } from "./middleware/rateLimit.ts";
@@ -11,6 +12,7 @@ import { api, handleError } from "./routes/api.ts";
 import frontend from "./routes/frontend.ts";
 import sso from "./routes/sso.ts";
 import subsonic from "./routes/subsonic.ts";
+import { trackWork } from "./services/eventLoopWatch.ts";
 import { withLogContext } from "./services/logger.ts";
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
@@ -21,7 +23,15 @@ const signInLimit = rateLimit({
 });
 
 export const app = new Hono<AppEnv>({ strict: false })
-  .use((_c, next) => withLogContext({ req: randomUUID().slice(0, 8) }, next))
+  .use((c, next) =>
+    withLogContext({ req: randomUUID().slice(0, 8) }, () =>
+      trackWork(() => {
+        const routes = matchedRoutes(c);
+        const endpoint = routes.find((route) => !route.path.endsWith("*")) ?? routes.at(-1);
+        return `${c.req.method} ${endpoint?.path}`;
+      }, next),
+    ),
+  )
   .use(compress())
   .use(async (c, next) => {
     const incoming = c.env.incoming.headers;

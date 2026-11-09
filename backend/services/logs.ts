@@ -13,6 +13,7 @@ import {
   type LogQuery,
   type StoredLogEntry,
 } from "./logFile.ts";
+import { watchEventLoop } from "./eventLoopWatch.ts";
 import { recordLog, refreshDebugLogging, startLogSink, type LogLevel } from "./logger.ts";
 import { isRunningInDocker } from "./runtimeInfo.ts";
 
@@ -64,6 +65,7 @@ export function startMainLogging() {
   process.on("exit", writer.flush);
   startLogSink(writer.append, { debugEnabled: isDebugLoggingOn });
   logOutgoingFailures();
+  watchEventLoop();
 }
 
 export function startWorkerLogging() {
@@ -74,6 +76,7 @@ export function startWorkerLogging() {
     { debugEnabled: isDebugLoggingOn },
   );
   logOutgoingFailures();
+  watchEventLoop();
 }
 
 export const queryLogs = (query: LogQuery) => readLogEntries(LOG_DIR, query);
