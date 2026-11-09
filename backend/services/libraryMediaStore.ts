@@ -643,6 +643,41 @@ export function setLibraryAlbumCredits(albumId: number, artistMbids: string[]) {
   invalidateLibraryCache();
 }
 
+const albumPlaceholderTracksStmt = db.prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
+  `SELECT link.track_id
+   FROM library_album_tracks AS link
+   WHERE link.album_id = ?
+     AND NOT EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = link.track_id AND media.available = 1
+     )`,
+);
+const setPlaceholderTrackArtistStmt = db.prepare<[string, number, number, string | null]>(
+  `UPDATE library_tracks
+   SET artist_name = ?, updated_at = ?
+   WHERE id = ? AND artist_name IS ?`,
+);
+
+function syncAlbumArtistPlaceholders(
+  albumId: number,
+  previousArtist: string | null,
+  nextArtist: string | null,
+  timestamp: number,
+) {
+  if (!nextArtist || previousArtist === nextArtist) return [];
+  const changed: number[] = [];
+  for (const row of albumPlaceholderTracksStmt.all(albumId)) {
+    const result = setPlaceholderTrackArtistStmt.run(
+      nextArtist,
+      timestamp,
+      row.track_id,
+      previousArtist,
+    );
+    if (Number(result.changes) > 0) changed.push(row.track_id);
+  }
+  return changed;
+}
+
 export function upsertLibraryAlbum({
   identityKey,
   mbid = null,
@@ -748,6 +783,16 @@ export function upsertLibraryAlbum({
     const row = db
       .prepare<[string], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE identity_key = ?")
       .get(key)!;
+    const placeholderTracks = syncAlbumArtistPlaceholders(
+      row.id,
+      existing?.album_artist ?? null,
+      row.album_artist,
+      timestamp,
+    );
+    if (placeholderTracks.length > 0 && syncSearch) {
+      for (const trackId of placeholderTracks) syncLibrarySearchTrack(trackId);
+    }
+
     const searchChanged = syncSearch && syncLibrarySearchAlbum(row?.id);
     if (row?.id && searchChanged) {
       for (const track of db

@@ -142,3 +142,44 @@ test("re-tagging a file with a credit for one artist replaces an uploader's list
   const { common } = await parseFile(filePath);
   assert.deepEqual(common.artists, ["Kendrick Lamar"]);
 });
+
+test("a track request takes its album artist from the release credit", async (t) => {
+  const releaseMbid = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4";
+  const albumArtist = "11bf566b-a73e-4e8c-ba82-83fdcddd0aed";
+  const performer = "f98a61b4-0000-4000-8000-000000000001";
+  stubFetch(t, (url) =>
+    isReleaseLookup(url, releaseMbid)
+      ? json({
+          "artist-credit": [
+            { name: "Stéphane Pompougnac", joinphrase: "", artist: { id: albumArtist } },
+          ],
+          media: [
+            {
+              tracks: [
+                {
+                  "artist-credit": [
+                    { name: "One Self", joinphrase: "", artist: { id: performer } },
+                  ],
+                  recording: { id: job.trackMbid },
+                },
+              ],
+            },
+          ],
+        })
+      : json({}, 404),
+  );
+  const filePath = makeAudio("bluebird.flac", ["-c:a", "flac"]);
+
+  await writeAudioMetadata(filePath, {
+    ...job,
+    artistName: "One Self",
+    artistMbid: performer,
+    trackName: "Bluebird",
+    releaseMbid,
+  });
+
+  const { common } = await parseFile(filePath);
+  assert.equal(common.artist, "One Self");
+  assert.equal(common.albumartist, "Stéphane Pompougnac");
+  assert.equal(common.musicbrainz_albumartistid?.[0], albumArtist);
+});
