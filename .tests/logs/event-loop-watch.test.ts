@@ -54,9 +54,9 @@ test("work that blocks the event loop and then finishes is still named in the lo
     void worker.start();
     await finished.promise;
     await worker.stop();
-    await fetch(
-      `http://127.0.0.1:${listeningAddress(server).port}/api/library/stream/album-1/track-1?token=secret`,
-    );
+    const origin = `http://127.0.0.1:${listeningAddress(server).port}`;
+    await fetch(`${origin}/api/library/stream/album-1/track-1?token=secret`);
+    await fetch(`${origin}/rest/ping.view?u=test&p=secret`, { method: "POST" });
     vi.advanceTimersToNextTimer();
     assert.partialDeepStrictEqual(
       entries.filter((entry) => entry.msg.startsWith("Stopped responding")),
@@ -68,6 +68,7 @@ test("work that blocks the event loop and then finishes is still named in the lo
             running: [
               `event-loop-watch-jobs:${id} scan`,
               "GET /api/library/stream/:albumId/:trackId",
+              "POST /rest/:method",
             ],
           },
         },

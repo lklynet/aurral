@@ -25,11 +25,11 @@ const signInLimit = rateLimit({
 export const app = new Hono<AppEnv>({ strict: false })
   .use((c, next) =>
     withLogContext({ req: randomUUID().slice(0, 8) }, () =>
-      trackWork(
-        () =>
-          `${c.req.method} ${matchedRoutes(c).find((route) => route.method !== "ALL")?.path ?? "unmatched"}`,
-        next,
-      ),
+      trackWork(() => {
+        const routes = matchedRoutes(c);
+        const endpoint = routes.find((route) => !route.path.endsWith("*")) ?? routes.at(-1);
+        return `${c.req.method} ${endpoint?.path}`;
+      }, next),
     ),
   )
   .use(compress())
