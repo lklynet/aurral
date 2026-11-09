@@ -22,6 +22,7 @@ import {
   type DownloadTrackFields,
 } from "../downloadUtils.ts";
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
+import { upgradeSourceIds } from "../downloadSourceService.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
 import { isDownloadOwnerProcess } from "./downloadOwnerClient.ts";
@@ -522,10 +523,7 @@ function buildPipelinePayload(job: DownloadJob) {
     upgrade: Boolean(job.upgradeForJobId) && !job.manualReplacementSearch,
     upgradeForJobId: job.upgradeForJobId || null,
     manualReplacementSearch: job.manualReplacementSearch === true,
-    allowedSources:
-      job.upgradeForJobId && !job.manualReplacementSearch
-        ? ["slskd", "usenet", "tidarr", "deemix"]
-        : null,
+    allowedSources: job.upgradeForJobId && !job.manualReplacementSearch ? upgradeSourceIds() : null,
     triedSources: [...job.quickSearchedSources],
     heldForReview: job.heldForReview,
   };

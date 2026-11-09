@@ -40,7 +40,8 @@ import type { CredentialRequest } from "../middleware/auth.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { requestCredentials } from "./shared/requestCredentials.ts";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.ts";
-import { getDownloadSourceStatus } from "../services/downloadSourceService.ts";
+import { prowlarrClient } from "../services/prowlarrClient.ts";
+import { getDownloadClient } from "../services/download/downloadClientSettings.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -273,14 +274,9 @@ type BootstrapPayload = {
   newsConfigured?: boolean;
   musicbrainzConfigured?: boolean;
   metadataConfigured?: boolean;
-  slskdConfigured?: boolean;
   prowlarrConfigured?: boolean;
-  nzbgetConfigured?: boolean;
-  sabnzbdConfigured?: boolean;
-  usenetConfigured?: boolean;
   ytdlpConfigured?: boolean;
   deemixConfigured?: boolean;
-  downloadSources?: ReturnType<typeof getDownloadSourceStatus>;
   metadataProviders?: {
     brainzmash: {
       configuredProvider: string;
@@ -339,7 +335,6 @@ function buildBootstrapPayload(req: CredentialRequest) {
   };
 
   if (currentUser) {
-    const downloadSources = getDownloadSourceStatus();
     payload.user = {
       id: currentUser.id,
       username: currentUser.username,
@@ -367,14 +362,9 @@ function buildBootstrapPayload(req: CredentialRequest) {
       );
     payload.musicbrainzConfigured = !!settings.integrations?.metadata?.baseUrl;
     payload.metadataConfigured = !!settings.integrations?.metadata?.baseUrl;
-    payload.slskdConfigured = downloadSources.slskd.configured;
-    payload.prowlarrConfigured = downloadSources.usenet.prowlarrConfigured;
-    payload.nzbgetConfigured = downloadSources.usenet.nzbgetConfigured;
-    payload.sabnzbdConfigured = downloadSources.usenet.sabnzbdConfigured;
-    payload.usenetConfigured = downloadSources.usenet.configured;
-    payload.ytdlpConfigured = downloadSources.ytdlp.configured;
-    payload.deemixConfigured = downloadSources.deemix.configured;
-    payload.downloadSources = downloadSources;
+    payload.prowlarrConfigured = prowlarrClient.isConfigured();
+    payload.ytdlpConfigured = getDownloadClient("ytdlp").isConfigured();
+    payload.deemixConfigured = getDownloadClient("deemix").isConfigured();
     payload.metadataProviders = getMetadataProviderHealthSnapshot();
     payload.localNetworkBypass = getLocalNetworkBypassStatus(req);
     payload.proxyLogoutUrl = process.env.AUTH_PROXY_LOGOUT_URL || null;

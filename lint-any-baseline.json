@@ -11,7 +11,7 @@
   ".tests/artist-release-popularity.test.ts": 12,
   ".tests/artist-videos.test.ts": 10,
   ".tests/auth/google-auth.test.ts": 2,
-  ".tests/auth/lidarr-preferences.int.test.ts": 27,
+  ".tests/auth/lidarr-preferences.int.test.ts": 23,
   ".tests/auth/listening-history.test.ts": 1,
   ".tests/auth/login-rate-limit.int.test.ts": 1,
   ".tests/auth/oidc-auth.test.ts": 1,

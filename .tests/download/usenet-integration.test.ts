@@ -160,6 +160,10 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
     assert.equal(status.ok, true);
     assert.equal(status.usenetIndexerCount, 3);
     assert.equal(status.enabledUsenetIndexerCount, 2);
+    assert.deepEqual(
+      status.indexers?.filter((entry) => entry.protocol === "torrent").map((entry) => entry.id),
+      [3],
+    );
 
     const indexers = await prowlarrClient.getEnabledUsenetIndexers();
     assert.deepEqual(

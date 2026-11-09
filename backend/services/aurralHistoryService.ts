@@ -133,6 +133,7 @@ const resolveTrackDownloadHistorySource = (downloadSource: unknown, downloadClie
   if (normalized === "ytdlp") return "ytdlp";
   if (normalized === "deemix") return "deemix";
   if (normalized === "slskd") return "slskd";
+  if (normalized === "qbittorrent") return "qbittorrent";
   if (normalized === "share") return "share";
   return "unknown";
 };
@@ -144,6 +145,7 @@ const CLIENT_LABELS = {
   slskd: "slskd",
   ytdlp: "yt-dlp",
   deemix: "deemix",
+  qbittorrent: "qBittorrent",
   share: "Aurral share",
 };
 const resolveDownloadClientLabel = (downloadSource: unknown, downloadClient: unknown) => {

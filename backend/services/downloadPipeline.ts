@@ -45,6 +45,11 @@ import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { discardHeldFile } from "./downloadJobs/reviewFiles.ts";
 import { processShareDownload } from "./shareLinks/download.ts";
 import { processPluginPipelinePayload } from "./plugins/pluginDownloadSource.ts";
+import {
+  discardSourceWork as discardContractSourceWork,
+  processSourcePipelinePayload,
+} from "./download/sourcePipeline.ts";
+import { nativeDownloadSource } from "./download/nativeSources.ts";
 import { pluginIdFromSource } from "./plugins/pluginStore.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
 
@@ -473,7 +478,9 @@ async function awaitAttemptRelease(payload: PipelinePayload) {
 }
 
 async function discardSourceWork(payload: PipelinePayload) {
-  if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
+  const native = nativeDownloadSource(payload.source);
+  if (native) await discardContractSourceWork(payload as PluginStepPayload, native);
+  else if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
   else if (isNzbSource(payload.source)) await discardUsenetWork(payload as UsenetStepPayload);
   else if (payload.source === "deemix") await discardDeemixWork(payload as DeemixStepPayload);
 }
@@ -605,6 +612,18 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
     }
     return processYtdlpPipelinePayload(payload as YtdlpStepPayload, { failOrTryNextSource });
+  }
+  const native = nativeDownloadSource(payload.source);
+  if (native) {
+    if (!isSourceConfigured(native.id)) {
+      const job = downloadTracker.getJob(payload.jobId);
+      return job
+        ? failOrTryNextSource(payload, job, `${getSourceLabel(native.id)} is not configured`)
+        : null;
+    }
+    return processSourcePipelinePayload(payload as PluginStepPayload, native, {
+      failOrTryNextSource,
+    });
   }
   if (pluginIdFromSource(payload.source)) {
     return processPluginPipelinePayload(payload as PluginStepPayload, { failOrTryNextSource });

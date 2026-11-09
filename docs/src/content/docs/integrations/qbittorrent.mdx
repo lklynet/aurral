@@ -1,0 +1,27 @@
+---
+title: qBittorrent
+description: Download albums and tracks from torrent indexers through Prowlarr and qBittorrent.
+---
+
+Aurral searches your torrent indexers in [Prowlarr](/integrations/usenet/#prowlarr) and sends the torrents it picks to qBittorrent.
+
+## Setup
+
+1. Connect Prowlarr in **Settings > Downloads > Prowlarr**, with one or more torrent audio indexers turned on in Prowlarr. Its **Indexers** list shows them, and you can set their priority or turn them off for Aurral there.
+2. Mount qBittorrent's download folder in Aurral, so Aurral can read finished torrents. See [Filesystem and mounts](/getting-started/storage/).
+3. Open **Settings > Downloads > qBittorrent** and turn on **Enable qBittorrent**.
+4. Set **Server URL** to the qBittorrent Web UI, for example `http://qbittorrent:8080`, with its **Username** and **Password**. Leave them empty if qBittorrent skips sign-in for Aurral's address.
+5. If necessary, set **Category**, **Track priority**, and **Album priority**. The defaults are `aurral` and a track priority of `30`. An empty album priority uses track priority.
+6. Select **Test connection**.
+
+## Path mapping
+
+When qBittorrent reports its downloads under another path than Aurral sees, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **qBittorrent**.
+
+## Behavior
+
+Torrents hold albums, so for a single track Aurral searches for the track's album. Once qBittorrent has the torrent's file list, Aurral checks it against the release and tells qBittorrent to download only the tracks you asked for. When the file names don't show the release or the track, the whole album downloads and Aurral checks the files by their tags.
+
+Aurral skips torrents without seeders and tries the best quality your quality profile allows first. An upgrade takes only a torrent better than the file you have. When a torrent finishes, Aurral links its audio files, or copies them when they are on another disk, and checks them like any other source. The torrent stays in qBittorrent to seed. If Aurral stops a download before its torrent finishes, it removes the torrent and its files.
+
+See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

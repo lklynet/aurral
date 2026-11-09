@@ -72,6 +72,7 @@ export default defineConfig({
             { slug: "integrations/deemix" },
             { slug: "integrations/tidarr" },
             { slug: "integrations/usenet" },
+            { slug: "integrations/qbittorrent" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },
             { slug: "integrations/jellyfin" },
