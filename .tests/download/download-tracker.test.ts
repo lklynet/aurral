@@ -771,12 +771,31 @@ test("restart reuses the queued album pipeline instead of submitting another gra
     }),
     true,
   );
+  const solo = (trackName: string) =>
+    requireFixture(createTrackedJob(tracker, { artistName: "Solo", trackName }, "static"));
+  const downloading = solo("Downloading");
+  const waiting = solo("Waiting");
+  for (const id of [downloading, waiting]) {
+    assert.equal(tracker.enqueueDownloadPipeline(id, { release: null }), true);
+  }
+  tracker.setDownloading(downloading);
 
   tracker.resetDownloadingToPending();
   const restarted = new DownloadTracker({ enqueuePipeline });
   assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[1])), true);
   assert.equal(restarted.enqueueDownloadPipeline(requireFixture(ids[0])), true);
   assert.equal(restarted.enqueueDownloadPipeline(single), true);
+  for (const [id, status] of [
+    [downloading, "downloading"],
+    [waiting, "pending"],
+  ] as const) {
+    assert.equal(restarted.enqueueDownloadPipeline(id, { release: null }), false);
+    assert.equal(trackedJob(restarted, id).status, status);
+    assert.equal(
+      queues.downloadPipelineQueue.list().filter((entry) => entry.payload?.jobId === id).length,
+      1,
+    );
+  }
   const after = queues.downloadPipelineQueue
     .list()
     .filter((entry) => entry.payload?.jobId === ids[0]);

@@ -74,6 +74,11 @@ type AddJobOptions = {
   startedByPlaylist?: string | null;
 };
 type ManualCandidate = { raw: JsonValue };
+const queuedStepSchema = v.object({
+  jobId: v.string(),
+  downloadAttemptId: v.string(),
+  albumGroupJobIds: v.nullish(v.array(v.string()), []),
+});
 type AlbumGrabAttempt = Omit<ReturnType<typeof downloadPipelineQueue.list>[number], "payload"> & {
   payload: PipelinePayload & { albumGroupJobIds: string[] };
 };
@@ -1184,12 +1189,30 @@ export class DownloadTracker {
     this.pendingRetryQueue = this.pendingRetryQueue.filter((entryId) => entryId !== id);
   }
 
+  // The dispatched mark lives in memory, so a new process takes it back from
+  // the steps still queued for each job's current attempt.
+  _queuedJobIds() {
+    const ids = new Set<string>();
+    for (const { payload } of downloadPipelineQueue.list()) {
+      const step = v.safeParse(queuedStepSchema, payload);
+      if (!step.success) continue;
+      const { jobId, albumGroupJobIds, downloadAttemptId } = step.output;
+      for (const id of [jobId, ...albumGroupJobIds]) {
+        if (getActiveDownloadAttemptId(id) === downloadAttemptId) ids.add(id);
+      }
+    }
+    return ids;
+  }
+
   _load() {
     const rows = selectAllStmt.all();
+    const queued = this._queuedJobIds();
+    this.slskdDispatched = new Set([...this.slskdDispatched, ...queued]);
     for (const row of rows) {
       const job = rowToJob(row);
       if (
-        (job.status === "downloading" || job.status === "cancel_requested") &&
+        ((job.status === "downloading" && !queued.has(job.id)) ||
+          job.status === "cancel_requested") &&
         (process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
           process.env.NODE_ENV === "test" ||
           process.env.AURRAL_TEST_SERVER === "1")
@@ -1973,6 +1996,7 @@ export class DownloadTracker {
 
   resetDownloadingToPending() {
     let count = 0;
+    const queued = this._queuedJobIds();
     for (const job of this.jobs.values()) {
       if (
         job.status === "cancel_requested" ||
@@ -1981,7 +2005,7 @@ export class DownloadTracker {
         this.setCancelled(job.id);
         continue;
       }
-      if (job.status === "downloading") {
+      if (job.status === "downloading" && !queued.has(job.id)) {
         const previousStatus = job.status;
         this.clearSlskdPipelineState(job.id);
         job.status = "pending";
