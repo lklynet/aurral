@@ -1,10 +1,12 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
+  classifyAdvertisedQuality,
   classifyAudioQuality,
   createDefaultQualityProfile,
   getAdvertisedQualityRank,
   getQualityState,
+  isAdvertisedQualityEligible,
   isQualityUpgrade,
   normalizeQualityProfile,
   orderAdvertisedQualityCandidates,
@@ -138,5 +140,55 @@ test("getAdvertisedQualityRank orders by profile position and sinks unknown tier
   assert.ok(
     getAdvertisedQualityRank("Song 192kbps.mp3", null, reversed) <
       getAdvertisedQualityRank("Song 320kbps.mp3", null, reversed),
+  );
+});
+
+test("classifies advertised FLAC tiers from file tags and slskd metadata", () => {
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [24B-44.1kHz]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [24-44.1]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [24-96]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [24-48kHz]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [24-44.1kHz]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [16-44.1kHz]/01.flac"), "flac-standard");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [96kHz]/01.flac"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Album [FLAC] [16B-44.1kHz]/01.flac"), "flac-standard");
+  assert.equal(
+    classifyAdvertisedQuality("Album [FLAC]/01.flac", null, { bitDepth: 24, sampleRate: 44100 }),
+    "flac-hires",
+  );
+  assert.equal(
+    classifyAdvertisedQuality("Album [FLAC]/01.flac", null, { bitDepth: 16, sampleRate: 44100 }),
+    "flac-standard",
+  );
+  assert.equal(
+    classifyAdvertisedQuality("Album [FLAC]/01.flac", null, { bitDepth: 16, sampleRate: 96000 }),
+    "flac-hires",
+  );
+});
+
+test("a hires copy is ineligible when flac-hires is disabled", () => {
+  const profile = normalizeQualityProfile({
+    enabled: ["flac-standard"],
+    cutoff: "flac-standard",
+  });
+  assert.equal(
+    isAdvertisedQualityEligible("Album [FLAC] [24B-44.1kHz]/01.flac", null, { profile }),
+    false,
+  );
+  assert.equal(
+    isAdvertisedQualityEligible("Album [FLAC]/01.flac", null, {
+      profile,
+      bitDepth: 24,
+      sampleRate: 44100,
+    }),
+    false,
+  );
+  assert.equal(
+    isAdvertisedQualityEligible("Album [FLAC]/01.flac", null, {
+      profile,
+      bitDepth: 16,
+      sampleRate: 44100,
+    }),
+    true,
   );
 });
