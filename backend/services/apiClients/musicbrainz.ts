@@ -23,12 +23,7 @@ const musicbrainzTagArtistsCache = createCache<{
   nextOffset: number;
   artists: { mbid: string; name: string }[];
 }>(6 * 60 * 60, 200);
-type ReleaseCredits = {
-  tracks: Map<string, ArtistCredit>;
-  albumArtist: ArtistCredit;
-};
-
-const musicbrainzReleaseCreditsCache = createCache<ReleaseCredits>(24 * 60 * 60, 500);
+const musicbrainzReleaseCreditsCache = createCache<Map<string, ArtistCredit>>(24 * 60 * 60, 500);
 const RELEASE_CREDITS_RETRY_SECONDS = 5 * 60;
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 const APPEARS_ON_PAGE_SIZE = 100;
@@ -68,7 +63,6 @@ const releaseSchema = v.looseObject({
 });
 
 const releaseTracksSchema = v.looseObject({
-  "artist-credit": artistCreditSchema,
   media: v.optional(
     v.array(
       v.looseObject({
@@ -354,10 +348,7 @@ const toArtistCredit = (raw: MusicBrainzArtistCredit): ArtistCredit =>
       : [];
   });
 
-async function fetchReleaseCredits(
-  releaseMbid: string,
-  signal: AbortSignal,
-): Promise<ReleaseCredits> {
+async function fetchReleaseTrackCredits(releaseMbid: string, signal: AbortSignal) {
   const release = await musicbrainzGet(
     releaseTracksSchema,
     `/release/${releaseMbid}`,
@@ -372,54 +363,37 @@ async function fetchReleaseCredits(
       credits.set(recordingMbid, credit);
     }
   }
-  return { tracks: credits, albumArtist: toArtistCredit(release["artist-credit"]) };
+  return credits;
 }
 
-// Each track's own credit and the release's album artist, by release and
-// recording MBID. A failed lookup is empty and is retried after a few minutes,
-// so tagging an album asks once.
-async function loadReleaseCredits(
+// Each track's own credit on a release, by recording MBID, so guests such as
+// SZA on "All the Stars" keep their credit. A failed lookup is empty and is
+// retried after a few minutes, so tagging an album asks once.
+export async function musicbrainzGetReleaseTrackCredits(
   releaseMbid: string,
   { signal }: { signal?: AbortSignal } = {},
-): Promise<ReleaseCredits> {
+): Promise<Map<string, ArtistCredit>> {
   const cached = musicbrainzReleaseCreditsCache.get(releaseMbid);
   if (cached) return cached;
   try {
     const credits = await runSharedInflight(
       musicbrainzInflightRequests,
       `release-credits:${releaseMbid}`,
-      (sharedSignal: AbortSignal) => fetchReleaseCredits(releaseMbid, sharedSignal),
+      (sharedSignal: AbortSignal) => fetchReleaseTrackCredits(releaseMbid, sharedSignal),
       { signal },
     );
     musicbrainzReleaseCreditsCache.set(releaseMbid, credits);
     return credits;
   } catch (error) {
     signal?.throwIfAborted();
-    const credits: ReleaseCredits = {
-      tracks: new Map<string, ArtistCredit>(),
-      albumArtist: [],
-    };
+    const credits = new Map<string, ArtistCredit>();
     musicbrainzReleaseCreditsCache.set(releaseMbid, credits, RELEASE_CREDITS_RETRY_SECONDS);
-    logger.warn("musicbrainz", "Release credits lookup failed", {
+    logger.warn("musicbrainz", "Release track credits lookup failed", {
       releaseMbid,
       message: asAppError(error)?.message,
     });
     return credits;
   }
-}
-
-export async function musicbrainzGetReleaseTrackCredits(
-  releaseMbid: string,
-  { signal }: { signal?: AbortSignal } = {},
-): Promise<Map<string, ArtistCredit>> {
-  return (await loadReleaseCredits(releaseMbid, { signal })).tracks;
-}
-
-export async function musicbrainzGetReleaseAlbumArtist(
-  releaseMbid: string,
-  { signal }: { signal?: AbortSignal } = {},
-): Promise<ArtistCredit> {
-  return (await loadReleaseCredits(releaseMbid, { signal })).albumArtist;
 }
 
 export async function musicbrainzGetArtistNameByMbid(

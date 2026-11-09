@@ -7,13 +7,17 @@ import path from "node:path";
 import { parseFile } from "music-metadata";
 import taglib from "node-taglib-sharp";
 
-import { writeAudioMetadata } from "../../backend/services/downloadUtils.ts";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { json, stubFetch } from "../helpers/artistStream.ts";
 import { useFakeClock } from "../helpers/fakeClock.ts";
 
 useFakeClock();
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-artist-credits-"));
+const [isolatedState, { writeAudioMetadata }] = await setupIsolatedBackend(
+  "download-artist-credits",
+  () => import("../../backend/services/downloadUtils.ts"),
+);
 const KENDRICK = "381086ea-f511-4aba-bdf9-71c753dc5077";
 const SZA = "272989c8-5535-492d-a25c-9f58803e027f";
 const job = {
@@ -58,6 +62,7 @@ const isReleaseLookup = (url: URL, releaseMbid: string) =>
   url.hostname === "musicbrainz.org" && url.pathname === `/ws/2/release/${releaseMbid}`;
 
 afterAll(async () => {
+  await cleanupIsolatedState(isolatedState);
   await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -143,36 +148,45 @@ test("re-tagging a file with a credit for one artist replaces an uploader's list
   assert.deepEqual(common.artists, ["Kendrick Lamar"]);
 });
 
-test("a track request takes its album artist from the release credit", async (t) => {
+test("a track request takes its album artist from the album's main artist", async (t) => {
   const releaseMbid = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4";
+  const albumMbid = "fce8fe8b-9402-3893-b4a2-5bacefdb8f1f";
   const albumArtist = "11bf566b-a73e-4e8c-ba82-83fdcddd0aed";
   const performer = "f98a61b4-0000-4000-8000-000000000001";
-  stubFetch(t, (url) =>
-    isReleaseLookup(url, releaseMbid)
-      ? json({
-          "artist-credit": [
-            { name: "Stéphane Pompougnac", joinphrase: "", artist: { id: albumArtist } },
-          ],
-          media: [
-            {
-              tracks: [
-                {
-                  "artist-credit": [
-                    { name: "One Self", joinphrase: "", artist: { id: performer } },
-                  ],
-                  recording: { id: job.trackMbid },
-                },
-              ],
-            },
-          ],
-        })
-      : json({}, 404),
-  );
+  const album = {
+    id: albumMbid,
+    title: "Hôtel Costes 9",
+    artistid: albumArtist,
+    artists: [
+      { id: performer, artistname: "One Self" },
+      { id: albumArtist, artistname: "Stéphane Pompougnac" },
+    ],
+    genres: ["downtempo"],
+  };
+  stubFetch(t, (url) => {
+    if (isReleaseLookup(url, releaseMbid)) {
+      return json({
+        media: [
+          {
+            tracks: [
+              {
+                "artist-credit": [{ name: "One Self", joinphrase: "", artist: { id: performer } }],
+                recording: { id: job.trackMbid },
+              },
+            ],
+          },
+        ],
+      });
+    }
+    return url.pathname === `/album/${albumMbid}` ? json(album) : json({}, 404);
+  });
   const filePath = makeAudio("bluebird.flac", ["-c:a", "flac"]);
 
   await writeAudioMetadata(filePath, {
     ...job,
     artistName: "One Self",
+    albumName: "Hôtel Costes 9",
+    albumMbid,
     artistMbid: performer,
     trackName: "Bluebird",
     releaseMbid,

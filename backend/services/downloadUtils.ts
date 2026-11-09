@@ -8,11 +8,8 @@ import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 import { getAlbumByMbid } from "./providers/brainzmashProvider.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
-import {
-  musicbrainzGetReleaseAlbumArtist,
-  musicbrainzGetReleaseTrackCredits,
-} from "./apiClients/musicbrainz.ts";
-import { formatArtistCredit, type ArtistCredit } from "../../lib/artistCredit.ts";
+import { musicbrainzGetReleaseTrackCredits } from "./apiClients/musicbrainz.ts";
+import { formatArtistCredit } from "../../lib/artistCredit.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
@@ -326,13 +323,8 @@ export async function writeImportedFileMetadata(
   }
 }
 
-const albumGenres = async (albumMbid: string | null | undefined) =>
-  albumMbid
-    ? getAlbumByMbid(albumMbid).then(
-        (album) => album.genres.slice(0, 5),
-        () => undefined,
-      )
-    : undefined;
+const albumInfo = async (albumMbid: string | null | undefined) =>
+  albumMbid ? getAlbumByMbid(albumMbid).catch(() => null) : null;
 
 async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: DownloadTrackFields) {
   if (!releaseMbid || !trackMbid) return null;
@@ -344,22 +336,18 @@ async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: Dow
   return null;
 }
 
-async function releaseAlbumArtist({ releaseMbid }: DownloadTrackFields): Promise<ArtistCredit> {
-  return releaseMbid ? musicbrainzGetReleaseAlbumArtist(releaseMbid) : [];
-}
-
 // A compilation's tracks keep their own performer as the artist. The download
 // job knows which track it fetched, so its identity replaces the uploader's.
 export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
-  const [credit, releaseArtist] = await Promise.all([
-    trackCredit(metadata),
-    releaseAlbumArtist(metadata),
-  ]);
+  const [credit, album] = await Promise.all([trackCredit(metadata), albumInfo(metadata.albumMbid)]);
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
-  const albumArtist = formatArtistCredit(releaseArtist) || metadata.artistName;
-  const albumArtistMbid = releaseArtist.find((entry) => entry.mbid)?.mbid || metadata.artistMbid;
+  const albumArtists = Array.isArray(album?.artists) ? album.artists : [];
+  const mainArtist =
+    albumArtists.find((entry) => entry.id === album?.artistId) || albumArtists[0] || null;
+  const albumArtist = mainArtist?.name || metadata.artistName;
+  const albumArtistMbid = mainArtist?.id || metadata.artistMbid;
   return writeAudioTags(
     filePath,
     {
@@ -380,7 +368,7 @@ export async function writeAudioMetadata(filePath: string, metadata: DownloadTra
       year: metadata.releaseYear,
       trackNumber: metadata.trackNumber,
       discNumber: metadata.discNumber,
-      genres: await albumGenres(metadata.albumMbid),
+      genres: album?.genres.slice(0, 5),
     },
     { identity: buildAurralIdentity(metadata) },
   );
