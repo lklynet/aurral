@@ -525,7 +525,6 @@ function GlobalSearch() {
     }
   };
 
-  let selectableCursor = -1;
   const emptySearchPlaceholder = inputFocused ? (
     <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
   ) : (
@@ -658,8 +657,7 @@ function GlobalSearch() {
                     );
                   }
                   if (row.kind !== "item") return null;
-                  selectableCursor += 1;
-                  const highlighted = selectableCursor === suggestionIndex;
+                  const highlighted = row.key === highlightedKey;
                   const item = row.item;
                   const label = getSuggestionTitle(item);
                   const meta = getSuggestionMeta(item);
