@@ -249,7 +249,12 @@ async function request(inputUrl: string, options: HttpOptions = {}): Promise<Htt
   };
 
   const body = options.body;
-  if (body != null && method !== "GET" && method !== "HEAD") {
+  if (body instanceof FormData) {
+    // The bundled undici cannot read Node's own FormData, so it is encoded here.
+    const encoded = new Response(body);
+    init.body = new Uint8Array(await encoded.arrayBuffer());
+    headers["Content-Type"] = String(encoded.headers.get("content-type"));
+  } else if (body != null && method !== "GET" && method !== "HEAD") {
     if (typeof body === "string" || body instanceof URLSearchParams || body instanceof Uint8Array) {
       init.body = body;
     } else {
@@ -272,6 +277,7 @@ async function request(inputUrl: string, options: HttpOptions = {}): Promise<Htt
       response = await requestFetch(url, { ...init, redirect: "manual" });
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
+      if (!/^https?:$/u.test(new URL(location, url).protocol)) break;
       if (redirectCount === MAX_REDIRECTS) {
         throw new HttpError(
           "Maximum number of redirects exceeded",

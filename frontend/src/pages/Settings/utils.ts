@@ -157,6 +157,15 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         priority: 20,
         ...(savedSettings.integrations?.tidarr || {}),
       },
+      qbittorrent: {
+        enabled: false,
+        url: "",
+        username: "",
+        password: "",
+        category: "aurral",
+        priority: 30,
+        ...(savedSettings.integrations?.qbittorrent || {}),
+      },
       ytdlp: {
         enabled: true,
         priority: 50,

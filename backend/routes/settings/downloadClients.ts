@@ -115,8 +115,9 @@ export default new Hono<AppEnv>()
   .get("/prowlarr/indexers", requireAuth, requireAdmin, async (c) => {
     try {
       const { prowlarrClient } = await import("../../services/prowlarrClient.ts");
-      const indexers = await prowlarrClient.listUsenetIndexers({ force: true });
-      return c.json({ indexers }, 200);
+      const usenet = await prowlarrClient.listIndexers("usenet", { force: true });
+      const torrent = await prowlarrClient.listIndexers("torrent");
+      return c.json({ indexers: [...usenet, ...torrent] }, 200);
     } catch (error) {
       return c.json(
         { error: "Failed to load Prowlarr indexers", message: asAppError(error)?.message },

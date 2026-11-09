@@ -92,6 +92,15 @@ export const integrationSettingsSchema = v.looseObject({
     priority: count,
     albumPriority: count,
   }),
+  qbittorrent: service({
+    enabled: flag,
+    url: text,
+    username: text,
+    password: text,
+    category: text,
+    priority: count,
+    albumPriority: count,
+  }),
   ytdlp: service({ enabled: flag, priority: count, stagingPath: text, cookiesPath: text }),
   deemix: service({
     enabled: flag,

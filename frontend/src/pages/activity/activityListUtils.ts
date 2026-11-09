@@ -13,6 +13,7 @@ const DOWNLOAD_CLIENTS: Partial<Record<string, string>> = {
   tidarr: "Tidarr",
   deemix: "deemix",
   ytdlp: "yt-dlp",
+  qbittorrent: "qBittorrent",
   share: "Aurral share",
 };
 

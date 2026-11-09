@@ -12,10 +12,11 @@ import { albumTarget, artistTarget, playlistSnapshot, tracksTarget } from "./plu
 import {
   albumDownloadResult,
   albumResults,
+  fileResults,
   searchResults,
   statusResult,
   trackDownloadResult,
-} from "./pluginDownloadSource.ts";
+} from "../download/downloadSource.ts";
 import { callPlugin, PluginError, stopPlugin, watchPluginLogs } from "./pluginHost.ts";
 import { playlistResult } from "./pluginImportList.ts";
 import {
@@ -150,6 +151,7 @@ const answerSchema = (call: string) => {
   if (call === "downloadSource.download") return trackDownloadResult;
   if (call === "downloadSource.downloadAlbum") return albumDownloadResult;
   if (call === "downloadSource.status") return statusResult;
+  if (call === "downloadSource.listFiles") return fileResults;
   if (call === "importList.fetch") return playlistResult;
   return v.unknown();
 };

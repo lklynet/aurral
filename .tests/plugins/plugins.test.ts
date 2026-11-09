@@ -266,6 +266,8 @@ test("safe mode hides plugin actions and refuses to run them", async () => {
 test("plugin folders that can't load are listed with the reason", async () => {
   await install("renamed", { id: "other" }, "");
   await install("future", { api: 2 }, "");
+  await install("nothing", { downloadSource: { tracks: false } }, "");
+  await install("fileless", { downloadSource: { files: true } }, "");
   await mkdir(path.join(pluginsDir(), "broken"), { recursive: true });
   await writeFile(path.join(pluginsDir(), "broken", "manifest.json"), "{");
 
@@ -274,6 +276,8 @@ test("plugin folders that can't load are listed with the reason", async () => {
   );
   assert.deepEqual(listed, {
     broken: "manifest.json is not valid JSON",
+    fileless: "manifest.json downloadSource: files needs albums",
+    nothing: "manifest.json downloadSource: needs tracks or albums",
     future: "Needs plugin API 2. This Aurral runs plugin API 1.",
     renamed: "The folder has to be named other",
   });
@@ -284,7 +288,7 @@ test("plugin folders that can't load are listed with the reason", async () => {
   assert.equal((await routes(admin).request("/plugins/broken", { method: "DELETE" })).status, 200);
   assert.deepEqual(
     (await listPlugins()).plugins.map((plugin) => plugin.id),
-    ["future", "renamed"],
+    ["fileless", "future", "nothing", "renamed"],
   );
 });
 

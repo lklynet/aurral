@@ -155,18 +155,41 @@ export interface AlbumResult {
 
 export type Pending = { pending: string };
 
+export type QualityTier =
+  | "flac-hires"
+  | "flac-standard"
+  | "mp3-320"
+  | "m4a-320"
+  | "mp3-256"
+  | "m4a-256"
+  | "mp3-192"
+  | "m4a-192"
+  | "mp3-128"
+  | "m4a-128";
+
+export type Upgrade = { currentTier: QualityTier | null } | null;
+
 export interface DownloadSource {
-  search(input: Base & { track: TrackRequest }): TrackResult[] | Promise<TrackResult[]>;
-  download(
+  search?(
+    input: Base & { track: TrackRequest; upgrade: Upgrade },
+  ): TrackResult[] | Promise<TrackResult[]>;
+  download?(
     input: Base & { result: TrackResult; directory: string },
   ): { path: string } | Pending | Promise<{ path: string } | Pending>;
-  searchAlbum?(input: Base & { album: AlbumRequest }): AlbumResult[] | Promise<AlbumResult[]>;
+  searchAlbum?(
+    input: Base & { album: AlbumRequest; upgrade: Upgrade },
+  ): AlbumResult[] | Promise<AlbumResult[]>;
   downloadAlbum?(
     input: Base & { result: AlbumResult; album: AlbumRequest; directory: string },
   ): Pending | void | Promise<Pending | void>;
+  listFiles?(
+    input: Base & { id: string },
+  ): { path: string; size: number }[] | null | Promise<{ path: string; size: number }[] | null>;
+  keepFile?(input: Base & { id: string; path: string }): unknown;
   status?(
     input: Base & { id: string; directory: string },
   ): { done: boolean; path?: string } | Promise<{ done: boolean; path?: string }>;
+  discard?(input: Base & { id: string }): unknown;
 }
 
 export interface ImportedPlaylist {

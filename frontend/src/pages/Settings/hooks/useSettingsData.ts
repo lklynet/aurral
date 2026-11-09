@@ -117,6 +117,14 @@ const defaultSettings = {
       apiKey: "",
       priority: 20,
     },
+    qbittorrent: {
+      enabled: false,
+      url: "",
+      username: "",
+      password: "",
+      category: "aurral",
+      priority: 30,
+    },
     ytdlp: {
       enabled: true,
       priority: 50,

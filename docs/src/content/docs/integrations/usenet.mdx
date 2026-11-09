@@ -35,9 +35,9 @@ Settings save automatically after each change.
 - **Music categories**: the Newznab audio categories. The default is `3000`.
 - **Result limit**: the most results for one search.
 
-After the connection test, Aurral lists the Usenet indexers from Prowlarr. Open each indexer and set its **Priority**. A lower number has a higher priority.
+After the connection test, Aurral lists the Usenet and torrent indexers from Prowlarr. Set each indexer's **Priority**, or turn it off for Aurral. A lower number has a higher priority.
 
-Each indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected. Choose a client to send every release from that indexer to it, even from a manual search with another client.
+Each Usenet indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected. Choose a client to send every release from that indexer to it, even from a manual search with another client.
 
 ## SABnzbd
 
@@ -98,7 +98,7 @@ Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playl
 
 ## Download source priority and fallback
 
-Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source has a **Track priority** (**Source priority** for yt-dlp), and Aurral tries lower numbers first. The defaults are:
+Aurral can use slskd, Usenet, Tidarr, deemix, qBittorrent, and yt-dlp together. Each source has a **Track priority** (**Source priority** for yt-dlp), and Aurral tries lower numbers first. The defaults are:
 
 | Source            | Default priority |
 | ----------------- | ---------------- |
@@ -106,13 +106,14 @@ Aurral can use slskd, Usenet, Tidarr, deemix, and yt-dlp together. Each source h
 | deemix            | `15`             |
 | SABnzbd or NZBGet | `20`             |
 | Tidarr            | `20`             |
+| qBittorrent       | `30`             |
 | yt-dlp            | `50`             |
 
 If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
 
-slskd, Usenet, Tidarr, and deemix also have an optional **Album priority**. An album you download uses it, and so do upgrades that look for one release for several tracks of an album at once. Every other download uses track priority, as does a source whose album priority is empty. For example, to get albums from Usenet in one download while flow and playlist tracks come from Soulseek file by file, set slskd's album priority to `20` and Usenet's to `10`.
+slskd, Usenet, Tidarr, deemix, and qBittorrent also have an optional **Album priority**. An album you download uses it, and so do upgrades that look for one release for several tracks of an album at once. Every other download uses track priority, as does a source whose album priority is empty. For example, to get albums from Usenet in one download while flow and playlist tracks come from Soulseek file by file, set slskd's album priority to `20` and Usenet's to `10`.
 
-Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, Tidarr, and deemix, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, Tidarr, and deemix, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
+Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, Tidarr, deemix, and qBittorrent, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, Tidarr, deemix, and qBittorrent, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
 
 The release is the edition that Aurral asked for, with its full tracklist. A source supplies it only when its folder, album, or download holds every track of that release and no other song. A deluxe edition with a bonus track and a shorter edition are different releases. A second copy of a song in another format is fine. Aurral downloads or imports only the tracks you want from it. Tracks that no release fills continue on their own through all sources, in priority order. If the metadata service cannot be reached before the release step, Aurral checks again each minute for up to 30 minutes, then searches for each track. If it cannot be reached after a release has finished downloading, Aurral keeps the download and checks again each minute for up to 30 minutes before it searches for each track.
 

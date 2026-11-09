@@ -4,6 +4,8 @@ import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { isNzbSource, type UsenetClientKey } from "../usenetClientCommon.ts";
+import { nativeDownloadSource } from "../download/nativeSources.ts";
+import { discardSourceWork } from "../download/sourcePipeline.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { DownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
@@ -343,6 +345,19 @@ async function cancelYtdlpWork(payloads: CancellationPayload[], jobs: Cancellati
   return { stagingJobs: ids.size };
 }
 
+async function cancelNativeSourceWork(payloads: CancellationPayload[]) {
+  let discarded = 0;
+  for (const payload of payloads) {
+    const source = nativeDownloadSource(String(payload?.source ?? ""));
+    const jobId = normalizeId(payload?.jobId);
+    if (!source || !jobId) continue;
+    const pendingId = typeof payload?.pendingId === "string" ? payload.pendingId : null;
+    await discardSourceWork({ jobId, phase: "cancelled", pendingId }, source);
+    discarded += 1;
+  }
+  return { discarded };
+}
+
 function fulfilledValue<T>(result: PromiseSettledResult<T>) {
   if (result.status === "rejected") throw result.reason;
   return result.value;
@@ -360,6 +375,7 @@ async function cancelProviderWork(
     cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
     cancelUsenetWork("tidarr", "Tidarr", payloads, jobs),
     cancelYtdlpWork(payloads, jobs),
+    cancelNativeSourceWork(payloads),
   ]);
   const failures = results
     .filter((result) => result.status === "rejected")
@@ -367,7 +383,7 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, tidarr, ytdlp] = results;
+  const [slskd, deemix, sabnzbd, nzbget, tidarr, ytdlp, native] = results;
   return {
     slskd: fulfilledValue(slskd),
     deemix: fulfilledValue(deemix),
@@ -375,6 +391,7 @@ async function cancelProviderWork(
     nzbget: fulfilledValue(nzbget),
     tidarr: fulfilledValue(tidarr),
     ytdlp: fulfilledValue(ytdlp),
+    native: fulfilledValue(native),
   };
 }
 

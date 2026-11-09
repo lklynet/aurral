@@ -47,6 +47,8 @@ const releaseSchema = v.looseObject({
   indexer: v.nullish(v.string()),
   publishDate: v.optional(v.string()),
   downloadUrl: v.nullish(v.string()),
+  magnetUrl: v.nullish(v.string()),
+  seeders: v.nullish(v.number()),
   protocol: v.optional(v.string()),
   categories: categoriesSchema,
 });
@@ -97,7 +99,10 @@ type ProwlarrConnectionStatus = {
   indexers?: NormalizedIndexer[];
 };
 
+type Protocol = "usenet" | "torrent";
+
 type ProwlarrSearchOptions = {
+  protocol?: Protocol;
   indexers?: NormalizedIndexer[];
   categories?: number[];
   type?: string;
@@ -229,13 +234,17 @@ const isTidarrIndexer = (indexer: ProwlarrIndexer) =>
     (field) => field.name === "apiPath" && /\/api\/lidarr\/*$/u.test(String(field.value ?? "")),
   ) === true;
 
-function listMusicUsenetIndexers(indexers: ProwlarrIndexer[], settings: ProwlarrSettings) {
+function listMusicIndexers(
+  indexers: ProwlarrIndexer[],
+  settings: ProwlarrSettings,
+  protocol: Protocol,
+) {
   return indexers
     .filter((indexer) => !isTidarrIndexer(indexer))
     .map((indexer) => normalizeIndexer(indexer, settings))
     .filter(
       (entry) =>
-        entry.protocol === "usenet" &&
+        entry.protocol === protocol &&
         entry.supportsSearch &&
         hasMusicCategory(entry.categories, settings.categories),
     );
@@ -277,6 +286,8 @@ function normalizeRelease(release: ProwlarrRelease) {
     indexer: release.indexer?.trim() || null,
     publishDate: release.publishDate || null,
     downloadUrl: resolveProwlarrUrl(release.downloadUrl),
+    ...(release.magnetUrl?.trim() && { magnetUrl: release.magnetUrl.trim() }),
+    ...(release.seeders != null && { seeders: release.seeders }),
     protocol: release.protocol ?? "",
     categories: release.categories?.map((category) => category.id) ?? [],
   };
@@ -410,7 +421,8 @@ export class ProwlarrClient {
         service: "Prowlarr",
         endpoint: "/api/v1/indexer",
       });
-      const usenet = listMusicUsenetIndexers(indexers, settings);
+      const usenet = listMusicIndexers(indexers, settings, "usenet");
+      const torrent = listMusicIndexers(indexers, settings, "torrent");
       const result = {
         ok: true,
         configured: true,
@@ -420,8 +432,8 @@ export class ProwlarrClient {
         indexerCount: indexers.length,
         usenetIndexerCount: usenet.length,
         enabledUsenetIndexerCount: usenet.filter((entry) => entry.enabled).length,
-        indexers: usenet,
-        message: `Prowlarr is connected with ${usenet.length} Usenet indexer(s)`,
+        indexers: [...usenet, ...torrent],
+        message: `Prowlarr is connected with ${usenet.length} Usenet and ${torrent.length} torrent indexer(s)`,
       };
       connectionCache = { checkedAt: Date.now(), result };
       return result;
@@ -439,7 +451,7 @@ export class ProwlarrClient {
 
   // Every search reads the indexer list, so it is kept for a few minutes.
   // The settings page asks for a fresh list.
-  async listUsenetIndexers({ force = false }: { force?: boolean } = {}) {
+  async listIndexers(protocol: Protocol, { force = false }: { force?: boolean } = {}) {
     const settings = getSettings();
     if (!this.isConfigured()) return [];
     const key = `${settings.url}\0${settings.apiKey}`;
@@ -457,14 +469,19 @@ export class ProwlarrClient {
         }),
       };
     }
-    return listMusicUsenetIndexers(indexerCache.indexers, settings).sort((left, right) => {
+    return listMusicIndexers(indexerCache.indexers, settings, protocol).sort((left, right) => {
       if (left.priority !== right.priority) return left.priority - right.priority;
       return left.name.localeCompare(right.name);
     });
   }
 
   async getEnabledUsenetIndexers() {
-    const indexers = await this.listUsenetIndexers();
+    const indexers = await this.listIndexers("usenet");
+    return indexers.filter((entry) => entry.enabled);
+  }
+
+  async getEnabledTorrentIndexers() {
+    const indexers = await this.listIndexers("torrent");
     return indexers.filter((entry) => entry.enabled);
   }
 
@@ -473,10 +490,13 @@ export class ProwlarrClient {
       throw new Error("Prowlarr is not configured");
     }
     const settings = getSettings();
+    const protocol = options.protocol ?? "usenet";
     const indexers =
       Array.isArray(options.indexers) && options.indexers.length > 0
         ? options.indexers
-        : await this.getEnabledUsenetIndexers();
+        : protocol === "torrent"
+          ? await this.getEnabledTorrentIndexers()
+          : await this.getEnabledUsenetIndexers();
     if (indexers.length === 0) return [];
     const queryString = buildSearchParams({
       query,
@@ -496,7 +516,12 @@ export class ProwlarrClient {
     }
     return readMany(releaseSchema, response.data, { service: "Prowlarr", endpoint })
       .map(normalizeRelease)
-      .filter((release) => release.protocol === "usenet" && release.downloadUrl && release.title);
+      .filter(
+        (release) =>
+          release.protocol === protocol &&
+          (release.downloadUrl || release.magnetUrl) &&
+          release.title,
+      );
   }
 
   // Like Lidarr, Aurral fetches the NZB itself and hands the download client

@@ -44,6 +44,7 @@ const SENSITIVE_PATHS = [
   ["prowlarr", "apiKey"],
   ["nzbget", "password"],
   ["tidarr", "apiKey"],
+  ["qbittorrent", "password"],
   ["gotify", "token"],
   ["lastfm", "apiKey"],
   ["google", "clientSecret"],

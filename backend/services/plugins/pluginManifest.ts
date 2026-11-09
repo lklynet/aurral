@@ -70,7 +70,18 @@ export const pluginManifestSchema = v.object({
     [],
   ),
   downloadSource: v.optional(
-    v.nullable(v.object({ albums: v.optional(v.boolean(), false) })),
+    v.nullable(
+      v.pipe(
+        v.object({
+          tracks: v.optional(v.boolean(), true),
+          albums: v.optional(v.boolean(), false),
+          files: v.optional(v.boolean(), false),
+          upgrades: v.optional(v.boolean(), false),
+        }),
+        v.check((source) => source.tracks || source.albums, "needs tracks or albums"),
+        v.check((source) => !source.files || source.albums, "files needs albums"),
+      ),
+    ),
     null,
   ),
   importList: v.optional(
@@ -120,7 +131,11 @@ export function pluginCapabilities(manifest: PluginManifest) {
       ? [
           {
             key: "downloadSource",
-            label: manifest.downloadSource.albums ? "Tracks and albums" : "Tracks",
+            label: !manifest.downloadSource.albums
+              ? "Tracks"
+              : manifest.downloadSource.tracks
+                ? "Tracks and albums"
+                : "Albums",
             kind: "Download source",
           },
         ]

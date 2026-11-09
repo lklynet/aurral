@@ -308,6 +308,7 @@ export function activePluginSources() {
       configured: true,
       priority: plugin.priority,
       albums: plugin.manifest.downloadSource?.albums === true,
+      upgrades: plugin.manifest.downloadSource?.upgrades === true,
     }));
 }
 

@@ -120,11 +120,13 @@ export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJo
       if (file) {
         downloadTracker.recordDeniedSource(job.id, "slskd", `${raw?.user}\0${file.file}`);
       }
-    } else if (isNzbSource(payload.source) && typeof guid === "string" && guid) {
-      downloadTracker.recordDeniedSource(job.id, payload.source, guid);
-    } else if (payload.source === "deemix" && raw?.albumId) {
-      downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
-    } else if (payload.source?.startsWith("plugin:") && typeof raw?.id === "string") {
+    } else if (isNzbSource(payload.source)) {
+      if (typeof guid === "string" && guid)
+        downloadTracker.recordDeniedSource(job.id, payload.source, guid);
+    } else if (payload.source === "deemix") {
+      if (raw?.albumId)
+        downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
+    } else if (typeof raw?.id === "string") {
       downloadTracker.recordDeniedSource(job.id, payload.source, `album:${raw.id}`);
     }
   }

@@ -52,6 +52,7 @@ const INTEGRATION_KEYS = [
   "nzbget",
   "sabnzbd",
   "tidarr",
+  "qbittorrent",
   "ytdlp",
   "deemix",
   "lastfm",

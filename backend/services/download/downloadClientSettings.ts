@@ -9,6 +9,7 @@ import { SabnzbdClient, sabnzbdClient, sabnzbdSettings } from "../sabnzbdClient.
 import { TidarrClient, tidarrClient, tidarrSettings } from "../tidarrClient.ts";
 import { YtdlpClient, ytdlpClient, ytdlpSettings } from "../ytdlpClient.ts";
 import { DeemixClient, deemixClient, deemixSettings } from "../deemixClient.ts";
+import { QbittorrentClient, qbittorrentClient, qbittorrentSettings } from "../qbittorrentClient.ts";
 
 const definitions = Object.freeze({
   slskd: slskdSettings,
@@ -17,6 +18,7 @@ const definitions = Object.freeze({
   sabnzbd: sabnzbdSettings,
   tidarr: tidarrSettings,
   deemix: deemixSettings,
+  qbittorrent: qbittorrentSettings,
 });
 
 const factories = {
@@ -26,6 +28,7 @@ const factories = {
   sabnzbd: () => new SabnzbdClient(),
   tidarr: () => new TidarrClient(),
   deemix: () => new DeemixClient(),
+  qbittorrent: () => new QbittorrentClient(),
 };
 
 export const downloadClientRegistry = new DownloadClientRegistry([
@@ -35,6 +38,7 @@ export const downloadClientRegistry = new DownloadClientRegistry([
   sabnzbdClient,
   tidarrClient,
   deemixClient,
+  qbittorrentClient,
 ]);
 
 export function getDownloadClientSettings() {
@@ -48,6 +52,7 @@ type BuiltInDownloadClients = {
   sabnzbd: SabnzbdClient;
   tidarr: TidarrClient;
   deemix: DeemixClient;
+  qbittorrent: QbittorrentClient;
 };
 
 export function getDownloadClient<Key extends keyof BuiltInDownloadClients>(

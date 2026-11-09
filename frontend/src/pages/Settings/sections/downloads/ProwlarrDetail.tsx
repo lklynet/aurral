@@ -96,8 +96,8 @@ export function ProwlarrDetail() {
     try {
       const { data } = await indexersQuery.refetch({ throwOnError: true });
       const count = data?.indexers?.length || 0;
-      if (count > 0) showSuccess(`Loaded ${count} Usenet indexer(s)`);
-      else showInfo("No usable Usenet indexers found in Prowlarr");
+      if (count > 0) showSuccess(`Loaded ${count} indexer(s)`);
+      else showInfo("No usable audio indexers found in Prowlarr");
     } catch (error) {
       const failure = readApiError(error);
       showError(
@@ -211,7 +211,7 @@ export function ProwlarrDetail() {
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup
-        title="Usenet indexers"
+        title="Indexers"
         actions={
           <button
             type="button"
@@ -228,7 +228,7 @@ export function ProwlarrDetail() {
           <p className="settings-group__note">Connect Prowlarr to load its indexers.</p>
         ) : indexers.length === 0 ? (
           loadingIndexers ? null : (
-            <p className="settings-group__note">Prowlarr returned no Usenet audio indexers.</p>
+            <p className="settings-group__note">Prowlarr returned no audio indexers.</p>
           )
         ) : (
           <div className="settings-table-wrap">
@@ -236,6 +236,7 @@ export function ProwlarrDetail() {
               <thead>
                 <tr>
                   <th scope="col">Indexer</th>
+                  <th scope="col">Type</th>
                   <th scope="col">Priority</th>
                   <th scope="col">Download client</th>
                   <th scope="col" className="settings-table__actions">
@@ -254,6 +255,7 @@ export function ProwlarrDetail() {
                           <span className="downloads-muted"> Off in Prowlarr</span>
                         ) : null}
                       </td>
+                      <td>{indexer.protocol === "torrent" ? "Torrent" : "Usenet"}</td>
                       <td>
                         <SettingsInput
                           className="downloads-priority"
@@ -271,18 +273,25 @@ export function ProwlarrDetail() {
                         />
                       </td>
                       <td>
-                        <Select
-                          aria-label={`${indexer.name} download client`}
-                          value={state.downloadClient ?? ""}
-                          onChange={(downloadClient) =>
-                            updateIndexer(indexer.id, {
-                              enabled: state.enabled,
-                              priority: state.priority,
-                              ...(downloadClient && { downloadClient }),
-                            })
-                          }
-                          options={[{ value: "", label: "Automatic" }, ...DOWNLOAD_CLIENT_OPTIONS]}
-                        />
+                        {indexer.protocol === "torrent" ? (
+                          "qBittorrent"
+                        ) : (
+                          <Select
+                            aria-label={`${indexer.name} download client`}
+                            value={state.downloadClient ?? ""}
+                            onChange={(downloadClient) =>
+                              updateIndexer(indexer.id, {
+                                enabled: state.enabled,
+                                priority: state.priority,
+                                ...(downloadClient && { downloadClient }),
+                              })
+                            }
+                            options={[
+                              { value: "", label: "Automatic" },
+                              ...DOWNLOAD_CLIENT_OPTIONS,
+                            ]}
+                          />
+                        )}
                       </td>
                       <td className="settings-table__actions">
                         <PillToggle

@@ -9,7 +9,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.ts";
 import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.ts";
-import { getEnabledDownloadSources } from "./downloadSourceService.ts";
+import { getEnabledDownloadSources, upgradeSourceIds } from "./downloadSourceService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.ts";
@@ -195,10 +195,9 @@ export async function reclassifyQualityJobs({ enqueue = false }: { enqueue?: boo
   return { classified, queued };
 }
 
-const UPGRADE_SOURCE_IDS = new Set(["slskd", "usenet", "tidarr", "deemix"]);
-
 function hasUpgradeSource() {
-  return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
+  const ids = upgradeSourceIds();
+  return getEnabledDownloadSources().some((source) => ids.includes(source.id));
 }
 
 async function readUpgradeSearchContext(job: QualityJob) {
