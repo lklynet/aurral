@@ -110,7 +110,7 @@ function UserProfileMenu() {
             </li>
             <li role="none">
               <a
-                href="https://github.com/sponsors/lklynet/"
+                href="https://docs.aurral.org/sponsorship/"
                 target="_blank"
                 rel="noopener noreferrer"
                 role="menuitem"

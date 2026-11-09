@@ -18,7 +18,8 @@
   <a href="https://aurral.org">Website</a> ·
   <a href="https://docs.aurral.org/">Docs</a> ·
   <a href="https://discord.gg/cpPYfgVURJ">Discord</a> ·
-  <a href="https://github.com/sponsors/lklynet/">Sponsor</a>
+  <a href="https://github.com/sponsors/lklynet/">Sponsor</a> ·
+  <a href="https://buymeacoffee.com/lkly">Buy me a coffee</a>
 </p>
 
 <p align="center">
@@ -59,7 +60,7 @@ Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid) and 
 
 ## Sponsors
 
-<p align="center">Aurral is free and open source. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> keep it that way.</p>
+<p align="center">Aurral is free and open source. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> and <a href="https://buymeacoffee.com/lkly">coffees</a> keep it that way.</p>
 
 <p align="center">
   <a href="https://github.com/bmikaili"><img src="https://github.com/bmikaili.png?size=120" width="60" alt="@bmikaili" /></a>
