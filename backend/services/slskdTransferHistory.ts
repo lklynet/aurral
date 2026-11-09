@@ -92,15 +92,28 @@ const recentPeerRowsStmt = db.prepare<
     LOWER(username) AS user_key,
     username,
     SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
-    SUM(CASE WHEN status IN (
-      'batch_empty',
-      'enqueue_failed',
-      'missing_file',
-      'transfer_failed',
-      'transfer_timeout',
-      'validation_failed'
-    ) THEN 1 ELSE 0 END) AS failures,
-    SUM(CASE WHEN status = 'validation_failed' THEN 1 ELSE 0 END) AS validation_failures,
+    SUM(CASE
+      WHEN status IN (
+        'batch_empty',
+        'enqueue_failed',
+        'missing_file',
+        'transfer_failed',
+        'transfer_timeout',
+        'validation_failed'
+      )
+      AND NOT (
+        status = 'validation_failed'
+        AND (
+          LOWER(COALESCE(reason, '')) LIKE 'quality-below-floor%'
+          OR LOWER(COALESCE(reason, '')) LIKE 'quality-not-an-upgrade%'
+        )
+      )
+      THEN 1 ELSE 0 END) AS failures,
+    SUM(CASE
+      WHEN status = 'validation_failed'
+        AND LOWER(COALESCE(reason, '')) NOT LIKE 'quality-below-floor%'
+        AND LOWER(COALESCE(reason, '')) NOT LIKE 'quality-not-an-upgrade%'
+      THEN 1 ELSE 0 END) AS validation_failures,
     MAX(CASE WHEN LOWER(reason) LIKE '%banned%' THEN created_at END) AS latest_ban_at,
     MAX(CASE WHEN status = 'success' THEN created_at END) AS latest_success_at,
     MAX(created_at) AS latest_at
