@@ -233,6 +233,7 @@ album, and responds with `monitored: true`.
 | `GET`  | `/api/artists/:mbid/similar`              | Similar artists                                                   |
 | `GET`  | `/api/artists/:mbid/video`                | Find a video for a named artist and track                         |
 | `GET`  | `/api/artists/:mbid/cover`                | Artist image metadata; `refresh=true` retries a stale link        |
+| `GET`  | `/api/artists/:mbid/image`                | Artist image: Library art, or a redirect; `w` picks a width       |
 | `GET`  | `/api/artists/:mbid/preview`              | Deezer top tracks and preview URLs                                |
 | `GET`  | `/api/deezer/preview/:trackId.mp3`        | Redirect to a current Deezer preview for a track                  |
 | `GET`  | `/api/artists/:mbid/stream`               | Stream progressive artist metadata with SSE                       |

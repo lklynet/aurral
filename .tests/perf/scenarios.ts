@@ -98,6 +98,7 @@ export const scenarios: Scenario[] = [
   },
   { name: "favorites", requests: () => ["/api/library/favorites"] },
   { name: "search", requests: () => ["/api/search/library?q=perf%20track%20001&limit=20"] },
+  { name: "discover recently added", requests: () => ["/api/library/recent"] },
   { name: "discover artist", requests: () => [`/api/artists/${DISCOVER_ARTIST}?mode=core`] },
   { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },

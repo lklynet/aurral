@@ -67,7 +67,6 @@ function TopResultArtwork({
         artistName={item.name}
         alt={item.name}
         className="search-top-artist__image"
-        showLoading={false}
         enablePreviewPlayback
         isInLibrary={isInLibrary}
       />

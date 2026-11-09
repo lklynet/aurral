@@ -118,7 +118,6 @@ function TopPick({
         alt=""
         className="recommended-spotlight__cover"
         loading="eager"
-        showLoading={false}
         thumbnail={false}
         sizes="200px"
       />
@@ -196,7 +195,6 @@ function TopPick({
                 artistName={seed}
                 alt={seed}
                 className="recommended-spotlight__seed"
-                showLoading={false}
               />
             ))}
           </div>
@@ -294,7 +292,6 @@ function TasteAndSeeds({ data, context }: { data: DiscoverData; context: Recomme
                     artistName={seed.name}
                     alt=""
                     className="recommended-seeds__avatar"
-                    showLoading={false}
                   />
                   <span className="recommended-seeds__name">{seed.name}</span>
                   <span className="recommended-seeds__count">{seed.count}</span>

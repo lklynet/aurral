@@ -66,5 +66,13 @@ export default function ArtworkImage({
     );
   }
 
-  return <img {...props} src={src} loading={loading} decoding={decoding} />;
+  return (
+    <img
+      {...props}
+      src={src}
+      sizes={props.srcSet ? sizes : undefined}
+      loading={loading}
+      decoding={decoding}
+    />
+  );
 }

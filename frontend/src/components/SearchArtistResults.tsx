@@ -129,7 +129,6 @@ function SearchArtistResults({
               artistName={artist.name}
               alt={artist.name}
               className="artist-discover-card__image"
-              showLoading={false}
               enablePreviewPlayback
               isInLibrary={!!libraryLookup[artistKey]}
             />
