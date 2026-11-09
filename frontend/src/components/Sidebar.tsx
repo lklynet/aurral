@@ -29,7 +29,7 @@ import { useSiteLogo } from "../hooks/useSiteLogo";
 import TooltipButton from "./TooltipButton";
 import SidebarPlayer from "./SidebarPlayer";
 import SidebarPlaylists from "./SidebarPlaylists";
-import { useNavBeta } from "../navigation/navBeta.ts";
+import { useLegacyNav } from "../navigation/legacyNav.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
@@ -64,7 +64,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
     getSidebarStageBackdropEnabled(user?.id),
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
-  const navBeta = useNavBeta();
+  const newNav = !useLegacyNav();
   const sectionId = useSectionNav()?.id;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const { hasReview: hasReviewAlert, status: playlistStatus } = useDownloadWorkerActivity({
@@ -151,7 +151,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
 
   const isNavItemActive = useCallback(
     (item: SidebarNavItem) => {
-      if (navBeta && item.section) return item.section === sectionId;
+      if (newNav && item.section) return item.section === sectionId;
       if (item.section === "discover") return isDiscoverSectionActive;
       if (item.section === "library") return isOnLibrary;
       if (item.section === "shows") return isOnShows;
@@ -168,7 +168,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       isOnShows,
       isOnWanted,
       location.pathname,
-      navBeta,
+      newNav,
       sectionId,
     ],
   );
@@ -176,7 +176,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   const navItems = useMemo(() => {
     const allowed = (item: SidebarNavItem) =>
       !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission];
-    if (navBeta) {
+    if (newNav) {
       const items: SidebarNavItem[] = [
         { path: "/", label: "Discover", icon: Sparkles, section: "discover" },
         { path: "/library", label: "Library", icon: Library, section: "library" },
@@ -264,12 +264,12 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
       },
     ];
     return items.filter(allowed);
-  }, [navBeta, newsConfigured, ticketmasterConfigured, user]);
+  }, [newNav, newsConfigured, ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 
   const renderSubnav = (item: SidebarNavItem, activeId: string | null) => {
-    if (navBeta || isIcons || !isNavItemActive(item)) {
+    if (newNav || isIcons || !isNavItemActive(item)) {
       return null;
     }
     if (!item.subnav?.length && item.section !== "discover") {
@@ -340,7 +340,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
 
   const getNavGroupClassName = (item: SidebarNavItem, active: boolean) => {
     const classes = ["sidebar-nav-group"];
-    const hasSubnav = !navBeta && (item.subnav?.length || item.section === "discover");
+    const hasSubnav = !newNav && (item.subnav?.length || item.section === "discover");
     if (item.section === "discover") {
       classes.push("sidebar-nav-group--discover");
     }
@@ -372,7 +372,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         </RouteLink>
       </div>
       <aside
-        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"}${navBeta ? " sidebar-shell--beta" : ""} ${translateClass}`}
+        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"}${newNav ? " sidebar-shell--new" : ""} ${translateClass}`}
         aria-label="Primary navigation"
         style={{
           width: `${width}px`,
@@ -442,7 +442,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
             </nav>
           </div>
 
-          {navBeta && playlistStatus ? (
+          {newNav && playlistStatus ? (
             <SidebarPlaylists
               status={playlistStatus}
               iconsOnly={isIcons}

@@ -2432,7 +2432,7 @@ textarea:disabled {
   padding: 0.375rem 0;
 }
 
-.sidebar-shell--beta .sidebar-nav-wrap {
+.sidebar-shell--new .sidebar-nav-wrap {
   flex: none;
 }
 
@@ -3768,16 +3768,16 @@ textarea:disabled {
     display: flex;
   }
 
-  .app-shell[data-nav="beta"] .app-topbar {
+  .app-shell[data-nav="new"] .app-topbar {
     align-items: stretch;
     padding-bottom: 0;
   }
 
-  .app-shell[data-nav="beta"] :is(.app-topbar > .global-search, .app-header-actions) {
+  .app-shell[data-nav="new"] :is(.app-topbar > .global-search, .app-header-actions) {
     align-self: center;
   }
 
-  .app-shell[data-nav="beta"] .app-topbar-tabs {
+  .app-shell[data-nav="new"] .app-topbar-tabs {
     display: flex;
     min-width: 0;
     flex: 0 1 auto;
@@ -3785,11 +3785,11 @@ textarea:disabled {
     scrollbar-width: none;
   }
 
-  .app-shell[data-nav="beta"] .app-topbar {
+  .app-shell[data-nav="new"] .app-topbar {
     container: topbar / inline-size;
   }
 
-  .app-shell[data-nav="beta"] .app-topbar > .global-search {
+  .app-shell[data-nav="new"] .app-topbar > .global-search {
     margin-inline: auto 0;
   }
 
