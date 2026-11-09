@@ -485,13 +485,14 @@ test("track cancellation respects private flow ownership", async () => {
   assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).status, 200);
 });
 
-test("cancelling an album leader keeps its held peer and shared transfer running", async () => {
+test("cancelling an album leader after a restart keeps its held peer and shared transfer running", async () => {
   const fixture = createLibraryAlbum({ trackCount: 2 });
   const leader = fixture.jobFor(0);
   const peer = fixture.jobFor(1);
   downloadTracker.setDownloading(leader);
   downloadTracker.setDownloading(peer);
-  downloadTracker.markSlskdDispatched(leader);
+  const attempt = cancellation.beginDownloadAttempt(leader);
+  cancellation.setActiveDownloadAttemptId(peer, attempt);
   downloadTracker.updateDownloadMetadata(leader, {
     downloadSource: "deemix",
     downloadClientId: "shared-transfer",
@@ -502,12 +503,15 @@ test("cancelling an album leader keeps its held peer and shared transfer running
     jobId: leader,
     playlistId: "library",
     playlistGeneration: 0,
+    downloadAttemptId: attempt,
     phase: "poll",
     albumGrab: true,
     albumGroupJobIds: [leader, peer],
     queueUuid: "shared-transfer",
   };
   insertJob(db, "download-pipeline", payload);
+  downloadTracker.resetDownloadingToPending();
+  downloadTracker._load();
   const response = await apiRequest(`/api/playlists/jobs/${leader}/cancel`, "POST");
   assert.equal(response.status, 200);
   assert.equal(response.body.status, "cancelled");
