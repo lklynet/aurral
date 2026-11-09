@@ -684,16 +684,8 @@ function DiscoverPage() {
         const playlist = (id === "madeForYou" ? madeForYou : featuredPlaylists)[0];
         return playlist && { image: resolveAuthenticatedApiAssetUrl(playlist.artworkUrl) };
       }
-      case "recentReleases": {
-        const album = recentReleases[0];
-        return (
-          album && {
-            image: album.coverUrl,
-            mbid: album.artistMbid || album.foreignArtistId,
-            name: album.artistName,
-          }
-        );
-      }
+      case "recentReleases":
+        return recentReleases[0] && { image: recentReleases[0].coverUrl };
       case "news": {
         const article = newsArticles[0];
         return (
