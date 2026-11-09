@@ -395,6 +395,11 @@ function groupRepeats(rows: TaskQueueRow[]) {
 }
 
 const ACTIVE_ORDER: Partial<Record<TaskState, number>> = { running: 0, queued: 1, scheduled: 2 };
+const SUCCEEDED_SINCE = `EXISTS (
+  SELECT 1 FROM jobs later
+  WHERE later.queue = jobs.queue AND later.kind = jobs.kind AND later.payload = jobs.payload
+    AND later.state = 'done' AND later.finished_at > jobs.finished_at
+)`;
 
 const statements = {
   active: db.prepare<[number], JobRow>(
@@ -403,6 +408,7 @@ const statements = {
   ),
   finished: db.prepare<[number, number], JobRow>(
     `SELECT * FROM jobs WHERE state IN ('done', 'failed', 'cancelled') AND finished_at >= ?
+       AND NOT (state = 'failed' AND ${SUCCEEDED_SINCE})
      ORDER BY finished_at DESC, id DESC LIMIT ?`,
   ),
   stats: db.prepare<
@@ -422,7 +428,7 @@ const statements = {
       SUM(state = 'pending' AND run_at <= @now) AS queued,
       COUNT(DISTINCT CASE WHEN state = 'pending' AND run_at > @now THEN kind || payload END)
         AS scheduled,
-      SUM(state = 'failed' AND finished_at >= @since) AS failed,
+      SUM(state = 'failed' AND finished_at >= @since AND NOT ${SUCCEEDED_SINCE}) AS failed,
       MIN(CASE WHEN state = 'pending' AND run_at > @now THEN run_at END) AS next_run_at,
       MAX(CASE WHEN started_at >= @since THEN started_at END) AS last_run_at
     FROM jobs
