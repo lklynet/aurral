@@ -55,7 +55,7 @@ import { useArtistTint } from "../components/CollectionHeader";
 import { lastRecommendedPath, recommendedListPath } from "../navigation/recommendedPath";
 import { recommendationReason, seedNameSet } from "./recommendedRails";
 import StatePanel from "../components/StatePanel";
-import { asApiError } from "../utils/api/core.ts";
+import { asApiError, resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
 const loadServerLayout = () => parseResponse(usersClient.me["discover-layout"].$get());
@@ -116,7 +116,6 @@ function DiscoverPage() {
     appliedNearbyZip,
     setAppliedNearbyZip,
     canAddAlbum,
-    getLibraryArtistImage,
     getRecentReleaseKey,
     libraryDestination,
     handleRecentReleaseAlbumAction,
@@ -341,7 +340,7 @@ function DiscoverPage() {
                       id: artist.mbid || null,
                       libraryPath: `/library/artist/${encodeURIComponent(artist.id)}`,
                       name: artist.artistName,
-                      image: getLibraryArtistImage(artist),
+                      image: resolveAuthenticatedApiAssetUrl(artist.coverUrl) || null,
                       type: "Artist",
                       metaText: "",
                       subtitle: `Added ${formatRelativeTime(addedAt, { unit: "day" })}`,
@@ -670,7 +669,7 @@ function DiscoverPage() {
 
   const newestArtist = recentlyAdded[0];
   const tint = useArtistTint(
-    getLibraryArtistImage(newestArtist),
+    resolveAuthenticatedApiAssetUrl(newestArtist?.coverUrl),
     newestArtist?.mbid,
     newestArtist?.artistName,
   );

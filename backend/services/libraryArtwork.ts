@@ -114,6 +114,9 @@ const changedAlbumsStmt = db.prepare<
 const artistStmt = db.prepare<[number], Pick<LibraryArtistsRow, "mbid" | "name">>(
   "SELECT mbid, name FROM library_artists WHERE id = ?",
 );
+const artistByMbidStmt = db.prepare<[string], Pick<LibraryArtistsRow, "id">>(
+  "SELECT id FROM library_artists WHERE mbid = ? ORDER BY created_at, id LIMIT 1",
+);
 const artistAlbumsStmt = db.prepare<[number, number], Pick<LibraryAlbumsRow, "id">>(
   `SELECT id FROM library_albums WHERE artist_id = ? ${ARTIST_ALBUM_ORDER} LIMIT ?`,
 );
@@ -510,6 +513,11 @@ export function getLibraryArtwork(kind: LibraryArtworkKind, id: string) {
     lookups.set(key, lookup);
   }
   return lookup;
+}
+
+export function getLibraryArtistArtworkByMbid(mbid: string) {
+  const artist = artistByMbidStmt.get(mbid);
+  return artist ? getLibraryArtwork("artist", String(artist.id)) : Promise.resolve(null);
 }
 
 export async function pruneLibraryArtwork() {

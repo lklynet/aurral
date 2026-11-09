@@ -12871,6 +12871,7 @@ button.native-library-genre-row:focus-visible {
   position: relative;
   overflow: hidden;
   border-radius: inherit;
+  background: var(--aurral-surface-raised);
 }
 
 .artist-image-placeholder {
@@ -12883,43 +12884,15 @@ button.native-library-genre-row:focus-visible {
   border-radius: inherit;
 }
 
-.artist-image-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: var(--aurral-z-raised);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .artist-image-media {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
-}
-
-.artist-image-media.is-loading {
-  opacity: 0;
-}
-
-.artist-image-media.is-loaded {
-  opacity: 1;
 }
 
 .artist-image-icon {
   width: 33.333%;
   height: 33.333%;
-}
-
-.artist-image-loader {
-  width: 1.5rem;
-  height: 1.5rem;
-  color: var(--aurral-text-muted);
-}
-
-.artist-image-loader.is-dim {
-  opacity: 0.6;
 }
 
 .artist-image-preview-button {

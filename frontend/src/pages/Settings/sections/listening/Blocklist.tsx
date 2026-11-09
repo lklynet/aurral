@@ -190,7 +190,6 @@ function BlockSearch({
                           artistName={suggestion.artist.name}
                           alt=""
                           className="blocklist__image"
-                          showLoading={false}
                           sizes="1.75rem"
                         />
                       </span>
@@ -280,7 +279,6 @@ export function BlocklistDetail() {
                       artistName={name}
                       alt=""
                       className="blocklist__image"
-                      showLoading={false}
                       sizes="2rem"
                     />
                   </span>

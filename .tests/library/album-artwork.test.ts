@@ -610,6 +610,20 @@ describe("with sign-in required", () => {
     assert.deepEqual(requests, ["https://images.example/upcoming-artist.png"]);
   });
 
+  test("a Library artist's image link serves its Library art instead of the provider's", async (t) => {
+    stubImageHost(t, blue);
+    const mbid = "6c1f2e3d-4b5a-4c6d-8e7f-9a0b1c2d3e4f";
+    libraryStore.upsertLibraryArtist({ identityKey: "linked-artist", name: "Linked Artist", mbid });
+    dbOps.setImage(mbid, "https://images.example/linked-artist.png");
+
+    const response = await realFetch(
+      `${baseUrl}/api/artists/${mbid}/image?token=${encodeURIComponent(requireFixture(session).token)}`,
+      { redirect: "manual" },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await isBlue(Buffer.from(await response.arrayBuffer())), true);
+  });
+
   test("art for albums that leave the Library is pruned", async () => {
     const album = await albumFixture("pruned", [image]);
     assert.equal((await requestCover(album.id)).status, 200);
