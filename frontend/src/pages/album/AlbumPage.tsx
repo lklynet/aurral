@@ -325,6 +325,12 @@ function AlbumPage() {
     },
     [artistName, releaseCredits],
   );
+
+  const hasReleaseCredit = useCallback(
+    (track: ReleaseGroupTrack) => Boolean(track.mbid && releaseCredits?.credits[track.mbid]),
+    [releaseCredits],
+  );
+
   const ownedTrackMbids = useMemo(
     () => [
       ...(libraryInfo?.ownedTrackMbids || []),
@@ -401,8 +407,11 @@ function AlbumPage() {
       key: entry.key,
       number: entry.number,
       subtitle:
-        (!hasFile && entry.releaseTrack && creditFor(entry.releaseTrack)) ||
-        (isAlbumArtistCredit(track, libraryArtist) ? null : row.subtitle),
+        !hasFile && entry.releaseTrack && hasReleaseCredit(entry.releaseTrack)
+          ? creditFor(entry.releaseTrack)
+          : isAlbumArtistCredit(track, libraryArtist)
+            ? null
+            : row.subtitle,
       ...(hasFile && hasMissingTracks && { trailing: <OwnedTrackMark /> }),
       time: hasFile
         ? row.time

@@ -323,13 +323,8 @@ export async function writeImportedFileMetadata(
   }
 }
 
-const albumGenres = async (albumMbid: string | null | undefined) =>
-  albumMbid
-    ? getAlbumByMbid(albumMbid).then(
-        (album) => album.genres.slice(0, 5),
-        () => undefined,
-      )
-    : undefined;
+const albumInfo = async (albumMbid: string | null | undefined) =>
+  albumMbid ? getAlbumByMbid(albumMbid).catch(() => null) : null;
 
 async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: DownloadTrackFields) {
   if (!releaseMbid || !trackMbid) return null;
@@ -344,31 +339,36 @@ async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: Dow
 // A compilation's tracks keep their own performer as the artist. The download
 // job knows which track it fetched, so its identity replaces the uploader's.
 export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
-  const credit = await trackCredit(metadata);
+  const [credit, album] = await Promise.all([trackCredit(metadata), albumInfo(metadata.albumMbid)]);
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
+  const albumArtists = Array.isArray(album?.artists) ? album.artists : [];
+  const mainArtist =
+    albumArtists.find((entry) => entry.id === album?.artistId) || albumArtists[0] || null;
+  const albumArtist = mainArtist?.name || metadata.artistName;
+  const albumArtistMbid = mainArtist?.id || metadata.artistMbid;
   return writeAudioTags(
     filePath,
     {
       title: metadata.trackName,
       artist: credit ? formatArtistCredit(credit) : performer || metadata.artistName,
       artists: credit?.map((entry) => entry.name),
-      albumArtist: metadata.artistName,
+      albumArtist,
       album: metadata.albumName,
       artistMbid: credit
         ? credit.flatMap((entry) => (entry.mbid ? [entry.mbid] : []))
         : performer
           ? undefined
           : metadata.artistMbid,
-      albumArtistMbid: metadata.artistMbid,
+      albumArtistMbid,
       releaseGroupMbid: metadata.albumMbid,
       releaseMbid: metadata.releaseMbid,
       recordingMbid: metadata.trackMbid,
       year: metadata.releaseYear,
       trackNumber: metadata.trackNumber,
       discNumber: metadata.discNumber,
-      genres: await albumGenres(metadata.albumMbid),
+      genres: album?.genres.slice(0, 5),
     },
     { identity: buildAurralIdentity(metadata) },
   );
