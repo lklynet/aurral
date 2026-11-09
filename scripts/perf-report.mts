@@ -91,13 +91,10 @@ export function renderComparison({ base, head }: Comparison) {
     };
   });
   const slower = rows.filter((row) => typeof row !== "string" && row.verdict === "slower").length;
-  const markdown = [
-    "## Performance",
-    "",
-    slower
-      ? `${slower} ${slower === 1 ? "measurement is" : "measurements are"} slower than main.`
-      : "Nothing is slower than main.",
-    "",
+  const headline = slower
+    ? `${slower} ${slower === 1 ? "measurement is" : "measurements are"} slower than main.`
+    : "Nothing is slower than main.";
+  const details = [
     `${firstHead.seed.tracks.toLocaleString("en-US")} tracks, ${head.length} alternating rounds per side, medians.`,
     "",
     "| | main | this PR | change | queries |",
@@ -105,12 +102,17 @@ export function renderComparison({ base, head }: Comparison) {
     ...rows.map((row) => (typeof row === "string" ? row : row.line)),
     "",
   ].join("\n");
-  return { markdown, slower };
+  const markdown = `## Performance\n\n${headline}\n\n${details}`;
+  return { markdown, headline, details, slower };
 }
 
 if (import.meta.main) {
   const [file] = process.argv.slice(2);
   if (!file) throw new Error("Usage: node scripts/perf-report.mts <comparison.json>");
-  const { markdown } = renderComparison(parseComparison(JSON.parse(readFileSync(file, "utf8"))));
-  process.stdout.write(markdown);
+  const { headline, details, slower } = renderComparison(
+    parseComparison(JSON.parse(readFileSync(file, "utf8"))),
+  );
+  process.stdout.write(
+    `<details${slower ? " open" : ""}>\n<summary>Performance: ${headline}</summary>\n\n${details}\n</details>\n`,
+  );
 }
