@@ -39,7 +39,6 @@ const [
   { systemTaskQueue, systemTaskSchema },
   { processSystemTask },
   { clearMetadataProviderCaches },
-  { libraryManager },
   { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "aurral-monitoring",
@@ -56,7 +55,6 @@ const [
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
 );
 
@@ -679,50 +677,6 @@ test("artist monitoring skips albums managed by Lidarr", async () => {
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), [releases.firstAlbum.id, releases.latestEp.id].sort());
   assert.equal(lidarrCalls.length, 0);
-});
-
-test("a Lidarr album follow-up never reactivates an Aurral artist that shares its numeric id", async () => {
-  const added = await addAurralArtist("none");
-  const sharedId = String(added.body.artist.id);
-  const stubbed = {
-    isConfigured: lidarrClient.isConfigured,
-    getArtist: lidarrClient.getArtist,
-    getAlbum: lidarrClient.getAlbum,
-  };
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: Number(sharedId),
-    artistName: "Lidarr Artist",
-    foreignArtistId: otherArtistMbid,
-    monitored: true,
-  });
-  lidarrClient.getAlbum = async () => ({
-    foreignAlbumId: "lidarr-album",
-    id: 9,
-    artistId: Number(sharedId),
-    title: "Lidarr Album",
-    monitored: true,
-  });
-
-  try {
-    await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
-    await runQueuedMonitoringTasks();
-    assert.equal(storedMonitoring(), null);
-    assert.deepEqual(queuedAlbumMbids(), []);
-
-    lidarrClient.getArtist = async () => {
-      throw new Error("Lidarr request failed with 503");
-    };
-    lidarrClient.getAlbum = async () => {
-      throw new Error("Lidarr request failed with 503");
-    };
-    await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
-    await runQueuedMonitoringTasks();
-    assert.equal(storedMonitoring(), null);
-    assert.deepEqual(queuedAlbumMbids(), []);
-  } finally {
-    Object.assign(lidarrClient, stubbed);
-  }
 });
 
 test("queued artist acquisition stops after monitoring is disabled or the rules change", async () => {

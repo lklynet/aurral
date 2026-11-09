@@ -45,8 +45,6 @@ test("Lidarr Download webhook marks the matching request available", async () =>
     metadata: {
       albumId: 42,
       albumName: "Blue Train",
-      artistName: "John Coltrane",
-      artistMbid: "artist-mbid",
       userId: 7,
       username: "alice",
     },
@@ -54,14 +52,8 @@ test("Lidarr Download webhook marks the matching request available", async () =>
 
   const response = await handleLidarrWebhook({
     eventType: "Download",
-    album: {
-      id: 42,
-      title: "Blue Train",
-      artist: {
-        artistName: "John Coltrane",
-        foreignArtistId: "artist-mbid",
-      },
-    },
+    artist: { id: 3, name: "John Coltrane", mbId: "artist-mbid" },
+    album: { id: 42, mbId: "album-mbid", title: "Blue Train" },
   });
 
   assert.deepEqual(await response.json(), { handled: true });
@@ -78,7 +70,11 @@ test("Lidarr Download webhook marks the matching request available", async () =>
   assert.equal(entry.status_label, "Downloaded");
   assert.ok(entry != null);
   assert.ok(entry.metadata != null);
-  assert.equal(JSON.parse(entry.metadata).username, "alice");
+  assert.partialDeepStrictEqual(JSON.parse(entry.metadata), {
+    username: "alice",
+    artistName: "John Coltrane",
+    artistMbid: "artist-mbid",
+  });
 });
 
 test("Lidarr Download webhook ignores unrelated albums", async () => {
@@ -136,27 +132,10 @@ test("Lidarr Download webhook matches a request through its album metadata", asy
   assert.equal(entry.status_label, "Downloaded");
   assert.ok(entry != null);
   assert.ok(entry.metadata != null);
-  const metadata = JSON.parse(entry.metadata);
-  assert.equal(metadata.albumId, "42");
-  assert.equal(metadata.albumName, "Blue Train");
-});
-
-test("Lidarr Download webhook reads PascalCase fields", async () => {
-  upsertAurralHistory({
-    referenceId: "42",
-    kind: "album_requested",
-    title: "Requested Blue Train",
-    status: "processing",
-    statusLabel: "Searching",
-    metadata: { albumId: 42, albumName: "Blue Train" },
+  assert.partialDeepStrictEqual(JSON.parse(entry.metadata), {
+    albumId: "42",
+    albumName: "Blue Train",
   });
-
-  const response = await handleLidarrWebhook({
-    EventType: "Download",
-    Album: { Id: 42, Title: "Blue Train", Artist: { ArtistName: "John Coltrane" } },
-  });
-
-  assert.deepEqual(await response.json(), { handled: true });
 });
 
 test("Lidarr non-download events are acknowledged without changing history", async () => {

@@ -226,8 +226,7 @@ const geogaddi = {
   statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
 };
 
-test("requestAlbumFromSearch queues a new artist album search with the artist add", async () => {
-  let waitCalls = 0;
+test("requestAlbumFromSearch searches a new artist's album once, after the artist add", async () => {
   let artistAddOptions: Parameters<typeof libraryManager.addArtistWithResolvedOptions>[2];
 
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
@@ -254,13 +253,8 @@ test("requestAlbumFromSearch queues a new artist album search with the artist ad
       } as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
     },
   );
-  vi.spyOn(libraryManager, "waitForAlbumByMbidForArtist").mockImplementation(async () => {
-    waitCalls += 1;
-    return null;
-  });
   vi.spyOn(libraryManager, "addAlbum").mockImplementation(
     async (artistId, albumMbid, albumName, options) => {
-      assert.equal(waitCalls, 0);
       assert.equal(artistId, "7");
       assert.equal(albumMbid, "album-mbid");
       assert.equal(albumName, "Geogaddi");
@@ -291,7 +285,7 @@ test("requestAlbumFromSearch queues a new artist album search with the artist ad
   assert.equal(result.createdAlbum, true);
   assert.equal(result.triggeredSearch, true);
   assert.equal(result.album.id, "42");
-  assert.equal(artistAddOptions?.triggerSearch, true);
+  assert.equal(artistAddOptions?.triggerSearch, false);
 });
 
 test("requestAlbumFromSearch preserves an addAlbum conflict status", async () => {
@@ -380,10 +374,6 @@ test("addAlbum force-refreshes and searches an existing album", async () => {
   vi.spyOn(lidarrClient, "getAlbum").mockResolvedValue(existingAlbum);
   const addAlbum = vi.spyOn(lidarrClient, "addAlbum").mockResolvedValue(existingAlbum);
   const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});
-  vi.spyOn(libraryManager, "ensureRequestedAlbumMonitoring").mockImplementation(
-    async () => ({}) as Awaited<ReturnType<typeof libraryManager.ensureRequestedAlbumMonitoring>>,
-  );
-  vi.spyOn(libraryManager, "scheduleRequestedAlbumMonitoringRepair").mockImplementation(() => {});
 
   const album = await libraryManager.addAlbum(7, "fresh-album-mbid", "Geogaddi", {
     triggerSearch: true,
@@ -443,18 +433,14 @@ test("addAlbum reports when Lidarr already owns an album under another artist", 
 test("addAlbum monitors and searches the requested album after Lidarr conflict lag", async () => {
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
   vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: false });
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  vi.spyOn(lidarrClient, "getAlbumByMbid")
+    .mockResolvedValueOnce(undefined)
+    .mockResolvedValueOnce({ ...geogaddi, monitored: false });
   const updateArtistMonitoring = vi
     .spyOn(lidarrClient, "updateArtistMonitoring")
     .mockResolvedValue({ ...boardsOfCanada, monitored: true });
   vi.spyOn(lidarrClient, "addAlbum").mockRejectedValue(
     new Error("AlbumExistsValidator: This album has already been added"),
-  );
-  vi.spyOn(libraryManager, "waitForAlbumByMbidForArtist").mockImplementation(
-    async () =>
-      ({ ...geogaddi, monitored: false }) as Awaited<
-        ReturnType<typeof libraryManager.waitForAlbumByMbidForArtist>
-      >,
   );
   const monitorAlbum = vi.spyOn(lidarrClient, "monitorAlbum").mockResolvedValue(geogaddi);
   const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});

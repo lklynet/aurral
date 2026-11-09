@@ -15,7 +15,7 @@ test("a queue item without a remaining size reports no progress", async () => {
     { id: 1, status: "queued", size: 100 },
     { id: 2, status: "downloading", size: 100, sizeleft: 25 },
   ]);
-  vi.spyOn(lidarrClient, "getHistory").mockResolvedValue({ records: [] });
+  vi.spyOn(lidarrClient, "getHistory").mockResolvedValue([]);
   vi.spyOn(lidarrClient, "request").mockResolvedValue([]);
   invalidateAllDownloadStatusesCache();
 

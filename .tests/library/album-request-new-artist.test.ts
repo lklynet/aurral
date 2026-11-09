@@ -162,8 +162,6 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
   const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
-  const originalScheduleRequestedAlbumMonitoringRepair =
-    libraryManager.scheduleRequestedAlbumMonitoringRepair;
 
   await withFakeLidarr(
     () => ({
@@ -204,7 +202,6 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
           monitorOption: "none",
         }) as unknown as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
       libraryManager.ensureArtistMonitored = async (artist) => artist;
-      libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
       try {
         const result = await libraryManager.requestAlbumFromSearch({
@@ -239,8 +236,6 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
         libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
         libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
-        libraryManager.scheduleRequestedAlbumMonitoringRepair =
-          originalScheduleRequestedAlbumMonitoringRepair;
       }
     },
   );
@@ -251,8 +246,6 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
   const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
-  const originalScheduleRequestedAlbumMonitoringRepair =
-    libraryManager.scheduleRequestedAlbumMonitoringRepair;
 
   await withFakeLidarr(
     () => ({
@@ -295,7 +288,6 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
         } as unknown as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
       };
       libraryManager.ensureArtistMonitored = async (artist) => artist;
-      libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
       const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid.bind(lidarrClient);
       lidarrClient.getAlbumByMbid = async (albumMbid, options = {}) => {
@@ -339,8 +331,6 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
         libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
         libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
-        libraryManager.scheduleRequestedAlbumMonitoringRepair =
-          originalScheduleRequestedAlbumMonitoringRepair;
       }
     },
   );

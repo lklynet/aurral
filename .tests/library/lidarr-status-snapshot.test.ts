@@ -25,7 +25,7 @@ test("disabled status reads stay local", async () => {
   const snapshot = await getLidarrStatusSnapshot({ refresh: true });
   assert.deepEqual(snapshot.provider, {
     queue: [],
-    history: { records: [] },
+    history: [],
     commands: [],
   });
   assert.deepEqual(snapshot.statuses, {});
@@ -51,7 +51,7 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
     assert.deepEqual(args, [1, 200, "date", "descending", { forceRefresh: true }]);
     calls.history += 1;
     if (fail) throw new Error("provider unavailable");
-    return { records: [] };
+    return [];
   });
   vi.spyOn(lidarrClient, "getCommands").mockImplementation(async (options) => {
     assert.equal(options?.forceRefresh, true);
@@ -133,7 +133,7 @@ test("invalidating a failed refresh allows immediate recovery", async () => {
     calls.history += 1;
     if (refreshGate) await refreshGate.promise;
     if (fail) throw new Error("provider unavailable");
-    return { records: [] };
+    return [];
   });
   vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     calls.command += 1;
@@ -223,15 +223,13 @@ test("failed or stale history checks only those albums, each by id", async () =>
 
   const statuses = await getDownloadStatusesForAlbumIds(["100", "101", "102", "103", "104"], {
     queue: [],
-    history: {
-      records: [
-        { id: 100, albumId: 100, eventType: "grabbed", date: at(0) },
-        { id: 101, albumId: 101, eventType: "AlbumImportIncomplete", date: at(0) },
-        { id: 102, albumId: 102, eventType: "grabbed", date: at(16) },
-        { id: 103, albumId: 103, eventType: "DownloadFailed", date: at(0) },
-        { id: 104, albumId: 104, eventType: "DownloadFailed", date: at(0) },
-      ],
-    },
+    history: [
+      { id: 100, albumId: 100, eventType: "grabbed", date: at(0) },
+      { id: 101, albumId: 101, eventType: "AlbumImportIncomplete", date: at(0) },
+      { id: 102, albumId: 102, eventType: "grabbed", date: at(16) },
+      { id: 103, albumId: 103, eventType: "DownloadFailed", date: at(0) },
+      { id: 104, albumId: 104, eventType: "DownloadFailed", date: at(0) },
+    ],
     commands: [],
   });
 
@@ -265,21 +263,19 @@ test("album status reads Lidarr event types rather than words in the history", a
         sizeleft: 5,
       },
     ],
-    history: {
-      records: [
-        { id: 200, albumId: 200, eventType: "downloadImported", date: at(30) },
-        { id: 200, albumId: 200, eventType: "trackFileRenamed", date: at(1) },
-        {
-          id: 201,
-          albumId: 201,
-          eventType: "grabbed",
-          sourceTitle: "Epic Fail - Album [FLAC]",
-          data: { message: "failover indexer" },
-          date: at(1),
-        },
-        { id: 204, albumId: 204, eventType: "trackFileRetagged", date: at(1) },
-      ],
-    },
+    history: [
+      { id: 200, albumId: 200, eventType: "downloadImported", date: at(30) },
+      { id: 200, albumId: 200, eventType: "trackFileRenamed", date: at(1) },
+      {
+        id: 201,
+        albumId: 201,
+        eventType: "grabbed",
+        sourceTitle: "Epic Fail - Album [FLAC]",
+        data: { message: "failover indexer" },
+        date: at(1),
+      },
+      { id: 204, albumId: 204, eventType: "trackFileRetagged", date: at(1) },
+    ],
     commands: [],
   });
   assert.equal(statuses[200]?.status, "added");

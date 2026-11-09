@@ -5,15 +5,6 @@ import type { LidarrAlbum, LidarrArtist, LidarrClient } from "./lidarrClient.ts"
 import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.ts";
 import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
 
-type LidarrTrackFileEntry = Awaited<ReturnType<LidarrClient["getTrackFilesByAlbumId"]>>[number];
-type LidarrTrackEntry = Awaited<ReturnType<LidarrClient["getTracksByAlbumId"]>>[number] & {
-  trackTitle?: string | null;
-  path?: string | null;
-  trackFile?: LidarrTrackFileEntry | null;
-};
-type LidarrAlbumEntry = LidarrAlbum & { albumTitle?: string | null };
-type LidarrArtistEntry = LidarrArtist & { name?: string };
-
 function step(
   id: StorageHealthStep["id"],
   status: StorageHealthStep["status"],
@@ -68,7 +59,7 @@ function pathHasPrefix(candidate: string, prefix: string) {
   );
 }
 
-function artistIsOutsideRoots(artist: LidarrArtistEntry, rootPaths: string[]) {
+function artistIsOutsideRoots(artist: LidarrArtist, rootPaths: string[]) {
   const artistPath = String(artist?.path || "").trim();
   if (!artistPath || rootPaths.length === 0) return false;
   return !rootPaths.some((rootPath) => pathHasPrefix(artistPath, rootPath));
@@ -84,7 +75,7 @@ function unreadableSampleFix(samplePath: string, rootPaths: string[]) {
 }
 
 export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths: string[] = []) {
-  let artists: LidarrArtistEntry[] = [];
+  let artists: LidarrArtist[] = [];
   try {
     artists = await lidarrClient.getArtists();
   } catch {
@@ -98,7 +89,7 @@ export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths:
 
   for (const artist of orderedArtists) {
     if (!artist?.id) continue;
-    let albums: LidarrAlbumEntry[] = [];
+    let albums: LidarrAlbum[] = [];
     try {
       albums = await lidarrClient.getAllAlbums({ artistIds: [artist.id] });
     } catch {
@@ -108,24 +99,22 @@ export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths:
     const album = albums.find((entry) => (entry?.statistics?.sizeOnDisk ?? 0) > 0);
     if (!album?.id) continue;
 
-    const [tracks, trackFiles]: [LidarrTrackEntry[], LidarrTrackFileEntry[]] = await Promise.all([
+    const [tracks, trackFiles] = await Promise.all([
       lidarrClient.getTracksByAlbumId(album.id),
       lidarrClient.getTrackFilesByAlbumId(album.id),
     ]);
-    if (!Array.isArray(tracks) || tracks.length === 0) continue;
+    if (tracks.length === 0) continue;
 
     const trackFileById = buildTrackFileIndex(trackFiles);
     for (const track of tracks) {
-      if (track?.hasFile !== true && !track?.trackFileId) continue;
-      const enriched = enrichLidarrTrackWithFiles(track, trackFileById);
-      const filePath =
-        enriched.path || enriched.trackFile?.path || track.path || track.trackFile?.path || null;
+      if (track.hasFile !== true && !track.trackFileId) continue;
+      const filePath = enrichLidarrTrackWithFiles(track, trackFileById).trackFile?.path;
       if (!filePath) continue;
       return {
         path: filePath,
-        artistName: artist.artistName || artist.name || "Unknown artist",
-        albumTitle: album.title || album.albumTitle || "Unknown album",
-        trackTitle: track.title || track.trackTitle || "Unknown track",
+        artistName: artist.artistName || "Unknown artist",
+        albumTitle: album.title || "Unknown album",
+        trackTitle: track.title || "Unknown track",
       };
     }
   }

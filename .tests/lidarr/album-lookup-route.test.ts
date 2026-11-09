@@ -257,7 +257,11 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
   };
   libraryManager.getTracks = async () => [
     libraryManager.mapLidarrTrack(
-      { id: 1, foreignRecordingId: "owned-track", path: "/music/owned-track.flac" },
+      {
+        id: 1,
+        foreignRecordingId: "owned-track",
+        trackFile: { id: 1, path: "/music/owned-track.flac" },
+      },
       { id: 42, foreignAlbumId: "target-album" },
     ),
   ];

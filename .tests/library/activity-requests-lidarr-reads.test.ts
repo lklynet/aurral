@@ -47,15 +47,13 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
   });
   vi.spyOn(lidarrClient, "getHistory").mockImplementation(async (...args) => {
     if (args[4]?.forceRefresh) statusReads.push("history");
-    return {
-      records: [201, 202, 203].map((albumId) => ({
-        id: albumId,
-        albumId,
-        eventType: "downloadFailed",
-        date: failedAt,
-        album: { id: albumId, foreignAlbumId: `album-${albumId}`, title: `Album ${albumId}` },
-      })),
-    };
+    return [201, 202, 203].map((albumId) => ({
+      id: albumId,
+      albumId,
+      eventType: "downloadFailed",
+      date: failedAt,
+      album: { id: albumId, foreignAlbumId: `album-${albumId}`, title: `Album ${albumId}` },
+    }));
   });
   vi.spyOn(lidarrClient, "request").mockImplementation(
     async (endpoint, _method, _data, _skip, options) => {

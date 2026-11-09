@@ -4,22 +4,25 @@ import { dbOps } from "../db/helpers/index.ts";
 import type { AppSettings } from "../db/helpers/settings.ts";
 import type { UserRecord } from "../db/helpers/users.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { UUID_REGEX } from "../../lib/uuid.ts";
 import { logger } from "./logger.ts";
 import { readMany, readOne } from "./integrationData.ts";
 import BoundedMap from "./boundedMap.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.ts";
+import { LIDARR_MONITOR_OPTIONS } from "./lidarrMonitorOptions.ts";
 
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const LIDARR_MAX_CONCURRENT = 12;
-export const LIDARR_TRACK_FILE_ID_BATCH_SIZE = 400;
 const LIDARR_ALBUM_LOOKUP_CONCURRENCY = 6;
 export const LIDARR_ALBUM_LOOKUP_BATCH_MAX = 100;
 const LIDARR_LIST_CACHE_MS = 30000;
 const LIDARR_ARTIST_ALBUM_CACHE_MAX = 10;
 const LIDARR_RETRY_ATTEMPTS = 2;
 const LIDARR_RETRY_DELAY_MS = 800;
+const LIDARR_ADD_POLL_MS = 1000;
+const LIDARR_ADD_WAIT_ATTEMPTS = 60;
 const LIDARR_STATUS_CACHE_MS = 10000;
 const LIDARR_ARTIST_INDEX_TTL_MS = 15 * 60 * 1000;
 const LIDARR_ARTIST_INDEX_CACHE_MAX = 5000;
@@ -29,21 +32,8 @@ const LIDARR_STATUS_CACHE_MAX = 100;
 const QUEUE_ENDPOINT = "/queue?includeArtist=true&includeAlbum=true&pageSize=200";
 const isQueueEndpoint = (endpoint: string) =>
   endpoint === "/queue" || endpoint.startsWith("/queue?");
-const VALID_MONITOR_OPTIONS = new Set([
-  "none",
-  "existing",
-  "all",
-  "future",
-  "missing",
-  "latest",
-  "first",
-]);
 
 type LidarrHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
-
-export interface LidarrPage<T> {
-  records: T[];
-}
 
 const text = v.nullish(v.string());
 const ids = v.nullish(v.array(v.number()));
@@ -135,7 +125,6 @@ const historyItemSchema = v.looseObject({
   artistId: v.optional(v.number()),
   sourceTitle: text,
   date: v.optional(v.string()),
-  eventDate: text,
   eventType: text,
   album: v.nullish(albumSchema),
   artist: v.nullish(artistSchema),
@@ -147,10 +136,7 @@ const commandSchema = v.looseObject({
   commandName: text,
   status: text,
   body: v.nullish(v.looseObject({ albumIds: ids })),
-  albumIds: ids,
   ended: text,
-  completedAt: text,
-  endTime: text,
 });
 
 const rootFolderSchema = v.looseObject({
@@ -364,19 +350,6 @@ function normalizeLidarrArtistIds(values: unknown) {
   ];
 }
 
-function normalizeLidarrTrackFileIds(values: unknown) {
-  return [
-    ...new Set(
-      (Array.isArray(values) ? values : [])
-        .map((value) => {
-          const parsed = Number(value);
-          return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
-        })
-        .filter(Boolean),
-    ),
-  ];
-}
-
 function readResponseField(data: unknown, key: string): unknown {
   return typeof data === "object" && data !== null ? Reflect.get(data, key) : undefined;
 }
@@ -388,22 +361,16 @@ function isMetadataProviderIdError(error: unknown) {
 
 function normalizeMonitorOption(value: unknown) {
   const option = String(value || "none").trim();
-  return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
+  return LIDARR_MONITOR_OPTIONS.has(option) ? option : "none";
 }
 
-function getArtistMonitoringPayload(
-  monitorOption: unknown,
-  { forceArtistMonitored = true }: { forceArtistMonitored?: boolean } = {},
-) {
+function getArtistMonitoringPayload(monitorOption: unknown) {
   const option = normalizeMonitorOption(monitorOption);
-  const monitored = forceArtistMonitored || option !== "none";
-  const monitorNewItems = option === "all" || option === "future" ? "all" : "none";
-
   return {
     option,
-    monitored,
+    monitored: true,
     monitor: option,
-    monitorNewItems,
+    monitorNewItems: option === "all" || option === "future" ? "all" : "none",
   };
 }
 
@@ -484,7 +451,6 @@ function findQualityProfile<T extends { id: number | null }>(
 export class LidarrClient {
   declare _persistRootFolderPaths: boolean;
   declare config: LidarrConfig;
-  declare apiPath: string;
   declare _holdConfig?: boolean;
   declare _circuitOpen: boolean;
   declare _circuitOpenedAt: number;
@@ -503,7 +469,6 @@ export class LidarrClient {
 
   constructor({ persistRootFolderPaths = true }: { persistRootFolderPaths?: boolean } = {}) {
     this._persistRootFolderPaths = persistRootFolderPaths;
-    this.apiPath = "/api/v1";
     this._circuitOpen = false;
     this._circuitOpenedAt = 0;
     this._circuitFailures = 0;
@@ -861,7 +826,7 @@ export class LidarrClient {
       try {
         await this._acquireSlot();
         try {
-          const response = await http.request(`${this.config.url}${this.apiPath}${endpoint}`, {
+          const response = await http.request(`${this.config.url}/api/v1${endpoint}`, {
             method,
             headers: {
               ...authHeaders,
@@ -931,7 +896,7 @@ export class LidarrClient {
             status === 404 && method === "GET" && /^\/(?:artist|album)\/\d+$/.test(endpoint);
           if (!isMissingResource) {
             console.error(`Lidarr API error (${status}):`, {
-              url: `${this.config.url}${this.apiPath}${endpoint}`,
+              url: `${this.config.url}/api/v1${endpoint}`,
               method: method,
               status: status,
               statusText: statusText,
@@ -1040,8 +1005,6 @@ export class LidarrClient {
       return { connected: false, error: "Lidarr not configured" };
     }
 
-    this.apiPath = "/api/v1";
-
     try {
       const status = await this.request("/system/status", "GET", null, skipConfigUpdate, {
         bypassCircuit: true,
@@ -1051,7 +1014,6 @@ export class LidarrClient {
         connected: true,
         version: status.version || "unknown",
         instanceName: status.instanceName || "Lidarr",
-        apiPath: this.apiPath,
       };
     } catch (error) {
       const failure = asAppError(error);
@@ -1067,9 +1029,7 @@ export class LidarrClient {
         error: errorMessage,
         details: errorDetails,
         url: this.config.url,
-        fullUrl: `${this.config.url}${this.apiPath}/system/status`,
         statusCode: failure?.response?.status,
-        apiPath: this.apiPath,
         responseHeaders: failure?.response?.headers,
       };
     }
@@ -1271,7 +1231,11 @@ export class LidarrClient {
     };
   }
 
-  async addArtist(mbid: string, artistName: string, options: LidarrAddRequest = {}) {
+  async addArtist(
+    mbid: string,
+    artistName: string,
+    options: LidarrAddRequest = {},
+  ): Promise<LidarrArtist> {
     const settings = dbOps.getSettings();
     const { resolved } = await this.resolveArtistAddConfiguration({
       requestRootFolderPath: options.rootFolderPath,
@@ -1288,13 +1252,16 @@ export class LidarrClient {
     const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
     const albumMbid = String(options.albumMbid || "").trim();
     const albumsToMonitor = albumOnly && albumMbid ? [albumMbid] : [];
-    // Lidarr disables the artist for "none", even with explicit albumsToMonitor.
-    // The explicit album list takes precedence over "missing", so other albums stay unmonitored.
-    const monitoring = getArtistMonitoringPayload(
-      albumsToMonitor.length > 0 && requestedMonitorOption === "none"
-        ? "missing"
-        : requestedMonitorOption,
-    );
+    const monitoring = getArtistMonitoringPayload(requestedMonitorOption);
+    // Lidarr unmonitors the artist for "none", even with explicit albumsToMonitor, and reverts
+    // any change made before its post-add pass. "future" without new items monitors no albums,
+    // and an explicit album list takes precedence over "missing".
+    const addMonitor =
+      requestedMonitorOption !== "none"
+        ? requestedMonitorOption
+        : albumsToMonitor.length > 0
+          ? "missing"
+          : "future";
 
     const qualityProfileId = resolved.qualityProfileId;
     const defaultMetadataProfileId = settings.integrations?.lidarr?.metadataProfileId;
@@ -1321,11 +1288,10 @@ export class LidarrClient {
       qualityProfileId: qualityProfileId,
       metadataProfileId: metadataProfileId,
       monitored: monitoring.monitored,
-      monitor: monitoring.monitor,
       monitorNewItems: monitoring.monitorNewItems,
       tags: tags,
       addOptions: {
-        monitor: monitoring.monitor,
+        monitor: addMonitor,
         searchForMissingAlbums: albumOnly ? options.triggerSearch === true : searchOnAdd,
         ...(albumsToMonitor.length > 0 && { albumsToMonitor }),
       },
@@ -1426,20 +1392,6 @@ export class LidarrClient {
       return resolvedArtist!;
     };
 
-    const ensureArtistMonitored = async (artist: LidarrArtist) => {
-      if (albumOnly && options.triggerSearch === true) {
-        logger.info("library", "Queued Lidarr album search with artist add", {
-          artistId: artist?.id ?? null,
-          albumMbid,
-        });
-      }
-      const artistId = normalizeLidarrArtistId(artist?.id);
-      if (!artistId || artist.monitored === true) {
-        return artist;
-      }
-      return this.updateArtistMonitoring(artistId, monitoring.option);
-    };
-
     const postArtist = async (payload: typeof lidarrArtist) => {
       try {
         return await this.request("/artist", "POST", payload, false, {
@@ -1451,7 +1403,6 @@ export class LidarrClient {
         }
         const fallbackArtist = {
           ...payload,
-          monitor: "existing",
           addOptions: {
             ...payload.addOptions,
             monitor: "existing",
@@ -1503,7 +1454,18 @@ export class LidarrClient {
       }
       if (!result) throw providerError;
     }
-    return ensureArtistMonitored(await resolveAddedArtist(result));
+    const added = await resolveAddedArtist(result);
+    return { ...added, addOptions: { ...added.addOptions, monitor: requestedMonitorOption } };
+  }
+
+  async waitForArtistAdded(artistId: number | string) {
+    for (let attempt = 1; attempt < LIDARR_ADD_WAIT_ATTEMPTS; attempt++) {
+      const artist = await this.getArtist(artistId);
+      if (!artist?.addOptions) return artist;
+      await new Promise((resolve) => setTimeout(resolve, LIDARR_ADD_POLL_MS));
+    }
+    logger.info("library", "Lidarr is still adding the artist; continuing", { artistId });
+    return this.getArtist(artistId);
   }
 
   async resolveCanonicalArtistIdentity(mbid: string) {
@@ -1552,7 +1514,14 @@ export class LidarrClient {
     }
 
     const startedAt = Date.now();
-    const requestPromise = this.getArtists({ forceRefresh })
+    const lookup =
+      !mappedLidarrArtistId && UUID_REGEX.test(normalizedMbid)
+        ? this.request(`/artist?mbId=${normalizedMbid}`, "GET", null, false, {
+            forceRefresh,
+            parse: many(artistSchema),
+          })
+        : this.getArtists({ forceRefresh });
+    const requestPromise = lookup
       .then((artists) => {
         const artist = artists.find(matchesArtistId) || null;
         if (artist || !forceRefresh) {
@@ -1577,26 +1546,6 @@ export class LidarrClient {
     return requestPromise;
   }
 
-  async updateArtist(artistId: number | string, updates: Partial<LidarrArtist>) {
-    const normalizedArtistId = normalizeLidarrArtistId(artistId);
-    if (!normalizedArtistId) {
-      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
-    }
-    const artist = await this.getArtist(normalizedArtistId);
-    if (!artist) {
-      throw new Error(`Artist with ID ${normalizedArtistId} not found in Lidarr`);
-    }
-
-    const updated = {
-      ...artist,
-      ...updates,
-    };
-
-    return this.request(`/artist/${normalizedArtistId}`, "PUT", updated, false, {
-      parse: one(artistSchema),
-    });
-  }
-
   async updateArtistMonitoring(
     artistId: number | string,
     monitorOption: string | null | undefined,
@@ -1614,7 +1563,6 @@ export class LidarrClient {
     const updated = {
       ...artist,
       monitored: monitoring.monitored,
-      monitor: monitoring.monitor,
       monitorNewItems: monitoring.monitorNewItems,
       addOptions: {
         ...(artist.addOptions || {}),
@@ -1632,7 +1580,6 @@ export class LidarrClient {
       }
       const fallbackUpdated = {
         ...updated,
-        monitor: "existing",
         addOptions: {
           ...(updated.addOptions || {}),
           monitor: "existing",
@@ -1707,102 +1654,6 @@ export class LidarrClient {
         parse: many(trackFileSchema),
       });
     } catch {
-      return [];
-    }
-  }
-
-  async getAllTracks(
-    options: LidarrRequestOptions & {
-      artistIds?: Array<number | string>;
-      throwOnError?: boolean;
-    } = {},
-  ): Promise<LidarrTrack[]> {
-    const { artistIds, throwOnError = false, ...requestOptions } = options;
-    try {
-      const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
-      if (normalizedArtistIds.length === 0) {
-        throw new Error("Lidarr artist IDs are required for bulk track reads");
-      }
-      const results = await mapWithConcurrency(
-        normalizedArtistIds,
-        LIDARR_MAX_CONCURRENT,
-        async (artistId: string | null) => {
-          return this.request(`/track?artistId=${artistId}`, "GET", null, false, {
-            ...requestOptions,
-            parse: many(trackSchema),
-          });
-        },
-        { stopOnError: true },
-      );
-      return results.flat();
-    } catch (error) {
-      if (throwOnError) throw error;
-      return [];
-    }
-  }
-
-  async getAllTrackFiles(
-    options: LidarrRequestOptions & {
-      artistIds?: Array<number | string>;
-      throwOnError?: boolean;
-    } = {},
-  ): Promise<LidarrTrackFile[]> {
-    const { artistIds, throwOnError = false, ...requestOptions } = options;
-    try {
-      const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
-      if (normalizedArtistIds.length === 0) {
-        throw new Error("Lidarr artist IDs are required for bulk track-file reads");
-      }
-      const results = await mapWithConcurrency(
-        normalizedArtistIds,
-        LIDARR_MAX_CONCURRENT,
-        async (artistId: string | null) => {
-          return this.request(`/trackfile?artistId=${artistId}`, "GET", null, false, {
-            ...requestOptions,
-            parse: many(trackFileSchema),
-          });
-        },
-        { stopOnError: true },
-      );
-      return results.flat();
-    } catch (error) {
-      if (throwOnError) throw error;
-      return [];
-    }
-  }
-
-  async getTrackFilesByIds(
-    trackFileIds: Array<number | string>,
-    options: LidarrRequestOptions & { throwOnError?: boolean } = {},
-  ): Promise<LidarrTrackFile[]> {
-    const { throwOnError = false, ...requestOptions } = options;
-    try {
-      const normalizedTrackFileIds = normalizeLidarrTrackFileIds(trackFileIds);
-      if (normalizedTrackFileIds.length === 0) return [];
-      const batches = [];
-      for (
-        let index = 0;
-        index < normalizedTrackFileIds.length;
-        index += LIDARR_TRACK_FILE_ID_BATCH_SIZE
-      ) {
-        batches.push(normalizedTrackFileIds.slice(index, index + LIDARR_TRACK_FILE_ID_BATCH_SIZE));
-      }
-      const results = await mapWithConcurrency(
-        batches,
-        LIDARR_MAX_CONCURRENT,
-        async (batch: Array<string | null>) => {
-          const query = batch
-            .map((trackFileId: string | null) => `trackFileIds=${encodeURIComponent(trackFileId!)}`)
-            .join("&");
-          return this.request(`/trackfile?${query}`, "GET", null, false, {
-            ...requestOptions,
-            parse: many(trackFileSchema),
-          });
-        },
-      );
-      return results.flat();
-    } catch (error) {
-      if (throwOnError) throw error;
       return [];
     }
   }
@@ -1899,10 +1750,6 @@ export class LidarrClient {
     });
   }
 
-  async getQueueItem(queueId: number | string) {
-    return this.request(`/queue/${queueId}`, "GET", null, false, { parse: one(queueItemSchema) });
-  }
-
   async getCommands(options: LidarrRequestOptions = {}) {
     return this.request("/command", "GET", null, false, {
       ...options,
@@ -1916,7 +1763,7 @@ export class LidarrClient {
     sortKey = "date",
     sortDirection = "descending",
     options: LidarrRequestOptions = {},
-  ): Promise<LidarrPage<LidarrHistoryItem>> {
+  ) {
     const params = new URLSearchParams({
       page: page.toString(),
       pageSize: pageSize.toString(),
@@ -1925,21 +1772,10 @@ export class LidarrClient {
       includeArtist: "true",
       includeAlbum: "true",
     });
-    const records = await this.request(`/history?${params.toString()}`, "GET", null, false, {
+    return this.request(`/history?${params.toString()}`, "GET", null, false, {
       ...options,
       parse: many(historyItemSchema),
     });
-    return { records };
-  }
-
-  async getHistoryForAlbum(albumId: number) {
-    const history = await this.getHistory(1, 100);
-    return history.records?.filter((h) => h.albumId === albumId) || [];
-  }
-
-  async getHistoryForArtist(artistId: number) {
-    const history = await this.getHistory(1, 100);
-    return history.records?.filter((h) => h.artistId === artistId) || [];
   }
 
   async deleteArtist(artistId: number | string, deleteFiles = false) {
@@ -1991,12 +1827,6 @@ export class LidarrClient {
   async updateMetadataProfile(profileId: number, profileData: unknown, skipConfigUpdate = false) {
     return this.request(`/metadataprofile/${profileId}`, "PUT", profileData, skipConfigUpdate, {
       parse: one(metadataProfileSchema),
-    });
-  }
-
-  async getQualityProfile(profileId: number, skipConfigUpdate = false) {
-    return this.request(`/qualityprofile/${profileId}`, "GET", null, skipConfigUpdate, {
-      parse: one(qualityProfileSchema),
     });
   }
 

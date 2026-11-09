@@ -50,42 +50,6 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   assert.deepEqual(artists, [{ id: 1, artistName: "Test" }]);
 });
 
-test("bulk track reads use Lidarr artist selectors", async (t: import("vite-plus/test").TestContext) => {
-  const requests: (string | undefined)[] = [];
-  const server = http.createServer((request, response) => {
-    requests.push(request.url);
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify([{ id: 1, albumId: 2 }]));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  const address = listeningAddress(server);
-  assert.ok(address != null);
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    ...client.config,
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
-
-  await client.getAllTracks({ artistIds: [7, 8], throwOnError: true });
-  await client.getAllTrackFiles({ artistIds: [7, 8], throwOnError: true });
-
-  assert.deepEqual(requests.sort(), [
-    "/api/v1/track?artistId=7",
-    "/api/v1/track?artistId=8",
-    "/api/v1/trackfile?artistId=7",
-    "/api/v1/trackfile?artistId=8",
-  ]);
-});
-
 test("bulk album reads use Lidarr artist selectors when requested", async (t: import("vite-plus/test").TestContext) => {
   const requests: (string | undefined)[] = [];
   const server = http.createServer((request, response) => {
@@ -159,13 +123,13 @@ test("bulk reads wait for active requests before failing", async () => {
     if (started.length === 12) resolveInitialRequests();
     if (artistId === 1) {
       await failure;
-      throw new Error("bulk track read failed");
+      throw new Error("bulk album read failed");
     }
     if (artistId <= 12) await pending;
     return [];
   });
 
-  const read = client.getAllTracks({ artistIds, throwOnError: true });
+  const read = client.getAllAlbums({ artistIds });
   await initialRequests;
   releaseFailure();
 
@@ -178,50 +142,9 @@ test("bulk reads wait for active requests before failing", async () => {
   assert.equal(settled, false);
 
   releasePending();
-  await assert.rejects(rejection, /bulk track read failed/);
+  await assert.rejects(rejection, /bulk album read failed/);
   await flushPendingWork();
   assert.deepEqual(started, artistIds.slice(0, 12));
-});
-
-test("bulk track-file reads use bounded repeated ID selectors", async (t: import("vite-plus/test").TestContext) => {
-  const requests: number[][] = [];
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    requests.push(url.searchParams.getAll("trackFileIds").map(Number));
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end("[]");
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  const address = listeningAddress(server);
-  assert.ok(address != null);
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    ...client.config,
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
-
-  await client.getTrackFilesByIds(
-    Array.from({ length: 401 }, (_, index) => index + 1),
-    { throwOnError: true },
-  );
-
-  assert.deepEqual(
-    requests.map((batch) => batch.length).sort((left, right) => left - right),
-    [1, 400],
-  );
-  assert.deepEqual(
-    requests.flat().sort((left, right) => left - right),
-    [...Array.from({ length: 401 }, (_, index) => index + 1)],
-  );
 });
 
 test("testConnection preserves Lidarr HTTP diagnostics", async () => {
@@ -448,7 +371,6 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
 test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const requests: (string | undefined)[] = [];
-  let updatePayload: Record<string, unknown> = {};
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     if (request.method === "POST" && request.url === "/api/v1/artist") {
@@ -463,7 +385,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
       );
       return;
     }
-    if (request.method === "GET" && request.url === "/api/v1/artist") {
+    if (request.method === "GET" && request.url === `/api/v1/artist?mbId=${artistMbid}`) {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify([
@@ -484,38 +406,6 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
           message: `The input string '${artistMbid}' was not in a correct format.`,
         }),
       );
-      return;
-    }
-    if (request.method === "GET" && request.url === "/api/v1/artist/42") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          id: 42,
-          foreignArtistId: artistMbid,
-          artistName: "Lena Raine",
-          monitored: false,
-        }),
-      );
-      return;
-    }
-    if (request.method === "PUT" && request.url === "/api/v1/artist/42") {
-      let body = "";
-      request.setEncoding("utf8");
-      request.on("data", (chunk) => {
-        body += chunk;
-      });
-      request.on("end", () => {
-        updatePayload = JSON.parse(body);
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            id: 42,
-            foreignArtistId: artistMbid,
-            artistName: "Lena Raine",
-            monitored: true,
-          }),
-        );
-      });
       return;
     }
     response.writeHead(404);
@@ -553,16 +443,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   });
 
   assert.equal(artist.id, 42);
-  assert.equal(artist.monitored, true);
-  assert.ok(updatePayload != null);
-  assert.equal(updatePayload.monitored, true);
-  assert.equal(requests.includes(`/api/v1/artist/${artistMbid}`), false);
-  assert.deepEqual(requests, [
-    "/api/v1/artist",
-    "/api/v1/artist",
-    "/api/v1/artist/42",
-    "/api/v1/artist/42",
-  ]);
+  assert.deepEqual(requests, ["/api/v1/artist", `/api/v1/artist?mbId=${artistMbid}`]);
 });
 
 test("artist add resolves a numeric metadata-provider response ID", async (t: import("vite-plus/test").TestContext) => {
@@ -849,7 +730,7 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async () => {
           artistName: "Lena Raine",
         };
       }
-      if (endpoint === "/artist" && method === "GET") {
+      if (endpoint === `/artist?mbId=${artistMbid}` && method === "GET") {
         lookupCount += 1;
         if (lookupCount === 2) {
           assert.ok(options != null);
@@ -871,55 +752,6 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async () => {
 
   assert.equal(postCount, 1);
   assert.equal(lookupCount, 2);
-});
-
-test("artist add does not retry creation after monitoring fails", async () => {
-  const client = new LidarrClient();
-
-  client.resolveArtistAddConfiguration = async () => ({
-    rootFolders: [],
-    qualityProfiles: [],
-    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
-    resolved: {
-      rootFolderPath: "/music",
-      qualityProfileId: 1,
-    },
-  });
-
-  let postCount = 0;
-  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET") => {
-    if (endpoint === "/artist" && method === "POST") {
-      postCount += 1;
-      return {
-        id: 42,
-        foreignArtistId: "artist-mbid",
-        artistName: "Lena Raine",
-        monitored: false,
-      };
-    }
-    if (endpoint === "/artist/42" && method === "GET") {
-      return {
-        id: 42,
-        foreignArtistId: "artist-mbid",
-        artistName: "Lena Raine",
-        monitored: false,
-      };
-    }
-    if (endpoint === "/artist/42" && method === "PUT") {
-      throw new Error("monitoring failed");
-    }
-    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  });
-
-  await assert.rejects(
-    client.addArtist("artist-mbid", "Lena Raine", {
-      metadataProfileId: 1,
-      monitorOption: "all",
-    }),
-    /monitoring failed/,
-  );
-
-  assert.equal(postCount, 1);
 });
 
 test("Lidarr cooldown permits only one half-open recovery request", async () => {

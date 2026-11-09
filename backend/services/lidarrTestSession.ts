@@ -60,7 +60,6 @@ export async function withTemporaryLidarrClient<T>(
     rootFolderPath: null,
     rootFolderPaths: [],
   };
-  lidarrClient.apiPath = "/api/v1";
 
   return await fn(lidarrClient);
 }

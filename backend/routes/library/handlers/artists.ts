@@ -358,8 +358,10 @@ export default new Hono<AppEnv>()
       const albums = await libraryManager.getAlbums(artist.id);
       if (lidarrClient && lidarrClient.isConfigured()) {
         const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-        const monitoring = lidarrArtist ? libraryManager.mapLidarrArtist(lidarrArtist) : null;
-        if (lidarrArtist && monitoring?.monitored && monitoring.monitorOption !== "none") {
+        const lidarrAlbums = lidarrArtist?.monitored
+          ? await lidarrClient.getAllAlbums({ artistIds: [lidarrArtist.id] })
+          : [];
+        if (lidarrArtist && lidarrAlbums.some((album) => album.monitored)) {
           await lidarrClient.triggerArtistSearch(lidarrArtist.id);
         }
       }

@@ -48,7 +48,7 @@ test("activity rows use the embedded album and artist names", async () => {
         artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
       },
     ],
-    history: { records: [] },
+    history: [],
   });
   assert.equal(requests[0]?.albumName, "Good Girl Gone Bad");
   assert.equal(requests[0]?.artistName, "Rihanna");
@@ -68,7 +68,7 @@ test("a queue item whose status messages report a failure shows as Failed", asyn
         artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
       },
     ],
-    history: { records: [] },
+    history: [],
   });
   assert.equal(requests[0]?.statusLabel, "Failed");
 });
@@ -77,42 +77,40 @@ test("history rows follow Lidarr event types, not words in the record", async ()
   const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
   const requests = await buildLidarrRequests(createClient(), {
     queue: [],
-    history: {
-      records: [
-        {
-          id: 1,
-          albumId: 10,
-          eventType: "albumImportIncomplete",
-          sourceTitle: "Burial - Untrue (2007) [FLAC]",
-          date: at(5),
-          data: {
-            statusMessages: JSON.stringify(
-              [
-                {
-                  title: "Burial - Untrue (2007) [FLAC]",
-                  messages: ["Album match is not close enough: 61.2% vs 80%"],
-                },
-              ],
-              null,
-              2,
-            ),
-            releaseGroup: null,
-            indexerFlags: "0",
-          },
-          album: { id: 10, title: "Untrue", foreignAlbumId: "rg-untrue" },
-          artist: { id: 3, artistName: "Burial", foreignArtistId: "ar-burial" },
+    history: [
+      {
+        id: 1,
+        albumId: 10,
+        eventType: "albumImportIncomplete",
+        sourceTitle: "Burial - Untrue (2007) [FLAC]",
+        date: at(5),
+        data: {
+          statusMessages: JSON.stringify(
+            [
+              {
+                title: "Burial - Untrue (2007) [FLAC]",
+                messages: ["Album match is not close enough: 61.2% vs 80%"],
+              },
+            ],
+            null,
+            2,
+          ),
+          releaseGroup: null,
+          indexerFlags: "0",
         },
-        { id: 2, albumId: 11, eventType: "downloadImported", date: at(600) },
-        {
-          id: 3,
-          albumId: 11,
-          eventType: "trackFileDeleted",
-          sourceTitle: "/data/media/Fail Emotions/Epic Fail (2019)/01 - Epic Fail.flac",
-          date: at(5),
-          data: { reason: "MissingFromDisk" },
-        },
-      ],
-    },
+        album: { id: 10, title: "Untrue", foreignAlbumId: "rg-untrue" },
+        artist: { id: 3, artistName: "Burial", foreignArtistId: "ar-burial" },
+      },
+      { id: 2, albumId: 11, eventType: "downloadImported", date: at(600) },
+      {
+        id: 3,
+        albumId: 11,
+        eventType: "trackFileDeleted",
+        sourceTitle: "/data/media/Fail Emotions/Epic Fail (2019)/01 - Epic Fail.flac",
+        date: at(5),
+        data: { reason: "MissingFromDisk" },
+      },
+    ],
   });
   assert.deepEqual(
     requests.map(({ albumId, albumName, statusLabel }) => ({ albumId, albumName, statusLabel })),

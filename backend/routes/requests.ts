@@ -10,7 +10,7 @@ import {
 } from "./library/handlers/downloads.ts";
 import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
-import type { LidarrClient, LidarrPage, LidarrQueueItem } from "../services/lidarrClient.ts";
+import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
@@ -129,11 +129,8 @@ const removeMatchingQueueItems = async (
   lidarrClient: LidarrClient,
   matches: (item: LidarrQueueItem) => boolean,
 ) => {
-  const queue = await lidarrClient
-    .getQueue()
-    .catch((): LidarrQueueItem[] | LidarrPage<LidarrQueueItem> => []);
-  const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
-  for (const item of queueItems) {
+  const queue = await lidarrClient.getQueue().catch((): LidarrQueueItem[] => []);
+  for (const item of queue) {
     if (matches(item) && item?.id != null) {
       await lidarrClient.request(`/queue/${item.id}`, "DELETE").catch(() => null);
     }

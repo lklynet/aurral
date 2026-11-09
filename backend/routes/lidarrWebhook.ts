@@ -8,35 +8,27 @@ import { recordAlbumImportCompleted } from "../services/aurralHistoryService.ts"
 const loose = <Schema extends v.GenericSchema>(schema: Schema) =>
   v.fallback(v.optional(schema), undefined);
 
-const id = loose(v.union([v.string(), v.number()]));
 const text = loose(v.string());
-const artist = loose(
-  v.object({
-    artistName: text,
-    ArtistName: text,
-    foreignArtistId: text,
-    ForeignArtistId: text,
+const lidarrEvent = v.fallback(
+  v.looseObject({
+    eventType: text,
+    artist: loose(v.looseObject({ name: text, mbId: text })),
+    album: loose(v.looseObject({ id: loose(v.number()), title: text })),
   }),
+  {},
 );
-const album = loose(v.object({ id, Id: id, title: text, Title: text, artist, Artist: artist }));
-const lidarrEvent = v.fallback(v.object({ eventType: id, EventType: id, album, Album: album }), {});
 
 export default new Hono<AppEnv>()
   .basePath("/webhooks/lidarr")
   .post("/", requireAuth, validate("json", lidarrEvent), (c) => {
-    const event = c.req.valid("json");
-    const eventType = String(event.eventType || event.EventType || "")
-      .trim()
-      .toLowerCase();
-    if (eventType !== "download") return c.body(null, 204);
+    const { eventType, artist, album } = c.req.valid("json");
+    if (eventType?.trim().toLowerCase() !== "download") return c.body(null, 204);
 
-    const { artist, Artist, ...albumRef } = event.album || event.Album || {};
-    const artistRef = artist || Artist || {};
     const entry = recordAlbumImportCompleted({
-      albumId: albumRef.id ?? albumRef.Id,
-      albumName: albumRef.title ?? albumRef.Title,
-      artistName: artistRef.artistName ?? artistRef.ArtistName,
-      artistMbid: artistRef.foreignArtistId ?? artistRef.ForeignArtistId,
+      albumId: album?.id,
+      albumName: album?.title,
+      artistName: artist?.name,
+      artistMbid: artist?.mbId,
     });
 
     return c.json({ handled: Boolean(entry) }, 200);

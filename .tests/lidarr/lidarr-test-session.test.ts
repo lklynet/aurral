@@ -55,7 +55,6 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
   test(`Settings root folder lookup succeeds with ${query.url ? "provided" : "saved"} credentials`, async () => {
     const originalUrl = lidarrClient.config.url;
     const originalKey = lidarrClient.config.apiKey;
-    const originalApiPath = lidarrClient.apiPath;
     const savedSettings = dbOps.getSettings().integrations.lidarr;
     const savedCache = { data: [{ path: "/cached/saved/music" }], at: Date.now() };
     lidarrClient._rootFoldersCache = savedCache;
@@ -79,7 +78,6 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
     assert.equal(request.mock.calls.length, 1);
     assert.equal(lidarrClient.config.url, originalUrl);
     assert.equal(lidarrClient.config.apiKey, originalKey);
-    assert.equal(lidarrClient.apiPath, originalApiPath);
     assert.equal(lidarrClient._holdConfig, false);
     assert.deepEqual(dbOps.getSettings().integrations.lidarr, savedSettings);
     assert.equal(lidarrClient._rootFoldersCache, savedCache);
@@ -89,7 +87,6 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
 for (const fails of [false, true]) {
   test(`temporary root defaults and original configuration survive ${fails ? "failure" : "success"}`, async () => {
     const original = { ...lidarrClient.config };
-    const originalApiPath = lidarrClient.apiPath;
     const operation = withTemporaryLidarrClient(
       "http://temporary-lidarr:8686/",
       " temporary-key ",
@@ -99,7 +96,6 @@ for (const fails of [false, true]) {
         assert.deepEqual([...client.config.rootFolderPaths], []);
         assert.deepEqual(client.getConfiguredRootFolderPaths(), []);
         assert.equal(client._holdConfig, true);
-        assert.equal(client.apiPath, "/api/v1");
         if (fails) throw new Error("Lidarr request failed");
         return "success";
       },
@@ -107,7 +103,6 @@ for (const fails of [false, true]) {
     if (fails) await assert.rejects(operation, /Lidarr request failed/);
     else assert.equal(await operation, "success");
     assert.deepEqual(lidarrClient.config, original);
-    assert.equal(lidarrClient.apiPath, originalApiPath);
     assert.equal(lidarrClient._holdConfig, false);
   });
 }

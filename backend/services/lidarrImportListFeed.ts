@@ -11,26 +11,15 @@ const tokenEquals = (left: unknown, right: unknown) => {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
-type LidarrImportListItem = { MusicBrainzId: string; AlbumId?: string };
-
-export const buildLidarrImportListItems = (
-  jobs: Pick<DownloadJob, "artistMbid" | "albumMbid" | "status">[],
-) => {
-  const seen = new Set<string>();
-  const items: LidarrImportListItem[] = [];
-  for (const job of Array.isArray(jobs) ? jobs : []) {
-    const artistMbid = String(job?.artistMbid || "").trim();
-    if (!artistMbid || job.status === "saved") continue;
-    const albumMbid = String(job?.albumMbid || "").trim();
-    const key = albumMbid ? `${artistMbid}\u0001${albumMbid}` : artistMbid;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const entry: LidarrImportListItem = { MusicBrainzId: artistMbid };
-    if (albumMbid) entry.AlbumId = albumMbid;
-    items.push(entry);
-  }
-  return items;
-};
+export const buildLidarrImportListItems = (jobs: Pick<DownloadJob, "artistMbid" | "status">[]) =>
+  [
+    ...new Set(
+      jobs.flatMap((job) => {
+        const artistMbid = job.artistMbid?.trim();
+        return artistMbid && job.status !== "saved" ? [artistMbid] : [];
+      }),
+    ),
+  ].map((MusicBrainzId) => ({ MusicBrainzId }));
 
 export const buildFlowLidarrImportList = (flowId: string) => {
   const flow = flowPlaylistConfig.getFlow(flowId);
