@@ -91,6 +91,7 @@ export default defineConfig({
           "react/no-unknown-property": "error",
           "react/jsx-no-comment-textnodes": "error",
           "react/require-render-return": "error",
+          "react/immutability": "off",
           "react/preserve-manual-memoization": "off",
           "react/purity": "off",
           "react/refs": "off",
