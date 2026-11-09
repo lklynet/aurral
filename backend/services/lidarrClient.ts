@@ -1231,7 +1231,11 @@ export class LidarrClient {
     };
   }
 
-  async addArtist(mbid: string, artistName: string, options: LidarrAddRequest = {}) {
+  async addArtist(
+    mbid: string,
+    artistName: string,
+    options: LidarrAddRequest = {},
+  ): Promise<LidarrArtist> {
     const settings = dbOps.getSettings();
     const { resolved } = await this.resolveArtistAddConfiguration({
       requestRootFolderPath: options.rootFolderPath,
@@ -1450,7 +1454,8 @@ export class LidarrClient {
       }
       if (!result) throw providerError;
     }
-    return resolveAddedArtist(result);
+    const added = await resolveAddedArtist(result);
+    return { ...added, addOptions: { ...added.addOptions, monitor: requestedMonitorOption } };
   }
 
   async waitForArtistAdded(artistId: number | string) {

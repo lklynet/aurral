@@ -94,7 +94,11 @@ for (const monitorOption of ["none", "all"]) {
       postedArtist = payload as AddedArtist;
       return { ...(payload as AddedArtist), id: 7, monitored: true };
     });
-    await client.addArtist("artist-mbid", "Test Artist", { monitorOption, metadataProfileId: 1 });
+    const added = await client.addArtist("artist-mbid", "Test Artist", {
+      monitorOption,
+      metadataProfileId: 1,
+    });
+    assert.equal(added.addOptions?.monitor, monitorOption);
     assert.ok(postedArtist != null);
     assert.equal(postedArtist.addOptions.monitor, monitorOption === "none" ? "future" : "all");
     assert.equal(postedArtist.monitored, true);
