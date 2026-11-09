@@ -86,9 +86,11 @@ export async function resolvePublicUrl(value: string) {
     ? [{ address: hostname, family: net.isIP(hostname) }]
     : await dns.lookup(hostname, { all: true });
   const [first, ...rest] = addresses;
-  if (!first || addresses.some(({ address }) => isPrivateAddress(address))) {
-    throw new Error("Only public HTTP and HTTPS URLs are allowed");
+  const privateAddress = addresses.find(({ address }) => isPrivateAddress(address));
+  if (privateAddress) {
+    throw new Error(`${hostname} resolved to a private address, ${privateAddress.address}`);
   }
+  if (!first) throw new Error("Only public HTTP and HTTPS URLs are allowed");
   const pinned: [typeof first, ...(typeof first)[]] = [first, ...rest];
   return { url: value, addresses: pinned };
 }
