@@ -241,19 +241,14 @@ export default new Hono<AppEnv>()
           });
         } catch (error) {
           const failure: (AppError & { field?: string }) | undefined = asAppError(error);
-          const statusCode =
-            failure?.statusCode === 400 || failure?.statusCode === 409 ? failure.statusCode : 500;
           return c.json(
             {
-              error:
-                statusCode === 409
-                  ? "Saved Lidarr default is no longer valid"
-                  : "Failed to validate Lidarr add options",
+              error: "Failed to validate Lidarr add options",
               message: failure?.message,
               field: failure?.field || null,
               code: failure?.code || null,
             },
-            statusCode,
+            failure?.statusCode === 400 ? 400 : 500,
           );
         }
 
