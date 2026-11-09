@@ -92,3 +92,27 @@ test("clearing stuck jobs cancels only work running past the stale limit", async
   const status = await getTaskStatus(now);
   assert.equal(status.summary.staleCount, 0);
 });
+
+test("a failed job leaves the task status once the same task succeeds", async () => {
+  const now = Date.now();
+  const finish = (payload: object, state: "done" | "failed", finishedAt: number) => {
+    const id = insertJob(db, "system-task", payload);
+    db.prepare(
+      `UPDATE jobs SET state = ?, attempts = 3, started_at = ?, finished_at = ?,
+         last_error = 'Could not cancel slskd work' WHERE id = ?`,
+    ).run(state, finishedAt - 1000, finishedAt, id);
+    return id;
+  };
+  const startup = { kind: "flow-startup-check" };
+  finish(startup, "failed", now - 20 * 60 * 1000);
+  finish(startup, "done", now - 10 * 60 * 1000);
+  const stillFailing = finish({ kind: "inbox-refresh", userId: 1 }, "failed", now - 5 * 60 * 1000);
+  finish({ kind: "inbox-refresh", userId: 2 }, "done", now - 60 * 1000);
+
+  const status = await getTaskStatus(now);
+
+  const failed = status.queue.filter((row) => row.status === "failed").map((row) => row.jobId);
+  assert.deepEqual(failed, [stillFailing]);
+  assert.equal(status.summary.failedCount, 1);
+  assert.equal(status.workers.find((entry) => entry.queue === "system-task")?.failed, 1);
+});
