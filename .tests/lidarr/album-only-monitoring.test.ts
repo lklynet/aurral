@@ -5,9 +5,10 @@ type AddedArtist = {
   monitorNewItems: string;
   addOptions: { monitor: string; albumsToMonitor: string[]; searchForMissingAlbums: boolean };
 };
-import { test, vi } from "vite-plus/test";
+import { describe, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
+import { useFakeClock } from "../helpers/fakeClock.ts";
 
 function createClient() {
   const client = new LidarrClient();
@@ -47,10 +48,6 @@ for (const triggerSearch of [false, true]) {
           return structuredClone(artist);
         }
         if (endpoint === "/artist/7" && method === "GET") return structuredClone(artist);
-        if (endpoint === "/artist/7" && method === "PUT") {
-          artist = structuredClone(payload as AddedArtist);
-          return structuredClone(artist);
-        }
         assert.fail(`Unexpected Lidarr request: ${method} ${endpoint}`);
       });
 
@@ -63,7 +60,6 @@ for (const triggerSearch of [false, true]) {
       });
       assert.equal(added.monitored, true);
 
-      // A delayed refresh can write the original artist snapshot after an early repair.
       // Lidarr's AlbumMonitoredService gives AlbumsToMonitor precedence over monitor.
       artist = refreshSnapshot;
       for (const album of albums) {
@@ -100,10 +96,36 @@ for (const monitorOption of ["none", "all"]) {
     });
     await client.addArtist("artist-mbid", "Test Artist", { monitorOption, metadataProfileId: 1 });
     assert.ok(postedArtist != null);
-    assert.equal(postedArtist.addOptions.monitor, monitorOption);
+    assert.equal(postedArtist.addOptions.monitor, monitorOption === "none" ? "future" : "all");
+    assert.equal(postedArtist.monitored, true);
     assert.ok(postedArtist != null);
     assert.equal(postedArtist.addOptions.albumsToMonitor, undefined);
     assert.ok(postedArtist != null);
     assert.equal(postedArtist.monitorNewItems, monitorOption === "all" ? "all" : "none");
   });
 }
+
+describe("waitForArtistAdded", () => {
+  useFakeClock();
+
+  test("returns once Lidarr clears addOptions after its post-add pass", async () => {
+    const client = new LidarrClient();
+    const adding = {
+      id: 7,
+      artistName: "Test Artist",
+      foreignArtistId: "artist-mbid",
+      monitored: true,
+      addOptions: { monitor: "missing" },
+    };
+    const getArtist = vi
+      .spyOn(client, "getArtist")
+      .mockResolvedValueOnce(adding)
+      .mockResolvedValueOnce(adding)
+      .mockResolvedValue({ ...adding, addOptions: null });
+
+    const artist = await client.waitForArtistAdded(7);
+
+    assert.equal(artist?.addOptions, null);
+    assert.equal(getArtist.mock.calls.length, 3);
+  });
+});

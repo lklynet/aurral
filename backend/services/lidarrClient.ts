@@ -20,6 +20,8 @@ const LIDARR_LIST_CACHE_MS = 30000;
 const LIDARR_ARTIST_ALBUM_CACHE_MAX = 10;
 const LIDARR_RETRY_ATTEMPTS = 2;
 const LIDARR_RETRY_DELAY_MS = 800;
+const LIDARR_ADD_POLL_MS = 1000;
+const LIDARR_ADD_WAIT_ATTEMPTS = 60;
 const LIDARR_STATUS_CACHE_MS = 10000;
 const LIDARR_ARTIST_INDEX_TTL_MS = 15 * 60 * 1000;
 const LIDARR_ARTIST_INDEX_CACHE_MAX = 5000;
@@ -370,19 +372,13 @@ function normalizeMonitorOption(value: unknown) {
   return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
 }
 
-function getArtistMonitoringPayload(
-  monitorOption: unknown,
-  { forceArtistMonitored = true }: { forceArtistMonitored?: boolean } = {},
-) {
+function getArtistMonitoringPayload(monitorOption: unknown) {
   const option = normalizeMonitorOption(monitorOption);
-  const monitored = forceArtistMonitored || option !== "none";
-  const monitorNewItems = option === "all" || option === "future" ? "all" : "none";
-
   return {
     option,
-    monitored,
+    monitored: true,
     monitor: option,
-    monitorNewItems,
+    monitorNewItems: option === "all" || option === "future" ? "all" : "none",
   };
 }
 
@@ -1260,13 +1256,16 @@ export class LidarrClient {
     const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
     const albumMbid = String(options.albumMbid || "").trim();
     const albumsToMonitor = albumOnly && albumMbid ? [albumMbid] : [];
-    // Lidarr disables the artist for "none", even with explicit albumsToMonitor.
-    // The explicit album list takes precedence over "missing", so other albums stay unmonitored.
-    const monitoring = getArtistMonitoringPayload(
-      albumsToMonitor.length > 0 && requestedMonitorOption === "none"
-        ? "missing"
-        : requestedMonitorOption,
-    );
+    const monitoring = getArtistMonitoringPayload(requestedMonitorOption);
+    // Lidarr unmonitors the artist for "none", even with explicit albumsToMonitor, and reverts
+    // any change made before its post-add pass. "future" without new items monitors no albums,
+    // and an explicit album list takes precedence over "missing".
+    const addMonitor =
+      requestedMonitorOption !== "none"
+        ? requestedMonitorOption
+        : albumsToMonitor.length > 0
+          ? "missing"
+          : "future";
 
     const qualityProfileId = resolved.qualityProfileId;
     const defaultMetadataProfileId = settings.integrations?.lidarr?.metadataProfileId;
@@ -1296,7 +1295,7 @@ export class LidarrClient {
       monitorNewItems: monitoring.monitorNewItems,
       tags: tags,
       addOptions: {
-        monitor: monitoring.monitor,
+        monitor: addMonitor,
         searchForMissingAlbums: albumOnly ? options.triggerSearch === true : searchOnAdd,
         ...(albumsToMonitor.length > 0 && { albumsToMonitor }),
       },
@@ -1397,20 +1396,6 @@ export class LidarrClient {
       return resolvedArtist!;
     };
 
-    const ensureArtistMonitored = async (artist: LidarrArtist) => {
-      if (albumOnly && options.triggerSearch === true) {
-        logger.info("library", "Queued Lidarr album search with artist add", {
-          artistId: artist?.id ?? null,
-          albumMbid,
-        });
-      }
-      const artistId = normalizeLidarrArtistId(artist?.id);
-      if (!artistId || artist.monitored === true) {
-        return artist;
-      }
-      return this.updateArtistMonitoring(artistId, monitoring.option);
-    };
-
     const postArtist = async (payload: typeof lidarrArtist) => {
       try {
         return await this.request("/artist", "POST", payload, false, {
@@ -1473,7 +1458,17 @@ export class LidarrClient {
       }
       if (!result) throw providerError;
     }
-    return ensureArtistMonitored(await resolveAddedArtist(result));
+    return resolveAddedArtist(result);
+  }
+
+  async waitForArtistAdded(artistId: number | string) {
+    for (let attempt = 1; attempt < LIDARR_ADD_WAIT_ATTEMPTS; attempt++) {
+      const artist = await this.getArtist(artistId);
+      if (!artist?.addOptions) return artist;
+      await new Promise((resolve) => setTimeout(resolve, LIDARR_ADD_POLL_MS));
+    }
+    logger.info("library", "Lidarr is still adding the artist; continuing", { artistId });
+    return this.getArtist(artistId);
   }
 
   async resolveCanonicalArtistIdentity(mbid: string) {

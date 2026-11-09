@@ -522,16 +522,7 @@ export default new Hono<AppEnv>()
         const settings = dbOps.getSettings();
         const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
 
-        if (searchOnAdd) {
-          await lidarrClient.request("/command", "POST", {
-            name: "AlbumSearch",
-            albumIds: [Number.parseInt(String(albumId), 10)],
-          });
-          if (artist?.id) {
-            await libraryManager.ensureRequestedAlbumMonitoring(artist.id, albumId);
-            libraryManager.scheduleRequestedAlbumMonitoringRepair(artist.id, albumId);
-          }
-        }
+        if (searchOnAdd) await lidarrClient.triggerAlbumSearch(Number(albumId));
         invalidateAllDownloadStatusesCache();
 
         const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.ts");
@@ -589,14 +580,7 @@ export default new Hono<AppEnv>()
           await libraryManager.updateAlbum(albumId, { monitored: true });
         }
 
-        await lidarrClient.request("/command", "POST", {
-          name: "AlbumSearch",
-          albumIds: [Number.parseInt(String(albumId), 10)],
-        });
-        if (album.artistId) {
-          await libraryManager.ensureRequestedAlbumMonitoring(album.artistId, albumId);
-          libraryManager.scheduleRequestedAlbumMonitoringRepair(album.artistId, albumId);
-        }
+        await lidarrClient.triggerAlbumSearch(Number(albumId));
         invalidateAllDownloadStatusesCache();
 
         const { recordAlbumSearchStarted } =
