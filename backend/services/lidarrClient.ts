@@ -4,6 +4,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import type { AppSettings } from "../db/helpers/settings.ts";
 import type { UserRecord } from "../db/helpers/users.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { UUID_REGEX } from "../../lib/uuid.ts";
 import { logger } from "./logger.ts";
 import { readMany, readOne } from "./integrationData.ts";
 import BoundedMap from "./boundedMap.ts";
@@ -1552,7 +1553,14 @@ export class LidarrClient {
     }
 
     const startedAt = Date.now();
-    const requestPromise = this.getArtists({ forceRefresh })
+    const lookup =
+      !mappedLidarrArtistId && UUID_REGEX.test(normalizedMbid)
+        ? this.request(`/artist?mbId=${normalizedMbid}`, "GET", null, false, {
+            forceRefresh,
+            parse: many(artistSchema),
+          })
+        : this.getArtists({ forceRefresh });
+    const requestPromise = lookup
       .then((artists) => {
         const artist = artists.find(matchesArtistId) || null;
         if (artist || !forceRefresh) {

@@ -97,7 +97,6 @@
   ".tests/lidarr/album-lookup-route.test.ts": 3,
   ".tests/lidarr/lidarr-circuit.test.ts": 2,
   ".tests/lidarr/lidarr-test-session.test.ts": 1,
-  ".tests/lidarr/lidarr-webhook.test.ts": 4,
   ".tests/logs/log-routes.test.ts": 19,
   ".tests/metadata-providers.test.ts": 11,
   ".tests/migration/static-playlist-library-migration.test.ts": 2,

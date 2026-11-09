@@ -26,6 +26,7 @@ import {
 import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { LidarrAlbum, LidarrAlbumTypeOption, LidarrClient } from "./lidarrClient.ts";
+import { normalizePercentOfTracks } from "./lidarrAlbumStats.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -4502,19 +4503,10 @@ export class LibraryManager {
       const lidarrAlbum: LidarrAlbumRecord | null = await lidarr.getAlbum(albumId);
       if (!lidarrAlbum) return managedBy == null ? libraryTracksForAlbum(albumId) : [];
 
-      const rawPercent = lidarrAlbum.statistics?.percentOfTracks || 0;
       const albumSizeOnDisk = lidarrAlbum.statistics?.sizeOnDisk || 0;
-      let normalizedPercent = rawPercent;
-
-      if (rawPercent > 1 && rawPercent <= 100) {
-        normalizedPercent = Math.round(rawPercent);
-      } else if (rawPercent <= 1 && rawPercent >= 0) {
-        normalizedPercent = Math.round(rawPercent * 100);
-      } else if (rawPercent > 100) {
-        normalizedPercent = Math.min(100, Math.round(rawPercent / 10));
-      }
-
-      const isAlbumComplete = normalizedPercent >= 100 || albumSizeOnDisk > 0;
+      const isAlbumComplete =
+        normalizePercentOfTracks(lidarrAlbum.statistics?.percentOfTracks) >= 100 ||
+        albumSizeOnDisk > 0;
 
       let rawTracks: LidarrTrackRecord[] = [];
 

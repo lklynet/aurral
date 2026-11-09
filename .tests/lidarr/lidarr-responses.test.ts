@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "vite-plus/test";
 import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
+import { normalizePercentOfTracks } from "../../backend/services/lidarrAlbumStats.ts";
 
 async function fakeLidarr(t: TestContext, responses: Record<string, unknown>) {
   const puts: { url: string | undefined; body: unknown }[] = [];
@@ -86,4 +87,22 @@ test("a Lidarr artist Aurral can't read is never written back", async (t) => {
     /Lidarr sent \/artist\/5 data Aurral can't read/,
   );
   assert.deepEqual(puts, []);
+});
+
+test("finding a Lidarr artist by MusicBrainz ID asks for that artist alone", async (t) => {
+  const mbid = "8bfac288-ccc5-448d-9573-c33ea2aa5c30";
+  const { client } = await fakeLidarr(t, {
+    [`GET /api/v1/artist?mbId=${mbid}`]: [{ id: 9, artistName: "Red Hot", foreignArtistId: mbid }],
+  });
+
+  const artist = await client.getArtistByMbid(mbid, { forceRefresh: true });
+
+  assert.equal(artist?.id, 9);
+});
+
+test("Lidarr's percentOfTracks is already a percentage", () => {
+  assert.deepEqual(
+    [0.8, 1, 49.6, 100, 140, -3, null].map(normalizePercentOfTracks),
+    [1, 1, 50, 100, 100, 0, 0],
+  );
 });
