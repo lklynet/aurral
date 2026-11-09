@@ -304,3 +304,33 @@ test("public-only transport rejects socket failures without an uncaught exceptio
     request: { method: "GET", url: "https://example.test" },
   });
 });
+
+test("a public-only request names the private address its hostname resolved to", () => {
+  const moduleUrl = new URL("../../lib/http.ts", import.meta.url).href;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+    import dns from "node:dns/promises";
+    dns.lookup = async () => [{ address: "192.168.4.254", family: 4 }];
+
+    const { http } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      await http.get("https://pitchfork.com/feed/", { publicOnly: true, timeoutMs: 1000 });
+      process.exitCode = 2;
+    } catch (error) {
+      console.log(JSON.stringify(error.message));
+    }
+  `,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    JSON.parse(result.stdout),
+    "pitchfork.com resolved to a private address, 192.168.4.254",
+  );
+});
