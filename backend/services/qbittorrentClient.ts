@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import * as v from "valibot";
 import { http, type HttpOptions, type HttpResponse } from "../../lib/http.ts";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
@@ -106,10 +105,7 @@ const saveSessionStmt = db.prepare<[string, string]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const account = (settings: Settings) =>
-  createHash("sha256")
-    .update(`${settings.url}\0${settings.username}\0${settings.password}`)
-    .digest("hex");
+const account = (settings: Settings) => `${settings.url}\0${settings.username}`;
 
 function savedCookie(settings: Settings) {
   const session = dbHelpers.readJSON(
@@ -195,7 +191,7 @@ export class QbittorrentClient {
         message: "qBittorrent URL is required",
       };
     try {
-      const response = await this._request("/api/v2/app/version");
+      const response = await this._request("/api/v2/app/version", {}, true);
       const version = String(response.data || "").trim();
       const connected = `qBittorrent ${version} is connected`.replace(/\s+/gu, " ");
       if (prowlarrClient.isConfigured())

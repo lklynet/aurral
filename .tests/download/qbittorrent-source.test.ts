@@ -19,6 +19,7 @@ const [
   { db },
   { dbOps },
   { qbittorrentSource },
+  { qbittorrentClient },
   { DownloadSourceError },
   { processSourcePipelinePayload },
   { downloadTracker },
@@ -27,6 +28,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/qbittorrentSource.ts"),
+  () => import("../../backend/services/qbittorrentClient.ts"),
   () => import("../../backend/services/download/downloadSource.ts"),
   () => import("../../backend/services/download/sourcePipeline.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -91,6 +93,7 @@ async function startFake() {
         return response.end("Forbidden");
       }
       if (url.pathname === "/api/v2/torrents/info") return json(response, fake.torrents);
+      if (url.pathname === "/api/v2/app/version") return response.end("v5.0.0");
       if (url.pathname === "/api/v2/torrents/files") {
         const torrent = byHash(url.searchParams.get("hash"));
         if (!torrent) {
@@ -269,7 +272,7 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
   );
 });
 
-test("status waits for the torrent, signs in again when its session ends, then links the kept audio files into the download folder", async () => {
+test("status waits for the torrent, signs in again when its session ends, then links the kept audio files into the download folder, and a connection test always checks the password", async () => {
   await mkdir(path.join(folder, "Lowlands", "CD2"), { recursive: true });
   await writeFile(path.join(folder, "Lowlands", "01 Night Drive.flac"), "audio");
   await writeFile(path.join(folder, "Lowlands", "CD2", "01 Tide.flac"), "audio");
@@ -308,6 +311,17 @@ test("status waits for the torrent, signs in again when its session ends, then l
     qbittorrentSource.status({ id: "aurral-1", directory }),
     (error) => error instanceof DownloadSourceError && /error/.test(error.message),
   );
+
+  assert.equal((await qbittorrentClient.testConnection()).connected, true);
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      qbittorrent: { ...settings.integrations.qbittorrent, password: "wrong" },
+    },
+  });
+  assert.equal((await qbittorrentClient.testConnection()).connected, false);
 });
 
 test("discard removes an unfinished torrent and leaves a finished one seeding", async () => {
