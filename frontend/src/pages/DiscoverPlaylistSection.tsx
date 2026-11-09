@@ -4,6 +4,7 @@ import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
+import { usePlaylistClaims } from "./usePlaylistShelf";
 
 export interface BrowseShelfPlaylist {
   provider: BrowseProvider;
@@ -22,6 +23,7 @@ export function DiscoverPlaylistSection({
   playlists?: BrowseShelfPlaylist[];
   viewAllTo?: string;
 }) {
+  const claimOf = usePlaylistClaims();
   if (playlists.length === 0) return null;
   return (
     <DiscoverRail title={title} viewAllTo={viewAllTo}>
@@ -38,6 +40,7 @@ export function DiscoverPlaylistSection({
               name={playlist.name}
               artworkUrl={artworkUrl}
               meta={formatTrackTotal(playlist.trackCount)}
+              claim={claimOf(playlist)}
             />
           );
         })}

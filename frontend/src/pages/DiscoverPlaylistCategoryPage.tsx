@@ -9,11 +9,12 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
-import { usePlaylistCategories } from "./usePlaylistShelf";
+import { usePlaylistCategories, usePlaylistClaims } from "./usePlaylistShelf";
 
 export default function DiscoverPlaylistCategoryPage() {
   const categoryId = useParams().categoryId ?? "";
   const { categories, madeForYou, shelf } = usePlaylistCategories();
+  const claimOf = usePlaylistClaims();
   const category = categories.find((entry) => entry.id === categoryId);
   const source = categoryId === "made-for-you" ? madeForYou : shelf;
   useDocumentTitle(category?.name ?? "Playlists");
@@ -37,6 +38,7 @@ export default function DiscoverPlaylistCategoryPage() {
                 name={playlist.name}
                 artworkUrl={artworkUrl}
                 meta={formatTrackTotal(playlist.trackCount)}
+                claim={claimOf(playlist)}
               />
             );
           })}

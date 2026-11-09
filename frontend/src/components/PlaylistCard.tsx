@@ -1,9 +1,21 @@
 import { useState } from "react";
 import ArtworkImage from "./ArtworkImage";
-import { ListMusic } from "./icons";
+import { Check, ListMusic, RefreshCw } from "./icons";
 import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
 import { artworkHoverTint } from "../utils/imageColors.ts";
+
+function ClaimBadge({ claim }: { claim: "synced" | "saved" }) {
+  const label = claim === "synced" ? "Synced to your playlists" : "In your playlists";
+  const Icon = claim === "synced" ? RefreshCw : Check;
+  return (
+    <Tooltip content={label}>
+      <span className="playlist-card__claim" role="img" aria-label={label} tabIndex={0}>
+        <Icon strokeWidth={2.5} aria-hidden="true" />
+      </span>
+    </Tooltip>
+  );
+}
 
 export default function PlaylistCard({
   to,
@@ -11,12 +23,14 @@ export default function PlaylistCard({
   name,
   artworkUrl,
   meta,
+  claim,
 }: {
   to: string;
   state?: unknown;
   name: string;
   artworkUrl: string | null;
   meta: string | null;
+  claim?: "synced" | "saved";
 }) {
   const [failedArtwork, setFailedArtwork] = useState(false);
   return (
@@ -40,6 +54,7 @@ export default function PlaylistCard({
               <ListMusic className="artist-icon-lg" aria-hidden="true" />
             </div>
           )}
+          {claim && <ClaimBadge claim={claim} />}
         </div>
         <div className="artist-discover-card__content">
           <RouteLink
