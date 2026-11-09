@@ -85,7 +85,6 @@ function ResultThumbnail({
           alt={item.name}
           className="search-mixed-results__image"
           sizes="3rem"
-          showLoading={false}
           enablePreviewPlayback
         />
       </span>

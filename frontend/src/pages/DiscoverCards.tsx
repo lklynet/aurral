@@ -114,7 +114,6 @@ export const ArtistCard = memo(
             artistName={artist.name}
             alt={artist.name ?? undefined}
             className="artist-discover-card__image"
-            showLoading={false}
             enablePreviewPlayback={Boolean(hasValidMbid)}
             isInLibrary={isInLibrary}
           />

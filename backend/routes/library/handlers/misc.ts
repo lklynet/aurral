@@ -6,6 +6,10 @@ import { noCache } from "../../../middleware/cacheHeaders.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
+import {
+  buildLibraryArtworkUrl,
+  getLibraryArtworkVersions,
+} from "../../../services/libraryArtwork.ts";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
 import { getFreshReleasesByArtists } from "../../../services/discovery/freshReleases.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
@@ -384,13 +388,17 @@ export default new Hono<AppEnv>()
   })
   .get("/recent", noCache, (c) => {
     try {
-      const recent = getRecentlyAddedLibraryArtists({ availableOnly: true, limit: 20 }).map(
-        (artist) => ({
-          ...artist,
-          foreignArtistId: artist.foreignArtistId || artist.mbid,
-          added: artist.addedAt,
-        }),
+      const artists = getRecentlyAddedLibraryArtists({ availableOnly: true, limit: 20 });
+      const versions = getLibraryArtworkVersions(
+        "artist",
+        artists.map((artist) => artist.id),
       );
+      const recent = artists.map((artist) => ({
+        ...artist,
+        foreignArtistId: artist.foreignArtistId || artist.mbid,
+        added: artist.addedAt,
+        coverUrl: buildLibraryArtworkUrl("artist", artist.id, versions.get(artist.id)),
+      }));
       return c.json(recent, 200);
     } catch (error) {
       return c.json(

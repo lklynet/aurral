@@ -1,7 +1,10 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import type { getRecentlyAddedLibraryArtists } from "../../backend/services/libraryQueryService.ts";
-type RecentArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number] & { added?: string };
+type RecentArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number] & {
+  added?: string;
+  coverUrl?: string;
+};
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -135,6 +138,10 @@ test("recent artists combines both owners with artwork and library identities wh
   assert.equal(recent[0]?.mbid, mbid);
   assert.equal(recent[0]?.id, String(aurral.id));
   assert.deepEqual(recent[0]?.images, images);
+  assert.match(
+    String(recent[0]?.coverUrl),
+    new RegExp(`^/api/library/artists/${aurral.id}/cover\\?v=`),
+  );
   assert.equal(requireFixture(recent[1]).mbid, null);
   assert.equal(recent[1]?.foreignArtistId, "123@deezer");
   assert.equal(recent[1]?.id, String(lidarr.id));

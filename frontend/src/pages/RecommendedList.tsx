@@ -206,7 +206,6 @@ export function RecommendedList({
                         artistName={artist.name}
                         alt=""
                         className="recommended-table__avatar"
-                        showLoading={false}
                         enablePreviewPlayback={Boolean(mbid)}
                       />
                       <div className="recommended-table__name-wrap">

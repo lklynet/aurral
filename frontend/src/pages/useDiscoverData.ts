@@ -18,7 +18,6 @@ import {
   writeStoredRecentReleases,
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
-  getLibraryArtistImage,
 } from "./discoverUtils";
 import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 
@@ -196,7 +195,6 @@ export function useDiscoverData() {
     setAppliedNearbyZip,
     canAddAlbum,
     discoveryStatus,
-    getLibraryArtistImage,
     getRecentReleaseKey,
     libraryDestination,
     handleRecentReleaseAlbumAction,

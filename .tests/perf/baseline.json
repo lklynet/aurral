@@ -111,6 +111,14 @@
     "bytes": 11814,
     "scans": []
   },
+  "discover recently added": {
+    "queries": {
+      "cold": 28,
+      "warm": 28
+    },
+    "bytes": 14050,
+    "scans": []
+  },
   "discover artist": {
     "queries": {
       "cold": 22,
