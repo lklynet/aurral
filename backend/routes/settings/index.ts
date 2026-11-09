@@ -215,9 +215,7 @@ export default new Hono<AppEnv>()
               message: result.error,
               details: result.details,
               url: result.url,
-              fullUrl: result.fullUrl,
               statusCode: result.statusCode,
-              apiPath: result.apiPath,
             },
             400,
           );
@@ -228,7 +226,6 @@ export default new Hono<AppEnv>()
             message: "Connection successful",
             version: result.version,
             instanceName: result.instanceName,
-            apiPath: result.apiPath,
           },
           200,
         );

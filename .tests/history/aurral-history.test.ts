@@ -655,7 +655,7 @@ test("cancelled album track downloads show as cancelled, never as failed", async
 const lidarrWithAlbum = (getAlbum: typeof lidarrClient.getAlbum) => {
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
   vi.spyOn(lidarrClient, "getQueue").mockResolvedValue([]);
-  vi.spyOn(lidarrClient, "getHistory").mockResolvedValue({ records: [] });
+  vi.spyOn(lidarrClient, "getHistory").mockResolvedValue([]);
   vi.spyOn(lidarrClient, "request").mockResolvedValue([]);
   vi.spyOn(lidarrClient, "getAlbum").mockImplementation(getAlbum);
   return lidarrClient;

@@ -17,7 +17,6 @@ import {
 import type {
   LidarrCommand,
   LidarrHistoryItem,
-  LidarrPage,
   LidarrQueueItem,
 } from "../../../services/lidarrClient.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
@@ -34,9 +33,9 @@ import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
 type LidarrProviderSnapshot = {
-  queue: LidarrQueueItem[] | LidarrPage<LidarrQueueItem>;
-  history: LidarrHistoryItem[] | LidarrPage<LidarrHistoryItem>;
-  commands: LidarrCommand[] | LidarrPage<LidarrCommand>;
+  queue: LidarrQueueItem[];
+  history: LidarrHistoryItem[];
+  commands: LidarrCommand[];
 };
 
 type AlbumDownloadStatus = { status: string; updatedAt: string };
@@ -93,8 +92,6 @@ export const getDownloadStatusesForAlbumIds = async (
   if (lidarrClient.isConfigured()) {
     try {
       const { queue, history, commands } = snapshot || (await getLidarrStatusSnapshot()).provider;
-      const queueItems = Array.isArray(queue) ? queue : queue.records || [];
-      const historyItems = Array.isArray(history) ? history : history.records || [];
       const searchContext = parseLidarrSearchContext({
         queue,
         history,
@@ -106,7 +103,7 @@ export const getDownloadStatusesForAlbumIds = async (
         number,
         { event: NonNullable<ReturnType<typeof classifyLidarrDownloadEvent>>; historyTime: number }
       >();
-      for (const h of historyItems) {
+      for (const h of history) {
         if (h?.albumId == null) continue;
         const event = classifyLidarrDownloadEvent(h?.eventType);
         if (!event) continue;
@@ -118,7 +115,7 @@ export const getDownloadStatusesForAlbumIds = async (
       }
 
       const queueByAlbumId = new Map<number, LidarrQueueItem>();
-      for (const q of queueItems) {
+      for (const q of queue) {
         const qAlbumId = q?.albumId ?? q?.album?.id;
         if (qAlbumId == null) continue;
         queueByAlbumId.set(qAlbumId, q);
@@ -190,7 +187,7 @@ const computeLidarrStatusSnapshot = async () => {
   const { lidarrClient } = await import("../../../services/lidarrClient.ts");
 
   if (!lidarrClient.isConfigured()) {
-    return { provider: { queue: [], history: { records: [] }, commands: [] }, statuses: {} };
+    return { provider: { queue: [], history: [], commands: [] }, statuses: {} };
   }
 
   const [queue, history, commands] = await Promise.all([
@@ -199,19 +196,15 @@ const computeLidarrStatusSnapshot = async () => {
     lidarrClient.getCommands({ forceRefresh: true }),
   ]);
   const provider: LidarrProviderSnapshot = { queue, history, commands };
-  const queueItems = Array.isArray(provider.queue) ? provider.queue : provider.queue.records || [];
-  const historyItems = Array.isArray(provider.history)
-    ? provider.history
-    : provider.history.records || [];
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
   const albumIds = new Set<string>();
   const searchContext = parseLidarrSearchContext({ queue, history, commands });
 
-  for (const item of queueItems) {
+  for (const item of queue) {
     const albumId = item?.albumId ?? item?.album?.id;
     if (albumId != null) albumIds.add(String(albumId));
   }
-  for (const item of historyItems) {
+  for (const item of history) {
     if (item?.albumId == null) continue;
     const historyTime = new Date(item?.date || item?.eventDate || 0).getTime();
     if (historyTime > oneHourAgo) albumIds.add(String(item.albumId));
@@ -234,7 +227,7 @@ export const hasActiveLidarrStatusSnapshot = () =>
 
 const staleSnapshot = (error: unknown): LidarrStatusSnapshot => ({
   ...(allDownloadStatusesCache.snapshot || {
-    provider: { queue: [], history: { records: [] }, commands: [] },
+    provider: { queue: [], history: [], commands: [] },
     statuses: {},
     updatedAt: null,
     active: false,
@@ -631,9 +624,8 @@ export default new Hono<AppEnv>()
       const { lidarrClient } = await import("../../../services/lidarrClient.ts");
       if (!lidarrClient.isConfigured()) return c.json([], 200);
       const queue = (await getLidarrStatusSnapshot()).provider.queue;
-      const queueItems = Array.isArray(queue) ? queue : queue.records || [];
       return c.json(
-        queueItems.map((item) => ({
+        queue.map((item) => ({
           id: item.id,
           type: "album",
           state: item.status || "queued",

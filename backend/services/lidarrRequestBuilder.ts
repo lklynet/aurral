@@ -2,7 +2,6 @@ import {
   albumHasTrackFiles,
   classifyLidarrDownloadEvent,
   getLidarrAlbumsById,
-  type LidarrRecords,
 } from "./albumSearchState.ts";
 import type { LidarrClient, LidarrHistoryItem, LidarrQueueItem } from "./lidarrClient.ts";
 
@@ -37,20 +36,19 @@ const toIso = (value: string | null | undefined) => {
 export const buildLidarrRequests = async (
   lidarrClient: LidarrClient,
   snapshot: {
-    queue: LidarrRecords<LidarrQueueItem>;
-    history: LidarrRecords<LidarrHistoryItem>;
+    queue: LidarrQueueItem[];
+    history: LidarrHistoryItem[];
   } | null = null,
 ): Promise<LidarrRequestItem[]> => {
   const [queue, history] = snapshot
     ? [snapshot.queue, snapshot.history]
     : await Promise.all([
         lidarrClient.getQueue().catch(() => []),
-        lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
+        lidarrClient.getHistory(1, 200).catch(() => []),
       ]);
 
   const requestsByAlbumId = new Map<string, LidarrRequestItem>();
-  const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
-  for (const item of queueItems) {
+  for (const item of queue) {
     const albumId = item?.albumId ?? item?.album?.id;
     if (albumId == null) continue;
 
@@ -99,14 +97,8 @@ export const buildLidarrRequests = async (
     });
   }
 
-  const historyRecords = Array.isArray(history)
-    ? history
-    : Array.isArray(history?.records)
-      ? history.records
-      : [];
-
   const latestHistoryByAlbum = new Map<string, { record: LidarrHistoryItem; recordTime: number }>();
-  for (const record of historyRecords) {
+  for (const record of history) {
     if (record?.albumId == null || !classifyLidarrDownloadEvent(record.eventType)) continue;
     const albumId = String(record.albumId);
     const recordTime = new Date(record.date || record.eventDate || 0).getTime();

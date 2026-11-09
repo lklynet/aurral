@@ -50,42 +50,6 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   assert.deepEqual(artists, [{ id: 1, artistName: "Test" }]);
 });
 
-test("bulk track reads use Lidarr artist selectors", async (t: import("vite-plus/test").TestContext) => {
-  const requests: (string | undefined)[] = [];
-  const server = http.createServer((request, response) => {
-    requests.push(request.url);
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify([{ id: 1, albumId: 2 }]));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  const address = listeningAddress(server);
-  assert.ok(address != null);
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    ...client.config,
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
-
-  await client.getAllTracks({ artistIds: [7, 8], throwOnError: true });
-  await client.getAllTrackFiles({ artistIds: [7, 8], throwOnError: true });
-
-  assert.deepEqual(requests.sort(), [
-    "/api/v1/track?artistId=7",
-    "/api/v1/track?artistId=8",
-    "/api/v1/trackfile?artistId=7",
-    "/api/v1/trackfile?artistId=8",
-  ]);
-});
-
 test("bulk album reads use Lidarr artist selectors when requested", async (t: import("vite-plus/test").TestContext) => {
   const requests: (string | undefined)[] = [];
   const server = http.createServer((request, response) => {
@@ -159,13 +123,13 @@ test("bulk reads wait for active requests before failing", async () => {
     if (started.length === 12) resolveInitialRequests();
     if (artistId === 1) {
       await failure;
-      throw new Error("bulk track read failed");
+      throw new Error("bulk album read failed");
     }
     if (artistId <= 12) await pending;
     return [];
   });
 
-  const read = client.getAllTracks({ artistIds, throwOnError: true });
+  const read = client.getAllAlbums({ artistIds });
   await initialRequests;
   releaseFailure();
 
@@ -178,50 +142,9 @@ test("bulk reads wait for active requests before failing", async () => {
   assert.equal(settled, false);
 
   releasePending();
-  await assert.rejects(rejection, /bulk track read failed/);
+  await assert.rejects(rejection, /bulk album read failed/);
   await flushPendingWork();
   assert.deepEqual(started, artistIds.slice(0, 12));
-});
-
-test("bulk track-file reads use bounded repeated ID selectors", async (t: import("vite-plus/test").TestContext) => {
-  const requests: number[][] = [];
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    requests.push(url.searchParams.getAll("trackFileIds").map(Number));
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end("[]");
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  const address = listeningAddress(server);
-  assert.ok(address != null);
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    ...client.config,
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
-
-  await client.getTrackFilesByIds(
-    Array.from({ length: 401 }, (_, index) => index + 1),
-    { throwOnError: true },
-  );
-
-  assert.deepEqual(
-    requests.map((batch) => batch.length).sort((left, right) => left - right),
-    [1, 400],
-  );
-  assert.deepEqual(
-    requests.flat().sort((left, right) => left - right),
-    [...Array.from({ length: 401 }, (_, index) => index + 1)],
-  );
 });
 
 test("testConnection preserves Lidarr HTTP diagnostics", async () => {

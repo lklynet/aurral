@@ -60,31 +60,30 @@ test("Lidarr lists skip only the records Aurral can't read", async (t) => {
   );
 });
 
-test("updating a Lidarr artist sends back the fields Aurral doesn't read", async (t) => {
-  const artist = {
+test("updating a Lidarr album sends back the fields Aurral doesn't read", async (t) => {
+  const album = {
     id: 5,
-    artistName: "Artist",
-    foreignArtistId: "artist-mbid",
+    title: "Album",
+    foreignAlbumId: "album-mbid",
     monitored: false,
-    path: null,
-    images: [{ coverType: "poster", url: "/poster.jpg" }],
+    images: [{ coverType: "cover", url: "/cover.jpg" }],
     ratings: { votes: 3, value: 8.1 },
   };
-  const { client, puts } = await fakeLidarr(t, { "GET /api/v1/artist/5": artist });
+  const { client, puts } = await fakeLidarr(t, { "GET /api/v1/album/5": album });
 
-  await client.updateArtist(5, { monitored: true });
+  await client.monitorAlbum(5, true);
 
-  assert.deepEqual(puts, [{ url: "/api/v1/artist/5", body: { ...artist, monitored: true } }]);
+  assert.deepEqual(puts, [{ url: "/api/v1/album/5", body: { ...album, monitored: true } }]);
 });
 
-test("a Lidarr artist Aurral can't read is never written back", async (t) => {
+test("a Lidarr album Aurral can't read is never written back", async (t) => {
   const { client, puts } = await fakeLidarr(t, {
-    "GET /api/v1/artist/5": { id: 5, artistName: "Artist", monitored: "yes" },
+    "GET /api/v1/album/5": { id: 5, foreignAlbumId: "album-mbid", monitored: "yes" },
   });
 
   await assert.rejects(
-    client.updateArtist(5, { monitored: true }),
-    /Lidarr sent \/artist\/5 data Aurral can't read/,
+    client.monitorAlbum(5, true),
+    /Lidarr sent \/album\/5 data Aurral can't read/,
   );
   assert.deepEqual(puts, []);
 });

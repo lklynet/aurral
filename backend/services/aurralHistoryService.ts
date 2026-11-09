@@ -827,7 +827,7 @@ export const syncAlbumSearchHistory = async (
   } = await import("./albumSearchState.ts");
   const [queue, history, commands] = await Promise.all([
     lidarrClient.getQueue().catch(() => []),
-    lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
+    lidarrClient.getHistory(1, 200).catch(() => []),
     lidarrClient.getCommands().catch(() => []),
   ]);
   const context = parseLidarrSearchContext({ queue, history, commands });

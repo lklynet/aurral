@@ -3,7 +3,6 @@ import type {
   LidarrClient,
   LidarrCommand,
   LidarrHistoryItem,
-  LidarrPage,
   LidarrQueueItem,
 } from "./lidarrClient.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -14,14 +13,10 @@ const RECENT_COMMAND_MS = 2 * 60 * 60 * 1000;
 const RECENT_HISTORY_MS = 60 * 60 * 1000;
 const ALBUM_LOOKUP_TTL_MS = 30 * 1000;
 const ALBUM_LOOKUP_CONCURRENCY = 4;
-export type LidarrRecords<T> = T[] | LidarrPage<T> | null;
 
 type AlbumLookup = { at: number; album: Promise<LidarrAlbum | null | undefined> };
 
 const albumLookupsByClient = new WeakMap<LidarrClient, Map<string, AlbumLookup>>();
-
-const normalizeItems = <T>(value: LidarrRecords<T> | undefined): T[] =>
-  Array.isArray(value) ? value : value?.records || [];
 
 export const albumHasTrackFiles = (album: LidarrAlbum | null | undefined) =>
   Number(album?.statistics?.trackFileCount || 0) > 0;
@@ -100,17 +95,14 @@ export function readLidarrQueueItemStatus(item: LidarrQueueItem | null | undefin
 }
 
 export const parseLidarrSearchContext = ({
-  queue,
-  history,
-  commands,
+  queue = [],
+  history = [],
+  commands = [],
 }: {
-  queue?: LidarrRecords<LidarrQueueItem>;
-  history?: LidarrRecords<LidarrHistoryItem>;
-  commands?: LidarrRecords<LidarrCommand>;
+  queue?: LidarrQueueItem[];
+  history?: LidarrHistoryItem[];
+  commands?: LidarrCommand[];
 } = {}) => {
-  const queueItems = normalizeItems(queue);
-  const historyItems = normalizeItems(history);
-  const commandItems = normalizeItems(commands);
   const now = Date.now();
   const searchingAlbumIds = new Set<number>();
   const recentlyCompletedSearchAlbumIds = new Set<number>();
@@ -119,7 +111,7 @@ export const parseLidarrSearchContext = ({
   const grabbedAlbumIds = new Set<number>();
   const activeHistoryAlbumIds = new Set<number>();
 
-  for (const command of commandItems) {
+  for (const command of commands) {
     const name = String(command?.name || command?.commandName || "")
       .toLowerCase()
       .trim();
@@ -150,12 +142,12 @@ export const parseLidarrSearchContext = ({
     }
   }
 
-  for (const item of queueItems) {
+  for (const item of queue) {
     const albumId = item?.albumId ?? item?.album?.id;
     if (albumId != null) queueAlbumIds.add(albumId);
   }
 
-  for (const record of historyItems) {
+  for (const record of history) {
     const albumId = record?.albumId;
     if (albumId == null) continue;
     const recordTime = new Date(record?.date || record?.eventDate || 0).getTime();
