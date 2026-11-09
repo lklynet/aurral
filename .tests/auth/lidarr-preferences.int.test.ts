@@ -719,11 +719,12 @@ test("POST /library/artists uses the server defaults when saved defaults are sta
   assert.equal(posted?.qualityProfileId, 7);
 });
 
-test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists that follow albums", async () => {
+test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists with monitored albums", async () => {
   const { upsertLibraryArtist } = await import("../../backend/services/libraryMediaStore.ts");
   const followedMbid = "12121212-1212-1212-1212-121212121212";
   const albumOnlyMbid = "13131313-1313-1313-1313-131313131313";
   const aurralOnlyMbid = "14141414-1414-1414-1414-141414141414";
+  const addedInLidarrMbid = "16161616-1616-1616-1616-161616161616";
   await postLibraryArtist({
     foreignArtistId: followedMbid,
     artistName: "Followed Artist",
@@ -755,14 +756,36 @@ test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists
   );
   assert.ok(followed);
   const followedId = followed.id;
+  const albumOnly = fakeLidarr.state.artists.find(
+    (artist) => artist.foreignArtistId === albumOnlyMbid,
+  );
+  assert.ok(albumOnly);
+  fakeLidarr.state.albums.push(
+    lidarrAlbum(1200, followedId, "Followed Album", "12121212-0000-0000-0000-000000000001", {
+      monitored: true,
+    }),
+    lidarrAlbum(1300, albumOnly.id, "Unwanted Album", "13131313-0000-0000-0000-000000000001"),
+  );
+  const addedInLidarr = lidarrArtist(1600, "Added In Lidarr Artist", addedInLidarrMbid, {
+    monitored: true,
+  });
+  seedLidarrArtistAlbum(
+    addedInLidarr,
+    lidarrAlbum(1601, addedInLidarr.id, "Wanted Album", "16161616-0000-0000-0000-000000000001", {
+      monitored: true,
+    }),
+  );
   fakeLidarr.state.commands = [];
 
-  for (const mbid of [followedMbid, albumOnlyMbid, aurralOnlyMbid]) {
+  for (const mbid of [followedMbid, albumOnlyMbid, aurralOnlyMbid, addedInLidarrMbid]) {
     const { response, payload } = await apiFetch(`/api/library/artists/${mbid}/refresh`, {
       method: "POST",
     });
     assert.equal(response.status, 200, JSON.stringify(payload));
   }
 
-  assert.deepEqual(fakeLidarr.state.commands, [{ name: "ArtistSearch", artistId: followedId }]);
+  assert.deepEqual(fakeLidarr.state.commands, [
+    { name: "ArtistSearch", artistId: followedId },
+    { name: "ArtistSearch", artistId: addedInLidarr.id },
+  ]);
 });

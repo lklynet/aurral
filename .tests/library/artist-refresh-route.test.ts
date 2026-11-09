@@ -22,8 +22,10 @@ test("refreshing a monitored artist searches Lidarr by its numeric id", async ()
   >);
   vi.spyOn(libraryManager, "getAlbums").mockResolvedValue([]);
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  const monitoredArtist = { id: 12, monitored: true, addOptions: { monitor: "all" } };
-  vi.spyOn(lidarrClient, "getArtistByMbid").mockResolvedValue(monitoredArtist);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockResolvedValue({ id: 12, monitored: true });
+  vi.spyOn(lidarrClient, "getAllAlbums").mockResolvedValue([
+    { id: 1, foreignAlbumId: "album-mbid", monitored: true },
+  ]);
   const search = vi.spyOn(lidarrClient, "triggerArtistSearch").mockResolvedValue({});
   const response = await app.request(
     "/library/artists/55555555-5555-4555-8555-555555555555/refresh",

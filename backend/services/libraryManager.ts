@@ -33,6 +33,7 @@ import type {
   LidarrTrackFile,
 } from "./lidarrClient.ts";
 import { normalizePercentOfTracks } from "./lidarrAlbumStats.ts";
+import { LIDARR_MONITOR_OPTIONS } from "./lidarrMonitorOptions.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -124,15 +125,6 @@ import {
 import { isSilenceTrack, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 const LIDARR_RETRY_MS = 60000;
 const metadataLookups = new PQueue({ concurrency: 4 });
-const LIDARR_MONITOR_OPTIONS = new Set([
-  "none",
-  "existing",
-  "all",
-  "future",
-  "missing",
-  "latest",
-  "first",
-]);
 const ARTIST_LIST_CACHE_TTL_MS = 15 * 60 * 1000;
 const TRACKS_CACHE_TTL_MS = 120000;
 const TRACKS_CACHE_MAX = 300;
@@ -3940,7 +3932,7 @@ export class LibraryManager {
       foreignAlbumId: lidarrAlbum.foreignAlbumId,
       albumName: lidarrAlbum.title,
       path: albumPath,
-      addedAt: new Date().toISOString(),
+      addedAt: null,
       releaseDate: lidarrAlbum.releaseDate || null,
       monitored: lidarrAlbum.monitored || false,
       statistics: {

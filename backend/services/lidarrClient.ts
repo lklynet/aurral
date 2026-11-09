@@ -10,6 +10,7 @@ import { readMany, readOne } from "./integrationData.ts";
 import BoundedMap from "./boundedMap.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.ts";
+import { LIDARR_MONITOR_OPTIONS } from "./lidarrMonitorOptions.ts";
 
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
@@ -31,15 +32,6 @@ const LIDARR_STATUS_CACHE_MAX = 100;
 const QUEUE_ENDPOINT = "/queue?includeArtist=true&includeAlbum=true&pageSize=200";
 const isQueueEndpoint = (endpoint: string) =>
   endpoint === "/queue" || endpoint.startsWith("/queue?");
-const VALID_MONITOR_OPTIONS = new Set([
-  "none",
-  "existing",
-  "all",
-  "future",
-  "missing",
-  "latest",
-  "first",
-]);
 
 type LidarrHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -369,7 +361,7 @@ function isMetadataProviderIdError(error: unknown) {
 
 function normalizeMonitorOption(value: unknown) {
   const option = String(value || "none").trim();
-  return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
+  return LIDARR_MONITOR_OPTIONS.has(option) ? option : "none";
 }
 
 function getArtistMonitoringPayload(monitorOption: unknown) {
