@@ -187,13 +187,48 @@ function advertisedLossyFamily(text: string) {
   return null;
 }
 
-export function classifyAdvertisedQuality(fileName: unknown, bitrate: unknown = null) {
+export type AdvertisedAudio = {
+  bitDepth?: unknown;
+  sampleRate?: unknown;
+};
+
+function positiveNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+const BRACKETED_FLAC_QUALITY =
+  /[[(]\s*(16|24|32)\s*(?:bit|b)?\s*[-/]\s*(44\.1|48|88\.2|96|176\.4|192|352\.8|384)\s*(?:k?hz)?\s*[\])]/;
+
+function advertisedBitDepth(text: string) {
+  const tagged = /\b(16|24|32)(?:-?\s*bit\b|b\b)/.exec(text);
+  if (tagged?.[1]) return Number(tagged[1]);
+  const paired = BRACKETED_FLAC_QUALITY.exec(text);
+  return paired?.[1] ? Number(paired[1]) : null;
+}
+
+function advertisedSampleRate(text: string) {
+  const tagged = /\b(44\.1|48|88\.2|96|176\.4|192|352\.8|384)\s*k?hz\b/.exec(text);
+  if (tagged?.[1]) return Math.round(Number(tagged[1]) * 1000);
+  const paired = BRACKETED_FLAC_QUALITY.exec(text);
+  return paired?.[2] ? Math.round(Number(paired[2]) * 1000) : null;
+}
+
+function advertisedFlacTier(text: string, advertised: AdvertisedAudio | null) {
+  const bitDepth = positiveNumber(advertised?.bitDepth) ?? advertisedBitDepth(text);
+  const sampleRate = positiveNumber(advertised?.sampleRate) ?? advertisedSampleRate(text);
+  return (bitDepth !== null && bitDepth > 16) || (sampleRate !== null && sampleRate > 48000)
+    ? "flac-hires"
+    : "flac-standard";
+}
+
+export function classifyAdvertisedQuality(
+  fileName: unknown,
+  bitrate: unknown = null,
+  advertised: AdvertisedAudio | null = null,
+) {
   const text = String(fileName || "").toLowerCase();
-  if (/\.flac\b|\bflac\b/.test(text)) {
-    return /\b(?:24[ -]?bit|(?:88\.2|96|176\.4|192)\s*k?hz)\b/.test(text)
-      ? "flac-hires"
-      : "flac-standard";
-  }
+  if (/\.flac\b|\bflac\b/.test(text)) return advertisedFlacTier(text, advertised);
   const family = advertisedLossyFamily(text);
   if (!family) return null;
   const textBitrate = /\b(128|192|256|320)\s*k(?:bps)?\b/.exec(text);
@@ -216,10 +251,16 @@ export function isAdvertisedQualityEligible(
     profile,
     currentTier = null,
     upgrade = false,
-  }: { profile?: unknown; currentTier?: string | null; upgrade?: boolean } = {},
+    advertised = null,
+  }: {
+    profile?: unknown;
+    currentTier?: string | null;
+    upgrade?: boolean;
+    advertised?: AdvertisedAudio | null;
+  } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
-  const tier = classifyAdvertisedQuality(fileName, bitrate);
+  const tier = classifyAdvertisedQuality(fileName, bitrate, advertised);
   if (!tier) {
     const name = String(fileName || "").trim();
     if (NEVER_TIERED_ADVERTISED_EXTENSION.test(name)) return false;
@@ -239,9 +280,19 @@ export function isAdvertisedQualityEligible(
   );
 }
 
-export function getAdvertisedQualityRank(fileName: unknown, bitrate: unknown, profile: unknown) {
+export function getAdvertisedQualityRank(
+  fileName: unknown,
+  bitrate: unknown,
+  {
+    profile,
+    advertised = null,
+  }: {
+    profile?: unknown;
+    advertised?: AdvertisedAudio | null;
+  } = {},
+) {
   const normalized = normalizeQualityProfile(profile);
-  const tier = classifyAdvertisedQuality(fileName, bitrate);
+  const tier = classifyAdvertisedQuality(fileName, bitrate, advertised);
   const index = tier === null ? -1 : normalized.order.indexOf(tier);
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
@@ -254,12 +305,14 @@ export function orderAdvertisedQualityCandidates<T>(
     upgrade = false,
     readName,
     readBitrate,
+    readAdvertised,
   }: {
     profile?: unknown;
     currentTier?: string | null;
     upgrade?: boolean;
     readName?: (entry: T) => string | null | undefined;
     readBitrate?: (entry: T) => unknown;
+    readAdvertised?: (entry: T) => AdvertisedAudio | null | undefined;
   } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
@@ -270,16 +323,18 @@ export function orderAdvertisedQualityCandidates<T>(
         entry,
         index,
         name,
-        tier: classifyAdvertisedQuality(name, readBitrate?.(entry)),
+        tier: classifyAdvertisedQuality(name, readBitrate?.(entry), readAdvertised?.(entry)),
       };
     })
-    .filter(({ entry, name }) =>
-      isAdvertisedQualityEligible(name, readBitrate?.(entry), {
+    .filter(({ entry, name }) => {
+      const advertised = readAdvertised?.(entry) ?? null;
+      return isAdvertisedQualityEligible(name, readBitrate?.(entry), {
         profile: normalized,
         currentTier,
         upgrade,
-      }),
-    )
+        advertised,
+      });
+    })
     .sort((left, right) => {
       if (!left.tier && !right.tier) return left.index - right.index;
       if (!left.tier) return 1;
