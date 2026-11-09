@@ -82,12 +82,17 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
   };
 }
 
-export async function processPluginPipelinePayload(payload: SourcePayload, helpers: SourceHelpers) {
-  const id = pluginIdFromSource(payload.source);
+export function pluginDownloadSource(sourceId: string | null | undefined) {
+  const id = pluginIdFromSource(sourceId);
   const plugin = id ? activePluginWith(id, "downloadSource") : null;
-  if (!plugin?.manifest.downloadSource) {
+  return plugin?.manifest.downloadSource ? pluginSource(plugin) : null;
+}
+
+export async function processPluginPipelinePayload(payload: SourcePayload, helpers: SourceHelpers) {
+  const source = pluginDownloadSource(payload.source);
+  if (!source) {
     const job = downloadTracker.getJob(payload.jobId);
     return job ? helpers.failOrTryNextSource(payload, job, "The plugin is turned off") : null;
   }
-  return processSourcePipelinePayload(payload, pluginSource(plugin), helpers);
+  return processSourcePipelinePayload(payload, source, helpers);
 }

@@ -10,6 +10,7 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
 import { createTrackedJob, trackedJob } from "../download/fixtures.ts";
+import { insertJob } from "../helpers/jobs.ts";
 
 type Payload = Parameters<typeof processPluginPipelinePayload>[0];
 
@@ -22,6 +23,7 @@ const [
   { stopAllPlugins },
   { refreshInstalledPlugins, updatePlugin },
   { getEnabledDownloadSources, getSourceLabel, upgradeSourceIds },
+  { cancelDownloadWorkForJobs },
 ] = await setupIsolatedBackend(
   "plugin-download-source",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -31,6 +33,7 @@ const [
   () => import("../../backend/services/plugins/pluginHost.ts"),
   () => import("../../backend/services/plugins/pluginService.ts"),
   () => import("../../backend/services/downloadSourceService.ts"),
+  () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
 );
 
 const SOURCE = `let polls = 0;
@@ -58,21 +61,23 @@ export default { downloadSource: {
   },
 } };`;
 
-const ALBUM_SOURCE = `let kept = null;
+const ALBUM_SOURCE = `const kept = {};
 export default { downloadSource: {
-  searchAlbum: ({ album }) => [{ id: "a1", title: album.title, artist: album.artist }],
-  downloadAlbum: () => ({ pending: "album-1" }),
+  searchAlbum: ({ album }) => ["a1", "a2"].map((id) => ({ id, title: album.title, artist: album.artist })),
+  downloadAlbum: ({ result }) => ({ pending: result.id }),
   listFiles: () => [
     { path: "Lowlands/01 Tide.flac", size: 30000000 },
     { path: "Lowlands/02 Night Drive.flac", size: 30000000 },
   ],
-  keepFile: ({ path }) => { kept = path; },
-  status: async ({ settings, directory }) => {
+  keepFile: ({ id, path }) => { kept[id] = path; },
+  status: async ({ settings, id, directory }) => {
+    if (id === "a1") throw new Error("the client lost it");
     const { copyFile, mkdir } = await import("node:fs/promises");
     await mkdir(directory + "/Lowlands", { recursive: true });
-    await copyFile(settings.fixture, directory + "/" + kept);
+    await copyFile(settings.fixture, directory + "/" + kept[id]);
     return { done: true };
   },
+  discard: () => {},
 } };`;
 
 let fixtureDir = "";
@@ -105,21 +110,23 @@ async function installSource(
   updatePlugin("tapes", { enabled: true, priority: 5, settings });
 }
 
-async function runToEnd(jobId: string) {
+async function runSteps(jobId: string, until: string) {
   const fail = async (_payload: Payload, _job: unknown, message: string) => {
     throw new Error(message);
   };
   let payload: Payload | null = { jobId, phase: "search", source: "plugin:tapes" };
   const phases: string[] = [];
-  while (payload && payload.phase !== "done") {
+  while (payload && payload.phase !== until) {
     phases.push(payload.phase);
     const next: unknown = await processPluginPipelinePayload(payload, {
       failOrTryNextSource: fail,
     });
     payload = next && typeof next === "object" && "phase" in next ? (next as Payload) : null;
   }
-  return phases;
+  return { phases, payload };
 }
+
+const runToEnd = async (jobId: string) => (await runSteps(jobId, "done")).phases;
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -196,16 +203,26 @@ test("a plugin source can hand a download to its client and finish once status s
   await access(String(job.finalPath));
 });
 
-test("a plugin source is told to discard a pending download that failed", async () => {
+test("a plugin source is told to discard a pending download that failed or was cancelled", async () => {
   const fixture = await writeFlacFixture(path.join(fixtureDir, "source.flac"), {}, { seconds: 1 });
   await installSource({ fixture, pending: true, lost: true });
-  const jobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "Glass Coast", trackName: "Night Drive", durationMs: 1000 },
-    "plugin-source",
-  );
+  const track = () =>
+    createTrackedJob(
+      downloadTracker,
+      { artistName: "Glass Coast", trackName: "Night Drive", durationMs: 1000 },
+      "plugin-source",
+    );
+  const jobId = track();
 
   await assert.rejects(runToEnd(jobId), /download failed: the client lost it/);
+  assert.equal(await readFile(`${fixture}.discarded`, "utf8"), "client-7");
+
+  await rm(`${fixture}.discarded`);
+  const cancelled = track();
+  const { payload } = await runSteps(cancelled, "poll");
+  assert.ok(payload);
+  insertJob(db, "download-pipeline", payload);
+  await cancelDownloadWorkForJobs([trackedJob(downloadTracker, cancelled)]);
   assert.equal(await readFile(`${fixture}.discarded`, "utf8"), "client-7");
 });
 
@@ -243,7 +260,14 @@ test("an album-only plugin source fills a track request with the one file it kep
     "plugin-source",
   );
 
-  assert.deepEqual(await runToEnd(jobId), ["search", "download", "poll", "finalize"]);
+  assert.deepEqual(await runToEnd(jobId), [
+    "search",
+    "download",
+    "poll",
+    "download",
+    "poll",
+    "finalize",
+  ]);
   const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   assert.equal(job.remoteFilename, "02 Night Drive.flac");

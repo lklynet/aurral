@@ -393,6 +393,7 @@ async function handleDownload(
         phase: "poll",
         pendingId: started.pending,
         pollAttempts: 0,
+        filesChecked: false,
         delaySeconds: POLL_SECONDS,
       };
       return await keepTrackFile(polling, source, job).catch(() => polling);

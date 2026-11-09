@@ -66,6 +66,7 @@ async function startFake() {
     logins: 0,
     torrents: [] as Torrent[],
     releases: [] as Record<string, unknown>[],
+    musicReleases: null as Record<string, unknown>[] | null,
     added: [] as FormData[],
     deleted: [] as string[],
     onAdd: (_tag: string) => {},
@@ -142,10 +143,19 @@ async function startFake() {
           enable: true,
           protocol: "torrent",
           supportsSearch: true,
-          capabilities: { categories: [{ id: 3000 }] },
+          capabilities: {
+            categories: [{ id: 3000 }],
+            musicSearchParams: ["q", "artist", "album"],
+          },
         },
       ]);
-    if (url.pathname === "/api/v1/search") return json(response, fake.releases);
+    if (url.pathname === "/api/v1/search")
+      return json(
+        response,
+        url.searchParams.get("type") === "music"
+          ? (fake.musicReleases ?? fake.releases)
+          : fake.releases,
+      );
     response.writeHead(404);
     response.end();
   });
@@ -216,6 +226,13 @@ test("an album search keeps seeded torrents of the album, best quality first", a
   );
   assert.deepEqual(
     upgrades.map((result) => result.id),
+    ["flac"],
+  );
+
+  fake.musicReleases = [release("mp3", "Glass Coast - Lowlands (2020) [MP3 320]", 40)];
+  const broader = await qbittorrentSource.albums!.search(ALBUM, { currentTier: "mp3-320" });
+  assert.deepEqual(
+    broader.map((result) => result.id),
     ["flac"],
   );
 });

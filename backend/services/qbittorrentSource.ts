@@ -63,13 +63,13 @@ async function searchReleases(album: AlbumQuery, upgrade: Upgrade) {
       context,
       { protocol: "torrent" },
     ).filter((entry) => entry.releaseAdmissible && entry.resolvedAlbumName);
-    if (ranked.length > 0)
-      return orderAdvertisedQualityCandidates(ranked, {
-        profile: getQualityProfile(),
-        currentTier: upgrade?.currentTier ?? null,
-        upgrade: upgrade !== null,
-        readName: (entry) => entry.raw.release.title,
-      });
+    const ordered = orderAdvertisedQualityCandidates(ranked, {
+      profile: getQualityProfile(),
+      currentTier: upgrade?.currentTier ?? null,
+      upgrade: upgrade !== null,
+      readName: (entry) => entry.raw.release.title,
+    });
+    if (ordered.length > 0) return ordered;
   }
   return [];
 }
