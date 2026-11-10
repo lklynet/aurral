@@ -5,7 +5,7 @@ import { expandAlbumGrabHistory } from "./albumGrabActivity.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveBlockedJobReleaseTitle, resolveBlockedJobSourceFilename } from "./downloadUtils.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
-import { getLibraryForAlbumReferences } from "./libraryQueryService.ts";
+import { getLibraryAlbumIdsByReference } from "./libraryQueryService.ts";
 import type {
   AurralHistoryEntry,
   AurralHistoryMetadata,
@@ -1321,6 +1321,7 @@ export const toHistoryRequestItem = (
 };
 
 const FAILED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVE_JOB_STATUSES = new Set(["blocked", "pending", "downloading", "cancel_requested"]);
 
 const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHistoryEntry => {
   const playlistId = job?.playlistId || job?.playlistType;
@@ -1384,19 +1385,15 @@ export const getAurralHistoryRequests = async (
 
   const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
   const jobs: HistoryJob[] = downloadTracker.getAll();
-  for (const job of jobs) {
-    if (
-      job.status !== "blocked" &&
-      job.status !== "pending" &&
-      job.status !== "downloading" &&
-      job.status !== "cancel_requested"
-    ) {
-      continue;
-    }
+  const activeJobs = jobs.flatMap((job) => {
     const historyId = stableId("track_download", job.id);
-    if (entryIds.has(historyId)) continue;
-    const row = dbOps.getAurralHistoryById(historyId);
-    const entry = row || buildActiveTrackHistory(job);
+    return job.status && ACTIVE_JOB_STATUSES.has(job.status) && !entryIds.has(historyId)
+      ? [{ job, historyId }]
+      : [];
+  });
+  const storedEntries = dbOps.getAurralHistoryByIds(activeJobs.map(({ historyId }) => historyId));
+  for (const { job, historyId } of activeJobs) {
+    const entry = storedEntries.get(historyId) || buildActiveTrackHistory(job);
     if (
       !canViewPlaylistActivity(user, entry.metadata?.playlistId || entry.metadata?.playlistType)
     ) {
@@ -1408,16 +1405,6 @@ export const getAurralHistoryRequests = async (
 
   const now = Date.now();
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
-  const libraryAlbumIdsByMbid = new Map<unknown, string | null>();
-  const resolveLibraryAlbumId = (albumMbid: unknown) => {
-    if (!albumMbid) return null;
-    if (!libraryAlbumIdsByMbid.has(albumMbid)) {
-      const album = getLibraryForAlbumReferences({ source: "all", references: [albumMbid] })
-        .albums[0];
-      libraryAlbumIdsByMbid.set(albumMbid, album?.id != null ? String(album.id) : null);
-    }
-    return libraryAlbumIdsByMbid.get(albumMbid);
-  };
   const canViewEntry = (entry: AurralHistoryEntry) =>
     canViewPlaylistActivity(
       user,
@@ -1425,61 +1412,68 @@ export const getAurralHistoryRequests = async (
       entry.metadata?.ownerUserId,
     );
   const expanded = expandAlbumGrabHistory(entries, now - MAX_AGE_MS, canViewEntry);
-  return expanded.entries
-    .filter(
-      (e) =>
-        !ACTIVITY_HIDDEN_KINDS.has(e.kind) &&
-        canViewEntry(e) &&
-        (e.status !== "failed" || now - e.createdAt < FAILED_RETENTION_MS),
-    )
-    .map((entry) => {
-      const jobId = String(entry.metadata?.jobId || "").trim();
-      const job = jobId ? jobsById.get(jobId) : null;
-      if (entry.kind === "track_download" && job) {
-        entry.metadata = {
-          ...entry.metadata,
-          downloadSource: job.downloadSource || null,
-          downloadClient: job.downloadClient || null,
-        };
-      }
-      const albumGrabId = entry.metadata?.albumGrabId;
-      const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
-      const libraryAlbumId =
-        entry.metadata?.canonicalAlbumId ||
-        resolveLibraryAlbumId(job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid);
-      const blockedJob = entry.status === "blocked" ? job : null;
-      const sourceFilename =
-        (blockedJob && resolveBlockedJobSourceFilename(blockedJob)) ||
-        entry.metadata?.sourceFilename;
-      const releaseTitle =
-        (blockedJob && resolveBlockedJobReleaseTitle(blockedJob)) || entry.metadata?.releaseTitle;
-      const albumName =
-        entry.metadata?.albumName ||
-        (entry.status === "blocked" && job?.albumName ? job.albumName : null);
-      const trackName =
-        entry.metadata?.trackName ||
-        (entry.status === "blocked" && job?.trackName ? job.trackName : null);
-      if (entry.kind === "track_download" && job?.status === "cancel_requested") {
-        entry.status = "processing";
-        entry.statusLabel = "Cancelling";
-        entry.title = `Cancelling ${job?.trackName || entry.metadata?.trackName || "track"}`;
-      } else if (
-        entry.kind === "track_download" &&
-        job?.status === "done" &&
-        (entry.status === "pending" || entry.status === "processing")
-      ) {
-        const isReused = entry.statusLabel === "Queued";
-        entry.status = "completed";
-        entry.statusLabel = isReused ? "Reused" : "Downloaded";
-      }
-      return toHistoryRequestItem(entry, {
-        sourceFilename,
-        releaseTitle,
-        albumName,
-        trackName,
-        libraryAlbumId,
-        requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
-        albumGrab: manifest ? { ...manifest, libraryAlbumId: libraryAlbumId || null } : null,
-      });
+  const visible = expanded.entries.flatMap((entry) => {
+    if (
+      ACTIVITY_HIDDEN_KINDS.has(entry.kind) ||
+      !canViewEntry(entry) ||
+      (entry.status === "failed" && now - entry.createdAt >= FAILED_RETENTION_MS)
+    ) {
+      return [];
+    }
+    const jobId = String(entry.metadata?.jobId || "").trim();
+    const job = (jobId && jobsById.get(jobId)) || null;
+    const albumGrabId = entry.metadata?.albumGrabId;
+    const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
+    const albumMbid = job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid || null;
+    return [{ entry, job, manifest, albumMbid }];
+  });
+  const libraryAlbumIds = getLibraryAlbumIdsByReference(
+    visible.flatMap(({ entry, albumMbid }) =>
+      entry.metadata?.canonicalAlbumId || !albumMbid ? [] : [albumMbid],
+    ),
+  );
+  return visible.map(({ entry, job, manifest, albumMbid }) => {
+    if (entry.kind === "track_download" && job) {
+      entry.metadata = {
+        ...entry.metadata,
+        downloadSource: job.downloadSource || null,
+        downloadClient: job.downloadClient || null,
+      };
+    }
+    const libraryAlbumId =
+      entry.metadata?.canonicalAlbumId || (albumMbid && libraryAlbumIds.get(albumMbid)) || null;
+    const blockedJob = entry.status === "blocked" ? job : null;
+    const sourceFilename =
+      (blockedJob && resolveBlockedJobSourceFilename(blockedJob)) || entry.metadata?.sourceFilename;
+    const releaseTitle =
+      (blockedJob && resolveBlockedJobReleaseTitle(blockedJob)) || entry.metadata?.releaseTitle;
+    const albumName =
+      entry.metadata?.albumName ||
+      (entry.status === "blocked" && job?.albumName ? job.albumName : null);
+    const trackName =
+      entry.metadata?.trackName ||
+      (entry.status === "blocked" && job?.trackName ? job.trackName : null);
+    if (entry.kind === "track_download" && job?.status === "cancel_requested") {
+      entry.status = "processing";
+      entry.statusLabel = "Cancelling";
+      entry.title = `Cancelling ${job?.trackName || entry.metadata?.trackName || "track"}`;
+    } else if (
+      entry.kind === "track_download" &&
+      job?.status === "done" &&
+      (entry.status === "pending" || entry.status === "processing")
+    ) {
+      const isReused = entry.statusLabel === "Queued";
+      entry.status = "completed";
+      entry.statusLabel = isReused ? "Reused" : "Downloaded";
+    }
+    return toHistoryRequestItem(entry, {
+      sourceFilename,
+      releaseTitle,
+      albumName,
+      trackName,
+      libraryAlbumId,
+      requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
+      albumGrab: manifest ? { ...manifest, libraryAlbumId: libraryAlbumId || null } : null,
     });
+  });
 };

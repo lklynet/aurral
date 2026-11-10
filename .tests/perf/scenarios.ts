@@ -104,6 +104,13 @@ export const scenarios: Scenario[] = [
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
   { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },
+  {
+    name: "activity queue",
+    requests: () => [
+      "/api/requests/page?view=queue&limit=25&refresh=1",
+      "/api/requests/page?view=queue&status=review&limit=25",
+    ],
+  },
   { name: "listening history", requests: () => ["/api/users/me/listening-history"] },
   { name: "subsonic getArtists", requests: () => ["/rest/getArtists"] },
   {

@@ -1,11 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import {
-  groupAlbumGrabRequests,
-  lookupLabel,
-  type ActivityRequest,
-} from "../../frontend/src/pages/activity/activityListUtils.ts";
+import { groupAlbumGrabRequests, lookupLabel, type ActivityRequest } from "../../lib/activity.ts";
 
 test("label lookups ignore inherited object keys", () => {
   const table = { slskd: "Soulseek" };

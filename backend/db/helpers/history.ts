@@ -84,6 +84,7 @@ export interface AurralHistoryOps {
   insertAurralHistory: (entry: AurralHistoryInput) => AurralHistoryInput | null;
   deleteAurralHistoryById: (id: string | null) => boolean;
   getAurralHistoryById: (id: string) => (AurralHistoryEntry & { id: string }) | null;
+  getAurralHistoryByIds: (ids: string[]) => Map<string, AurralHistoryEntry>;
   getAlbumRequestByGroup: (requestGroupId: string) => (AurralHistoryEntry & { id: string }) | null;
   getAurralHistory: (options?: { since?: number; limit?: number }) => AurralHistoryEntry[];
   pruneAurralHistory: (options?: { maxAgeMs?: number; maxEntries?: number }) => void;
@@ -123,6 +124,14 @@ const getAurralHistoryByIdStmt = db.prepare<
   SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
   FROM aurral_history
   WHERE id = ?
+`);
+const getAurralHistoryByIdsStmt = db.prepare<
+  [string],
+  Omit<AurralHistoryRow, "id"> & { id: string }
+>(`
+  SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
+  FROM aurral_history
+  WHERE id IN (SELECT value FROM json_each(?))
 `);
 const getAlbumRequestByGroupStmt = db.prepare<
   [string],
@@ -188,6 +197,13 @@ export default function register(dbOps: AurralHistoryOps) {
     if (!id) return null;
     const row = getAurralHistoryByIdStmt.get(String(id));
     return row ? toEntry(row) : null;
+  };
+
+  dbOps.getAurralHistoryByIds = function (ids) {
+    if (!ids.length) return new Map();
+    return new Map(
+      getAurralHistoryByIdsStmt.all(JSON.stringify(ids)).map((row) => [row.id, toEntry(row)]),
+    );
   };
 
   dbOps.getAlbumRequestByGroup = function (requestGroupId) {

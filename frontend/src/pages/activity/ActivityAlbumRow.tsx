@@ -11,12 +11,11 @@ import {
   isBlockedTrack,
   type ActivityRowActionProps,
 } from "./ActivityRequestRow";
+import type { ActivityRequest, AlbumActivityRequest } from "../../../../lib/activity.ts";
 import {
   downloadClientLabel,
   formatReviewReasonSummary,
   formatTimelineTime,
-  type ActivityRequest,
-  type AlbumActivityRequest,
 } from "./activityListUtils";
 
 type ActivityAlbumRowProps = ActivityRowActionProps & { request: AlbumActivityRequest };

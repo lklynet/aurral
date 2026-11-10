@@ -3,7 +3,7 @@ import { X } from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
-import { lookupLabel, type ActivityRequest } from "./activityListUtils.ts";
+import { lookupLabel, type ActivityRequest } from "../../../../lib/activity.ts";
 
 const text = (value: unknown) => String(value ?? "").trim();
 

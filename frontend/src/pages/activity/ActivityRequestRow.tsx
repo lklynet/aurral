@@ -13,12 +13,11 @@ import {
 } from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
+import { isCancelableDownload, type ActivityRequest } from "../../../../lib/activity.ts";
 import {
   downloadClientLabel,
-  isCancelableDownload,
   formatReviewReasonSummary,
   formatTimelineTime,
-  type ActivityRequest,
 } from "./activityListUtils";
 import Tooltip from "../../components/Tooltip";
 import RouteLink from "../../components/RouteLink";

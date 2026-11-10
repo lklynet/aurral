@@ -1,10 +1,8 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import {
-  buildHistoryListEntries,
-  type ActivityRequest,
-} from "../../frontend/src/pages/activity/activityListUtils.ts";
+import type { ActivityRequest } from "../../lib/activity.ts";
+import { buildHistoryListEntries } from "../../frontend/src/pages/activity/activityListUtils.ts";
 
 const lidarrRequest = (id: string, requestedAt: string | null): ActivityRequest => ({
   id,

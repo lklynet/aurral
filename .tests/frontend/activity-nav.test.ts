@@ -2,14 +2,18 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
+  normalizeActivityView,
+  buildActivityPath,
+} from "../../frontend/src/navigation/activityNavConfig.ts";
+import {
+  buildActivityPage,
   getActivityStatus,
   getActivityStatusFilters,
   isActivityQueueItem,
   normalizeActivityStatus,
   matchesActivityView,
-  normalizeActivityView,
-  buildActivityPath,
-} from "../../frontend/src/navigation/activityNavConfig.ts";
+  type ActivityRequest,
+} from "../../lib/activity.ts";
 
 test("normalizeActivityView falls back to queue", () => {
   assert.equal(normalizeActivityView(undefined), "queue");
@@ -107,4 +111,56 @@ test("normalizeActivityStatus only accepts statuses the view offers", () => {
   assert.equal(normalizeActivityStatus("history", "searching"), null);
   assert.equal(normalizeActivityStatus("queue", "bogus"), null);
   assert.equal(normalizeActivityStatus("queue", null), null);
+});
+
+test("activity pages count the whole view but return only the requested slice", () => {
+  const request = (
+    id: string,
+    status: string,
+    statusLabel: string,
+    requestedAt: string,
+  ): ActivityRequest => ({
+    id,
+    source: "aurral",
+    type: "activity",
+    kind: "track_download",
+    albumId: null,
+    albumMbid: null,
+    albumName: null,
+    artistName: null,
+    status,
+    statusLabel,
+    requestedAt,
+    inQueue: status !== "completed",
+    canReSearch: false,
+  });
+  const requests = [
+    request("old-review", "blocked", "Review", "2026-01-01T00:00:00Z"),
+    request("new-review", "blocked", "Review", "2026-01-03T00:00:00Z"),
+    request("queued", "pending", "Queued", "2026-01-02T00:00:00Z"),
+    request("done", "completed", "Downloaded", "2026-01-04T00:00:00Z"),
+  ];
+
+  const page = buildActivityPage(requests, { view: "queue", status: null, limit: 2 });
+  assert.deepEqual(
+    page.items.map(({ id }) => id),
+    ["new-review", "queued"],
+  );
+  assert.equal(page.total, 3);
+  assert.equal(page.matching, 3);
+  assert.deepEqual(
+    page.filters.map(({ id, count }) => [id, count]),
+    [
+      ["queued", 1],
+      ["review", 2],
+    ],
+  );
+
+  const reviews = buildActivityPage(requests, { view: "queue", status: "review", limit: 1 });
+  assert.deepEqual(
+    reviews.items.map(({ id }) => id),
+    ["new-review"],
+  );
+  assert.equal(reviews.total, 3);
+  assert.equal(reviews.matching, 2);
 });
