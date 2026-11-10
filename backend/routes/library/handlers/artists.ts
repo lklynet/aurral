@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { createFactory } from "hono/factory";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
@@ -11,11 +10,6 @@ import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 import { artistQueueTracks } from "../../../services/queueTracks.ts";
-import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.ts";
-import {
-  getArtistByMbid,
-  isMetadataNotFoundError,
-} from "../../../services/providers/brainzmashProvider.ts";
 import { asAppError, type AppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 import { lidarrClient } from "../../../services/lidarrClient.ts";
@@ -48,8 +42,6 @@ const addInput = v.object({
   managedBy: v.optional(v.nullable(v.string())),
 });
 
-const mbidInput = v.object({ mbid: v.optional(v.nullable(v.string())) });
-
 const updateInput = v.object({
   monitorOption: v.optional(v.nullable(v.string())),
   monitoring: v.optional(v.nullable(monitoringInput)),
@@ -60,51 +52,6 @@ const deleteQuery = v.object({
   deleteFiles: v.optional(v.string()),
   manager: v.optional(v.string()),
 });
-
-const setArtistMbid = createFactory<AppEnv>().createHandlers(
-  requireAuth,
-  requirePermission("addArtist"),
-  validate("json", mbidInput),
-  async (c) => {
-    const artistId = Number(c.req.param("id"));
-    const rawMbid = c.req.valid("json").mbid;
-    const mbid = typeof rawMbid === "string" ? rawMbid.trim().toLowerCase() : rawMbid;
-    if (!Number.isSafeInteger(artistId) || (mbid !== null && !UUID_REGEX.test(String(mbid)))) {
-      return c.json({ error: "A MusicBrainz artist ID or null is required" }, 400);
-    }
-    let musicbrainzName = null;
-    if (mbid) {
-      try {
-        const artist = await getArtistByMbid(mbid);
-        musicbrainzName = artist.name || null;
-      } catch (error) {
-        if (isMetadataNotFoundError(error)) {
-          return c.json({ error: "MusicBrainz has no artist with that ID" }, 404);
-        }
-        return c.json({ error: "Could not reach the metadata provider. Try again." }, 503);
-      }
-    }
-    const result = setLibraryArtistMbid(artistId, mbid ?? null);
-    if (result.error === "lidarr_managed") {
-      return c.json(
-        { error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." },
-        409,
-      );
-    }
-    const { artist } = result;
-    if (!artist) return c.json({ error: "Artist not found" }, 404);
-    return c.json(
-      {
-        id: artist.id,
-        mbid: artist.mbid,
-        name: artist.name,
-        musicbrainzName,
-        merged: Boolean(result.mergedArtistId),
-      },
-      200,
-    );
-  },
-);
 
 export default new Hono<AppEnv>()
   .basePath("/library")
@@ -285,7 +232,6 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .put("/artists/:id/mbid", ...setArtistMbid)
   .put(
     "/artists/:mbid",
     requireAuth,

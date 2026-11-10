@@ -116,6 +116,13 @@ export const queryKeys = {
   libraryAlbums: (artistId: MaybeId): QueryKey => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],
   libraryArtist: (mbid: MaybeText): QueryKey => ["library", "artist", mbid || null],
+  libraryMatches: (kind: "artist" | "album", id: string | number, query: string): QueryKey => [
+    "library",
+    "matches",
+    kind,
+    id,
+    query,
+  ],
   artistMonitoring: (mbid: MaybeText): QueryKey => [
     "library",
     "artist",

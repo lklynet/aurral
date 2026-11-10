@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { Link, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
@@ -77,7 +77,7 @@ import {
   resolveLibrarySection,
   type LibraryViewLibrary,
 } from "../utils/libraryViewQuery.ts";
-import ArtistMbidModal from "./ArtistMbidModal";
+import { ArtistMatchModal, type ArtistMatchResult } from "./library/MatchModal";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { LibraryHomeMixes } from "./library/LibraryHomeMixes";
 import { LibraryHomePlaylists } from "./library/LibraryHomePlaylists";
@@ -788,7 +788,7 @@ function LibraryPage() {
       ? [
           {
             id: "mbid",
-            label: "Edit MusicBrainz ID",
+            label: "Match artist",
             icon: Fingerprint,
             separatorBefore,
             onSelect: () => setMbidArtist(artist),
@@ -796,7 +796,7 @@ function LibraryPage() {
         ]
       : [];
 
-  const handleArtistMbidSaved: ComponentProps<typeof ArtistMbidModal>["onSaved"] = (result) => {
+  const handleArtistMbidSaved = (result: ArtistMatchResult) => {
     const previousId = mbidArtist?.id;
     setMbidArtist(null);
     const previousName = mbidArtist?.name || "Artist";
@@ -804,8 +804,8 @@ function LibraryPage() {
       result.merged
         ? `Merged ${previousName} into ${result.name}`
         : result.mbid
-          ? `Linked ${previousName} to ${result.musicbrainzName || "MusicBrainz"}`
-          : `Removed the MusicBrainz ID from ${previousName}`,
+          ? `Matched ${previousName} to ${result.musicbrainzName || "MusicBrainz"}`
+          : `Removed the match from ${previousName}`,
     );
     if (
       routeArtistId &&
@@ -1322,11 +1322,14 @@ function LibraryPage() {
     <>
       {libraryArtistMonitoring.dialog}
       {actions.renderModals()}
-      <ArtistMbidModal
-        artist={mbidArtist}
-        onClose={() => setMbidArtist(null)}
-        onSaved={handleArtistMbidSaved}
-      />
+      {mbidArtist ? (
+        <ArtistMatchModal
+          key={mbidArtist.id}
+          artist={mbidArtist}
+          onClose={() => setMbidArtist(null)}
+          onSaved={handleArtistMbidSaved}
+        />
+      ) : null}
     </>
   );
 

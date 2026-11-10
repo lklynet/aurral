@@ -5,7 +5,9 @@ import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import * as v from "valibot";
 
+import { writeFlacFixture } from "../helpers/flacFixture.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -13,14 +15,15 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService] =
+const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, { scanMusicRoot }] =
   await setupIsolatedBackend(
-    "artist-mbid-override",
+    "library-match",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/libraryMediaStore.ts"),
     () => import("../../backend/services/providers/brainzmashProvider.ts"),
     () => import("../../backend/services/libraryIndexService.ts"),
+    () => import("../../backend/services/libraryFileScanner.ts"),
   );
 
 const { api } = await import("../../backend/routes/api.ts");
@@ -33,6 +36,10 @@ const MISSING_MBID = "55555555-5555-4555-8555-555555555553";
 const MATCHED_BY_NAME_MBID = "55555555-5555-4555-8555-555555555554";
 const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
 const LIDARR_MBID = "55555555-5555-4555-8555-555555555556";
+const PICKED_GROUP = "66666666-6666-4666-8666-666666666661";
+const OTHER_GROUP = "66666666-6666-4666-8666-666666666662";
+const MISSING_GROUP = "66666666-6666-4666-8666-666666666663";
+const ALBUM_ARTIST_MBID = "55555555-5555-4555-8555-555555555557";
 
 let providerAvailable = true;
 let server: { url: string; close: () => Promise<void> };
@@ -47,14 +54,25 @@ beforeAll(async () => {
       return;
     }
     const url = new URL(request.url || "/", "http://mock");
-    const artists: Record<string, { id: string; artistname: string }> = {
-      [KNOWN_MBID]: { id: KNOWN_MBID, artistname: "Known Artist" },
+    const artists: Record<string, object> = {
+      [KNOWN_MBID]: {
+        id: KNOWN_MBID,
+        artistname: "Known Artist",
+        Albums: [
+          { Id: PICKED_GROUP, Title: "Picked Album", Type: "Album", SecondaryTypes: [] },
+          { Id: OTHER_GROUP, Title: "Picked Album Live", Type: "Album", SecondaryTypes: ["Live"] },
+        ],
+      },
       [OTHER_MBID]: { id: OTHER_MBID, artistname: "Other Artist" },
     };
-    let body: { id: string; artistname: string } | { id: string; artistname: string }[] | null =
-      null;
+    const groups: Record<string, object> = {
+      [PICKED_GROUP]: { id: PICKED_GROUP, title: "Picked Album", releases: [] },
+      [OTHER_GROUP]: { id: OTHER_GROUP, title: "Picked Album Live", releases: [] },
+    };
+    let body: object | null = null;
     if (url.pathname.startsWith("/artist/"))
       body = artists[url.pathname.split("/")[2] ?? ""] || null;
+    if (url.pathname.startsWith("/album/")) body = groups[url.pathname.split("/")[2] ?? ""] || null;
     if (url.pathname === "/search/artist") {
       body =
         url.searchParams.get("query") === "Wrongly Matched"
@@ -135,14 +153,50 @@ function createArtist(
 
 const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-async function updateMbid(artistId: number, mbid: string | null) {
-  const response = await app.request(`/library/artists/${artistId}/mbid`, {
+const matchResult = v.looseObject({
+  id: v.optional(v.number()),
+  merged: v.optional(v.boolean()),
+  musicbrainzName: v.optional(v.nullable(v.string())),
+});
+
+const albumMatches = v.object({
+  source: v.string(),
+  items: v.array(
+    v.looseObject({
+      id: v.string(),
+      secondaryTypes: v.array(v.string()),
+      libraryAlbumId: v.nullable(v.number()),
+    }),
+  ),
+});
+
+async function put(url: string, mbid: string | null) {
+  const response = await app.request(url, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mbid }),
   });
-  return { status: response.status, body: await response.json() };
+  const body: unknown = await response.json();
+  return { status: response.status, body: v.parse(matchResult, body) };
 }
+
+const updateMbid = (artistId: number, mbid: string | null) =>
+  put(`/library/artists/${artistId}/mbid`, mbid);
+
+const updateReleaseGroup = (albumId: number, mbid: string | null) =>
+  put(`/library/albums/${albumId}/release-group`, mbid);
+
+const albumRow = (id: number) =>
+  db
+    .prepare<unknown[], import("../../backend/db/rows.ts").LibraryAlbumsRow>(
+      "SELECT * FROM library_albums WHERE id = ?",
+    )
+    .get(id);
+
+const setAlbumMetadata = (albumId: number, metadata: object) =>
+  db
+    .prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?")
+    .run(JSON.stringify(metadata), albumId);
 
 const artistRow = (id: number) =>
   db
@@ -294,4 +348,96 @@ test("the Discover lookup points to the library artist whether or not Lidarr man
   assert.equal(managedLookup.exists, true);
   assert.equal(managedLookup.libraryArtistId, String(managed.artist.id));
   assert.equal(missingLookup.libraryArtistId, null);
+});
+
+test("a hand-picked release group keeps an untagged album's files through full rescans, after merging into an album with another title", async () => {
+  const root = path.join(musicRoot, "hand-picked");
+  const filePath = await writeFlacFixture(
+    path.join(root, "Hand Artist", "Folder Title", "01 Song.flac"),
+    { artist: "Hand Artist", album: "Folder Title", title: "Song", track: "1" },
+  );
+  await scanMusicRoot({ rootPath: root, source: "readonly" });
+  const fileAlbum = () =>
+    db
+      .prepare<[string], number>("SELECT album_id FROM library_media_files WHERE path = ?")
+      .pluck()
+      .get(filePath);
+  const folderAlbum = fileAlbum()!;
+  const target = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${PICKED_GROUP}`,
+    releaseGroupMbid: PICKED_GROUP,
+    artistId: albumRow(folderAlbum)!.artist_id,
+    title: "Picked Album",
+  });
+
+  const response = await updateReleaseGroup(folderAlbum, PICKED_GROUP);
+  await scanMusicRoot({ rootPath: root, source: "readonly", force: true });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual([response.body.id, response.body.merged], [target.id, true]);
+  assert.equal(fileAlbum(), target.id);
+  assert.equal(albumRow(target.id)?.title, "Picked Album");
+  assert.equal(
+    db.prepare("SELECT COUNT(*) FROM library_albums WHERE title = 'Folder Title'").pluck().get(),
+    0,
+  );
+});
+
+test("an album whose match was removed by hand stays out of automatic matching", async () => {
+  const { album } = createArtist("Unmatched Album Artist", { mbid: ALBUM_ARTIST_MBID });
+  const untagged = () =>
+    libraryStore.getUntaggedLibraryAlbums({ retry: true }).map((entry) => entry.id);
+  assert.ok(untagged().includes(album.id));
+
+  const picked = await updateReleaseGroup(album.id, OTHER_GROUP);
+  const removed = await updateReleaseGroup(album.id, null);
+
+  assert.deepEqual([picked.status, removed.status], [200, 200]);
+  assert.equal(albumRow(album.id)?.release_group_mbid, null);
+  assert.ok(!untagged().includes(album.id));
+});
+
+test("album matches are rejected without changing the album when they cannot be applied", async () => {
+  const { album } = createArtist("Refused Album Artist");
+  const tagged = createArtist("Tagged Album Artist");
+  setAlbumMetadata(tagged.album.id, { tags: { musicbrainz_releasegroupid: OTHER_GROUP } });
+  const lidarr = createArtist("Lidarr Album Artist");
+  setAlbumMetadata(lidarr.album.id, { id: 7 });
+
+  const statuses = [
+    (await updateReleaseGroup(album.id, MISSING_GROUP)).status,
+    (await updateReleaseGroup(album.id, "not-an-mbid")).status,
+    (await updateReleaseGroup(tagged.album.id, OTHER_GROUP)).status,
+    (await updateReleaseGroup(lidarr.album.id, OTHER_GROUP)).status,
+  ];
+
+  assert.deepEqual(statuses, [404, 400, 409, 409]);
+  assert.deepEqual(
+    [album, tagged.album, lidarr.album].map((entry) => albumRow(entry.id)?.release_group_mbid),
+    [null, null, null],
+  );
+});
+
+test("an album's matches are its artist's releases, marking the one the Library already has", async () => {
+  const { artist, album } = createArtist("Discography Artist", { mbid: KNOWN_MBID });
+  const owned = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${OTHER_GROUP}`,
+    releaseGroupMbid: OTHER_GROUP,
+    artistId: artist.id,
+    title: "Picked Album Live",
+  });
+
+  const response = await app.request(`/library/albums/${album.id}/matches`);
+  const json: unknown = await response.json();
+  const body = v.parse(albumMatches, json);
+
+  assert.equal(body.source, "discography");
+  assert.deepEqual(
+    body.items.map((item) => [item.id, item.secondaryTypes]),
+    [
+      [PICKED_GROUP, []],
+      [OTHER_GROUP, ["Live"]],
+    ],
+  );
+  assert.equal(body.items[1]?.libraryAlbumId, owned.id);
 });
