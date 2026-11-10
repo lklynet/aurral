@@ -16,6 +16,7 @@ import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { sendFile } from "../../../services/fileResponses.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
+import { sendImageFile } from "../../shared/sendImageFile.ts";
 import { getArtworkContentTypeForExtension } from "../../../services/playlistArtworkGenerator.ts";
 import { getPlaylistArtworkState } from "../../../services/playlistArtworkState.ts";
 import { PLAYLIST_COVER_TEMPLATES } from "../../../services/playlistCoverTemplates.ts";
@@ -103,22 +104,34 @@ const badRequest = <E extends AppEnv>(c: Context<E>, error: unknown, fallback: s
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/artwork/:playlistId", requireStreamAuth, requirePlaylistAccessIfSignedIn, async (c) => {
-    const playlistId = c.req.param("playlistId");
-    if (!canAccessPlaylistType(c.var.user, playlistId)) {
-      return c.json({ error: "Playlist artwork not found" }, 404);
-    }
-    const artwork = await playlistManager.resolveArtworkFile(playlistId);
-    if (!artwork) {
-      return c.json({ error: "Playlist artwork not found" }, 404);
-    }
-    c.header("Cache-Control", "private, no-cache, must-revalidate");
-    const sent = await sendViaNode(c, sendFile, artwork.safePath, {
-      contentType: getArtworkContentTypeForExtension(artwork.extension),
-      dotfiles: "allow",
-    });
-    return sent || c.json({ error: "Playlist artwork not found" }, 404);
-  })
+  .get(
+    "/artwork/:playlistId",
+    requireStreamAuth,
+    requirePlaylistAccessIfSignedIn,
+    validate("query", v.object({ v: v.optional(v.string()), w: v.optional(v.string()) })),
+    async (c) => {
+      const playlistId = c.req.param("playlistId");
+      if (!canAccessPlaylistType(c.var.user, playlistId)) {
+        return c.json({ error: "Playlist artwork not found" }, 404);
+      }
+      const artwork = await playlistManager.resolveArtworkFile(playlistId);
+      if (!artwork) {
+        return c.json({ error: "Playlist artwork not found" }, 404);
+      }
+      const query = c.req.valid("query");
+      const revision = getPlaylistArtworkState(playlistId)?.revision;
+      const versioned = Boolean(revision) && query.v?.split(":")[0] === String(revision);
+      c.header(
+        "Cache-Control",
+        versioned ? "private, max-age=31536000, immutable" : "private, no-cache, must-revalidate",
+      );
+      const sent = await sendImageFile(c, artwork.safePath, Number(query.w), {
+        contentType: getArtworkContentTypeForExtension(artwork.extension),
+        dotfiles: "allow",
+      });
+      return sent || c.json({ error: "Playlist artwork not found" }, 404);
+    },
+  )
   .put("/artwork/:playlistId", requirePlaylistAccess, limitImageUpload, async (c) => {
     const playlistId = c.req.param("playlistId");
     if (!canAccessPlaylistType(c.var.user, playlistId)) {

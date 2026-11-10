@@ -1199,7 +1199,7 @@ test("serves custom library artwork through the advertised versioned cover ID", 
     )
     .get("Canonical Album");
   const image = await sharp({
-    create: { width: 24, height: 24, channels: 3, background: { r: 10, g: 120, b: 240 } },
+    create: { width: 600, height: 600, channels: 3, background: { r: 10, g: 120, b: 240 } },
   })
     .png()
     .toBuffer();
@@ -1217,7 +1217,12 @@ test("serves custom library artwork through the advertised versioned cover ID", 
     const artwork = await fetch(subsonicUrl("getCoverArt", { id: album.coverArt }));
     assert.equal(artwork.status, 200);
     assert.equal(artwork.headers.get("content-type"), "image/webp");
-    assert.ok((await artwork.arrayBuffer()).byteLength > 0);
+    const full = await sharp(Buffer.from(await artwork.arrayBuffer())).metadata();
+    assert.equal(full.width, 512);
+    const thumbnail = await fetch(subsonicUrl("getCoverArt", { id: album.coverArt, size: "100" }));
+    assert.equal(thumbnail.headers.get("content-type"), "image/webp");
+    const small = await sharp(Buffer.from(await thumbnail.arrayBuffer())).metadata();
+    assert.equal(small.width, 128);
 
     changedAfterSave = responseJson(await request("getIndexes")).indexes.lastModified;
     assert.ok(changedAfterSave > before);

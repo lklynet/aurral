@@ -202,6 +202,7 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
                   onClick={() => select(entry.id)}
                 >
                   <PlaylistArtworkThumb
+                    sizes="1.25rem"
                     artworkUrl={artworkUrlFor(entry.id)}
                     name={entry.name}
                     className="flow-editor__rail-art"
@@ -248,6 +249,7 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
             <SettingsGroup>
               <div className="flow-editor__identity">
                 <PlaylistArtworkThumb
+                  sizes="2.5rem"
                   artworkUrl={artworkUrlFor(flow.id)}
                   name={flow.name}
                   className="flow-editor__cover"

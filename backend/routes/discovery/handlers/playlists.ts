@@ -12,8 +12,7 @@ import {
   saveBrowsePlaylist,
 } from "../../../services/discovery/browsePlaylists.ts";
 import { browseCoverFile } from "../../../services/discovery/browseCovers.ts";
-import { sendFile } from "../../../services/fileResponses.ts";
-import { sendViaNode } from "../../shared/sendViaNode.ts";
+import { sendImageFile } from "../../shared/sendImageFile.ts";
 import { resolveEditorialTrackLinks } from "../../../services/discovery/editorialPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
@@ -94,6 +93,7 @@ export default new Hono<AppEnv>()
     "/playlists/:provider/:playlistId/cover",
     requireAuth,
     validate("param", playlistParams),
+    validate("query", v.object({ w: v.optional(v.string()) })),
     async (c) => {
       const { provider, playlistId } = c.req.valid("param");
       try {
@@ -101,7 +101,9 @@ export default new Hono<AppEnv>()
         if (!cover) return c.json({ error: "Cover not found" }, 404);
         const file = await browseCoverFile(cover);
         c.header("Cache-Control", "private, max-age=31536000, immutable");
-        const sent = await sendViaNode(c, sendFile, file, { contentType: "image/webp" });
+        const sent = await sendImageFile(c, file, Number(c.req.valid("query").w), {
+          contentType: "image/webp",
+        });
         return sent || c.json({ error: "Cover not found" }, 404);
       } catch (error) {
         return sendPlaylistError(c, error, "Failed to draw cover");

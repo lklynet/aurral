@@ -171,6 +171,7 @@ export default function PlaylistsPage() {
                 aria-label={`Open ${playlist.name}`}
               >
                 <PlaylistArtworkThumb
+                  sizes="(max-width: 767px) 50vw, 12rem"
                   artworkUrl={artworkUrlFor(playlist.id)}
                   name={playlist.name}
                 />

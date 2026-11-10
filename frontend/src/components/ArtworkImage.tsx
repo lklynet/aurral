@@ -1,4 +1,5 @@
 import { useState, type ComponentProps } from "react";
+import { imageSizes, type ImageSize } from "../../../lib/imageSizes.ts";
 
 type ImageProps = ComponentProps<"img">;
 
@@ -12,26 +13,24 @@ type ArtworkImageProps = ImageProps & {
 
 type ThumbnailImageProps = ImageProps & {
   src: string;
+  variants: readonly ImageSize[];
   sizes: string;
   loading: ImageProps["loading"];
 };
 
-function ThumbnailImage({ src, sizes, loading, onError, ...props }: ThumbnailImageProps) {
+function ThumbnailImage({ src, variants, sizes, loading, onError, ...props }: ThumbnailImageProps) {
   const [previewFailed, setPreviewFailed] = useState(false);
-  const preview = src.replace(/\/fanart\//i, "/preview/");
-  const bigPreview = src.replace(/\/fanart\//i, "/bigpreview/");
-  const originalCandidate =
-    /^https?:\/\/assets\.fanart\.tv\/fanart\/music\/[^/?#]+\/(?:albumcover|artistthumb)\//i.test(
-      src,
-    )
-      ? `, ${src} 1000w`
-      : "";
+  const preview = variants[0]?.url ?? src;
 
   return (
     <img
       {...props}
       src={previewFailed ? src : preview}
-      srcSet={previewFailed ? undefined : `${preview} 200w, ${bigPreview} 400w${originalCandidate}`}
+      srcSet={
+        previewFailed
+          ? undefined
+          : variants.map((variant) => `${variant.url} ${variant.width}w`).join(", ")
+      }
       sizes={previewFailed ? undefined : loading === "lazy" ? `auto, ${sizes}` : sizes}
       loading={loading}
       onError={(event) => {
@@ -53,12 +52,14 @@ export default function ArtworkImage({
   decoding = "async",
   ...props
 }: ArtworkImageProps) {
-  if (thumbnail && /^https?:\/\/assets\.fanart\.tv\/fanart\//i.test(src)) {
+  const variants = thumbnail ? imageSizes(src) : [];
+  if (variants.length) {
     return (
       <ThumbnailImage
         key={src}
         {...props}
         src={src}
+        variants={variants}
         sizes={sizes}
         loading={loading}
         decoding={decoding}

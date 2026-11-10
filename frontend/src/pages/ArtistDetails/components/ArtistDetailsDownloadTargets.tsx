@@ -254,7 +254,7 @@ export function ArtistDetailsDownloadTargets({
             embedded
             cover={
               coverUrl ? (
-                <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />
+                <ArtworkImage src={coverUrl} alt="" sizes="17rem" loading="lazy" decoding="async" />
               ) : (
                 <span className="native-library-cover-fallback" aria-hidden="true">
                   {title.trim().charAt(0).toUpperCase() || "—"}
