@@ -299,26 +299,30 @@ function pathsWithin(rootPath: string, paths: string[] | null | undefined) {
   );
 }
 
-// A folder that left the list takes its music out of the Library. Its files
-// stay on disk.
+// A scan kept to the Library folder still covers the read-only folders inside
+// it. A folder that left the list takes its music out of the Library on the
+// next scan of every folder. Its files stay on disk.
 async function scanReadOnlyFolders(
   roots: string[],
   {
+    within,
     changedPaths,
     force,
     isExcluded,
     changedFiles,
   }: {
+    within: string | null;
     changedPaths: string[] | null;
     force: boolean;
     isExcluded: ReturnType<typeof createLibraryScanExclusion>;
     changedFiles: Set<string>;
   },
 ): Promise<FolderScan> {
+  const scanned = within ? roots.filter((root) => isPathWithin(within, root)) : roots;
   const scan =
-    roots.length > 0
+    scanned.length > 0
       ? await scanMusicRoots({
-          rootPaths: roots,
+          rootPaths: scanned,
           changedPaths,
           force,
           source: "readonly",
@@ -327,7 +331,7 @@ async function scanReadOnlyFolders(
           changedFiles,
         })
       : skippedScan();
-  if (Array.isArray(changedPaths)) return scan;
+  if (Array.isArray(changedPaths) || within) return scan;
   const leftPaths = [...getLibraryMediaPaths("readonly")].filter(
     (filePath) => !roots.some((root) => isPathWithin(root, filePath)) || isExcluded(filePath),
   );
@@ -436,22 +440,21 @@ export async function scanConfiguredLibrary({
         };
       }
     }
-    if (includeLidarr) {
-      try {
-        readOnly = await scanReadOnlyFolders(readOnlyRoots, {
-          changedPaths: targeted ? changedPaths : null,
-          force,
-          isExcluded: createLibraryScanExclusion("readonly", folders),
-          changedFiles,
-        });
-      } catch (error) {
-        scanFailed = true;
-        const failure = asAppError(error);
-        logger.error("library", "Read-only folder scan failed", {
-          message: failure?.message || String(error),
-        });
-        readOnly = { ...skippedScan(), skipped: false, error: failure?.message || String(error) };
-      }
+    try {
+      readOnly = await scanReadOnlyFolders(readOnlyRoots, {
+        within: targeted || includeLidarr ? null : musicRoot,
+        changedPaths: targeted ? changedPaths : null,
+        force,
+        isExcluded: createLibraryScanExclusion("readonly", folders),
+        changedFiles,
+      });
+    } catch (error) {
+      scanFailed = true;
+      const failure = asAppError(error);
+      logger.error("library", "Read-only folder scan failed", {
+        message: failure?.message || String(error),
+      });
+      readOnly = { ...skippedScan(), skipped: false, error: failure?.message || String(error) };
     }
     if (lidarrActive) assignLidarrAlbumOwners();
     else if (!targeted) {

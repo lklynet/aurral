@@ -436,72 +436,75 @@ test("monitoring an Aurral artist with the default rules queues its studio album
   assert.equal(lidarrCalls.length, 0);
 });
 
-test("monitoring an artist downloads the songs missing from an album the Library lists from its files", async () => {
-  await addAurralArtist("none");
-  const artist = db
-    .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryArtistsRow["id"] }>(
-      "SELECT id FROM library_artists WHERE mbid = ?",
-    )
-    .get(artistMbid);
-  assert.ok(artist);
-  const release = requireFixture(albumPayload(releases.firstAlbum).releases[0]);
-  const [have, missing] = release.tracks;
-  assert.ok(have && missing);
-  const album = libraryStore.upsertLibraryAlbum({
-    identityKey: `release-group:${releases.firstAlbum.id}`,
-    mbid: release.id,
-    releaseGroupMbid: releases.firstAlbum.id,
-    artistId: artist.id,
-    title: releases.firstAlbum.title,
-  });
-  managementStore.setLibraryManagement({
-    entityKind: "album",
-    entityId: album.id,
-    managedBy: "aurral",
-  });
-  const owned = libraryStore.upsertLibraryTrack({
-    identityKey: `recording:${have.recordingid}`,
-    mbid: have.recordingid,
-    title: have.trackname,
-  });
-  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
-  libraryStore.upsertLibraryMediaFile({
-    trackId: owned.id,
-    albumId: album.id,
-    source: "aurral",
-    path: `${isolatedState.baseDir}/Monitor Artist/First Album/01.flac`,
-  });
-  libraryStore.storeLibraryAlbumTrackList(album.id, {
-    release: {
-      id: release.id,
-      tracks: release.tracks.map((track) => ({
-        id: track.id,
-        oldRecordingIds: [],
-        trackNumber: track.trackposition,
-        mediumNumber: track.mediumnumber,
-        durationMs: track.durationms,
-        artistId: artistMbid,
-        recordingId: track.recordingid,
-        title: track.trackname,
-        trackPosition: track.trackposition,
-      })),
-    },
-  });
+test.each(["aurral", "readonly"])(
+  "monitoring an artist downloads the songs missing from an album the Library lists from its %s files",
+  async (source) => {
+    await addAurralArtist("none");
+    const artist = db
+      .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryArtistsRow["id"] }>(
+        "SELECT id FROM library_artists WHERE mbid = ?",
+      )
+      .get(artistMbid);
+    assert.ok(artist);
+    const release = requireFixture(albumPayload(releases.firstAlbum).releases[0]);
+    const [have, missing] = release.tracks;
+    assert.ok(have && missing);
+    const album = libraryStore.upsertLibraryAlbum({
+      identityKey: `release-group:${releases.firstAlbum.id}`,
+      mbid: release.id,
+      releaseGroupMbid: releases.firstAlbum.id,
+      artistId: artist.id,
+      title: releases.firstAlbum.title,
+    });
+    managementStore.setLibraryManagement({
+      entityKind: "album",
+      entityId: album.id,
+      managedBy: "aurral",
+    });
+    const owned = libraryStore.upsertLibraryTrack({
+      identityKey: `recording:${have.recordingid}`,
+      mbid: have.recordingid,
+      title: have.trackname,
+    });
+    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: owned.id,
+      albumId: album.id,
+      source,
+      path: `${isolatedState.baseDir}/Monitor Artist/First Album/01.flac`,
+    });
+    libraryStore.storeLibraryAlbumTrackList(album.id, {
+      release: {
+        id: release.id,
+        tracks: release.tracks.map((track) => ({
+          id: track.id,
+          oldRecordingIds: [],
+          trackNumber: track.trackposition,
+          mediumNumber: track.mediumnumber,
+          durationMs: track.durationms,
+          artistId: artistMbid,
+          recordingId: track.recordingid,
+          title: track.trackname,
+          trackPosition: track.trackposition,
+        })),
+      },
+    });
 
-  await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "all" },
-  });
-  await runQueuedMonitoringTasks();
+    await callRoute("PUT /artists/:mbid", {
+      params: { mbid: artistMbid },
+      body: { monitorOption: "all" },
+    });
+    await runQueuedMonitoringTasks();
 
-  assert.deepEqual(
-    downloadTracker
-      .getAll()
-      .filter((job) => job.albumMbid === releases.firstAlbum.id)
-      .map((job) => job.trackName),
-    [missing.trackname],
-  );
-});
+    assert.deepEqual(
+      downloadTracker
+        .getAll()
+        .filter((job) => job.albumMbid === releases.firstAlbum.id)
+        .map((job) => job.trackName),
+      [missing.trackname],
+    );
+  },
+);
 
 test("older clients' monitor options map onto rules and Lidarr-only options are refused", async () => {
   await addAurralArtist("none");
