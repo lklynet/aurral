@@ -233,6 +233,33 @@ test("removing a read-only folder takes its music out of the Library and keeps t
   assert.ok((await stat(filePath)).isFile());
 });
 
+test("a scan kept to the Library folder reaches the read-only folders that hold its paths, and no others", async (t) => {
+  const inside = path.join(resolveDownloadRoot(), "Shared With Lidarr");
+  t.onTestFinished(() => rm(inside, { recursive: true, force: true }));
+  const outside = await makeFolder("outside");
+  dbOps.setJSONSetting("readOnlyFolders", [inside, outside]);
+  const outsideKept = await makeTrack(outside, "Outside Artist", "Outside Album", "Kept Song");
+  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  const sources = (filePath: string) => fileRow(filePath).map((row) => row.source);
+
+  const named = await makeTrack(inside, "Inside Artist", "Inside Album", "Named Song");
+  const outsideNamed = await makeTrack(outside, "Outside Artist", "Outside Album", "Named Song", 2);
+  await scanConfiguredLibrary({
+    lidarrClient: lidarrOff,
+    includeLidarr: false,
+    changedPaths: [named, outsideNamed],
+  });
+  assert.deepEqual(sources(named), ["readonly"]);
+  assert.deepEqual(sources(outsideNamed), ["readonly"]);
+
+  const walked = await makeTrack(inside, "Inside Artist", "Inside Album", "Walked Song", 2);
+  const outsideUnseen = await makeTrack(outside, "Outside Artist", "Outside Album", "New Song", 3);
+  await scanConfiguredLibrary({ lidarrClient: lidarrOff, includeLidarr: false });
+  assert.deepEqual(sources(walked), ["readonly"]);
+  assert.deepEqual(sources(outsideUnseen), []);
+  assert.deepEqual(sources(outsideKept), ["readonly"]);
+});
+
 test("a Lidarr root added as a read-only folder keeps its music when Lidarr is turned off", async () => {
   const folder = await makeFolder("lidarr-root");
   const filePath = await makeTrack(folder, "Moving Artist", "Moving Album", "Moving Song");
