@@ -116,6 +116,24 @@ const toLibraryAlbum = (
   albumType: "Album",
 });
 
+const ownedLibraryAlbums = (albums: ReadAlbum[]) => {
+  const owned = albums.filter((album) => album.statistics.trackFileCount > 0);
+  const versions = getLibraryArtworkVersions(
+    "album",
+    owned.map((album) => album.id),
+  );
+  return owned.map((album) => ({
+    libraryId: String(album.id),
+    releaseGroupMbid: album.releaseGroupMbid,
+    title: album.title,
+    releaseDate: album.releaseDate,
+    partial:
+      album.trackListComplete === false ||
+      album.statistics.trackCount > album.statistics.trackFileCount,
+    coverUrl: buildLibraryArtworkUrl("album", album.id, versions.get(String(album.id))),
+  }));
+};
+
 export async function getArtistLibraryLookup(mbid: string) {
   const { artists, albums } = getLibraryReadModelForArtists({
     source: "all",
@@ -125,6 +143,7 @@ export async function getArtistLibraryLookup(mbid: string) {
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const libraryArtistId = artist ? String(artist.id) : null;
+  const ownedAlbums = ownedLibraryAlbums(albums);
   const aurralArtist = getLibraryArtistProjection({ reference: mbid }).find(
     (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
   );
@@ -135,6 +154,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       albums: albums.map((album) => toLibraryAlbum(album, album.id)),
       fromLibraryIndex: true,
       libraryArtistId,
+      ownedAlbums,
     };
   }
   const { lidarrClient } = await import("../../../services/lidarrClient.ts");
@@ -165,6 +185,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       albums: lidarrAlbums,
       fromLibraryIndex: true,
       libraryArtistId,
+      ownedAlbums,
     };
   }
   if (lidarrArtist === undefined && artist && (!lidarrConfigured || artist.lidarrManaged)) {
@@ -174,6 +195,7 @@ export async function getArtistLibraryLookup(mbid: string) {
       albums: albums.map((album) => toLibraryAlbum(album, album.id)),
       fromLibraryIndex: true,
       libraryArtistId,
+      ownedAlbums,
     };
   }
   return {
@@ -182,6 +204,7 @@ export async function getArtistLibraryLookup(mbid: string) {
     albums: [],
     fromLibraryIndex: true,
     libraryArtistId,
+    ownedAlbums,
   };
 }
 

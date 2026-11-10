@@ -38,7 +38,8 @@ import {
   writeReleaseListViewMode,
 } from "./utils";
 import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilters.ts";
-import type { ReleaseGroup, ReleaseListViewMode } from "./utils";
+import type { LibraryReleaseGroup, ReleaseGroup, ReleaseListViewMode } from "./utils";
+import { albumPath } from "../../../../lib/albumPath.ts";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { parseResponse } from "hono/client";
@@ -66,6 +67,7 @@ const releaseTabs = [
   { value: "albums", label: "Albums" },
   { value: "singles", label: "EPs & singles" },
   { value: "compilations", label: "Compilations" },
+  { value: "library", label: "In Library" },
 ];
 
 const getReleaseTypeLabel = (releaseGroup: ReleaseGroup | null | undefined) => {
@@ -154,6 +156,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setLibraryArtist,
     libraryAlbums,
     setLibraryAlbums,
+    ownedAlbums,
     error,
     loadingReleases,
     loadingAppearsOn,
@@ -184,6 +187,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     existsInLibrary,
     setExistsInLibrary,
     appSettings,
+    ownedAlbums,
     showSuccess,
     showError,
     showInfo,
@@ -194,19 +198,32 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     () => artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || [],
     [artist, isAppearsOn],
   );
-  type ListedReleaseGroup = (typeof releaseGroups)[number];
+  const { libraryReleaseGroups } = library;
+  const libraryTab = !isAppearsOn && selectedTab === "library";
   const filteredReleaseGroups = useMemo(
     () =>
-      sortReleaseGroups(
-        releaseGroups.filter(
+      sortReleaseGroups<LibraryReleaseGroup>(
+        (libraryTab ? libraryReleaseGroups : releaseGroups).filter(
           (releaseGroup) =>
-            matchesReleaseGroupTab(releaseGroup, selectedTab, showLiveAlbums) &&
-            matchesReleaseGroupSearch(releaseGroup, searchTerm),
+            matchesReleaseGroupTab(
+              releaseGroup,
+              libraryTab ? "all" : selectedTab,
+              showLiveAlbums,
+            ) && matchesReleaseGroupSearch(releaseGroup, searchTerm),
         ),
         sortKey,
         sortDirection,
       ),
-    [releaseGroups, searchTerm, selectedTab, showLiveAlbums, sortDirection, sortKey],
+    [
+      libraryReleaseGroups,
+      libraryTab,
+      releaseGroups,
+      searchTerm,
+      selectedTab,
+      showLiveAlbums,
+      sortDirection,
+      sortKey,
+    ],
   );
   const renderedReleaseGroups = useMemo(
     () => filteredReleaseGroups.slice(0, visibleReleaseCount),
@@ -281,7 +298,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
 
   useEffect(() => {
-    setVisibleCoverIds(renderedReleaseGroups.map((item) => item.id).filter(Boolean));
+    setVisibleCoverIds(
+      renderedReleaseGroups.flatMap((item) => (item.id && !item.libraryAlbumId ? [item.id] : [])),
+    );
   }, [renderedReleaseGroups]);
 
   useEffect(() => {
@@ -296,7 +315,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   useEffect(() => {
     if (isAppearsOn || loadingReleases) return;
     const ids = renderedReleaseGroups
-      .map((item) => item?.id)
+      .filter((item) => !item.libraryAlbumId)
+      .map((item) => item.id)
       .filter((id) => id && !requestedRatingIdsRef.current.has(id));
     if (!ids.length) return;
     ids.forEach((id) => requestedRatingIdsRef.current.add(id));
@@ -406,12 +426,14 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setSortMenuOpen(false);
   };
 
-  const releaseLink = (releaseGroup: ListedReleaseGroup, coverUrl: string) =>
-    getReleaseGroupLink(releaseGroup, {
-      artistMbid: mbid,
-      artistName: artistDisplayName,
-      coverUrl,
-    });
+  const releaseLink = (releaseGroup: LibraryReleaseGroup, coverUrl: string) =>
+    releaseGroup.libraryAlbumId
+      ? { to: albumPath(releaseGroup.libraryAlbumId) }
+      : getReleaseGroupLink(releaseGroup, {
+          artistMbid: mbid,
+          artistName: artistDisplayName,
+          coverUrl,
+        });
 
   if (error || !artist) {
     return (
@@ -424,7 +446,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     );
   }
 
-  const renderReleaseCard = (releaseGroup: ListedReleaseGroup) => {
+  const renderReleaseCard = (releaseGroup: LibraryReleaseGroup) => {
     const status = library.getAlbumStatus(releaseGroup.id);
     const metric = getReleaseMetric(releaseGroup);
     const cover = getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
@@ -477,7 +499,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   )}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "", managedBy)
                   }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"
@@ -514,7 +536,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   )}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "", managedBy)
                   }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"
@@ -651,6 +673,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           <div className="artist-tabs">
             {releaseTabs.map((tab) => {
               const active = selectedTab === tab.value;
+              if (
+                tab.value === "library" &&
+                (isAppearsOn || (!active && libraryReleaseGroups.length === 0))
+              ) {
+                return null;
+              }
               return (
                 <button
                   key={tab.value}
@@ -659,6 +687,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   className={`artist-tab${active ? " is-active" : ""}`}
                 >
                   {tab.label}
+                  {tab.value === "library" && (
+                    <span className="artist-tab__count">{libraryReleaseGroups.length}</span>
+                  )}
                 </button>
               );
             })}

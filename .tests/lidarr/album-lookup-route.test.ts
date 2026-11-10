@@ -17,6 +17,7 @@ type ArtistLookup = {
   error?: string;
   exists?: boolean;
   albums?: unknown[];
+  ownedAlbums?: { releaseGroupMbid: string | null; title: string; partial: boolean }[];
   artist?: { managedBy?: string; foreignArtistId?: string };
 };
 import { signedInAs } from "../helpers/honoApp.ts";
@@ -224,6 +225,85 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
   const body = await lookupArtist(mbid);
   assert.equal(body?.exists, true);
   assert.equal(body?.artist?.foreignArtistId, mbid);
+});
+
+test("artist lookup lists albums with files whether or not Lidarr tracks them", async () => {
+  const mbid = "44444444-4444-4444-8444-444444444444";
+  const scannedMbid = "44444444-4444-4444-8444-000000000001";
+  const key = `artist-lookup-owned-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, mbid, name: "Owned Artist" });
+  const scanned = upsertLibraryAlbum({
+    identityKey: `${key}:scanned`,
+    mbid: "44444444-4444-4444-8444-0000000000ff",
+    releaseGroupMbid: scannedMbid,
+    artistId: artist.id,
+    title: "Scanned Album",
+  });
+  const unmatched = upsertLibraryAlbum({
+    identityKey: `${key}:unmatched`,
+    artistId: artist.id,
+    title: "Untagged Album",
+  });
+  const wanted = upsertLibraryAlbum({
+    identityKey: `${key}:wanted`,
+    artistId: artist.id,
+    title: "Wanted Album",
+  });
+  const tracks = [scanned, unmatched, wanted].map((album, index) => {
+    const track = upsertLibraryTrack({
+      identityKey: `${key}:track:${index}`,
+      title: `Track ${index}`,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    return track;
+  });
+  for (const [index, album] of [scanned, unmatched].entries()) {
+    upsertLibraryMediaFile({
+      trackId: tracks[index]!.id,
+      albumId: album.id,
+      source: "readonly",
+      path: `/tmp/${key}/${index}.flac`,
+    });
+  }
+  invalidateLibraryQueryCache();
+
+  let lidarrHasArtist = true;
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () =>
+    lidarrHasArtist ? { id: 44, foreignArtistId: mbid, artistName: "Owned Artist" } : null,
+  );
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => []);
+
+  const owned = (body: ArtistLookup) =>
+    body.ownedAlbums?.map(({ releaseGroupMbid, title, partial }) => ({
+      releaseGroupMbid,
+      title,
+      partial,
+    }));
+  const expected = [
+    { releaseGroupMbid: scannedMbid, title: "Scanned Album", partial: false },
+    { releaseGroupMbid: null, title: "Untagged Album", partial: false },
+  ];
+
+  try {
+    const tracked = await lookupArtist(mbid);
+    assert.deepEqual(tracked.albums, []);
+    assert.deepEqual(owned(tracked), expected);
+
+    lidarrHasArtist = false;
+    const untracked = await lookupArtist(mbid);
+    assert.equal(untracked.exists, false);
+    assert.deepEqual(owned(untracked), expected);
+  } finally {
+    for (const album of [scanned, unmatched, wanted]) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    }
+    for (const track of tracks) db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateLibraryQueryCache();
+  }
 });
 
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
