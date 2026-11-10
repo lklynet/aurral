@@ -235,7 +235,7 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.match(trackedJob(downloadTracker, ids[1]).error!, /not in the album download/);
     assert.ok((await stat(trackedJob(downloadTracker, ids[0]).finalPath!)).isFile());
     const { getAurralHistoryRequests } =
-      await import("../../backend/services/aurralHistoryService.ts");
+      await import("../../backend/services/aurralHistoryRequests.ts");
     const activity = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
     assert.equal(activity.length, 2);
     const imported = activity.find((item) => item.jobId === ids[0]);

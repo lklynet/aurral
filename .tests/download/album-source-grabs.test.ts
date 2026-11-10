@@ -72,7 +72,7 @@ const [
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
-  () => import("../../backend/services/aurralHistoryService.ts"),
+  () => import("../../backend/services/aurralHistoryRequests.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManager.ts"),
 );
@@ -260,7 +260,7 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
     assert.ok((await stat(job.finalPath!)).isFile());
   }
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const activity = (await getAurralHistoryRequests()).filter((item) =>
     album.ids.includes(item.jobId!),
   );
@@ -2204,7 +2204,7 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   assert.match(requireFixture(names[0]), /^01 - First\b/);
   assert.match(requireFixture(names[1]), /^02 - Second\b/);
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const activity = (await getAurralHistoryRequests()).filter((item) =>
     album.ids.includes(item.jobId!),
   );

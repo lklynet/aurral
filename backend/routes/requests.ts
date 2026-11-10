@@ -12,7 +12,7 @@ import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
 import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
-import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
+import { getAurralHistoryRequests } from "../services/aurralHistoryRequests.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
 import { hasPermission } from "../services/auth.ts";
 import {
