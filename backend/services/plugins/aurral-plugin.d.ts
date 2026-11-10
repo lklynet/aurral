@@ -188,7 +188,9 @@ export interface DownloadSource {
   keepFiles?(input: Base & { id: string; paths: string[] }): unknown;
   status?(
     input: Base & { id: string; directory: string },
-  ): { done: boolean; path?: string } | Promise<{ done: boolean; path?: string }>;
+  ):
+    | { done: boolean; path?: string; imported?: string }
+    | Promise<{ done: boolean; path?: string; imported?: string }>;
   discard?(input: Base & { id: string }): unknown;
 }
 

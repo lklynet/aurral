@@ -10,6 +10,7 @@ import {
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { deferForInactiveOwner } from "../downloadJobs/playlistOwnerStatus.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
+import { libraryFolderOwner } from "../libraryFolders.ts";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   buildTrackFileName,
@@ -76,6 +77,7 @@ export type SourcePayload = {
   downloadedPath?: string | null;
   heldForReview?: ReturnType<typeof holdForReview> | null;
   pendingId?: string | null;
+  importedPath?: string | null;
   pollAttempts?: number;
   albumGrab?: boolean;
   releaseMbid?: string | null;
@@ -95,6 +97,8 @@ const stagingDir = (source: DownloadSource, jobId: string) =>
   path.join(resolveAurralDataDir(), "_staging", source.staging, jobId);
 const cleanup = (directory: string) =>
   fs.rm(directory, { recursive: true, force: true }).catch(() => {});
+const filesDir = (payload: SourcePayload, source: DownloadSource) =>
+  payload.importedPath ?? stagingDir(source, payload.jobId);
 
 const fromAlbum = (payload: SourcePayload, source: DownloadSource) =>
   payload.albumGrab !== true && !source.tracks;
@@ -142,6 +146,19 @@ export async function albumQuery(payload: SourcePayload, job: DownloadJob) {
       durationMs: track.durationMs ?? null,
     })),
   };
+}
+
+// A source that files its own downloads keeps them. Aurral only uses files
+// in a read-only folder, which it never moves, changes, or deletes.
+async function resolveImportedFolder(job: DownloadJob, returned: string) {
+  if (job.upgradeForJobId)
+    throw new DownloadSourceError("imported an upgrade itself, and Aurral files its own upgrades");
+  const folder = path.isAbsolute(returned) ? await fs.realpath(returned).catch(() => null) : null;
+  if (!folder || !(await fs.stat(folder)).isDirectory())
+    throw new DownloadSourceError(`imported to ${returned}, which Aurral can't open`);
+  if (libraryFolderOwner(folder) !== "readonly")
+    throw new DownloadSourceError(`imported to ${folder}, which isn't in a read-only folder`);
+  return folder;
 }
 
 async function resolveDownloadedFile(directory: string, returned: string) {
@@ -293,7 +310,7 @@ async function albumTrackDownloaded(
 ) {
   const found = await selectVerifiedDownloadedFile({
     request: resolveTrack(payload, job),
-    filePaths: await stagedAudioFiles(stagingDir(source, job.id)),
+    filePaths: await stagedAudioFiles(filesDir(payload, source)),
     source: source.id,
     options: { release: await attemptRelease(payload, job) },
   });
@@ -391,10 +408,11 @@ async function startDownload(
 }
 
 async function handleDownload(
-  payload: SourcePayload,
+  attempt: SourcePayload,
   source: DownloadSource,
   helpers: SourceHelpers,
 ) {
+  const payload = { ...attempt, importedPath: null };
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
   const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
@@ -455,12 +473,19 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
         throw new DownloadSourceError("didn't finish the download within a day");
       return { ...current, phase: "poll", pollAttempts, delaySeconds: POLL_SECONDS };
     }
-    const candidate = current.candidates?.[Number(current.candidateIndex || 0)];
-    if (current.albumGrab === true)
-      return { ...current, phase: "finalize", candidate, pendingId: null, pollAttempts };
+    const finished = status.imported
+      ? { ...current, importedPath: await resolveImportedFolder(job, status.imported) }
+      : current;
+    const candidate = finished.candidates?.[Number(finished.candidateIndex || 0)];
+    if (finished.albumGrab === true)
+      return { ...finished, phase: "finalize", candidate, pendingId: null, pollAttempts };
     if (status.path)
-      return trackDownloaded(current, source, await resolveDownloadedFile(directory, status.path));
-    if (fromAlbum(current, source)) return await albumTrackDownloaded(current, source, job);
+      return trackDownloaded(
+        finished,
+        source,
+        await resolveDownloadedFile(filesDir(finished, source), status.path),
+      );
+    if (fromAlbum(finished, source)) return await albumTrackDownloaded(finished, source, job);
     throw new DownloadSourceError("finished a download without its path");
   } catch (error) {
     if (!(error instanceof DownloadSourceError)) throw error;
@@ -471,7 +496,8 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
 async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSource) {
   const directory = stagingDir(source, payload.jobId);
   const next = await finishAlbumGrab(payload, {
-    filePaths: await stagedAudioFiles(directory),
+    filePaths: await stagedAudioFiles(filesDir(payload, source)),
+    inPlace: Boolean(payload.importedPath),
     source: source.id,
     album: getPayloadCandidate(payload)?.resolvedAlbumName ?? null,
     resetFields: { pendingId: null, pollAttempts: 0, downloadedPath: null },
@@ -510,8 +536,9 @@ async function handleFinalize(
     await cleanup(directory);
     return null;
   }
+  const inPlace = Boolean(payload.importedPath);
   if (!validation.valid) {
-    if (validation.blocked && !payload.heldForReview) {
+    if (validation.blocked && !payload.heldForReview && !inPlace) {
       const heldPath = path.join(
         path.dirname(directory),
         `${job.id}-held${path.extname(filePath)}`,
@@ -550,14 +577,17 @@ async function handleFinalize(
     buildTrackFileName(job, path.extname(filePath).toLowerCase() || ".flac"),
   );
   const committed = await withPipelineCommitLock(payload, async () => {
-    await writeAudioMetadata(filePath, resolvedTrack);
-    recordTrackJobMoving(job);
-    const committedFinalPath = await commitDownloadedFile(filePath, finalPath);
+    if (!inPlace) {
+      await writeAudioMetadata(filePath, resolvedTrack);
+      recordTrackJobMoving(job);
+    }
+    const committedFinalPath = inPlace ? filePath : await commitDownloadedFile(filePath, finalPath);
     await cleanup(directory);
     return finalizePipelineJobSuccess({
       downloadTracker,
       job,
       committedFinalPath,
+      inPlace,
       album: candidate?.resolvedAlbumName,
       quality: validation.quality,
     });
