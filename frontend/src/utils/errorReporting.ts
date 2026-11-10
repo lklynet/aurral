@@ -26,9 +26,10 @@ export function reportClientError(source: Source, problem: unknown, componentSta
 }
 
 export function startErrorReporting() {
-  window.addEventListener("error", (event) =>
-    reportClientError("error", event.error ?? event.message),
-  );
+  window.addEventListener("error", (event) => {
+    if (!event.error && event.message.startsWith("ResizeObserver loop")) return;
+    reportClientError("error", event.error ?? event.message);
+  });
   window.addEventListener("unhandledrejection", (event) =>
     reportClientError("rejection", event.reason),
   );
