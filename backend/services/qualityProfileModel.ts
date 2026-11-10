@@ -25,13 +25,13 @@ export const QUALITY_TIERS = [
   { id: "flac-hires", label: "FLAC hi-res", family: "flac" },
   { id: "flac-standard", label: "FLAC standard", family: "flac" },
   { id: "mp3-320", label: "MP3 320", family: "mp3", bitrate: 320 },
-  { id: "m4a-320", label: "M4A 320", family: "m4a", bitrate: 320 },
+  { id: "m4a-320", label: "AAC 320", family: "m4a", bitrate: 320 },
   { id: "mp3-256", label: "MP3 256", family: "mp3", bitrate: 256 },
-  { id: "m4a-256", label: "M4A 256", family: "m4a", bitrate: 256 },
+  { id: "m4a-256", label: "AAC 256", family: "m4a", bitrate: 256 },
   { id: "mp3-192", label: "MP3 192", family: "mp3", bitrate: 192 },
-  { id: "m4a-192", label: "M4A 192", family: "m4a", bitrate: 192 },
+  { id: "m4a-192", label: "AAC 192", family: "m4a", bitrate: 192 },
   { id: "mp3-128", label: "MP3 128", family: "mp3", bitrate: 128 },
-  { id: "m4a-128", label: "M4A 128", family: "m4a", bitrate: 128 },
+  { id: "m4a-128", label: "AAC 128", family: "m4a", bitrate: 128 },
 ];
 
 const TIER_BY_ID = new Map(QUALITY_TIERS.map((tier) => [tier.id, tier]));

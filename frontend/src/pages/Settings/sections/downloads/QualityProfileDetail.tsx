@@ -31,13 +31,13 @@ const QUALITY_TIER_LABELS: Partial<Record<string, string>> = {
   "flac-hires": "FLAC hi-res",
   "flac-standard": "FLAC standard",
   "mp3-320": "MP3 320",
-  "m4a-320": "M4A 320",
+  "m4a-320": "AAC 320",
   "mp3-256": "MP3 256",
-  "m4a-256": "M4A 256",
+  "m4a-256": "AAC 256",
   "mp3-192": "MP3 192",
-  "m4a-192": "M4A 192",
+  "m4a-192": "AAC 192",
   "mp3-128": "MP3 128",
-  "m4a-128": "M4A 128",
+  "m4a-128": "AAC 128",
 };
 
 const tierLabel = (id: string) => QUALITY_TIER_LABELS[id] || id;

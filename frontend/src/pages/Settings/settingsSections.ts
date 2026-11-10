@@ -157,7 +157,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     "Quality profile": {
       item: "quality",
       keywords:
-        "FLAC MP3 M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
+        "FLAC MP3 AAC M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
     },
   },
   discovery: {
