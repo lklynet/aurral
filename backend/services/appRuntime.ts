@@ -151,7 +151,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
     return false;
   }
   backgroundWorkersStarted = true;
-  import("./aurralHistoryService.ts")
+  import("./aurralHistoryRequests.ts")
     .then(({ syncProcessingActivityHistory }) => syncProcessingActivityHistory())
     .catch((error) => {
       logger.warn?.(

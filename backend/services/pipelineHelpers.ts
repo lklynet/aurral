@@ -5,9 +5,9 @@ import { finalizeQualityUpgradeSuccess } from "./qualityUpgradeOutcome.ts";
 import {
   recordTrackJobBlocked,
   recordTrackJobCompleted,
-  recordRequestGroupDownloaded,
   type HistoryJob,
 } from "./aurralHistoryService.ts";
+import { recordRequestGroupDownloaded } from "./aurralHistoryRequests.ts";
 import { emitPluginEvent } from "./plugins/pluginEvents.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";

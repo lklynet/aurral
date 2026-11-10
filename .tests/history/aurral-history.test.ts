@@ -8,21 +8,21 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, historyModule] = await setupIsolatedBackend(
-  "aurral-history",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/aurralHistoryService.ts"),
-);
+const [isolatedState, { db }, historyModule, { getAurralHistoryRequests, toHistoryRequestItem }] =
+  await setupIsolatedBackend(
+    "aurral-history",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/aurralHistoryService.ts"),
+    () => import("../../backend/services/aurralHistoryRequests.ts"),
+  );
 
 const {
   upsertAurralHistory,
-  getAurralHistoryRequests,
   recordTrackJobBlocked,
   recordTrackJobDownloading,
   recordTrackJobSearching,
   recordTrackJobCompleted,
   recordTrackJobQueued,
-  toHistoryRequestItem,
 } = historyModule;
 const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.ts");
 const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } =

@@ -48,7 +48,8 @@ import { asAppError } from "../../../lib/errors.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
-import { recordTrackJobFailed, recordRequestGroupDownloaded } from "../aurralHistoryService.ts";
+import { recordTrackJobFailed } from "../aurralHistoryService.ts";
+import { recordRequestGroupDownloaded } from "../aurralHistoryRequests.ts";
 import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 
 const DEFAULT_CONCURRENCY = 3;

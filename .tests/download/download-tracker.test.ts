@@ -253,8 +253,10 @@ test("a queued album grab exposes durable membership without replacing track act
     }),
     true,
   );
-  const { getAurralHistoryRequests, recordTrackJobSearching } =
+  const { recordTrackJobSearching } =
     await import("../../backend/services/aurralHistoryService.ts");
+  const { getAurralHistoryRequests } =
+    await import("../../backend/services/aurralHistoryRequests.ts");
   recordTrackJobSearching(trackedJob(tracker, ids[0]));
   const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(requests.length, 2);
@@ -304,7 +306,7 @@ test("failed queue handoff and attempted flags alone do not create album activit
   trackerModule.downloadTracker._load();
   trackerModule.downloadTracker.setAlbumGrabAttempted(requireFixture(ids[0]), true);
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(requests.length, 2);
   assert.ok(requests.every((item) => !item.albumGrab));
@@ -341,7 +343,7 @@ test("album track outcomes retain source, failures, and timestamps after retry a
   tracker.updateDownloadMetadata(requireFixture(ids[1]), { downloadSource: "ytdlp" });
   tracker.setDone(requireFixture(ids[1]), path.join(isolatedState.baseDir, "second.m4a"));
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const before = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(before.length, 2);
   assert.ok(before.every((item) => item.status === "completed"));
@@ -398,7 +400,7 @@ test("history limits keep an album together and pruning does not recreate remove
   }
   tracker.setDone(requireFixture(ids[0]), path.join(isolatedState.baseDir, "first.flac"));
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const limited = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(limited.length, 3);
   for (const id of ids.slice(1))
@@ -470,7 +472,7 @@ test("album activity preserves canonical disc order and does not revive expired 
     }),
   });
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const active = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.deepEqual(
     ids.map((id) => active.find((item) => item.jobId === id)!.discNumber),
@@ -519,7 +521,7 @@ test("album activity excludes hidden member identities from an authorized respon
     metadata: { ...privateEntry.metadata, ownerUserId: 99 },
   });
   const { getAurralHistoryRequests } =
-    await import("../../backend/services/aurralHistoryService.ts");
+    await import("../../backend/services/aurralHistoryRequests.ts");
   const visible = (
     await getAurralHistoryRequests(null, { id: 42, username: "listener", role: "user" })
   ).filter((item) => ids.includes(item.jobId!));

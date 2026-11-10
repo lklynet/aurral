@@ -2,7 +2,7 @@ import type { LidarrRequestItem } from "../backend/services/lidarrRequestBuilder
 import type {
   AurralAlbumGrab,
   AurralRequestItem,
-} from "../backend/services/aurralHistoryService.ts";
+} from "../backend/services/aurralHistoryRequests.ts";
 
 type SharedKeys = keyof LidarrRequestItem & keyof AurralRequestItem;
 
