@@ -88,10 +88,9 @@ const IN_PLACE_SOURCE = `export default { downloadSource: {
   download: () => ({ pending: "t1" }),
   searchAlbum: ({ album }) => [{ id: "a1", title: album.title, artist: album.artist }],
   downloadAlbum: () => ({ pending: "a1" }),
-  status: ({ settings, id }) => ({
+  status: ({ settings }) => ({
     done: true,
-    imported: settings.imported,
-    ...(id === "t1" && { path: "02 Night Drive.flac" }),
+    imported: ["01 Tide.flac", "02 Night Drive.flac"].map((name) => settings.imported + "/" + name),
   }),
   discard: () => {},
 } };`;
@@ -293,8 +292,13 @@ test("an album-only plugin source fills a track request with the one file it kep
 
 test("a source that files its own downloads has them checked and used where they are, in a read-only folder", async (t) => {
   const music = await realpath(fixtureDir);
-  const imported = path.join(music, "Glass Coast", "Lowlands");
+  const imported = path.join(music, "Glass Coast");
   await mkdir(imported, { recursive: true });
+  await writeFlacFixture(
+    path.join(imported, "01 Harbor.flac"),
+    { title: "Harbor", artist: "Glass Coast", album: "Breakwater", track: 1 },
+    { seconds: 1 },
+  );
   const [tide, nightDrive] = await Promise.all(
     ["Tide", "Night Drive"].map((title, index) =>
       writeFlacFixture(
@@ -337,7 +341,7 @@ test("a source that files its own downloads has them checked and used where they
 
   await assert.rejects(
     runToEnd(request("Night Drive", 2, "outside-read-only")),
-    /download failed: imported to .*Lowlands, which isn't in a read-only folder/,
+    /download failed: imported .*Tide\.flac, which isn't in a read-only folder/,
   );
 
   dbOps.setJSONSetting("readOnlyFolders", [music]);
