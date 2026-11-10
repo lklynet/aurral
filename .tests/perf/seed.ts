@@ -217,7 +217,6 @@ export function seedPerfListening(
 }
 
 const HISTORY_JOBS = 5_000;
-const QUEUED_JOBS = 2_000;
 const EDIT_SONGS = 25;
 export const EDIT_SETS = 16;
 
@@ -230,11 +229,6 @@ export function seedPerfPlaylistJobs(
     `INSERT INTO download_jobs
       (id, artist_name, track_name, album_name, owner_id, owner_type, status, final_path, completed_at, created_at, managed_by, reused_library_file)
      VALUES (?, ?, ?, ?, 'library', 'library', 'done', ?, ?, ?, 'aurral', 1)`,
-  );
-  const insertQueuedJob = db.prepare(
-    `INSERT INTO download_jobs
-      (id, artist_name, track_name, album_name, album_mbid, owner_id, owner_type, status, error, created_at)
-     VALUES (?, ?, ?, ?, ?, 'perf-import', 'perf-import', ?, ?, ?)`,
   );
   const playlists = Array.from({ length: 8 }, (_, index) =>
     library.trackRows
@@ -263,19 +257,6 @@ export function seedPerfPlaylistJobs(
         `/history/${index}.flac`,
         now,
         now,
-      );
-    }
-    for (let index = 0; index < QUEUED_JOBS; index += 1) {
-      const review = index % 4 === 0;
-      insertQueuedJob.run(
-        `perf-queued-${index}`,
-        `Queued Artist ${index % 211}`,
-        `Queued Song ${index}`,
-        `Queued Album ${index % 701}`,
-        uuid(index % 2 ? 2 : 9, index % 701),
-        review ? "blocked" : "pending",
-        review ? "duration-mismatch" : null,
-        now + index,
       );
     }
   })();

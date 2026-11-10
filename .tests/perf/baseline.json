@@ -195,10 +195,10 @@
   },
   "activity queue": {
     "queries": {
-      "cold": 16,
-      "warm": 16
+      "cold": 12,
+      "warm": 12
     },
-    "bytes": 35320,
+    "bytes": 198,
     "scans": [
       "download_jobs"
     ]
