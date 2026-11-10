@@ -165,10 +165,6 @@ async function addUpgradesAtOnce(
     return "queued";
   });
   if (aheadOfWaiting) downloadTracker.queueFirst(queuedIds);
-  if (queuedIds.length > 0) {
-    const { wakeDownloadWorker } = await import("./downloadJobs/downloadWorker.ts");
-    await wakeDownloadWorker();
-  }
   return statuses;
 }
 

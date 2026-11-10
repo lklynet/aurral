@@ -1,4 +1,9 @@
-import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import {
+  createTrackedJob,
+  localDownloadWorker,
+  startWorkerForQueuedWork,
+  trackedJob,
+} from "./fixtures.ts";
 import { insertJob } from "../helpers/jobs.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
@@ -890,6 +895,38 @@ test("a web-side tracker keeps an active flow download on import and loads jobs 
   }
 });
 
+test("a web-side tracker asks the download process to start once for a batch of queued tracks, and not for a saved one", async () => {
+  const { configureDownloadOwnerClient } =
+    await import("../../backend/services/downloadJobs/downloadOwnerClient.ts");
+  const requests: string[] = [];
+  configureDownloadOwnerClient({
+    request: async (method) => {
+      requests.push(method);
+    },
+    getStatus: () => null,
+  });
+  const previousEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "production";
+    const webTracker = new DownloadTracker();
+    webTracker.addJob({ artistName: "Artist", trackName: "Saved" }, "playlist", { saved: true });
+    await Promise.resolve();
+    assert.deepEqual(requests, []);
+    webTracker.addJobs(
+      [
+        { artistName: "Artist", trackName: "First" },
+        { artistName: "Artist", trackName: "Second" },
+      ],
+      "playlist",
+    );
+    await Promise.resolve();
+    assert.deepEqual(requests, ["startIfPending"]);
+  } finally {
+    process.env.NODE_ENV = previousEnv;
+    configureDownloadOwnerClient({ request: null, getStatus: () => null });
+  }
+});
+
 test("a web-side tracker preserves pending upgrades but excludes them from normal pending work", () => {
   const tracker = new DownloadTracker();
   const sourceId = createTrackedJob(
@@ -974,6 +1011,52 @@ test("a started worker keeps its process busy only while downloads are pending",
     assert.equal(worker.hasWork(), true);
   } finally {
     worker.stop();
+  }
+});
+
+test("stopping the worker returns its downloads to the queue and leaves it stopped", async () => {
+  const tracker = trackerModule.downloadTracker;
+  const worker = localDownloadWorker(workerModule.downloadWorker);
+  vi.mocked(worker.start).mockRestore();
+  startWorkerForQueuedWork(tracker, workerModule.startWorkerIfPending);
+  await worker.start();
+  await worker.reuseRepairInFlight;
+  const jobId = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "library");
+  tracker.setDownloading(jobId);
+  await Promise.resolve();
+
+  worker.stop();
+  await Promise.resolve();
+
+  assert.equal(trackedJob(tracker, jobId).status, "pending");
+  assert.equal(worker.running, false);
+});
+
+test("a track queued while its playlist is being edited starts the worker, waits, and downloads when the edit ends", async () => {
+  const tracker = trackerModule.downloadTracker;
+  const worker = localDownloadWorker(workerModule.downloadWorker);
+  vi.mocked(worker.start).mockRestore();
+  vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
+  const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
+  startWorkerForQueuedWork(tracker, workerModule.startWorkerIfPending);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    worker.blockPlaylist("library");
+    const jobId = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "library");
+    await Promise.resolve();
+    assert.equal(worker.running, true);
+    assert.equal(trackedJob(tracker, jobId).error, "Playlist mutation in progress");
+    assert.equal(dispatched.mock.calls.length, 0);
+
+    worker.unblockPlaylist("library");
+    await vi.advanceTimersByTimeAsync(750);
+    assert.deepEqual(
+      dispatched.mock.calls.map((call) => call[0].id),
+      [jobId],
+    );
+  } finally {
+    worker.stop();
+    vi.useRealTimers();
   }
 });
 

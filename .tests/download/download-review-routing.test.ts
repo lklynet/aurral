@@ -1,5 +1,5 @@
 import { usenetCandidate } from "./fixtures.ts";
-import { createTrackedJob, trackedJob, ytdlpResult } from "./fixtures.ts";
+import { createTrackedJob, startWorkerForQueuedWork, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -59,7 +59,7 @@ const [
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
 
-const { downloadWorker } = downloadWorkerModule;
+const { downloadWorker, startWorkerIfPending } = downloadWorkerModule;
 const { cancelDownloadJob } = cancellationModule;
 
 test("yt-dlp keeps ordinary not-live results and excludes live statuses", () => {
@@ -995,6 +995,7 @@ test("denying a held file starts a stopped worker to search again", async () => 
     "downloaded file is 14.0s shorter than the requested track",
     staged,
   );
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   const { denyBlockedJob } =
     await import("../../backend/services/downloadJobs/blockedJobReview.ts");
   assert.equal((await denyBlockedJob(jobId)).status, 200);

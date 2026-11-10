@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { onTestFinished } from "vite-plus/test";
 import type { DownloadTracker } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import type { getDownloadClient } from "../../backend/services/download/downloadClientSettings.ts";
 
@@ -9,6 +10,16 @@ export function createTrackedJob(
   const id = tracker.addJob(...args);
   assert.ok(id, "Expected the fixture to create a download job");
   return id;
+}
+
+// Unit tests drive the worker by hand. This applies the download process's
+// rule, where queued work starts the worker, for one test.
+export function startWorkerForQueuedWork(
+  tracker: Pick<DownloadTracker, "onPendingWork">,
+  startWorkerIfPending: () => unknown,
+) {
+  tracker.onPendingWork(startWorkerIfPending);
+  onTestFinished(() => tracker.onPendingWork(null));
 }
 
 export function trackedJob(

@@ -114,20 +114,14 @@ export function enqueuePendingJobsWithoutBatch() {
       .filter(Boolean),
   );
   let count = 0;
-  let resolving = false;
   for (const job of downloadTracker.getByStatus("pending")) {
     const hasProviderSearch = job.slskdBatchId || job.slskdSearchId;
     if (!hasProviderSearch && job.manualReplacementSearch !== true) continue;
     if (activePipelineJobIds.has(job.id)) continue;
     downloadTracker.clearSlskdPipelineState(job.id);
     // The worker resolves the release of a track that can search by one.
-    if (downloadTracker.canSearchByRelease(job)) resolving = true;
-    else if (downloadTracker.enqueueDownloadPipeline(job.id)) count += 1;
-  }
-  if (resolving) {
-    void import("./downloadJobs/downloadWorker.ts")
-      .then(({ wakeDownloadWorker }) => wakeDownloadWorker())
-      .catch(() => {});
+    if (downloadTracker.canSearchByRelease(job)) continue;
+    if (downloadTracker.enqueueDownloadPipeline(job.id)) count += 1;
   }
   return count;
 }

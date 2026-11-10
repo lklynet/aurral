@@ -30,11 +30,7 @@ import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.ts";
 import { isAurralOwnedPath } from "../qualityProfile.ts";
 import { playlistManager } from "./playlistManager.ts";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
-import {
-  downloadWorker,
-  restartWorkerIfPending,
-  wakeDownloadWorker,
-} from "../downloadJobs/downloadWorker.ts";
+import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { withPlaylistMutationLock } from "../downloadJobs/downloadLocks.ts";
 import { withPlaylistMutation } from "../downloadJobs/mutationGuards.ts";
 import { withLock } from "../jobs/queue.ts";
@@ -360,13 +356,11 @@ async function runFlowSeed({
 
   if (Array.isArray(result?.jobIds)) rescanLibraryForFlows([safeFlowId]);
   if (result?.tracksQueued && result.tracksQueued > 0) {
-    await wakeDownloadWorker();
     recordFlowTracksGenerated({
       flowId: safeFlowId,
       tracksQueued: result.tracksQueued,
     });
   } else {
-    await restartWorkerIfPending();
     recordFlowTracksGenerated({ flowId: safeFlowId, tracksFound: result?.jobIds?.length });
   }
   return result;
@@ -381,7 +375,6 @@ async function downloadSavedFlowTracks({ flowId }: OperationPayload = {}) {
     recordTrackJobQueued(downloadTracker.getJob(job.id));
     queued += 1;
   }
-  if (queued > 0) await wakeDownloadWorker();
   playlistManager.requestPlaylistSync([safeFlowId]);
   return { queued };
 }
@@ -408,7 +401,6 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null }: Opera
     downloadTracker.clearByPlaylistId(safeFlowId);
   });
   rescanLibraryForFlows([safeFlowId]);
-  await restartWorkerIfPending();
   return { success: true, flowId: safeFlowId };
 }
 
@@ -435,7 +427,6 @@ async function deleteFlow({ flowId, tokenScope = null, token = null }: Operation
     playlistManager.requestPlaylistSync([safeFlowId]);
     playlistManager.scheduleScanLibrary();
   }
-  await restartWorkerIfPending();
   return didDelete;
 }
 
@@ -452,7 +443,6 @@ async function resetPlaylists({ playlistTypes = [] }: OperationPayload = {}) {
     await playlistManager.weeklyReset(types);
   });
   rescanLibraryForFlows(types);
-  await restartWorkerIfPending();
   return { success: true, playlistTypes: types };
 }
 
@@ -736,7 +726,6 @@ async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {
   };
   if (isLibraryJob) {
     requeue();
-    await wakeDownloadWorker();
     return { success: true, reused: false, jobId: safeJobId, playlistId: safePlaylistId };
   }
   let reused = false;
@@ -769,12 +758,6 @@ async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {
   );
   playlistManager.requestPlaylistSync([safePlaylistId]);
   playlistManager.scheduleScanLibrary();
-  if (!reused) {
-    await restartWorkerIfPending();
-    if (downloadWorker.running) {
-      downloadWorker.wake();
-    }
-  }
   return {
     success: true,
     reused,

@@ -23,6 +23,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { startWorkerForQueuedWork } from "../download/fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,7 +36,7 @@ const [
   { getLibraryFileOperation },
   { resolveDownloadRoot },
   { downloadTracker },
-  { downloadWorker },
+  { downloadWorker, startWorkerIfPending },
   qualityProfileService,
   { playlistManager },
   { findUniqueLibrarySong },
@@ -696,6 +697,7 @@ test("automatic upgrades reach monitored Library tracks that Aurral did not down
   const queued: string[] = [];
   const originalEnqueue = downloadTracker.enqueueDownloadPipeline;
   downloadTracker.enqueueDownloadPipeline = (id) => queued.push(id) > 0;
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   try {
     assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 1);
     const upgrade = downloadTracker.getJob(queued[0]);

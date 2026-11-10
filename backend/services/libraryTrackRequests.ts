@@ -96,7 +96,6 @@ export async function requestLibraryTrack(
   if (existingJob?.status === "saved") {
     downloadTracker.setPending(existingJob.id);
     recordTrackJobQueued(downloadTracker.getJob(existingJob.id), user);
-    await downloadWorker.start();
     return { queued: true, jobId: existingJob.id };
   }
   if (existingJob) {
@@ -104,7 +103,7 @@ export async function requestLibraryTrack(
     return { queued: true, jobId: existingJob.id, alreadyQueued: true };
   }
 
-  const jobId = downloadTracker.addJob(track, "library");
+  const jobId = downloadTracker.addJob(track, "library", { saved: true });
   if (!jobId) return { error: "Track details are incomplete", statusCode: 400 };
 
   try {
@@ -121,7 +120,7 @@ export async function requestLibraryTrack(
     });
   }
 
+  downloadTracker.setPending(jobId);
   recordTrackJobQueued(downloadTracker.getJob(jobId), user);
-  await downloadWorker.start();
   return { queued: true, jobId };
 }

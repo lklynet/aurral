@@ -340,7 +340,6 @@ export async function retryTrackDownload(jobId: string) {
     }
   }
 
-  const { wakeDownloadWorker } = await import("./downloadJobs/downloadWorker.ts");
   job = downloadTracker.getJob(jobId);
   const result = await withPlaylistMutationLock(job?.playlistId || job?.playlistType, async () => {
     const current = downloadTracker.getJob(jobId);
@@ -375,7 +374,6 @@ export async function retryTrackDownload(jobId: string) {
 
   if (result.statusCode) return result;
   recordTrackJobSearching(downloadTracker.getJob(jobId));
-  await wakeDownloadWorker();
   return result;
 }
 
