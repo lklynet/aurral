@@ -77,7 +77,7 @@ export type SourcePayload = {
   downloadedPath?: string | null;
   heldForReview?: ReturnType<typeof holdForReview> | null;
   pendingId?: string | null;
-  importedPath?: string | null;
+  importedFiles?: string[] | null;
   pollAttempts?: number;
   albumGrab?: boolean;
   releaseMbid?: string | null;
@@ -97,8 +97,6 @@ const stagingDir = (source: DownloadSource, jobId: string) =>
   path.join(resolveAurralDataDir(), "_staging", source.staging, jobId);
 const cleanup = (directory: string) =>
   fs.rm(directory, { recursive: true, force: true }).catch(() => {});
-const filesDir = (payload: SourcePayload, source: DownloadSource) =>
-  payload.importedPath ?? stagingDir(source, payload.jobId);
 
 const fromAlbum = (payload: SourcePayload, source: DownloadSource) =>
   payload.albumGrab !== true && !source.tracks;
@@ -150,15 +148,19 @@ export async function albumQuery(payload: SourcePayload, job: DownloadJob) {
 
 // A source that files its own downloads keeps them. Aurral only uses files
 // in a read-only folder, which it never moves, changes, or deletes.
-async function resolveImportedFolder(job: DownloadJob, returned: string) {
+async function resolveImportedFiles(job: DownloadJob, returned: string[]) {
   if (job.upgradeForJobId)
     throw new DownloadSourceError("imported an upgrade itself, and Aurral files its own upgrades");
-  const folder = path.isAbsolute(returned) ? await fs.realpath(returned).catch(() => null) : null;
-  if (!folder || !(await fs.stat(folder)).isDirectory())
-    throw new DownloadSourceError(`imported to ${returned}, which Aurral can't open`);
-  if (libraryFolderOwner(folder) !== "readonly")
-    throw new DownloadSourceError(`imported to ${folder}, which isn't in a read-only folder`);
-  return folder;
+  return Promise.all(
+    returned.filter(isAudioFile).map(async (file) => {
+      const filePath = path.isAbsolute(file) ? await fs.realpath(file).catch(() => null) : null;
+      if (!filePath || !(await fs.stat(filePath)).isFile())
+        throw new DownloadSourceError(`imported ${file}, which Aurral can't open`);
+      if (libraryFolderOwner(filePath) !== "readonly")
+        throw new DownloadSourceError(`imported ${filePath}, which isn't in a read-only folder`);
+      return filePath;
+    }),
+  );
 }
 
 async function resolveDownloadedFile(directory: string, returned: string) {
@@ -301,6 +303,9 @@ async function stagedAudioFiles(directory: string) {
   return resolved.filter((file) => file !== null);
 }
 
+const downloadedFiles = (payload: SourcePayload, source: DownloadSource) =>
+  payload.importedFiles ?? stagedAudioFiles(stagingDir(source, payload.jobId));
+
 // Aurral judges the files themselves, as it does for a Usenet release, so a
 // track still imports when the file names didn't show which one it is.
 async function albumTrackDownloaded(
@@ -310,7 +315,7 @@ async function albumTrackDownloaded(
 ) {
   const found = await selectVerifiedDownloadedFile({
     request: resolveTrack(payload, job),
-    filePaths: await stagedAudioFiles(filesDir(payload, source)),
+    filePaths: await downloadedFiles(payload, source),
     source: source.id,
     options: { release: await attemptRelease(payload, job) },
   });
@@ -412,7 +417,7 @@ async function handleDownload(
   source: DownloadSource,
   helpers: SourceHelpers,
 ) {
-  const payload = { ...attempt, importedPath: null };
+  const payload = { ...attempt, importedFiles: null };
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
   const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
@@ -474,17 +479,14 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
       return { ...current, phase: "poll", pollAttempts, delaySeconds: POLL_SECONDS };
     }
     const finished = status.imported
-      ? { ...current, importedPath: await resolveImportedFolder(job, status.imported) }
+      ? { ...current, importedFiles: await resolveImportedFiles(job, status.imported) }
       : current;
     const candidate = finished.candidates?.[Number(finished.candidateIndex || 0)];
     if (finished.albumGrab === true)
       return { ...finished, phase: "finalize", candidate, pendingId: null, pollAttempts };
+    if (finished.importedFiles) return await albumTrackDownloaded(finished, source, job);
     if (status.path)
-      return trackDownloaded(
-        finished,
-        source,
-        await resolveDownloadedFile(filesDir(finished, source), status.path),
-      );
+      return trackDownloaded(finished, source, await resolveDownloadedFile(directory, status.path));
     if (fromAlbum(finished, source)) return await albumTrackDownloaded(finished, source, job);
     throw new DownloadSourceError("finished a download without its path");
   } catch (error) {
@@ -496,8 +498,8 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
 async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSource) {
   const directory = stagingDir(source, payload.jobId);
   const next = await finishAlbumGrab(payload, {
-    filePaths: await stagedAudioFiles(filesDir(payload, source)),
-    inPlace: Boolean(payload.importedPath),
+    filePaths: await downloadedFiles(payload, source),
+    inPlace: Boolean(payload.importedFiles),
     source: source.id,
     album: getPayloadCandidate(payload)?.resolvedAlbumName ?? null,
     resetFields: { pendingId: null, pollAttempts: 0, downloadedPath: null },
@@ -536,7 +538,7 @@ async function handleFinalize(
     await cleanup(directory);
     return null;
   }
-  const inPlace = Boolean(payload.importedPath);
+  const inPlace = Boolean(payload.importedFiles);
   if (!validation.valid) {
     if (validation.blocked && !payload.heldForReview && !inPlace) {
       const heldPath = path.join(

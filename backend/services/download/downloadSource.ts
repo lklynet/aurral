@@ -43,7 +43,7 @@ export const fileResults = v.nullable(
 export const statusResult = v.object({
   done: v.boolean(),
   path: v.optional(filePathText),
-  imported: v.optional(filePathText),
+  imported: v.optional(v.pipe(v.array(filePathText), v.minLength(1), v.maxLength(MAX_FILES))),
 });
 
 export type TrackResult = v.InferOutput<typeof trackResult>;

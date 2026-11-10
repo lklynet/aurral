@@ -222,9 +222,9 @@ Export `discard` too. Aurral calls `discard({ id })` when it no longer wants a p
 
 ### Clients that file their own downloads
 
-A client that files finished downloads in its own folder, like Lidarr, can leave them there. When the download is done, return `{ done: true, imported: "<folder>" }` from `status`, with the full path of the folder that holds the files, and put nothing in `directory`. When `download` returned the pending download, `path` is relative to that folder.
+A client that files finished downloads in its own folder, like Lidarr, can leave them there. When the download is done, return `{ done: true, imported: ["<file>", ...] }` from `status`, with the full path of each audio file the client imported for this download, and put nothing in `directory`. List only this download's files, because a folder can hold other albums. `path` isn't needed.
 
-The folder has to be in one of the user's read-only folders, which they add in **Settings > Library**. Otherwise the download fails and Aurral names the folder. Aurral checks the files the same way, uses the ones that match where they are, and never moves, changes, or deletes them. A file that doesn't match is skipped instead of going to the review queue. An upgrade can't be handed over this way, because Aurral replaces the file it upgrades.
+Every file has to be in one of the user's read-only folders, which they add in **Settings > Library**. Otherwise the download fails and Aurral names the file. Aurral checks the files the same way, uses the ones that match where they are, and never moves, changes, or deletes them. A file that doesn't match is skipped instead of going to the review queue. An upgrade can't be handed over this way, because Aurral replaces the file it upgrades.
 
 ## Import lists
 
