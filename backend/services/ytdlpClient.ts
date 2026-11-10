@@ -17,6 +17,8 @@ const SONG_SEARCH_BUDGET_MS = 15000;
 const SONG_READ_BATCH = 3;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const AUDIO_FORMAT = "m4a";
+const TEST_VIDEO_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+const DROPPED_TAGS = ["description", "synopsis", "comment", "purl", "genre", "date"];
 
 type YtdlpSettings = NonNullable<StoredIntegrations["ytdlp"]>;
 type JobId = string | number | null | undefined;
@@ -34,6 +36,7 @@ type YtdlpJsonEntry = {
   artist?: unknown;
   artists?: unknown;
   album?: unknown;
+  _version?: unknown;
 };
 type SongEntry = { id: string; title: string };
 type YtdlpSong = NonNullable<ReturnType<typeof readSong>>;
@@ -127,14 +130,28 @@ type RunOptions = {
   signal?: AbortSignal;
 };
 
-// yt-dlp rewrites its cookies file on exit, which fails on a read-only mount
-// and races between parallel runs, so each run gets its own copy.
 async function runYtdlp(
   args: string[],
   { config = null, ...options }: RunOptions & { config?: YtdlpSettings | null } = {},
 ) {
-  const source = String(getSettings(config).cookiesPath || "").trim();
-  if (!source) return spawnYtdlp(args, options);
+  const cookiesPath = String(getSettings(config).cookiesPath || "").trim();
+  try {
+    return await (cookiesPath
+      ? spawnWithCookies(cookiesPath, args, options)
+      : spawnYtdlp(args, options));
+  } catch (error) {
+    if (!/not a bot/iu.test(asAppError(error)?.message || "")) throw error;
+    throw new Error(
+      cookiesPath
+        ? "YouTube asks yt-dlp to sign in. The cookies file has expired, so export it again."
+        : "YouTube asks yt-dlp to sign in. Set a cookies file in Settings > Downloads > yt-dlp.",
+    );
+  }
+}
+
+// yt-dlp rewrites its cookies file on exit, which fails on a read-only mount
+// and races between parallel runs, so each run gets its own copy.
+async function spawnWithCookies(source: string, args: string[], options: RunOptions) {
   const cookies = await fsPromises.readFile(source).catch((error: Error) => {
     throw new Error(`Could not read the yt-dlp cookies file: ${error.message}`);
   });
@@ -263,11 +280,14 @@ async function testConnectionFor(
     };
   }
   try {
-    const { stdout } = await runYtdlp(["--version"], { config, timeoutMs: 15000 });
+    const { stdout } = await runYtdlp(
+      ["--skip-download", "--dump-json", "--no-warnings", "--", TEST_VIDEO_URL],
+      { config, timeoutMs: 30000 },
+    );
+    const [entry] = readJsonLines(stdout);
+    const info = entry?._version;
     const version =
-      String(stdout || "")
-        .trim()
-        .split(/\s+/)[0] || "ok";
+      info && typeof info === "object" && "version" in info ? String(info.version) : "ok";
     return { configured: true, ok: true, version, message: `yt-dlp ${version}` };
   } catch (error) {
     const failure = asAppError(error);
@@ -476,15 +496,21 @@ async function downloadAudioFor(
   await fsPromises.mkdir(stagingDir, { recursive: true });
   const outTemplate = path.join(stagingDir, "%(id)s.%(ext)s");
   // A YouTube Music song carries its own track and artist tags, and a dash in
-  // "Hey Jude - Remastered 2015" is not an "Artist - Title" separator.
+  // "Hey Jude - Remastered 2015" is not an "Artist - Title" separator. The AAC
+  // stream is copied as it is, where Opus would be re-encoded. Aurral's tags
+  // later replace only what it has a value for, so YouTube's description,
+  // link, "Music" genre, and upload date are dropped here.
   const args = [
     "--no-playlist",
     "--no-warnings",
+    "-f",
+    `ba[ext=${AUDIO_FORMAT}]/ba`,
     "-x",
     "--embed-metadata",
     ...(isSongUrl(url)
       ? []
       : ["--parse-metadata", "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$"]),
+    ...DROPPED_TAGS.flatMap((tag) => ["--parse-metadata", `:(?P<meta_${tag}>)`]),
     "--audio-format",
     AUDIO_FORMAT,
     "--audio-quality",

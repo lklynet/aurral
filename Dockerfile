@@ -63,8 +63,8 @@ ENV LD_PRELOAD=libjemalloc.so.2 \
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/
 
-ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
-    https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
+ADD --chmod=755 --checksum=sha256:e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3 \
+    https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp \
     /usr/local/bin/yt-dlp
 RUN yt-dlp --version && ffmpeg -version && ffprobe -version && cloudflared --version
 

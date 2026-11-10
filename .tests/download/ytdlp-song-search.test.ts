@@ -112,7 +112,7 @@ await writeFile(
     "  } else setTimeout(finish, song.delay || 0);",
     "  return;",
     "}",
-    "const parse = args.includes('--parse-metadata') ? args[args.indexOf('--parse-metadata') + 1] : null;",
+    "const parse = args.find((arg, index) => args[index - 1] === '--parse-metadata' && arg.startsWith('title:'));",
     "const pair = parse ? new RegExp(parse.slice(6).replace(/\\(\\?P</g, '(?<')).exec(song.track) : null;",
     "const artist = pair ? pair.groups.artist : song.artists.join(', ');",
     "const output = args[args.indexOf('-o') + 1].replace('%(id)s', id).replace('%(ext)s', 'm4a');",

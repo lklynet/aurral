@@ -1,0 +1,45 @@
+name: Update yt-dlp
+
+on:
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ytdlp-update
+
+jobs:
+  update:
+    if: github.repository == 'lklynet/aurral'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.YTDLP_UPDATE_TOKEN }}
+
+      - name: Open a PR for a newer yt-dlp
+        env:
+          GH_TOKEN: ${{ secrets.YTDLP_UPDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq .tag_name)
+          CURRENT=$(grep -oP 'yt-dlp/yt-dlp/releases/download/\K[^/]+' Dockerfile)
+          BRANCH="deps/yt-dlp-$TAG"
+          if [ "$TAG" = "$CURRENT" ] || git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            exit 0
+          fi
+          SHA=$(curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/$TAG/SHA2-256SUMS" | awk '$2 == "yt-dlp" { print $1 }')
+          [[ "$SHA" =~ ^[0-9a-f]{64}$ ]]
+          TAG="$TAG" SHA="$SHA" perl -0pi -e 's#--checksum=sha256:[0-9a-f]{64}( \\\n\s+https://github\.com/yt-dlp/yt-dlp/releases/download/)[^/]+/#--checksum=sha256:$ENV{SHA}$1$ENV{TAG}/#' Dockerfile
+          ! git diff --quiet Dockerfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -am "build(deps): bump yt-dlp to $TAG"
+          git push origin "$BRANCH"
+          gh pr create --head "$BRANCH" --title "build(deps): bump yt-dlp to $TAG" \
+            --body "YouTube changes often break older yt-dlp releases. This moves the Docker image from $CURRENT to [$TAG](https://github.com/yt-dlp/yt-dlp/releases/tag/$TAG), with the checksum from its SHA2-256SUMS."

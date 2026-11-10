@@ -5,7 +5,7 @@ description: Download tracks from YouTube with the built-in yt-dlp source.
 
 yt-dlp is the built-in fallback download source. It searches YouTube Music, then YouTube, for the artist and title of a track.
 
-yt-dlp extracts the audio with ffmpeg. Aurral writes the audio to a staging folder outside your media folders, checks it, tags it, and then moves it into the Library folder.
+yt-dlp saves YouTube's AAC audio as an M4A file without converting it. Aurral writes the audio to a staging folder outside your media folders, checks it, tags it, and then moves it into the Library folder.
 
 The default staging folder is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Downloads > yt-dlp > Staging path**. Keep this folder outside every media server library.
 
@@ -18,7 +18,7 @@ For an installation without Docker, install `yt-dlp` and `ffmpeg` on the host. A
 1. Open **Settings > Downloads > yt-dlp**.
 2. Leave **Enable yt-dlp** on. It is on by default.
 3. If necessary, set **Source priority** or **Staging path**.
-4. Select **Test connection**.
+4. Select **Test connection**. It reads one YouTube video, so it also shows when YouTube asks yt-dlp to sign in.
 
 The default priority of yt-dlp is `50`. The other sources have lower numbers, so Aurral tries them first. To get single tracks fast, give yt-dlp a lower number than the other sources. A track you download on its own then comes from yt-dlp first, and an album still starts on its release.
 
@@ -36,7 +36,7 @@ Before Aurral accepts the download, it checks the title and artist that yt-dlp w
 
 If YouTube refuses a download with HTTP 403, Aurral runs it once more with fresh links before it tries the next result.
 
-Aurral then applies the quality profile. It rejects the file if its measured M4A quality is not an enabled tier.
+Aurral then applies the quality profile. It rejects the file if its measured AAC quality is not an enabled tier. Most YouTube audio is AAC 128, so keep that tier enabled to use yt-dlp.
 
 After the checks, Aurral writes the title, artist, album, album artist, year, and track number into the file. Tag-based servers such as Navidrome can then sort the track correctly.
 

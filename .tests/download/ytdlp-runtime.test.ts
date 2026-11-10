@@ -314,3 +314,52 @@ test(
     }
   },
 );
+
+test(
+  "yt-dlp test connection reads a real video and names YouTube's sign-in check",
+  {
+    skip: process.platform === "win32",
+  },
+  async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-test-connection-"));
+    const binaryPath = path.join(tempDir, "yt-dlp");
+    const blockedPath = path.join(tempDir, "blocked");
+    const cookiesPath = path.join(tempDir, "cookies.txt");
+    const previousPath = process.env.PATH;
+    await writeFile(cookiesPath, "# Netscape HTTP Cookie File\n");
+    await writeFile(
+      binaryPath,
+      [
+        `#!${process.execPath}`,
+        "const fs = require('node:fs');",
+        `if (fs.existsSync(${JSON.stringify(blockedPath)})) {`,
+        "  process.stderr.write('ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.');",
+        "  process.exit(1);",
+        "}",
+        "process.stdout.write(JSON.stringify({ id: 'jNQXAC9IVRw', _version: { version: '2026.10.26' } }) + '\\n');",
+      ].join("\n"),
+    );
+    await chmod(binaryPath, 0o755);
+    process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
+    try {
+      assert.deepEqual(await new YtdlpClient({ enabled: true }).testConnection(), {
+        configured: true,
+        ok: true,
+        version: "2026.10.26",
+        message: "yt-dlp 2026.10.26",
+      });
+      await writeFile(blockedPath, "");
+      for (const [config, message] of [
+        [{ enabled: true }, /Set a cookies file/],
+        [{ enabled: true, cookiesPath }, /export it again/],
+      ] as const) {
+        const result = await new YtdlpClient(config).testConnection();
+        assert.equal(result.ok, false);
+        assert.match(result.message, message);
+      }
+    } finally {
+      process.env.PATH = previousPath;
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  },
+);
