@@ -69,7 +69,6 @@
   ".tests/library/album-artwork.test.ts": 4,
   ".tests/library/album-request-new-artist.test.ts": 2,
   ".tests/library/artist-automation.test.ts": 8,
-  ".tests/library/artist-mbid-override.test.ts": 5,
   ".tests/library/aurral-album-added-date.test.ts": 2,
   ".tests/library/aurral-album-lifecycle.test.ts": 6,
   ".tests/library/aurral-downloaded-track-albums.test.ts": 7,

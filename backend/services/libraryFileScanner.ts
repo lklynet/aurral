@@ -12,6 +12,7 @@ import {
   findLibraryAlbumByReleaseMbid,
   findLibraryAlbumTrack,
   findLegacyKeyedLibraryFiles,
+  findHandMatchedLibraryAlbum,
   followLibraryFileIdentity,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
@@ -481,12 +482,16 @@ export async function scanMusicRoot({
             metadata: record.artistMetadata,
             syncSearch,
           });
+          const untagged = !record.releaseGroupMbid && !record.albumMbid;
+          const matchedAlbum =
+            untagged && existing?.album_id ? findHandMatchedLibraryAlbum(existing.album_id) : null;
           const titledAlbum =
-            !record.releaseGroupMbid && !record.albumMbid
+            untagged && !matchedAlbum
               ? findLibraryAlbumByArtistTitle(artist.id, record.albumName, record.title)
               : null;
           const namedAlbum =
-            titledAlbum && legacyKeyed.albumIds.has(titledAlbum.id) ? null : titledAlbum;
+            matchedAlbum ||
+            (titledAlbum && legacyKeyed.albumIds.has(titledAlbum.id) ? null : titledAlbum);
           const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
           const albumKey = releaseAlbum?.identity_key || record.albumKey;
           const listedTrack =
@@ -508,7 +513,7 @@ export async function scanMusicRoot({
             identityKey: albumKey,
             mbid: releaseAlbum?.mbid || record.albumMbid,
             releaseGroupMbid: releaseAlbum?.release_group_mbid || record.releaseGroupMbid,
-            artistId: artist.id,
+            artistId: matchedAlbum?.artist_id ?? artist.id,
             title: namedAlbum?.title || record.albumName,
             albumArtist: record.albumArtist,
             releaseDate: record.releaseDate,

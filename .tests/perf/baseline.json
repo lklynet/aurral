@@ -302,5 +302,33 @@
     "scans": [
       "download_jobs"
     ]
+  },
+  "album match": {
+    "queries": {
+      "cold": 35,
+      "warm": 4
+    },
+    "bytes": 35,
+    "scans": [],
+    "calls": {
+      "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
+  },
+  "artist match": {
+    "queries": {
+      "cold": 13,
+      "warm": 4
+    },
+    "bytes": 12,
+    "scans": [],
+    "calls": {
+      "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
   }
 }

@@ -10,6 +10,7 @@ import { libraryAlbumsClient } from "../clients/libraryAlbums.ts";
 import { libraryArtistsClient } from "../clients/libraryArtists.ts";
 import type { libraryArtworkClient } from "../clients/libraryArtwork.ts";
 import { libraryDownloadsClient } from "../clients/libraryDownloads.ts";
+import { libraryMatchesClient } from "../clients/libraryMatches.ts";
 import { libraryMiscClient } from "../clients/libraryMisc.ts";
 import { libraryTracksClient } from "../clients/libraryTracks.ts";
 import { bumpLibraryPageGeneration, queryClient, queryKeys } from "../../../queryClient.ts";
@@ -216,10 +217,49 @@ export const settleLibraryOwnerConflict = (error: unknown) => {
   return conflict;
 };
 
-export const updateLibraryArtistMbid = async (artistId: number, mbid: string | null) => {
+export const updateLibraryArtistMbid = async (artistId: string | number, mbid: string | null) => {
   const result = await parseResponse(
-    libraryArtistsClient.artists[":id"].mbid.$put({
+    libraryMatchesClient.artists[":id"].mbid.$put({
       param: { id: encodeURIComponent(artistId) },
+      json: { mbid },
+    }),
+  );
+  clearLibraryPageCache();
+  void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
+  return result;
+};
+
+export const fetchLibraryArtistMatches = (
+  artistId: string | number,
+  q: string,
+  { signal }: SignalOptions,
+) =>
+  parseResponse(
+    libraryMatchesClient.artists[":id"].matches.$get(
+      { param: { id: encodeURIComponent(artistId) }, query: { q } },
+      { init: { signal } },
+    ),
+  );
+
+export const fetchLibraryAlbumMatches = (
+  albumId: string | number,
+  q: string,
+  { signal }: SignalOptions,
+) =>
+  parseResponse(
+    libraryMatchesClient.albums[":id"].matches.$get(
+      { param: { id: encodeURIComponent(albumId) }, query: { q } },
+      { init: { signal } },
+    ),
+  );
+
+export const updateLibraryAlbumReleaseGroup = async (
+  albumId: string | number,
+  mbid: string | null,
+) => {
+  const result = await parseResponse(
+    libraryMatchesClient.albums[":id"]["release-group"].$put({
+      param: { id: encodeURIComponent(albumId) },
       json: { mbid },
     }),
   );

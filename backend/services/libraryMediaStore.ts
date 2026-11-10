@@ -1559,6 +1559,8 @@ export function getUntaggedLibraryAlbums({ retry = false }: { retry?: boolean } 
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE album.mbid IS NULL AND album.release_group_mbid IS NULL AND artist.mbid IS NOT NULL
+       AND (NOT json_valid(album.metadata_json)
+         OR json_extract(album.metadata_json, '$.releaseGroupSource') IS NOT 'manual')
      ORDER BY album.id`,
     )
     .all();
@@ -1608,6 +1610,77 @@ export function assignLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid
   })();
   if (id != null) invalidateLibraryCache();
   return id;
+}
+
+const hasReleaseTags = (tags: unknown) =>
+  typeof tags === "object" &&
+  tags !== null &&
+  ["musicbrainz_releasegroupid", "musicbrainz_albumid"].some((key) =>
+    Boolean(Reflect.get(tags, key)),
+  );
+
+// A release group picked by hand stays the album's: the matcher leaves it,
+// and scans keep the album's untagged files on it. Files tagged with a
+// release keep theirs, so only retagging changes them.
+export function setLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid: string | null) {
+  const result = db.transaction(() => {
+    const album = db
+      .prepare<[number], LibraryAlbumsRow & { artist_key: string }>(
+        `SELECT album.*, artist.identity_key AS artist_key FROM library_albums AS album
+         JOIN library_artists AS artist ON artist.id = album.artist_id WHERE album.id = ?`,
+      )
+      .get(albumId);
+    if (!album) return { error: "not_found" } as const;
+    const metadata = readRawLibraryMetadata(album.metadata_json);
+    if (metadata.id != null) return { error: "lidarr_managed" } as const;
+    if (hasReleaseTags(metadata.tags)) return { error: "tagged" } as const;
+    const fallbackKey = buildFallbackIdentityKey("album", album.artist_key, album.title);
+    const fallbackTaken =
+      !releaseGroupMbid &&
+      db
+        .prepare<[number, string | null], { 1: number }>(
+          "SELECT 1 FROM library_albums WHERE id != ? AND identity_key = ?",
+        )
+        .get(album.id, fallbackKey);
+    const key = releaseGroupMbid
+      ? buildIdentityKey("release-group", releaseGroupMbid)
+      : fallbackTaken
+        ? `${fallbackKey}:${album.id}`
+        : fallbackKey;
+    const kept = rekeyLibraryAlbum(album.id, key);
+    if (kept == null) return { error: "not_found" } as const;
+    db.prepare<[string | null, number, number]>(
+      `UPDATE library_albums
+       SET release_group_mbid = ?,
+         metadata_json = json_remove(
+           json_set(
+             CASE WHEN NOT json_valid(metadata_json) THEN '{}' WHEN json_type(metadata_json) = 'object' THEN metadata_json ELSE '{}' END,
+             '$.releaseGroupSource', 'manual'),
+           '$.trackList', '$.releaseGroupLookup'),
+         updated_at = ?
+       WHERE id = ?`,
+    ).run(releaseGroupMbid, now(), kept);
+    const keptAlbum = db
+      .prepare<[number], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE id = ?")
+      .get(kept);
+    if (!keptAlbum) return { error: "not_found" } as const;
+    return { album: keptAlbum, merged: kept !== album.id };
+  })();
+  if (result.album) {
+    syncLibrarySearchAlbum(result.album.id);
+    invalidateLibraryCache();
+  }
+  return result;
+}
+
+export function findHandMatchedLibraryAlbum(albumId: number) {
+  return db
+    .prepare<[number], LibraryAlbumsRow>(
+      `SELECT * FROM library_albums
+       WHERE id = ? AND json_valid(metadata_json)
+         AND json_extract(metadata_json, '$.releaseGroupSource') = 'manual'`,
+    )
+    .get(albumId);
 }
 
 type ReleaseTrack = Partial<

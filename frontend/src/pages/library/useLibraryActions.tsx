@@ -3,6 +3,7 @@ import { parseResponse } from "hono/client";
 import {
   Download,
   EyeOff,
+  Fingerprint,
   ImagePlus,
   Info,
   ListEnd,
@@ -78,6 +79,7 @@ import { DeleteAlbumModal } from "../ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "../ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "../ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "../LibraryInfoModal";
+import { AlbumMatchModal } from "./MatchModal";
 import ManualMissingSearchModal, {
   type ManualSearchJob,
 } from "../activity/ManualMissingSearchModal.tsx";
@@ -218,6 +220,10 @@ export function useLibraryActions({
   const [libraryRemoval, setLibraryRemoval] = useState<LibraryRemoval | null>(null);
   const [libraryInfo, setLibraryInfo] = useState<LibraryInfoState | null>(null);
   const [artworkEditor, setArtworkEditor] = useState<ArtworkEditorState | null>(null);
+  const [matchAlbum, setMatchAlbum] = useState<{
+    album: LibraryAlbum;
+    artist: LibraryArtist | null;
+  } | null>(null);
 
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
@@ -462,6 +468,7 @@ export function useLibraryActions({
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
+  const canMatchAlbum = !isPreviewLibrary && canAddTracks;
 
   const openArtworkEditor = useCallback(
     (
@@ -1036,6 +1043,16 @@ export function useLibraryActions({
           },
         ]
       : []),
+    ...(canMatchAlbum && album.providerId == null
+      ? [
+          {
+            id: "match",
+            label: "Match album",
+            icon: Fingerprint,
+            onSelect: () => setMatchAlbum({ album, artist: artist ?? null }),
+          },
+        ]
+      : []),
     ...extra,
     ...pluginMenuItems("album", { albumId: album.id }),
     ...(canDeleteAlbum && canRemoveLibraryAlbum(album, { lidarrConnected })
@@ -1469,6 +1486,25 @@ export function useLibraryActions({
         }
         onSaved={handleArtworkSaved}
       />
+      {matchAlbum ? (
+        <AlbumMatchModal
+          key={matchAlbum.album.id}
+          album={matchAlbum.album}
+          artist={matchAlbum.artist}
+          onClose={() => setMatchAlbum(null)}
+          onSaved={(result) => {
+            setMatchAlbum(null);
+            void invalidateLibraryViews();
+            showSuccess(
+              result.merged
+                ? `Merged ${matchAlbum.album.title || "Album"} into ${result.title}`
+                : result.releaseGroupMbid
+                  ? `Matched ${matchAlbum.album.title || "Album"} to ${result.musicbrainzTitle || "MusicBrainz"}`
+                  : `Removed the match from ${matchAlbum.album.title || "Album"}`,
+            );
+          }}
+        />
+      ) : null}
     </>
   );
 

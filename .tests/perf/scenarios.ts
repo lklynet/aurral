@@ -163,4 +163,12 @@ export const scenarios: Scenario[] = [
       return [`/rest/createPlaylist?playlistId=${encodeURIComponent(editPlaylist.id)}${songs}`];
     },
   },
+  {
+    name: "album match",
+    requests: ({ albumId }) => [`/api/library/albums/${albumId}/matches`],
+  },
+  {
+    name: "artist match",
+    requests: ({ artistId }) => [`/api/library/artists/${artistId}/matches`],
+  },
 ];
