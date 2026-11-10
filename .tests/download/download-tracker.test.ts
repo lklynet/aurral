@@ -278,7 +278,7 @@ test("a queued album grab exposes durable membership without replacing track act
   );
 });
 
-test("failed queue handoff and attempted flags alone do not create album activity", async () => {
+test("failed queue handoff and attempted flags alone leave the album queued, not attempted", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
     ...settings,
@@ -313,8 +313,10 @@ test("failed queue handoff and attempted flags alone do not create album activit
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryRequests.ts");
   const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
-  assert.equal(requests.length, 2);
-  assert.ok(requests.every((item) => !item.albumGrab));
+  assert.deepEqual(
+    requests.map((item) => item.albumGrab?.phase),
+    ["queued", "queued"],
+  );
 });
 
 test("album track outcomes retain source, failures, and timestamps after retry and job cleanup", async () => {

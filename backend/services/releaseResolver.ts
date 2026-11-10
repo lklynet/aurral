@@ -9,6 +9,7 @@ import {
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
+import { listsEveryTrack } from "./providers/brainzmashRanking.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
 
@@ -97,14 +98,17 @@ function remember(manifest: ReleaseManifest) {
   return manifest;
 }
 
-// The group's releases tell a pin MusicBrainz merged away from one it still
-// lists.
+// The group's releases tell a pin MusicBrainz merged away, or lists only part
+// of, from one it still lists whole.
 function manifestOf(group: NormalizedAlbum, release: NormalizedRelease | null | undefined) {
   const manifest = toReleaseManifest(group, release);
   return (
     manifest && {
       ...manifest,
-      groupReleaseMbids: group.releases.map((entry) => id(entry?.id)).filter(Boolean),
+      groupReleaseMbids: group.releases
+        .filter(listsEveryTrack)
+        .map((entry) => id(entry?.id))
+        .filter(Boolean),
     }
   );
 }
@@ -181,7 +185,7 @@ export function chooseRequestedRelease(
   }: { requestedRelease?: string | null; listedRelease?: string | null; edition?: string } = {},
 ) {
   const usable = (release: NormalizedRelease | null | undefined) =>
-    release?.tracks?.length ? release : null;
+    release && listsEveryTrack(release) ? release : null;
   return (
     usable(releaseById(group, requestedRelease)) ||
     (edition !== "expanded" && usable(releaseById(group, listedRelease))) ||
@@ -225,9 +229,9 @@ function holdingRelease(group: NormalizedAlbum, job: ResolverJob) {
 // Chooses the one exact edition a request asks for. A release the job or
 // its Library album pins is that edition or nothing: a pinned edition
 // without the track leaves the request unresolved instead of moving to
-// another edition. A pin MusicBrainz no longer lists, as after a merge, is
-// chosen again, and a Library album that asked for it asks for the new
-// choice from then on.
+// another edition. A pin MusicBrainz no longer lists, as after a merge, or
+// lists only part of, is chosen again, and a Library album that asked for it
+// asks for the new choice from then on.
 export async function resolveReleaseManifest(job: ResolverJob) {
   const groupMbid = id(job?.albumMbid);
   if (!groupMbid || !String(job?.trackName || "").trim()) return null;
@@ -235,7 +239,7 @@ export async function resolveReleaseManifest(job: ResolverJob) {
   if (!group) return null;
 
   const pinned = releaseById(group, job.releaseMbid);
-  if (pinned) return holding(group, pinned, job);
+  if (pinned && listsEveryTrack(pinned)) return holding(group, pinned, job);
   const manifest = chooseRelease(group, groupMbid, job);
   if (
     manifest &&
@@ -258,7 +262,8 @@ function chooseRelease(group: NormalizedAlbum, groupMbid: string, job: ResolverJ
   const album = libraryAlbum(groupMbid);
   const edition = album?.edition === "expanded" ? "expanded" : "standard";
   const requested = releaseById(group, album?.requestedRelease);
-  if (isLibraryJob(job) && requested) return holding(group, requested, job);
+  if (isLibraryJob(job) && requested && listsEveryTrack(requested))
+    return holding(group, requested, job);
 
   const candidates = [
     album && (isLibraryJob(job) || requested) ? albumEdition(group, album) : null,
