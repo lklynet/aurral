@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
@@ -9,6 +9,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
+import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 import { createTrackedJob, trackedJob } from "../download/fixtures.ts";
 import { insertJob } from "../helpers/jobs.ts";
 
@@ -17,6 +18,7 @@ type Payload = Parameters<typeof processPluginPipelinePayload>[0];
 const [
   state,
   { db },
+  { dbOps },
   { downloadTracker },
   { processPluginPipelinePayload },
   { pluginsDir },
@@ -27,6 +29,7 @@ const [
 ] = await setupIsolatedBackend(
   "plugin-download-source",
   () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/plugins/pluginDownloadSource.ts"),
   () => import("../../backend/services/plugins/pluginManifest.ts"),
@@ -80,6 +83,19 @@ export default { downloadSource: {
   discard: () => {},
 } };`;
 
+const IN_PLACE_SOURCE = `export default { downloadSource: {
+  search: ({ track }) => [{ id: "t1", title: track.title, artist: track.artist, album: track.album, durationMs: 1000, format: "flac" }],
+  download: () => ({ pending: "t1" }),
+  searchAlbum: ({ album }) => [{ id: "a1", title: album.title, artist: album.artist }],
+  downloadAlbum: () => ({ pending: "a1" }),
+  status: ({ settings, id }) => ({
+    done: true,
+    imported: settings.imported,
+    ...(id === "t1" && { path: "02 Night Drive.flac" }),
+  }),
+  discard: () => {},
+} };`;
+
 let fixtureDir = "";
 
 async function installSource(
@@ -102,6 +118,7 @@ async function installSource(
         { key: "escape", label: "Escape", type: "boolean" },
         { key: "pending", label: "Pending", type: "boolean" },
         { key: "lost", label: "Lost", type: "boolean" },
+        { key: "imported", label: "Imported", type: "text" },
       ],
     }),
   );
@@ -110,11 +127,11 @@ async function installSource(
   updatePlugin("tapes", { enabled: true, priority: 5, settings });
 }
 
-async function runSteps(jobId: string, until: string) {
+async function runSteps(jobId: string, until: string, start: Partial<Payload> = {}) {
   const fail = async (_payload: Payload, _job: unknown, message: string) => {
     throw new Error(message);
   };
-  let payload: Payload | null = { jobId, phase: "search", source: "plugin:tapes" };
+  let payload: Payload | null = { jobId, phase: "search", source: "plugin:tapes", ...start };
   const phases: string[] = [];
   while (payload && payload.phase !== until) {
     phases.push(payload.phase);
@@ -272,4 +289,85 @@ test("an album-only plugin source fills a track request with the one file it kep
   assert.equal(job.status, "done");
   assert.equal(job.remoteFilename, "02 Night Drive.flac");
   await access(String(job.finalPath));
+});
+
+test("a source that files its own downloads has them checked and used where they are, in a read-only folder", async (t) => {
+  const music = await realpath(fixtureDir);
+  const imported = path.join(music, "Glass Coast", "Lowlands");
+  await mkdir(imported, { recursive: true });
+  const [tide, nightDrive] = await Promise.all(
+    ["Tide", "Night Drive"].map((title, index) =>
+      writeFlacFixture(
+        path.join(imported, `0${index + 1} ${title}.flac`),
+        { title, artist: "Glass Coast", album: "Lowlands", track: index + 1 },
+        { seconds: 1 },
+      ),
+    ),
+  );
+  assert.ok(tide && nightDrive);
+  const before = await Promise.all([readFile(tide), readFile(nightDrive)]);
+  await installSource({ imported }, { tracks: false, albums: true }, IN_PLACE_SOURCE);
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: "lowlands-group",
+      title: "Lowlands",
+      artist: "Glass Coast",
+      releases: [
+        {
+          id: "lowlands-release",
+          tracks: ["Tide", "Night Drive"].map((title) => ({ title, durationMs: 1000 })),
+        },
+      ],
+    }),
+  ]);
+  const request = (trackName: string, trackNumber: number, playlist: string) =>
+    createTrackedJob(
+      downloadTracker,
+      {
+        artistName: "Glass Coast",
+        trackName,
+        albumName: "Lowlands",
+        albumMbid: "lowlands-group",
+        releaseMbid: "lowlands-release",
+        trackNumber,
+        durationMs: 1000,
+      },
+      playlist,
+    );
+
+  await assert.rejects(
+    runToEnd(request("Night Drive", 2, "outside-read-only")),
+    /download failed: imported to .*Lowlands, which isn't in a read-only folder/,
+  );
+
+  dbOps.setJSONSetting("readOnlyFolders", [music]);
+  t.onTestFinished(() => dbOps.setJSONSetting("readOnlyFolders", []));
+  const track = request("Night Drive", 2, "track-request");
+  assert.deepEqual(await runToEnd(track), ["search", "download", "poll", "finalize"]);
+  const album = request("Tide", 1, "album-request");
+  await runSteps(album, "done", {
+    albumGrab: true,
+    albumGroupJobIds: [album],
+    releaseMbid: "lowlands-release",
+  });
+
+  await installSource({ imported }, { albums: true }, IN_PLACE_SOURCE);
+  const named = request("Night Drive", 2, "named-file");
+  assert.deepEqual(await runToEnd(named), ["search", "download", "poll", "finalize"]);
+
+  for (const [jobId, filePath] of [
+    [track, nightDrive],
+    [album, tide],
+    [named, nightDrive],
+  ] as const) {
+    const job = trackedJob(downloadTracker, jobId);
+    assert.equal(job.status, "done");
+    assert.equal(job.finalPath, filePath);
+    assert.equal(job.externalPath, filePath);
+  }
+
+  const upgrade = downloadTracker.addUpgradeJob(trackedJob(downloadTracker, track));
+  assert.ok(upgrade);
+  await assert.rejects(runToEnd(upgrade), /download failed: imported an upgrade itself/);
+  assert.deepEqual(await Promise.all([readFile(tide), readFile(nightDrive)]), before);
 });

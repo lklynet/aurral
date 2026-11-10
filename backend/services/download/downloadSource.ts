@@ -43,6 +43,7 @@ export const fileResults = v.nullable(
 export const statusResult = v.object({
   done: v.boolean(),
   path: v.optional(filePathText),
+  imported: v.optional(filePathText),
 });
 
 export type TrackResult = v.InferOutput<typeof trackResult>;
@@ -60,7 +61,9 @@ export class DownloadSourceError extends Error {}
 // Plugins and native sources implement this. Aurral matches, judges, stages,
 // and files what a source returns, so a source only finds and fetches. A
 // source that downloads on its own returns `pending`, and Aurral asks its
-// `status` until the download is done. An upgrade search names the quality
+// `status` until the download is done. One that files its own downloads,
+// like Lidarr, names the folder it `imported` them to, and Aurral uses those
+// files where they are. An upgrade search names the quality
 // the current file has. A source without `tracks` serves a track from an
 // album download. One with `albums.files` downloads only the files Aurral
 // keeps: `list` is null until the source knows the files, and then `keep`

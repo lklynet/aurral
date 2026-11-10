@@ -155,6 +155,7 @@ type PipelineJobSuccessOptions = {
   downloadTracker: DownloadTracker;
   job: PipelineSuccessJob;
   committedFinalPath: string;
+  inPlace?: boolean;
   album?: string | null;
   quality?: ReturnType<typeof classifyAudioQuality> | null;
   onSuccess?: () => unknown;
@@ -164,6 +165,7 @@ export async function recordPipelineJobSuccess({
   downloadTracker,
   job,
   committedFinalPath,
+  inPlace = false,
   album,
   quality,
   onSuccess,
@@ -173,7 +175,14 @@ export async function recordPipelineJobSuccess({
     await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
     return false;
   }
-  if (downloadTracker.setDone(job.id, committedFinalPath, job.albumName || album) === false)
+  if (
+    downloadTracker.setDone(
+      job.id,
+      committedFinalPath,
+      job.albumName || album,
+      inPlace ? committedFinalPath : null,
+    ) === false
+  )
     return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
