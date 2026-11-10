@@ -262,7 +262,11 @@ function FlowDetail({ flow }: { flow: Flow }) {
             onClick={() => setEditOpen(true)}
             aria-label={`Edit ${flow.name}`}
           >
-            <PlaylistArtworkThumb artworkUrl={artworkUrlFor(flow.id)} name={flow.name} />
+            <PlaylistArtworkThumb
+              sizes="18rem"
+              artworkUrl={artworkUrlFor(flow.id)}
+              name={flow.name}
+            />
           </button>
         }
         corner={

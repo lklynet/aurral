@@ -13,6 +13,7 @@ import { getLyricsBySongId } from "../services/lyricsService.ts";
 import { sendAudioFile } from "../services/audioFileStream.ts";
 import { sendFile } from "../services/fileResponses.ts";
 import { sendViaNode } from "./shared/sendViaNode.ts";
+import { sendImageFile } from "./shared/sendImageFile.ts";
 import {
   findUniqueLibrarySong,
   getAlbum,
@@ -847,10 +848,11 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     return sent || notFound(c, "Track file missing");
   }
   if (method === "getcoverart") {
+    const size = Number(getParameter(params, "size"));
     const customArtwork = resolveCustomArtwork(getParameter(params, "id"), user);
     if (customArtwork) {
       c.header("Cache-Control", "private, max-age=31536000, immutable");
-      const sent = await sendViaNode(c, sendFile, customArtwork.filePath, {
+      const sent = await sendImageFile(c, customArtwork.filePath, size, {
         contentType: customArtwork.contentType,
         dotfiles: "deny",
       });
@@ -864,13 +866,13 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
           ? "private, max-age=31536000, immutable"
           : "private, max-age=86400",
       );
-      const sent = await sendViaNode(c, sendFile, playlistArtwork.safePath);
+      const sent = await sendImageFile(c, playlistArtwork.safePath, size);
       return sent || notFound(c, "Cover art not found");
     }
     const libraryArtwork = await resolveLibraryArtwork(getParameter(params, "id"));
     if (libraryArtwork) {
       c.header("Cache-Control", "private, max-age=86400");
-      const sent = await sendViaNode(c, sendFile, libraryArtwork.filePath, {
+      const sent = await sendImageFile(c, libraryArtwork.filePath, size, {
         contentType: libraryArtwork.contentType,
         dotfiles: "deny",
       });

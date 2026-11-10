@@ -331,7 +331,11 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
             onClick={() => setEditOpen(true)}
             aria-label={`Edit ${playlist.name} details`}
           >
-            <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
+            <PlaylistArtworkThumb
+              sizes="18rem"
+              artworkUrl={artworkUrlFor(playlist.id)}
+              name={playlist.name}
+            />
           </button>
         }
         corner={

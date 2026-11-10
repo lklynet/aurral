@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
+import ArtworkImage from "./ArtworkImage";
 
 export function PlaylistArtworkThumb({
   artworkUrl,
   name,
+  sizes,
   className = "",
   onClick,
 }: {
   artworkUrl?: string | null;
   name?: string;
+  sizes: string;
   className?: string;
   onClick?: () => void;
 }) {
@@ -25,10 +28,10 @@ export function PlaylistArtworkThumb({
   const classes = `flow-page__artwork${onClick ? " flow-page__artwork--interactive" : ""}${className ? ` ${className}` : ""}`;
   const content =
     !imageFailed && artworkUrl ? (
-      <img
+      <ArtworkImage
         src={artworkUrl}
         alt={`${name} cover`}
-        loading="lazy"
+        sizes={sizes}
         onError={() => setImageFailed(true)}
       />
     ) : (

@@ -179,9 +179,9 @@ Node then writes one `.heapsnapshot` file to `/config/diagnostics` when a proces
 
 The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.
 
-Library artwork is stored once per album and artist as a 512 px WebP image in the `library-artwork` folder of the data directory. Aurral makes each copy the first time it is shown, in the web app or a Subsonic client, and serves it from disk after that. A copy is replaced when the album's files change and removed when the album or artist leaves the Library.
+Library artwork is stored once per album and artist as a 512 px WebP image in the `library-artwork` folder of the data directory. Aurral makes each copy the first time it is shown, in the web app or a Subsonic client, and serves it from disk after that. A copy is replaced when the album's files change and removed when the album or artist leaves the Library. When a Subsonic client asks for a smaller `size`, or the web app shows a playlist cover in a small slot, Aurral resizes the image on request, at most two at a time.
 
-Artwork outside the Library, such as Discover and Search, loads directly from the provider links, and the browser caches it. Fanart.tv thumbnails use 200 px or 400 px previews according to the image's display size and screen density. Larger artwork uses the original image. If a preview is unavailable, Aurral retries the original before showing the existing fallback.
+Artwork outside the Library, such as Discover and Search, loads directly from the provider links, and the browser caches it. Fanart.tv and Deezer thumbnails use the smallest size the provider offers for the image's display size and screen density. Larger artwork uses the original image. If a preview is unavailable, Aurral retries the original before showing the existing fallback.
 
 A separate disk cache holds up to 256 MB of artwork outside the Library that Aurral serves itself, such as covers of playlist tracks you do not have, and removes the least recently used images first. Aurral downloads at most two covers at a time. Sharp does not retain an image-processing cache. To start from a clean memory baseline, restart Aurral.
 

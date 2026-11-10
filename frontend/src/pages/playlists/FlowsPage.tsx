@@ -167,6 +167,7 @@ export default function FlowsPage() {
             <li key={flow.id} className="flows-list__row">
               <RouteLink to={flowPath(flow.id)} className="flows-list__link">
                 <PlaylistArtworkThumb
+                  sizes="3rem"
                   artworkUrl={artworkUrlFor(flow.id)}
                   name={flow.name}
                   className="flows-list__art"

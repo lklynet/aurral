@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getRequestListener } from "@hono/node-server";
+import sharp from "sharp";
 
 import {
   applyIsolatedBackendEnv,
@@ -102,7 +103,10 @@ test("a new flow or static playlist has its cover as soon as it is created, with
       scheduleDays: [1],
     });
     assert.equal(flowResponse.status, 200);
-    const { flow } = await flowResponse.body.json();
+    const { flow } = v.parse(
+      v.object({ flow: v.object({ id: v.string() }) }),
+      await flowResponse.body.json(),
+    );
     const flowCover = await request(`/artwork/${flow.id}`);
     assert.equal(flowCover.status, 200);
     assert.equal(flowCover.type, "image/webp");
@@ -119,6 +123,19 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     )?.artworkRevision;
     assert.equal(typeof initialRevision, "number");
     assert.ok(updatedRevision > initialRevision);
+    const card = await request(`/artwork/${flow.id}?v=${updatedRevision}:0&w=256`);
+    assert.equal(card.status, 200);
+    assert.equal(card.type, "image/webp");
+    assert.equal(card.body.headers.get("cache-control"), "private, max-age=31536000, immutable");
+    const cardImage = Buffer.from(await card.body.arrayBuffer());
+    assert.equal((await sharp(cardImage).metadata()).width, 256);
+    const revalidated = await fetch(`${server.url}/api/playlists/artwork/${flow.id}?w=256`, {
+      headers: { authorization, "if-none-match": card.body.headers.get("etag") ?? "" },
+    });
+    assert.equal(revalidated.status, 304);
+    const stale = await request(`/artwork/${flow.id}?v=${initialRevision}:0`);
+    assert.equal(stale.body.headers.get("cache-control"), "private, no-cache, must-revalidate");
+    assert.equal((await sharp(Buffer.from(await stale.body.arrayBuffer())).metadata()).width, 1000);
     assert.equal((await request(`/artwork/${flow.id}/generate`, { style: "photo" })).status, 400);
     assert.equal((await request(`/artwork/${flow.id}/restore`, {})).status, 400);
 

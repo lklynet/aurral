@@ -40,6 +40,7 @@ const IMAGE_PROXY_MAX_BYTES = (() => {
 })();
 const inflightRequests = new Map<string, Promise<CachedImageEntry>>();
 const imageWorkQueue = new PQueue({ concurrency: 2 });
+const resizeQueue = new PQueue({ concurrency: 2 });
 const cacheEntriesByKey: Map<string, CachedImageEntry> = new BoundedMap(256);
 let cacheIndexInitialized = false;
 let indexBuildPromise: Promise<void> | null = null;
@@ -443,6 +444,19 @@ export const optimizeImageBuffer = async <B extends Uint8Array>(
 
   return { buffer: optimizedBuffer, contentType: "image/webp" };
 };
+
+export const resizeImageFile = (filePath: string, width: number) =>
+  resizeQueue.add(async () => {
+    const sharp = await getSharp();
+    const image = sharp(filePath, { animated: false, limitInputPixels: MAX_SOURCE_IMAGE_PIXELS });
+    const { width: sourceWidth = 0, height: sourceHeight = 0 } = await image.metadata();
+    if (Math.max(sourceWidth, sourceHeight) <= width) return null;
+    return image
+      .rotate()
+      .resize({ width, height: width, fit: "inside" })
+      .webp({ quality: 80 })
+      .toBuffer();
+  });
 
 const normalizeCachedEntryIfNeeded = async (entry: CachedImageEntry) => {
   if (!shouldNormalizeCachedEntry(entry)) {

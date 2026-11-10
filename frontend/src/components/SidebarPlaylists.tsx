@@ -48,6 +48,7 @@ function SidebarPlaylists({ status, iconsOnly, onTooltip }: SidebarPlaylistsProp
               onFocus={onTooltip}
             >
               <PlaylistArtworkThumb
+                sizes="2rem"
                 artworkUrl={artworkUrlFor(entry.id)}
                 name={entry.name}
                 className="sidebar-playlist__art"

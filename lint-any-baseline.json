@@ -103,7 +103,7 @@
   ".tests/notifications/notification-events.test.ts": 2,
   ".tests/offline-guard.ts": 1,
   ".tests/playlists/bulk-playlist-actions.test.ts": 7,
-  ".tests/playlists/playlist-artwork-serve.test.ts": 19,
+  ".tests/playlists/playlist-artwork-serve.test.ts": 12,
   ".tests/playlists/playlist-config.test.ts": 8,
   ".tests/playlists/playlist-import-order.test.ts": 7,
   ".tests/playlists/playlist-mbid-enrichment.test.ts": 2,
