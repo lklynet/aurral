@@ -78,6 +78,7 @@ export const playlistShelfQueryOptions = (userId: MaybeId, scope: ShelfScope = "
     queryFn: ({ signal }) =>
       parseResponse(discoveryClient.playlists.$get({ query: { scope } }, { init: { signal } })),
     staleTime: 60 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   });
 
 export const madeForYouQueryOptions = (userId: MaybeId) =>
@@ -88,6 +89,7 @@ export const madeForYouQueryOptions = (userId: MaybeId) =>
         discoveryClient.playlists["made-for-you"].$get(undefined, { init: { signal } }),
       ),
     staleTime: 10 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
 export const browsePlaylistQueryOptions = (
