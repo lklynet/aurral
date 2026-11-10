@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { hashKey, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { settingsClient } from "../utils/api/clients/settings.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
@@ -18,27 +18,6 @@ const toSnapshot = (result: StorageHealthResult | null | undefined, dataUpdatedA
   checkedAt: result?.checkedAt || (dataUpdatedAt ? new Date(dataUpdatedAt).toISOString() : null),
   result: result || null,
 });
-
-type StorageHealthSnapshot = ReturnType<typeof toSnapshot>;
-
-export function getStorageHealthCache() {
-  const state = queryClient.getQueryState(queryKeys.storageHealth);
-  return toSnapshot(
-    queryClient.getQueryData<StorageHealthResult>(queryKeys.storageHealth),
-    state?.dataUpdatedAt,
-  );
-}
-
-export function subscribeStorageHealth(listener: (snapshot: StorageHealthSnapshot) => void) {
-  return queryClient.getQueryCache().subscribe((event) => {
-    if (event.query?.queryHash !== hashKey(queryKeys.storageHealth)) return;
-    listener(getStorageHealthCache());
-  });
-}
-
-export function setStorageHealthResult(result: StorageHealthResult | null | undefined) {
-  queryClient.setQueryData(queryKeys.storageHealth, result || null);
-}
 
 export function refreshStorageHealth({ force = false }: { force?: boolean } = {}) {
   return queryClient.fetchQuery({

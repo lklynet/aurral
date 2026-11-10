@@ -59,11 +59,6 @@ export const canSearchLibraryAlbum = (
   return manager === "aurral" || (manager === "lidarr" && lidarrConnected);
 };
 
-export const getManagerName = (manager: string | null | undefined) => {
-  const normalized = normalizeLibraryManager(manager);
-  return (normalized && MANAGER_NAMES[normalized]) || MANAGER_NAMES.aurral;
-};
-
 export const getAddToManagerLabel = (manager: string | null | undefined) =>
   normalizeLibraryManager(manager) === "lidarr" ? "Add to Lidarr" : "Add to library";
 

@@ -72,12 +72,6 @@ export const getListenbrainzRange = (discoveryPeriod: string) => {
   return range || "month";
 };
 
-export const getDiscoveryUserRefreshDelaySeconds = () => {
-  const parsed = Number(process.env.AURRAL_DISCOVERY_USER_REFRESH_DELAY_SECONDS);
-  if (!Number.isFinite(parsed)) return 10;
-  return Math.max(5, Math.min(3600, Math.floor(parsed)));
-};
-
 export const normalizeTextList = (value: unknown) => {
   if (!Array.isArray(value)) return [];
   const seen = new Set();

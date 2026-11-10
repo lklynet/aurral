@@ -15,7 +15,6 @@ import { defaultData, DEFAULT_METADATA_BASE_URL } from "../backend/config/consta
 const [
   isolatedState,
   { dbOps },
-  apiClients,
   brainzmashProvider,
   {
     acquireMetadataRequest,
@@ -30,7 +29,6 @@ const [
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/apiClients/index.ts"),
   () => import("../backend/services/providers/brainzmashProvider.ts"),
   () => import("../backend/services/metadataProviderBudget.ts"),
   () => import("../backend/config/db-sqlite.ts"),
@@ -38,7 +36,6 @@ const [
   () => import("../backend/services/appSettings.ts"),
 );
 
-const { getMusicbrainzApiBaseUrl } = apiClients;
 const {
   clearMetadataProviderCaches,
   getAlbumByMbid,
@@ -58,15 +55,15 @@ const OFFLINE_CHILD_ARGS = ["--import", new URL("./setup-env.ts", import.meta.ur
 test("default settings and unset backend config use BrainzMash metadata", async () => {
   assert.equal(defaultData.settings.integrations.metadata.provider, "brainzmash");
   assert.equal(defaultData.settings.integrations.metadata.baseUrl, "");
-  assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
+  assert.equal(brainzmashProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
 
   const saveBaseUrl = (baseUrl: string) =>
     saveAppSettings({ integrations: { metadata: { baseUrl } } });
   assert.equal((await saveBaseUrl("https://metadata.example/")).error, undefined);
-  assert.equal(getMusicbrainzApiBaseUrl(), "https://metadata.example");
+  assert.equal(brainzmashProvider.getMetadataBaseUrl(), "https://metadata.example");
   assert.equal((await saveBaseUrl("")).error, undefined);
 
-  assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
+  assert.equal(brainzmashProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
   assert.equal(readAppSettings().integrations.metadata?.baseUrl, "");
 
   vi.stubEnv("BRAINZMASH_BASE_URL", "http://metadata.local:5002");

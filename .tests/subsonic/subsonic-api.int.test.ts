@@ -215,7 +215,6 @@ function canonicalTags(title: string, trackNumber: number, recordingMbid: string
 beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: { general: { authUser: "alice", authPassword: "password123" } },
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });

@@ -361,13 +361,6 @@ export function isLockedSearchResult(item: SoulseekListing) {
   return item?.locked === true || item?.isLocked === true;
 }
 
-export function countAudioFiles(
-  files: SoulseekSearchItem[],
-  isAudioFile: (filePath: string) => boolean,
-) {
-  return files.filter((item) => isAudioFile(String(item?.file || ""))).length;
-}
-
 // Groups raw slskd search results into per-user release folders, attaching
 // the audio files each folder holds. Folder grouping is Soulseek-specific
 // acquisition context that the shared engine never sees.

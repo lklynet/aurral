@@ -5,13 +5,7 @@ import { processLibraryFileJob } from "./operations.ts";
 
 export const libraryFileJobSchema = v.looseObject({ operationId: v.number() });
 
-const worker = createJobWorker(libraryFileQueue, {
+export const { start: startLibraryFileWorker } = createJobWorker(libraryFileQueue, {
   schema: libraryFileJobSchema,
   processJob: ({ operationId }) => processLibraryFileJob(operationId),
 });
-
-export const {
-  start: startLibraryFileWorker,
-  stop: stopLibraryFileWorker,
-  isRunning: isLibraryFileWorkerRunning,
-} = worker;

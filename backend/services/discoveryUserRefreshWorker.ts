@@ -8,17 +8,10 @@ export const discoveryUserRefreshSchema = v.looseObject({
   requestedAt: v.optional(v.number()),
 });
 
-const {
-  start: startDiscoveryUserRefreshWorker,
-  stop: stopDiscoveryUserRefreshWorker,
-  isRunning: isDiscoveryUserRefreshWorkerRunning,
-} = createJobWorker(discoveryUserRefreshQueue, {
-  schema: discoveryUserRefreshSchema,
-  processJob: ({ userId, requestedAt }) => updateUserDiscoveryCache(userId, { requestedAt }),
-});
-
-export {
-  startDiscoveryUserRefreshWorker,
-  stopDiscoveryUserRefreshWorker,
-  isDiscoveryUserRefreshWorkerRunning,
-};
+export const { start: startDiscoveryUserRefreshWorker } = createJobWorker(
+  discoveryUserRefreshQueue,
+  {
+    schema: discoveryUserRefreshSchema,
+    processJob: ({ userId, requestedAt }) => updateUserDiscoveryCache(userId, { requestedAt }),
+  },
+);

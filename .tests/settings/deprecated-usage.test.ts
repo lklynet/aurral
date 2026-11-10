@@ -38,8 +38,20 @@ test("reports configuration Aurral no longer reads or will stop reading", () => 
       PLAYLIST_FOLDER: undefined,
       AUTH_USER: "admin",
       AUTH_PASSWORD: undefined,
+      LIDARR_URL: undefined,
+      LIDARR_API_KEY: undefined,
+      LASTFM_API_KEY: "key",
+      LASTFM_API_SECRET: undefined,
+      LIDARR_TIMEOUT_MS: undefined,
+      CONTACT_EMAIL: "admin@example.com",
     },
-    () => assert.deepEqual(kinds(), ["auth-env", "download-folder-env"]),
+    () =>
+      assert.deepEqual(kinds(), [
+        "auth-env",
+        "download-folder-env",
+        "integration-env",
+        "tuning-env",
+      ]),
   );
   withEnv(
     {
@@ -49,6 +61,12 @@ test("reports configuration Aurral no longer reads or will stop reading", () => 
       PLAYLIST_FOLDER: undefined,
       AUTH_USER: undefined,
       AUTH_PASSWORD: undefined,
+      LIDARR_URL: undefined,
+      LIDARR_API_KEY: undefined,
+      LASTFM_API_KEY: undefined,
+      LASTFM_API_SECRET: undefined,
+      LIDARR_TIMEOUT_MS: undefined,
+      CONTACT_EMAIL: undefined,
     },
     () => assert.deepEqual(kinds(), []),
   );

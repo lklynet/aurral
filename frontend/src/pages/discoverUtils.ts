@@ -34,15 +34,6 @@ export const TAG_COLORS = [
   "#bc9d66",
 ];
 
-export const getTagColor = (name: string | null | undefined) => {
-  if (!name) return "#211f27";
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
-};
-
 export const DISCOVER_LAYOUT_KEY = "discoverLayout";
 const DISCOVERY_CACHE_KEY = "discoverData";
 const DISCOVER_RECENTLY_ADDED_KEY = "discoverRecentlyAdded";

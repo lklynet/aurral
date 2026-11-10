@@ -34,7 +34,6 @@ import {
   getDiscoveryRecommendationsPerRefresh,
   getDiscoveryMode,
   getDiscoveryRecommendationPoolLimit,
-  getDiscoveryUserRefreshDelaySeconds,
   getDiscoveryNetworkConcurrency,
   getDiscoveryRecommendationSeedLimit,
   createDiscoveryRunId,
@@ -63,6 +62,7 @@ import { getTopSpotifyImportArtists } from "../spotify/spotifyImport.ts";
 import { getTopFavoriteArtists } from "./favoriteArtists.ts";
 import { buildDiscoveryPlaylists } from "./discoveryPlaylists.ts";
 
+const USER_REFRESH_DELAY_SECONDS = 10;
 const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
 
@@ -109,7 +109,7 @@ export const requestUserDiscoveryRefresh = (
   userId: number | null,
   {
     reason = "manual",
-    delaySeconds = getDiscoveryUserRefreshDelaySeconds(),
+    delaySeconds = USER_REFRESH_DELAY_SECONDS,
   }: { reason?: string; delaySeconds?: number } = {},
 ) => {
   if (userId == null) {
@@ -125,12 +125,11 @@ export const requestUserDiscoveryRefresh = (
 
 export const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
   const users = userOps.getAllUsers().filter((user) => (user.status || "active") === "active");
-  const baseDelay = getDiscoveryUserRefreshDelaySeconds();
   let queued = 0;
   users.forEach((user, index) => {
     const result = requestUserDiscoveryRefresh(user.id, {
       reason,
-      delaySeconds: baseDelay + index * USER_REFRESH_STAGGER_SECONDS,
+      delaySeconds: USER_REFRESH_DELAY_SECONDS + index * USER_REFRESH_STAGGER_SECONDS,
     });
     if (result.enqueued) queued += 1;
   });

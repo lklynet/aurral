@@ -217,7 +217,6 @@ async function assertValidJson(method: string, params = {}) {
 beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: { general: { authUser: "alice", authPassword: "password123" } },
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });

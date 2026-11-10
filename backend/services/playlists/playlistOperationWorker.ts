@@ -143,11 +143,7 @@ const flowRunWorker = createJobWorker(flowRunQueue, {
 
 export const { start: startFlowRunWorker, stop: stopFlowRunWorker } = flowRunWorker;
 
-export const {
-  start: startPlaylistOperationWorker,
-  stop: stopPlaylistOperationWorker,
-  isRunning: isPlaylistOperationWorkerRunning,
-} = worker;
+export const { start: startPlaylistOperationWorker, stop: stopPlaylistOperationWorker } = worker;
 
 export function getPlaylistOperationWorkerStatus() {
   return {

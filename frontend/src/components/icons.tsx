@@ -31,7 +31,6 @@ export const Activity = createIcon(icons.Activity);
 export const AlertCircle = createIcon(icons.AlertCircle);
 export const AlertTriangle = createIcon(icons.AlertTriangle);
 export const ArrowDown = createIcon(icons.ArrowDown);
-export const ArrowDownLeft = createIcon(icons.ArrowDownLeft);
 export const ArrowLeft = createIcon(icons.ArrowLeft);
 export const ArrowRight = createIcon(icons.ArrowRight);
 export const ArrowUp = createIcon(icons.ArrowUp);
@@ -55,24 +54,18 @@ export const Compass = createIcon(icons.Compass);
 export const Copy = createIcon(icons.Copy01);
 export const CornerUpLeft = createIcon(icons.CornerUpLeft);
 export const Database = createIcon(icons.Database01);
-export const DatabaseSearch = createIcon(icons.SearchRefraction);
 export const Download = createIcon(icons.Download01);
 export const Drop = createIcon(icons.Drop);
 export const Ellipsis = createIcon(icons.DotsHorizontal);
 export const ExternalLink = createIcon(icons.LinkExternal01);
 export const Eye = createIcon(icons.Eye);
 export const EyeOff = createIcon(icons.EyeOff);
-export const FileJson = createIcon(icons.FileCode01);
 export const FilePlus2 = createIcon(icons.FilePlus01);
 export const FileUp = createIcon(icons.Upload01);
 export const Fingerprint = createIcon(icons.Fingerprint01);
 export const Folder = createIcon(icons.Folder);
-export const FolderCog = createIcon(icons.FolderCode);
-export const FolderInput = createIcon(icons.FolderDownload);
-export const FolderPlus = createIcon(icons.FolderPlus);
 export const Grid3X3 = createIcon(icons.Grid01);
 export const GripVertical = createIcon(icons.DotsGrid);
-export const HardDrive = createIcon(icons.HardDrive);
 export const Headphones = createIcon(icons.Headphones01);
 export const Heart = createIcon(icons.Heart);
 export const ImagePlus = createIcon(icons.ImagePlus);
@@ -85,11 +78,8 @@ export const LayoutTemplate = createIcon(icons.LayoutAlt01);
 export const Library = createIcon(icons.BookClosed);
 export const Link = createIcon(icons.Link01);
 export const List = createIcon(icons.List);
-export const ListChecks = createIcon(icons.ClipboardCheck);
 export const ListFilter = createIcon(icons.FilterLines);
 export const Locate = createIcon(icons.Target01);
-export const Lock = createIcon(icons.Lock01);
-export const LockOpen = createIcon(icons.LockUnlocked01);
 export const LogOut = createIcon(icons.LogOut01);
 export const MapPin = createIcon(icons.MarkerPin01);
 export const Maximize = createIcon(icons.Maximize01);
@@ -113,11 +103,8 @@ export const RefreshCw = createIcon(icons.RefreshCw01);
 export const Repeat = createIcon(icons.Repeat01);
 export const RotateCcw = createIcon(icons.RefreshCcw01);
 export const Radio = createIcon(icons.Signal01);
-export const Rss = createIcon(icons.Rss01);
-export const Save = createIcon(icons.Save01);
 export const ScanSearch = createIcon(icons.Scan);
 export const Search = createIcon(icons.SearchLg);
-export const Server = createIcon(icons.Server01);
 export const Settings = createIcon(icons.Settings01);
 export const Share = createIcon(icons.Share07);
 export const Shuffle = createIcon(icons.Shuffle01);
@@ -138,12 +125,10 @@ export const TrendUp = createIcon(icons.TrendUp01);
 export const TriangleAlert = createIcon(icons.AlertTriangle);
 export const Upload = createIcon(icons.Upload01);
 export const User = createIcon(icons.User01);
-export const UserPlus = createIcon(icons.UserPlus01);
 export const Users = createIcon(icons.Users01);
 export const Volume2 = createIcon(icons.VolumeMax);
 export const VolumeX = createIcon(icons.VolumeX);
 export const Workflow = createIcon(icons.Dataflow01);
-export const Wrench = createIcon(icons.Tool01);
 export const X = createIcon(icons.XClose);
 export const XCircle = createIcon(icons.XCircle);
 
@@ -210,15 +195,6 @@ export function ArrowUpZA(props: IconProps) {
   return (
     <IconSvg {...props}>
       <path d="M4 7 7 4l3 3M7 4v16m7-16h6l-6 6h6m-6 10 3-6 3 6m-5-2h4" />
-    </IconSvg>
-  );
-}
-
-export function FolderSync(props: IconProps) {
-  return (
-    <IconSvg {...props}>
-      <path d="M3 7V5a2 2 0 0 1 2-2h4l2 4h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-      <path d="m10 14 2-2h4m-6 2v-2m8 4-2 2h-4m6-2v2" />
     </IconSvg>
   );
 }

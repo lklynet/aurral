@@ -1,6 +1,5 @@
 import { parseFlowTimestamp } from "./playlistStats";
 import type { Flow } from "./playlistStats";
-import { formatDate } from "../../utils/dateTime.ts";
 import {
   DEFAULT_FLOW_MIX,
   DEFAULT_FLOW_SIZE,
@@ -92,26 +91,6 @@ export function formatNextRun(nextRunAt: number | null | undefined, now = Date.n
   }
   const days = Math.ceil(diff / dayMs);
   return days === 1 ? "1 day" : `${days} days`;
-}
-
-export function formatNextRunShort(nextRunAt: number | null | undefined, now = Date.now()) {
-  const diff = getNextRunDiff(nextRunAt, now);
-  if (diff === null) return null;
-  if (diff <= 0) return "soon";
-  const dayMs = 24 * 60 * 60 * 1000;
-  const days = Math.ceil(diff / dayMs);
-  if (days >= 1) {
-    return `${days}d`;
-  }
-  return "soon";
-}
-
-export function formatFlowLastRunShort(lastRunAt: number | null | undefined) {
-  const timestamp = parseFlowTimestamp(lastRunAt);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-  return formatDate(date, { month: "numeric", day: "numeric" });
 }
 
 export const normalizeNameKey = (value: string | null | undefined) =>

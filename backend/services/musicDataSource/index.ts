@@ -2,9 +2,6 @@ import { getLastfmApiKey } from "../apiClients/index.ts";
 import { lastfmSource } from "./lastfm.ts";
 import { listenbrainzSource } from "./listenbrainz.ts";
 
-export const MUSIC_DATA_SOURCE_LASTFM = lastfmSource.name;
-export const MUSIC_DATA_SOURCE_LISTENBRAINZ = listenbrainzSource.name;
-
 export type MusicArtistRef = { name?: string | null; mbid?: string | number | null };
 
 export type MusicTrendingArtist = {

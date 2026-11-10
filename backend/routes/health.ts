@@ -8,8 +8,8 @@ import {
   getLastfmApiKey,
   getNewsSettings,
   getTicketmasterApiKey,
-  getMetadataProviderHealthSnapshot,
 } from "../services/apiClients/index.ts";
+import { getMetadataProviderHealthSnapshot } from "../services/providers/brainzmashProvider.ts";
 import { API_CONTRACT } from "../config/apiContract.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { wrappedSeason } from "../../lib/wrapped.ts";

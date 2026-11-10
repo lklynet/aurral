@@ -14,8 +14,6 @@ const libraryImageSchema = v.looseObject({
   CoverType: nullableText,
 });
 
-export type LibraryArtistImage = v.InferOutput<typeof libraryImageSchema>;
-
 const libraryMetadataSchema = v.looseObject({
   id: lenient(v.nullable(v.union([v.string(), v.number()]))),
   artistId: lenient(v.nullable(v.union([v.string(), v.number()]))),
