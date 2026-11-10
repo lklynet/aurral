@@ -283,6 +283,35 @@ test("queued library track jobs appear in activity immediately", async () => {
   assert.equal(entry?.source, "unknown");
 });
 
+test("an album request's queued tracks show as that album before its release attempt starts", async () => {
+  const albumMbid = "b2222222-2222-4222-8222-222222222202";
+  const queue = (trackName: string, trackNumber: number, extra = {}) =>
+    downloadTracker.addJob(
+      {
+        artistName: "Artist",
+        trackName,
+        albumName: "Album",
+        albumMbid,
+        trackNumber,
+        managedBy: "aurral",
+        requestGroupId: "album-request",
+        ...extra,
+      },
+      "library",
+    );
+  const second = queue("Two", 2);
+  const first = queue("One", 1);
+  const alone = queue("Elsewhere", 1, { requestGroupId: "track-request" });
+
+  const entries = await getAurralHistoryRequests();
+  const grab = entries.find((item) => item.jobId === first)?.albumGrab;
+  assert.equal(grab?.phase, "queued");
+  assert.deepEqual(grab?.memberJobIds.toSorted(), [first, second].toSorted());
+  assert.equal(entries.find((item) => item.jobId === second)?.albumGrab?.id, grab?.id);
+  assert.equal(entries.find((item) => item.jobId === second)?.trackNumber, 2);
+  assert.equal(entries.find((item) => item.jobId === alone)?.albumGrab, undefined);
+});
+
 test("queued album track jobs open their album, and other library jobs have no link", async () => {
   const albumMbid = "b2222222-2222-4222-8222-222222222201";
   const artist = upsertLibraryArtist({

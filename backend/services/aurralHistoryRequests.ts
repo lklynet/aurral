@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expandAlbumGrabHistory } from "./albumGrabActivity.ts";
+import { expandAlbumGrabHistory, queuedAlbumGrabs } from "./albumGrabActivity.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveBlockedJobReleaseTitle, resolveBlockedJobSourceFilename } from "./downloadUtils.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
@@ -583,7 +583,7 @@ export const getAurralHistoryRequests = async (
   ];
   const entryIds = new Set(entries.map((e) => e.id));
 
-  const jobs: HistoryJob[] = downloadTracker.getAll();
+  const jobs = downloadTracker.getAll();
   const activeJobs = jobs.flatMap((job) => {
     const historyId = stableId("track_download", job.id);
     return job.status && ACTIVE_JOB_STATUSES.has(job.status) && !entryIds.has(historyId)
@@ -626,17 +626,25 @@ export const getAurralHistoryRequests = async (
     const albumMbid = job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid || null;
     return [{ entry, job, manifest, albumMbid }];
   });
+  const queuedAlbums = queuedAlbumGrabs(
+    visible.flatMap(({ entry, job, manifest }) =>
+      entry.kind === "track_download" && job && !manifest ? [job] : [],
+    ),
+  );
   const libraryAlbumIds = getLibraryAlbumIdsByReference(
     visible.flatMap(({ entry, albumMbid }) =>
       entry.metadata?.canonicalAlbumId || !albumMbid ? [] : [albumMbid],
     ),
   );
-  return visible.map(({ entry, job, manifest, albumMbid }) => {
+  return visible.map(({ entry, job, manifest: grab, albumMbid }) => {
+    const manifest = grab ?? (job ? queuedAlbums.get(job.id) : undefined);
     if (entry.kind === "track_download" && job) {
       entry.metadata = {
         ...entry.metadata,
         downloadSource: job.downloadSource || null,
         downloadClient: job.downloadClient || null,
+        trackNumber: entry.metadata?.trackNumber ?? job.trackNumber ?? null,
+        discNumber: entry.metadata?.discNumber ?? job.discNumber ?? null,
       };
     }
     const libraryAlbumId =

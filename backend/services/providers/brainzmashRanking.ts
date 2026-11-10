@@ -283,6 +283,14 @@ export function tracksInOrder(release: { tracks?: Track[] } | null | undefined) 
   );
 }
 
+// A release can lead a download only when it lists as many tracks as it has.
+export function listsEveryTrack(
+  release: { tracks?: unknown[]; trackCount?: number | null } | null | undefined,
+) {
+  const listed = release?.tracks?.length ?? 0;
+  return listed > 0 && (!release?.trackCount || release.trackCount === listed);
+}
+
 export function runningOrder(release: { tracks?: Track[] } | null | undefined) {
   return tracksInOrder(release)
     .map((track) => getNormalizedText(track.title))

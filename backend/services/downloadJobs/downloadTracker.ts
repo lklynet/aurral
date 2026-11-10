@@ -878,7 +878,7 @@ export class DownloadTracker {
 
   // The tracks one release attempt fills: this job and the pending tracks of
   // its request that the release lists, each pinned to that release. A pin
-  // the release group no longer lists, as after a merge, pins nothing.
+  // the release group no longer lists whole, as after a merge, pins nothing.
   // An upgrade's attempt holds only upgrades: every one of the release still
   // waiting to start, whatever request or owner its track came from, as the
   // upgrade check queues them together. An upgrade whose owner is not active

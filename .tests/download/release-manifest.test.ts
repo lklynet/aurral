@@ -20,7 +20,8 @@ const audioFixture = async (filePath: string) => {
 const [
   isolatedState,
   { toReleaseManifest, mapRequest, trackRequestFor: findTrackRequest },
-  { resolveReleaseManifest },
+  { resolveReleaseManifest, readReleaseManifest, chooseLibraryRelease },
+  { getAlbumByMbid },
   libraryStore,
   { buildTrackRequest },
   { buildSourceCandidates },
@@ -31,6 +32,7 @@ const [
   "release-manifest",
   () => import("../../backend/services/releaseManifest.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/trackMatching/trackIdentity.ts"),
   () => import("../../backend/services/trackMatching/sourceSearch.ts"),
@@ -522,32 +524,57 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
   assert.equal(downloaded.filePath, null);
 });
 
-test("a pinned edition without the track, or with a cut-short tracklist, leaves the request unresolved", async (t) => {
+test("a pinned edition without the track leaves the request unresolved", async (t) => {
   await stubMetadata(t);
   assert.equal(await resolveReleaseManifest(job("Bonus", "rec-b", { releaseMbid: "std-a" })), null);
-  assert.equal(
-    await resolveReleaseManifest(job("Opener", "rec-1", { releaseMbid: "truncated" })),
-    null,
-  );
   assert.equal(
     (await resolveReleaseManifest(job("Middle", "rec-2", { releaseMbid: "deluxe" })))!.releaseMbid,
     "deluxe",
   );
 });
 
-test("a pinned edition MusicBrainz no longer lists is chosen again", async (t) => {
+test("a pinned edition MusicBrainz no longer lists, or lists cut short, is chosen again", async (t) => {
   await stubMetadata(t);
-  assert.equal(
-    (await resolveReleaseManifest(job("Opener", "rec-1", { releaseMbid: "merged-away" })))!
-      .releaseMbid,
-    "std-a",
-  );
+  for (const releaseMbid of ["merged-away", "truncated"]) {
+    assert.equal(
+      (await resolveReleaseManifest(job("Opener", "rec-1", { releaseMbid })))!.releaseMbid,
+      "std-a",
+    );
+  }
   libraryAlbum({ requestedRelease: "merged-away", edition: "standard" });
   const library = { playlistId: "library", playlistType: "library" };
   assert.equal(
     (await resolveReleaseManifest(job("Bonus", "rec-b", library)))!.releaseMbid,
     "deluxe",
   );
+  libraryAlbum({ requestedRelease: "truncated", edition: "standard" });
+  const pinned = await resolveReleaseManifest(
+    job("Opener", "rec-1", { ...library, releaseMbid: "truncated" }),
+  );
+  assert.equal(pinned?.releaseMbid, "std-a");
+  const { manifest } = await readReleaseManifest(GROUP, "std-a");
+  assert.equal(manifest?.groupReleaseMbids?.includes("truncated"), false);
+});
+
+test("an edition that lists only part of its tracks is never the one an album asks for", async (t) => {
+  const cutShort = "a1a1a1a1-0000-4000-8000-000000000006";
+  await stubMetadata(t, [
+    {
+      ...group,
+      id: cutShort,
+      releases: [
+        {
+          id: "cut",
+          title: "The Album",
+          status: "Official",
+          track_count: 4,
+          tracks: releases["std-a"],
+        },
+        { id: "std-b", title: "The Album", status: "Official", tracks: releases["std-b"] },
+      ],
+    },
+  ]);
+  assert.equal(chooseLibraryRelease((await getAlbumByMbid(cutShort))!)?.id, "std-b");
 });
 
 test("a Library album's requested edition is its jobs' edition even after its files list another", async (t) => {

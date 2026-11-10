@@ -4,7 +4,12 @@ import type {
   NormalizedRelease,
   NormalizedTrack,
 } from "./providers/brainzmashMappers.ts";
-import { median, pressingLengths, scoreTextMatch } from "./providers/brainzmashRanking.ts";
+import {
+  listsEveryTrack,
+  median,
+  pressingLengths,
+  scoreTextMatch,
+} from "./providers/brainzmashRanking.ts";
 import { buildResolvedJobTrack, type DownloadTrackFields } from "./downloadUtils.ts";
 import { normalizeMatchText } from "./trackMatching/nativeMatcher.ts";
 import { extractVariants } from "./trackMatching/semanticPolicy.ts";
@@ -153,9 +158,7 @@ function tracklist(
   aliases: Map<string, string[]>,
 ) {
   const listed = Array.isArray(release?.tracks) ? release.tracks : [];
-  if (!text(release?.id || release?.releaseMbid) || listed.length === 0) return null;
-  const declared = positive(release?.trackCount);
-  if (declared && declared !== listed.length) return null;
+  if (!text(release?.id || release?.releaseMbid) || !listsEveryTrack(release)) return null;
   const parsed = inRunningOrder(listed.map(parseTrack));
   if (parsed.some((track) => !track.title) || !isWhole(parsed)) return null;
   return parsed.map((track) => ({

@@ -280,6 +280,38 @@ export function recordAlbumGrabPhase(
   }
 }
 
+// An album request's tracks show as that album while they wait for the
+// worker, before their first track starts the album attempt.
+export function queuedAlbumGrabs(jobs: AlbumGrabJob[]) {
+  const waiting = jobs.flatMap(({ requestGroupId, albumMbid, ...job }) =>
+    job.status === "pending" &&
+    job.managedBy === "aurral" &&
+    job.playlistType === "library" &&
+    requestGroupId &&
+    albumMbid
+      ? [{ ...job, requestGroupId, albumMbid }]
+      : [],
+  );
+  const grabs = new Map<string, AlbumGrabManifest>();
+  const albums = Map.groupBy(waiting, (job) => `${job.requestGroupId}:${job.albumMbid}`);
+  for (const [key, members] of albums) {
+    const [first, ...rest] = members;
+    if (!first || rest.length === 0) continue;
+    const grab: AlbumGrabManifest = {
+      id: `aurral-album_queued-${key}`,
+      requestGroupId: first.requestGroupId,
+      albumMbid: first.albumMbid,
+      memberJobIds: members.map((job) => job.id),
+      requestedAt: new Date(Math.min(...members.map((job) => job.createdAt))).toISOString(),
+      phase: "queued",
+      source: null,
+      fallbackReason: null,
+    };
+    for (const job of members) grabs.set(job.id, grab);
+  }
+  return grabs;
+}
+
 export function expandAlbumGrabHistory(
   entries: AurralHistoryEntry[],
   since: number,
