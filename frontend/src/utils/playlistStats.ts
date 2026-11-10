@@ -1,6 +1,6 @@
 import type { InferResponseType } from "hono/client";
-import type { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
-import { formatDateTime } from "../../utils/dateTime.ts";
+import type { playlistJobsClient } from "./api/clients/playlistJobs.ts";
+import { formatDateTime } from "./dateTime.ts";
 
 type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
 

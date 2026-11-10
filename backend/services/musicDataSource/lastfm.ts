@@ -1,9 +1,9 @@
-import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { lastfmRequest } from "../apiClients/index.ts";
 import type { LastfmArtist, LastfmImage, LastfmTrack } from "../apiClients/lastfm.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
 import type { MusicArtistRef, MusicTrendingArtist } from "./index.ts";
+import { normalizeMbid, recordHealth, text } from "./common.ts";
 
 const LASTFM_PLACEHOLDER_IMAGE_HASH = "2a96cbd8b46e442fc41c2b86b821562f";
 const TAG_ARTIST_MAX_PAGE_SIZE = 200;
@@ -14,17 +14,6 @@ type LastfmCallOptions = { health?: SourceHealth; signal?: AbortSignal };
 
 const asArray = <T>(value: T | T[] | null | undefined): T[] =>
   Array.isArray(value) ? value : value ? [value] : [];
-const text = (value: unknown) => String(value ?? "").trim();
-const normalizeMbid = (value: unknown) => {
-  const mbid = text(value).toLowerCase();
-  return UUID_REGEX.test(mbid) ? mbid : null;
-};
-
-const recordHealth = (health: SourceHealth | undefined, ok: boolean) => {
-  if (!health) return;
-  if (ok) health.success += 1;
-  else health.failure += 1;
-};
 
 export const pickLastfmImage = (images: LastfmImage | LastfmImage[] | null | undefined) => {
   const list = asArray(images);

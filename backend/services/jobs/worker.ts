@@ -56,10 +56,6 @@ export function jobInterruption(message = "Background job interrupted") {
   return Object.assign(new Error(message), { code: INTERRUPTED });
 }
 
-export function isJobInterruption(error: unknown) {
-  return asAppError(error)?.code === INTERRUPTED;
-}
-
 export function isShuttingDown() {
   return shuttingDown;
 }
@@ -114,11 +110,7 @@ async function reloadChangedCaches() {
   const version = getDatabaseDataVersion();
   if (version === lastDataVersion) return;
   lastDataVersion = version;
-  const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
-    import("../../db/helpers/index.ts"),
-    import("../playlists/flowPlaylistConfig.ts"),
-  ]);
-  dbOps.invalidateSettingsCache();
+  const { invalidateFlowPlaylistConfigCache } = await import("../playlists/flowPlaylistConfig.ts");
   invalidateFlowPlaylistConfigCache();
   if (group.startsWith("discovery-") || group === "inbox") {
     const { reloadDiscoveryPersistedCache } = await import("../discovery/persistence.ts");

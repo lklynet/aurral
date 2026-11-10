@@ -1,5 +1,5 @@
 import { db } from "../../config/db-sqlite.ts";
-import { dbOps, userOps } from "../../db/helpers/index.ts";
+import { userOps } from "../../db/helpers/index.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
 import type {
   BulkOperationOutcome,
@@ -7,7 +7,7 @@ import type {
   StaticPlaylistSelection,
 } from "./bulkOperationStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
-import { withPlaylistMutationLock } from "../downloadJobs/mutationGuards.ts";
+import { withPlaylistMutationLock } from "../downloadJobs/downloadLocks.ts";
 import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
 import { tracksShareMembership } from "./playlistTracks.ts";
 import type { StaticPlaylist } from "./flowPlaylistConfig.ts";
@@ -25,7 +25,6 @@ function persistMembership<T>(operation: () => T) {
   try {
     return db.transaction(operation)();
   } catch (error) {
-    dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
     throw error;
   }

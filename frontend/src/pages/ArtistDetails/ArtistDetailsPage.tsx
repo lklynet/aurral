@@ -14,14 +14,7 @@ import { useAddTrackToLibrary } from "../../hooks/useAddTrackToLibrary";
 import { parseResponse } from "hono/client";
 import { artistsClient } from "../../utils/api/clients/artists.ts";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
-import {
-  buildStaticPlaylistTrackPayload,
-  buildTasteArtist,
-  getApiErrorMessage,
-  getArtistHeroImage,
-  getCoverImage,
-  reserveUniquePlaylistName,
-} from "./utils";
+import { buildTasteArtist, getArtistHeroImage, getCoverImage } from "./utils";
 import { useArtworkWash } from "../../utils/imageColors";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
@@ -53,12 +46,17 @@ import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
 import RouteLink from "../../components/RouteLink";
-import type { PlaylistSelection, PlaylistTrackIdentity } from "./components/TrackPlaylistMenu";
+import type { PlaylistSelection, PlaylistTrackIdentity } from "../../components/TrackPlaylistMenu";
 import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
 import type { ReleaseGroup } from "./utils";
 import { releaseTrackPayload } from "../album/releaseTracks.tsx";
 import type { ArtistFeedbackSource } from "../../utils/artistTaste.ts";
 import StatePanel from "../../components/StatePanel";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
+import {
+  buildStaticPlaylistTrackPayload,
+  reserveUniquePlaylistName,
+} from "../../utils/staticPlaylists.ts";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -256,7 +254,7 @@ function ArtistDetailsPage() {
         deezerArtistId: data?.deezerArtistId || "",
       });
     } catch (err) {
-      showError(getApiErrorMessage(err) || "Failed to load artist IDs");
+      showError(getApiErrorMessage(err, "Failed to load artist IDs"));
     }
   };
 
@@ -301,7 +299,7 @@ function ArtistDetailsPage() {
       setPreviewTracks(previewData?.tracks || []);
       setSimilarArtists(similar?.artists || []);
     } catch (err) {
-      showError(getApiErrorMessage(err) || "Failed to update artist IDs");
+      showError(getApiErrorMessage(err, "Failed to update artist IDs"));
     } finally {
       setLoadingCover(false);
       setLoadingPreview(false);
@@ -391,7 +389,7 @@ function ArtistDetailsPage() {
         setStaticPlaylists(nextPlaylists);
       }
     } catch (err) {
-      const message = getApiErrorMessage(err) || "Failed to save track to playlist";
+      const message = getApiErrorMessage(err, "Failed to save track to playlist");
       setPlaylistModalError(message);
       showError(message);
     } finally {

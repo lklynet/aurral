@@ -21,7 +21,7 @@ const [
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
-  () => import("../../backend/routes/library/handlers/downloads.ts"),
+  () => import("../../backend/services/lidarrStatusSnapshot.ts"),
 );
 
 const app = signedInAs(testUser(1, { username: "admin", role: "admin" })).route("/", api);

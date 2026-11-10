@@ -1,5 +1,4 @@
-import { withPlaylistMutationLock } from "../downloadJobs/mutationGuards.ts";
-import { dbOps } from "../../db/helpers/index.ts";
+import { withPlaylistMutationLock } from "../downloadJobs/downloadLocks.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import {
   flowPlaylistConfig,
@@ -10,7 +9,6 @@ import { playlistManager } from "./playlistManager.ts";
 import type { StaticPlaylistSelection } from "./bulkOperationStore.ts";
 
 function playlistsWithMissingDownloads() {
-  dbOps.invalidateSettingsCache();
   invalidateFlowPlaylistConfigCache();
   const jobIds = new Set(downloadTracker.getAll().map((job) => job.id));
   return flowPlaylistConfig

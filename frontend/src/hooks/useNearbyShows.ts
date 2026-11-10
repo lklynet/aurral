@@ -4,7 +4,7 @@ import { parseResponse } from "hono/client";
 import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { queryKeys } from "../queryClient.ts";
 import { asApiError } from "../utils/api/core.ts";
-import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../pages/discoverUtils";
+import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../utils/discoverUtils";
 
 export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
   const [storedLocation, setStoredLocation] = useState(readStoredNearbyLocation);

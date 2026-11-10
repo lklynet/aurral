@@ -1,7 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { selectBestAlbumImage, selectBestArtistImage } from "../backend/services/imageService.ts";
+import { selectBestAlbumImage, selectBestArtistImage } from "../backend/services/imageRanking.ts";
 
 test("artist image selection prefers poster art over banners for square displays", () => {
   const selected = selectBestArtistImage([

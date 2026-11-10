@@ -6,7 +6,7 @@ import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
 import { Pause, Play, ThumbsDown, ThumbsUp } from "../components/icons";
 import RouteLink from "../components/RouteLink";
-import { SettingsLink } from "./Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import TooltipButton from "../components/TooltipButton";
 import { useToast } from "../contexts/ToastContext";
@@ -25,7 +25,7 @@ import {
   artistMatchesGenre,
   DISCOVER_PREVIEW_ITEM_LIMIT,
   type DiscoverArtist,
-} from "./discoverUtils";
+} from "../utils/discoverUtils";
 import {
   buildRecommendedRails,
   firstGenre,

@@ -11,7 +11,6 @@ import {
 } from "../../../../utils/api/endpoints/library.ts";
 import { formatDateTime } from "../../../../utils/dateTime.ts";
 import { SettingsInput } from "../../components/SettingsField";
-import { readApiError } from "../../utils/apiError.ts";
 import {
   SettingsActions,
   SettingsGroup,
@@ -20,6 +19,7 @@ import {
   SettingsRow,
   type ServiceStatus,
 } from "../../SettingsLayout";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 export const HISTORY_SERVERS = ["navidrome", "plex", "jellyfin"] as const;
 export type HistoryServerProvider = (typeof HISTORY_SERVERS)[number];

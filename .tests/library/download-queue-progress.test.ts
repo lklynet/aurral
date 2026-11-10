@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
 import { api } from "../../backend/routes/api.ts";
-import { invalidateAllDownloadStatusesCache } from "../../backend/routes/library/handlers/downloads.ts";
+import { invalidateAllDownloadStatusesCache } from "../../backend/services/lidarrStatusSnapshot.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 

@@ -5,7 +5,7 @@ import { requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { buildRadio } from "../../../services/radio.ts";
-import { toQueueTracks } from "./queueTracks.ts";
+import { toQueueTracks } from "../../../services/queueTracks.ts";
 
 const refs = v.optional(v.pipe(v.array(v.string()), v.maxLength(500)));
 

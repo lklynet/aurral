@@ -15,7 +15,7 @@ import {
   type Flow,
   type PlaylistStats,
   type PlaylistStatus,
-} from "./playlistStats";
+} from "../../utils/playlistStats";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([

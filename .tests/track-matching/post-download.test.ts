@@ -1,5 +1,3 @@
-// Unified post-download validator tests.
-//
 // The critical invariant: validation reads the ORIGINAL embedded tags, never
 // the metadata Aurral is about to write. Real-file cases use ffmpeg to
 // generate tagged audio; unit cases inject a parse function.

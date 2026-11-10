@@ -7,8 +7,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useToast } from "../../contexts/ToastContext";
-import { createPlaylistTrackChanges } from "./playlistTrackChanges.ts";
+import { useToast } from "./ToastContext";
+import { createPlaylistTrackChanges } from "../utils/playlistTrackChanges.ts";
 
 type PlaylistTrackChanges = ReturnType<typeof createPlaylistTrackChanges>;
 

@@ -8,7 +8,7 @@ import {
 } from "./feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "./blockedTags.ts";
 import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.ts";
-import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.ts";
+import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./userRefreshRequests.ts";
 import {
   serveRecommendations,
   STARTER_SEED_SOURCE,

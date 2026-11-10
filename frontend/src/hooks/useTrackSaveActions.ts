@@ -1,13 +1,15 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
+import { useStaticPlaylists } from "./useStaticPlaylists";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
-import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
-import { normalizePlaylistTrackEntry } from "./playlists/flowPageUtils";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
+import {
+  reserveUniquePlaylistName,
+  normalizePlaylistTrackEntry,
+} from "../utils/staticPlaylists.ts";
 
 type SaveTrack = { id: string; artistName: string; trackName: string };
 type PlaylistSaveTarget =

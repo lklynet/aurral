@@ -17,7 +17,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
-  () => import("../../backend/services/downloadJobs/mutationGuards.ts"),
+  () => import("../../backend/services/downloadJobs/downloadLocks.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));

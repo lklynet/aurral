@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import * as v from "valibot";
 import { userOps, dbOps, userIdentityOps } from "../db/helpers/index.ts";
-import { hashPassword, verifyPassword } from "../middleware/passwordHash.ts";
+import { hashPassword, verifyPassword } from "../services/passwordHash.ts";
 import {
   requireAuth,
   requireAdmin,
@@ -17,7 +17,7 @@ import {
   reconcileLocalNetworkBypassSetting,
   requirePasswordStrength,
   rotateUserApiKey,
-} from "../middleware/auth.ts";
+} from "../services/auth.ts";
 import { deleteSessionsByUserId } from "../config/session-helpers.ts";
 import { websocketService } from "../services/websocketService.ts";
 import {
@@ -31,6 +31,7 @@ import {
 } from "../services/listeningHistory.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
+import { lidarrClient } from "../services/lidarrClient.ts";
 
 type UserUpdate = Parameters<typeof userOps.updateUser>[1];
 
@@ -298,7 +299,6 @@ export default new Hono<AppEnv>()
       if (!user) {
         return c.json({ error: "User not found" }, 404);
       }
-      const { lidarrClient } = await import("../services/lidarrClient.ts");
       return c.json(await lidarrClient.getArtistAddPreferenceSummary(user), 200);
     } catch (e) {
       const failure = asAppError(e);
@@ -425,7 +425,6 @@ export default new Hono<AppEnv>()
           );
         }
 
-        const { lidarrClient } = await import("../services/lidarrClient.ts");
         if (!lidarrClient.isConfigured()) {
           if (nextRootFolderPath !== null || nextQualityProfileId !== null) {
             return c.json(

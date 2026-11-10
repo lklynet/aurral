@@ -100,7 +100,6 @@ export const pluginManifestSchema = v.object({
 });
 
 export type PluginManifest = v.InferOutput<typeof pluginManifestSchema>;
-export type PluginSetting = PluginManifest["settings"][number];
 export type PluginEvent = (typeof PLUGIN_EVENTS)[number];
 export type PluginActionTarget = (typeof PLUGIN_ACTION_TARGETS)[number];
 export type PluginSchedule = (typeof PLUGIN_SCHEDULES)[number];

@@ -48,7 +48,7 @@ const [
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/plugins/pluginSchedule.ts"),
   () => import("../../backend/services/plugins/pluginStore.ts"),
-  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/services/auth.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
 );
 

@@ -46,6 +46,7 @@ import {
   isLidarrLibraryActive,
   readOnlyFolderPaths,
   type LidarrRootsSource,
+  isPathWithin,
 } from "./libraryFolders.ts";
 
 interface AurralJobMetadata {
@@ -290,11 +291,6 @@ async function completeLibraryTrackLists() {
     });
   }
   return changed;
-}
-
-function isPathWithin(rootPath: string, candidatePath: string) {
-  const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function pathsWithin(rootPath: string, paths: string[] | null | undefined) {

@@ -14,7 +14,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, libraryStore
     "subsonic-contract",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/services/passwordHash.ts"),
     () => import("../../backend/services/libraryMediaStore.ts"),
   );
 

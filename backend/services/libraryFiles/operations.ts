@@ -29,6 +29,8 @@ import {
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
 } from "./operationStore.ts";
+import { libraryFileQueue } from "../jobs/queues.ts";
+import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 
 type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
 
@@ -36,7 +38,6 @@ const BUDGET_MS = 20000;
 const BATCH = 50;
 
 async function enqueue(operationId: number, { dedupe = true }: { dedupe?: boolean } = {}) {
-  const { libraryFileQueue } = await import("../jobs/queues.ts");
   if (dedupe && libraryFileQueue.list().some((job) => job.payload?.operationId === operationId))
     return;
   libraryFileQueue.enqueue({ operationId });
@@ -113,7 +114,6 @@ function assertFiled(item: LibraryFileItem): asserts item is FiledItem {
 async function requestScan(request: LibraryScanRequest) {
   const changedPaths = [...new Set((request?.changedPaths || []).filter(Boolean))];
   if (!changedPaths.length) return;
-  const { scheduleLibraryScan } = await import("../libraryScanWorker.ts");
   scheduleLibraryScan({ includeLidarr: request.includeLidarr === true, changedPaths });
 }
 

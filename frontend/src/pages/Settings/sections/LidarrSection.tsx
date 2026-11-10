@@ -8,8 +8,7 @@ import { RootOverlapWarning } from "../components/RootOverlapWarning";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsLink } from "../settingsRoute";
-import { readApiError } from "../utils/apiError.ts";
+import { SettingsLink } from "../../../navigation/settingsRoute";
 import { describeLidarrConnectionState } from "../utils/librarySettings";
 import type { SettingsState } from "../utils";
 import {
@@ -19,6 +18,7 @@ import {
   SettingsPage,
   SettingsRow,
 } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type LidarrPatch = Partial<SettingsState["integrations"]["lidarr"]>;
 type TestStatus = { tone: "success" | "error"; message: string };

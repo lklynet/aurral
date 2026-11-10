@@ -1,6 +1,8 @@
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
-import { defineQueue, type EnqueueOptions, type Queue } from "./queue.ts";
+import { defineQueue, parseJobPayload } from "./queue.ts";
+import type { WorkerGroup } from "./groups.ts";
+import type { SystemTask } from "./systemTasks.ts";
 import type { pipelinePayloadSchema } from "../downloadPipelineWorker.ts";
 import type { playlistOperationSchema } from "../playlists/playlistOperations.ts";
 import type { playlistMbidEnrichmentSchema } from "../playlistMbidEnrichmentWorker.ts";
@@ -14,10 +16,87 @@ import type { playEventDeliverySchema } from "../playEventService.ts";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
+const systemQueue = (
+  name: string,
+  group: WorkerGroup,
+  config: { timeoutMs: number; label: string; description: string; skipInTest?: boolean },
+) =>
+  defineQueue<SystemTask>({
+    name,
+    group,
+    leaseMs: HOUR,
+    maxAttempts: 3,
+    retryDelayMs: 2 * MINUTE,
+    start: (): Promise<unknown> =>
+      import("../systemTaskWorker.ts").then((m) => m.startSystemTaskWorker(name)),
+    ...config,
+  });
+
+export const systemTaskQueue = systemQueue("system-task", "downloads", {
+  timeoutMs: 2 * HOUR,
+  label: "System maintenance",
+  description: "Runs housekeeping, startup checks, and scheduled playlist maintenance.",
+});
+export const releaseMetadataQueue = systemQueue("release-metadata-refresh", "release-metadata", {
+  timeoutMs: 2 * HOUR,
+  label: "Release metadata",
+  description: "Refreshes release catalogues outside playlist processing.",
+  skipInTest: true,
+});
+export const maintenanceTaskQueue = systemQueue("system-task-maintenance", "maintenance", {
+  timeoutMs: 15 * MINUTE,
+  label: "Background maintenance",
+  description: "Runs cleanup, news and chart refreshes, and playlist schedule checks.",
+});
+export const inboxTaskQueue = systemQueue("system-task-inbox", "inbox", {
+  timeoutMs: 15 * MINUTE,
+  label: "Inbox refreshes",
+  description: "Refreshes the Inbox.",
+});
+export const playbackTaskQueue = systemQueue("playback", "downloads", {
+  timeoutMs: 2 * HOUR,
+  label: "Playlist files",
+  description: "Writes playlist files for media servers, one job at a time.",
+});
+
+const playlistQueue = (
+  name: string,
+  start: "startPlaylistOperationWorker" | "startFlowRunWorker",
+  label: string,
+  description: string,
+) =>
+  defineQueue<v.InferOutput<typeof playlistOperationSchema>>({
+    name,
+    label,
+    description,
+    group: "downloads",
+    leaseMs: HOUR,
+    maxAttempts: 3,
+    retryDelayMs: MINUTE,
+    timeoutMs: 2 * HOUR,
+    start: (): Promise<unknown> =>
+      import("../playlists/playlistOperationWorker.ts").then((m) => m[start]()),
+  });
+
+export const playlistOperationQueue = playlistQueue(
+  "playlist-operation",
+  "startPlaylistOperationWorker",
+  "Playlist operations",
+  "Applies playlist edits, flow cleanup, and track actions.",
+);
+export const flowRunQueue = playlistQueue(
+  "flow-run",
+  "startFlowRunWorker",
+  "Flow runs",
+  "Picks new tracks for flows and queues their downloads.",
+);
+
 const PIPELINE_PHASE_PRIORITY = { search: 0, poll: 10, download: 20, finalize: 30 };
 
 export const downloadPipelineQueue = defineQueue<v.InferOutput<typeof pipelinePayloadSchema>>({
   name: "download-pipeline",
+  label: "Download pipeline",
+  description: "Searches, downloads, validates, and finalizes playlist tracks.",
   group: "downloads",
   leaseMs: 20 * MINUTE,
   maxAttempts: 5,
@@ -32,146 +111,12 @@ export const downloadPipelineQueue = defineQueue<v.InferOutput<typeof pipelinePa
   },
 });
 
-export const SYSTEM_TASK_KINDS = [
-  "aurral-missing-track-search",
-  "aurral-monitoring-apply",
-  "aurral-monitoring-reconcile",
-  "discovery-bootstrap",
-  "discovery-refresh-check",
-  "flow-refresh",
-  "flow-reuse-repair",
-  "flow-startup-check",
-  "flow-startup-reuse-repair",
-  "history-server-sync",
-  "import-list-sync",
-  "inbox-refresh",
-  "library-index-bootstrap",
-  "library-index-refresh",
-  "lidarr-files-release",
-  "lidarr-retry",
-  "news-refresh",
-  "playback-library-scan",
-  "playback-playlist-sync",
-  "playback-server-cleanup",
-  "playlist-startup-publish",
-  "plugin-schedules",
-  "plugin-update-check",
-  "quality-profile-refresh",
-  "quality-upgrade-check",
-  "read-only-folder-release",
-  "release-metadata-refresh",
-  "review-timeout",
-  "session-cleanup",
-  "share-playlist-refresh",
-  "trending-charts-refresh",
-  "update-check",
-  "wrapped-build",
-] as const;
-
-export type SystemTaskKind = (typeof SYSTEM_TASK_KINDS)[number];
-
-export const systemTaskSchema = v.looseObject({ kind: v.picklist(SYSTEM_TASK_KINDS) });
-
-type SystemTask = v.InferOutput<typeof systemTaskSchema>;
-
-const defineSystemTaskQueue = (name: string, group: "downloads" | "maintenance" | "inbox") =>
-  defineQueue<SystemTask>({
-    name,
-    group,
-    leaseMs: HOUR,
-    maxAttempts: 3,
-    retryDelayMs: 2 * MINUTE,
-    timeoutMs: group === "downloads" ? 2 * HOUR : 15 * MINUTE,
-    start: (): Promise<unknown> =>
-      import("../systemTaskWorker.ts").then((m) => m.startSystemTaskWorker(name)),
-  });
-
-export const systemTaskQueue = defineSystemTaskQueue("system-task", "downloads");
-export const playbackTaskQueue = defineSystemTaskQueue("playback", "downloads");
-export const maintenanceTaskQueue = defineSystemTaskQueue("system-task-maintenance", "maintenance");
-export const inboxTaskQueue = defineSystemTaskQueue("system-task-inbox", "inbox");
-
-export const releaseMetadataQueue = defineQueue<SystemTask>({
-  name: "release-metadata-refresh",
-  group: "release-metadata",
-  leaseMs: HOUR,
-  maxAttempts: 3,
-  retryDelayMs: 2 * MINUTE,
-  timeoutMs: 2 * HOUR,
-  skipInTest: true,
-  start: (): Promise<unknown> =>
-    import("../releaseMetadataWorker.ts").then((m) => m.startReleaseMetadataWorker()),
-});
-
-const SYSTEM_TASK_QUEUES: Record<SystemTaskKind, Queue<SystemTask>> = {
-  "aurral-missing-track-search": systemTaskQueue,
-  "aurral-monitoring-apply": systemTaskQueue,
-  "aurral-monitoring-reconcile": systemTaskQueue,
-  "discovery-bootstrap": systemTaskQueue,
-  "discovery-refresh-check": systemTaskQueue,
-  "flow-refresh": maintenanceTaskQueue,
-  "flow-reuse-repair": systemTaskQueue,
-  "flow-startup-check": systemTaskQueue,
-  "flow-startup-reuse-repair": systemTaskQueue,
-  "history-server-sync": systemTaskQueue,
-  "import-list-sync": systemTaskQueue,
-  "inbox-refresh": inboxTaskQueue,
-  "library-index-bootstrap": systemTaskQueue,
-  "library-index-refresh": systemTaskQueue,
-  "lidarr-files-release": systemTaskQueue,
-  "lidarr-retry": systemTaskQueue,
-  "news-refresh": maintenanceTaskQueue,
-  "playback-library-scan": playbackTaskQueue,
-  "playback-playlist-sync": playbackTaskQueue,
-  "playback-server-cleanup": systemTaskQueue,
-  "playlist-startup-publish": systemTaskQueue,
-  "plugin-schedules": maintenanceTaskQueue,
-  "plugin-update-check": maintenanceTaskQueue,
-  "quality-profile-refresh": systemTaskQueue,
-  "quality-upgrade-check": systemTaskQueue,
-  "read-only-folder-release": systemTaskQueue,
-  "release-metadata-refresh": releaseMetadataQueue,
-  "review-timeout": systemTaskQueue,
-  "session-cleanup": maintenanceTaskQueue,
-  "share-playlist-refresh": systemTaskQueue,
-  "trending-charts-refresh": maintenanceTaskQueue,
-  "update-check": maintenanceTaskQueue,
-  "wrapped-build": maintenanceTaskQueue,
-};
-
-export function systemTaskQueueFor(kind: SystemTaskKind) {
-  return SYSTEM_TASK_QUEUES[kind];
-}
-
-export function enqueueSystemTask(payload: SystemTask, options?: EnqueueOptions<SystemTask>) {
-  return systemTaskQueueFor(payload.kind).enqueue(payload, options);
-}
-
-const playlistQueue = (
-  name: string,
-  start: "startPlaylistOperationWorker" | "startFlowRunWorker",
-) =>
-  defineQueue<v.InferOutput<typeof playlistOperationSchema>>({
-    name,
-    group: "downloads",
-    leaseMs: HOUR,
-    maxAttempts: 3,
-    retryDelayMs: MINUTE,
-    timeoutMs: 2 * HOUR,
-    start: (): Promise<unknown> =>
-      import("../playlists/playlistOperationWorker.ts").then((m) => m[start]()),
-  });
-
-export const playlistOperationQueue = playlistQueue(
-  "playlist-operation",
-  "startPlaylistOperationWorker",
-);
-export const flowRunQueue = playlistQueue("flow-run", "startFlowRunWorker");
-
 export const playlistMbidEnrichmentQueue = defineQueue<
   v.InferOutput<typeof playlistMbidEnrichmentSchema>
 >({
   name: "playlist-mbid-enrichment",
+  label: "Playlist metadata",
+  description: "Fills missing MusicBrainz IDs on imported tracks.",
   group: "downloads",
   leaseMs: HOUR,
   maxAttempts: 4,
@@ -184,6 +129,8 @@ export const playlistMbidEnrichmentQueue = defineQueue<
 
 export const libraryScanQueue = defineQueue<v.InferOutput<typeof libraryScanSchema>>({
   name: "library-scan",
+  label: "Library scans",
+  description: "Scans files after Library or playlist changes.",
   group: "library",
   leaseMs: 10 * MINUTE,
   maxAttempts: 3,
@@ -200,6 +147,8 @@ export const libraryScanQueue = defineQueue<v.InferOutput<typeof libraryScanSche
 
 export const libraryFileQueue = defineQueue<v.InferOutput<typeof libraryFileJobSchema>>({
   name: "library-files",
+  label: "Library Files",
+  description: "Ingests folders and renames and upgrades Library files.",
   group: "downloads",
   leaseMs: 10 * MINUTE,
   maxAttempts: 5,
@@ -212,6 +161,8 @@ export const libraryFileQueue = defineQueue<v.InferOutput<typeof libraryFileJobS
 
 export const discoveryRefreshQueue = defineQueue<v.InferOutput<typeof discoveryRefreshSchema>>({
   name: "discovery-refresh",
+  label: "Discovery refreshes",
+  description: "Refreshes discovery recommendations from library and listening data.",
   group: "discovery-refresh",
   leaseMs: HOUR,
   maxAttempts: 4,
@@ -226,6 +177,8 @@ export const discoveryUserRefreshQueue = defineQueue<
   v.InferOutput<typeof discoveryUserRefreshSchema>
 >({
   name: "discovery-user-refresh",
+  label: "Listening history refreshes",
+  description: "Refreshes user listening profiles used by discovery.",
   group: "discovery-user-refresh",
   leaseMs: HOUR,
   maxAttempts: 4,
@@ -235,16 +188,18 @@ export const discoveryUserRefreshQueue = defineQueue<
   start: (): Promise<unknown> =>
     import("../discoveryUserRefreshWorker.ts").then((m) => m.startDiscoveryUserRefreshWorker()),
   onAbandoned: async (job, reason): Promise<void> => {
-    const { parseJobPayload } = await import("./queue.ts");
     const userId = Number(parseJobPayload(job.payload)?.userId);
     if (!Number.isInteger(userId) || userId <= 0) return;
-    const { markInterruptedUserDiscoveryRefresh } = await import("../discovery/provider.ts");
+    const { markInterruptedUserDiscoveryRefresh } =
+      await import("../discovery/userRefreshRequests.ts");
     markInterruptedUserDiscoveryRefresh(userId, reason);
   },
 });
 
 export const notificationQueue = defineQueue<v.InferOutput<typeof queuedNotificationSchema>>({
   name: "notifications",
+  label: "Notifications",
+  description: "Delivers queued Gotify and webhook notifications and plugin events.",
   group: "notifications",
   leaseMs: 2 * MINUTE,
   maxAttempts: 5,

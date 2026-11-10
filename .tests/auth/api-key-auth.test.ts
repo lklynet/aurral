@@ -8,7 +8,7 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 const [isolatedState, authModule, { default: health }, { default: authRoutes }, { userOps }] =
   await setupIsolatedBackend(
     "api-key-auth",
-    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/services/auth.ts"),
     () => import("../../backend/routes/health.ts"),
     () => import("../../backend/routes/auth.ts"),
     () => import("../../backend/db/helpers/index.ts"),

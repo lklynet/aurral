@@ -1,5 +1,7 @@
 import { asAppError } from "../../../lib/errors.ts";
 import { dbOps } from "../../db/helpers/index.ts";
+import { reloadDiscoveryPersistedCache } from "../discovery/persistence.ts";
+import { flowTrackSource } from "./flowTrackSource.ts";
 
 if (!process.send) {
   throw new Error("Flow planner requires a supervised parent process");
@@ -17,9 +19,7 @@ process.on("message", async (message) => {
   if (type !== "build-flow-plan") return;
   try {
     dbOps.invalidateSettingsCache();
-    const { reloadDiscoveryPersistedCache } = await import("../discovery/persistence.ts");
     reloadDiscoveryPersistedCache();
-    const { flowTrackSource } = await import("./flowTrackSource.ts");
     const plan = await flowTrackSource.buildFlowRunPlan(Reflect.get(message, "flow"));
     resultExitCode = 0;
     awaitingAcknowledgement = true;

@@ -27,7 +27,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/app.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/services/auth.ts"),
   () => import("../../backend/services/logFile.ts"),
   () => import("../../backend/services/logger.ts"),
   () => import("../../backend/services/logs.ts"),

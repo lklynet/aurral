@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import type { SimilarArtistsResponse } from "../../../utils/api/endpoints/artists.ts";
-import { getApiErrorMessage, type ArtistCoverImage } from "../utils";
+import { type ArtistCoverImage } from "../utils";
 import {
   getArtistDetails,
   getArtistCover,
@@ -22,6 +22,7 @@ import { getStoredAuth } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket.ts";
 import { allReleaseTypes, emptyArtistShape } from "../constants";
+import { getApiErrorMessage } from "../../../utils/api/errors.ts";
 
 export type ArtistDetails = Partial<ArtistDetailsResponse>;
 type ReleaseGroupList = NonNullable<ArtistDetails["appears-on-release-groups"]>;
@@ -419,7 +420,7 @@ export function useArtistDetailsStream(
       } catch (err) {
         console.error("Error fetching artist data:", err);
         if (!isCurrentRequest()) return;
-        setError(getApiErrorMessage(err) || "Failed to fetch artist details");
+        setError(getApiErrorMessage(err, "Failed to fetch artist details"));
         setLoading(false);
         setLoadingCover(false);
         setLoadingSimilar(false);

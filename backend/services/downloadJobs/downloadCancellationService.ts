@@ -10,6 +10,7 @@ import { discardSourceWork } from "../download/sourcePipeline.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { DownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
+import { withPlaylistMutationLock } from "./downloadLocks.ts";
 import { downloadTracker, type DownloadJob, type DownloadTracker } from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { db } from "../../config/db-sqlite.ts";
@@ -25,7 +26,9 @@ import {
   listOrphanedDownloadProviderWork,
   restoreDownloadJobCancellations,
   restorePlaylistDownloadWork,
+  normalizeId,
 } from "./downloadCancellation.ts";
+import { settleDroppedAlbumGrab } from "../downloadPipeline.ts";
 
 const cancellationWorkSchema = v.looseObject({
   jobs: v.array(v.unknown()),
@@ -71,10 +74,6 @@ function clearCancellationWork(jobs: CancellationJob[], playlistId: string | nul
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
   for (const key of keys) db.prepare("DELETE FROM settings WHERE key = ?").run(key);
-}
-
-function normalizeId(value: unknown) {
-  return String(value || "").trim();
 }
 
 function payloadBelongsToPlaylist(
@@ -443,7 +442,6 @@ async function withPlaylistCancellationLocks<T>(
   playlistIds: string[],
   operation: () => T | Promise<T>,
 ) {
-  const { withPlaylistMutationLock } = await import("./mutationGuards.ts");
   return withPlaylistMutationLock(playlistIds, operation);
 }
 
@@ -546,7 +544,6 @@ export async function cancelDownloadWorkForJobs(
   // An album attempt led by a cancelled track still holds the tracks that
   // were not cancelled, and they start again untried.
   const settle = async () => {
-    const { settleDroppedAlbumGrab } = await import("../downloadPipeline.ts");
     for (const payload of pipeline.payloads) await settleDroppedAlbumGrab(payload);
   };
   let providers;

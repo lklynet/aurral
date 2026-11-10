@@ -56,6 +56,7 @@ import {
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
 } from "./operationStore.ts";
+import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 
 const CHUNK = 200;
 
@@ -744,7 +745,6 @@ const fileExists = (filePath: string) =>
 
 async function rescan(changedPaths: string[], { includeLidarr }: { includeLidarr: boolean }) {
   if (!changedPaths.length) return;
-  const { scheduleLibraryScan } = await import("../libraryScanWorker.ts");
   scheduleLibraryScan({ includeLidarr, changedPaths });
 }
 

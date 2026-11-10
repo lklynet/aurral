@@ -1,4 +1,4 @@
-import type { toPublicLibraryPage } from "../../backend/routes/library/handlers/libraryIndex.ts";
+import type { toPublicLibraryPage } from "../../backend/services/publicLibrary.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 type Page<Kind extends "albums" | "artists"> = Extract<
   ReturnType<typeof toPublicLibraryPage>,

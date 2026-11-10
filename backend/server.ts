@@ -6,14 +6,14 @@ import { getRequestListener } from "@hono/node-server";
 dns.setDefaultResultOrder("ipv4first");
 
 import { app } from "./app.ts";
-import { getEnvApiKey, isProxyAuthEnabled } from "./middleware/auth.ts";
+import { getEnvApiKey, isProxyAuthEnabled } from "./services/auth.ts";
 import { isOidcEnabled } from "./services/oidcAuth.ts";
 import { logger, logUnhandledRejection } from "./services/logger.ts";
 import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
 import {
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
-} from "./routes/library/handlers/downloads.ts";
+} from "./services/lidarrStatusSnapshot.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
 import { warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";

@@ -27,7 +27,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/manualMissingSearchService.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
-  () => import("../../backend/services/qualityProfileService.ts"),
+  () => import("../../backend/services/qualityProfile.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/trackMatching/postDownloadValidator.ts"),
 );

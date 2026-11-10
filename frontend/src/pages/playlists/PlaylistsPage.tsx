@@ -12,19 +12,19 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
-import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
-import { getStaticPlaylistTrackCount, type StaticPlaylist } from "./playlistStats";
-import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
+import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
+import { getStaticPlaylistTrackCount, type StaticPlaylist } from "../../utils/playlistStats";
 import {
   formatTrackTotal,
   getImportedProviderLabel,
   getImportedProviderLogo,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
-import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
+import { useHiddenPlaylistTracks } from "../../contexts/PlaylistBulkActions.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
+import { normalizeNameKey, reserveUniqueName } from "../../utils/staticPlaylists.ts";
 
 type ImportRequest = Pick<ComponentProps<typeof PlaylistImportModal>, "initialShareUrl">;
 

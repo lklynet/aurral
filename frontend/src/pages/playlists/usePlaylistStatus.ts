@@ -3,8 +3,8 @@ import {
   sanitizePlaylistStats,
   EMPTY_PLAYLIST_STATS,
   getPlaylistStateFromStats,
-} from "./playlistStats";
-import { usePlaylistStatusQuery } from "./usePlaylistStatusQuery";
+} from "../../utils/playlistStats";
+import { usePlaylistStatusQuery } from "../../hooks/usePlaylistStatusQuery";
 
 export function usePlaylistStatus() {
   const [countdownNow, setCountdownNow] = useState(() => Date.now());

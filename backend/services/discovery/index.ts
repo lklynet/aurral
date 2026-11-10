@@ -30,9 +30,9 @@ export {
 } from "./persistence.ts";
 
 export {
-  getUserDiscoveryNamespace,
   rerankCachedRecommendations,
-  requestUserDiscoveryRefresh,
   updateDiscoveryCache,
   updateUserDiscoveryCache,
 } from "./provider.ts";
+
+export { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./userRefreshRequests.ts";

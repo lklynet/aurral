@@ -10,7 +10,7 @@ import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
-import { artistQueueTracks } from "./queueTracks.ts";
+import { artistQueueTracks } from "../../../services/queueTracks.ts";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.ts";
 import {
   getArtistByMbid,
@@ -18,6 +18,7 @@ import {
 } from "../../../services/providers/brainzmashProvider.ts";
 import { asAppError, type AppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
+import { lidarrClient } from "../../../services/lidarrClient.ts";
 
 const listQuery = v.object({
   limit: v.optional(v.string()),
@@ -354,7 +355,6 @@ export default new Hono<AppEnv>()
       const artist = await libraryManager.getArtist(mbid);
       if (!artist) return c.json({ error: "Artist not found" }, 404);
 
-      const { lidarrClient } = await import("../../../services/lidarrClient.ts");
       const albums = await libraryManager.getAlbums(artist.id);
       if (lidarrClient && lidarrClient.isConfigured()) {
         const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });

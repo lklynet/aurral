@@ -7,6 +7,7 @@
 import { extractVariants } from "./semanticPolicy.ts";
 import type { ReleaseTrack } from "./semanticPolicy.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
+import { cleanText } from "./candidateNormalizer.ts";
 
 type TrackContext = {
   artistName?: unknown;
@@ -30,10 +31,6 @@ type TrackContext = {
   albumTrackTitles?: unknown;
   secondaryTypes?: unknown;
 };
-
-function cleanText(value: unknown) {
-  return String(value ?? "").trim() || null;
-}
 
 function cleanTextList(value: unknown) {
   return Array.isArray(value)

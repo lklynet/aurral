@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "../../../components/icons";
-import { SettingsLink } from "../../Settings/settingsRoute";
+import { SettingsLink } from "../../../navigation/settingsRoute";
 import {
   SettingsGroup,
   SettingsNote,
@@ -27,10 +27,10 @@ import {
   listeningHistoryQueryOptions,
   pluginImportListsQueryOptions,
 } from "../../../queryOptions.ts";
-import { reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
 import { isRecord } from "../../../../../lib/isRecord.ts";
+import { reserveUniqueName, normalizeNameKey } from "../../../utils/staticPlaylists.ts";
 
 declare global {
   interface Window {

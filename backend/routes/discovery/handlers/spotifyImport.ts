@@ -4,7 +4,7 @@ import { requireAuth, requireUserAccount } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { SPOTIFY_IMPORT_MAX_ARTISTS } from "../../../../lib/spotifyExport.ts";
-import { requestUserDiscoveryRefresh } from "../../../services/discovery/provider.ts";
+import { requestUserDiscoveryRefresh } from "../../../services/discovery/userRefreshRequests.ts";
 import {
   clearSpotifyImport,
   getSpotifyImportSummary,

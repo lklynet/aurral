@@ -6,7 +6,7 @@ import { cancelTrackDownload, cancelTrackDownloads } from "../aurralAlbumJobs.ts
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fileReuse.ts";
-import { wakeDownloadWorker } from "../downloadJobs/mutationGuards.ts";
+import { wakeDownloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { removeLibraryMediaFiles } from "../libraryMediaStore.ts";
 import { logger } from "../logger.ts";
 import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";

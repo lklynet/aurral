@@ -1,10 +1,10 @@
 import { randomUUID } from "crypto";
 import * as v from "valibot";
 import { db } from "../../config/db-sqlite.ts";
-import { toQueueTracks } from "../../routes/library/handlers/queueTracks.ts";
+import { toQueueTracks } from "../queueTracks.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
-import { resolveLibraryTracks } from "../subsonicLibraryService.ts";
+import { resolveLibraryTracks } from "../libraryTrackLookup.ts";
 import {
   getDiscoveryPlaylist,
   getDiscoveryPlaylists,

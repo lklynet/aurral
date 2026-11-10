@@ -49,6 +49,7 @@ import {
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
 } from "./operationStore.ts";
+import { playlistManager } from "../playlists/playlistManager.ts";
 
 const TAKEN_NAME_REASON = "Another file already has this name.";
 
@@ -680,7 +681,6 @@ export async function finishCleanup(operation: LibraryFileOperation) {
     await removeEmptyDirectories(folder, root);
   }
   if (moves.length) {
-    const { playlistManager } = await import("../playlists/playlistManager.ts");
     playlistManager.requestPlaylistSync();
   }
   if (removing) updateLibraryFileOperation(operation.id, { summary: { removingSources: null } });

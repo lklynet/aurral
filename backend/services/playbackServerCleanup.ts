@@ -11,6 +11,8 @@ import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
 import { logger } from "./logger.ts";
 import { getPlaylistFileSettings, savePlaylistFileSettings } from "./playlists/playlistFiles.ts";
+import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 
 // Aurral used to publish playlists to Navidrome, Plex, and Jellyfin through
 // their APIs. Playlist files replace them, so this removes the old copies once
@@ -197,7 +199,6 @@ function jellyfinDeletes(pointers: Pointer[]) {
 async function removeRetainedFiles() {
   const retained = readSetting("playbackRetainedFiles", recordSchema) ?? {};
   const root = path.resolve(resolveDownloadRoot());
-  const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
   const owned = (file: string) =>
     downloadTracker.getAll().some((job) => job.finalPath && path.resolve(job.finalPath) === file);
   const removed: string[] = [];
@@ -250,7 +251,6 @@ export async function cleanUpPlaybackServers() {
   const removedFiles = await removeRetainedFiles();
   forgetLegacyData();
   if (removedFiles.length) {
-    const { scheduleLibraryScan } = await import("./libraryScanWorker.ts");
     scheduleLibraryScan({ includeLidarr: false, changedPaths: removedFiles });
   }
   return { pending, removedFiles };

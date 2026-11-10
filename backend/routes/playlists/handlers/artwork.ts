@@ -10,7 +10,7 @@ import {
   saveCustomArtworkUpload,
   saveCustomArtworkUrl,
 } from "../../../services/customArtworkService.ts";
-import { hasPermission, isAuthRequiredByConfig } from "../../../middleware/auth.ts";
+import { hasPermission, isAuthRequiredByConfig } from "../../../services/auth.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";

@@ -1,6 +1,6 @@
 const SWEEP_INTERVAL_MS = 60_000;
 
-type CacheEntry = { expires: number; staleUntil: number };
+type CacheEntry = { expires: number };
 type CacheRegistration = {
   cache: WeakRef<Map<unknown, CacheEntry>>;
   now: () => number;
@@ -11,7 +11,7 @@ let idleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
 function removeExpired(cache: Map<unknown, CacheEntry>, currentTime: number) {
   for (const [key, entry] of cache) {
-    if (entry.staleUntil < currentTime) cache.delete(key);
+    if (entry.expires < currentTime) cache.delete(key);
   }
 }
 
@@ -59,30 +59,11 @@ export default function createCache<Value = unknown>(
       }
       return entry.value;
     },
-    getWithStale(key: unknown) {
-      const currentTime = now();
-      sweepExpired(currentTime);
-      const entry = cache.get(key);
-      if (entry === undefined) return undefined;
-      if (entry.expires >= currentTime) {
-        return { value: entry.value, stale: false };
-      }
-      if (entry.staleUntil > currentTime) {
-        return { value: entry.value, stale: true };
-      }
-      cache.delete(key);
-      return undefined;
-    },
-    set(key: unknown, value: Value, ttlSeconds = defaultTtlSeconds, staleTtlSeconds = 0) {
+    set(key: unknown, value: Value, ttlSeconds = defaultTtlSeconds) {
       const currentTime = now();
       sweepExpired(currentTime);
       if (cache.has(key)) cache.delete(key);
-      const expires = currentTime + ttlSeconds * 1000;
-      cache.set(key, {
-        value,
-        expires,
-        staleUntil: expires + Math.max(0, Number(staleTtlSeconds) || 0) * 1000,
-      });
+      cache.set(key, { value, expires: currentTime + ttlSeconds * 1000 });
       // ponytail: FIFO cap; switch to measured LRU only if cache churn becomes material.
       if (cache.size > maxEntries) cache.delete(cache.keys().next().value);
       scheduleIdleSweep(registration);

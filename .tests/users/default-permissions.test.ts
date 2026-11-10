@@ -8,7 +8,7 @@ const [isolatedState, { db }, { userOps, dbOps }, { createSystemProvisionedUser 
     "default-permissions",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/services/auth.ts"),
   );
 
 const setDefaults = (defaultPermissions: Record<string, boolean>) =>

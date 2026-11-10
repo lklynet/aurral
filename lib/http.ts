@@ -75,6 +75,9 @@ const TRANSIENT_NETWORK_CODES = new Set([
   "UND_ERR_SOCKET",
 ]);
 
+export const waitBeforeRetry = (retryCount: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, 300 * 2 ** retryCount + retryCount * 200));
+
 export const isTransientNetworkError = (error: unknown) =>
   error instanceof HttpError && !error.response && TRANSIENT_NETWORK_CODES.has(error.code ?? "");
 

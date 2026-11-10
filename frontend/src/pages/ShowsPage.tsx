@@ -1,6 +1,6 @@
 import { Navigate, useParams } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
-import { SettingsLink } from "./Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "../components/icons";
 import { SkeletonFeedPage } from "../components/Skeletons";

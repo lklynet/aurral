@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { userOps } from "../db/helpers/index.ts";
-import { hashPassword } from "../middleware/passwordHash.ts";
+import { hashPassword } from "../services/passwordHash.ts";
 
 function parseArgs(argv: string[]) {
   const args = {

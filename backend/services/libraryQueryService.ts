@@ -864,15 +864,6 @@ export function getRecentlyAddedLibraryArtists({
     .map((artist) => ({ ...artist, addedAt: addedAtById.get(artist.id) }));
 }
 
-export function getLibraryArtistProjectionQueryPlan(options: LibraryArtistProjectionOptions = {}) {
-  const query = buildLibraryArtistProjectionQuery(options);
-  return db
-    .prepare<unknown[], { id: number; parent: number; notused: number; detail: string }>(
-      `EXPLAIN QUERY PLAN ${query.sql}`,
-    )
-    .all(...query.parameters);
-}
-
 export function* iterateLibraryArtistProjection({
   pageSize = 100,
 }: { pageSize?: number | string } = {}) {

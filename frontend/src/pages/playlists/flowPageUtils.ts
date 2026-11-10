@@ -1,5 +1,6 @@
-import { parseFlowTimestamp } from "./playlistStats";
-import type { Flow } from "./playlistStats";
+import { parseFlowTimestamp } from "../../utils/playlistStats";
+import { normalizeNameKey, reserveUniqueName } from "../../utils/staticPlaylists.ts";
+import type { Flow } from "../../utils/playlistStats";
 import {
   DEFAULT_FLOW_MIX,
   DEFAULT_FLOW_SIZE,
@@ -27,37 +28,6 @@ export interface FlowDraft {
   scheduleDays?: number[];
   scheduleTime?: string;
 }
-
-interface ImportedTrack {
-  artistName?: unknown;
-  artist?: unknown;
-  artist_name?: unknown;
-  trackName?: unknown;
-  title?: unknown;
-  name?: unknown;
-  track?: unknown;
-  albumName?: unknown;
-  album?: unknown;
-  artistMbid?: unknown;
-  artistId?: unknown;
-  albumMbid?: unknown;
-  releaseGroupMbid?: unknown;
-  albumId?: unknown;
-  trackMbid?: unknown;
-  recordingMbid?: unknown;
-  recordingId?: unknown;
-  mbid?: unknown;
-  releaseYear?: unknown;
-  year?: unknown;
-  durationMs?: unknown;
-  artistAliases?: unknown;
-  reason?: unknown;
-  releaseMbid?: unknown;
-  trackNumber?: unknown;
-  discNumber?: unknown;
-}
-
-type ImportedValue = ImportedTrack | string | number | boolean | unknown[] | null | undefined;
 
 const NO_TRACKS: FlowMix = { discover: 0, mix: 0, trending: 0, focus: 0, newReleases: 0 };
 
@@ -93,36 +63,6 @@ export function formatNextRun(nextRunAt: number | null | undefined, now = Date.n
   return days === 1 ? "1 day" : `${days} days`;
 }
 
-export const normalizeNameKey = (value: string | null | undefined) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-export const reserveUniqueName = (
-  reservedNames: Set<string>,
-  baseName: string | null | undefined,
-) => {
-  const normalizedBase = String(baseName || "").trim() || "Flow";
-  const baseKey = normalizeNameKey(normalizedBase);
-  if (!reservedNames.has(baseKey)) {
-    reservedNames.add(baseKey);
-    return normalizedBase;
-  }
-  let index = 2;
-  while (index < 10000) {
-    const candidate = `${normalizedBase} ${index}`;
-    const key = normalizeNameKey(candidate);
-    if (!reservedNames.has(key)) {
-      reservedNames.add(key);
-      return candidate;
-    }
-    index += 1;
-  }
-  const fallback = `${normalizedBase} ${Date.now()}`;
-  reservedNames.add(normalizeNameKey(fallback));
-  return fallback;
-};
-
 export const getNextFlowName = (flows: Partial<Flow>[] | null | undefined, baseName = "Discover") =>
   reserveUniqueName(
     new Set(
@@ -132,14 +72,6 @@ export const getNextFlowName = (flows: Partial<Flow>[] | null | undefined, baseN
     ),
     String(baseName || "").trim() || "Discover",
   );
-
-export const normalizeDurationMs = (value: unknown) => {
-  const numeric = Number(value);
-  return value != null && Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : null;
-};
-
-export const normalizeArtistAliases = (aliases: unknown) =>
-  Array.isArray(aliases) ? aliases.map((entry) => String(entry || "").trim()).filter(Boolean) : [];
 
 const parseListInput = (value: string | null | undefined) =>
   String(value ?? "")
@@ -270,44 +202,6 @@ export const isFlowDirty = (flow: Partial<Flow> | null | undefined, draft: FlowD
   const base = normalizeDraftForCompare(flowToForm(flow));
   const next = normalizeDraftForCompare(draft);
   return JSON.stringify(base) !== JSON.stringify(next);
-};
-
-const positiveInteger = (value: unknown) =>
-  Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
-
-const albumPlacement = (track: ImportedTrack | null | undefined) => ({
-  releaseMbid: String(track?.releaseMbid || "").trim() || null,
-  trackNumber: positiveInteger(track?.trackNumber),
-  discNumber: positiveInteger(track?.discNumber),
-});
-
-export const normalizePlaylistTrackEntry = (track: ImportedValue) => {
-  if (!track || typeof track !== "object" || Array.isArray(track)) return null;
-  const artistName = String(track.artistName ?? track.artist ?? track.artist_name ?? "").trim();
-  const trackName = String(
-    track.trackName ?? track.title ?? track.name ?? track.track ?? "",
-  ).trim();
-  if (!artistName || !trackName) return null;
-  const albumName = String(track.albumName ?? track.album ?? "").trim();
-  const artistMbid = String(track.artistMbid ?? track.artistId ?? "").trim();
-  const albumMbid = String(track.albumMbid ?? track.releaseGroupMbid ?? track.albumId ?? "").trim();
-  const trackMbid = String(
-    track.trackMbid ?? track.recordingMbid ?? track.recordingId ?? track.mbid ?? "",
-  ).trim();
-  const releaseYear = String(track.releaseYear ?? track.year ?? "").trim();
-  return {
-    artistName,
-    trackName,
-    albumName: albumName || null,
-    artistMbid: artistMbid || null,
-    albumMbid: albumMbid || null,
-    trackMbid: trackMbid || null,
-    releaseYear: releaseYear || null,
-    durationMs: normalizeDurationMs(track.durationMs),
-    artistAliases: normalizeArtistAliases(track.artistAliases),
-    reason: track.reason ? String(track.reason).trim() : null,
-    ...albumPlacement(track),
-  };
 };
 
 export const newBlankFlow = (flows: Partial<Flow>[]) =>

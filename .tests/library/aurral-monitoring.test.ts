@@ -36,10 +36,11 @@ const [
   { downloadTracker },
   { downloadWorker },
   { lidarrClient },
-  { systemTaskQueue, systemTaskSchema },
+  { systemTaskQueue },
   { processSystemTask },
   { clearMetadataProviderCaches },
   { scanMusicRoot },
+  { systemTaskSchema },
 ] = await setupIsolatedBackend(
   "aurral-monitoring",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -56,6 +57,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
 );
 
 const artistMbid = "a1111111-1111-4111-8111-111111111111";

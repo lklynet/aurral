@@ -26,7 +26,7 @@ import { mapPreviewTracks } from "./deezerPreviewTracks.ts";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { TrendingArtistsRail } from "./TrendingArtistsRail";
 import { usePlaylistShelf } from "./usePlaylistShelf";
-import { useTrackSaveActions } from "./useTrackSaveActions";
+import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import "./TrendingPage.css";
 import StatePanel from "../components/StatePanel";

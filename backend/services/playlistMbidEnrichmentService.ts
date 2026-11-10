@@ -6,7 +6,7 @@ import {
   type DownloadJob,
   type JobFields,
 } from "./downloadJobs/downloadTracker.ts";
-import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
+import { withPlaylistMutationLock } from "./downloadJobs/downloadLocks.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";

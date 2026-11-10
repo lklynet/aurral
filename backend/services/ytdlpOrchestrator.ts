@@ -36,6 +36,11 @@ import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.ts";
+import {
+  recordTrackJobDownloading,
+  recordTrackJobMoving,
+  recordTrackJobSearching,
+} from "./aurralHistoryService.ts";
 
 const ytdlpClient = getDownloadClient("ytdlp");
 const SONG_READS = 6;
@@ -108,11 +113,7 @@ async function handleYtdlpSearch(payload: YtdlpPayload, helpers: YtdlpHelpers) {
     downloadSource: "ytdlp",
     downloadClient: "ytdlp",
   });
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-    .catch((err) => {
-      console.warn(err);
-    });
+  recordTrackJobSearching(job);
 
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),
@@ -238,11 +239,7 @@ async function handleYtdlpDownload(payload: YtdlpPayload, helpers: YtdlpHelpers)
   if (!url) {
     return helpers.failOrTryNextSource(payload, job, "No yt-dlp video URL available");
   }
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
-    .catch((err) => {
-      console.warn(err);
-    });
+  recordTrackJobDownloading(job);
 
   let downloaded;
   try {
@@ -364,11 +361,7 @@ async function handleYtdlpFinalize(payload: YtdlpPayload, helpers: YtdlpHelpers)
   const finalPath = path.join(finalDir, finalName);
   const committed = await withPipelineCommitLock(payload, async () => {
     await writeAudioMetadata(filePath, resolvedTrack);
-    import("./aurralHistoryService.ts")
-      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err) => {
-        console.warn(err);
-      });
+    recordTrackJobMoving(job);
     const committedFinalPath = await commitDownloadedFile(filePath, finalPath);
     await ytdlpClient.cleanupStaging(job.id);
     return finalizePipelineJobSuccess({

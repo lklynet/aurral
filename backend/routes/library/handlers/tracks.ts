@@ -3,14 +3,16 @@ import { createMiddleware } from "hono/factory";
 import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
-import { hasPermission } from "../../../middleware/auth.ts";
+import { hasPermission } from "../../../services/auth.ts";
 import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
-import type { deezerGetAlbumTracks } from "../../../services/apiClients/index.ts";
-import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
+import {
+  enrichTracksWithDeezerPreviews,
+  deezerGetAlbumTracks,
+} from "../../../services/apiClients/index.ts";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.ts";
@@ -19,7 +21,7 @@ import {
   getLibraryReadModelForAlbumReferences,
 } from "../../../services/libraryReadModel.ts";
 import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
-import { stripFilesystemPaths } from "./libraryIndex.ts";
+import { stripFilesystemPaths } from "../../../services/publicLibrary.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
@@ -219,7 +221,6 @@ export default new Hono<AppEnv>()
 
       if (tracks.length === 0 && releaseGroupMbid) {
         if (releaseGroupMbid.startsWith("dz-")) {
-          const { deezerGetAlbumTracks } = await import("../../../services/apiClients/index.ts");
           const dzTracks = await deezerGetAlbumTracks(releaseGroupMbid);
           tracks = dzTracks.map((t) => ({
             ...t,

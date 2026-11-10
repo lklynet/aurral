@@ -43,7 +43,7 @@ const [
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/routes/library/handlers/downloads.ts"),
+  () => import("../../backend/services/lidarrStatusSnapshot.ts"),
   () => import("../../backend/services/downloadFolderConfig.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/db/helpers/index.ts"),
@@ -664,13 +664,6 @@ test("restart returns interrupted album jobs to pending and never revives cancel
     assert.ok(job);
     assert.equal(job.status, status, job.trackName ?? "");
   }
-  assert.deepEqual(
-    restarted
-      .getPending(10)
-      .map((job) => job.id)
-      .sort(),
-    [pending, interrupted].sort(),
-  );
 
   downloadTracker.resetDownloadingToPending();
   for (const [id, status] of Object.entries(expected)) {

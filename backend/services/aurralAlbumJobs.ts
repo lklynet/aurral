@@ -10,10 +10,15 @@ import {
   setActiveDownloadAttemptId,
 } from "./downloadJobs/downloadCancellation.ts";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
+import { withPlaylistMutationLock } from "./downloadJobs/downloadLocks.ts";
 import { logger } from "./logger.ts";
 import type { LibraryTrack } from "./libraryQueryService.ts";
 import type { JsonObject } from "./jobs/queue.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { downloadPipelineQueue } from "./jobs/queues.ts";
+import { db } from "../config/db-sqlite.ts";
+import { replaceAlbumDownloadLeaderInTransaction } from "./downloadJobs/downloadOwnership.ts";
+import { recordTrackJobSearching } from "./aurralHistoryService.ts";
 
 export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);
 export const RETRYABLE_JOB_STATUSES = new Set([...ACTIVE_JOB_STATUSES, "failed", "cancelled"]);
@@ -253,7 +258,6 @@ export async function cancelAurralAlbumJobs(albumMbid: AlbumMbids) {
 }
 
 export async function cancelTrackDownload(jobId: string) {
-  const { withPlaylistMutationLock } = await import("./downloadJobs/mutationGuards.ts");
   const job = downloadTracker.getJob(jobId);
   if (!job) return { statusCode: 404, error: "Track not found" };
   return withPlaylistMutationLock(job.playlistId || job.playlistType, async () => {
@@ -266,7 +270,6 @@ export async function cancelTrackDownload(jobId: string) {
         status: current.status,
       };
     }
-    const { downloadPipelineQueue } = await import("./jobs/queues.ts");
     const grab = downloadPipelineQueue
       .list()
       .map(({ payload }) => payload)
@@ -284,9 +287,6 @@ export async function cancelTrackDownload(jobId: string) {
     const [peer] = peers;
     if (grab && peer) {
       if (grab.jobId === jobId) {
-        const { db } = await import("../config/db-sqlite.ts");
-        const { replaceAlbumDownloadLeaderInTransaction } =
-          await import("./downloadJobs/downloadOwnership.ts");
         const redirect = db.transaction(() =>
           replaceAlbumDownloadLeaderInTransaction(jobId, peer.id, { retainCancelled: true }),
         )();
@@ -305,7 +305,6 @@ export async function cancelTrackDownload(jobId: string) {
 }
 
 export async function cancelTrackDownloads(jobIds: string[]) {
-  const { withPlaylistMutationLock } = await import("./downloadJobs/mutationGuards.ts");
   const activeJobs = () =>
     jobIds
       .map((jobId) => downloadTracker.getJob(jobId))
@@ -341,8 +340,7 @@ export async function retryTrackDownload(jobId: string) {
     }
   }
 
-  const { withPlaylistMutationLock, wakeDownloadWorker } =
-    await import("./downloadJobs/mutationGuards.ts");
+  const { wakeDownloadWorker } = await import("./downloadJobs/downloadWorker.ts");
   job = downloadTracker.getJob(jobId);
   const result = await withPlaylistMutationLock(job?.playlistId || job?.playlistType, async () => {
     const current = downloadTracker.getJob(jobId);
@@ -376,7 +374,6 @@ export async function retryTrackDownload(jobId: string) {
   });
 
   if (result.statusCode) return result;
-  const { recordTrackJobSearching } = await import("./aurralHistoryService.ts");
   recordTrackJobSearching(downloadTracker.getJob(jobId));
   await wakeDownloadWorker();
   return result;

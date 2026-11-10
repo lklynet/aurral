@@ -35,9 +35,10 @@ const [
   { processPipelineJob },
   { withPlaylistMutationLock },
   { scanMusicRoot },
-  { playbackTaskQueue, systemTaskSchema },
+  { playbackTaskQueue },
   { processSystemTask },
   { refreshCompletedPipelinePlaylist },
+  { systemTaskSchema },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -54,11 +55,12 @@ const [
   () => import("../../backend/services/downloadUtils.ts"),
   () => import("../../backend/services/downloadJobs/blockedJobReview.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
-  () => import("../../backend/services/downloadJobs/mutationGuards.ts"),
+  () => import("../../backend/services/downloadJobs/downloadLocks.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/pipelineHelpers.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
 );
 
 function takePlaylistSyncs() {

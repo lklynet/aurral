@@ -4,7 +4,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { parseResponse } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
-import type { Flow } from "./playlistStats.ts";
+import type { Flow } from "../../utils/playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 

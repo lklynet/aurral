@@ -5,7 +5,7 @@ import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
 import type { BrowseProvider } from "../../lib/browsePlaylists.ts";
 import type { ShelfScope } from "../../backend/services/importLists/deezerPlaylists.ts";
-import { normalizeDiscoveryData } from "./pages/discoverUtils.ts";
+import { normalizeDiscoveryData } from "./utils/discoverUtils.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import { pluginsClient } from "./utils/api/clients/plugins.ts";
 import { settingsClient } from "./utils/api/clients/settings.ts";

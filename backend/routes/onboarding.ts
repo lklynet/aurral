@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import * as v from "valibot";
 import { dbOps, userOps } from "../db/helpers/index.ts";
-import { hashPassword } from "../middleware/passwordHash.ts";
+import { hashPassword } from "../services/passwordHash.ts";
 import { defaultData } from "../config/constants.ts";
 import { createSession } from "../config/session-helpers.ts";
-import { requirePasswordStrength, reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
+import { requirePasswordStrength, reconcileLocalNetworkBypassSetting } from "../services/auth.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validateDownloadFolderPath } from "../services/downloadFolderConfig.ts";
@@ -16,6 +16,7 @@ import {
 } from "../services/libraryFiles/readOnlyFolders.ts";
 import { logger } from "../services/logger.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { enqueueDiscoveryRefresh } from "../services/discovery/refreshScheduler.ts";
 
 const completeBody = v.object({
   authUser: v.nullish(v.string()),
@@ -113,7 +114,6 @@ export default new Hono<AppEnv>()
 
       reconcileLocalNetworkBypassSetting();
 
-      const { enqueueDiscoveryRefresh } = await import("../services/discovery/refreshScheduler.ts");
       enqueueDiscoveryRefresh({ reason: "onboarding" });
 
       return c.json({ success: true, token }, 200);

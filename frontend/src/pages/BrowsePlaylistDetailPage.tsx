@@ -35,7 +35,7 @@ import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { playlistPath } from "../navigation/playlistPaths";
 import { readRouteSeed } from "../navigation/routeSeed.ts";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
-import { useTrackSaveActions } from "./useTrackSaveActions";
+import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
 import { mapPreviewTracks, type PreviewTrack } from "./deezerPreviewTracks.ts";
 
 const SAVE_COPY: Record<

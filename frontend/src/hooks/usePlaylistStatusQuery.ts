@@ -1,10 +1,10 @@
 import { useCallback, useEffect } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { useWebSocketChannel } from "../../hooks/useWebSocket";
-import { playlistStatusQueryOptions } from "../../queryOptions.ts";
-import { queryClient, queryKeys } from "../../queryClient.ts";
-import type { PlaylistStatus } from "./playlistStats.ts";
-import type { WebSocketChannelMessage } from "../../../../backend/services/websocketService.ts";
+import { useWebSocketChannel } from "./useWebSocket";
+import { playlistStatusQueryOptions } from "../queryOptions.ts";
+import { queryClient, queryKeys } from "../queryClient.ts";
+import type { PlaylistStatus } from "../utils/playlistStats.ts";
+import type { WebSocketChannelMessage } from "../../../backend/services/websocketService.ts";
 
 const ACTIVE_POLL_INTERVAL_MS = 4000;
 const IDLE_POLL_INTERVAL_MS = 30000;

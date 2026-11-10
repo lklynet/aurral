@@ -36,7 +36,7 @@ const libraryView = async (
 ) => {
   if (search.get("preview") === "1") return [];
   const { libraryListParams, libraryViewQueryOptions, resolveLibrarySection } =
-    await import("../pages/libraryViewQuery.ts");
+    await import("../utils/libraryViewQuery.ts");
   const { albumId, artistId } = view;
   if (albumId || artistId) return [prefetchable(libraryViewQueryOptions({ albumId, artistId }))];
   const section = resolveLibrarySection(view.section);

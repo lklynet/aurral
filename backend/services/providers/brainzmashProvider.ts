@@ -24,7 +24,7 @@ import {
   type NormalizedArtist,
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
-import { selectBestAlbumImage } from "../imageService.ts";
+import { selectBestAlbumImage } from "../imageRanking.ts";
 import {
   coreAlbumTitle,
   isSilenceTrack,
@@ -1055,11 +1055,6 @@ export async function listArtistAlbums(
     artistName: artist.name,
     artistId: artist.id,
   }));
-}
-
-export async function getArtistGenres(artistMbid: string) {
-  const artist = await getArtistByMbid(artistMbid);
-  return artist.genres || [];
 }
 
 export async function getArtistNameByMbid(

@@ -19,7 +19,7 @@ applyIsolatedBackendEnv(isolatedState);
 
 const { db } = await import("../../backend/config/db-sqlite.ts");
 const { dbOps, userOps } = await import("../../backend/db/helpers/index.ts");
-const { hashPassword } = await import("../../backend/middleware/passwordHash.ts");
+const { hashPassword } = await import("../../backend/services/passwordHash.ts");
 dbOps.updateSettings({ downloadFolderPath: path.join(isolatedState.dataDir, "downloads") });
 const [
   { flowPlaylistConfig },

@@ -2,10 +2,8 @@ import { useMemo } from "react";
 import { useMutation, useMutationState } from "@tanstack/react-query";
 import { useToast } from "../contexts/ToastContext";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.ts";
-import {
-  getApiErrorMessage,
-  type buildStaticPlaylistTrackPayload,
-} from "../pages/ArtistDetails/utils";
+import { type buildStaticPlaylistTrackPayload } from "../utils/staticPlaylists.ts";
+import { getApiErrorMessage } from "../utils/api/errors.ts";
 
 type AddTrackRequest = {
   payload: ReturnType<typeof buildStaticPlaylistTrackPayload>;
@@ -46,7 +44,7 @@ export function useAddTrackToLibrary() {
             : `Added ${payload.trackName} to your library`,
       );
     } catch (err) {
-      showError(getApiErrorMessage(err) || "Failed to add track to library");
+      showError(getApiErrorMessage(err, "Failed to add track to library"));
     } finally {
       sending.delete(savingKey);
     }

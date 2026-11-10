@@ -1,5 +1,5 @@
 import { RELEASE_LIST_VIEW_MODE_KEY } from "./constants.ts";
-import { TAG_COLORS } from "../discoverUtils.ts";
+import { TAG_COLORS } from "../../utils/discoverUtils.ts";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import {
@@ -7,7 +7,7 @@ import {
   type LibraryAlbum as LibraryPageAlbum,
 } from "../../utils/libraryPageData.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
-import { asApiError, resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
 import type { LegacyReleaseGroupSummary } from "../../../../backend/services/providers/brainzmashMappers.ts";
 import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetailsStream.ts";
@@ -84,17 +84,6 @@ interface LibraryAlbum extends Pick<ReleaseGroup, "mbid" | "foreignAlbumId"> {
   artistId?: string | number | null;
   monitored?: boolean;
 }
-
-export const getApiErrorText = (error: unknown, key: "message" | "error") => {
-  const data = asApiError(error)?.response?.data;
-  const value = typeof data === "object" && data ? data[key] : undefined;
-  return typeof value === "string" ? value : undefined;
-};
-
-export const getApiErrorMessage = (error: unknown) =>
-  getApiErrorText(error, "message") ||
-  getApiErrorText(error, "error") ||
-  asApiError(error)?.message;
 
 export const readReleaseListViewMode = (): ReleaseListViewMode => {
   if (typeof window === "undefined") return "grid";
@@ -192,80 +181,6 @@ export const deduplicateAlbums = <T extends LibraryAlbum>(albums: T[]): T[] => {
     return true;
   });
 };
-
-export const normalizePlaylistNameKey = (value: string | null | undefined) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-export const reserveUniquePlaylistName = (
-  playlists: readonly { name?: string | null }[] | null | undefined,
-  baseName = "Playlist",
-) => {
-  const normalizedBase = String(baseName || "").trim() || "Playlist";
-  const existing = new Set(
-    (playlists ?? []).map((playlist) => normalizePlaylistNameKey(playlist?.name)).filter(Boolean),
-  );
-  if (!existing.has(normalizedBase.toLowerCase())) {
-    return normalizedBase;
-  }
-  let index = 2;
-  while (index < 10000) {
-    const candidate = `${normalizedBase} ${index}`;
-    if (!existing.has(candidate.toLowerCase())) {
-      return candidate;
-    }
-    index += 1;
-  }
-  return `${normalizedBase} ${Date.now()}`;
-};
-
-const normalizeTrackDurationMs = (value: unknown) =>
-  value != null && Number.isFinite(Number(value)) ? Number(value) : null;
-
-interface StaticPlaylistTrackInput {
-  artistName?: string;
-  trackName?: string;
-  albumName?: string;
-  artistMbid?: string;
-  albumMbid?: string;
-  releaseMbid?: string | null;
-  trackMbid?: string;
-  releaseYear?: string | null;
-  durationMs?: number | null;
-  trackNumber?: number | null;
-  discNumber?: number | null;
-  reason?: string | null;
-}
-
-export const buildStaticPlaylistTrackPayload = ({
-  artistName = "",
-  trackName = "",
-  albumName = "",
-  artistMbid = "",
-  albumMbid = "",
-  releaseMbid = null,
-  trackMbid = "",
-  releaseYear = null,
-  durationMs = null,
-  trackNumber = null,
-  discNumber = null,
-  reason = null,
-}: StaticPlaylistTrackInput = {}) => ({
-  artistName,
-  trackName,
-  albumName,
-  artistMbid,
-  albumMbid,
-  releaseMbid: releaseMbid || null,
-  trackMbid,
-  releaseYear: releaseYear || null,
-  durationMs: normalizeTrackDurationMs(durationMs),
-  trackNumber: trackNumber || null,
-  discNumber: discNumber || null,
-  reason,
-  artistAliases: [],
-});
 
 const ownText = (table: Partial<Record<string, string>>, key: string) =>
   Object.hasOwn(table, key) ? table[key] : undefined;

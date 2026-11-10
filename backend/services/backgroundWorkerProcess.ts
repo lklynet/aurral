@@ -50,12 +50,10 @@ async function handleDownloadOwnerCommand(
 ) {
   const { requestId, method, args = [] } = message;
   try {
-    const [{ dbOps }, { invalidateFlowPlaylistConfigCache }, { downloadOwnerCommands }] =
-      await Promise.all([
-        import("../db/helpers/index.ts"),
-        import("./playlists/flowPlaylistConfig.ts"),
-        import("./downloadJobs/downloadOwnerCommands.ts"),
-      ]);
+    const [{ invalidateFlowPlaylistConfigCache }, { downloadOwnerCommands }] = await Promise.all([
+      import("./playlists/flowPlaylistConfig.ts"),
+      import("./downloadJobs/downloadOwnerCommands.ts"),
+    ]);
     if (
       !downloadWorker ||
       typeof method !== "string" ||
@@ -64,7 +62,6 @@ async function handleDownloadOwnerCommand(
     ) {
       throw new Error("Unsupported download worker command");
     }
-    dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
     const result: unknown = await Reflect.apply(downloadOwnerCommands[method], undefined, args);
     if (process.connected) {

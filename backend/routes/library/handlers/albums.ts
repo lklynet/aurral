@@ -3,16 +3,21 @@ import { createMiddleware } from "hono/factory";
 import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { hasPermission } from "../../../middleware/auth.ts";
+import { hasPermission } from "../../../services/auth.ts";
 import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
-import { invalidateAllDownloadStatusesCache } from "./downloads.ts";
+import { invalidateAllDownloadStatusesCache } from "../../../services/lidarrStatusSnapshot.ts";
 import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
 import { asAppError, type AppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
+import { resolveDeezerAlbumToMbid } from "../../../services/apiClients/index.ts";
+import {
+  recordAlbumRequested,
+  recordAlbumSearchCompleted,
+} from "../../../services/aurralHistoryService.ts";
 
 type AlbumAddFailure = Extract<
   Awaited<ReturnType<typeof libraryManager.addAlbum>>,
@@ -145,8 +150,6 @@ export default new Hono<AppEnv>()
 
         let mbid = releaseGroupMbid;
         if (releaseGroupMbid.startsWith("dz-")) {
-          const { resolveDeezerAlbumToMbid } =
-            await import("../../../services/apiClients/index.ts");
           const artist = await libraryManager.getArtistById(artistId, { managedBy });
           const artistName = artist?.artistName || "";
           const resolved = await resolveDeezerAlbumToMbid(artistName, albumName, releaseGroupMbid);
@@ -190,7 +193,6 @@ export default new Hono<AppEnv>()
             isErrorStatus(album.statusCode) ? album.statusCode : 503,
           );
         }
-        const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.ts");
         recordAlbumRequested({
           albumId: album.id,
           requestGroupId: album.requestGroupId,
@@ -246,8 +248,6 @@ export default new Hono<AppEnv>()
           result?.managedBy === "aurral"
             ? result?.status === "queued"
             : triggerSearch || searchOnAdd || result?.status === "searching";
-        const { recordAlbumRequested, recordAlbumSearchCompleted } =
-          await import("../../../services/aurralHistoryService.ts");
         const historyAlbum = {
           albumId: result?.album?.id,
           albumName: result?.album?.albumName || albumName,

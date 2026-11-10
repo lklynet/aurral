@@ -1,4 +1,4 @@
-import { artistMatchesGenre } from "./discoverUtils";
+import { artistMatchesGenre } from "../utils/discoverUtils";
 
 const NEW_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 const SEED_RAIL_LIMIT = 3;

@@ -9,7 +9,6 @@ import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
 import { buildPlaylistTrackIdentity } from "../playlists/playlistTracks.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import {
   isDownloadOwnerProcess,
   requestDownloadOwner,
@@ -69,7 +68,6 @@ export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImport
     }
     return response.result;
   } finally {
-    dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
   }
 }

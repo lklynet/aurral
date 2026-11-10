@@ -34,8 +34,6 @@ import {
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import {
   deduplicateAlbums,
-  getApiErrorMessage,
-  getApiErrorText,
   getDownloadStatusLabel,
   buildLibraryReleaseGroups,
   isLibraryAlbumComplete,
@@ -47,6 +45,7 @@ import { useDownloadStatuses, type DownloadStatuses } from "../../../hooks/useDo
 import type { LibraryArtistRecord, useArtistDetailsStream } from "./useArtistDetailsStream.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
 import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
+import { getApiErrorMessage, getApiErrorText } from "../../../utils/api/errors.ts";
 
 type ArtistDetailsStream = ReturnType<typeof useArtistDetailsStream>;
 export type ArtistDetailsLibrary = ReturnType<typeof useArtistDetailsLibrary>;
@@ -402,7 +401,7 @@ export function useArtistDetailsLibrary({
       applyCustomizeDefaults(preferences);
     } catch (err) {
       setShowAddCustomizeModal(false);
-      showError(getApiErrorMessage(err) || "Failed to load Lidarr preferences");
+      showError(getApiErrorMessage(err, "Failed to load Lidarr preferences"));
     }
   };
 
@@ -463,9 +462,10 @@ export function useArtistDetailsLibrary({
         showInfo(`${artist.name}: ${conflict.message}`);
         return false;
       }
-      const message = `Could not add ${artist.name}. Nothing was added. ${
-        getApiErrorMessage(err) || "Try again."
-      }`;
+      const message = `Could not add ${artist.name}. Nothing was added. ${getApiErrorMessage(
+        err,
+        "Try again.",
+      )}`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
       else showError(message);
       return false;
@@ -574,7 +574,7 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Could not request ${title}. Nothing was added. ${getApiErrorMessage(err) || "Try again."}`,
+        `Could not request ${title}. Nothing was added. ${getApiErrorMessage(err, "Try again.")}`,
       );
     } finally {
       setRequestingAlbum(null);

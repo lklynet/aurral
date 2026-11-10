@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { http, isTransientNetworkError } from "../../../lib/http.ts";
+import { http, isTransientNetworkError, waitBeforeRetry } from "../../../lib/http.ts";
 import { createHash } from "node:crypto";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
@@ -219,8 +219,7 @@ export async function lastfmRequest(
           if (sharedSignal.aborted) throw sharedSignal.reason || error;
           lastError = error;
           if (retryCount < maxRetries && isRetryable(error)) {
-            const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            await waitBeforeRetry(retryCount);
             continue;
           }
           break;

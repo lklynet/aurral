@@ -1,7 +1,7 @@
 import * as client from "openid-client";
 import type { IDToken, UserInfoResponse } from "openid-client";
 import { createSession } from "../config/session-helpers.ts";
-import { toResolvedUser } from "../middleware/auth.ts";
+import { toResolvedUser, pruneExpired } from "./auth.ts";
 import type { ExchangeRequest } from "./oidcAuth.ts";
 import { dbOps, userOps, userIdentityOps } from "../db/helpers/index.ts";
 
@@ -57,18 +57,6 @@ function getGoogleConfig() {
 
 export function isGoogleLoginEnabled() {
   return !!getGoogleConfig();
-}
-
-function prunePendingLogins(now = Date.now()) {
-  for (const [state, entry] of pendingLogins) {
-    if (!entry || entry.expiresAt <= now) pendingLogins.delete(state);
-  }
-}
-
-function prunePendingExchanges(now = Date.now()) {
-  for (const [code, entry] of pendingExchanges) {
-    if (!entry || entry.expiresAt <= now) pendingExchanges.delete(code);
-  }
 }
 
 function getTransactionCookie(cookieHeader: string | undefined) {
@@ -135,7 +123,7 @@ export async function startGoogleAuth(mode: {
   const nonce = client.randomNonce();
   const transactionId = client.randomState();
 
-  prunePendingLogins();
+  pruneExpired(pendingLogins);
   pendingLogins.set(state, {
     codeVerifier,
     nonce,
@@ -169,7 +157,7 @@ export async function handleGoogleCallback(
 
   const state = query.state || "";
   const transactionId = getTransactionCookie(cookie);
-  prunePendingLogins();
+  pruneExpired(pendingLogins);
   const pending = pendingLogins.get(state);
   pendingLogins.delete(state);
   if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
@@ -248,7 +236,7 @@ export async function handleGoogleCallback(
   }
 
   const code = client.randomState();
-  prunePendingExchanges();
+  pruneExpired(pendingExchanges);
   pendingExchanges.set(code, {
     expiresAt: Date.now() + EXCHANGE_TTL_MS,
     transactionId,
@@ -260,7 +248,7 @@ export async function handleGoogleCallback(
 export function exchangeGoogleCallback(code: string | null | undefined, request: ExchangeRequest) {
   const transactionId = getTransactionCookie(request.cookie);
   const exchangeCode = String(code || "");
-  prunePendingExchanges();
+  pruneExpired(pendingExchanges);
   const pending = pendingExchanges.get(exchangeCode);
   if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
     throw Object.assign(new Error("Google login session expired"), { status: 400 });

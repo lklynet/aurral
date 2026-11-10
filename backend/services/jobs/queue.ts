@@ -14,6 +14,8 @@ export const WORKER_ID = `${PROCESS_GROUP}:${randomUUID()}`;
 
 export interface QueueConfig<Payload extends object> {
   name: string;
+  label?: string;
+  description?: string;
   group: WorkerGroup;
   leaseMs: number;
   maxAttempts: number;

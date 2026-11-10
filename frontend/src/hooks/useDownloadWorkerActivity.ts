@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { hasDownloadWorkerActivity, hasReviewActivity } from "./playlistStats";
+import { hasDownloadWorkerActivity, hasReviewActivity } from "../utils/playlistStats";
 import { usePlaylistStatusQuery } from "./usePlaylistStatusQuery";
 
 export function useDownloadWorkerActivity({ enabled = true } = {}) {

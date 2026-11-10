@@ -13,9 +13,9 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { queryKeys } from "../../queryClient.ts";
-import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
+import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
-import { getFlowDisplayTrackCount } from "./playlistStats";
+import { getFlowDisplayTrackCount } from "../../utils/playlistStats";
 import { getNextFlowName, newBlankFlow } from "./flowPageUtils";
 import {
   describeFlowSchedule,
@@ -24,7 +24,7 @@ import {
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
-import type { Flow } from "./playlistStats.ts";
+import type { Flow } from "../../utils/playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 

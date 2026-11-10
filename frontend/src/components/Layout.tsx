@@ -32,11 +32,7 @@ import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
-import {
-  SettingsLink,
-  readSettingsPath,
-  withoutSettingsParam,
-} from "../pages/Settings/settingsRoute";
+import { SettingsLink, readSettingsPath, withoutSettingsParam } from "../navigation/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import { useLegacyNav } from "../navigation/legacyNav.ts";

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import { listeningHistoryQueryOptions, spotifyHistoryQueryOptions } from "../queryOptions.ts";
-import { SettingsLink } from "./Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 
 const dismissedKey = (userId: string | number) => `aurral:discover-history-prompt:${userId}`;
 

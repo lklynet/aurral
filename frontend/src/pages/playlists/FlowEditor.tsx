@@ -17,10 +17,10 @@ import {
   SettingsShell,
 } from "../Settings/SettingsLayout.tsx";
 import { FlowFormFields } from "./components/flowFormComponents.tsx";
-import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
+import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
 import { buildFlowFromForm, flowToForm, isFlowDirty, newBlankFlow } from "./flowPageUtils.ts";
 import type { FlowDraft } from "./flowPageUtils.ts";
-import type { Flow } from "./playlistStats.ts";
+import type { Flow } from "../../utils/playlistStats.ts";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
 import { formatTrackTotal, usePlaylistTracks } from "./playlistPageUtils.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus.ts";

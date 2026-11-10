@@ -16,13 +16,15 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, subsonic, libraryStore, artworkService] = await setupIsolatedBackend(
-  "subsonic-library",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/subsonicLibraryService.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/customArtworkService.ts"),
-);
+const [isolatedState, { db }, subsonic, libraryStore, artworkService, { resolveLibraryTracks }] =
+  await setupIsolatedBackend(
+    "subsonic-library",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/subsonicLibraryService.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/customArtworkService.ts"),
+    () => import("../../backend/services/libraryTrackLookup.ts"),
+  );
 
 const {
   getSong,
@@ -35,7 +37,6 @@ const {
   idFor,
   parseId,
   resolveStreamPath,
-  resolveLibraryTracks,
   resolveCustomArtwork,
   starMany,
 } = subsonic;
@@ -616,7 +617,7 @@ test("keeping a flow track moves its file into the Library, even under another p
   });
 
   const { withPlaylistMutationLock } =
-    await import("../../backend/services/downloadJobs/mutationGuards.ts");
+    await import("../../backend/services/downloadJobs/downloadLocks.ts");
   const kept = await withPlaylistMutationLock("subsonic-keep-playlist", () =>
     starMany(user, [idFor("flow-song", `${flow.id}:${flowJobId}`)]),
   );

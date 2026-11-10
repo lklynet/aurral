@@ -7,8 +7,8 @@ import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
-import { readApiError } from "../utils/apiError.ts";
 import { SettingsGroup, SettingsNote, SettingsRow } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type Identity = InferResponseType<typeof usersClient.me.identities.$get, 200>["identities"][number];
 type StartLink = () => Promise<{ authUrl: string }>;

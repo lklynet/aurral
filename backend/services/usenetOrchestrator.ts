@@ -45,12 +45,17 @@ import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.ts";
-import { getQualityProfile } from "./qualityProfileService.ts";
+import { getQualityProfile } from "./qualityProfile.ts";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.ts";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.ts";
 import { attemptTrackRequest } from "./releaseManifest.ts";
 import { attemptRelease } from "./releaseResolver.ts";
 import { getSourceLabel } from "./downloadSourceService.ts";
+import {
+  recordTrackJobDownloading,
+  recordTrackJobMoving,
+  recordTrackJobSearching,
+} from "./aurralHistoryService.ts";
 
 const searchResults = createSearchResultCache<UsenetRelease>();
 const MIN_USENET_CANDIDATES = 2;
@@ -523,11 +528,7 @@ async function handleUsenetSearch(payload: UsenetPayload, helpers: PipelineHelpe
     downloadTracker.updateDownloadMetadata(job.id, {
       downloadSource: source,
     });
-    import("./aurralHistoryService.ts")
-      .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-      .catch((err) => {
-        console.warn(err);
-      });
+    recordTrackJobSearching(job);
   }
 
   const release = await attemptRelease(payload, job);
@@ -642,11 +643,7 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   if (!candidate || !release?.downloadUrl) {
     return helpers.failOrTryNextSource(payload, job, "No Usenet release URL available");
   }
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
-    .catch((err) => {
-      console.warn(err);
-    });
+  recordTrackJobDownloading(job);
 
   const source = nzbSource(payload);
   const tidarr = source === "tidarr";
@@ -912,11 +909,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
   const committed = await withPipelineCommitLock(payload, async () => {
-    import("./aurralHistoryService.ts")
-      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err) => {
-        console.warn(err);
-      });
+    recordTrackJobMoving(job);
     const preserveSource = hasOtherNzbConsumers(client.key, payload.nzbId, job.id);
     // Once the last consumer commits, no later job may attach to a source
     // that this operation is about to move away.

@@ -1,3 +1,4 @@
+import { isRecord } from "../../lib/isRecord.ts";
 import path from "node:path";
 import { isNzbSource } from "./usenetClientCommon.ts";
 import {
@@ -106,9 +107,6 @@ export function deniedAlbumSources(jobs: JobFields<"deniedRemoteSources">[], sou
 
 // Blocks the attempted release for every track it did not fill, so neither
 // the next album attempt nor a per-track search takes it again.
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJob[]) {
   const candidate = getPayloadCandidate(payload);
   const raw = isRecord(candidate?.raw) ? candidate.raw : null;
@@ -191,7 +189,7 @@ function giveBack(
   }
   if (!released) return;
   recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
-  void import("./downloadJobs/mutationGuards.ts")
+  void import("./downloadJobs/downloadWorker.ts")
     .then(({ wakeDownloadWorker }) => wakeDownloadWorker())
     .catch(() => {});
 }

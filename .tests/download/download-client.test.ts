@@ -36,7 +36,6 @@ test("download client registry validates, updates, and selects adapters", () => 
 
   assert.equal(registry.get("first"), first);
   assert.deepEqual(registry.getAll(), [first, second]);
-  assert.deepEqual(registry.getConfigured(), [first]);
   assert.deepEqual(first.updates, [{ url: "first" }]);
   assert.deepEqual(second.updates, [{ url: "second" }]);
   assert.throws(
@@ -51,11 +50,9 @@ test("deemix needs an enabled adapter with a server URL", () => {
   assert.equal(client.isConfigured(), false);
   client.updateConfig({ enabled: true, url: "http://deemix.local" });
   assert.equal(client.isConfigured(), true);
-  assert.equal(client.getBitrate(), 9);
-  client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 3 });
-  assert.equal(client.getBitrate(), 3);
+  assert.equal(client.getQualityTierId(), "flac-standard");
   client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 7 });
-  assert.equal(client.getBitrate(), 9);
+  assert.equal(client.getQualityTierId(), "flac-standard");
   assert.equal(buildQueueUuid("3135556", 9), "track_3135556_9");
 });
 

@@ -16,7 +16,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule, 
     "oidc-auth",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/services/auth.ts"),
     () => import("../../backend/config/session-helpers.ts"),
     () => import("../../backend/services/oidcAuth.ts"),
     () => import("../../backend/routes/api.ts"),
@@ -764,7 +764,7 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
     assert.equal(userOps.getUserById(user.id)?.roleSource, "oidc");
     assert.deepEqual(userOps.getUserById(user.id)?.permissions, storedLocalPermissions);
 
-    userOps.setProtected(user.id, true);
+    db.prepare("UPDATE users SET is_protected = 1 WHERE id = ?").run(user.id);
     delete process.env.OIDC_ADMIN_USERS;
     const loggedInAgain = await login();
     assert.equal(

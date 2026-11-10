@@ -24,6 +24,7 @@ const [
   workerModule,
   orchestratorWorker,
   queues,
+  { finalizeQualityUpgradeSuccess },
 ] = await setupIsolatedBackend(
   "download-tracker",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -33,6 +34,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/services/qualityUpgradeOutcome.ts"),
 );
 
 const { DownloadTracker } = trackerModule;
@@ -1145,11 +1147,7 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
   const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
 
   await assert.doesNotReject(
-    qualityProfileService.finalizeQualityUpgradeSuccess(
-      trackedJob(tracker, upgradeId),
-      finalPath,
-      undefined,
-    ),
+    finalizeQualityUpgradeSuccess(trackedJob(tracker, upgradeId), finalPath, undefined),
   );
   assert.equal(tracker.getJob(upgradeId), null);
   assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
@@ -1177,7 +1175,8 @@ test("classifies reused Lidarr files without making them eligible for upgrades",
   const result = await qualityProfileService.reclassifyQualityJobs();
   const job = tracker.getJob(jobId);
   assert.ok(job != null);
-  const decorated = qualityProfileService.decorateJobQuality(job);
+  const { decorateJobQuality } = await import("../../backend/services/qualityProfile.ts");
+  const decorated = decorateJobQuality(job);
 
   assert.equal(result.classified, 1);
   assert.equal(job.qualityTier, "mp3-128");

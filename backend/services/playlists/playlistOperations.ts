@@ -27,16 +27,16 @@ import {
 } from "../downloadJobs/fileReuse.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.ts";
-import { isAurralOwnedPath } from "../qualityProfileService.ts";
+import { isAurralOwnedPath } from "../qualityProfile.ts";
 import { playlistManager } from "./playlistManager.ts";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
-import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import {
+  downloadWorker,
   restartWorkerIfPending,
   wakeDownloadWorker,
-  withPlaylistMutation,
-  withPlaylistMutationLock,
-} from "../downloadJobs/mutationGuards.ts";
+} from "../downloadJobs/downloadWorker.ts";
+import { withPlaylistMutationLock } from "../downloadJobs/downloadLocks.ts";
+import { withPlaylistMutation } from "../downloadJobs/mutationGuards.ts";
 import { withLock } from "../jobs/queue.ts";
 import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
@@ -59,6 +59,7 @@ import type {
 import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
+import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 
 const operationTokenKey = (scope: string) => `playlistOperationTokens:${encodeURIComponent(scope)}`;
 
@@ -713,7 +714,6 @@ async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {
     }
     if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
       const replacementJob = downloadTracker.getJob(replacementJobId);
-      const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
       await finalizeQualityUpgradeFailure(replacementJob!, "Could not queue a replacement search");
       return { success: false, queueFailed: true };
     }
@@ -794,7 +794,6 @@ async function researchLibraryTrack({ trackId, albumId }: OperationPayload = {})
   if (!replacementJobId) return { alreadyProcessing: true };
   if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
     const replacementJob = downloadTracker.getJob(replacementJobId);
-    const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
     await finalizeQualityUpgradeFailure(replacementJob!, "Could not queue a replacement search");
     return { success: false, queueFailed: true };
   }

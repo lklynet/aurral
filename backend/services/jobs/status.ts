@@ -1,167 +1,20 @@
 import { db } from "../../config/db-sqlite.ts";
 import { isOwnKey } from "../../../lib/ownKey.ts";
-import { parseJobPayload, type JobRow, type JsonObject } from "./queue.ts";
+import { getQueue, listQueues, parseJobPayload, type JobRow, type JsonObject } from "./queue.ts";
 import { listSchedules } from "./schedules.ts";
+import { describeSystemTask, SYSTEM_TASK_QUEUES } from "./systemTasks.ts";
 import { getWorkerStatuses } from "./worker.ts";
+import { getIsolatedWorkerStatuses } from "../appRuntime.ts";
+
+const SYSTEM_QUEUE_NAMES = new Set(SYSTEM_TASK_QUEUES.map((queue) => queue.name));
+const labelledQueues = () =>
+  listQueues()
+    .filter((queue) => queue.label)
+    .map((queue) => queue.name);
 
 const HISTORY_WINDOW_MS = 60 * 60 * 1000;
 const STALE_RUNNING_MS = 60 * 60 * 1000;
 const ROW_LIMIT = 500;
-
-const QUEUES = [
-  {
-    queue: "system-task",
-    label: "System maintenance",
-    description: "Runs housekeeping, startup checks, and scheduled playlist maintenance.",
-  },
-  {
-    queue: "release-metadata-refresh",
-    label: "Release metadata",
-    description: "Refreshes release catalogues outside playlist processing.",
-  },
-  {
-    queue: "system-task-maintenance",
-    label: "Background maintenance",
-    description: "Runs cleanup, news and chart refreshes, and playlist schedule checks.",
-  },
-  { queue: "system-task-inbox", label: "Inbox refreshes", description: "Refreshes the Inbox." },
-  {
-    queue: "playback",
-    label: "Playlist files",
-    description: "Writes playlist files for media servers, one job at a time.",
-  },
-  {
-    queue: "playlist-operation",
-    label: "Playlist operations",
-    description: "Applies playlist edits, flow cleanup, and track actions.",
-  },
-  {
-    queue: "flow-run",
-    label: "Flow runs",
-    description: "Picks new tracks for flows and queues their downloads.",
-  },
-  {
-    queue: "download-pipeline",
-    label: "Download pipeline",
-    description: "Searches, downloads, validates, and finalizes playlist tracks.",
-  },
-  {
-    queue: "playlist-mbid-enrichment",
-    label: "Playlist metadata",
-    description: "Fills missing MusicBrainz IDs on imported tracks.",
-  },
-  {
-    queue: "library-scan",
-    label: "Library scans",
-    description: "Scans files after Library or playlist changes.",
-  },
-  {
-    queue: "library-files",
-    label: "Library Files",
-    description: "Ingests folders and renames and upgrades Library files.",
-  },
-  {
-    queue: "discovery-refresh",
-    label: "Discovery refreshes",
-    description: "Refreshes discovery recommendations from library and listening data.",
-  },
-  {
-    queue: "discovery-user-refresh",
-    label: "Listening history refreshes",
-    description: "Refreshes user listening profiles used by discovery.",
-  },
-  {
-    queue: "notifications",
-    label: "Notifications",
-    description: "Delivers queued Gotify and webhook notifications and plugin events.",
-  },
-];
-
-const SYSTEM_TASK_QUEUES = new Set([
-  "system-task",
-  "system-task-maintenance",
-  "system-task-inbox",
-  "release-metadata-refresh",
-  "playback",
-]);
-
-const SYSTEM_TASK_LABELS = {
-  "playback-playlist-sync": {
-    label: "Playlist file sync",
-    description:
-      "Writes a playlist file for each flow and playlist, then writes changed files again once media servers have scanned new tracks.",
-  },
-  "history-server-sync": {
-    label: "Listening history import",
-    description: "Imports new plays from connected Navidrome, Plex, and Jellyfin servers.",
-  },
-  "playback-server-cleanup": {
-    label: "Old media server playlist cleanup",
-    description:
-      "Removes the playlists Aurral used to create in Navidrome, Plex, and Jellyfin, then forgets those connections.",
-  },
-  "flow-refresh": {
-    label: "Playlist schedule check",
-    description: "Queues enabled playlist flows that are due to run.",
-  },
-  "session-cleanup": { label: "Session cleanup", description: "Removes expired sign-in sessions." },
-  "flow-reuse-repair": {
-    label: "Playlist file reuse repair",
-    description: "Repairs reusable playlist file links when source files move.",
-  },
-  "review-timeout": {
-    label: "Review timeout",
-    description: "Denies tracks past the review deadline.",
-  },
-  "flow-startup-reuse-repair": {
-    label: "Startup playlist reuse repair",
-    description: "Checks reusable playlist links after Aurral starts.",
-  },
-  "flow-startup-check": {
-    label: "Startup playlist schedule check",
-    description: "Resumes playlist work and stops orphaned slskd searches at startup.",
-  },
-  "playlist-startup-publish": {
-    label: "Startup playlist publish",
-    description: "Queues a playlist file sync after Aurral starts.",
-  },
-  "discovery-refresh-check": {
-    label: "Discovery auto refresh check",
-    description: "Checks whether discovery recommendations need a scheduled refresh.",
-  },
-  "discovery-bootstrap": {
-    label: "Discovery startup check",
-    description: "Initializes discovery data and schedules the next refresh.",
-  },
-  "update-check": {
-    label: "Update check",
-    description: "Checks aurral.org for a newer Aurral build in this channel.",
-  },
-  "trending-charts-refresh": {
-    label: "Trending charts refresh",
-    description: "Updates the Trending charts from Deezer and Apple Music.",
-  },
-  "inbox-refresh": {
-    label: "Inbox refresh",
-    description: "Refreshes release, show, news, and discovery updates.",
-  },
-  "lidarr-files-release": {
-    label: "Lidarr turned off",
-    description: "Downloads Aurral copies of playlist and flow tracks that used Lidarr files.",
-  },
-  "read-only-folder-release": {
-    label: "Read-only folder removed",
-    description: "Downloads Aurral copies of playlist and flow tracks that used its files.",
-  },
-  "lidarr-retry": {
-    label: "Lidarr retry",
-    description: "Retries Lidarr library access after a temporary connection problem.",
-  },
-  "release-metadata-refresh": {
-    label: "Release metadata refresh",
-    description: "Refreshes recent and upcoming releases from BrainzMash.",
-  },
-};
 
 const DISCOVERY_REASONS = {
   scheduled: {
@@ -267,28 +120,18 @@ export interface TaskStatusReport {
   queue: TaskQueueRow[];
 }
 
-const queueInfo = new Map(QUEUES.map((entry) => [entry.queue, entry]));
-
 const titleize = (value: unknown) =>
   String(value || "")
     .replace(/[-_:]+/g, " ")
     .trim()
     .replace(/^\w/, (letter) => letter.toUpperCase());
 
-const queueLabel = (queue: string) => queueInfo.get(queue)?.label || titleize(queue) || "Task";
-
-function systemTask(kind: string) {
-  return isOwnKey(SYSTEM_TASK_LABELS, kind)
-    ? SYSTEM_TASK_LABELS[kind]
-    : {
-        label: titleize(kind) || "System task",
-        description: queueInfo.get("system-task")?.description ?? "",
-      };
-}
+const queueLabel = (queue: string) => getQueue(queue)?.label || titleize(queue) || "Task";
+const queueDescription = (queue: string) => getQueue(queue)?.description ?? "";
 
 function describe(queue: string, payload: JsonObject | null) {
-  const base = { label: queueLabel(queue), description: queueInfo.get(queue)?.description ?? "" };
-  if (SYSTEM_TASK_QUEUES.has(queue)) return systemTask(String(payload?.kind ?? ""));
+  const base = { label: queueLabel(queue), description: queueDescription(queue) };
+  if (SYSTEM_QUEUE_NAMES.has(queue)) return describeSystemTask(String(payload?.kind ?? ""));
   if (queue === "discovery-refresh") {
     const reason = String(payload?.reason ?? "");
     return isOwnKey(DISCOVERY_REASONS, reason) ? DISCOVERY_REASONS[reason] : base;
@@ -328,7 +171,7 @@ function describe(queue: string, payload: JsonObject | null) {
 }
 
 function summarizePayload(queue: string, payload: JsonObject | null) {
-  if (!payload || SYSTEM_TASK_QUEUES.has(queue)) return "";
+  if (!payload || SYSTEM_QUEUE_NAMES.has(queue)) return "";
   if (queue === "discovery-refresh" && payload.reason) return "";
   const parts = SUMMARY_KEYS.flatMap((key) => {
     const value = payload[key];
@@ -461,7 +304,6 @@ function formatInterval(ms: number) {
 async function readWorkerStatuses() {
   const statuses = new Map(getWorkerStatuses().map((worker) => [worker.name, worker]));
   try {
-    const { getIsolatedWorkerStatuses } = await import("../appRuntime.ts");
     for (const worker of getIsolatedWorkerStatuses()) statuses.set(worker.name, worker);
   } catch {}
   return statuses;
@@ -481,7 +323,7 @@ export async function getTaskStatus(now = Date.now()): Promise<TaskStatusReport>
   );
 
   const stats = new Map(statements.stats.all({ now, since }).map((row) => [row.queue, row]));
-  const workers = [...new Set([...QUEUES.map((entry) => entry.queue), ...stats.keys()])].map(
+  const workers = [...new Set([...labelledQueues(), ...stats.keys()])].map(
     (name): TaskWorkerRow => {
       const row = stats.get(name);
       const running = workerStatuses.get(name)?.running === true;
@@ -490,7 +332,7 @@ export async function getTaskStatus(now = Date.now()): Promise<TaskStatusReport>
         queue: name,
         queueLabel: queueLabel(name),
         name: queueLabel(name),
-        description: queueInfo.get(name)?.description ?? "",
+        description: queueDescription(name),
         status: processing > 0 ? "running" : running ? "idle" : "not_loaded",
         running,
         queued: row?.queued ?? 0,

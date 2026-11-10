@@ -1,9 +1,6 @@
-import { selectCanonicalFile } from "../../../services/canonicalFileSelector.ts";
-import {
-  getLibraryForArtistReferences,
-  getLibraryForTrackIds,
-} from "../../../services/libraryQueryService.ts";
-import { buildPublicLibrary } from "./libraryIndex.ts";
+import { selectCanonicalFile } from "./canonicalFileSelector.ts";
+import { getLibraryForArtistReferences, getLibraryForTrackIds } from "./libraryQueryService.ts";
+import { buildPublicLibrary } from "./publicLibrary.ts";
 
 export function toQueueTracks(trackIds: number[]) {
   const library = buildPublicLibrary(getLibraryForTrackIds({ ids: trackIds, availableOnly: true }));

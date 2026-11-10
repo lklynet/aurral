@@ -56,12 +56,12 @@ import PreviewChip from "./PreviewChip";
 import { DotLoader } from "./DotLoader";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
-import { trackDownloadActionLabel } from "../pages/library/libraryShared.tsx";
+import { trackDownloadActionLabel } from "../utils/trackDownloadLabel.ts";
 import { useStartRadio } from "../hooks/useQueueTrackActions";
 import { radioSeedFor } from "../utils/audioQueue";
-import { TrackPlaylistSubmenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
-import { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils";
-import { useTrackSaveActions } from "../pages/useTrackSaveActions.ts";
+import { TrackPlaylistSubmenu } from "./TrackPlaylistMenu";
+import { useTrackSaveActions } from "../hooks/useTrackSaveActions.ts";
+import { buildStaticPlaylistTrackPayload } from "../utils/staticPlaylists.ts";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;

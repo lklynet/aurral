@@ -1,7 +1,8 @@
 import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./aurralMonitoring.ts";
 import { UUID_REGEX } from "../../lib/uuid.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { enqueueSystemTask, releaseMetadataQueue } from "./jobs/queues.ts";
+import { releaseMetadataQueue } from "./jobs/queues.ts";
+import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { logger } from "./logger.ts";
 import { getAlbumByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
 import {

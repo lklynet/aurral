@@ -352,8 +352,6 @@ export function getUnresolvedLibraryArtists() {
     .map((artist) => ({ ...artist, albums: albumTitles(artist.albums) }));
 }
 
-export type UnresolvedLibraryArtist = ReturnType<typeof getUnresolvedLibraryArtists>[number];
-
 export function assignLibraryArtistMbid(artistId: number, mbid: string) {
   const key = buildIdentityKey("mbid", mbid);
   if (!key) return null;

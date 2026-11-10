@@ -23,7 +23,7 @@ import {
   usePlaylistTrackPlayback,
 } from "./playlists/components/playlistTrackComponents.tsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
-import { useTrackSaveActions } from "./useTrackSaveActions";
+import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
 import "./TrendingPage.css";
 
 export default function TrendingGenrePage() {

@@ -7,8 +7,8 @@ import { formatDate, formatRelativeTime } from "../../../utils/dateTime";
 import { shareLink } from "../../../utils/shareLink";
 import { DotLoader } from "../../../components/DotLoader";
 import { useToast } from "../../../contexts/ToastContext";
-import { readApiError } from "../utils/apiError.ts";
 import { SettingsGroup, SettingsNote, SettingsPage, SettingsRow } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 type ShareLinksResponse = InferResponseType<typeof shareLinksClient.$get, 200>;
 type ShareLinkResponse = ShareLinksResponse["links"][number];
 

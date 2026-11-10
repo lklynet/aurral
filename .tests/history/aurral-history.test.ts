@@ -335,7 +335,7 @@ test("queued album track jobs open their album, and other library jobs have no l
   );
 
   const { finalizeQualityUpgradeFailure } =
-    await import("../../backend/services/qualityProfileService.ts");
+    await import("../../backend/services/qualityUpgradeOutcome.ts");
   await finalizeQualityUpgradeFailure(
     {
       ...requireFixture(downloadTracker.getJob(withAlbum)),
@@ -368,7 +368,7 @@ test("a quality upgrade stays marked as one from queued to its result", async ()
   assert.equal(await upgradeOf(otherId), null);
 
   const { finalizeQualityUpgradeFailure } =
-    await import("../../backend/services/qualityProfileService.ts");
+    await import("../../backend/services/qualityUpgradeOutcome.ts");
   await finalizeQualityUpgradeFailure(upgradeJob, "No better file");
   assert.deepEqual(await upgradeOf(upgradeId), { fromQuality: "MP3 320" });
 });

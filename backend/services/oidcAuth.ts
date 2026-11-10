@@ -2,7 +2,7 @@ import * as client from "openid-client";
 import type { IDToken, UserInfoResponse } from "openid-client";
 import { db } from "../config/db-sqlite.ts";
 import { createSession } from "../config/session-helpers.ts";
-import { createSystemProvisionedUser, toResolvedUser } from "../middleware/auth.ts";
+import { createSystemProvisionedUser, toResolvedUser, parseCsv, pruneExpired } from "./auth.ts";
 import { userOps, userIdentityOps } from "../db/helpers/index.ts";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -34,26 +34,6 @@ const pendingExchanges = new Map<
 >();
 let discoveryConfig: DiscoveryConfig | null = null;
 let discoveryKey = "";
-
-function parseCsv(value: string | undefined) {
-  if (!value) return [];
-  return String(value)
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function prunePendingLogins(now = Date.now()) {
-  for (const [state, entry] of pendingLogins) {
-    if (!entry || entry.expiresAt <= now) pendingLogins.delete(state);
-  }
-}
-
-function prunePendingExchanges(now = Date.now()) {
-  for (const [code, entry] of pendingExchanges) {
-    if (!entry || entry.expiresAt <= now) pendingExchanges.delete(code);
-  }
-}
 
 export type ExchangeRequest = {
   cookie: string | undefined;
@@ -352,7 +332,7 @@ export async function startOidcLogin({
   const nonce = client.randomNonce();
   const transactionId = client.randomState();
 
-  prunePendingLogins();
+  pruneExpired(pendingLogins);
   pendingLogins.set(state, {
     codeVerifier,
     nonce,
@@ -423,7 +403,7 @@ export async function handleOidcCallback(
 
   const state = query.state || "";
   const transactionId = getTransactionCookie(cookie);
-  prunePendingLogins();
+  pruneExpired(pendingLogins);
   const pending = pendingLogins.get(state);
   pendingLogins.delete(state);
   if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
@@ -445,7 +425,7 @@ export async function handleOidcCallback(
     : resolveOidcSessionUser(config, claims);
 
   const code = client.randomState();
-  prunePendingExchanges();
+  pruneExpired(pendingExchanges);
   pendingExchanges.set(code, {
     expiresAt: Date.now() + EXCHANGE_TTL_MS,
     transactionId,
@@ -466,7 +446,7 @@ export function exchangeOidcCallback(code: string | null | undefined, request: E
 
   const transactionId = getTransactionCookie(request.cookie);
   const exchangeCode = String(code || "");
-  prunePendingExchanges();
+  pruneExpired(pendingExchanges);
   const pending = pendingExchanges.get(exchangeCode);
   if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
     throw Object.assign(new Error("OIDC login session expired"), { status: 400 });

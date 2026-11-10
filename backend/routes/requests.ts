@@ -7,14 +7,14 @@ import { validate } from "../middleware/validate.ts";
 import {
   getLidarrStatusSnapshot,
   invalidateAllDownloadStatusesCache,
-} from "./library/handlers/downloads.ts";
+} from "../services/lidarrStatusSnapshot.ts";
 import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
 import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
-import { hasPermission } from "../middleware/auth.ts";
+import { hasPermission } from "../services/auth.ts";
 import {
   ACTIVITY_VIEW_IDS,
   buildActivityPage,
@@ -22,6 +22,7 @@ import {
   normalizeActivityStatus,
   type ActivityRequest,
 } from "../../lib/activity.ts";
+import { lidarrClient } from "../services/lidarrClient.ts";
 
 const dismissedAlbumIds = new Map();
 const DISMISSED_ALBUM_TTL_MS = 24 * 60 * 60 * 1000;
@@ -150,7 +151,6 @@ const isRefresh = (refresh: string | undefined) => refresh === "1" || refresh ==
 const loadRequests = async (user: RequestUser | undefined, forceRefresh: boolean) => {
   try {
     pruneDismissedAlbumIds();
-    const { lidarrClient } = await import("../services/lidarrClient.ts");
     const cached = requestsCache.get(getRequestsUserId(user));
     if (
       !forceRefresh &&
@@ -209,7 +209,6 @@ export default new Hono<AppEnv>()
     removeAlbumFromRequestsCache(albumId);
 
     try {
-      const { lidarrClient } = await import("../services/lidarrClient.ts");
       if (lidarrClient?.isConfigured()) {
         const targetAlbumId = Number.parseInt(albumId, 10);
         await removeMatchingQueueItems(
@@ -230,7 +229,6 @@ export default new Hono<AppEnv>()
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
 
     try {
-      const { lidarrClient } = await import("../services/lidarrClient.ts");
       if (!lidarrClient?.isConfigured()) return c.json({ success: true }, 200);
 
       const artist = await lidarrClient.getArtistByMbid(mbid).catch(() => null);

@@ -7,9 +7,9 @@ import { spawnSync } from "node:child_process";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { parseShareManifest } from "../../lib/shareManifest.ts";
 
-vi.mock("../../backend/services/downloadJobs/mutationGuards.ts", async (importOriginal) => ({
+vi.mock("../../backend/services/downloadJobs/downloadWorker.ts", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("../../backend/services/downloadJobs/mutationGuards.ts")
+    typeof import("../../backend/services/downloadJobs/downloadWorker.ts")
   >()),
   wakeDownloadWorker: vi.fn(async () => {}),
 }));

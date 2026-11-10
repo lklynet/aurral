@@ -1,4 +1,4 @@
-import { usePlaylistBulkActions } from "./usePlaylistBulkActions.ts";
+import { usePlaylistBulkActions } from "../../contexts/PlaylistBulkActions.ts";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
@@ -26,19 +26,23 @@ import {
   PlaylistTracksPanel,
   type PlaylistTrackTarget,
 } from "./components/playlistTrackComponents.tsx";
-import { trackCountLabel } from "./playlistTrackChanges.ts";
+import { trackCountLabel } from "../../utils/playlistTrackChanges.ts";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.tsx";
 import LibraryInfoModal from "../LibraryInfoModal.tsx";
 import ArtworkEditorModal from "../../components/ArtworkEditorModal.tsx";
 import { useAuth } from "../../contexts/AuthContext.tsx";
 import { useAudioQueue } from "../../contexts/audioQueueContext.ts";
-import { getTrackSearchAction } from "./trackAvailability.ts";
-import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from "./flowPageUtils";
-import type { Flow, StaticPlaylist } from "./playlistStats.ts";
+import { getTrackSearchAction } from "../../utils/trackAvailability.ts";
+import type { Flow, StaticPlaylist } from "../../utils/playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { albumPath } from "../../../../lib/albumPath.ts";
 import { useShareAction } from "../../hooks/useShareAction.ts";
+import {
+  normalizeNameKey,
+  normalizePlaylistTrackEntry,
+  reserveUniqueName,
+} from "../../utils/staticPlaylists.ts";
 
 const playlistRoutes = staticPlaylistsClient["static-playlists"];
 const trackArtwork = playlistArtworkClient["track-artwork"][":jobId"];

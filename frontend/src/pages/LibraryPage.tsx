@@ -76,12 +76,11 @@ import {
   libraryViewQueryOptions,
   resolveLibrarySection,
   type LibraryViewLibrary,
-} from "./libraryViewQuery.ts";
+} from "../utils/libraryViewQuery.ts";
 import ArtistMbidModal from "./ArtistMbidModal";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { LibraryHomeMixes } from "./library/LibraryHomeMixes";
 import { LibraryHomePlaylists } from "./library/LibraryHomePlaylists";
-import { getApiErrorMessage, getApiErrorText } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryKeys } from "../queryClient.ts";
 import Tooltip from "../components/Tooltip";
@@ -97,6 +96,7 @@ import {
   useLibraryScanRefresh,
   useLibraryViewData,
 } from "./library/libraryShared.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 
 type LibraryData = LibraryViewLibrary;
 
@@ -406,7 +406,7 @@ function LibraryPage() {
   const queryData = libraryQuery.data;
   const { isPreviewLibrary, library, favoriteIds } = useLibraryViewData(queryData, forcePreview);
   const loading = !forcePreview && libraryQuery.isPending;
-  const error = forcePreview ? null : getApiErrorMessage(libraryQuery.error) || null;
+  const error = forcePreview ? null : getApiErrorMessage(libraryQuery.error, "") || null;
   const pageData = useMemo(() => {
     if (!queryData || isPreviewLibrary || isDetail || section === "favorites") return null;
     if (section === "home") {

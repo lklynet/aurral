@@ -3,7 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { playlistStatusQueryOptions } from "../queryOptions.ts";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import type { PlaylistStatus, StaticPlaylist } from "../pages/playlists/playlistStats.ts";
+import type { PlaylistStatus, StaticPlaylist } from "../utils/playlistStats.ts";
 import { asApiError, type ApiError } from "../utils/api/core.ts";
 
 export function useStaticPlaylists() {

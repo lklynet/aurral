@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Newspaper } from "../components/icons";
-import { SettingsLink } from "./Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";

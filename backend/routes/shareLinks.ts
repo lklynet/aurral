@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono, type Context } from "hono";
 import * as v from "valibot";
-import { hasPermission } from "../middleware/auth.ts";
+import { hasPermission } from "../services/auth.ts";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";

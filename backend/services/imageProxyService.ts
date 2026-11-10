@@ -311,13 +311,6 @@ const getCacheKeyFromLocalUrl = (value: string | null | undefined) => {
 export const isImageProxyLocalUrl = (value: string | null | undefined) =>
   getCacheKeyFromLocalUrl(value) != null;
 
-export const resolveImageProxyLocalUrl = (value: string | null | undefined) => {
-  const cacheKey = getCacheKeyFromLocalUrl(value);
-  if (!cacheKey) return null;
-  const entry = readCacheEntryFromDisk(cacheKey);
-  return entry?.localUrl || null;
-};
-
 const _readCacheMetadata = (metaPath: string) => {
   try {
     return readCacheMetadata(fs.readFileSync(metaPath, "utf8"), metaPath);

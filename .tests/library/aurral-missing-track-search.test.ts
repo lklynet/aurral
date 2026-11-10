@@ -39,7 +39,7 @@ const [
   () => import("../../backend/services/aurralHistoryService.ts"),
   () => import("../../backend/services/aurralMissingTrackSearch.ts"),
   () => import("../../backend/services/jobs/schedules.ts"),
-  () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
 );

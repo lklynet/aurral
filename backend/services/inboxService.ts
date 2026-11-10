@@ -10,7 +10,8 @@ import { logger } from "./logger.ts";
 import type { InboxItemInput, InboxItemUpdates } from "../db/helpers/inbox.ts";
 import { getNewsForUser } from "./newsService.ts";
 import { withLock } from "./jobs/queue.ts";
-import { enqueueSystemTask, inboxTaskQueue } from "./jobs/queues.ts";
+import { inboxTaskQueue } from "./jobs/queues.ts";
+import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { albumPath } from "../../lib/albumPath.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -13,7 +13,7 @@ import {
   type IconComponent,
 } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
-import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
+import { useDownloadWorkerActivity } from "../hooks/useDownloadWorkerActivity";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
 import {
   ACTIVITY_VIEWS,

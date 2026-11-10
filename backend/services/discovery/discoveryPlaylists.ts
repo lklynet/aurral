@@ -7,7 +7,7 @@ import {
 } from "../apiClients/deezer.ts";
 import { listOf } from "../../db/helpers/storedSchemas.ts";
 import { getTopPlayedArtists } from "../playEventService.ts";
-import { resolveLibraryTracks } from "../subsonicLibraryService.ts";
+import { resolveLibraryTracks } from "../libraryTrackLookup.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { getFreshReleasesByArtists, refreshFreshReleases } from "./freshReleases.ts";
 import { interleaveLists, mapWithConcurrency } from "./helpers.ts";

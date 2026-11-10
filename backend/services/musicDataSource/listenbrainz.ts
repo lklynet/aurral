@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { LISTENBRAINZ_LABS_API } from "../../config/constants.ts";
 import {
   deezerGetArtistTopTrackList,
@@ -20,6 +19,7 @@ import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
 import { listMusicbrainzGenres } from "../musicGenres.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
 import type { MusicArtistRef, MusicTrendingArtist } from "./index.ts";
+import { normalizeMbid, recordHealth, text } from "./common.ts";
 
 const LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM =
   "session_based_days_7500_session_300_contribution_5_threshold_10_limit_100_filter_True_skip_30";
@@ -58,19 +58,8 @@ const artistTagsSchema = lenient(
 
 type TagSearchArtist = Awaited<ReturnType<typeof musicbrainzSearchArtistsByTag>>["artists"][number];
 
-const text = (value: unknown) => String(value ?? "").trim();
-const normalizeMbid = (value: unknown) => {
-  const mbid = text(value).toLowerCase();
-  return UUID_REGEX.test(mbid) ? mbid : null;
-};
 const firstMbid = (values: unknown) =>
   (Array.isArray(values) ? values.map(normalizeMbid).find(Boolean) : null) || null;
-
-const recordHealth = (health: SourceHealth | undefined, ok: boolean) => {
-  if (!health) return;
-  if (ok) health.success += 1;
-  else health.failure += 1;
-};
 
 const resolveArtistMbid = async (artist: MusicArtistRef) => {
   const mbid = normalizeMbid(artist?.mbid);

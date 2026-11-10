@@ -22,7 +22,6 @@ import type { ApiError } from "../../../../utils/api/core.ts";
 import { settingsClient } from "../../../../utils/api/clients/settings.ts";
 import { formatRelativeTime } from "../../../../utils/dateTime.ts";
 import { queryClient, queryKeys } from "../../../../queryClient.ts";
-import { readApiError } from "../../utils/apiError.ts";
 import { useServerSettings } from "../../SettingsProviders";
 import {
   SettingsGroup,
@@ -32,6 +31,7 @@ import {
   type ServiceStatus,
 } from "../../SettingsLayout";
 import { StatusLine } from "./StatusLine";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 const POLL_INTERVAL_MS = 5000;
 

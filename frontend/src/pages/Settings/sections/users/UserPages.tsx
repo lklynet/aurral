@@ -13,9 +13,9 @@ import {
   type SettingsUser,
 } from "../../hooks/useSettingsUsers";
 import { useServerSettings } from "../../SettingsProviders";
-import { useSettingsRoute } from "../../settingsRoute";
-import { readApiError } from "../../utils/apiError.ts";
+import { useSettingsRoute } from "../../../../navigation/settingsRoute";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 type Permissions = typeof GRANULAR_PERMISSIONS;
 

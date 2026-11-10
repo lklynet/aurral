@@ -4,8 +4,8 @@ import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { clearLibraryPageCache } from "../../utils/api/endpoints/library.ts";
 import { EMPTY_LIBRARY } from "../../utils/libraryPageData.ts";
-import { libraryPreviewData, libraryPreviewFavorites } from "../libraryPreviewData";
-import type { LibraryViewData } from "../libraryViewQuery.ts";
+import { libraryPreviewData, libraryPreviewFavorites } from "../../utils/libraryPreviewData";
+import type { LibraryViewData } from "../../utils/libraryViewQuery.ts";
 import type { WebSocketChannelMessage } from "../../../../backend/services/websocketService.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../../utils/libraryPageData.ts";
 
@@ -65,21 +65,6 @@ export const TRACK_DOWNLOAD_ACTIVE_STATUSES = new Set([
   "blocked",
   "completed",
 ]);
-
-export const TRACK_DOWNLOAD_ACTION_LABELS: Partial<Record<string, string>> = {
-  submitting: "Adding to search queue…",
-  pending: "Queued for search",
-  processing: "Searching for track…",
-  searching: "Searching for track…",
-  downloading: "Downloading track…",
-  moving: "Adding to library…",
-  blocked: "Needs review",
-  completed: "Downloaded; waiting for library refresh",
-  failed: "Retry download track",
-};
-
-export const trackDownloadActionLabel = (status: string | null | undefined) =>
-  TRACK_DOWNLOAD_ACTION_LABELS[status ?? ""] || "Download track";
 
 export const activityDownloadStatus = (
   request: { status?: string; statusLabel?: unknown } | null | undefined,

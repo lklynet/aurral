@@ -37,6 +37,7 @@ import {
   type DownloadTrackFields,
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
+import { isPathWithin } from "./libraryFolders.ts";
 
 type ScannedMetadata = {
   common?: Partial<ICommonTagsResult>;
@@ -251,11 +252,6 @@ async function* walkAudioFiles(
       yield path.join(rootPath, entry.name);
     }
   }
-}
-
-function isPathWithin(rootPath: string, candidatePath: string) {
-  const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 const normalizePathKey = (value: unknown) => {

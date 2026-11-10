@@ -22,7 +22,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/blockedJobReview.ts"),
-  () => import("../../backend/services/downloadJobs/mutationGuards.ts"),
+  () => import("../../backend/services/downloadJobs/downloadLocks.ts"),
 );
 const HOUR = 60 * 60 * 1000;
 let sequence = 0;

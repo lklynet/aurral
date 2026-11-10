@@ -1,4 +1,4 @@
-import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+import type { MonitoringRules } from "./monitoringRules.ts";
 import {
   getMonitorOptionLabel,
   summarizeAurralMonitoring,

@@ -24,7 +24,7 @@ import {
   getReleaseGroupCoverUrl,
   mergeReleaseDetails,
 } from "../utils";
-import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
+import { TrackPlaylistMenu } from "../../../components/TrackPlaylistMenu";
 import { TrackPlayButton } from "./TrackPlayButton";
 import { useReleasePreviewQueue } from "../../album/releaseTracks.tsx";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
@@ -36,7 +36,11 @@ import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
 import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
 import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
-import type { PlaylistSelection, PlaylistTrackIdentity, SharedPlaylist } from "./TrackPlaylistMenu";
+import type {
+  PlaylistSelection,
+  PlaylistTrackIdentity,
+  SharedPlaylist,
+} from "../../../components/TrackPlaylistMenu";
 import type { ReleaseGroup } from "../utils";
 
 type ArtistDetailsDownloadTargetsProps = {

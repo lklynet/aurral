@@ -5,7 +5,7 @@ import { setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 const [, store, { toQueueTracks }] = await setupIsolatedBackend(
   "library-queue-tracks",
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/routes/library/handlers/queueTracks.ts"),
+  () => import("../../backend/services/queueTracks.ts"),
 );
 
 test("queue tracks link to the library artist only when the track is credited to them", () => {

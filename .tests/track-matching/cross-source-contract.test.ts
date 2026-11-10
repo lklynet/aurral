@@ -1,5 +1,3 @@
-// Cross-source contract tests.
-//
 // The same canonical truth expressed through each provider's representation
 // must produce compatible identity decisions. Provider evidence may change
 // confidence (accept vs verify) and contradictions must reject everywhere.

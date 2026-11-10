@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
-import { SettingsLink } from "../pages/Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 import { BellRinging, User, Heart, LogOut, ExternalLink, GitHub, Settings } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useWrappedSeason } from "../hooks/useWrapped.ts";

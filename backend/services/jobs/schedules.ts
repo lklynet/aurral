@@ -1,12 +1,11 @@
 import { db } from "../../config/db-sqlite.ts";
 import type { JobSchedulesRow } from "../../db/rows.ts";
 import type { EnqueueOptions } from "./queue.ts";
-import { enqueueSystemTask, playlistMbidEnrichmentQueue, systemTaskQueueFor } from "./queues.ts";
-import type { SystemTaskKind } from "./queues.ts";
+import { playlistMbidEnrichmentQueue } from "./queues.ts";
+import { enqueueSystemTask, SYSTEM_TASK_SCHEDULES, systemTaskQueueFor } from "./systemTasks.ts";
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const MISSED_RUN_GRACE_MS = 5 * MINUTE;
+const HOUR = 60 * 60_000;
+const MISSED_RUN_GRACE_MS = 5 * 60_000;
 
 type FireOptions = Pick<EnqueueOptions<object>, "dedupeKey" | "priority" | "maxAttempts" | "runAt">;
 
@@ -21,18 +20,18 @@ interface Schedule {
   fire: (options: FireOptions) => number;
 }
 
-function systemSchedule(
-  kind: SystemTaskKind,
-  intervalMs: number,
-  { priority = 0 }: { priority?: number } = {},
-): Schedule {
+function systemSchedule({
+  kind,
+  everyMs,
+  priority = 0,
+}: (typeof SYSTEM_TASK_SCHEDULES)[number]): Schedule {
   const queue = systemTaskQueueFor(kind);
   return {
     name: kind,
     queue: queue.name,
     kind,
     payload: { kind },
-    intervalMs,
+    intervalMs: everyMs,
     priority,
     maxAttempts: queue.maxAttempts,
     fire: (options) => enqueueSystemTask({ kind }, options),
@@ -40,24 +39,7 @@ function systemSchedule(
 }
 
 export const SCHEDULES: Schedule[] = [
-  systemSchedule("flow-refresh", HOUR),
-  systemSchedule("session-cleanup", HOUR),
-  systemSchedule("flow-reuse-repair", 30 * MINUTE),
-  systemSchedule("review-timeout", 15 * MINUTE),
-  systemSchedule("quality-upgrade-check", HOUR, { priority: -10 }),
-  systemSchedule("discovery-refresh-check", 15 * MINUTE),
-  systemSchedule("inbox-refresh", 24 * HOUR),
-  systemSchedule("news-refresh", 15 * MINUTE),
-  systemSchedule("update-check", HOUR),
-  systemSchedule("plugin-update-check", 24 * HOUR),
-  systemSchedule("plugin-schedules", 15 * MINUTE),
-  systemSchedule("trending-charts-refresh", 6 * HOUR),
-  systemSchedule("import-list-sync", 30 * MINUTE),
-  systemSchedule("history-server-sync", HOUR),
-  systemSchedule("share-playlist-refresh", 24 * HOUR),
-  systemSchedule("release-metadata-refresh", 24 * HOUR, { priority: -5 }),
-  systemSchedule("aurral-monitoring-reconcile", 24 * HOUR),
-  systemSchedule("aurral-missing-track-search", HOUR),
+  ...SYSTEM_TASK_SCHEDULES.map(systemSchedule),
   {
     name: "playlist-mbid-enrichment-sweep",
     queue: playlistMbidEnrichmentQueue.name,
