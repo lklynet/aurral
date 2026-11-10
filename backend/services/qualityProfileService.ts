@@ -17,6 +17,7 @@ import {
   type QualityJob,
   type QualityProfile,
 } from "./qualityProfile.ts";
+import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { classifyAudioQuality, getQualityState, getQualityTier } from "./qualityProfileModel.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts";
@@ -200,6 +201,7 @@ function listLibraryUpgradeCandidates(profile: QualityProfile) {
       .map((job: QualityJob) => path.resolve(job.finalPath!)),
   );
   const candidates = [];
+  const readOnlyRoots = readOnlyFolderPaths();
   for (const file of db
     .prepare<[], LibraryUpgradeRow>(
       `SELECT media.path, media.track_id, media.album_id, media.quality_json,
@@ -213,7 +215,7 @@ function listLibraryUpgradeCandidates(profile: QualityProfile) {
     )
     .iterate()) {
     const filePath = path.resolve(file.path);
-    if (jobPaths.has(filePath) || !isAurralOwnedPath(filePath)) continue;
+    if (jobPaths.has(filePath) || !isAurralOwnedPath(filePath, readOnlyRoots)) continue;
     const quality = classifyLibraryFileQuality(file);
     if (getQualityState(quality, profile) === "preferred") continue;
     candidates.push({
@@ -244,6 +246,7 @@ async function listUpgradeCandidatesByAlbum({
   const collect = (albumKey: string, candidate: UpgradeCandidate) =>
     albums.set(albumKey, [...(albums.get(albumKey) || []), candidate]);
   const seen = new Set();
+  const readOnlyRoots = readOnlyFolderPaths();
   for (const job of downloadTracker.getAll()) {
     if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
     if (owners && !owners.has(job.playlistType)) continue;
@@ -251,7 +254,7 @@ async function listUpgradeCandidatesByAlbum({
     const filePath = path.resolve(job.finalPath);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
-    if (!isAurralOwnedPath(filePath) || isUnmonitored(job)) continue;
+    if (!isAurralOwnedPath(filePath, readOnlyRoots) || isUnmonitored(job)) continue;
     collect(job.albumMbid || `job:${job.id}`, {
       owner: job.playlistType,
       add: async () => {

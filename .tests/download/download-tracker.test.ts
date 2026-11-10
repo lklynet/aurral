@@ -1252,7 +1252,7 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
   assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
 });
 
-test("classifies reused Lidarr files without making them eligible for upgrades", async () => {
+test("classifies a file outside the Library folder without making it eligible for upgrades, also when its read-only folder is the Library folder", async () => {
   const tracker = trackerModule.downloadTracker;
   const lidarrPath = path.join(isolatedState.baseDir, "lidarr", "Song.mp3");
   await mkdir(path.dirname(lidarrPath), { recursive: true });
@@ -1282,6 +1282,15 @@ test("classifies reused Lidarr files without making them eligible for upgrades",
   assert.ok("qualityLabel" in decorated && "qualityState" in decorated);
   assert.equal(decorated.qualityLabel, "MP3 128");
   assert.equal(decorated.qualityState, "external");
+  assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");
+
+  const sharedFolder = path.dirname(lidarrPath);
+  dbOps.updateSettings({ ...dbOps.getSettings(), downloadFolderPath: sharedFolder });
+  assert.equal(decorateJobQuality(job).qualityOwned, true);
+  dbOps.setJSONSetting("readOnlyFolders", [sharedFolder]);
+  const shared = decorateJobQuality(job);
+  assert.equal(shared.qualityOwned, false);
+  assert.equal(shared.qualityState, "external");
   assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");
 });
 

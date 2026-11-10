@@ -1,6 +1,5 @@
-import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
-import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.ts";
+import { libraryFolderOwner, readOnlyFolderPaths } from "./libraryFolders.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   classifyAudioQuality,
@@ -43,12 +42,15 @@ export function getQualityProfile() {
   return normalizeQualityProfile(settings.qualityProfile, settings.integrations?.slskd);
 }
 
-export function isAurralOwnedPath(filePath: string | null | undefined) {
+export function isAurralOwnedPath(
+  filePath: string | null | undefined,
+  readOnlyRoots = readOnlyFolderPaths(),
+) {
   if (!filePath) return false;
-  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolveDownloadRoot()));
+  return libraryFolderOwner(filePath, { readOnlyRoots }) === "aurral";
 }
 
-function getJobQuality(job: QualityJob, profile: QualityProfile) {
+function getJobQuality(job: QualityJob, profile: QualityProfile, readOnlyRoots: string[]) {
   const quality = {
     tier: job.qualityTier || null,
     format: job.qualityFormat || null,
@@ -56,7 +58,7 @@ function getJobQuality(job: QualityJob, profile: QualityProfile) {
     sampleRate: job.qualitySampleRate ?? null,
     bitDepth: job.qualityBitDepth ?? null,
   };
-  const owned = isAurralOwnedPath(job.finalPath);
+  const owned = isAurralOwnedPath(job.finalPath, readOnlyRoots);
   const qualityState: QualityState | null =
     job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null;
   return {
@@ -66,8 +68,12 @@ function getJobQuality(job: QualityJob, profile: QualityProfile) {
   };
 }
 
-export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQualityProfile()) {
-  return { ...job, ...(!job.upgradeForJobId && getJobQuality(job, profile)) };
+export function decorateJobQuality<T extends QualityJob>(
+  job: T,
+  profile = getQualityProfile(),
+  readOnlyRoots = readOnlyFolderPaths(),
+) {
+  return { ...job, ...(!job.upgradeForJobId && getJobQuality(job, profile, readOnlyRoots)) };
 }
 
 export function validateParsedQuality(

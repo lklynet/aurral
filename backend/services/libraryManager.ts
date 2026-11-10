@@ -2464,35 +2464,9 @@ export class LibraryManager {
       const effective = resolveArtistMonitoring(stored, defaults);
       const plan = await this.planAurralArtistMonitoring(currentArtist, effective);
       if (plan.error) return plan;
-      const legacyMode = legacyMonitorMode(effective);
-      db.transaction(() => {
-        const storedArtist = db
-          .prepare<[number], Pick<LibraryArtistsRow, "identity_key" | "metadata_json">>(
-            "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
-          )
-          .get(artistId)!;
-        const metadata = readRawLibraryMetadata(storedArtist.metadata_json);
-        const { addOptions } = metadata;
-        const startsMonitoring = Boolean(stored) && !getStoredArtistMonitoring(artistId);
-        setAurralArtistMonitoringState(artistId, stored, defaults);
-        upsertLibraryArtist({
-          identityKey: storedArtist.identity_key,
-          mbid: currentArtist.mbid,
-          name: currentArtist.name,
-          metadata: {
-            ...metadata,
-            ...(startsMonitoring && { added: new Date().toISOString() }),
-            monitored: Boolean(stored),
-            monitor: legacyMode,
-            monitorOption: legacyMode,
-            monitorStartedAt: effective?.newSince ?? null,
-            addOptions: {
-              ...(typeof addOptions === "object" && addOptions),
-              monitor: legacyMode,
-            },
-          },
-        });
-      }).immediate();
+      db.transaction(() =>
+        this._storeAurralArtistMonitoring(artistId, stored, defaults),
+      ).immediate();
       const queued = this._enqueueAurralMonitoringApply(currentArtist, effective, plan);
       return {
         ...(libraryArtistFallback(artistId) || currentArtist),
@@ -2500,6 +2474,68 @@ export class LibraryManager {
         monitoring: summarizeMonitoringPlan(plan, queued),
       };
     });
+  }
+
+  _storeAurralArtistMonitoring(
+    artistId: number,
+    stored: ReturnType<typeof nextArtistMonitoring> | null,
+    defaults: MonitoringDefaultsState,
+  ) {
+    const effective = resolveArtistMonitoring(stored, defaults);
+    const legacyMode = legacyMonitorMode(effective);
+    const artist = db
+      .prepare<
+        [number],
+        Pick<LibraryArtistsRow, "identity_key" | "mbid" | "name" | "metadata_json">
+      >("SELECT identity_key, mbid, name, metadata_json FROM library_artists WHERE id = ?")
+      .get(artistId)!;
+    const metadata = readRawLibraryMetadata(artist.metadata_json);
+    const { addOptions } = metadata;
+    const startsMonitoring = Boolean(stored) && !getStoredArtistMonitoring(artistId);
+    setAurralArtistMonitoringState(artistId, stored, defaults);
+    upsertLibraryArtist({
+      identityKey: artist.identity_key,
+      mbid: artist.mbid,
+      name: artist.name,
+      metadata: {
+        ...metadata,
+        ...(startsMonitoring && { added: new Date().toISOString() }),
+        monitored: Boolean(stored),
+        monitor: legacyMode,
+        monitorOption: legacyMode,
+        monitorStartedAt: effective?.newSince ?? null,
+        addOptions: {
+          ...(typeof addOptions === "object" && addOptions),
+          monitor: legacyMode,
+        },
+      },
+    });
+  }
+
+  // Starts default monitoring for the artists among these that Aurral does
+  // not monitor yet. The reconcile task works out what each one is missing.
+  monitorArtistsWithDefaults(artistIds: number[]) {
+    const defaults = getMonitoringDefaults();
+    const stored = nextArtistMonitoring(null, { useDefault: true }, defaults);
+    const started = db
+      .transaction(() =>
+        db
+          .prepare<[string], LibraryArtistsRow["id"]>(
+            `SELECT id FROM library_artists
+             WHERE mbid IS NOT NULL AND id IN (SELECT value FROM json_each(?))`,
+          )
+          .pluck()
+          .all(JSON.stringify(artistIds))
+          .filter((artistId) => {
+            const entry = getLibraryManagementEntry("artist", artistId);
+            if (entry?.managedBy !== "aurral" || entry.monitorRules) return false;
+            this._storeAurralArtistMonitoring(artistId, stored, defaults);
+            return true;
+          }),
+      )
+      .immediate();
+    if (started.length > 0) enqueueSystemTask({ kind: "aurral-monitoring-reconcile" });
+    return started.length;
   }
 
   async previewAurralArtistMonitoring(

@@ -45,6 +45,7 @@ import {
   getQualityProfile,
   isAurralOwnedPath,
 } from "../../../services/qualityProfile.ts";
+import { readOnlyFolderPaths } from "../../../services/libraryFolders.ts";
 import { getLibraryTrackOwnershipBatch } from "../../../services/libraryQueryService.ts";
 import { playlistTrackFavoriteIds } from "../../../services/subsonicLibraryService.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
@@ -118,14 +119,18 @@ function getAccessibleManualSearchJob(
   return job;
 }
 
-function toPublicJob(job: DownloadJob, profile: ReturnType<typeof getQualityProfile>) {
+function toPublicJob(
+  job: DownloadJob,
+  profile: ReturnType<typeof getQualityProfile>,
+  readOnlyRoots: string[],
+) {
   const {
     stagingPath: _stagingPath,
     heldForReview: _heldForReview,
     finalPath,
     externalPath: _externalPath,
     ...publicJob
-  } = decorateJobQuality(job, profile);
+  } = decorateJobQuality(job, profile, readOnlyRoots);
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
   return { ...publicJob, streamFormat: streamFormat || null };
 }
@@ -239,6 +244,7 @@ export default new Hono<AppEnv>()
             .map((job) => ({ ...job, playlistId, playlistType: playlistId }))
         : downloadTracker.getByPlaylistType(playlistId, limit);
       const profile = getQualityProfile();
+      const readOnlyRoots = readOnlyFolderPaths();
       const accessibleJobs = filterJobsForUser(user, jobs);
       const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
       const favoriteIds = playlistTrackFavoriteIds(playlistId, accessibleJobs);
@@ -248,7 +254,7 @@ export default new Hono<AppEnv>()
       );
       return c.json(
         accessibleJobs.map((job, index) => ({
-          ...toPublicJob(job, profile),
+          ...toPublicJob(job, profile, readOnlyRoots),
           libraryOwned: libraryOwnership[index] === true,
           favoriteId: favoriteIds[index],
           ...trackArtwork(job, customArtwork, playlistId),
@@ -272,6 +278,7 @@ export default new Hono<AppEnv>()
         status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),
       );
       const profile = getQualityProfile();
+      const readOnlyRoots = readOnlyFolderPaths();
       const isUnmonitored = indexUnmonitoredJobs();
       const customArtwork = getCustomArtworkMap(
         "playlist-track",
@@ -279,7 +286,7 @@ export default new Hono<AppEnv>()
       );
       return c.json(
         jobs.map((job) => ({
-          ...toPublicJob(job, profile),
+          ...toPublicJob(job, profile, readOnlyRoots),
           monitored: !isUnmonitored(job),
           ...trackArtwork(job, customArtwork, job.playlistType || job.playlistId),
         })),

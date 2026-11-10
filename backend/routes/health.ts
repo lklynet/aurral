@@ -22,6 +22,7 @@ import {
   getLocalNetworkBypassStatus,
 } from "../services/auth.ts";
 import { getOidcBootstrapInfo } from "../services/oidcAuth.ts";
+import { pendingLidarrConversion } from "../services/lidarrConversionReport.ts";
 import { isGoogleLoginEnabled } from "../services/googleAuth.ts";
 import { lidarrClient } from "../services/lidarrClient.ts";
 import { getDiscoveryCache } from "../services/discovery/index.ts";
@@ -271,6 +272,7 @@ type BootstrapPayload = {
   ticketmasterConfigured?: boolean;
   inboxEnabled?: boolean;
   wrapped?: { year: number; preview: boolean };
+  lidarrConversion?: NonNullable<ReturnType<typeof pendingLidarrConversion>>;
   newsConfigured?: boolean;
   musicbrainzConfigured?: boolean;
   metadataConfigured?: boolean;
@@ -344,6 +346,8 @@ function buildBootstrapPayload(req: CredentialRequest) {
     payload.authUser = currentUser.username;
     const wrapped = currentUser.id > 0 ? wrappedSeason(APP_VERSION) : null;
     if (wrapped) payload.wrapped = { year: wrapped.year, preview: wrapped.preview };
+    const lidarrConversion = currentUser.role === "admin" ? pendingLidarrConversion() : null;
+    if (lidarrConversion) payload.lidarrConversion = lidarrConversion;
     payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
     payload.lidarr = {
       configured: lidarrConfigured,

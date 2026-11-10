@@ -5415,6 +5415,37 @@ textarea:disabled {
   margin-top: 1.5rem;
 }
 
+.lidarr-conversion__folders {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+}
+
+.lidarr-conversion__folders code {
+  color: var(--aurral-text);
+  font-family: var(--font-mono);
+  font-size: var(--aurral-font-xs);
+  overflow-wrap: anywhere;
+}
+
+.lidarr-conversion__actions {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lidarr-conversion__link {
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-sm);
+  text-decoration: underline;
+  text-decoration-color: var(--aurral-border-strong);
+  text-underline-offset: 0.125rem;
+}
+
 .download-folder-field {
   display: flex;
   flex-direction: column;
