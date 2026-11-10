@@ -317,7 +317,9 @@ test("queued album track jobs open their album, and other library jobs have no l
 
   const entries = await getAurralHistoryRequests();
   assert.equal(entries.find((item) => item.jobId === withAlbum)?.href, `/album/${albumMbid}`);
+  assert.equal(entries.find((item) => item.jobId === withAlbum)?.libraryAlbumId, String(album.id));
   assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.href, null);
+  assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.libraryAlbumId, null);
 
   upsertAurralHistory({
     referenceId: "stored-job",

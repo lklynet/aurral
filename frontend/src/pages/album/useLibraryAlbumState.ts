@@ -12,7 +12,7 @@ import { resolveAlbumManager } from "../../utils/libraryDestination.ts";
 import { canDownloadAurralAlbum, getMonitoringMenuAction } from "../../utils/aurralMonitoring.ts";
 import { getApiErrorMessage } from "../ArtistDetails/utils";
 import { queryClient, queryKeys } from "../../queryClient.ts";
-import type { ActivityRequest } from "../activity/activityListUtils.ts";
+import type { ActivityRequest } from "../../../../lib/activity.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
 import {
   activityDownloadStatus,

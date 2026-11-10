@@ -1426,7 +1426,7 @@ export function getLibraryForArtists({
   return getLibraryForArtistColumn("mbid", normalizeLookupValues(mbids), scope);
 }
 
-function resolveLibraryReferenceIds(table: string, references: string[], columns: string[]) {
+function matchLibraryReferences(table: string, references: string[], columns: string[]) {
   const requested = references.map(() => "(?, ?)").join(", ");
   const idCandidate = `(
     SELECT direct.id
@@ -1444,18 +1444,22 @@ function resolveLibraryReferenceIds(table: string, references: string[], columns
   )`,
   );
   const sql = `
-    SELECT id FROM ${table}
-    WHERE id IN (
-      WITH requested(reference, record_id) AS (VALUES ${requested})
-      SELECT COALESCE(${[idCandidate, ...aliasCandidates].join(",")})
-      FROM requested
-    )`;
+    WITH requested(reference, record_id) AS (VALUES ${requested})
+    SELECT reference, COALESCE(${[idCandidate, ...aliasCandidates].join(",")}) AS id
+    FROM requested`;
   const parameters = references.flatMap((reference) => {
     const numericId = /^\d+$/.test(reference) ? Number(reference) : null;
     return [reference, Number.isSafeInteger(numericId) && numericId! > 0 ? numericId : null];
   });
+  return { sql, parameters };
+}
+
+function resolveLibraryReferenceIds(table: string, references: string[], columns: string[]) {
+  const { sql, parameters } = matchLibraryReferences(table, references, columns);
   return db
-    .prepare<unknown[], { id: number }>(sql)
+    .prepare<unknown[], { id: number }>(
+      `SELECT id FROM ${table} WHERE id IN (SELECT matched.id FROM (${sql}) AS matched)`,
+    )
     .all(...parameters)
     .map((row) => row.id);
 }
@@ -1602,6 +1606,30 @@ export function getLibraryForTrackMatches({
   };
 }
 
+const ALBUM_REFERENCE_COLUMNS = [
+  "identity_key",
+  "mbid",
+  "release_group_mbid",
+  "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+];
+
+export function getLibraryAlbumIdsByReference(requestedReferences: unknown[]) {
+  const ids = new Map<string, string>();
+  for (const references of chunked(normalizeLookupValues(requestedReferences))) {
+    const { sql, parameters } = matchLibraryReferences(
+      "library_albums",
+      references,
+      ALBUM_REFERENCE_COLUMNS,
+    );
+    for (const row of db
+      .prepare<unknown[], { reference: string; id: number | null }>(sql)
+      .all(...parameters)) {
+      if (row.id != null) ids.set(row.reference, String(row.id));
+    }
+  }
+  return ids;
+}
+
 export function getLibraryForAlbumReferences({
   source = null,
   availableOnly = false,
@@ -1609,13 +1637,7 @@ export function getLibraryForAlbumReferences({
 }: LibraryScope & { references?: unknown[] } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
-  const columns = [
-    "identity_key",
-    "mbid",
-    "release_group_mbid",
-    "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
-  ];
-  const ids = resolveLibraryReferenceIds("library_albums", references, columns);
+  const ids = resolveLibraryReferenceIds("library_albums", references, ALBUM_REFERENCE_COLUMNS);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
   const sourceFilter = normalizeSource(source);
   const mediaConditions = [

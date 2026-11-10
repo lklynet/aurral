@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ActivityStatus } from "../../navigation/activityNavConfig";
+import type { ActivityStatus } from "../../../../lib/activity.ts";
 
 type StatusTab = { id: ActivityStatus; label: string; count: number };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { parseResponse } from "hono/client";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { requestsClient } from "../utils/api/clients/requests.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import { triggerAlbumSearch } from "../utils/api/endpoints/library.ts";
@@ -16,19 +16,11 @@ import {
   ACTIVITY_VIEWS,
   DEFAULT_ACTIVITY_VIEW,
   buildActivityPath,
-  getActivityStatus,
-  getActivityStatusFilters,
-  matchesActivityView,
-  normalizeActivityStatus,
   normalizeActivityView,
 } from "../navigation/activityNavConfig";
 import {
   buildHistoryListEntries,
-  compareActivityRequests,
-  mergeActivityRequests,
-  groupAlbumGrabRequests,
   isAlbumActivityRequest,
-  isCancelableDownload,
   type ActivityListEntry,
 } from "./activity/activityListUtils";
 import ActivityRequestRow from "./activity/ActivityRequestRow";
@@ -43,13 +35,39 @@ import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music, X } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import type { ActivityRequest } from "./activity/activityListUtils.ts";
+import {
+  normalizeActivityStatus,
+  type ActivityRequest,
+  type ActivityStatus,
+} from "../../../lib/activity.ts";
 import StatePanel from "../components/StatePanel";
 import { ConfirmModal } from "../components/ConfirmModal";
 
-const loadRequests = (refresh: boolean, signal: AbortSignal): Promise<ActivityRequest[]> =>
+type ActivityPageData = Omit<InferResponseType<typeof requestsClient.page.$get, 200>, "items"> & {
+  items: ActivityRequest[];
+};
+
+const loadActivityPage = (
+  {
+    view,
+    status,
+    limit,
+    refresh,
+  }: { view: "queue" | "history"; status: ActivityStatus | null; limit: number; refresh: boolean },
+  signal: AbortSignal,
+): Promise<ActivityPageData> =>
   parseResponse(
-    requestsClient.$get({ query: { refresh: refresh ? "1" : undefined } }, { init: { signal } }),
+    requestsClient.page.$get(
+      {
+        query: {
+          view,
+          status: status ?? undefined,
+          limit: String(limit),
+          refresh: refresh ? "1" : undefined,
+        },
+      },
+      { init: { signal } },
+    ),
   );
 
 const ACTIVITY_PAGE_SIZE = 25;
@@ -124,63 +142,37 @@ function ActivityPage() {
   useEffect(() => {
     if (activityWsConnected) refreshFromStatusEvent();
   }, [activityWsConnected, refreshFromStatusEvent]);
+  const pageView = isHistoryView ? "history" : "queue";
+  const pageQueryKey = useMemo(
+    () => [...activityQueryKey, pageView, activeStatus, visibleCount],
+    [activityQueryKey, pageView, activeStatus, visibleCount],
+  );
   const activityQuery = useQuery({
-    queryKey: activityQueryKey,
-    queryFn: ({ signal }) => loadRequests(isListLikeView, signal),
+    queryKey: pageQueryKey,
+    queryFn: ({ signal }) =>
+      loadActivityPage(
+        { view: pageView, status: activeStatus, limit: visibleCount, refresh: isListLikeView },
+        signal,
+      ),
     enabled: !isMissingView,
+    placeholderData: (previous) => (previous?.view === pageView ? previous : undefined),
     staleTime: isListLikeView ? 0 : 30_000,
     refetchInterval: isMissingView
       ? false
       : getActivityPollIntervalMs({ isConnected: activityWsConnected, isListLikeView }),
     refetchIntervalInBackground: false,
   });
-  const requests = useMemo(
-    () => groupAlbumGrabRequests(mergeActivityRequests([], activityQuery.data)),
-    [activityQuery.data],
-  );
-  const cancelableCount = useMemo(
-    () =>
-      (activityQuery.data ?? []).filter(
-        (request) =>
-          isCancelableDownload(request) &&
-          (hasFlowAccess ||
-            (user?.id != null && String(request.requestedBy?.id) === String(user.id))),
-      ).length,
-    [activityQuery.data, hasFlowAccess, user?.id],
-  );
+  const page = activityQuery.data;
+  const cancelableCount = page?.cancelable ?? 0;
   const loading = activityQuery.isPending;
   const error =
     localError || getApiErrorText(activityQuery.error, "message") || activityQuery.error?.message;
 
-  const viewRequests = useMemo(
-    () => requests.filter((request) => matchesActivityView(request, activeView)),
-    [activeView, requests],
-  );
-  const statusFilters = useMemo(
-    () => getActivityStatusFilters(activeView, viewRequests, activeStatus),
-    [activeView, activeStatus, viewRequests],
-  );
-  const filteredRequests = useMemo(
-    () =>
-      activeStatus
-        ? viewRequests.filter((request) => getActivityStatus(request) === activeStatus)
-        : viewRequests,
-    [activeStatus, viewRequests],
-  );
-
-  const sortedRequests = useMemo(
-    () => [...filteredRequests].sort(compareActivityRequests),
-    [filteredRequests],
-  );
-
-  const visibleRequests = useMemo(
-    () => sortedRequests.slice(0, visibleCount),
-    [sortedRequests, visibleCount],
-  );
-
-  const hasMoreItems = visibleCount < sortedRequests.length;
+  const visibleRequests = page?.items;
+  const hasMoreItems = (page?.matching ?? 0) > (visibleRequests?.length ?? 0);
 
   const listEntries = useMemo(() => {
+    if (!visibleRequests) return [];
     if (isListLikeView) {
       return visibleRequests.map((request): ActivityListEntry => ({
         type: "item",
@@ -222,12 +214,11 @@ function ActivityPage() {
 
   const updateRequests = useCallback(
     (updater: (prev: ActivityRequest[]) => ActivityRequest[]) => {
-      queryClient.setQueryData<ActivityRequest[]>(activityQueryKey, (current) => {
-        const next = Array.isArray(current) ? current : [];
-        return updater(next);
-      });
+      queryClient.setQueryData<ActivityPageData>(pageQueryKey, (current) =>
+        current ? { ...current, items: updater(current.items) } : current,
+      );
     },
-    [activityQueryKey],
+    [pageQueryKey],
   );
   const settleReviewedJob = useCallback(
     async (jobId: string, changes: Partial<ActivityRequest>) => {
@@ -454,8 +445,8 @@ function ActivityPage() {
     <div className="activity-page">
       {pageHeader}
       <ActivityStatusTabs
-        total={viewRequests.length}
-        filters={statusFilters}
+        total={page?.total ?? 0}
+        filters={page?.filters ?? []}
         active={activeStatus}
         onChange={setActiveStatus}
         action={
@@ -485,7 +476,7 @@ function ActivityPage() {
         />
       )}
 
-      {filteredRequests.length === 0 ? (
+      {listEntries.length === 0 ? (
         !error && (
           <StatePanel
             icon={<Music className="artist-icon-lg" />}

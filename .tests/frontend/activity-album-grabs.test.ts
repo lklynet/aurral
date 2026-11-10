@@ -1,10 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  downloadClientLabel,
-  groupAlbumGrabRequests,
-} from "../../frontend/src/pages/activity/activityListUtils.ts";
-import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.ts";
+import { downloadClientLabel } from "../../frontend/src/pages/activity/activityListUtils.ts";
+import { groupAlbumGrabRequests, matchesActivityView } from "../../lib/activity.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 type ActivityRequest = Parameters<typeof groupAlbumGrabRequests>[0][number];

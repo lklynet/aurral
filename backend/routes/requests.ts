@@ -14,6 +14,14 @@ import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts"
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
+import { hasPermission } from "../middleware/auth.ts";
+import {
+  ACTIVITY_VIEW_IDS,
+  buildActivityPage,
+  isCancelableDownload,
+  normalizeActivityStatus,
+  type ActivityRequest,
+} from "../../lib/activity.ts";
 
 const dismissedAlbumIds = new Map();
 const DISMISSED_ALBUM_TTL_MS = 24 * 60 * 60 * 1000;
@@ -137,38 +145,62 @@ const removeMatchingQueueItems = async (
   }
 };
 
+const isRefresh = (refresh: string | undefined) => refresh === "1" || refresh === "true";
+
+const loadRequests = async (user: RequestUser | undefined, forceRefresh: boolean) => {
+  try {
+    pruneDismissedAlbumIds();
+    const { lidarrClient } = await import("../services/lidarrClient.ts");
+    const cached = requestsCache.get(getRequestsUserId(user));
+    if (
+      !forceRefresh &&
+      cached &&
+      Date.now() - cached.at < REQUESTS_CACHE_MS &&
+      cached.jobsRevision === downloadTracker.getRevision()
+    ) {
+      return filterDismissedRequests(cached.response);
+    }
+    return await refreshRequestsCache(lidarrClient, { refresh: forceRefresh, user });
+  } catch {
+    const cached = requestsCache.get(getRequestsUserId(user));
+    return cached?.response ? filterDismissedRequests(cached.response) : null;
+  }
+};
+
+const ACTIVITY_PAGE_SIZE = 25;
+
 const listQuery = v.object({ refresh: v.optional(v.string()) });
+const pageQuery = v.object({
+  view: v.picklist(ACTIVITY_VIEW_IDS),
+  status: v.optional(v.string()),
+  limit: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1))),
+  refresh: v.optional(v.string()),
+});
 
 export default new Hono<AppEnv>()
   .basePath("/requests")
   .get("/", requireAuth, noCache, validate("query", listQuery), async (c) => {
+    const { refresh } = c.req.valid("query");
+    const requests = await loadRequests(c.var.user, isRefresh(refresh));
+    return requests ? c.json(requests, 200) : c.json({ error: "Failed to fetch requests" }, 500);
+  })
+  .get("/page", requireAuth, noCache, validate("query", pageQuery), async (c) => {
     const user = c.var.user;
-    try {
-      pruneDismissedAlbumIds();
-      const { lidarrClient } = await import("../services/lidarrClient.ts");
-      const { refresh } = c.req.valid("query");
-      const forceRefresh = refresh === "1" || refresh === "true";
-      const cached = requestsCache.get(getRequestsUserId(user));
-
-      if (
-        !forceRefresh &&
-        cached &&
-        Date.now() - cached.at < REQUESTS_CACHE_MS &&
-        cached.jobsRevision === downloadTracker.getRevision()
-      ) {
-        return c.json(filterDismissedRequests(cached.response), 200);
-      }
-
-      const requests: RequestsResponse = await refreshRequestsCache(lidarrClient, {
-        refresh: forceRefresh,
-        user,
-      });
-      return c.json(requests, 200);
-    } catch {
-      const cached = requestsCache.get(getRequestsUserId(user));
-      if (cached?.response) return c.json(filterDismissedRequests(cached.response), 200);
-      return c.json({ error: "Failed to fetch requests" }, 500);
-    }
+    const { view, status, limit, refresh } = c.req.valid("query");
+    const requests: ActivityRequest[] | null = await loadRequests(user, isRefresh(refresh));
+    if (!requests) return c.json({ error: "Failed to fetch requests" }, 500);
+    const canCancelAny = hasPermission(user, "accessPlaylists");
+    const cancelable = requests.filter(
+      (request) =>
+        isCancelableDownload(request) &&
+        (canCancelAny || (user != null && String(request.requestedBy?.id) === String(user.id))),
+    ).length;
+    const page = buildActivityPage(requests, {
+      view,
+      status: normalizeActivityStatus(view, status),
+      limit: limit ?? ACTIVITY_PAGE_SIZE,
+    });
+    return c.json({ ...page, cancelable }, 200);
   })
   .delete("/album/:albumId", requireAuth, requirePermission("deleteAlbum"), async (c) => {
     const albumId = c.req.param("albumId");

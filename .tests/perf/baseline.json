@@ -193,6 +193,16 @@
       "download_jobs"
     ]
   },
+  "activity queue": {
+    "queries": {
+      "cold": 16,
+      "warm": 16
+    },
+    "bytes": 35320,
+    "scans": [
+      "download_jobs"
+    ]
+  },
   "listening history": {
     "queries": {
       "cold": 4,
