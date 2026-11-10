@@ -1022,13 +1022,25 @@ test("stopping the worker returns its downloads to the queue and leaves it stopp
   await worker.start();
   await worker.reuseRepairInFlight;
   const jobId = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "library");
+  const waitingId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Waiting" },
+    "library",
+  );
+  const cancelledId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Cancelled" },
+    "library",
+  );
   tracker.setDownloading(jobId);
   await Promise.resolve();
 
   worker.stop();
+  tracker.setCancelled(cancelledId);
   await Promise.resolve();
 
   assert.equal(trackedJob(tracker, jobId).status, "pending");
+  assert.equal(trackedJob(tracker, waitingId).status, "pending");
   assert.equal(worker.running, false);
 });
 

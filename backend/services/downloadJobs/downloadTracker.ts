@@ -783,13 +783,17 @@ export class DownloadTracker {
       }
       job.slskdSearchId = null;
       job.slskdBatchId = null;
-      if (job.status === "pending") this._announcePendingWork();
     }
     if (clearDownloadMetadata) {
       clearSlskdMetaStmt.run(id);
     } else {
       clearTransientPipelineMetaStmt.run(id);
     }
+  }
+
+  releaseFromPipeline(id: string) {
+    this.clearSlskdPipelineState(id);
+    if (this.jobs.get(id)?.status === "pending") this._announcePendingWork();
   }
 
   updateDownloadMetadata(

@@ -118,7 +118,7 @@ export function enqueuePendingJobsWithoutBatch() {
     const hasProviderSearch = job.slskdBatchId || job.slskdSearchId;
     if (!hasProviderSearch && job.manualReplacementSearch !== true) continue;
     if (activePipelineJobIds.has(job.id)) continue;
-    downloadTracker.clearSlskdPipelineState(job.id);
+    downloadTracker.releaseFromPipeline(job.id);
     // The worker resolves the release of a track that can search by one.
     if (downloadTracker.canSearchByRelease(job)) continue;
     if (downloadTracker.enqueueDownloadPipeline(job.id)) count += 1;
