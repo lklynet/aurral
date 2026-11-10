@@ -1,4 +1,4 @@
-import { PlaylistBulkActionsProvider } from "./pages/playlists/usePlaylistBulkActions.ts";
+import { PlaylistBulkActionsProvider } from "./contexts/PlaylistBulkActions.ts";
 import {
   createBrowserRouter,
   createRoutesFromElements,

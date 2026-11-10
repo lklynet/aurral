@@ -31,11 +31,22 @@ import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { StaticPlaylist, StaticPlaylistUpdates } from "./playlists/flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlists/playlistTracks.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
-import { normalizePlaylistTrack, tracksShareMembership } from "./playlists/playlistTracks.ts";
+import { normalizePlaylistTrack } from "./playlists/playlistTracks.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { getPlaylistArtworkRevisions, getPlaylistArtworkState } from "./playlistArtworkState.ts";
-import { hasPermission } from "../middleware/auth.ts";
-import { selectCanonicalFile } from "./canonicalFileSelector.ts";
+import { hasPermission } from "./auth.ts";
+import {
+  findAlbumForTrack,
+  findArtistForAlbum,
+  firstFile,
+  indexFocusedLibrary,
+  resolveLibraryTracks,
+  trackFromLibrary,
+  year,
+  type IndexedLibrary,
+  type Rating,
+  type Viewer,
+} from "./libraryTrackLookup.ts";
 import type {
   LibraryAlbum,
   LibraryArtist,
@@ -53,10 +64,9 @@ import type {
 import { libraryNameKey, subsonicId as idFor } from "./libraryMediaStore.ts";
 import { buildRadio, type RadioSeed } from "./radio.ts";
 import { getUserMix, getUserMixes, type Mix } from "./discovery/mixes.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { withLock } from "./jobs/queue.ts";
 import { discSubtitle, discTitles } from "../../lib/discTitles.ts";
-import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.ts";
+import { withPlaylistMutationLock } from "./downloadJobs/downloadLocks.ts";
 import { processPlaylistOperation } from "./playlists/playlistOperations.ts";
 import {
   discardLibraryJobs,
@@ -74,15 +84,6 @@ import {
 const LIBRARY_IMAGE_PROFILE = "library";
 
 type SubsonicUser = RequestUser | null | undefined;
-type StarredAt = Map<string, string>;
-type Rating = { userRating?: number; averageRating: number };
-type Viewer = { starredAt?: StarredAt | null; ratings?: Map<string, Rating> | null };
-type LibraryInput = Viewer & {
-  artists: LibraryArtist[];
-  albums: LibraryAlbum[];
-  tracks: LibraryTrack[];
-};
-type IndexedLibrary = ReturnType<typeof indexFocusedLibrary>;
 type PlaylistOwner = { id: string; tracks?: PlaylistTrack[] };
 type StarRow = Pick<SubsonicStarsRow, "entity_kind" | "entity_key" | "created_at">;
 type StarKey = Pick<StarRow, "entity_kind" | "entity_key">;
@@ -202,12 +203,6 @@ const parseId = (value: unknown): ParsedId | null => {
   }
 };
 
-const firstFile = (
-  track: LibraryTrack | null | undefined,
-  albumId: number | null = null,
-  managedBy: string | null = null,
-) => selectCanonicalFile(track?.files, albumId, managedBy);
-
 const seconds = (durationMs: number | null | undefined) => {
   const value = Number(durationMs);
   return Number.isFinite(value) && value > 0 ? Math.round(value / 1000) : 0;
@@ -227,11 +222,6 @@ const bitRateKbps = (
 
 const isoDate = (epochMs: number | null | undefined) =>
   new Date(Number(epochMs) || Date.now()).toISOString();
-
-const year = (value: string | null | undefined) => {
-  const match = /^(\d{4})/.exec(String(value || ""));
-  return match ? Number(match[1]) : null;
-};
 
 const normalizeLimit = (value: string | undefined, fallback = 20) => {
   const parsed = Number.parseInt(String(value), 10);
@@ -275,14 +265,6 @@ const visibleFlows = (user: SubsonicUser) =>
   user && hasPermission(user, "accessPlaylists")
     ? flowPlaylistConfig.getFlowsForUser(user).filter((flow) => flow.enabled)
     : [];
-
-const findAlbumForTrack = (library: IndexedLibrary, track: LibraryTrack | null | undefined) => {
-  const albumId = track?.albums?.[0]?.albumId;
-  return (albumId === undefined ? undefined : library.albumsById.get(albumId)) || null;
-};
-
-const findArtistForAlbum = (library: IndexedLibrary, album: LibraryAlbum | null | undefined) =>
-  (album ? library.artistsById.get(album.artistId) : undefined) || null;
 
 const protocolArtist = (artist: LibraryArtist | null | undefined, fallback = "Unknown Artist") => ({
   id: idFor("artist", artist?.identityKey || `name:artist:${fallback.toLocaleLowerCase()}`),
@@ -504,26 +486,6 @@ export const toIndexArtist = ({
   userRating,
   averageRating,
 }: SubsonicArtist) => ({ id, name, starred, userRating, averageRating });
-
-const indexFocusedLibrary = (library: LibraryInput, viewer: Viewer = library) => ({
-  ...library,
-  starredAt: viewer.starredAt,
-  ratings: viewer.ratings,
-  customAlbumArtwork: getCustomArtworkMap(
-    "album",
-    library.albums.map((album) => album.id),
-  ),
-  customTrackArtwork: getCustomArtworkMap(
-    "track",
-    library.tracks.map((track) => track.id),
-  ),
-  artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
-  albumsById: new Map(library.albums.map((album) => [album.id, album])),
-  tracksById: new Map(library.tracks.map((track) => [track.id, track])),
-  artistsByIdentity: new Map(library.artists.map((artist) => [artist.identityKey, artist])),
-  albumsByIdentity: new Map(library.albums.map((album) => [album.identityKey, album])),
-  tracksByIdentity: new Map(library.tracks.map((track) => [track.identityKey, track])),
-});
 
 function findLibraryEntry(
   library: IndexedLibrary,
@@ -1023,11 +985,6 @@ const touchStars = (userId: number) => {
   touchStarsStmt.run(userId, Math.max(Date.now(), floor + 1));
 };
 
-const isSameTrack = (
-  left: PlaylistTrackInput | null | undefined,
-  right: PlaylistTrackInput | null | undefined,
-) => tracksShareMembership(left, right);
-
 const trackFromJob = (job: DownloadJob | null | undefined) => {
   const track = normalizePlaylistTrack({
     artistName: job?.artistName,
@@ -1047,37 +1004,6 @@ const trackFromJob = (job: DownloadJob | null | undefined) => {
       albumTrackCount: job?.albumTrackCount,
       albumTrackTitles: job?.albumTrackTitles,
     }
-  );
-};
-
-const trackFromLibrary = (library: IndexedLibrary, track: LibraryTrack | null | undefined) => {
-  const album = findAlbumForTrack(library, track);
-  const owner = findArtistForAlbum(library, album);
-  const ownerCredit = Boolean(owner?.name) && !isVariousArtistsCredit(owner!.name, owner!.mbid);
-  return normalizePlaylistTrack({
-    artistName: ownerCredit ? owner!.name : track?.artistName || owner?.name,
-    trackName: track?.title,
-    albumName: album?.title,
-    artistMbid: owner?.mbid,
-    albumMbid: album?.releaseGroupMbid || album?.mbid,
-    trackMbid: track?.mbid,
-    releaseYear: year(album?.releaseDate),
-    durationMs: firstFile(track, album?.id, album?.managedBy)?.durationMs,
-    trackNumber: track?.albums?.[0]?.trackNumber,
-  });
-};
-
-const matchesLibraryTrack = (
-  track: PlaylistTrackInput,
-  library: IndexedLibrary,
-  entry: LibraryTrack,
-) => {
-  const libraryTrack = trackFromLibrary(library, entry);
-  if (!libraryTrack) return false;
-  return (
-    isSameTrack(track, libraryTrack) ||
-    (Boolean(entry.artistName) &&
-      isSameTrack(track, { ...libraryTrack, artistName: entry.artistName }))
   );
 };
 
@@ -1113,56 +1039,6 @@ const resolveSubsonicTrack = (user: SubsonicUser, value: string) => {
 };
 
 const favoriteAutoKeepEnabled = () => dbOps.getSettings()?.subsonic?.favoriteAutoKeep !== false;
-
-// Resolve playlist track descriptors to available library tracks. All descriptors of a batch are
-// looked up in one library query (by recording MBID and by title), then matched in memory with
-// the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
-export function resolveLibraryTracks(descriptors: (PlaylistTrackInput | null | undefined)[]) {
-  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) =>
-    normalizePlaylistTrack(entry),
-  );
-  const present = items.filter((track): track is NonNullable<typeof track> => Boolean(track));
-  if (!present.length) return items.map(() => null);
-  const library = indexFocusedLibrary(
-    getLibraryForTrackMatches({
-      source: "all",
-      availableOnly: true,
-      mbids: present.map((track) => track.trackMbid),
-      titles: present.map((track) => track.trackName),
-    }),
-  );
-  const byTitle = new Map<string, LibraryTrack[]>();
-  const byMbid = new Map<string, LibraryTrack>();
-  for (const track of library.tracks) {
-    const title = String(track.title || "")
-      .trim()
-      .toLowerCase();
-    if (!byTitle.has(title)) byTitle.set(title, []);
-    byTitle.get(title)!.push(track);
-    if (track.mbid && !byMbid.has(track.mbid)) byMbid.set(track.mbid, track);
-  }
-  const resolveFile = (entry: LibraryTrack) => {
-    const album = findAlbumForTrack(library, entry);
-    return { album, file: firstFile(entry, album?.id, album?.managedBy) };
-  };
-  const playable = (entry: LibraryTrack) => {
-    const { file } = resolveFile(entry);
-    return Boolean(file?.available && file.path);
-  };
-  return items.map((track) => {
-    if (!track) return null;
-    // A shared recording MBID identifies the track even when the titles differ (remaster, typo).
-    const byId = track.trackMbid ? byMbid.get(track.trackMbid) : null;
-    const candidates = byTitle.get(track.trackName.toLowerCase()) || [];
-    const match =
-      byId && playable(byId)
-        ? byId
-        : candidates.find((entry) => playable(entry) && matchesLibraryTrack(track, library, entry));
-    if (!match) return null;
-    const { album, file } = resolveFile(match);
-    return { file, library, track: match, albumName: album?.title };
-  });
-}
 
 const playlistSongKind = (playlistId: string) =>
   flowPlaylistConfig.getFlow(playlistId) ? "flow-song" : "shared-song";

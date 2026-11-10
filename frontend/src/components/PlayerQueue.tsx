@@ -29,8 +29,8 @@ import PillToggle from "./PillToggle";
 import { isAutoplayEntry } from "../utils/audioQueue";
 import { useAuth } from "../contexts/AuthContext";
 import { CreatePlaylistModal } from "./PlaylistModals";
-import { useTrackSaveActions } from "../pages/useTrackSaveActions";
-import { reserveUniquePlaylistName } from "../pages/ArtistDetails/utils";
+import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
+import { reserveUniquePlaylistName } from "../utils/staticPlaylists.ts";
 
 type QueueEntry = AudioQueueValue["upcoming"][number];
 

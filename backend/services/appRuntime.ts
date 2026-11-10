@@ -108,7 +108,7 @@ export async function forwardWorkerBroadcast(message: WorkerMessage) {
   if (message.channel === "discovery" && userId != null) {
     const [{ dbOps }, { getUserDiscoveryNamespace }] = await Promise.all([
       import("../db/helpers/index.ts"),
-      import("./discovery/provider.ts"),
+      import("./discovery/userRefreshRequests.ts"),
     ]);
     dbOps.invalidateDiscoveryCache(getUserDiscoveryNamespace(userId));
   } else if (message.channel === "discovery") {
@@ -198,12 +198,8 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
         return;
       }
       if (message?.type === "cache-invalidate" && message.cache === "playlists") {
-        void Promise.all([
-          import("../db/helpers/index.ts"),
-          import("./playlists/flowPlaylistConfig.ts"),
-        ])
-          .then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
-            dbOps.invalidateSettingsCache();
+        void import("./playlists/flowPlaylistConfig.ts")
+          .then(({ invalidateFlowPlaylistConfigCache }) => {
             invalidateFlowPlaylistConfigCache();
           })
           .catch((error) => {
@@ -228,13 +224,11 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
         return;
       }
       if (message?.type === "job-finished" && _group === "downloads") {
-        void Promise.all([
-          import("../db/helpers/index.ts"),
-          import("./playlists/flowPlaylistConfig.ts"),
-        ]).then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
-          dbOps.invalidateSettingsCache();
-          invalidateFlowPlaylistConfigCache();
-        });
+        void import("./playlists/flowPlaylistConfig.ts").then(
+          ({ invalidateFlowPlaylistConfigCache }) => {
+            invalidateFlowPlaylistConfigCache();
+          },
+        );
         return;
       }
       if (message?.type === "cache-invalidate" && message.cache === "news") {

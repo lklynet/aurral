@@ -11,8 +11,7 @@ import { pluginsClient } from "../../../utils/api/clients/plugins.ts";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
 import { copyText } from "../../../utils/shareLink.ts";
 import { SettingsCommitInput, SettingsInput, SettingsTextarea } from "../components/SettingsField";
-import { useSettingsRoute } from "../settingsRoute.tsx";
-import { readApiError } from "../utils/apiError.ts";
+import { useSettingsRoute } from "../../../navigation/settingsRoute.tsx";
 import {
   SettingsActions,
   SettingsGroup,
@@ -23,6 +22,7 @@ import {
   useSettingsItem,
   type ServiceStatus,
 } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type PluginList = InferResponseType<typeof pluginsClient.$get, 200>;
 type Plugin = PluginList["plugins"][number];

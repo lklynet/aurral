@@ -15,7 +15,7 @@ import { logger, safeLogDiagnostic } from "./logger.ts";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { hasShareDownloads } from "./shareLinks/downloadStore.ts";
-import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.ts";
+import { withDownloadPayloadMutation } from "./downloadJobs/downloadOwnership.ts";
 
 const pipelineStepSchema = v.looseObject({
   jobId: v.string(),

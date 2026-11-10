@@ -19,7 +19,7 @@ import {
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.ts";
-import { getQualityProfile } from "./qualityProfileService.ts";
+import { getQualityProfile } from "./qualityProfile.ts";
 import { qbittorrentClient } from "./qbittorrentClient.ts";
 
 const releaseData = v.object({

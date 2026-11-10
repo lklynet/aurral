@@ -7,7 +7,7 @@ import { RotateCcw, X } from "./icons";
 import { DotLoader } from "./DotLoader";
 import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
-import { SettingsLink } from "../pages/Settings/settingsRoute";
+import { SettingsLink } from "../navigation/settingsRoute";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { queryKeys } from "../queryClient.ts";
 import { cancelAurralAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";

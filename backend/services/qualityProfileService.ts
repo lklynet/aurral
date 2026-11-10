@@ -1,57 +1,28 @@
-import fs from "fs/promises";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
 import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { lenient } from "../db/helpers/storedSchemas.ts";
-import { dbOps } from "../db/helpers/index.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.ts";
-import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.ts";
 import { getEnabledDownloadSources, upgradeSourceIds } from "./downloadSourceService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
 import {
-  classifyAudioQuality,
-  getQualityState,
-  type QualityState,
-  getQualityTier,
-  isQualityUpgrade,
-  normalizeQualityProfile,
-} from "./qualityProfileModel.ts";
+  getQualityProfile,
+  isAurralOwnedPath,
+  type QualityJob,
+  type QualityProfile,
+} from "./qualityProfile.ts";
+import { classifyAudioQuality, getQualityState, getQualityTier } from "./qualityProfileModel.ts";
+import { recordTrackJobQueued } from "./aurralHistoryService.ts";
+import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts";
+import { resolveAurralOwnedTrackJob } from "./libraryTrackResearchService.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-type QualityJob = Pick<
-  DownloadJob,
-  | "id"
-  | "status"
-  | "finalPath"
-  | "upgradeForJobId"
-  | "albumMbid"
-  | "artistName"
-  | "trackName"
-  | "albumName"
-  | "playlistId"
-  | "playlistType"
-  | "playlistGeneration"
-  | "downloadSource"
-  | "downloadClient"
-  | "manualReplacementSearch"
-  | "qualityTier"
-  | "qualityFormat"
-  | "qualityBitrateKbps"
-  | "qualitySampleRate"
-  | "qualityBitDepth"
-  | "qualityCheckedAt"
-  | "qualityUpgradeCheckedAt"
->;
-
-type AudioQuality = ReturnType<typeof classifyAudioQuality>;
-type QualityProfile = ReturnType<typeof getQualityProfile>;
 
 const storedQualitySchema = v.looseObject({
   format: lenient(v.nullable(v.string())),
@@ -77,76 +48,6 @@ type LibraryUpgradeRow = Pick<
 > & {
   album_mbid: string | null;
 };
-
-export function getQualityProfile() {
-  const settings = dbOps.getSettings();
-  return normalizeQualityProfile(settings.qualityProfile, settings.integrations?.slskd);
-}
-
-export function isAurralOwnedPath(filePath: string | null | undefined) {
-  if (!filePath) return false;
-  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolveDownloadRoot()));
-}
-
-function getJobQuality(job: QualityJob, profile: QualityProfile) {
-  const quality = {
-    tier: job.qualityTier || null,
-    format: job.qualityFormat || null,
-    bitrateKbps: job.qualityBitrateKbps ?? null,
-    sampleRate: job.qualitySampleRate ?? null,
-    bitDepth: job.qualityBitDepth ?? null,
-  };
-  const owned = isAurralOwnedPath(job.finalPath);
-  const qualityState: QualityState | null =
-    job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null;
-  return {
-    qualityOwned: owned,
-    qualityState,
-    qualityLabel: getQualityTier(quality.tier)?.label || "Unknown",
-  };
-}
-
-export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQualityProfile()) {
-  return { ...job, ...(!job.upgradeForJobId && getJobQuality(job, profile)) };
-}
-
-export function validateParsedQuality(
-  parsed: Parameters<typeof classifyAudioQuality>[0],
-  filePath: string,
-  {
-    upgradeForJobId = null,
-    manualReplacementSearch = false,
-    manualSelection = false,
-  }: {
-    upgradeForJobId?: string | null;
-    manualReplacementSearch?: boolean;
-    manualSelection?: boolean;
-  } = {},
-) {
-  const profile = getQualityProfile();
-  const quality = classifyAudioQuality(parsed, filePath);
-  const enabled = quality.tier !== null && profile.enabled.includes(quality.tier);
-  if (!quality.tier || (!enabled && !manualSelection)) {
-    return {
-      valid: false,
-      quality,
-      reason: quality.tier
-        ? `quality-below-floor: ${quality.tier}`
-        : "quality-unknown: could not classify final file",
-    };
-  }
-  if (upgradeForJobId && !manualReplacementSearch) {
-    const current = downloadTracker.getJob(upgradeForJobId);
-    if (!current || !isQualityUpgrade(quality, current.qualityTier, profile)) {
-      return {
-        valid: false,
-        quality,
-        reason: `quality-not-an-upgrade: current=${current?.qualityTier || "unknown"}, candidate=${quality.tier}`,
-      };
-    }
-  }
-  return { valid: true, quality, reason: null };
-}
 
 async function readQuality(filePath: string) {
   const parsed = await parseFile(filePath, { duration: true });
@@ -202,7 +103,6 @@ function hasUpgradeSource() {
 
 async function readUpgradeSearchContext(job: QualityJob) {
   try {
-    const { resolveTrackSearchContext } = await import("./downloadJobs/trackSearchContext.ts");
     return await resolveTrackSearchContext(job);
   } catch (error) {
     logger.warn("downloads", "Could not read release details for a quality upgrade", {
@@ -248,7 +148,6 @@ async function addUpgradesAtOnce(
   prepared: UpgradePlan[],
   { aheadOfWaiting = false }: { aheadOfWaiting?: boolean } = {},
 ) {
-  const { recordTrackJobQueued } = await import("./aurralHistoryService.ts");
   const queuedIds: string[] = [];
   const isUnmonitored = indexUnmonitoredJobs();
   const statuses = prepared.map(({ sourceJobId, context }) => {
@@ -267,7 +166,7 @@ async function addUpgradesAtOnce(
   });
   if (aheadOfWaiting) downloadTracker.queueFirst(queuedIds);
   if (queuedIds.length > 0) {
-    const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.ts");
+    const { wakeDownloadWorker } = await import("./downloadJobs/downloadWorker.ts");
     await wakeDownloadWorker();
   }
   return statuses;
@@ -369,7 +268,6 @@ async function listUpgradeCandidatesByAlbum({
     });
   }
   if ((!owners || owners.has("library")) && hasUpgradeSource()) {
-    const { resolveAurralOwnedTrackJob } = await import("./libraryTrackResearchService.ts");
     for (const candidate of listLibraryUpgradeCandidates(profile)) {
       collect(candidate.albumMbid || `track:${candidate.trackId}`, {
         owner: "library",
@@ -419,131 +317,4 @@ export async function runQualityUpgradeCheck({
     queued += (await addUpgradesAtOnce(prepared)).filter((status) => status === "queued").length;
   }
   return queued;
-}
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// An upgrade with the old file's name lands beside it as "07 - Title (2)".
-// Once the old file is gone, the upgrade takes its name back. A hardlinked
-// old file only loses this link, so its other copy is never touched.
-async function takeReplacedFileName(oldPath: string, newPath: string) {
-  const directory = path.dirname(oldPath);
-  const base = path.basename(oldPath, path.extname(oldPath));
-  const extension = path.extname(newPath);
-  if (path.dirname(newPath) !== directory) return newPath;
-  if (
-    !new RegExp(`^${escapeRegExp(base)} \\(\\d+\\)${escapeRegExp(extension)}$`).test(
-      path.basename(newPath),
-    )
-  ) {
-    return newPath;
-  }
-  const target = path.join(directory, `${base}${extension}`);
-  try {
-    await fs.link(newPath, target);
-    await fs.unlink(newPath);
-    return target;
-  } catch {
-    return newPath;
-  }
-}
-
-export async function finalizeQualityUpgradeSuccess(
-  upgradeJob: QualityJob,
-  finalPath: string,
-  quality: AudioQuality | null | undefined,
-) {
-  const original = downloadTracker.getJob(upgradeJob.upgradeForJobId);
-  if (!original?.finalPath) {
-    await fs.rm(finalPath, { force: true }).catch(() => {});
-    downloadTracker.removeJob(upgradeJob.id);
-    return null;
-  }
-  const oldPath = original.finalPath;
-  const originalDetails = {
-    trackName: original.trackName,
-    playlistType: original.playlistType,
-    qualityTier: original.qualityTier,
-  };
-  let upgradedPath = finalPath;
-  let replaced = false;
-  if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
-    await fs.rm(oldPath, { force: true }).catch(() => {});
-    upgradedPath = await takeReplacedFileName(oldPath, finalPath);
-    replaced = true;
-  }
-  const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality);
-  if (replaced) {
-    const { adoptLibraryFileIdentity } = await import("./libraryFiles/fileIdentity.ts");
-    await adoptLibraryFileIdentity(upgradedPath, { previousPath: oldPath }).catch((error) => {
-      logger.warn("quality-upgrade", "The Library could not follow an upgraded file", {
-        jobId: upgradeJob.id,
-        reason: safeLogDiagnostic(error),
-      });
-    });
-  }
-  downloadTracker.removeJob(upgradeJob.id);
-  const { flowPlaylistConfig } = await import("./playlists/flowPlaylistConfig.ts");
-  const playlistIds = [
-    ...changed.map((job) => job.playlistType),
-    ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs(changed.map((job) => job.id)),
-  ];
-  const { playlistManager } = await import("./playlists/playlistManager.ts");
-  playlistManager.requestPlaylistSync(playlistIds);
-  const { scheduleLibraryScan } = await import("./libraryScanWorker.ts");
-  scheduleLibraryScan({ includeLidarr: false, changedPaths: [oldPath, upgradedPath] });
-  const { recordTrackJobActivity } = await import("./aurralHistoryService.ts");
-  recordTrackJobActivity({
-    jobId: upgradeJob.id,
-    trackName: originalDetails.trackName,
-    artistName: original.artistName,
-    albumName: original.albumName,
-    albumMbid: original.albumMbid,
-    playlistId: originalDetails.playlistType,
-    title: upgradeJob.manualReplacementSearch
-      ? `Re-searched ${originalDetails.trackName}`
-      : `Upgraded ${originalDetails.trackName}`,
-    subtitle: upgradeJob.manualReplacementSearch
-      ? "A replacement recording was added"
-      : `${originalDetails.qualityTier || "Unknown"} → ${quality?.tier || "Unknown"}`,
-    status: "completed",
-    statusLabel: upgradeJob.manualReplacementSearch ? "Replaced" : "Upgraded",
-    downloadSource: upgradeJob.downloadSource,
-    downloadClient: upgradeJob.downloadClient,
-  });
-  return null;
-}
-
-export async function finalizeQualityUpgradeFailure(
-  upgradeJob: QualityJob,
-  message?: string | null,
-) {
-  const original = downloadTracker.getJob(upgradeJob?.upgradeForJobId);
-  if (original && !upgradeJob?.manualReplacementSearch) {
-    downloadTracker.markQualityUpgradeChecked(original.id);
-  }
-  if (upgradeJob?.id) downloadTracker.removeJob(upgradeJob.id);
-  if (!original) return;
-  const { recordTrackJobActivity } = await import("./aurralHistoryService.ts");
-  recordTrackJobActivity({
-    jobId: upgradeJob.id,
-    trackName: original.trackName,
-    artistName: original.artistName,
-    albumName: original.albumName,
-    albumMbid: original.albumMbid,
-    playlistId: original.playlistType,
-    title: upgradeJob.manualReplacementSearch
-      ? `No replacement found for ${original.trackName}`
-      : `No upgrade found for ${original.trackName}`,
-    subtitle: String(
-      message ||
-        (upgradeJob.manualReplacementSearch
-          ? "No replacement file was available"
-          : "No better file was available"),
-    ),
-    status: upgradeJob.manualReplacementSearch ? "failed" : "unchanged",
-    statusLabel: upgradeJob.manualReplacementSearch ? "No replacement" : "No upgrade",
-    downloadSource: upgradeJob.downloadSource,
-    downloadClient: upgradeJob.downloadClient,
-  });
 }

@@ -40,7 +40,7 @@ import { judgeRelease } from "./releaseJudge.ts";
 import { manifestIndexFor, type ReleaseManifest } from "../releaseManifest.ts";
 import { isRequestedYoutubeAlbum, readYoutubeFile } from "./youtubeEvidence.ts";
 import { scoreTextMatch } from "../providers/brainzmashRanking.ts";
-import { validateParsedQuality } from "../qualityProfileService.ts";
+import { validateParsedQuality } from "../qualityProfile.ts";
 import { logger } from "../logger.ts";
 
 export const POST_DOWNLOAD_DECISIONS = {

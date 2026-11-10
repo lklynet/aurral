@@ -1,5 +1,4 @@
 import { useId, useState } from "react";
-import type { MonitorRules as MonitoringRules } from "../../../backend/services/aurralMonitoring.ts";
 import PillToggle from "./PillToggle";
 import { Select } from "./Select";
 import {
@@ -9,10 +8,9 @@ import {
   MAX_LATEST_RELEASES,
   MAX_TOP_TRACKS,
   RELEASE_TYPE_OPTIONS,
+  type MonitoringRules,
 } from "../utils/monitoringRules.ts";
 import "./MonitoringRules.css";
-
-export type { MonitoringRules };
 
 interface ChoiceOption {
   value: string;

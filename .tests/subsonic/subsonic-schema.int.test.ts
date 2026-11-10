@@ -25,7 +25,7 @@ const [
   "subsonic-schema",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/services/passwordHash.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),

@@ -71,7 +71,6 @@ const updateApiKeyStmt = db.prepare<[string, string, number]>(
 const getUserAuthByApiKeyHashStmt = db.prepare<[string], UserAuthRow>(
   "SELECT id, username, role, permissions, status, is_protected, role_source FROM users WHERE api_key_hash = ?",
 );
-const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id = ?");
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 
 const DEFAULT_PERMISSIONS = {
@@ -326,14 +325,6 @@ export const userOps = {
       };
     } catch (e) {
       return null;
-    }
-  },
-  setProtected(id: number | string, isProtected: boolean) {
-    try {
-      setProtectedStmt.run(isProtected ? 1 : 0, parseInt(String(id), 10));
-      return true;
-    } catch (e) {
-      return false;
     }
   },
   deleteUser(id: number | string) {

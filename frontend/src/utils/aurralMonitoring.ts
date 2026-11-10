@@ -1,4 +1,4 @@
-import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+import type { MonitoringRules } from "./monitoringRules.ts";
 import { getApiErrorBody, getApiErrorMessage } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
 import { shouldPollAlbumStatus, type AlbumStatus } from "./aurralAlbumStatus.ts";

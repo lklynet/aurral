@@ -1,7 +1,7 @@
 import { db } from "../config/db-sqlite.ts";
 import type { ListenHistorySourcesRow } from "../db/rows.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import { validateExternalUrl } from "./urlValidator.ts";
 import { normalizeKoitoBaseUrl } from "./koitoClient.ts";
 
 export const LISTEN_HISTORY_PROVIDERS = ["lastfm", "listenbrainz", "koito"] as const;

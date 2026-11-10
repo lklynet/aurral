@@ -1,6 +1,6 @@
 import { getTagArtists } from "./musicDataSource/index.ts";
 import { buildImageProxyUrl } from "./imageProxyService.ts";
-import { selectBestArtistImage } from "./imageService.ts";
+import { selectBestArtistImage } from "./imageRanking.ts";
 import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.ts";
 import {
   searchAlbums as providerSearchAlbums,

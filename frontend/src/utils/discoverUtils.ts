@@ -1,5 +1,5 @@
 import type { InferResponseType } from "hono/client";
-import type { discoveryClient } from "../utils/api/clients/discovery.ts";
+import type { discoveryClient } from "./api/clients/discovery.ts";
 import {
   DISCOVER_SECTION_IDS,
   normalizeDiscoverLayout as normalizeLayoutEntries,

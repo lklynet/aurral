@@ -7,9 +7,8 @@ import { Trash2 } from "../../../components/icons";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { SettingsInput, SettingsTextarea } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsLink, useSettingsRoute } from "../settingsRoute";
+import { SettingsLink, useSettingsRoute } from "../../../navigation/settingsRoute";
 import type { SettingsState } from "../utils";
-import { readApiError } from "../utils/apiError.ts";
 import {
   NOTIFICATION_EVENTS,
   type NotificationEvent,
@@ -23,6 +22,7 @@ import {
   SettingsServiceRow,
   useSettingsItem,
 } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type Integrations = SettingsState["integrations"];
 type Webhook = Integrations["webhooks"][number];

@@ -72,7 +72,13 @@ import createCache from "./apiClients/simpleCache.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trackSearchQueries.ts";
 import type { SearchTrackRequest } from "./trackMatching/trackIdentity.ts";
-import type { HistoryJob } from "./aurralHistoryService.ts";
+import {
+  recordTrackJobMoving,
+  recordTrackJobWaiting,
+  recordTrackJobSearching,
+  recordTrackJobDownloading,
+  type HistoryJob,
+} from "./aurralHistoryService.ts";
 
 type SlskdBatch = { transfers?: SlskdTransfer[]; localFilename?: string };
 type SlskdTransferRef = { id?: string | null; username?: string | null } | null | undefined;
@@ -174,7 +180,7 @@ type PayloadOutcomeDetails = {
   validation?: unknown;
 };
 
-import { getQualityProfile } from "./qualityProfileService.ts";
+import { getQualityProfile } from "./qualityProfile.ts";
 import {
   getAdvertisedQualityRank,
   getQualityTier,
@@ -785,18 +791,6 @@ function retrySameCandidateOrNext(
   return null;
 }
 
-function recordTrackJobHistory(
-  job: SlskdJob,
-  record: (history: typeof import("./aurralHistoryService.ts")) => unknown,
-) {
-  import("./aurralHistoryService.ts").then(record).catch((err: unknown) => {
-    logger.warn("slskd", "Failed to record track job activity", {
-      jobId: job.id,
-      error: asAppError(err)?.message || String(err),
-    });
-  });
-}
-
 async function isLoggedOut(options?: { force?: boolean }) {
   const status = await slskdClient.testConnection(options);
   return status?.ok === true && status.connected !== true;
@@ -841,12 +835,7 @@ function waitForSoulseekLogin(
       phase: payload.phase,
       reason: detail,
     });
-    recordTrackJobHistory(job, (history) =>
-      history.recordTrackJobWaiting(
-        job,
-        `${SOULSEEK_LOGGED_OUT_MESSAGE}. Aurral continues when it logs in.`,
-      ),
-    );
+    recordTrackJobWaiting(job, `${SOULSEEK_LOGGED_OUT_MESSAGE}. Aurral continues when it logs in.`);
   }
   return {
     ...payload,
@@ -1027,14 +1016,14 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
   if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
   if (payload.soulseekLoggedOutSince) {
     payload = { ...payload, soulseekLoggedOutSince: null };
-    recordTrackJobHistory(job, (history) => history.recordTrackJobSearching(job));
+    recordTrackJobSearching(job);
   }
   if (!payload.searchQueries) {
     downloadTracker.setDownloading(job.id);
     downloadTracker.updateDownloadMetadata(job.id, {
       downloadSource: "slskd",
     });
-    recordTrackJobHistory(job, (history) => history.recordTrackJobSearching(job));
+    recordTrackJobSearching(job);
   }
   const release = await attemptRelease(payload, job);
   const resolvedTrack = attemptTrackRequest(job, release, payload.track);
@@ -1197,7 +1186,7 @@ async function handleDownload(payload: SlskdPayload, helpers: SlskdHelpers) {
   if (job.status === "failed" || job.status === "done") return null;
   if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
   if (payload.soulseekLoggedOutSince) payload = { ...payload, soulseekLoggedOutSince: null };
-  recordTrackJobHistory(job, (history) => history.recordTrackJobDownloading(job));
+  recordTrackJobDownloading(job);
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
@@ -1727,14 +1716,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
   const committed = await withPipelineCommitLock(payload, async () => {
-    import("./aurralHistoryService.ts")
-      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err: unknown) => {
-        logger.warn("slskd", "Failed to record track job moving", {
-          jobId: job.id,
-          error: asAppError(err)?.message || String(err),
-        });
-      });
+    recordTrackJobMoving(job);
     const committedFinalPath = await commitDownloadedFile(sourcePath, finalPath);
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
       source: "slskd",

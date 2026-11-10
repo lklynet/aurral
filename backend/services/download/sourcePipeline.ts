@@ -20,7 +20,7 @@ import {
 import { logger } from "../logger.ts";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
-import { getQualityProfile } from "../qualityProfileService.ts";
+import { getQualityProfile } from "../qualityProfile.ts";
 import { isSameCoreAlbum } from "../downloadJobs/deemixSearch.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
 import { attemptRelease } from "../releaseResolver.ts";
@@ -47,6 +47,11 @@ import {
   type TrackResult,
   type Upgrade,
 } from "./downloadSource.ts";
+import {
+  recordTrackJobSearching,
+  recordTrackJobDownloading,
+  recordTrackJobMoving,
+} from "../aurralHistoryService.ts";
 
 const POLL_SECONDS = 15;
 const MAX_POLLS = (24 * 60 * 60) / POLL_SECONDS;
@@ -106,15 +111,6 @@ const resolveTrack = (payload: SourcePayload, job: DownloadJob) => ({
   ...buildResolvedTrack(job, payload.track),
   upgradeForJobId: payload.upgradeForJobId || null,
 });
-
-function recordHistory(
-  job: DownloadJob,
-  step: "recordTrackJobSearching" | "recordTrackJobDownloading" | "recordTrackJobMoving",
-) {
-  import("../aurralHistoryService.ts")
-    .then((history) => history[step](job))
-    .catch((error) => console.warn(error));
-}
 
 export function trackQuery(track: ReturnType<typeof buildResolvedTrack>) {
   return {
@@ -180,7 +176,7 @@ function startSearch(job: DownloadJob, source: DownloadSource) {
     downloadSource: source.id,
     downloadClient: source.id,
   });
-  recordHistory(job, "recordTrackJobSearching");
+  recordTrackJobSearching(job);
 }
 
 async function handleAlbumSearch(
@@ -405,7 +401,7 @@ async function handleDownload(
   const result = candidate?.raw;
   if (!v.is(trackResult, result))
     return helpers.failOrTryNextSource(payload, job, "No search result to download");
-  recordHistory(job, "recordTrackJobDownloading");
+  recordTrackJobDownloading(job);
   try {
     const started = await startDownload(payload, source, job, result);
     if (!isPipelinePayloadActive(payload)) {
@@ -555,7 +551,7 @@ async function handleFinalize(
   );
   const committed = await withPipelineCommitLock(payload, async () => {
     await writeAudioMetadata(filePath, resolvedTrack);
-    recordHistory(job, "recordTrackJobMoving");
+    recordTrackJobMoving(job);
     const committedFinalPath = await commitDownloadedFile(filePath, finalPath);
     await cleanup(directory);
     return finalizePipelineJobSuccess({

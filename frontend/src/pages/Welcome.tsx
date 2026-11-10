@@ -10,7 +10,7 @@ import {
   spotifyHistoryQueryOptions,
 } from "../queryOptions.ts";
 import { SettingsServiceRow } from "./Settings/SettingsLayout";
-import { readSettingsPath } from "./Settings/settingsRoute";
+import { readSettingsPath } from "../navigation/settingsRoute";
 import { normalizeSettings } from "./Settings/utils";
 import { configuredStatus, lidarrConnected } from "./Settings/utils/serviceStatus";
 import {

@@ -5,17 +5,17 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 const [
   paths,
   { db },
-  { releaseMetadataQueue, systemTaskSchema },
+  { releaseMetadataQueue },
   { createJobWorker },
   { acquireReleaseMetadataLease },
-  { prepareSystemTask },
+  { systemTask, systemTaskSchema },
 ] = await setupIsolatedBackend(
   "release-metadata-lease",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/jobs/worker.ts"),
   () => import("../../backend/services/releaseMetadataLease.ts"),
-  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
 );
 afterAll(() => cleanupIsolatedState(paths));
 
@@ -27,7 +27,7 @@ test("a metadata refresh waiting on another's lease stops without running or spe
   const worker = createJobWorker(releaseMetadataQueue, {
     schema: systemTaskSchema,
     interruptible: true,
-    prepareJob: prepareSystemTask,
+    prepareJob: (payload, _job, context) => systemTask(payload.kind).prepare?.(context) ?? null,
     onJobDequeue: () => dequeued.resolve(),
     processJob: () => {
       executed = true;

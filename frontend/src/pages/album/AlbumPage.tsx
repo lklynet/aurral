@@ -51,12 +51,11 @@ import { favoriteId, firstAvailableFile } from "../../utils/libraryPageData.ts";
 import { parseAlbumRef } from "../../../../lib/albumPath.ts";
 import {
   buildAlbumHeaderMeta,
-  getApiErrorMessage,
   mergeReleaseDetails,
   resolveReleaseLibraryDisplay,
   type ReleaseGroup,
 } from "../ArtistDetails/utils";
-import { libraryViewQueryOptions } from "../libraryViewQuery.ts";
+import { libraryViewQueryOptions } from "../../utils/libraryViewQuery.ts";
 import { LIBRARY_SOURCE, useLibraryActions } from "../library/useLibraryActions.tsx";
 import {
   Cover,
@@ -74,6 +73,7 @@ import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
 import { useReleaseCover } from "./useReleaseCover.ts";
 import StatePanel from "../../components/StatePanel";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 function AlbumPage() {
   const { ref: routeRef } = useParams();
@@ -608,8 +608,10 @@ function AlbumPage() {
               ? albumRef.kind === "library"
                 ? "This item is no longer in the Library."
                 : "This album doesn’t exist on MusicBrainz."
-              : getApiErrorMessage(failed?.error) ||
-                "The server didn’t respond. Try again in a moment."
+              : getApiErrorMessage(
+                  failed?.error,
+                  "The server didn’t respond. Try again in a moment.",
+                )
         }
         onRetry={notFound ? undefined : () => void failed?.refetch()}
         retrying={failed?.isFetching}

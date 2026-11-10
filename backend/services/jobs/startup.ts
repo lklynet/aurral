@@ -1,4 +1,4 @@
-import { enqueueSystemTask, type SystemTaskKind } from "./queues.ts";
+import { enqueueSystemTask, SYSTEM_TASK_STARTUPS, type SystemTaskKind } from "./systemTasks.ts";
 import { asAppError } from "../../../lib/errors.ts";
 
 function enqueueOnce(kind: SystemTaskKind, delayMs: number, priority: number) {
@@ -16,8 +16,6 @@ export function enqueueStartupTasks() {
         asAppError(error)?.message || error,
       ),
     );
-  enqueueOnce("flow-startup-check", 5000, 5);
-  enqueueOnce("playlist-startup-publish", 10_000, 0);
   import("../libraryFiles/operations.ts")
     .then(({ resumeLibraryFileOperations }) => resumeLibraryFileOperations())
     .catch((error) =>
@@ -26,9 +24,7 @@ export function enqueueStartupTasks() {
         asAppError(error)?.message || error,
       ),
     );
-  enqueueOnce("discovery-bootstrap", 15_000, 5);
-  enqueueOnce("library-index-bootstrap", 8000, 0);
-  enqueueOnce("release-metadata-refresh", 12_000, -5);
-  enqueueOnce("news-refresh", 20_000, -5);
-  enqueueOnce("trending-charts-refresh", 25_000, -5);
+  for (const { kind, delayMs, priority } of SYSTEM_TASK_STARTUPS) {
+    enqueueOnce(kind, delayMs, priority);
+  }
 }

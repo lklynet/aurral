@@ -6,7 +6,7 @@ import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
 import { playlistStatusQueryOptions } from "../../queryOptions.ts";
 import { formatTrackTotal } from "../playlists/playlistPageUtils";
-import { getStaticPlaylistTrackCount } from "../playlists/playlistStats";
+import { getStaticPlaylistTrackCount } from "../../utils/playlistStats";
 
 export function LibraryHomePlaylists() {
   const { hasPermission } = useAuth();

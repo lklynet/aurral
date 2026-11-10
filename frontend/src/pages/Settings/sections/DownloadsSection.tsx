@@ -1,7 +1,7 @@
 import "./downloads.css";
 import { SettingsInput } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
-import { useSettingsRoute } from "../settingsRoute";
+import { useSettingsRoute } from "../../../navigation/settingsRoute";
 import { providerStatus } from "../utils/serviceStatus";
 import {
   SettingsGroup,

@@ -21,7 +21,7 @@ import {
   getLibraryTrackSample,
   invalidateLibraryQueryCache,
 } from "../../backend/services/libraryQueryService.ts";
-import { toPublicLibrary } from "../../backend/routes/library/handlers/libraryIndex.ts";
+import { toPublicLibrary } from "../../backend/services/publicLibrary.ts";
 import {
   buildLibraryReadModel,
   getLibraryReadModelForAlbumReferences,

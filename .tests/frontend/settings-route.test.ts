@@ -7,7 +7,7 @@ import {
   closeSettings,
   openSettings,
   readSettingsPath,
-} from "../../frontend/src/pages/Settings/settingsRoute.tsx";
+} from "../../frontend/src/navigation/settingsRoute.tsx";
 
 type Entry = { pathname: string; search: string; hash: string; state: unknown };
 type Step = number | { to: Omit<Entry, "state">; replace: boolean; state: unknown } | null;

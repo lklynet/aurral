@@ -20,6 +20,7 @@ import {
   getLibraryArtistPage,
   getLibraryArtistKeyProjection,
   getLibraryArtistProjection,
+  iterateLibraryArtistProjection,
   getLibraryPage,
   getLibraryTrackPage,
 } from "../../backend/services/libraryQueryService.ts";
@@ -52,7 +53,7 @@ test("stable artist and discovery reads do not call Lidarr", async () => {
   lidarrClient.isConfigured = () => true;
 
   try {
-    const artists = await libraryManager.getAllArtists();
+    const artists = [...iterateLibraryArtistProjection({ pageSize: 100 })];
     const releases = await getRecentMissingReleases(10, {
       now: "2026-08-22T12:00:00Z",
     });
@@ -589,9 +590,6 @@ test("legacy artist list bounds the projection before materialization", async ()
       sortName: `${prefix}-${String(index).padStart(3, "0")}`,
     }),
   );
-  vi.spyOn(libraryManager, "getAllArtists").mockImplementation(async () => {
-    throw new Error("legacy artist list must not materialize all projection pages");
-  });
 
   try {
     const response = await app.request("/library/artists?limit=1&offset=100");

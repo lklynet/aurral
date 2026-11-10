@@ -11,7 +11,6 @@ import { DotLoader } from "../../../../components/DotLoader";
 import { refreshStorageHealth, useStorageHealth } from "../../../../hooks/useStorageHealth";
 import { formatDateTime } from "../../../../utils/dateTime.ts";
 import type { HealthResponse } from "../../../../utils/appHealth.ts";
-import { readApiError } from "../../utils/apiError.ts";
 import { formatBytes } from "../../utils/formatBytes";
 import { runStorageHealthAction } from "../../utils/runStorageHealthAction";
 import { useServerSettings } from "../../SettingsProviders";
@@ -22,6 +21,7 @@ import {
   type ServiceStatus,
 } from "../../SettingsLayout";
 import { StatusLine } from "./StatusLine";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 type StorageResult = NonNullable<ReturnType<typeof useStorageHealth>["result"]>;
 type StorageCheck = StorageResult["sections"][number];

@@ -6,7 +6,7 @@ const [, { db }, store, { artistQueueTracks }] = await setupIsolatedBackend(
   "library-artist-queue",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/routes/library/handlers/queueTracks.ts"),
+  () => import("../../backend/services/queueTracks.ts"),
 );
 
 const MBID = "8bfac288-ccc5-448d-9573-c33ea2aa5c30";

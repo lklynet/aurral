@@ -1,4 +1,4 @@
-import type { PlaylistStats, PlaylistStatus } from "./playlistStats.ts";
+import type { PlaylistStats, PlaylistStatus } from "../../utils/playlistStats.ts";
 
 const GENERATION_ACTIONS = new Set(["enable", "scheduled", "manual-start"]);
 const CLEANUP_ACTIONS = new Set(["disable", "delete", "reset"]);

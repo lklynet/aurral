@@ -7,11 +7,11 @@ import { DotLoader } from "../../../../components/DotLoader";
 import PillToggle from "../../../../components/PillToggle";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
-import { readApiError } from "../../utils/apiError.ts";
 import { providerStatus } from "../../utils/serviceStatus";
 import { useServerSettings } from "../../SettingsProviders";
 import type { UsenetClientKey } from "../../../../../../backend/services/usenetClientCommon.ts";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
 type ProwlarrDraft = Partial<ServerSettings["settings"]["integrations"]["prowlarr"]>;

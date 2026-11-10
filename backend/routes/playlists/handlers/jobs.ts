@@ -13,7 +13,7 @@ import {
 import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAdmin, requireAuth } from "../../../middleware/guards.ts";
-import { hasPermission } from "../../../middleware/auth.ts";
+import { hasPermission } from "../../../services/auth.ts";
 import {
   ACTIVE_JOB_STATUSES,
   RETRYABLE_JOB_STATUSES,
@@ -37,12 +37,14 @@ import {
 import { invalidateRequestsCache } from "../../requests.ts";
 import { getLibraryMediaFile } from "../../../services/libraryMediaStore.ts";
 import {
-  decorateJobQuality,
-  getQualityProfile,
-  isAurralOwnedPath,
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.ts";
+import {
+  decorateJobQuality,
+  getQualityProfile,
+  isAurralOwnedPath,
+} from "../../../services/qualityProfile.ts";
 import { getLibraryTrackOwnershipBatch } from "../../../services/libraryQueryService.ts";
 import { playlistTrackFavoriteIds } from "../../../services/subsonicLibraryService.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";

@@ -26,7 +26,7 @@ import {
   writeAudioMetadata,
 } from "./downloadUtils.ts";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
-import { getQualityProfile } from "./qualityProfileService.ts";
+import { getQualityProfile } from "./qualityProfile.ts";
 import { isQualityUpgrade } from "./qualityProfileModel.ts";
 import { deemixQueueIds, readDeemixAlbumQueue, type DeemixClient } from "./deemixClient.ts";
 import {
@@ -50,6 +50,11 @@ import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.ts";
+import {
+  recordTrackJobDownloading,
+  recordTrackJobMoving,
+  recordTrackJobSearching,
+} from "./aurralHistoryService.ts";
 
 const SEARCH_LIMIT = 10;
 const MAX_ALBUM_CANDIDATES = 3;
@@ -358,14 +363,7 @@ async function handleDeemixSearch(payload: DeemixPayload, helpers: DeemixHelpers
     downloadSource: "deemix",
     downloadClient: "deemix",
   });
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-    .catch((err) => {
-      logger.warn("deemix", "Could not record search history", {
-        jobId: job.id,
-        reason: safeLogDiagnostic(err),
-      });
-    });
+  recordTrackJobSearching(job);
 
   const release = await attemptRelease(payload, job);
   const resolvedTrack = {
@@ -555,14 +553,7 @@ async function handleDeemixDownload(payload: DeemixPayload, helpers: DeemixHelpe
   if (!url) {
     return helpers.failOrTryNextSource(payload, job, "No deemix track URL available");
   }
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
-    .catch((err) => {
-      logger.warn("deemix", "Could not record download history", {
-        jobId: job.id,
-        reason: safeLogDiagnostic(err),
-      });
-    });
+  recordTrackJobDownloading(job);
 
   const client = getDeemixClient();
   let submission;
@@ -779,14 +770,7 @@ async function handleDeemixFinalize(payload: DeemixPayload, helpers: DeemixHelpe
   const finalPath = path.join(finalDir, finalName);
   const committed = await withPipelineCommitLock(payload, async () => {
     await writeAudioMetadata(filePath, resolvedTrack);
-    import("./aurralHistoryService.ts")
-      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err) => {
-        logger.warn("deemix", "Could not record file move history", {
-          jobId: job.id,
-          reason: safeLogDiagnostic(err),
-        });
-      });
+    recordTrackJobMoving(job);
     const committedFinalPath = await commitDownloadedFile(filePath, finalPath, {
       reuseExisting: !payload.upgradeForJobId,
     });

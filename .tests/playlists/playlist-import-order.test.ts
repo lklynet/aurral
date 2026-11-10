@@ -171,8 +171,10 @@ test("mutation release unblocks every playlist and prunes after an unblock error
 });
 
 test("flow settings locks serialize with playlist mutations", async () => {
-  const { withPlaylistMutation, withPlaylistMutationLock } =
+  const { withPlaylistMutation } =
     await import("../../backend/services/downloadJobs/mutationGuards.ts");
+  const { withPlaylistMutationLock } =
+    await import("../../backend/services/downloadJobs/downloadLocks.ts");
   const mutationEntered = Promise.withResolvers<void>();
   const mutationGate = Promise.withResolvers<void>();
   let updateEntered = false;

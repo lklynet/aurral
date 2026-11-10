@@ -3,14 +3,14 @@ import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import { requireAdmin, requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import { validateExternalUrl } from "../services/urlValidator.ts";
 import { validate } from "../middleware/validate.ts";
 import {
   connectPlexHistory,
   forgetPlexHistoryServer,
   HistoryServerError,
 } from "../services/historyServers.ts";
-import { enqueueSystemTask } from "../services/jobs/queues.ts";
+import { enqueueSystemTask } from "../services/jobs/systemTasks.ts";
 import { logger } from "../services/logger.ts";
 import {
   connectPlexServer,

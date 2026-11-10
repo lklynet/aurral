@@ -1,11 +1,16 @@
-import { logger } from "./logger.ts";
-import { asAppError } from "../../lib/errors.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { classifyAudioQuality } from "./qualityProfileModel.ts";
-import type { finalizeQualityUpgradeSuccess } from "./qualityProfileService.ts";
-import type { HistoryJob } from "./aurralHistoryService.ts";
+import { finalizeQualityUpgradeSuccess } from "./qualityUpgradeOutcome.ts";
+import {
+  recordTrackJobBlocked,
+  recordTrackJobCompleted,
+  recordRequestGroupDownloaded,
+  type HistoryJob,
+} from "./aurralHistoryService.ts";
 import { emitPluginEvent } from "./plugins/pluginEvents.ts";
+import { scheduleLibraryScan } from "./libraryScanWorker.ts";
+import { playlistManager } from "./playlists/playlistManager.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
 export const SEARCH_RESET = Object.freeze({
@@ -126,14 +131,7 @@ export function blockPipelineJobForReview({
   if (flowPlaylistConfig.getFlow(job.playlistId || job.playlistType)) return false;
   const reason = validation.reason || "Blocked for review";
   if (!downloadTracker.setBlocked(job.id, reason, stagingPath)) return false;
-  import("./aurralHistoryService.ts")
-    .then(({ recordTrackJobBlocked }) => recordTrackJobBlocked(job, reason))
-    .catch((error) => {
-      logger.warn("history", "Could not record blocked download job", {
-        jobId: job.id,
-        reason: asAppError(error)?.message || String(error),
-      });
-    });
+  recordTrackJobBlocked(job, reason);
   return true;
 }
 
@@ -171,7 +169,6 @@ export async function recordPipelineJobSuccess({
   onSuccess,
 }: PipelineJobSuccessOptions) {
   if (job.upgradeForJobId) {
-    const { finalizeQualityUpgradeSuccess } = await import("./qualityProfileService.ts");
     if (onSuccess) await onSuccess();
     await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
     return false;
@@ -181,7 +178,6 @@ export async function recordPipelineJobSuccess({
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (job.managedBy !== "lidarr" && committedFinalPath) {
-    const { scheduleLibraryScan } = await import("./libraryScanWorker.ts");
     scheduleLibraryScan({
       includeLidarr: false,
       changedPaths: [committedFinalPath],
@@ -210,17 +206,9 @@ export async function recordPipelineJobSuccess({
     });
   }
 
-  try {
-    const history = await import("./aurralHistoryService.ts");
-    history.recordTrackJobCompleted(job);
-    if (job.requestGroupId && committedFinalPath)
-      await history.recordRequestGroupDownloaded(job.requestGroupId, committedFinalPath);
-  } catch (error) {
-    logger.warn("history", "Could not record completed download job", {
-      jobId: job.id,
-      reason: error instanceof Error ? error.message : String(error),
-    });
-  }
+  recordTrackJobCompleted(job);
+  if (job.requestGroupId && committedFinalPath)
+    await recordRequestGroupDownloaded(job.requestGroupId, committedFinalPath);
   return true;
 }
 
@@ -228,7 +216,6 @@ export async function refreshCompletedPipelinePlaylist(
   job: Pick<DownloadJob, "id" | "playlistId" | "playlistType">,
 ) {
   const playlistType = job.playlistId || job.playlistType;
-  const { playlistManager } = await import("./playlists/playlistManager.ts");
   playlistManager.requestPlaylistSync([
     playlistType,
     ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([job.id]),

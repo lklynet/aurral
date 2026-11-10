@@ -5,7 +5,7 @@ import { playlistManager } from "../../../services/playlists/playlistManager.ts"
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import { buildLidarrImportListItems } from "../../../services/lidarrImportListFeed.ts";
-import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.ts";
+import { withPlaylistMutationLock } from "../../../services/downloadJobs/downloadLocks.ts";
 import {
   DEFAULT_LIMIT,
   flowPayloadError,

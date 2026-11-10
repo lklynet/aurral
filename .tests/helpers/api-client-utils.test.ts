@@ -103,45 +103,21 @@ test("TTL cache evicts its oldest entry at the size limit", () => {
   assert.equal(cache.get("third"), 3);
 });
 
-test("TTL cache serves stale values during the configured stale window", () => {
-  let now = 1_000;
-  const cache = createCache(300, 2, { now: () => now });
-  cache.set("album", { id: "album-1" }, 10, 20);
-
-  now += 11_000;
-
-  assert.deepEqual(cache.getWithStale("album"), {
-    value: { id: "album-1" },
-    stale: true,
-  });
-});
-
 test("TTL cache releases expired entries before they push out live ones", () => {
   let now = 1_000;
   const cache = createCache(300, 3, { now: () => now });
   cache.set("live", 1, 3600);
-  cache.set("stale", 2, 10, 600);
-  cache.set("expired", 3, 10);
+  cache.set("expired", 2, 10);
+  cache.set("gone", 3, 10);
 
   now += 120_000;
   cache.set("new", 4);
 
   assert.equal(cache.get("live"), 1);
-  assert.deepEqual(cache.getWithStale("stale"), { value: 2, stale: true });
   assert.equal(cache.get("new"), 4);
 });
 
-test("TTL cache removes values after the stale window", () => {
-  let now = 1_000;
-  const cache = createCache(300, 2, { now: () => now });
-  cache.set("album", { id: "album-1" }, 10, 20);
-
-  now += 31_000;
-
-  assert.equal(cache.getWithStale("album"), undefined);
-});
-
-test("idle TTL caches release expired payloads while keeping stale and live values", async () => {
+test("idle TTL caches release expired payloads while keeping live values", async () => {
   v8.setFlagsFromString("--expose-gc");
   const collectGarbage = runInNewContext("gc");
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: 1000 });
@@ -152,7 +128,6 @@ test("idle TTL caches release expired payloads while keeping stale and live valu
   let payload: { id: string } | null = { id: "expired payload" };
   const retained = new WeakRef(payload);
   cache.set("expired", payload, 1);
-  cache.set("stale", "offline fallback", 1, 600);
   cache.set("live", "live", 3600);
   payload = null;
   vi.advanceTimersByTime(60001);
@@ -163,7 +138,6 @@ test("idle TTL caches release expired payloads while keeping stale and live valu
   }
   assert.equal(retained.deref() === undefined, true, "idle caches must release expired payloads");
   assert.equal(cache.get("live"), "live");
-  assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
 });
 
 test("fetch transport failures name the request that failed", async () => {

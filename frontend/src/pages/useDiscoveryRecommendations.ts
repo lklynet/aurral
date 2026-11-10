@@ -12,7 +12,7 @@ import {
   writeStoredDiscoveryData,
   type DiscoverArtist,
   type normalizeDiscoveryData,
-} from "./discoverUtils";
+} from "../utils/discoverUtils";
 import { getApiErrorText } from "../utils/api/errors.ts";
 
 export type DiscoverData = Omit<

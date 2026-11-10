@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { randomUUID } from "node:crypto";
+import { withDownloadImportLock } from "./downloadLocks.ts";
 import type {
   DownloadJobsRow,
   SettingsRow,
@@ -82,7 +83,7 @@ const providerWorkDeleteStmt = db.prepare<[string, string]>(
    WHERE provider = ? AND work_id = ?`,
 );
 
-function normalizeId(value: unknown) {
+export function normalizeId(value: unknown) {
   return String(value || "").trim();
 }
 
@@ -327,7 +328,6 @@ export async function withPipelineCommitLock<T>(
   if (!playlistId) {
     return { cancelled: false, result: await operation() };
   }
-  const { withDownloadImportLock } = await import("./mutationGuards.ts");
   return withDownloadImportLock(playlistId, async () => {
     if (!isPipelinePayloadActive(payload)) {
       return { cancelled: true, result: null };

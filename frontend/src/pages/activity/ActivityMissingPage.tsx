@@ -23,7 +23,7 @@ import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { withAuthenticatedTrackArtwork } from "../../utils/api/playlistUrls.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
-import { usePlaylistStatusQuery } from "../playlists/usePlaylistStatusQuery.ts";
+import { usePlaylistStatusQuery } from "../../hooks/usePlaylistStatusQuery.ts";
 import { buildWantedPath, WANTED_VIEWS } from "../../navigation/activityNavConfig";
 import ActivityToolbar from "./ActivityToolbar";
 import ActivityInfoModal from "./ActivityInfoModal";
@@ -35,7 +35,7 @@ import {
   sortMissingJobs,
 } from "./activityMissingUtils.ts";
 import Tooltip from "../../components/Tooltip";
-import type { PlaylistStatus } from "../playlists/playlistStats.ts";
+import type { PlaylistStatus } from "../../utils/playlistStats.ts";
 import StatePanel from "../../components/StatePanel";
 
 const WANTED_PAGE_SIZE = 25;

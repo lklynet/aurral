@@ -27,8 +27,8 @@ import { parseResponse, type InferRequestType } from "hono/client";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
-import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
-import { getStaticPlaylistTrackCount } from "./playlistStats";
+import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
+import { getStaticPlaylistTrackCount } from "../../utils/playlistStats";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
@@ -41,10 +41,10 @@ import {
   optionMenuItem,
   usePlaylistTracks,
 } from "./playlistPageUtils";
-import { countAvailableTracks } from "./trackAvailability.ts";
+import { countAvailableTracks } from "../../utils/trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
-import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
-import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
+import { useHiddenPlaylistTracks } from "../../contexts/PlaylistBulkActions.ts";
+import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "../../utils/playlistStats.ts";
 import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";

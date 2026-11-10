@@ -3,8 +3,8 @@ import { useLocation } from "react-router";
 import RouteLink from "./RouteLink";
 import { usePlaylistArtwork } from "../hooks/usePlaylistArtwork.ts";
 import { flowPath, playlistPath } from "../navigation/playlistPaths.ts";
-import { PlaylistArtworkThumb } from "../pages/playlists/components/PlaylistArtworkThumb.tsx";
-import type { PlaylistStatus } from "../pages/playlists/playlistStats.ts";
+import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.tsx";
+import type { PlaylistStatus } from "../utils/playlistStats.ts";
 
 type SidebarPlaylistsProps = {
   status: PlaylistStatus;

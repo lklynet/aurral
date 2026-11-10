@@ -1,8 +1,11 @@
 import { useMemo } from "react";
 import { ArtistDetailsVideos } from "./ArtistDetailsVideos";
 import { useArtistVideos } from "../artistVideosSetting.ts";
-import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
-import type { PlaylistSelection, PlaylistTrackIdentity } from "./TrackPlaylistMenu";
+import { TrackPlaylistMenu } from "../../../components/TrackPlaylistMenu";
+import type {
+  PlaylistSelection,
+  PlaylistTrackIdentity,
+} from "../../../components/TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";

@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import * as v from "valibot";
 import { db } from "../../../config/db-sqlite.ts";
-import { hasPermission, isAuthRequiredByConfig } from "../../../middleware/auth.ts";
+import { hasPermission, isAuthRequiredByConfig } from "../../../services/auth.ts";
 import { requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";

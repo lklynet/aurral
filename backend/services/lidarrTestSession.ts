@@ -1,5 +1,5 @@
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
-import type { LidarrClient } from "./lidarrClient.ts";
+import { validateExternalUrl } from "./urlValidator.ts";
+import { LidarrClient } from "./lidarrClient.ts";
 
 type LidarrTestConfig = Partial<ReturnType<LidarrClient["getConfig"]>>;
 
@@ -45,7 +45,6 @@ export async function withTemporaryLidarrClient<T>(
   apiKey: string,
   fn: (client: LidarrClient) => T,
 ): Promise<Awaited<T>> {
-  const { LidarrClient } = await import("./lidarrClient.ts");
   // Keep test credentials, cached responses and discovered paths out of the saved client.
   const lidarrClient = new LidarrClient({ persistRootFolderPaths: false });
   const originalConfig = lidarrClient.config;

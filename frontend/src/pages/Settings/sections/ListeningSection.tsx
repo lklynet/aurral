@@ -12,10 +12,9 @@ import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
-import { readApiError } from "../utils/apiError.ts";
 import { formatDate } from "../../../utils/dateTime.ts";
 import { readSpotifyExport } from "../../../utils/spotifyExportFiles.ts";
-import { SettingsLink } from "../settingsRoute";
+import { SettingsLink } from "../../../navigation/settingsRoute";
 import {
   HISTORY_SERVERS,
   HistoryServerDetail,
@@ -35,6 +34,7 @@ import {
   useSettingsItem,
   type ServiceStatus,
 } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type ScrobbleStatus = InferResponseType<typeof scrobblingClient.status.$get, 200>;
 type ConnectionStatus = ScrobbleStatus[keyof ScrobbleStatus] | undefined;

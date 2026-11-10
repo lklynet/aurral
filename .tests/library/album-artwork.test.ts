@@ -31,7 +31,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
   () => import("../../backend/app.ts"),
-  () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
+  () => import("../../backend/services/publicLibrary.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/libraryArtwork.ts"),

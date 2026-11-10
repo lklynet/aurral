@@ -40,6 +40,7 @@ import {
   isDownloadJobCancelled,
   isPipelinePayloadActive,
 } from "./downloadCancellation.ts";
+import { discardReviewFile, discardHeldFile } from "./reviewFiles.ts";
 
 export const NO_RELEASE_REASON =
   "The requested release could not be resolved; searching for the track";
@@ -576,16 +577,14 @@ function discardReviewFiles(
     .filter((job) => job?.heldForReview && job.heldForReview.sourcePath !== job.stagingPath)
     .map((job): [string, DownloadJob["heldForReview"]] => [job.id, job.heldForReview]);
   if (reviewed.length === 0 && held.length === 0) return;
-  import("./reviewFiles.ts")
-    .then(async ({ discardReviewFile, discardHeldFile }) => {
-      for (const job of reviewed) await discardReviewFile(job);
-      for (const [jobId, file] of held) await discardHeldFile(jobId, file);
-    })
-    .catch((error) => {
-      logger.warn("downloads", "Could not remove files held for review", {
-        reason: asAppError(error)?.message || String(error),
-      });
+  void (async () => {
+    for (const job of reviewed) await discardReviewFile(job);
+    for (const [jobId, file] of held) await discardHeldFile(jobId, file);
+  })().catch((error) => {
+    logger.warn("downloads", "Could not remove files held for review", {
+      reason: asAppError(error)?.message || String(error),
     });
+  });
 }
 
 export class DownloadTracker {
@@ -1738,16 +1737,6 @@ export class DownloadTracker {
     return jobs;
   }
 
-  getPending(limit = 10) {
-    const pending: DownloadJob[] = [];
-    for (const job of this.jobs.values()) {
-      if (job.status === "pending" && pending.length < limit) {
-        pending.push(job);
-      }
-    }
-    return pending;
-  }
-
   setDownloading(id: string, stagingPath: string | null = null) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
@@ -2056,45 +2045,6 @@ export class DownloadTracker {
     return false;
   }
 
-  failActiveJobsForPlaylist(playlistType: string, error: string = "Retry cycle paused") {
-    let count = 0;
-    const failedJobs: DownloadJob[] = [];
-    for (const job of this.jobs.values()) {
-      if (job.playlistType !== playlistType) continue;
-      if (job.status !== "pending" && job.status !== "downloading") continue;
-      const previousStatus = job.status;
-      this.clearSlskdPipelineState(job.id);
-      this.pendingSet.delete(job.id);
-      this.pendingRetrySet.delete(job.id);
-      this._removeFromPendingQueues(job.id);
-      job.status = "failed";
-      job.retryCycle = false;
-      job.startedAt = null;
-      job.stagingPath = null;
-      job.completedAt = Date.now();
-      job.error = typeof error === "string" ? error : String(error || "");
-      this._update(job);
-      this._applyStatusDelta(job.playlistType, previousStatus, job.status);
-      failedJobs.push(job);
-      count += 1;
-    }
-    if (failedJobs.length > 0) {
-      import("../aurralHistoryService.ts")
-        .then(({ recordTrackJobFailed }) => {
-          for (const job of failedJobs) {
-            recordTrackJobFailed(job, job.error || error);
-          }
-        })
-        .catch((historyError) => {
-          logger.warn("history", "Could not record failed download jobs", {
-            jobCount: failedJobs.length,
-            reason: asAppError(historyError)?.message || String(historyError),
-          });
-        });
-    }
-    return count;
-  }
-
   getAll() {
     return sortByCreatedAt(Array.from(this.jobs.values()));
   }
@@ -2205,10 +2155,6 @@ export class DownloadTracker {
         (job.status === "done" || job.status === "failed") &&
         !(job.status === "done" && this.findActiveUpgradeJob(job)),
     );
-  }
-
-  clearByPlaylistType(playlistType: string) {
-    return this._deleteJobsWhere((job) => job.playlistType === playlistType);
   }
 
   clearByPlaylistId(playlistId: string) {

@@ -14,7 +14,6 @@ import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
-import { readApiError } from "../utils/apiError.ts";
 import { useAccountSettingsContext } from "../SettingsProviders";
 import {
   SettingsActions,
@@ -23,6 +22,7 @@ import {
   SettingsPage,
   SettingsRow,
 } from "../SettingsLayout";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 const CONNECTED_LABELS: Partial<Record<string, string>> = {
   google: "Google",

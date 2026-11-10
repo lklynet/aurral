@@ -1,9 +1,4 @@
-import type {
-  LibraryAlbum,
-  LibraryArtist,
-  LibraryData,
-  LibraryTrack,
-} from "../utils/libraryPageData.ts";
+import type { LibraryAlbum, LibraryArtist, LibraryData, LibraryTrack } from "./libraryPageData.ts";
 
 const catalog = [
   {

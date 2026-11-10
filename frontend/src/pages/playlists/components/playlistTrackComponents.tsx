@@ -27,7 +27,7 @@ import {
   TrackPlaylistMenu,
   TrackPlaylistSubmenu,
   type TrackPlaylistMenuHandle,
-} from "../../ArtistDetails/components/TrackPlaylistMenu";
+} from "../../../components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
@@ -38,13 +38,13 @@ import {
   getTrackSearchAction,
   queueTrackOverrides,
   shouldShowAddToLibrary,
-} from "../trackAvailability.ts";
+} from "../../../utils/trackAvailability.ts";
 import Tooltip from "../../../components/Tooltip";
 import type { LibraryMenuItem } from "../../../components/LibraryItemMenu";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar";
 import type { PlaylistTrackRow } from "../playlistPageUtils.ts";
-import type { PlaylistTrackStatus } from "../trackAvailability.ts";
-import type { StaticPlaylist } from "../playlistStats.ts";
+import type { PlaylistTrackStatus } from "../../../utils/trackAvailability.ts";
+import type { StaticPlaylist } from "../../../utils/playlistStats.ts";
 
 export type PlaylistPanelTrack = Pick<
   PlaylistTrackRow,

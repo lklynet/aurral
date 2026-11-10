@@ -5,7 +5,7 @@ import { getAppBasePath } from "../../../utils/basePath.ts";
 import { SettingsInput } from "../components/SettingsField";
 import { useSettingsUsers } from "../hooks/useSettingsUsers";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsLink } from "../settingsRoute";
+import { SettingsLink } from "../../../navigation/settingsRoute";
 import type { SettingsState } from "../utils";
 import { providerStatus } from "../utils/serviceStatus";
 import {

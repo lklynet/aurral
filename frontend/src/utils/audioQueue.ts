@@ -7,7 +7,7 @@ import {
 import type { libraryRadioClient } from "./api/clients/libraryRadio.ts";
 import type { LibraryTrack } from "./libraryPageData.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
-import type { buildStaticPlaylistTrackPayload } from "../pages/ArtistDetails/utils.ts";
+import type { buildStaticPlaylistTrackPayload } from "./staticPlaylists.ts";
 
 const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
   mp3: ["mp3"],

@@ -20,7 +20,6 @@ import { queryKeys } from "../../../queryClient.ts";
 import LibraryFileOperation from "../components/LibraryFileOperation";
 import { RootOverlapWarning } from "../components/RootOverlapWarning";
 import { Select } from "../../../components/Select";
-import { readApiError } from "../utils/apiError.ts";
 import { useServerSettings } from "../SettingsProviders";
 import {
   SettingsGroup,
@@ -33,6 +32,7 @@ import {
 import { configuredStatus, lidarrConnected } from "../utils/serviceStatus";
 import { LidarrSection } from "./LidarrSection";
 import "./library.css";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type FileOperation = ComponentProps<typeof LibraryFileOperation>["operation"];
 type ReadOnlyFolder = InferResponseType<

@@ -52,6 +52,8 @@ import {
 import { nativeDownloadSource } from "./download/nativeSources.ts";
 import { pluginIdFromSource } from "./plugins/pluginStore.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
+import { recordTrackJobFailed } from "./aurralHistoryService.ts";
+import { finalizeQualityUpgradeFailure } from "./qualityUpgradeOutcome.ts";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
@@ -123,7 +125,7 @@ export function enqueuePendingJobsWithoutBatch() {
     else if (downloadTracker.enqueueDownloadPipeline(job.id)) count += 1;
   }
   if (resolving) {
-    void import("./downloadJobs/mutationGuards.ts")
+    void import("./downloadJobs/downloadWorker.ts")
       .then(({ wakeDownloadWorker }) => wakeDownloadWorker())
       .catch(() => {});
   }
@@ -132,15 +134,11 @@ export function enqueuePendingJobsWithoutBatch() {
 
 async function failJob(job: DownloadJob, message: string) {
   if (job.upgradeForJobId) {
-    const { finalizeQualityUpgradeFailure } = await import("./qualityProfileService.ts");
     await finalizeQualityUpgradeFailure(job, message);
     return;
   }
   downloadTracker.setFailed(job.id, message);
-  try {
-    const { recordTrackJobFailed } = await import("./aurralHistoryService.ts");
-    recordTrackJobFailed(job, message);
-  } catch {}
+  recordTrackJobFailed(job, message);
   try {
     const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
     downloadWorker.wake(0);

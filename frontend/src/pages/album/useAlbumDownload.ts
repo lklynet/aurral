@@ -9,7 +9,7 @@ import { buildAlbumRequestPayload } from "../../utils/libraryDestination.ts";
 import { buildAurralAlbumRetryPayload } from "../../utils/aurralAlbumStatus.ts";
 import type { LibraryAlbum, LibraryArtist } from "../../utils/libraryPageData.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
-import { getApiErrorMessage } from "../ArtistDetails/utils";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 type OwnerConflict = NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
 
@@ -88,9 +88,10 @@ export function useAlbumDownload({
         return;
       }
       showError(
-        `Could not download ${albumTitle || "the album"}: ${
-          getApiErrorMessage(requestError) || "Try again."
-        }`,
+        `Could not download ${albumTitle || "the album"}: ${getApiErrorMessage(
+          requestError,
+          "Try again.",
+        )}`,
       );
     } finally {
       setRequesting(false);

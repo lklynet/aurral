@@ -1,11 +1,11 @@
 import * as v from "valibot";
-import { http, isTransientNetworkError } from "../../lib/http.ts";
+import { http, isTransientNetworkError, waitBeforeRetry } from "../../lib/http.ts";
 import { lenient, lenientCount, lenientText } from "./integrationData.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import createRateLimiter from "./apiClients/rateLimiter.ts";
 import createCache from "./apiClients/simpleCache.ts";
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import { validateExternalUrl } from "./urlValidator.ts";
 
 const KOITO_TIMEOUT_MS = 8000;
 const KOITO_MAX_RETRIES = 2;
@@ -108,8 +108,7 @@ const koitoRequest = koitoLimiter.wrap(
             isTransientNetworkError(error) ||
             (status !== undefined && [408, 425, 429, 500, 502, 503, 504].includes(status));
           if (retryCount < KOITO_MAX_RETRIES && retryable) {
-            const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            await waitBeforeRetry(retryCount);
             continue;
           }
           break;

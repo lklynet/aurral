@@ -18,7 +18,7 @@ export async function createAlbumActivityFixture() {
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
     () => import("../../backend/services/albumGrabActivity.ts"),
-    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/services/passwordHash.ts"),
   );
   const username = "album-activity-test";
   const password = "disposable-album-activity-password";

@@ -22,7 +22,7 @@ import {
 import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 import { withLock } from "../jobs/queue.ts";
-import { enqueueSystemTask } from "../jobs/queues.ts";
+import { enqueueSystemTask } from "../jobs/systemTasks.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { collectPlaylistFileTracks } from "./playlistFileTracks.ts";
 import {

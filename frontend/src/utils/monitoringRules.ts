@@ -1,4 +1,6 @@
-import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+import type { MonitorRules } from "../../../backend/services/aurralMonitoring.ts";
+
+export type MonitoringRules = MonitorRules;
 
 export const MAX_LATEST_RELEASES = 10;
 export const MAX_TOP_TRACKS = 50;

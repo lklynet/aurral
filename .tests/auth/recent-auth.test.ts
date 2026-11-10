@@ -26,8 +26,8 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/services/auth.ts"),
+  () => import("../../backend/services/passwordHash.ts"),
   () => import("../../backend/config/encryption.ts"),
   () => import("../../backend/routes/subsonic.ts"),
 );

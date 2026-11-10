@@ -11,7 +11,7 @@ import {
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
-import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import { validateExternalUrl } from "../services/urlValidator.ts";
 import { getKoitoListenBrainzBaseUrl, normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
 import {
   getScrobbleEncryptionKey,

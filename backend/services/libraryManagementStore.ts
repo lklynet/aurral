@@ -133,14 +133,6 @@ export function getManagedBy(entityKind: string, entityId: unknown) {
   return getLibraryManagementEntry(entityKind, entityId)?.managedBy ?? null;
 }
 
-export function getManagedByMaps() {
-  const snapshot = getCache();
-  return {
-    artist: new Map(snapshot.artist),
-    album: new Map(snapshot.album),
-  };
-}
-
 export function getManagedByMap(entityKind: string) {
   if (!isEntityKind(entityKind)) return new Map<number, ManagementEntry>();
   return getCache()[entityKind];

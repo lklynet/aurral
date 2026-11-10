@@ -1,9 +1,9 @@
-import { queryClient, queryKeys } from "../../queryClient.ts";
-import type { useToast } from "../../contexts/ToastContext";
-import { asApiError } from "../../utils/api/core.ts";
-import { getApiErrorText } from "../../utils/api/errors.ts";
+import { queryClient, queryKeys } from "../queryClient.ts";
+import type { useToast } from "../contexts/ToastContext";
+import { asApiError } from "./api/core.ts";
+import { getApiErrorText } from "./api/errors.ts";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
+import { staticPlaylistsClient } from "./api/clients/staticPlaylists.ts";
 import type { PlaylistStatus } from "./playlistStats.ts";
 import type { PlaylistTrack } from "./trackAvailability.ts";
 

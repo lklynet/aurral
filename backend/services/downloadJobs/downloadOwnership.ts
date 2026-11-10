@@ -11,6 +11,8 @@ import {
 } from "./downloadCancellation.ts";
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { sanitizePathPart } from "../downloadUtils.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
+import { normalizeLockOwners, withDownloadStepLock } from "./downloadLocks.ts";
 
 const settingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
   "SELECT value FROM settings WHERE key = ?",
@@ -117,6 +119,33 @@ export function resolveTransferredDownloadPayload<Payload extends OwnedPayload>(
     payload = applyTransfer(payload, transfer);
   }
   return { ...payload, downloadAttemptId: "invalid-transfer-chain" };
+}
+
+function payloadOwners(payload: OwnedPayload | null) {
+  const owners = [payload?.playlistId];
+  const groupJobIds = payload?.albumGroupJobIds;
+  const jobIds = [payload?.jobId, ...unknownList(groupJobIds)];
+  for (const id of jobIds.filter((value): value is string => typeof value === "string")) {
+    const job = downloadTracker.getJob(id);
+    if (job) owners.push(job.playlistId || job.playlistType);
+  }
+  return normalizeLockOwners(owners);
+}
+
+export async function withDownloadPayloadMutation<Payload extends OwnedPayload, T>(
+  payload: Payload,
+  operation: (current: Payload) => T | Promise<T>,
+) {
+  while (true) {
+    const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
+    const result = await withDownloadStepLock(owners, async () => {
+      const current = resolveTransferredDownloadPayload(payload);
+      if (!payloadOwners(current).every((owner) => owners.includes(owner)))
+        return { retryLocks: true };
+      return { value: await operation(current) };
+    });
+    if (!result.retryLocks) return result.value;
+  }
 }
 
 function applyTransfer<Payload extends OwnedPayload>(payload: Payload, transfer: DownloadTransfer) {

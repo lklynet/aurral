@@ -22,7 +22,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import TooltipButton from "../components/TooltipButton";
-import type { DiscoverSection } from "./discoverUtils";
+import type { DiscoverSection } from "../utils/discoverUtils";
 import { isStyledSection, type DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
 
 const FEED_STYLE_OPTIONS = [

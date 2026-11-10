@@ -5,7 +5,7 @@ import TooltipButton from "../../../../components/TooltipButton";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
 import { useServerSettings } from "../../SettingsProviders";
-import { useSettingsRoute } from "../../settingsRoute";
+import { useSettingsRoute } from "../../../../navigation/settingsRoute";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;

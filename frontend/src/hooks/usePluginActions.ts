@@ -6,8 +6,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient.ts";
 import { pluginsClient } from "../utils/api/clients/plugins.ts";
-import { readApiError } from "../pages/Settings/utils/apiError.ts";
 import { useWebSocketChannel } from "./useWebSocket";
+import { readApiError } from "../utils/api/errors.ts";
 
 const ACTIONS_STALE_MS = 5 * 60_000;
 

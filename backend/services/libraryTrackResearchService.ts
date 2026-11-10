@@ -1,6 +1,6 @@
 import path from "node:path";
 import { getLibraryForAlbumIds, getLibraryForTrackIds } from "./libraryQueryService.ts";
-import { isAurralOwnedPath } from "./qualityProfileService.ts";
+import { isAurralOwnedPath } from "./qualityProfile.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 
 function positiveInteger(value: unknown) {

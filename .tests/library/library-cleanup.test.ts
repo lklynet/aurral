@@ -43,6 +43,7 @@ const [
   { getMetadataBaseUrl },
   { setMetadataProviderCooldown },
   { scanRegistrySchema },
+  { finalizeQualityUpgradeSuccess },
 ] = await setupIsolatedBackend(
   "library-cleanup",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -60,6 +61,7 @@ const [
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/metadataProviderBudget.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/qualityUpgradeOutcome.ts"),
 );
 // Unit tests are offline, so the default metadata provider refuses lookups up front
 // instead of making each one wait its turn in the provider's rate limit.
@@ -729,11 +731,13 @@ test("an upgrade replaces a hardlinked file without touching its other link", as
   downloadTracker.setDone(jobId, libraryPath, "Album");
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
 
-  await qualityProfileService.finalizeQualityUpgradeSuccess(
-    requireValue(downloadTracker.getJob(upgradeId)),
-    upgraded,
-    { tier: "flac-hires", format: "flac", bitrateKbps: null, sampleRate: null, bitDepth: null },
-  );
+  await finalizeQualityUpgradeSuccess(requireValue(downloadTracker.getJob(upgradeId)), upgraded, {
+    tier: "flac-hires",
+    format: "flac",
+    bitrateKbps: null,
+    sampleRate: null,
+    bitDepth: null,
+  });
 
   assert.deepEqual(await readFile(seed), seedBytes);
   assert.deepEqual(await readFile(libraryPath), upgradedBytes);
@@ -786,11 +790,13 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, i
   downloadTracker.setDone(jobId, oldPath, "Album (Old Rip)");
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
 
-  await qualityProfileService.finalizeQualityUpgradeSuccess(
-    requireValue(downloadTracker.getJob(upgradeId)),
-    upgraded,
-    { tier: "flac-standard", format: "flac", bitrateKbps: null, sampleRate: null, bitDepth: null },
-  );
+  await finalizeQualityUpgradeSuccess(requireValue(downloadTracker.getJob(upgradeId)), upgraded, {
+    tier: "flac-standard",
+    format: "flac",
+    bitrateKbps: null,
+    sampleRate: null,
+    bitDepth: null,
+  });
 
   assert.equal(await exists(oldPath), false);
   assert.deepEqual(

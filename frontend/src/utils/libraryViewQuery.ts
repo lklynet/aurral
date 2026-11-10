@@ -5,7 +5,7 @@ import {
   getLibraryPage,
   type LibraryFavoritesResponse,
   type LibraryPageResponse,
-} from "../utils/api/endpoints/library.ts";
+} from "./api/endpoints/library.ts";
 import {
   EMPTY_LIBRARY,
   favoriteId,
@@ -14,7 +14,7 @@ import {
   type LibraryAlbum,
   type LibraryArtist,
   type LibraryTrack,
-} from "../utils/libraryPageData.ts";
+} from "./libraryPageData.ts";
 import {
   DEFAULT_LIBRARY_VIEW,
   LIBRARY_VIEWS,

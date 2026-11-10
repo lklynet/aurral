@@ -3,7 +3,7 @@ import { test, vi } from "vite-plus/test";
 import {
   getStoredRecentlyAddedAt,
   readStoredRecentlyAdded,
-} from "../../frontend/src/pages/discoverUtils.ts";
+} from "../../frontend/src/utils/discoverUtils.ts";
 
 test("discover cache timestamps follow fallback data", () => {
   const values = new Map<string, string>();

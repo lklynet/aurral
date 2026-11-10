@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "../contexts/ToastContext.tsx";
-import { libraryViewQueryOptions } from "../pages/libraryViewQuery.ts";
+import { libraryViewQueryOptions } from "../utils/libraryViewQuery.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import {
   libraryFavoritesQueryOptions,

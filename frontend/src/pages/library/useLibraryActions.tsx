@@ -30,7 +30,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import { useQueueTrackActions, useStartRadio } from "../../hooks/useQueueTrackActions";
 import type { RadioSeed } from "../../utils/audioQueue";
-import { usePlaylistBulkActions } from "../playlists/usePlaylistBulkActions.ts";
+import { usePlaylistBulkActions } from "../../contexts/PlaylistBulkActions.ts";
 import { libraryAlbumsClient } from "../../utils/api/clients/libraryAlbums.ts";
 import { libraryArtistsClient } from "../../utils/api/clients/libraryArtists.ts";
 import { libraryArtworkClient } from "../../utils/api/clients/libraryArtwork.ts";
@@ -63,17 +63,17 @@ import type { LibraryMenuItem } from "../../components/LibraryItemMenu";
 import { canRemoveLibraryAlbum, resolveAlbumManager } from "../../utils/libraryDestination.ts";
 import { isAwaitingRelease } from "../../utils/aurralAlbumStatus.ts";
 import { getAlbumMonitoredState } from "../../utils/aurralMonitoring.ts";
-import { libraryPreviewData, libraryPreviewFavorites } from "../libraryPreviewData";
+import { libraryPreviewData, libraryPreviewFavorites } from "../../utils/libraryPreviewData";
 import {
   LIBRARY_PAGE_SIZE,
   type libraryViewQueryOptions,
   type LibraryViewLibrary,
-} from "../libraryViewQuery.ts";
+} from "../../utils/libraryViewQuery.ts";
 import {
   TrackPlaylistRemoveSubmenu,
   TrackPlaylistSubmenu,
   type PlaylistSelection as PlaylistTarget,
-} from "../ArtistDetails/components/TrackPlaylistMenu";
+} from "../../components/TrackPlaylistMenu";
 import { DeleteAlbumModal } from "../ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "../ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "../ArtistDetails/components/DeleteTrackModal";
@@ -81,12 +81,6 @@ import LibraryInfoModal from "../LibraryInfoModal";
 import ManualMissingSearchModal, {
   type ManualSearchJob,
 } from "../activity/ManualMissingSearchModal.tsx";
-import {
-  buildStaticPlaylistTrackPayload,
-  getApiErrorMessage,
-  getApiErrorText,
-  reserveUniquePlaylistName,
-} from "../ArtistDetails/utils";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { usePluginActions } from "../../hooks/usePluginActions.ts";
 import { showFavoriteRemoved } from "../../utils/favoriteUndo.ts";
@@ -100,10 +94,15 @@ import {
   invalidateLibraryViews,
   isAlbumArtistCredit,
   TRACK_DOWNLOAD_ACTIVE_STATUSES,
-  trackDownloadActionLabel,
   trackDownloadIdentity,
   trackDurationMs,
 } from "./libraryShared.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../../utils/api/errors.ts";
+import {
+  buildStaticPlaylistTrackPayload,
+  reserveUniquePlaylistName,
+} from "../../utils/staticPlaylists.ts";
+import { trackDownloadActionLabel } from "../../utils/trackDownloadLabel.ts";
 
 type LibraryInfoState = LibraryTarget & {
   artist?: LibraryArtist | null;
@@ -380,7 +379,7 @@ export function useLibraryActions({
         const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (requestError) {
-        const message = getApiErrorMessage(requestError) || "Failed to save to playlist";
+        const message = getApiErrorMessage(requestError, "Failed to save to playlist");
         setPlaylistsError(message);
         showError(message);
       } finally {
@@ -609,7 +608,7 @@ export function useLibraryActions({
       );
       onRemoved?.(removal);
     } catch (requestError) {
-      showError(getApiErrorMessage(requestError) || "Failed to update library");
+      showError(getApiErrorMessage(requestError, "Failed to update library"));
     } finally {
       setDeletingLibraryEntity(false);
     }
@@ -675,7 +674,7 @@ export function useLibraryActions({
         return result;
       } catch (requestError) {
         setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
-        showError(getApiErrorMessage(requestError) || "Failed to add track to library");
+        showError(getApiErrorMessage(requestError, "Failed to add track to library"));
         return null;
       }
     },
@@ -698,8 +697,10 @@ export function useLibraryActions({
         }
       } catch (requestError) {
         showError(
-          getApiErrorMessage(requestError) ||
-            (manual ? "Failed to start a manual search" : "Failed to queue a replacement search"),
+          getApiErrorMessage(
+            requestError,
+            manual ? "Failed to start a manual search" : "Failed to queue a replacement search",
+          ),
         );
       } finally {
         setTrackResearchStates((current) => {

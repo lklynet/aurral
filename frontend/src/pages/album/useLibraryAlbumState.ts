@@ -10,7 +10,6 @@ import type { AurralMonitoringResult } from "../../utils/api/endpoints/library.t
 import { firstAvailableFile, type LibraryAlbum } from "../../utils/libraryPageData.ts";
 import { resolveAlbumManager } from "../../utils/libraryDestination.ts";
 import { canDownloadAurralAlbum, getMonitoringMenuAction } from "../../utils/aurralMonitoring.ts";
-import { getApiErrorMessage } from "../ArtistDetails/utils";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import type { ActivityRequest } from "../../../../lib/activity.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
@@ -22,6 +21,7 @@ import {
   trackDownloadIdentity,
   type TrackDownloadState,
 } from "../library/libraryShared.tsx";
+import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 type LibraryActions = ReturnType<typeof useLibraryActions>;
 
@@ -171,9 +171,10 @@ export function useLibraryAlbumState({
         showSuccess(monitored ? `${title} monitored in Lidarr` : `${title} unmonitored in Lidarr`);
       } catch (requestError) {
         showError(
-          `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${
-            getApiErrorMessage(requestError) || "Try again."
-          }`,
+          `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${getApiErrorMessage(
+            requestError,
+            "Try again.",
+          )}`,
         );
       } finally {
         setLidarrMonitoredOverride(null);

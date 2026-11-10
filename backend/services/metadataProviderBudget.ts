@@ -54,9 +54,6 @@ const claimRequest = db.prepare<[string, string, number, number]>(`
     lease_until = excluded.lease_until,
     updated_at = excluded.updated_at
 `);
-const clearRequestState = db.prepare<[string]>(
-  "DELETE FROM metadata_request_state WHERE cache_key = ?",
-);
 const releaseRequest = db.prepare<[number, string, string]>(`
   UPDATE metadata_request_state
   SET lease_token = NULL, lease_until = 0, updated_at = ?
@@ -155,10 +152,6 @@ export function deferMetadataRequest(
   now = Date.now(),
 ) {
   return deferRequest.run(retryAfter, now, cacheKey, token).changes;
-}
-
-export function forgetMetadataRequestState(cacheKey: string) {
-  return clearRequestState.run(cacheKey).changes;
 }
 
 export function clearMetadataRequestStates() {

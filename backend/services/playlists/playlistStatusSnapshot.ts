@@ -16,7 +16,7 @@ import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "./playlistOperationQueue.ts";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
-import { dbOps, userOps } from "../../db/helpers/index.ts";
+import { userOps } from "../../db/helpers/index.ts";
 import { db, getDatabaseRevision } from "../../config/db-sqlite.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { SettingsRow } from "../../db/rows.ts";
@@ -59,7 +59,6 @@ function refreshMembershipCache() {
   const settings = readPlaylistSettingsVersion();
   const revision = downloadTracker.getRevision();
   if (settings !== cachedSettings) {
-    dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
   }
   if (settings !== cachedSettings || revision !== cachedJobRevision) {

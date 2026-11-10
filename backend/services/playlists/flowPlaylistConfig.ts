@@ -134,6 +134,7 @@ const childCacheExpired = (cachedAt: number) =>
   !!process.env.AURRAL_BACKGROUND_WORKER_GROUP && Date.now() - cachedAt >= 2000;
 
 export function invalidateFlowPlaylistConfigCache() {
+  dbOps.invalidateSettingsCache();
   cachedFlows = null;
   cachedStaticPlaylists = null;
   flowsCachedAt = 0;
@@ -364,7 +365,6 @@ const setStaticPlaylists = (playlists: StaticPlaylist[]) => {
   try {
     dbOps.updateSettings({ staticPlaylists: playlists });
   } catch (error) {
-    dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
     throw error;
   }

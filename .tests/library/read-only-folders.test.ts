@@ -277,8 +277,8 @@ test("playlists use a read-only file in place and download their own copy once t
   await downloadWorker.releaseLidarrFiles();
   assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "done");
 
-  await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
   vi.spyOn(downloadWorker, "start").mockResolvedValue(undefined);
+  await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
   await processSystemTask({ kind: "read-only-folder-release", folders: [folder] });
   assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "pending");
   assert.deepEqual(await fingerprint(filePath), before);

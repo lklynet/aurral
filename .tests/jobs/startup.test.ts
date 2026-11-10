@@ -14,10 +14,11 @@ const [
   { dbOps },
   startup,
   schedules,
-  { playbackTaskQueue, systemTaskSchema },
+  { playbackTaskQueue },
   { flowPlaylistConfig },
   { playlistManager },
   { processSystemTask },
+  { systemTaskSchema },
 ] = await setupIsolatedBackend(
   "job-startup",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -28,6 +29,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
 );
 
 beforeEach(() => resetDatabase(db));

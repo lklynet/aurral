@@ -1,11 +1,11 @@
-import { hasPermission } from "../middleware/auth.ts";
+import { hasPermission } from "./auth.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { searchDeezerTracks } from "./apiClients/deezer.ts";
 import { searchDeezerPlaylists } from "./importLists/deezerPlaylists.ts";
 import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylistConfig.ts";
 import { buildCustomArtworkUrl, getCustomArtworkMap } from "./customArtworkService.ts";
-import { selectBestArtistImage } from "./imageService.ts";
+import { selectBestArtistImage } from "./imageRanking.ts";
 import { buildLibraryArtworkUrl, getLibraryArtworkVersions } from "./libraryArtwork.ts";
 import { getLibraryArtistMbids, getLibrarySearchPage } from "./libraryQueryService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";

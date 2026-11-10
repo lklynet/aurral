@@ -16,7 +16,7 @@ import { formatDate, formatRelativeTime, parseCalendarDate } from "../utils/date
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
-import type { DiscoverArtist } from "./discoverUtils";
+import type { DiscoverArtist } from "../utils/discoverUtils";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
 import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
 

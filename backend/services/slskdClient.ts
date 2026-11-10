@@ -7,6 +7,7 @@ import { logger } from "./logger.ts";
 import { readMany, readOne } from "./integrationData.ts";
 import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
+import { getSlskdCleanupTargets, markSlskdCleanupTargetsCleaned } from "./slskdTransferHistory.ts";
 
 const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
 const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
@@ -274,16 +275,6 @@ function getSettings(config: SlskdConfig | null = null) {
     .replace(/\/+$/, "");
   const apiKey = String(slskd.apiKey || "").trim();
   return { url, apiKey, slskd };
-}
-
-export function getSlskdSearchFormatOptions(config: SlskdConfig | null = null) {
-  const slskd = getSettings(config).slskd || {};
-  const preferredFormat =
-    String(slskd.preferredFormat || "").toLowerCase() === "mp3" ? "mp3" : "flac";
-  return {
-    preferredFormat,
-    strictFormat: slskd.preferredFormatStrict === true,
-  };
 }
 
 export function isSlskdCleanupAfterRunsEnabled(config: SlskdConfig | null = null) {
@@ -1252,8 +1243,6 @@ export class SlskdClient {
 
       if (ownedOnly && searchIds.length === 0 && transfers.length === 0) {
         try {
-          const { getSlskdCleanupTargets, markSlskdCleanupTargetsCleaned } =
-            await import("./slskdTransferHistory.ts");
           const targets = getSlskdCleanupTargets();
           searchIds = targets.searchIds;
           transfers = targets.transfers;

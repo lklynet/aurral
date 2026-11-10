@@ -93,7 +93,7 @@ export function getCapabilities(source?: string): SourceCapabilities {
   );
 }
 
-function cleanText(value: unknown) {
+export function cleanText(value: unknown) {
   return String(value ?? "").trim() || null;
 }
 

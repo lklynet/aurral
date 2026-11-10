@@ -15,3 +15,13 @@ export const getApiErrorMessage = (error: unknown, fallback: string) =>
   getApiErrorText(error, "error") ||
   asApiError(error)?.message ||
   fallback;
+
+export function readApiError(error: unknown) {
+  return {
+    status: asApiError(error)?.response?.status,
+    body: getApiErrorBody(error),
+    message: getApiErrorText(error, "message"),
+    error: getApiErrorText(error, "error"),
+    text: asApiError(error)?.message,
+  };
+}

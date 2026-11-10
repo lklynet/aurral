@@ -4,7 +4,7 @@ import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icon
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
-import { SettingsLink, useSettingsRoute } from "./settingsRoute";
+import { SettingsLink, useSettingsRoute } from "../../navigation/settingsRoute";
 import "./settings.css";
 
 export const SettingsSavingContext = createContext(false);

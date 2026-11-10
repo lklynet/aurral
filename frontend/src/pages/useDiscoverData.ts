@@ -18,7 +18,7 @@ import {
   writeStoredRecentReleases,
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
-} from "./discoverUtils";
+} from "../utils/discoverUtils";
 import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";

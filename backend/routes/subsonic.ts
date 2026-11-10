@@ -5,7 +5,7 @@ import * as v from "valibot";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
-import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
+import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../services/auth.ts";
 import { getPlayQueue, getPlayQueueByIndex, savePlayQueue } from "../services/playQueueService.ts";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";

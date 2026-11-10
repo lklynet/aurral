@@ -20,7 +20,7 @@ import {
   issueProxySession,
   issueStreamToken,
   getLocalNetworkBypassStatus,
-} from "../middleware/auth.ts";
+} from "../services/auth.ts";
 import { getOidcBootstrapInfo } from "../services/oidcAuth.ts";
 import { isGoogleLoginEnabled } from "../services/googleAuth.ts";
 import { lidarrClient } from "../services/lidarrClient.ts";
@@ -36,7 +36,7 @@ import { resolveAurralDataDir, resolveAurralDbPath } from "../config/data-dir.ts
 import { websocketService } from "../services/websocketService.ts";
 import { noCache } from "../middleware/cacheHeaders.ts";
 import { requireAuth } from "../middleware/guards.ts";
-import type { CredentialRequest } from "../middleware/auth.ts";
+import type { CredentialRequest } from "../services/auth.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { requestCredentials } from "./shared/requestCredentials.ts";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.ts";

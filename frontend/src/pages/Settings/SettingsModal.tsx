@@ -13,7 +13,7 @@ import {
   type SettingsSearchResult,
   type SettingsSectionId,
 } from "./settingsSections";
-import { SettingsLink, useSettingsRoute } from "./settingsRoute";
+import { SettingsLink, useSettingsRoute } from "../../navigation/settingsRoute";
 import { SettingsScrollContext, SettingsShell } from "./SettingsLayout";
 import {
   AccountSettingsProvider,

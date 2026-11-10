@@ -15,7 +15,7 @@ const [state, { db }, { dbOps, userOps }, { hashPassword }, { app }, provider] =
     "link-search",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/services/passwordHash.ts"),
     () => import("../../backend/app.ts"),
     () => import("../../backend/services/providers/brainzmashProvider.ts"),
   );

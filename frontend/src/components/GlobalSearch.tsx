@@ -53,10 +53,7 @@ import { Clock, Search } from "./icons";
 import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import {
-  TrackPlaylistMenu,
-  type PlaylistSelection,
-} from "../pages/ArtistDetails/components/TrackPlaylistMenu";
+import { TrackPlaylistMenu, type PlaylistSelection } from "./TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";

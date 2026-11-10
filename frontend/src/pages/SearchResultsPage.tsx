@@ -34,7 +34,7 @@ import SearchMixedResultList, {
 } from "../components/SearchMixedResultList";
 import SearchTopResultCard from "../components/SearchTopArtistCard";
 import SearchPlaylistShelf from "../components/SearchPlaylistShelf";
-import { TrackPlaylistMenu } from "./ArtistDetails/components/TrackPlaylistMenu";
+import { TrackPlaylistMenu } from "../components/TrackPlaylistMenu";
 import { buildMixedSearchPageItems } from "../utils/searchNavigation";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";

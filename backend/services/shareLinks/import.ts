@@ -21,7 +21,7 @@ import { getLibraryManagementEntry, setLibraryManagement } from "../libraryManag
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
-import { wakeDownloadWorker } from "../downloadJobs/mutationGuards.ts";
+import { wakeDownloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { recordTrackJobQueued } from "../aurralHistoryService.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import { loadRemoteShare } from "./remote.ts";

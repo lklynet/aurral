@@ -9,6 +9,8 @@ import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import type { HistoryServersRow } from "../db/rows.ts";
 import { getPlexServer } from "./plex.ts";
 import type { ImportedFavorite } from "./subsonicLibraryService.ts";
+import { requestUserDiscoveryRefresh } from "./discovery/index.ts";
+import { importFavorites } from "./subsonicLibraryService.ts";
 
 export const HISTORY_SERVER_PROVIDERS = ["navidrome", "plex", "jellyfin"] as const;
 export type HistoryServerProvider = (typeof HISTORY_SERVER_PROVIDERS)[number];
@@ -498,7 +500,6 @@ const removeConnection = db.transaction((userId: number, provider: HistoryServer
 });
 
 async function refreshDiscovery(userId: number) {
-  const { requestUserDiscoveryRefresh } = await import("./discovery/index.ts");
   requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
 }
 
@@ -535,7 +536,6 @@ export async function importHistoryServerFavorites(
   const row = selectServer.get(userId, provider);
   if (!row) throw new HistoryServerError("Connect the server first");
   const favorites = await FAVORITE_READERS[provider](connectionOf(row));
-  const { importFavorites } = await import("./subsonicLibraryService.ts");
   const result = importFavorites(userId, favorites);
   if (result.added > 0) await refreshDiscovery(userId);
   return result;

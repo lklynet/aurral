@@ -83,7 +83,7 @@ test("a library album prefetch matches the page query whatever its list state", 
       ? { tracks: [{ id: 1, title: "Track" }], total: 1 }
       : {},
   }));
-  const { libraryViewQueryOptions } = await import("../../frontend/src/pages/libraryViewQuery.ts");
+  const { libraryViewQueryOptions } = await import("../../frontend/src/utils/libraryViewQuery.ts");
 
   await prefetchRoute("/album/7");
   const prefetched = requests.length;
@@ -109,7 +109,7 @@ test("an album linked by MBID prefetches its library view too", async (t) => {
   const { requests, prefetchRoute, queryClient } = await setup(t, (url) => ({
     body: url.pathname.includes("/library") ? { tracks: [], total: 0 } : { id: mbid },
   }));
-  const { libraryViewQueryOptions } = await import("../../frontend/src/pages/libraryViewQuery.ts");
+  const { libraryViewQueryOptions } = await import("../../frontend/src/utils/libraryViewQuery.ts");
 
   await prefetchRoute(`/album/${mbid}`);
   assert.equal(apiRequests(requests, `/artists/release-group/${mbid}`).length, 1);

@@ -9,7 +9,7 @@ import {
 import {
   getStaticPlaylistTrackCount,
   hasReviewActivity,
-} from "../../frontend/src/pages/playlists/playlistStats.ts";
+} from "../../frontend/src/utils/playlistStats.ts";
 import { requireFixture } from "./fixtures.ts";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =

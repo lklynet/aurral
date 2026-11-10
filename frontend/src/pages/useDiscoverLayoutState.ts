@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DiscoverSection, DiscoverUserId } from "./discoverUtils";
+import type { DiscoverSection, DiscoverUserId } from "../utils/discoverUtils";
 import { getApiErrorText } from "../utils/api/errors.ts";
 
 interface DiscoverLayoutResponse {

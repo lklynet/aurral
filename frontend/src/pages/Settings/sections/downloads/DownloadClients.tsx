@@ -3,9 +3,8 @@ import { parseResponse } from "hono/client";
 import { downloadClientSettingsClient } from "../../../../utils/api/clients/downloadClientSettings.ts";
 import { DotLoader } from "../../../../components/DotLoader";
 import { SettingsAdapterFields } from "../../components/SettingsAdapterFields";
-import { readApiError } from "../../utils/apiError.ts";
 import { useServerSettings } from "../../SettingsProviders";
-import { useSettingsRoute } from "../../settingsRoute";
+import { useSettingsRoute } from "../../../../navigation/settingsRoute";
 import {
   SettingsActions,
   SettingsGroup,
@@ -13,6 +12,7 @@ import {
   SettingsPage,
   SettingsRow,
 } from "../../SettingsLayout";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
 type DownloadClientSettings = NonNullable<ServerSettings["downloadClientSettings"]>;

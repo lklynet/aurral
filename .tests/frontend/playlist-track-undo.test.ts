@@ -63,7 +63,7 @@ const openHarness = async (
 ) => {
   vi.resetModules();
   const { createPlaylistTrackChanges } =
-    await import("../../frontend/src/pages/playlists/playlistTrackChanges.ts");
+    await import("../../frontend/src/utils/playlistTrackChanges.ts");
   const { queryClient } = await import("../../frontend/src/queryClient.ts");
   const originalFetch = globalThis.fetch;
   const removals: { jobIds: string[]; keepalive: boolean }[] = [];

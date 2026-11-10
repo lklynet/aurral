@@ -7,7 +7,7 @@ import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
 import type { DownloadJob } from "../services/downloadJobs/downloadTracker.ts";
 import { clearPlayerQueue, getPlayerQueue, savePlayerQueue } from "../services/playQueueService.ts";
-import { toQueueTracks } from "./library/handlers/queueTracks.ts";
+import { toQueueTracks } from "../services/queueTracks.ts";
 
 const MAX_ENTRIES = 1000;
 

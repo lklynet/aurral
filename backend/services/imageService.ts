@@ -1,9 +1,9 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { isOwnKey } from "../../lib/ownKey.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
+import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
 import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
 import { getArtistByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
@@ -14,13 +14,6 @@ import {
   LEGACY_COVER_HOST_PATTERN,
 } from "./releaseGroupCoverService.ts";
 
-type ImageSource = {
-  kind?: string | null;
-  url?: string | null;
-  CoverType?: string | null;
-  Url?: string | null;
-};
-type ImageList = (ImageSource | null | undefined)[] | null | undefined;
 type ReleaseGroupSummary = Awaited<ReturnType<typeof listArtistAlbums>>[number];
 type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id" | "type" | "firstReleaseDate"> & {
   title?: string;
@@ -41,73 +34,8 @@ const RELEASE_GROUP_CONCURRENCY = 4;
 const negativeImageCache = new Map<string, number>();
 const pendingImageRequests = new Map<string, PendingImageRequest>();
 
-const ARTIST_IMAGE_KIND_RANK = {
-  poster: 0,
-  artist: 1,
-  thumb: 2,
-  fanart: 3,
-  background: 4,
-  banner: 8,
-  logo: 9,
-  clearlogo: 9,
-};
-
-const ALBUM_IMAGE_KIND_RANK = {
-  front: 0,
-  cover: 0,
-  albumcover: 0,
-  back: 4,
-  booklet: 5,
-  medium: 6,
-  tray: 6,
-  spine: 7,
-  disc: 8,
-  logo: 9,
-};
-
-const getArtistImageKindRank = (image: ImageSource | null | undefined) => {
-  const kind = String(image?.kind || image?.CoverType || "")
-    .trim()
-    .toLowerCase();
-  return isOwnKey(ARTIST_IMAGE_KIND_RANK, kind) ? ARTIST_IMAGE_KIND_RANK[kind] : 5;
-};
-
-const getAlbumImageKindRank = (image: ImageSource | null | undefined) => {
-  const kind = String(image?.kind || image?.CoverType || "")
-    .trim()
-    .toLowerCase();
-  return isOwnKey(ALBUM_IMAGE_KIND_RANK, kind) ? ALBUM_IMAGE_KIND_RANK[kind] : 3;
-};
-
-const getImageUrl = (image: ImageSource | null | undefined) => image?.url || image?.Url || null;
-
 const toPublicImageUrl = (imageUrl: string | null | undefined) =>
   buildStableImageProxyUrl(imageUrl);
-
-const selectBestImageByKind = (
-  images: ImageList = [],
-  getKindRank: (image: ImageSource | null | undefined) => number,
-) => {
-  if (!Array.isArray(images)) return null;
-  return (
-    images
-      .filter((image) => getImageUrl(image))
-      .map((image, index) => ({ image, index }))
-      .sort((a, b) => {
-        const rankDiff = getKindRank(a.image) - getKindRank(b.image);
-        if (rankDiff !== 0) return rankDiff;
-        return a.index - b.index;
-      })[0]?.image || null
-  );
-};
-
-export const selectBestArtistImage = (images: ImageList = []) => {
-  return selectBestImageByKind(images, getArtistImageKindRank);
-};
-
-export const selectBestAlbumImage = (images: ImageList = []) => {
-  return selectBestImageByKind(images, getAlbumImageKindRank);
-};
 
 const sortArtistImages = (images: ImageList = []) => {
   if (!Array.isArray(images)) return [];

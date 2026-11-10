@@ -13,9 +13,9 @@ import { allReleaseTypes } from "../constants";
 import { checkForChanges, normalizeSettings, type SettingsState } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { appSettingsQueryOptions } from "../../../queryOptions.ts";
-import { readApiError } from "../utils/apiError.ts";
 import { useSettingsItem } from "../SettingsLayout";
 import { afterTextEntry } from "../../../utils/afterTextEntry.ts";
+import { readApiError } from "../../../utils/api/errors.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };

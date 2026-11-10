@@ -13,18 +13,22 @@ import {
 } from "../downloadUtils.ts";
 import { recordPipelineJobSuccess, refreshCompletedPipelinePlaylist } from "../pipelineHelpers.ts";
 import { classifyQualityJob } from "../qualityProfileService.ts";
-import { withDownloadStepLock } from "./mutationGuards.ts";
+import { withDownloadStepLock } from "./downloadLocks.ts";
 import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { isNzbSource } from "../usenetClientCommon.ts";
+import {
+  removeReviewedUsenetDownload,
+  shouldPreserveReviewedUsenetSource,
+} from "../usenetOrchestrator.ts";
+import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
 
 async function removeReviewedDownload(job: DownloadJob) {
   if (!isNzbSource(job.downloadSource)) return;
-  const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
   await removeReviewedUsenetDownload(job);
 }
 
@@ -82,7 +86,6 @@ export async function approveBlockedJob(jobId: string) {
       if (!getBlockedJob(job.id)) return null;
       let preserveSource = false;
       if (isNzbSource(job.downloadSource)) {
-        const { shouldPreserveReviewedUsenetSource } = await import("../usenetOrchestrator.ts");
         preserveSource = shouldPreserveReviewedUsenetSource(job);
       }
       const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName), {
@@ -140,9 +143,7 @@ export async function denyBlockedJob(
   );
   if (committed.cancelled) return { status: 409, error: "Download job was removed" };
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
-  import("../aurralHistoryService.ts")
-    .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, `${reason} — will retry`))
-    .catch(() => {});
+  recordTrackJobFailed(job, `${reason} — will retry`);
   await startWorkerIfPending();
   return { status: 200 };
 }

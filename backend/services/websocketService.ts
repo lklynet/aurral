@@ -11,7 +11,7 @@ import {
   resolveLocalNetworkBypassUser,
   resolveSessionUserFromToken,
   resolveProxyUser,
-} from "../middleware/auth.ts";
+} from "./auth.ts";
 import type { getPlaylistStatusSnapshot } from "./playlists/playlistStatusSnapshot.ts";
 import type { getDiscoveryMode } from "./discovery/helpers.ts";
 

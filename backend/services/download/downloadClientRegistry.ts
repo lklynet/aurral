@@ -42,8 +42,4 @@ export class DownloadClientRegistry<Client extends DownloadClient> {
   getAll() {
     return [...this.clients];
   }
-
-  getConfigured() {
-    return this.clients.filter((client) => client.isConfigured());
-  }
 }

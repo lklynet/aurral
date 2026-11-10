@@ -4,7 +4,7 @@ import {
   countAvailableTracks,
   getTrackAvailability,
   getTrackSearchAction,
-} from "../../frontend/src/pages/playlists/trackAvailability.ts";
+} from "../../frontend/src/utils/trackAvailability.ts";
 
 test("availability counts playable completed tracks, including tracks reused from another playlist", () => {
   const tracks: (Parameters<typeof getTrackAvailability>[0] & { playlistType?: string })[] = [

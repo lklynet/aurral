@@ -10,7 +10,7 @@ import {
   isRecentlyAuthenticated,
   resolveRequestUser,
   resolveTokenUser,
-} from "./auth.ts";
+} from "../services/auth.ts";
 import type { AppEnv, RequestUser } from "./requestUser.ts";
 
 type SignedIn = AppEnv & { Variables: { user: RequestUser } };

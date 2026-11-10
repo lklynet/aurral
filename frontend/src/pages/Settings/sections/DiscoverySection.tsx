@@ -5,7 +5,7 @@ import { formatDateTime } from "../../../utils/dateTime.ts";
 import { SettingsInput } from "../components/SettingsField";
 import { Select } from "../../../components/Select";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsLink } from "../settingsRoute";
+import { SettingsLink } from "../../../navigation/settingsRoute";
 import type { SettingsState } from "../utils";
 import { formatBytes } from "../utils/formatBytes";
 import { configuredStatus, providerStatus } from "../utils/serviceStatus";

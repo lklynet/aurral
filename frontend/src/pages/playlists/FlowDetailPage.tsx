@@ -31,10 +31,9 @@ import { parseResponse } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
-import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
+import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
-import { formatFlowLastRun, getFlowDisplayTrackCount } from "./playlistStats";
-import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
+import { formatFlowLastRun, getFlowDisplayTrackCount } from "../../utils/playlistStats";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import {
@@ -46,10 +45,11 @@ import {
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
-import type { Flow } from "./playlistStats.ts";
+import type { Flow } from "../../utils/playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import { copyText } from "../../utils/shareLink.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
+import { normalizeNameKey, reserveUniqueName } from "../../utils/staticPlaylists.ts";
 
 const FlowEditor = lazy(() => import("./FlowEditor.tsx"));
 

@@ -25,7 +25,6 @@ import {
 } from "./recommendationPipeline.ts";
 import type { DiscoveryCache, DiscoveryCacheUpdate } from "../../db/helpers/discovery.ts";
 import { getMusicDataSourceName, getTrendingArtists } from "../musicDataSource/index.ts";
-import { discoveryUserRefreshQueue } from "../jobs/queues.ts";
 import { withLock } from "../jobs/queue.ts";
 import { websocketService } from "../websocketService.ts";
 import {
@@ -46,10 +45,7 @@ import { getBlockedTagKeys } from "./blockedTags.ts";
 import { genreKey } from "../musicGenres.ts";
 import {
   discoveryCache,
-  getDiscoveryRefreshState,
   markDiscoveryRefreshFinished,
-  markDiscoveryRefreshRequested,
-  markInterruptedDiscoveryRefresh,
   markDiscoveryRefreshStarted,
   recordDiscoveryUpdateProgress,
   saveDiscoveryRefreshProgress,
@@ -61,80 +57,22 @@ import { getTopPlayedArtists } from "../playEventService.ts";
 import { getTopSpotifyImportArtists } from "../spotify/spotifyImport.ts";
 import { getTopFavoriteArtists } from "./favoriteArtists.ts";
 import { buildDiscoveryPlaylists } from "./discoveryPlaylists.ts";
+import {
+  emitUserDiscoveryUpdate,
+  enqueueUserRefreshJob,
+  getUserDiscoveryNamespace,
+  enqueueAllUserDiscoveryRefreshes,
+} from "./userRefreshRequests.ts";
+import { fetchKoitoTopArtists } from "../koitoClient.ts";
+import {
+  recordDiscoveryRefreshStarted,
+  recordDiscoveryUpdated,
+  recordDiscoveryRefreshFailed,
+} from "../aurralHistoryService.ts";
 
-const USER_REFRESH_DELAY_SECONDS = 10;
-const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
 
 type DiscoveryUser = NonNullable<ReturnType<typeof userOps.getUserById>>;
-
-export const getUserDiscoveryNamespace = (userId: number) => `user:${userId}`;
-
-const emitUserDiscoveryUpdate = (
-  userId: number,
-  data: Parameters<typeof websocketService.emitDiscoveryUpdate>[0],
-) => websocketService.emitDiscoveryUpdate({ configured: true, ...data }, { userId });
-
-const enqueueUserRefreshJob = (
-  userId: number,
-  { reason, delaySeconds }: { reason: string; delaySeconds: number },
-) => {
-  const requestedAt = Date.now();
-  markDiscoveryRefreshRequested(getUserDiscoveryNamespace(userId), requestedAt);
-  const operationId = discoveryUserRefreshQueue.enqueue(
-    { userId, requestedAt, reason },
-    { delayMs: delaySeconds * 1000, priority: -10 },
-  );
-  emitUserDiscoveryUpdate(userId, {
-    isUpdating: true,
-    phase: "queued",
-    progressMessage: "Waiting to build your recommendations",
-  });
-  return operationId;
-};
-
-export const markInterruptedUserDiscoveryRefresh = (userId: number, error: string) => {
-  const namespace = getUserDiscoveryNamespace(userId);
-  if (!markInterruptedDiscoveryRefresh(error, { namespace })) return false;
-  emitUserDiscoveryUpdate(userId, {
-    isUpdating: false,
-    phase: "error",
-    progressMessage: "Discovery refresh failed",
-    error,
-  });
-  return true;
-};
-
-export const requestUserDiscoveryRefresh = (
-  userId: number | null,
-  {
-    reason = "manual",
-    delaySeconds = USER_REFRESH_DELAY_SECONDS,
-  }: { reason?: string; delaySeconds?: number } = {},
-) => {
-  if (userId == null) {
-    return { enqueued: false, reason: "not_configured" };
-  }
-  const { metadata } = dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId));
-  if (getDiscoveryRefreshState(metadata).pending) {
-    return { enqueued: false, reason: "queued" };
-  }
-  const operationId = enqueueUserRefreshJob(userId, { reason, delaySeconds });
-  return { enqueued: true, operationId };
-};
-
-export const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
-  const users = userOps.getAllUsers().filter((user) => (user.status || "active") === "active");
-  let queued = 0;
-  users.forEach((user, index) => {
-    const result = requestUserDiscoveryRefresh(user.id, {
-      reason,
-      delaySeconds: USER_REFRESH_DELAY_SECONDS + index * USER_REFRESH_STAGGER_SECONDS,
-    });
-    if (result.enqueued) queued += 1;
-  });
-  return queued;
-};
 
 type ListenHistoryArtist = { mbid: string | null; artistName: string; playcount: number };
 
@@ -167,7 +105,6 @@ const fetchListenHistoryArtists = async (
   }
 
   if (provider === "koito") {
-    const { fetchKoitoTopArtists } = await import("../koitoClient.ts");
     return fetchKoitoTopArtists(account, {
       discoveryPeriod,
       limit: 50,
@@ -257,25 +194,6 @@ const fetchTrendingArtists = async (existingArtistKeys: Set<string>) => {
     .slice(0, 32);
 };
 
-type DiscoveryHistory = typeof import("../aurralHistoryService.ts");
-
-const recordHistory = <
-  Method extends
-    | "recordDiscoveryRefreshStarted"
-    | "recordDiscoveryUpdated"
-    | "recordDiscoveryRefreshFailed",
->(
-  method: Method,
-  ...args: Parameters<DiscoveryHistory[Method]>
-) =>
-  import("../aurralHistoryService.ts")
-    .then((history) =>
-      (history[method] as (...callArgs: Parameters<DiscoveryHistory[Method]>) => unknown)(...args),
-    )
-    .catch((err) => {
-      logger.warn("discovery", asAppError(err)?.message || String(err));
-    });
-
 const publishGlobalDiscovery = (discoveryData: DiscoveryCacheUpdate) => {
   Object.assign(discoveryCache, discoveryData);
   dbOps.updateDiscoveryCache(discoveryData);
@@ -307,7 +225,7 @@ export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {})
   markDiscoveryRefreshStarted();
   logger.info("discovery", "Starting background update of discovery data...");
   recordDiscoveryUpdateProgress("starting", "Preparing discovery refresh", 5);
-  void recordHistory("recordDiscoveryRefreshStarted");
+  recordDiscoveryRefreshStarted();
 
   try {
     const provider = getMusicDataSourceName();
@@ -360,7 +278,7 @@ export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {})
 
     const { notifyDiscoveryUpdated } = await import("../notificationService.ts");
     notifyDiscoveryUpdated();
-    void recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
+    recordDiscoveryUpdated({ recommendationCount: 0, genreCount: 0 });
 
     try {
       const cleaned = dbOps.cleanOldImageCache(30);
@@ -388,7 +306,7 @@ export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {})
       progressMessage: "Discovery refresh failed",
       error: failure?.message,
     });
-    void recordHistory("recordDiscoveryRefreshFailed", failure?.message);
+    recordDiscoveryRefreshFailed(failure?.message);
   }
 };
 

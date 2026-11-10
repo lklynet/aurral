@@ -381,10 +381,6 @@ export class DeemixClient {
     };
   }
 
-  getBitrate() {
-    return this._getSettings().bitrate;
-  }
-
   getQualityTierId() {
     return BITRATE_TIERS[this._getSettings().bitrate] || null;
   }

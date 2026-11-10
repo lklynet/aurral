@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
-import { enqueueSystemTask } from "../jobs/queues.ts";
+import { enqueueSystemTask } from "../jobs/systemTasks.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import {
   activeLidarrRoots,

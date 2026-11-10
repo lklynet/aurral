@@ -9,7 +9,7 @@ import {
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
   invalidateAllDownloadStatusesCache,
-} from "../../backend/routes/library/handlers/downloads.ts";
+} from "../../backend/services/lidarrStatusSnapshot.ts";
 import { LidarrClient, lidarrClient } from "../../backend/services/lidarrClient.ts";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.ts";
 

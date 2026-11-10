@@ -4,8 +4,8 @@ import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { createSession, getSessionByToken } from "../config/session-helpers.ts";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.ts";
-import { isPluginApiKey, pluginForApiKey } from "../services/plugins/pluginStore.ts";
-import type { RequestUser } from "./requestUser.ts";
+import { isPluginApiKey, pluginForApiKey } from "./plugins/pluginStore.ts";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import type { UserPermissions, UserRecord } from "../db/helpers/users.ts";
 
 type RequestHeaders = Record<string, string | string[] | undefined>;
@@ -133,7 +133,13 @@ export const isProxyAuthEnabled = () => {
   return !!process.env.AUTH_PROXY_HEADER;
 };
 
-function parseCsv(value: string | undefined) {
+export function pruneExpired(entries: Map<string, { expiresAt: number }>, now = Date.now()) {
+  for (const [key, entry] of entries) {
+    if (entry.expiresAt <= now) entries.delete(key);
+  }
+}
+
+export function parseCsv(value: string | undefined) {
   if (!value) return [];
   return String(value)
     .split(",")

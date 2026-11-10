@@ -1,5 +1,10 @@
 import * as v from "valibot";
-import { http, isTransientNetworkError, type HttpOptions } from "../../../lib/http.ts";
+import {
+  http,
+  isTransientNetworkError,
+  waitBeforeRetry,
+  type HttpOptions,
+} from "../../../lib/http.ts";
 import { lenient, lenientCount, lenientText, readOne } from "../integrationData.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
@@ -228,8 +233,7 @@ export async function listenbrainzRequest(
         if (rateLimitWaitMs !== null) listenbrainzLimiter.pauseFor(rateLimitWaitMs);
         if (retryCount < LISTENBRAINZ_MAX_RETRIES && rateLimitWaitMs !== null) continue;
         if (retryCount < LISTENBRAINZ_MAX_RETRIES && isRetryable(error)) {
-          const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          await waitBeforeRetry(retryCount);
           continue;
         }
         break;

@@ -26,6 +26,7 @@ import {
   getRecentlyAddedLibraryArtists,
 } from "../../../services/libraryQueryService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } from "../../../services/lidarrClient.ts";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -157,7 +158,6 @@ export async function getArtistLibraryLookup(mbid: string) {
       ownedAlbums,
     };
   }
-  const { lidarrClient } = await import("../../../services/lidarrClient.ts");
   const lidarrConfigured = lidarrClient.isConfigured();
   let lidarrArtist: LidarrArtist | null | undefined;
   let lidarrAlbums;
@@ -238,7 +238,6 @@ export default new Hono<AppEnv>()
   .basePath("/library")
   .get("/rootfolder", async (c) => {
     try {
-      const { lidarrClient } = await import("../../../services/lidarrClient.ts");
       const configured = lidarrClient.getConfiguredRootFolderPaths();
       if (!lidarrClient.isEnabled())
         return c.json(
@@ -305,8 +304,6 @@ export default new Hono<AppEnv>()
         ReturnType<typeof libraryAlbumResult> | LidarrAlbumLookupResult
       > = {};
       if (wanted.length === 0) return c.json(results, 200);
-      const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
-        await import("../../../services/lidarrClient.ts");
       if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
         return c.json(
           { error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values` },

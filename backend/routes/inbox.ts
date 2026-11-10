@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
-import { hasPermission } from "../middleware/auth.ts";
+import { hasPermission } from "../services/auth.ts";
 import { requireAuth } from "../middleware/guards.ts";
 import { validate } from "../middleware/validate.ts";
 import type { InboxItem } from "../db/helpers/inbox.ts";

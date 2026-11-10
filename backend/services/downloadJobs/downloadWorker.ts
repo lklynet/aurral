@@ -13,7 +13,6 @@ import {
   RELEASE_WAIT_SECONDS,
 } from "../releaseResolver.ts";
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
-import { logger, safeLogDiagnostic } from "../logger.ts";
 import {
   repairOrphanedPlaylistTrackPaths,
   moveHandedOverTracksToLidarr,
@@ -47,6 +46,10 @@ import {
 import { isPipelinePayloadActive } from "./downloadCancellation.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
+import { lidarrClient } from "../lidarrClient.ts";
+import { getDownloadClient } from "../download/downloadClientSettings.ts";
+import { recordTrackJobFailed, recordRequestGroupDownloaded } from "../aurralHistoryService.ts";
+import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
@@ -428,7 +431,6 @@ export class DownloadWorker {
   }
 
   async releaseLidarrFiles() {
-    const { lidarrClient } = await import("../lidarrClient.ts");
     if (isLidarrLibraryActive(lidarrClient)) return 0;
     return this.requeueRemovedFolderFiles({
       removedFolders: configuredLidarrFolders(lidarrClient),
@@ -439,7 +441,6 @@ export class DownloadWorker {
   }
 
   async releaseReadOnlyFolderFiles(folders: string[]) {
-    const { lidarrClient } = await import("../lidarrClient.ts");
     return this.requeueRemovedFolderFiles({
       removedFolders: folders,
       keptFolders: [...readOnlyFolderPaths(), ...activeLidarrRoots(lidarrClient)],
@@ -547,19 +548,11 @@ export class DownloadWorker {
             const message = asAppError(error)?.message || String(error);
             console.error(`[DownloadWorker] Error processing job ${job.id}:`, message);
             if (job.upgradeForJobId) {
-              const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
               await finalizeQualityUpgradeFailure(job, message);
               return;
             }
             downloadTracker.setFailed(job.id, message);
-            import("../aurralHistoryService.ts")
-              .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, message))
-              .catch((historyError) => {
-                console.warn(
-                  `[DownloadWorker] Could not record failed job ${job.id} in history:`,
-                  safeLogDiagnostic(historyError),
-                );
-              });
+            recordTrackJobFailed(job, message);
             await this.checkPlaylistComplete(job.playlistType);
           })
           .finally(() => {
@@ -668,14 +661,7 @@ export class DownloadWorker {
       });
       if (reuse.reused) {
         if (job.requestGroupId && reuse.finalPath) {
-          const { recordRequestGroupDownloaded } = await import("../aurralHistoryService.ts");
-          await recordRequestGroupDownloaded(job.requestGroupId, reuse.finalPath).catch(
-            (error: unknown) =>
-              logger.warn("history", "Could not record a finished album request", {
-                jobId: job.id,
-                reason: error instanceof Error ? error.message : String(error),
-              }),
-          );
+          await recordRequestGroupDownloaded(job.requestGroupId, reuse.finalPath);
         }
         this._recordCompletedTrack(Number(process.hrtime.bigint() - perfStartHr) / 1e6, 0);
         phaseStart = process.hrtime.bigint();
@@ -806,22 +792,22 @@ export class DownloadWorker {
               : playlistManager.downloadRoot;
             const { notifyFlowDone } = await import("../notificationService.ts");
             notifyFlowDone(playlistType, { completed, failed }, flowPath, flowName);
-            import("../download/downloadClientSettings.ts")
-              .then(({ getDownloadClient }) => {
-                const slskdClient = getDownloadClient("slskd");
-                if (!slskdClient.isCleanupAfterRunsEnabled()) return null;
-                const globalStats = downloadTracker.getStats();
-                if (globalStats.pending > 0 || globalStats.downloading > 0) {
-                  return null;
-                }
-                return slskdClient.cleanupAfterRun();
-              })
-              .catch((err) =>
-                console.warn(
-                  "[DownloadWorker] slskd cleanup failed:",
-                  asAppError(err)?.message || err,
-                ),
-              );
+            const slskdClient = getDownloadClient("slskd");
+            const globalStats = downloadTracker.getStats();
+            if (
+              slskdClient.isCleanupAfterRunsEnabled() &&
+              globalStats.pending === 0 &&
+              globalStats.downloading === 0
+            ) {
+              slskdClient
+                .cleanupAfterRun()
+                .catch((err) =>
+                  console.warn(
+                    "[DownloadWorker] slskd cleanup failed:",
+                    asAppError(err)?.message || err,
+                  ),
+                );
+            }
           },
           {
             ttlMs: 180_000,
@@ -955,4 +941,19 @@ export async function startWorkerIfPending() {
     return;
   }
   await downloadWorker.start();
+}
+
+export async function restartWorkerIfPending(): Promise<void> {
+  const stillPending = downloadTracker.getNextPending();
+  if (stillPending && !downloadWorker.running) {
+    await downloadWorker.start();
+  }
+}
+
+export async function wakeDownloadWorker(): Promise<void> {
+  if (!downloadWorker.running) {
+    await downloadWorker.start();
+  } else {
+    downloadWorker.wake();
+  }
 }

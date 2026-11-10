@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { noCache } from "../middleware/cacheHeaders.ts";
-import { resolveRequestUser } from "../middleware/auth.ts";
+import { resolveRequestUser } from "../services/auth.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downloadFolderConfig.ts";

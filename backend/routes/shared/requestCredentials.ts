@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { CredentialRequest } from "../../middleware/auth.ts";
+import type { CredentialRequest } from "../../services/auth.ts";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 
 export const requestCredentials = <E extends AppEnv>(c: Context<E>): CredentialRequest => {

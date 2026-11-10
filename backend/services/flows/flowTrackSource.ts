@@ -28,6 +28,7 @@ import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
 import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
+import { getAlbumTracksByAlbumMbid } from "../providers/brainzmashProvider.ts";
 
 type ArtistTopTrack = {
   name: string;
@@ -1077,7 +1078,6 @@ export class FlowTrackSource {
   async _getMetadataAlbumTrackList(albumMbid: string) {
     const safeAlbumMbid = String(albumMbid || "").trim();
     if (!safeAlbumMbid) return [];
-    const { getAlbumTracksByAlbumMbid } = await import("../providers/brainzmashProvider.ts");
     return getAlbumTracksByAlbumMbid(safeAlbumMbid);
   }
 

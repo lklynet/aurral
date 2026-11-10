@@ -22,7 +22,7 @@ const [state, { db }, { dbOps, userOps }, { hashPassword }, { app }] = await set
   "release-group-details",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/services/passwordHash.ts"),
   () => import("../../backend/app.ts"),
 );
 

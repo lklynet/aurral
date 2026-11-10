@@ -14,7 +14,7 @@ const [isolatedState, { db }, { userOps, dbOps }, { getApiKey }, { createSession
     "lastfm-link-api-key",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/services/auth.ts"),
     () => import("../../backend/config/session-helpers.ts"),
   );
 

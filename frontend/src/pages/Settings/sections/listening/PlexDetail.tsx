@@ -8,7 +8,6 @@ import { queryKeys } from "../../../../queryClient.ts";
 import { historyServersClient } from "../../../../utils/api/clients/historyServers.ts";
 import { plexClient } from "../../../../utils/api/clients/plex.ts";
 import { SettingsInput } from "../../components/SettingsField";
-import { readApiError } from "../../utils/apiError.ts";
 import {
   SettingsActions,
   SettingsGroup,
@@ -17,6 +16,7 @@ import {
   SettingsRow,
 } from "../../SettingsLayout";
 import { HistoryServerActions, historyNote, useHistoryServers } from "./HistoryServers";
+import { readApiError } from "../../../../utils/api/errors.ts";
 
 const POLL_MS = 2000;
 const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;

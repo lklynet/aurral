@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import * as v from "valibot";
 import { requireAdmin, requireAuth } from "../../middleware/guards.ts";
-import { validateExternalUrl } from "../../middleware/urlValidator.ts";
+import { validateExternalUrl } from "../../services/urlValidator.ts";
 import { validate } from "../../middleware/validate.ts";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../services/download/downloadClientSettings.ts";
 import { asAppError, errorResponseText, type AppError } from "../../../lib/errors.ts";
 import { isErrorStatus } from "../shared/errorStatus.ts";
+import { prowlarrClient } from "../../services/prowlarrClient.ts";
 
 function validateDownloadClientTestConfig(key: string, config: Record<string, unknown>) {
   const definition = Object.entries(getDownloadClientSettings()).find(
@@ -108,13 +109,11 @@ export default new Hono<AppEnv>()
   )
   .post("/prowlarr/test", requireAuth, requireAdmin, (c) =>
     clientTestResponse(c, "Prowlarr", async () => {
-      const { prowlarrClient } = await import("../../services/prowlarrClient.ts");
       return prowlarrClient.testConnection({ force: true });
     }),
   )
   .get("/prowlarr/indexers", requireAuth, requireAdmin, async (c) => {
     try {
-      const { prowlarrClient } = await import("../../services/prowlarrClient.ts");
       const usenet = await prowlarrClient.listIndexers("usenet", { force: true });
       const torrent = await prowlarrClient.listIndexers("torrent");
       return c.json({ indexers: [...usenet, ...torrent] }, 200);

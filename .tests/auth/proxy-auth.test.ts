@@ -11,7 +11,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule] = await setu
   "proxy-auth",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/services/auth.ts"),
   () => import("../../backend/config/session-helpers.ts"),
 );
 
@@ -214,7 +214,7 @@ test("proxy auth never overwrites a protected account's role", () => {
   const created = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
   assert.ok(created != null);
   assert.equal(created.role, "user");
-  userOps.setProtected(created.id, true);
+  db.prepare("UPDATE users SET is_protected = 1 WHERE id = ?").run(created.id);
 
   process.env.AUTH_PROXY_ADMIN_USERS = "admin";
   const resolved = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
