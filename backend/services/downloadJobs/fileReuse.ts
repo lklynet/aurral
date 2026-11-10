@@ -853,13 +853,6 @@ export async function repairReusableTrackLinks(
     );
     playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
-    if (requeued > 0) {
-      const { downloadWorker, restartWorkerIfPending } = await import("./downloadWorker.ts");
-      await restartWorkerIfPending();
-      if (downloadWorker.running) {
-        downloadWorker.wake();
-      }
-    }
   }
   return {
     scanned: batch.length,

@@ -412,14 +412,7 @@ export class DownloadWorker {
         requeued += 1;
       }
     }
-    if (requeued > 0) {
-      if (this.running) {
-        this.wake();
-      } else {
-        await this.start();
-      }
-      return requeued;
-    }
+    if (requeued > 0) return requeued;
     const stats = downloadTracker.getPlaylistTypeStats(playlistType);
     if (stats.pending > 0) {
       if (this.running) {
@@ -454,10 +447,6 @@ export class DownloadWorker {
       downloadRoot: this.downloadRoot,
       ...options,
     });
-    if (requeued > 0) {
-      if (this.running) this.wake();
-      else await this.start();
-    }
     return requeued;
   }
 
@@ -944,17 +933,11 @@ export async function startWorkerIfPending() {
   await downloadWorker.start();
 }
 
-export async function restartWorkerIfPending(): Promise<void> {
-  const stillPending = downloadTracker.getNextPending();
-  if (stillPending && !downloadWorker.running) {
-    await downloadWorker.start();
-  }
-}
-
-export async function wakeDownloadWorker(): Promise<void> {
-  if (!downloadWorker.running) {
-    await downloadWorker.start();
-  } else {
-    downloadWorker.wake();
-  }
+// Unit tests drive the worker by hand, so only a real download process
+// starts it for queued work.
+if (
+  process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
+  process.env.AURRAL_TEST_SERVER === "1"
+) {
+  downloadTracker.onPendingWork(startWorkerIfPending);
 }

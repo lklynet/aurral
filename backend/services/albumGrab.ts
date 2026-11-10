@@ -172,8 +172,6 @@ export async function nextAlbumSource<Payload extends AlbumGrabPayload>(
   return next ? regroupAlbumGrab(next, remaining) : null;
 }
 
-// The worker stops when it runs out of work while an album holds its
-// tracks, so the tracks an album gives back need it started again.
 function giveBack(
   payload: AlbumGrabPayload,
   jobs: DownloadJob[],
@@ -189,9 +187,6 @@ function giveBack(
   }
   if (!released) return;
   recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
-  void import("./downloadJobs/downloadWorker.ts")
-    .then(({ wakeDownloadWorker }) => wakeDownloadWorker())
-    .catch(() => {});
 }
 
 // The attempt tried its release for these tracks, so each searches for

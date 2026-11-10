@@ -21,7 +21,6 @@ import { getLibraryManagementEntry, setLibraryManagement } from "../libraryManag
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
-import { wakeDownloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { recordTrackJobQueued } from "../aurralHistoryService.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import { loadRemoteShare } from "./remote.ts";
@@ -150,7 +149,6 @@ export async function importShare(payload: Record<string, unknown>) {
       if (job.status === "pending" && getShareDownload(job.id))
         downloadTracker.enqueueDownloadPipeline(job.id);
     }
-    await wakeDownloadWorker();
     return { to: `/library/playlists/${playlist.id}` };
   }
   const savedTracks = db.transaction(() => {
@@ -232,6 +230,5 @@ export async function importShare(payload: Record<string, unknown>) {
     downloadTracker.enqueueDownloadPipeline(jobId);
   }
   if (playlist) playlistManager.requestPlaylistSync([playlist.id]);
-  if (jobIds.length) await wakeDownloadWorker();
   return { to, downloaded: jobIds.length };
 }

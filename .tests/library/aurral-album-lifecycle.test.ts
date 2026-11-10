@@ -14,6 +14,7 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { startWorkerForQueuedWork } from "../download/fixtures.ts";
 
 const [
   isolatedState,
@@ -27,7 +28,7 @@ const [
   { lidarrClient },
   { dbOps },
   { libraryManager },
-  { downloadWorker },
+  { downloadWorker, startWorkerIfPending },
   { finishAlbumGrab },
   { scanMusicRoot },
   { resolveDownloadRoot },
@@ -564,6 +565,7 @@ test("a cancelled single song can be searched again and the worker takes it", as
     (await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).body.status,
     "cancelled",
   );
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   const { processPlaylistOperation } =
     await import("../../backend/services/playlists/playlistOperations.ts");
   try {

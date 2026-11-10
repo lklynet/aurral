@@ -1,4 +1,4 @@
-import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, startWorkerForQueuedWork, trackedJob } from "./fixtures.ts";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -21,7 +21,7 @@ const [
   { dbOps },
   { downloadTracker },
   { processDeemixPipelinePayload },
-  { downloadWorker },
+  { downloadWorker, startWorkerIfPending },
   { beginDownloadAttempt, setActiveDownloadAttemptId },
 ] = await setupIsolatedBackend(
   "deemix-album-grab",
@@ -223,10 +223,8 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.ok(polled != null);
     assert.equal(polled.phase, "finalize");
     const start = vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
+    startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
     await processDeemixPipelinePayload(polled as DeemixPayload, helpers);
-    for (let tick = 0; tick < 100 && start.mock.calls.length === 0; tick += 1) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
     assert.equal(start.mock.calls.length, 1);
     assert.equal(added, 1);
     assert.equal(removed, 1);

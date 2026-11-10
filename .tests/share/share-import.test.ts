@@ -7,12 +7,6 @@ import { spawnSync } from "node:child_process";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { parseShareManifest } from "../../lib/shareManifest.ts";
 
-vi.mock("../../backend/services/downloadJobs/downloadWorker.ts", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../backend/services/downloadJobs/downloadWorker.ts")
-  >()),
-  wakeDownloadWorker: vi.fn(async () => {}),
-}));
 vi.mock("../../backend/services/playlists/playlistManager.ts", () => ({
   playlistManager: {
     updateConfig: vi.fn(),

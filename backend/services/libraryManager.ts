@@ -2066,23 +2066,14 @@ export class LibraryManager {
       )
         downloadTracker.setStartedByPlaylist(job.id, null);
     }
-    const shouldStartWorker = uniqueTrackedJobIds.some((jobId) => {
+    const hasActiveJob = uniqueTrackedJobIds.some((jobId) => {
       const status = downloadTracker.getJob(jobId)?.status;
       return status === "pending" || status === "downloading";
     });
-    if (shouldStartWorker) {
+    if (hasActiveJob) {
       for (const jobId of jobIds) {
         const job = downloadTracker.getJob(jobId);
         if (job) recordTrackJobQueued(job, options.user);
-      }
-      try {
-        const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
-        await downloadWorker.start();
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.warn("library", "Aurral album jobs remain queued after worker start failed", {
-          message: failure?.message || String(error),
-        });
       }
     }
 

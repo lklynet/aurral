@@ -3,7 +3,13 @@ import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { insertJob } from "../helpers/jobs.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
-import { createTrackedJob, trackedJob, usenetIndexer, usenetRelease } from "./fixtures.ts";
+import {
+  createTrackedJob,
+  startWorkerForQueuedWork,
+  trackedJob,
+  usenetIndexer,
+  usenetRelease,
+} from "./fixtures.ts";
 import { test, afterAll, vi, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -28,7 +34,7 @@ const [
   { processUsenetPipelinePayload, removeReviewedUsenetDownload },
   { discardReviewFile },
   { processPipelinePayload },
-  { downloadWorker },
+  { downloadWorker, startWorkerIfPending },
   { buildSlskdRankingHistoryOptions },
   { prowlarrClient },
   {
@@ -1493,6 +1499,7 @@ async function gateUpgradeSearches(t: import("vite-plus/test").TestContext, grou
 
 test("an upgrade asked for while Search all's upgrades wait for the worker starts next when a search ends", async (t) => {
   const groups = ["backlog-first", "backlog-second", "backlog-third", "asked-for"];
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   const gate = await gateUpgradeSearches(t, groups);
   const backlog: (string | null)[] = [];
   for (const group of groups.slice(0, 3)) backlog.push(await gate.addSource(group));

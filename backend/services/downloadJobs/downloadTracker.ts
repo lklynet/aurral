@@ -25,7 +25,7 @@ import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { upgradeSourceIds } from "../downloadSourceService.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
-import { isDownloadOwnerProcess } from "./downloadOwnerClient.ts";
+import { isDownloadOwnerProcess, requestDownloadOwner } from "./downloadOwnerClient.ts";
 import { logger } from "../logger.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
 import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.ts";
@@ -601,6 +601,8 @@ export class DownloadTracker {
   declare externalDataVersion: number | undefined;
   declare externalJobsRevision: number | undefined;
   declare loaded: boolean;
+  declare pendingWorkListener: (() => unknown) | null;
+  declare pendingWorkAnnounced: boolean;
 
   constructor({
     enqueuePipeline = (payload) => downloadPipelineQueue.enqueue(payload),
@@ -616,7 +618,30 @@ export class DownloadTracker {
     this.slskdDispatched = new Set();
     this.revision = 0;
     this.loaded = false;
+    this.pendingWorkListener = isDownloadOwnerProcess()
+      ? null
+      : () => requestDownloadOwner("startIfPending", []);
+    this.pendingWorkAnnounced = false;
     if (isDownloadOwnerProcess()) this._ensureLoaded();
+  }
+
+  onPendingWork(listener: (() => unknown) | null) {
+    this.pendingWorkListener = listener;
+  }
+
+  // Runs after the caller's synchronous work, so a batch of jobs or a
+  // transaction that queues them is announced once, after it commits.
+  _announcePendingWork() {
+    if (this.pendingWorkAnnounced || !this.pendingWorkListener) return;
+    this.pendingWorkAnnounced = true;
+    queueMicrotask(() => {
+      this.pendingWorkAnnounced = false;
+      Promise.try(() => this.pendingWorkListener?.()).catch((error) => {
+        logger.warn("downloads", "Queued downloads are waiting for the download worker", {
+          error: asAppError(error)?.message || String(error),
+        });
+      });
+    });
   }
 
   _ensureLoaded() {
@@ -764,6 +789,11 @@ export class DownloadTracker {
     } else {
       clearTransientPipelineMetaStmt.run(id);
     }
+  }
+
+  releaseFromPipeline(id: string) {
+    this.clearSlskdPipelineState(id);
+    if (this.jobs.get(id)?.status === "pending") this._announcePendingWork();
   }
 
   updateDownloadMetadata(
@@ -1425,6 +1455,7 @@ export class DownloadTracker {
     this.pendingFreshQueue.push(id);
     this.pendingSet.add(id);
     this.pendingRetrySet.delete(id);
+    this._announcePendingWork();
     return id;
   }
 
@@ -1781,6 +1812,7 @@ export class DownloadTracker {
       this.pendingRetrySet.delete(id);
       this.pendingFreshQueue.push(id);
     }
+    this._announcePendingWork();
     return true;
   }
 

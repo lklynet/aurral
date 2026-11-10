@@ -1,4 +1,5 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { startWorkerForQueuedWork } from "../download/fixtures.ts";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -17,7 +18,7 @@ const [
   { downloadTracker },
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { processPlaylistOperation },
-  { downloadWorker },
+  { downloadWorker, startWorkerIfPending },
   { flowTrackSource },
   { api },
   { http },
@@ -160,6 +161,7 @@ test("new flows start with auto-download off until a download source exists", as
 });
 
 test("downloading a flow queues only its listed tracks", async () => {
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   useIntegrations(slskd);
   await ownTrack(owned);
   const flow = createFlow({ autoDownload: false });
@@ -170,6 +172,17 @@ test("downloading a flow queues only its listed tracks", async () => {
   assert.deepEqual(result, { queued: 1 });
   assert.deepEqual(flowStatuses(flow.id), ["New Track:pending", "Owned Track:done"]);
   assert.equal(vi.mocked(downloadWorker.start).mock.calls.length, 1);
+});
+
+test("asking for a track another playlist holds reuses its file without handing it to the worker", async () => {
+  await ownTrack(owned);
+  startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
+  const { requestLibraryTrack } = await import("../../backend/services/libraryTrackRequests.ts");
+
+  const result = await requestLibraryTrack(owned);
+
+  assert.partialDeepStrictEqual(result, { queued: false, reused: true });
+  assert.equal(vi.mocked(downloadWorker.start).mock.calls.length, 0);
 });
 
 test("downloading a flow without a download source explains what is missing", async () => {

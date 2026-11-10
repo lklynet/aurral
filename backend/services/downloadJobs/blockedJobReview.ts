@@ -1,7 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
 import { downloadTracker, type DownloadJob } from "./downloadTracker.ts";
-import { startWorkerIfPending } from "./downloadWorker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.ts";
 import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPaths.ts";
@@ -144,7 +143,6 @@ export async function denyBlockedJob(
   if (committed.cancelled) return { status: 409, error: "Download job was removed" };
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
   recordTrackJobFailed(job, `${reason} — will retry`);
-  await startWorkerIfPending();
   return { status: 200 };
 }
 

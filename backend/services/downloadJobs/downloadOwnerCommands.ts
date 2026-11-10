@@ -8,7 +8,7 @@ import { syncStaticPlaylistImportHere } from "../importLists/importListSync.ts";
 import { queueQualityUpgrade, runQualityUpgradeCheck } from "../qualityProfileService.ts";
 import { approveBlockedJob, denyBlockedJob } from "./blockedJobReview.ts";
 import { downloadTracker } from "./downloadTracker.ts";
-import { DownloadWorker, downloadWorker } from "./downloadWorker.ts";
+import { DownloadWorker, downloadWorker, startWorkerIfPending } from "./downloadWorker.ts";
 
 type Worker = DownloadWorker;
 
@@ -21,6 +21,7 @@ const owner = () => {
 
 export const downloadOwnerCommands = {
   start: () => owner().start(),
+  startIfPending: () => startWorkerIfPending(),
   stop: () => owner().stop(),
   stopAndDrain: () => owner().stopAndDrain(),
   wake: (...args: Parameters<Worker["wake"]>) => owner().wake(...args),
