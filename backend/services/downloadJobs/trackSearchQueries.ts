@@ -253,8 +253,9 @@ function orderTiers(tiers: SearchTier[]) {
     .map((tier) => ({
       ...tier,
       queries: tier.queries.filter((query) => {
-        const key = String(query || "").toLowerCase();
-        if (!key || seen.has(key)) return false;
+        const text = String(query || "");
+        const key = text.toLowerCase();
+        if (!key || seen.has(key) || !text.split(" ").some((word) => word.length > 1)) return false;
         seen.add(key);
         return true;
       }),
