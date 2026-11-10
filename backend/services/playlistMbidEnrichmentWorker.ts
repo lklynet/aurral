@@ -36,17 +36,10 @@ async function processPlaylistMbidEnrichment(
   return { success: true, enqueued: jobIds.length, jobIds };
 }
 
-const {
-  start: startPlaylistMbidEnrichmentWorker,
-  stop: stopPlaylistMbidEnrichmentWorker,
-  isRunning: isPlaylistMbidEnrichmentWorkerRunning,
-} = createJobWorker(playlistMbidEnrichmentQueue, {
-  schema: playlistMbidEnrichmentSchema,
-  processJob: processPlaylistMbidEnrichment,
-});
-
-export {
-  startPlaylistMbidEnrichmentWorker,
-  stopPlaylistMbidEnrichmentWorker,
-  isPlaylistMbidEnrichmentWorkerRunning,
-};
+export const { start: startPlaylistMbidEnrichmentWorker } = createJobWorker(
+  playlistMbidEnrichmentQueue,
+  {
+    schema: playlistMbidEnrichmentSchema,
+    processJob: processPlaylistMbidEnrichment,
+  },
+);

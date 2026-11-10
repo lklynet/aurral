@@ -23,15 +23,9 @@ import {
 
 const DOWNLOAD_SPACE_WARNING_BYTES = 1024 ** 3;
 const DETAIL_LIST_LIMIT = 6;
-const STORAGE_HEALTH_CACHE_TTL_MS = Math.max(
-  0,
-  Math.floor(Number(process.env.AURRAL_STORAGE_HEALTH_CACHE_MS) || 60 * 1000),
-);
+const STORAGE_HEALTH_CACHE_TTL_MS = 60 * 1000;
 const STORAGE_HEALTH_SNAPSHOT_KEY = "storageHealthSnapshot";
-const MEDIA_HEALTH_SAMPLE_LIMIT = Math.max(
-  50,
-  Math.floor(Number(process.env.AURRAL_MEDIA_HEALTH_SAMPLE_LIMIT) || 500),
-);
+const MEDIA_HEALTH_SAMPLE_LIMIT = 500;
 const storageHealthStepSchema = v.looseObject({
   id: v.string(),
   status: v.picklist(["pass", "fail", "warn"]),
@@ -884,7 +878,6 @@ export async function runStorageHealthCheck({ force = false } = {}) {
     !force &&
     storageHealthCache &&
     storageHealthCacheKey === cacheKey &&
-    STORAGE_HEALTH_CACHE_TTL_MS > 0 &&
     now < storageHealthCacheExpiresAt
   ) {
     return {

@@ -68,14 +68,6 @@ start(
   { ...process.env, AURRAL_API_PROXY_TARGET: `http://localhost:${apiPort}` },
 );
 
-while (!stopping) {
-  try {
-    const response = await fetch(`http://localhost:${apiPort}/api/health`);
-    if (response.ok) break;
-  } catch {}
-  await new Promise((resolve) => setTimeout(resolve, 250));
-}
-
 await Promise.all(
   children.map(
     (child) =>

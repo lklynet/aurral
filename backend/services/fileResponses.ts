@@ -58,15 +58,3 @@ export function sendFrom(
       .pipe(res);
   });
 }
-
-export function sendBuffer(
-  req: IncomingMessage,
-  res: ServerResponse,
-  body: Uint8Array,
-  contentType: string,
-) {
-  res.setHeader("Content-Type", contentType);
-  res.setHeader("Content-Length", body.byteLength);
-  res.end(req.method === "HEAD" ? undefined : body);
-  return Promise.resolve(true);
-}

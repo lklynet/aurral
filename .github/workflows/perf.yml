@@ -43,10 +43,6 @@ jobs:
         if: steps.diff.outputs.changed == 'true'
         run: |
           git worktree add ../base HEAD^1
-          if [ ! -f ../base/scripts/perf.mts ]; then
-            cp scripts/perf.mts scripts/perf-report.mts ../base/scripts/
-            cp -r .tests/perf ../base/.tests/
-          fi
           cd ../base
           vp install --frozen-lockfile
           vp run build

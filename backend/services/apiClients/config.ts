@@ -1,10 +1,6 @@
 import { createHash } from "node:crypto";
 import { isPublicUrl } from "../../../lib/publicUrl.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import {
-  getMetadataBaseUrl,
-  getMetadataProviderHealthSnapshot as getBrainzmashHealthSnapshot,
-} from "../providers/brainzmashProvider.ts";
 
 export const getLastfmApiKey = () => {
   const settings = dbOps.getSettings();
@@ -250,12 +246,4 @@ export const getNewsSettings = () => {
     feeds: normalizeNewsFeeds(news.feeds),
     groups: normalizeNewsGroups(news.groups),
   };
-};
-
-export const getMusicbrainzApiBaseUrl = () => {
-  return getMetadataBaseUrl();
-};
-
-export const getMetadataProviderHealthSnapshot = () => {
-  return getBrainzmashHealthSnapshot();
 };

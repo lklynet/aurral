@@ -1,6 +1,5 @@
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
 
-export const SHARE_ORIGIN = "https://aurral.org";
 const PENDING_SHARE_KEY = "aurral:pending-share-import";
 
 export function rememberShareImport() {

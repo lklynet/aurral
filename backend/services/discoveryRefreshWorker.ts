@@ -34,14 +34,8 @@ async function runDiscoveryRefresh({ scheduleOnly }: v.InferOutput<typeof discov
   await updateDiscoveryCache();
 }
 
-const {
-  start: startDiscoveryRefreshWorker,
-  stop: stopDiscoveryRefreshWorker,
-  isRunning: isDiscoveryRefreshWorkerRunning,
-} = createJobWorker(discoveryRefreshQueue, {
+export const { start: startDiscoveryRefreshWorker } = createJobWorker(discoveryRefreshQueue, {
   schema: discoveryRefreshSchema,
   processJob: runDiscoveryRefresh,
   onJobSuccess: scheduleNextDiscoveryRefresh,
 });
-
-export { startDiscoveryRefreshWorker, stopDiscoveryRefreshWorker, isDiscoveryRefreshWorkerRunning };

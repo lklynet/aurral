@@ -346,5 +346,3 @@ export function calculateWrapped(
     ),
   };
 }
-
-export type WrappedSummary = ReturnType<typeof calculateWrapped>;

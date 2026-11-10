@@ -56,11 +56,6 @@ export const formatShowDate = (show: NearbyShow) => {
   return timeLabel ? `${dateLabel} at ${timeLabel}` : dateLabel;
 };
 
-export const formatShowLocation = (show: NearbyShow) =>
-  [show?.venueName, [show?.city, show?.region].filter(Boolean).join(", ")]
-    .filter(Boolean)
-    .join(" - ");
-
 export const formatDistance = (distance: number | string | null) => {
   if (distance == null || distance === "") return null;
   const numericDistance = Number(distance);

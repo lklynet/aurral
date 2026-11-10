@@ -132,17 +132,6 @@ type ReleaseGroupInput = {
   rating?: AlbumRating | null;
 };
 
-type LibraryAlbumInput = {
-  releaseGroupMbid?: string | null;
-  mbid?: string | null;
-  foreignAlbumId?: string | null;
-  albumName?: string | null;
-  title?: string | null;
-  artistName?: string | null;
-  releaseDate?: string | null;
-  albumType?: string | null;
-};
-
 type NavigationItemOptions = {
   artistMbid?: string | null;
   artistName?: string | null;
@@ -171,41 +160,12 @@ export function buildReleaseGroupNavigationItem(
   };
 }
 
-export function buildLibraryAlbumNavigationItem(
-  libraryAlbum: LibraryAlbumInput | null | undefined,
-  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
-) {
-  const releaseGroupMbid =
-    libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid || libraryAlbum?.foreignAlbumId || null;
-  if (!releaseGroupMbid || !artistMbid) return null;
-  return {
-    type: "album",
-    id: releaseGroupMbid,
-    title: libraryAlbum!.albumName || libraryAlbum!.title || "",
-    artistMbid,
-    artistName: artistName || libraryAlbum!.artistName || "",
-    releaseDate: libraryAlbum!.releaseDate || "",
-    primaryType: libraryAlbum!.albumType || "Album",
-    coverUrl,
-  };
-}
-
 export function getReleaseGroupLink(
   releaseGroup: ReleaseGroupInput | null | undefined,
   { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
 ) {
   const target = getReleaseNavigationTarget(
     buildReleaseGroupNavigationItem(releaseGroup, { artistMbid, artistName, coverUrl }),
-  );
-  return target ? { to: target.pathname, state: target.state } : null;
-}
-
-export function getLibraryAlbumLink(
-  libraryAlbum: LibraryAlbumInput | null | undefined,
-  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
-) {
-  const target = getReleaseNavigationTarget(
-    buildLibraryAlbumNavigationItem(libraryAlbum, { artistMbid, artistName, coverUrl }),
   );
   return target ? { to: target.pathname, state: target.state } : null;
 }

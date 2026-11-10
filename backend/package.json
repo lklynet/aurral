@@ -13,9 +13,6 @@
   "type": "module",
   "main": "server.ts",
   "scripts": {
-    "start": "node --max-semi-space-size=4 --env-file=.env server.ts",
-    "dev": "node --watch --env-file=.env server.ts",
-    "test": "pnpm --workspace-root test",
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.ts"
   },
   "dependencies": {

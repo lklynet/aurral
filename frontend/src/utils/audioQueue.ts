@@ -228,23 +228,6 @@ export function normalizePreviewTrack(
   );
 }
 
-export function isDownloadedLibraryAlbum(
-  album: {
-    id?: string | number | null;
-    monitored?: boolean;
-    statistics?: { percentOfTracks?: number; sizeOnDisk?: number };
-  } | null,
-  downloadStatuses: Record<string, unknown> = {},
-) {
-  if (String(album?.id ?? "").startsWith("pending-")) return false;
-  return (
-    album?.monitored ||
-    (album?.statistics?.percentOfTracks ?? 0) > 0 ||
-    (album?.statistics?.sizeOnDisk ?? 0) > 0 ||
-    !!downloadStatuses[String(album?.id)]
-  );
-}
-
 export type QueueEntry = QueueTrack & { entryId: string; queueSource?: QueueSource | null };
 
 export function radioSeedFor(

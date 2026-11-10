@@ -9,15 +9,10 @@ import {
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { asApiError, resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
-import type {
-  LegacyReleaseGroupSummary,
-  toNormalizedAlbum,
-} from "../../../../backend/services/providers/brainzmashMappers.ts";
+import type { LegacyReleaseGroupSummary } from "../../../../backend/services/providers/brainzmashMappers.ts";
 import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetailsStream.ts";
 
 export type ReleaseListViewMode = "grid" | "list";
-
-export type ReleaseRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
 export type ReleaseGroup = Partial<Omit<LegacyReleaseGroupSummary, "artist-credit">> & {
   "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
@@ -271,23 +266,6 @@ export const buildStaticPlaylistTrackPayload = ({
   reason,
   artistAliases: [],
 });
-
-export const formatLifeSpan = (
-  lifeSpan:
-    | { begin?: string | null; end?: string | null; ended?: boolean | null }
-    | null
-    | undefined,
-) => {
-  if (!lifeSpan) return null;
-  const { begin, end, ended } = lifeSpan;
-  if (!begin) return null;
-  const beginYear = begin.split("-")[0];
-  if (ended && end) {
-    const endYear = end.split("-")[0];
-    return `${beginYear} - ${endYear}`;
-  }
-  return `${beginYear} - Present`;
-};
 
 const ownText = (table: Partial<Record<string, string>>, key: string) =>
   Object.hasOwn(table, key) ? table[key] : undefined;

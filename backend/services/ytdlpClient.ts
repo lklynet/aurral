@@ -617,33 +617,4 @@ export class YtdlpClient {
   }
 }
 
-const defaultYtdlpClient = new YtdlpClient();
-
-export function isYtdlpEnabled() {
-  return defaultYtdlpClient.isEnabled();
-}
-
-export function isConfigured() {
-  return defaultYtdlpClient.isConfigured();
-}
-
-export function testConnection(options?: Parameters<typeof testConnectionFor>[1]) {
-  return defaultYtdlpClient.testConnection(options);
-}
-
-export function search(query: string, options?: Parameters<typeof searchFor>[2]) {
-  return defaultYtdlpClient.search(query, options);
-}
-
-export function downloadAudio(
-  videoUrl: string | null | undefined,
-  options?: Parameters<typeof downloadAudioFor>[2],
-) {
-  return defaultYtdlpClient.downloadAudio(videoUrl, options);
-}
-
-export function cleanupStaging(jobId: JobId) {
-  return defaultYtdlpClient.cleanupStaging(jobId);
-}
-
-export const ytdlpClient = defaultYtdlpClient;
+export const ytdlpClient = new YtdlpClient();

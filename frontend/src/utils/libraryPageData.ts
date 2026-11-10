@@ -49,9 +49,6 @@ export interface LibraryData {
 
 const text = (value: unknown) => String(value || "").trim();
 
-export const getAlbumCoverId = (album: LibraryAlbum | null | undefined) =>
-  album?.releaseGroupMbid || album?.mbid || null;
-
 export const favoriteId = (
   kind: string,
   entity: { id?: unknown; identityKey?: unknown } | null | undefined,

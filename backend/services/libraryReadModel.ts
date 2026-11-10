@@ -1,6 +1,5 @@
 import {
   getLibraryArtistPage,
-  getLibraryForAlbumIds,
   getLibraryForAlbumReferences,
   getLibraryForArtistReferences,
   getLibraryForArtists,
@@ -297,13 +296,6 @@ export function getLibraryReadModelForArtistReferences({
   );
 }
 
-export function getLibraryReadModelForAlbumIds({
-  source = "lidarr",
-  availableOnly = true,
-  ids = [],
-} = {}) {
-  return buildLibraryReadModel(getLibraryForAlbumIds({ source, availableOnly, ids }));
-}
 export function getLibraryReadModelForAlbumReferences({
   source = "lidarr",
   availableOnly = true,

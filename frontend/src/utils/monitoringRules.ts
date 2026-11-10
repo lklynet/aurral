@@ -101,10 +101,3 @@ export function describeDownloadCount({
   ].filter(Boolean) as string[];
   return parts.length ? joinWords(parts) : "";
 }
-
-export const rulesForEditing = (
-  state:
-    | { rules?: MonitoringRules | null; defaultRules?: MonitoringRules | null }
-    | null
-    | undefined,
-) => state?.rules || state?.defaultRules || null;
