@@ -841,6 +841,30 @@ test("OIDC rejects an unrecognized token endpoint auth method instead of silentl
   await assert.rejects(() => startOidcLogin(), /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/);
 });
 
+test("OIDC login start names the issuer and the reason discovery failed", async () => {
+  const notFound = await createMockHttpServer((_request, response) => {
+    response.writeHead(404);
+    response.end();
+  });
+  const refused = await createMockHttpServer(() => {});
+  await refused.close();
+
+  try {
+    for (const [issuer, reason] of [
+      [`${notFound.url}/realms/aurral`, "HTTP 404"],
+      [`${refused.url}/realms/aurral`, "ECONNREFUSED"],
+    ] as const) {
+      enableOidcEnv({ OIDC_ISSUER: issuer });
+      await assert.rejects(
+        () => startOidcLogin(),
+        (error: Error) => error.message.includes(issuer) && error.message.includes(reason),
+      );
+    }
+  } finally {
+    await notFound.close();
+  }
+});
+
 async function createReusableOidcProvider() {
   let issuer: string;
   let nonce: string | null;

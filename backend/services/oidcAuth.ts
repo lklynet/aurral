@@ -225,6 +225,19 @@ async function fetchEffectiveClaims(oidc: DiscoveryConfig, tokens: OidcTokens, c
   }
 }
 
+function discoveryFailure(error: unknown) {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const reason =
+    cause instanceof Response
+      ? `HTTP ${cause.status}`
+      : cause instanceof Error
+        ? cause.message
+        : undefined;
+  return [error instanceof Error ? error.message : String(error), reason]
+    .filter(Boolean)
+    .join(": ");
+}
+
 async function getDiscoveryConfig() {
   const config = getRequiredConfig();
   if (!config) {
@@ -236,13 +249,20 @@ async function getDiscoveryConfig() {
   const issuerUrl = new URL(config.issuer);
   const discoveryOptions =
     issuerUrl.protocol === "http:" ? { execute: [client.allowInsecureRequests] } : undefined;
-  discoveryConfig = await client.discovery(
-    issuerUrl,
-    config.clientId,
-    config.clientSecret,
-    buildClientAuthentication(authMethod, config.clientSecret),
-    discoveryOptions,
-  );
+  const clientAuthentication = buildClientAuthentication(authMethod, config.clientSecret);
+  try {
+    discoveryConfig = await client.discovery(
+      issuerUrl,
+      config.clientId,
+      config.clientSecret,
+      clientAuthentication,
+      discoveryOptions,
+    );
+  } catch (error) {
+    throw new Error(`OIDC discovery for ${config.issuer} failed: ${discoveryFailure(error)}`, {
+      cause: error,
+    });
+  }
   discoveryKey = key;
   return { config, oidc: discoveryConfig };
 }
