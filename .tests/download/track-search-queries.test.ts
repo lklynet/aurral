@@ -134,6 +134,12 @@ test("Soulseek queries skip titles made only of single letters", () => {
     buildAlbumSearchTiers(track).flatMap((tier) => tier.queries),
     ["Ambassadors Y O T H", "*mbassadors Y O T H"],
   );
+  assert.deepEqual(
+    buildTrackSearchTiers({ artistName: "A", trackName: "İ", albumName: "İ.İ" }).flatMap(
+      (tier) => tier.queries,
+    ),
+    [],
+  );
 });
 
 test("selectRankedMatchAttempts spreads early attempts across users before reusing one", () => {
