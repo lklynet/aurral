@@ -123,6 +123,19 @@ test("buildTrackSearchTiers asks each query once", () => {
   assert.equal(new Set(queries.map((query: string) => query.toLowerCase())).size, queries.length);
 });
 
+test("Soulseek queries skip titles made only of single letters", () => {
+  const track = { artistName: "Ambassadors", trackName: "Y.O.T.H", albumName: "Y.O.T.H" };
+
+  assert.deepEqual(
+    buildTrackSearchTiers(track).flatMap((tier) => tier.queries),
+    ["Ambassadors Y O T H", "*mbassadors Y O T H"],
+  );
+  assert.deepEqual(
+    buildAlbumSearchTiers(track).flatMap((tier) => tier.queries),
+    ["Ambassadors Y O T H", "*mbassadors Y O T H"],
+  );
+});
+
 test("selectRankedMatchAttempts spreads early attempts across users before reusing one", () => {
   const selected = selectRankedMatchAttempts(
     [
