@@ -42,13 +42,11 @@ import { ARTIST_DETAILS_APPEARS_ON_LIMIT, allReleaseTypes } from "./constants";
 import { ArtistDetailsHero } from "./components/ArtistDetailsHero";
 import { ArtistDetailsActionBar } from "./components/ArtistDetailsActionBar";
 import { ArtistDetailsDownloadTargets } from "./components/ArtistDetailsDownloadTargets";
-import { ArtistDetailsLibraryAlbums } from "./components/ArtistDetailsLibraryAlbums";
 import { ArtistDetailsReleaseGroups } from "./components/ArtistDetailsReleaseGroups";
 import { ArtistDetailsAppearsOn } from "./components/ArtistDetailsAppearsOn";
 import { ArtistDetailsPreviewTracks } from "./components/ArtistDetailsPreviewTracks";
 import { ArtistDetailsAbout } from "./components/ArtistDetailsAbout";
 import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
-import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { queryKeys } from "../../queryClient.ts";
@@ -92,7 +90,6 @@ function ArtistDetailsPage() {
   const { savingKeys: libraryTrackSavingKeys, addTrackToLibrary } = useAddTrackToLibrary();
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState<string[]>([]);
   const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState<string[]>([]);
-  const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState<string[]>([]);
 
   const artistOverridesQuery = useQuery({
     queryKey: queryKeys.artistOverrides(mbid),
@@ -120,11 +117,7 @@ function ArtistDetailsPage() {
   const idsSaving = saveArtistOverridesMutation.isPending;
 
   const stream = useArtistDetailsStream(mbid, artistNameFromNav, {
-    visibleCoverIds: [
-      ...visibleReleaseGroupCoverIds,
-      ...visibleAppearsOnCoverIds,
-      ...visibleLibraryCoverIds,
-    ],
+    visibleCoverIds: [...visibleReleaseGroupCoverIds, ...visibleAppearsOnCoverIds],
     initialLibraryHint,
     appearsOnLimit: ARTIST_DETAILS_APPEARS_ON_LIMIT,
     seedImage: artistImageFromNav ? normalizeMediaUrl(artistImageFromNav) || null : null,
@@ -139,7 +132,6 @@ function ArtistDetailsPage() {
   const [tasteActionPending, setTasteActionPending] = useState<TasteAction | null>(null);
   const canAddAlbum = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
-  const canDeleteAlbum = hasPermission("deleteAlbum");
   const {
     artist,
     coverImages,
@@ -148,6 +140,7 @@ function ArtistDetailsPage() {
     setLibraryArtist,
     libraryAlbums,
     setLibraryAlbums,
+    ownedAlbums,
     similarArtists,
     setSimilarArtists,
     error,
@@ -223,6 +216,7 @@ function ArtistDetailsPage() {
     existsInLibrary,
     setExistsInLibrary,
     appSettings,
+    ownedAlbums,
     showSuccess,
     showError,
     showInfo,
@@ -542,31 +536,9 @@ function ArtistDetailsPage() {
         onLoadPlaylists={loadStaticPlaylists}
       />
 
-      {existsInLibrary && libraryAlbums && libraryAlbums.length > 0 && (
-        <ArtistDetailsLibraryAlbums
-          artist={artist}
-          libraryAlbums={libraryAlbums}
-          downloadStatuses={library.downloadStatuses}
-          requestingAlbum={library.requestingAlbum}
-          reSearchingAlbum={library.reSearchingAlbum}
-          reSearchingMissingAlbums={library.reSearchingMissingAlbums}
-          albumCovers={albumCovers}
-          fulfilledCoverIds={fulfilledCoverIds}
-          artistCoverImage={artistCoverImage}
-          albumDropdownOpen={library.albumDropdownOpen}
-          setAlbumDropdownOpen={library.setAlbumDropdownOpen}
-          canDeleteAlbum={canDeleteAlbum}
-          handleDeleteAlbumClick={library.handleDeleteAlbumClick}
-          canReSearchAlbum={canAddAlbum}
-          lidarrConnected={libraryDestination.primary === "lidarr"}
-          handleReSearchAlbum={library.handleReSearchAlbum}
-          handleReSearchMissingDownloads={library.handleReSearchMissingDownloads}
-          onVisibleCoverIdsChange={setVisibleLibraryCoverIds}
-          artistName={artistDisplayName}
-        />
-      )}
-
-      {(loadingReleases || (artist["release-groups"] && artist["release-groups"].length > 0)) && (
+      {(loadingReleases ||
+        Boolean(artist["release-groups"]?.length) ||
+        library.libraryReleaseGroups.length > 0) && (
         <ArtistDetailsReleaseGroups
           artist={artist}
           loadingReleases={loadingReleases}
@@ -574,6 +546,10 @@ function ArtistDetailsPage() {
           fulfilledCoverIds={fulfilledCoverIds}
           artistCoverImage={artistCoverImage}
           getAlbumStatus={library.getAlbumStatus}
+          libraryReleaseGroups={library.libraryReleaseGroups}
+          missingDownloadCount={library.missingDownloadCount}
+          reSearchingMissingAlbums={library.reSearchingMissingAlbums}
+          onReSearchMissingDownloads={canAddAlbum ? library.handleReSearchMissingDownloads : null}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
           libraryDestination={libraryDestination}
@@ -628,18 +604,6 @@ function ArtistDetailsPage() {
           artistFeedbackLookup={artistFeedbackLookup}
         />
       )}
-
-      <DeleteAlbumModal
-        show={!!library.showDeleteAlbumModal}
-        title={library.showDeleteAlbumModal?.title}
-        managedBy={library.showDeleteAlbumModal?.managedBy}
-        keepFilesAction="unmonitor"
-        deleteFiles={library.deleteAlbumFiles}
-        onDeleteFilesChange={library.setDeleteAlbumFiles}
-        onCancel={library.handleDeleteAlbumCancel}
-        onConfirm={library.handleDeleteAlbumConfirm}
-        removing={Boolean(library.removingAlbum)}
-      />
 
       <AddArtistCustomizeModal
         error={library.customizeAddError}

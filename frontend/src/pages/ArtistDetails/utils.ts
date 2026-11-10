@@ -7,12 +7,13 @@ import {
   type LibraryAlbum as LibraryPageAlbum,
 } from "../../utils/libraryPageData.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
-import { asApiError } from "../../utils/api/core.ts";
+import { asApiError, resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
 import type {
   LegacyReleaseGroupSummary,
   toNormalizedAlbum,
 } from "../../../../backend/services/providers/brainzmashMappers.ts";
+import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetailsStream.ts";
 
 export type ReleaseListViewMode = "grid" | "list";
 
@@ -28,6 +29,7 @@ export type ReleaseGroup = Partial<Omit<LegacyReleaseGroupSummary, "artist-credi
   coverUrl?: string | null;
   _coverUrl?: string | null;
   _deezerAlbumId?: string | number | null;
+  libraryAlbumId?: string;
 };
 
 export interface ReleaseTrack {
@@ -136,6 +138,54 @@ export const isVisibleLibraryAlbum = (
     !!requestingAlbum &&
     (album.mbid === requestingAlbum || album.foreignAlbumId === requestingAlbum)
   );
+};
+
+export const ownedAlbumKey = (album: Pick<OwnedAlbum, "releaseGroupMbid" | "libraryId">) =>
+  album.releaseGroupMbid || `library-${album.libraryId}`;
+
+export const isLibraryAlbumComplete = (album: Pick<LibraryAlbumEntry, "statistics">) =>
+  (album.statistics?.percentOfTracks ?? 0) >= 100 || (album.statistics?.sizeOnDisk ?? 0) > 0;
+
+export type LibraryReleaseGroup = ReleaseGroup & { id: string };
+
+export const buildLibraryReleaseGroups = ({
+  releaseGroups,
+  ownedAlbums,
+  libraryAlbums,
+  requestingAlbum,
+}: {
+  releaseGroups: readonly ReleaseGroup[];
+  ownedAlbums: readonly OwnedAlbum[];
+  libraryAlbums: readonly LibraryAlbumEntry[];
+  requestingAlbum: string | null;
+}) => {
+  const byId = new Map(releaseGroups.map((releaseGroup) => [releaseGroup.id, releaseGroup]));
+  const entries = new Map<string, LibraryReleaseGroup>();
+  const add = (id: string, fallback: Omit<LibraryReleaseGroup, "id">) => {
+    if (entries.has(id)) return;
+    const releaseGroup = byId.get(id);
+    entries.set(id, releaseGroup ? { ...releaseGroup, id } : { ...fallback, id });
+  };
+  for (const album of ownedAlbums) {
+    add(ownedAlbumKey(album), {
+      title: album.title,
+      "first-release-date": album.releaseDate ?? undefined,
+      coverUrl: resolveAuthenticatedApiAssetUrl(album.coverUrl),
+      libraryAlbumId: album.libraryId,
+    });
+  }
+  for (const album of libraryAlbums) {
+    const id = album.mbid || album.foreignAlbumId;
+    if (!id) continue;
+    if (!isVisibleLibraryAlbum(album, { requestingAlbum }) || isLibraryAlbumComplete(album)) {
+      continue;
+    }
+    add(id, {
+      title: album.albumName ?? undefined,
+      "first-release-date": album.releaseDate ?? undefined,
+    });
+  }
+  return [...entries.values()];
 };
 
 export const deduplicateAlbums = <T extends LibraryAlbum>(albums: T[]): T[] => {

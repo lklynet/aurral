@@ -44,6 +44,7 @@ export type LibraryAlbums = LibraryAlbumEntry[];
 export type LookupArtist = NonNullable<Awaited<ReturnType<typeof lookupArtistInLibrary>>["artist"]>;
 export type AddedLibraryArtist = NonNullable<AlbumRequestResult["artist"]>;
 export type LibraryArtistRecord = LibraryArtist | LookupArtist | AddedLibraryArtist;
+export type OwnedAlbum = Awaited<ReturnType<typeof lookupArtistInLibrary>>["ownedAlbums"][number];
 
 const buildReleaseGroupCoverRequest = (
   rgId: string,
@@ -164,6 +165,7 @@ export function useArtistDetailsStream(
     seededLibraryArtist,
   );
   const [libraryAlbums, setLibraryAlbums] = useState<LibraryAlbums>([]);
+  const [ownedAlbums, setOwnedAlbums] = useState<OwnedAlbum[]>([]);
   const [similarArtists, setSimilarArtists] = useState<SimilarArtistsResponse["artists"]>([]);
   const [loading, setLoading] = useState(!mbid);
   const [error, setError] = useState<string | null>(null);
@@ -251,6 +253,7 @@ export function useArtistDetailsStream(
     setLoadingAppearsOn(!!mbid);
     setLibraryArtist(nextSeededLibraryArtist);
     setLibraryAlbums([]);
+    setOwnedAlbums([]);
     setExistsInLibrary(nextSeededExistsInLibrary === true);
     setLoadingLibrary(nextSeededExistsInLibrary === undefined);
 
@@ -338,6 +341,7 @@ export function useArtistDetailsStream(
         if (!isCurrentRequest()) return;
         queryClient.setQueryData(queryKeys.libraryLookup(mbid), lookup.exists);
         setExistsInLibrary(lookup.exists);
+        setOwnedAlbums(lookup.ownedAlbums);
         if (!lookup.exists || !lookup.artist) return;
 
         const fullArtist = lookup.fromLibraryIndex
@@ -519,6 +523,7 @@ export function useArtistDetailsStream(
         if (!isCurrentRequest()) return;
         libraryReceived = true;
         queryClient.setQueryData(queryKeys.libraryLookupDetails(mbid), data);
+        setOwnedAlbums(data.ownedAlbums);
         if (data.exists && data.artist) {
           optimisticLibraryLookupRef.current = false;
           queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
@@ -777,6 +782,7 @@ export function useArtistDetailsStream(
     setLibraryArtist,
     libraryAlbums,
     setLibraryAlbums,
+    ownedAlbums,
     similarArtists,
     setSimilarArtists,
     loading,
