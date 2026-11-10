@@ -71,6 +71,7 @@ const summary = (id: number, title: string, curator: string = "Rod - Deezer Rock
   id,
   title,
   nb_tracks: 50,
+  picture_big: `https://img/${id}-500.jpg`,
   picture_xl: `https://img/${id}.jpg`,
   user: { name: curator },
 });
@@ -124,6 +125,7 @@ const rockEssentials = (
       title: "Rock Essentials",
       description: "The rock songs everyone should know.",
       nb_tracks: tracks.length,
+      picture_big: "https://cdn-images.dzcdn.net/rock-500.jpg",
       picture_xl: "https://cdn-images.dzcdn.net/rock.jpg",
       creator: { name: "Rod - Deezer Rock Editor" },
     },
@@ -189,6 +191,7 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
   assert.equal(playlist.importSource?.externalId, "1306931615");
   assert.equal(playlist.importSource?.syncEnabled, true);
   assert.equal(playlist.importSource?.keepRemovedTracks, true);
+  assert.equal(playlist.importSource?.artworkUrl, "https://cdn-images.dzcdn.net/rock.jpg");
 
   const again = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
   assert.equal(again.alreadyAdded, true);
@@ -486,8 +489,11 @@ test("For you matches Deezer editor playlists to the user's top genres and tags"
 
   assert.deepEqual(searches.sort(), ["post-punk", "shoegaze"]);
   assert.deepEqual(
-    forYou.map((playlist) => playlist.name),
-    ["Shoegaze Essentials", "Dream Pop & Shoegaze"],
+    forYou.map((playlist) => [playlist.name, playlist.artworkUrl]),
+    [
+      ["Shoegaze Essentials", "https://img/10-500.jpg"],
+      ["Dream Pop & Shoegaze", "https://img/12-500.jpg"],
+    ],
   );
   assert.ok(categories.length > 0);
 });

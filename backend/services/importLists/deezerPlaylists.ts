@@ -185,7 +185,7 @@ const normalizePlaylistSummary = (playlist: DeezerPlaylist) => {
     name,
     description: String(playlist.description || "").trim() || null,
     trackCount: Number(playlist.nb_tracks) || 0,
-    artworkUrl: playlist.picture_xl || playlist.picture_big || null,
+    artworkUrl: playlist.picture_big || playlist.picture_xl || null,
     curator: String(playlist.user?.name || playlist.creator?.name || "").trim() || null,
   };
 };
@@ -259,9 +259,8 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
 
 export async function getDeezerPlaylist(value: unknown) {
   const id = validateDeezerPlaylistId(value);
-  const summary = normalizePlaylistSummary(
-    await deezerRequest(deezerPlaylistSchema, `/playlist/${id}`),
-  );
+  const playlist = await deezerRequest(deezerPlaylistSchema, `/playlist/${id}`);
+  const summary = normalizePlaylistSummary(playlist);
   if (!summary) {
     throw providerError("The Deezer playlist is unavailable", 404, "DEEZER_PLAYLIST_NOT_FOUND");
   }
@@ -276,7 +275,11 @@ export async function getDeezerPlaylist(value: unknown) {
     index += page.received;
     if (page.received === 0 || !page.next) break;
   }
-  return { ...summary, ...normalizeTracks(rows.slice(0, MAX_TRACKS)) };
+  return {
+    ...summary,
+    artworkUrl: playlist.picture_xl || summary.artworkUrl,
+    ...normalizeTracks(rows.slice(0, MAX_TRACKS)),
+  };
 }
 
 type ShelfSource = {
