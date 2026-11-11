@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -26,6 +26,7 @@ const [
   { refreshInstalledPlugins, updatePlugin },
   { getEnabledDownloadSources, getSourceLabel, upgradeSourceIds },
   { cancelDownloadWorkForJobs },
+  { logger },
 ] = await setupIsolatedBackend(
   "plugin-download-source",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -37,6 +38,7 @@ const [
   () => import("../../backend/services/plugins/pluginService.ts"),
   () => import("../../backend/services/downloadSourceService.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
+  () => import("../../backend/services/logger.ts"),
 );
 
 const SOURCE = `let polls = 0;
@@ -229,8 +231,19 @@ test("a plugin source is told to discard a pending download that failed or was c
       "plugin-source",
     );
   const jobId = track();
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-  await assert.rejects(runToEnd(jobId), /download failed: the client lost it/);
+  try {
+    await assert.rejects(runToEnd(jobId), /download failed: the client lost it/);
+    assert.deepEqual(
+      warn.mock.calls
+        .filter((call) => JSON.stringify(call).includes("the client lost it"))
+        .map(([category, message]) => [category, message]),
+      [["plugin:tapes", "Download failed"]],
+    );
+  } finally {
+    warn.mockRestore();
+  }
   assert.equal(await readFile(`${fixture}.discarded`, "utf8"), "client-7");
 
   await rm(`${fixture}.discarded`);

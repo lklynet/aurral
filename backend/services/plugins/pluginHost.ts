@@ -225,13 +225,20 @@ async function send(plugin: InstalledPlugin, request: PluginRequest, timeoutMs: 
   }
 }
 
-function recordFailure(plugin: InstalledPlugin, error: unknown, countFailures: boolean) {
+function recordFailure(
+  plugin: InstalledPlugin,
+  error: unknown,
+  { countFailures, logFailures }: { countFailures: boolean; logFailures: boolean },
+) {
   const broken = error instanceof BrokenPlugin;
+  const thrown = error instanceof Error && !broken;
   const message =
     error instanceof Error ? error.message : `failed: ${String(error ?? "unknown error")}`;
-  logger.warn(logCategory(plugin.id), `${plugin.manifest.name} ${message}`, {
-    version: plugin.manifest.version,
-  });
+  if (logFailures) {
+    logger.warn(logCategory(plugin.id), thrown ? message : `${plugin.manifest.name} ${message}`, {
+      version: plugin.manifest.version,
+    });
+  }
   recordPluginError(plugin.id, message);
   if (!broken || !countFailures) return new PluginError(message);
   const count = countBrokenCall(plugin.id);
@@ -252,7 +259,7 @@ export async function callPlugin<Schema extends v.GenericSchema>(
   request: PluginRequest,
   output: Schema,
   timeoutMs: number,
-  { countFailures = true } = {},
+  { countFailures = true, logFailures = true } = {},
 ): Promise<v.InferOutput<Schema>> {
   try {
     const value = await send(plugin, request, timeoutMs);
@@ -268,6 +275,6 @@ export async function callPlugin<Schema extends v.GenericSchema>(
     if (plugin.lastError) recordPluginError(plugin.id, null);
     return parsed.output;
   } catch (error) {
-    throw recordFailure(plugin, error, countFailures);
+    throw recordFailure(plugin, error, { countFailures, logFailures });
   }
 }
