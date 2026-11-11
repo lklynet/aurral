@@ -358,9 +358,10 @@ test("album track outcomes retain source, failures, and timestamps after retry a
     before.every((item) => item.completedAt && item.requestedAt === item.albumGrab!.requestedAt),
   );
   assert.deepEqual(before.map((item) => item.actualDownloadSource).sort(), ["slskd", "ytdlp"]);
-  assert.ok(
-    before.find((item) => item.jobId === ids[1])!.previousErrors!.includes("Album file missing"),
-  );
+  const retried = before.find((item) => item.jobId === ids[1])!;
+  assert.ok(retried.previousErrors!.includes("Album file missing"));
+  assert.equal(retried.subtitle, "The Band · library");
+  assert.equal(tracker.getJob(ids[1])!.error, null);
   tracker.clearCompleted();
   const after = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.deepEqual(after, before);

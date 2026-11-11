@@ -1887,6 +1887,7 @@ export class DownloadTracker {
     this._removeFromPendingQueues(id);
     job.status = "done";
     job.retryCycle = false;
+    job.error = null;
     job.completedAt = Date.now();
     this._setAlbumGrabFailures(job, 0);
     job.finalPath = finalPath;

@@ -5,10 +5,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useReadOnlyFolders } from "../hooks/useLibraryFileOperation.ts";
+import { useSettingsRoute } from "../navigation/settingsRoute";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
 import { DotLoader } from "./DotLoader";
 
-const LIDARR_DOCS = "https://docs.aurral.org/integrations/lidarr/";
 const MOUNT_DOCS = "https://docs.aurral.org/getting-started/storage/#mount-a-read-only-folder";
 
 export default function LidarrConversionReport() {
@@ -18,27 +18,21 @@ export default function LidarrConversionReport() {
       .data?.folders.filter((folder) => !folder.readable)
       .map((folder) => folder.path),
   );
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
+  const settings = useSettingsRoute();
   const [closed, setClosed] = useState(false);
-  const [monitorArtists, setMonitorArtists] = useState(false);
   const titleId = useId();
   const doneRef = useRef(null);
   const open = Boolean(report) && !closed;
 
   const dismiss = useMutation({
-    mutationFn: () =>
-      parseResponse(
-        libraryMonitoringClient["lidarr-conversion"].dismiss.$post({ json: { monitorArtists } }),
-      ),
-    onSuccess: ({ monitoredArtists }) => {
+    mutationFn: (_next: "done" | "plugins") =>
+      parseResponse(libraryMonitoringClient["lidarr-conversion"].dismiss.$post()),
+    onSuccess: (_result, next) => {
       setClosed(true);
-      if (monitoredArtists > 0) {
-        showSuccess(
-          `Monitoring ${monitoredArtists.toLocaleString()} ${monitoredArtists === 1 ? "artist" : "artists"}.`,
-        );
-      }
+      if (next === "plugins") settings.open("plugins");
     },
-    onError: () => showError("Couldn't save your choice. Try again."),
+    onError: () => showError("Couldn't close the report. Try again."),
   });
 
   const { dialogRef } = useModalDialog({
@@ -49,7 +43,7 @@ export default function LidarrConversionReport() {
   });
 
   if (!report || !open) return null;
-  const { artistCount, folders } = report;
+  const { folders } = report;
 
   return (
     <div className="artist-modal-backdrop">
@@ -66,19 +60,13 @@ export default function LidarrConversionReport() {
         </h3>
         <p className="artist-modal__subcopy">
           Lidarr&apos;s folders are read-only folders. Aurral plays their music and never changes
-          it.
+          it. Lidarr keeps monitoring the artists it had, and Aurral monitors the ones you add.
         </p>
         {folders.length > 0 ? (
           <ul className="lidarr-conversion__folders">
             {folders.map((folder) => (
               <li key={folder.path}>
                 <code>{folder.path}</code>
-                {folder.lidarrPath === folder.path ? null : (
-                  <span>
-                    Lidarr sees it as <code>{folder.lidarrPath}</code>. Use both paths when you add
-                    the Lidarr plugin.
-                  </span>
-                )}
                 {folder.sharesLibraryFolder ? (
                   <span>
                     Inside the Library folder. Remove it in Settings &gt; Library once Lidarr stops
@@ -90,7 +78,8 @@ export default function LidarrConversionReport() {
                     <span className="lidarr-conversion__warning">
                       Aurral cannot read this folder.
                     </span>{" "}
-                    Mount Lidarr&apos;s music at this path, or remove it in Settings &gt; Library.{" "}
+                    Mount Lidarr&apos;s music at <code>{folder.path}</code> in Aurral, or remove it
+                    in Settings &gt; Library.{" "}
                     <a
                       className="lidarr-conversion__link"
                       href={MOUNT_DOCS}
@@ -105,48 +94,25 @@ export default function LidarrConversionReport() {
             ))}
           </ul>
         ) : null}
-        {artistCount > 0 ? (
-          <label className="artist-checkbox-label">
-            <input
-              type="checkbox"
-              checked={monitorArtists}
-              onChange={(event) => setMonitorArtists(event.target.checked)}
-              className="artist-checkbox"
-            />
-            <div>
-              <span className="artist-card-title">
-                {artistCount === 1
-                  ? "Monitor this artist with your default rules"
-                  : `Monitor these ${artistCount.toLocaleString()} artists with your default rules`}
-              </span>
-              <p className="artist-modal__subcopy">
-                {artistCount === 1
-                  ? "You monitored it through Aurral 2. Aurral downloads its missing albums using Settings > Monitoring."
-                  : "You monitored them through Aurral 2. Aurral downloads their missing albums using Settings > Monitoring."}
-              </p>
-            </div>
-          </label>
-        ) : null}
-        <p className="artist-modal__subcopy">
-          Artists Lidarr already had start Not monitored. Monitor them from their artist page.
-        </p>
-        <div className="artist-modal__actions lidarr-conversion__actions">
-          <a
-            className="lidarr-conversion__link"
-            href={LIDARR_DOCS}
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="artist-modal__actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={dismiss.isPending}
+            onClick={() => dismiss.mutate("plugins")}
           >
-            Add Lidarr as a download source
-          </a>
+            Add Lidarr plugin
+          </button>
           <button
             ref={doneRef}
             type="button"
             className="btn btn-primary"
             disabled={dismiss.isPending}
-            onClick={() => dismiss.mutate()}
+            onClick={() => dismiss.mutate("done")}
           >
-            {dismiss.isPending ? <DotLoader size="sm" label={null} /> : null}
+            {dismiss.isPending && dismiss.variables === "done" ? (
+              <DotLoader size="sm" label={null} />
+            ) : null}
             Done
           </button>
         </div>

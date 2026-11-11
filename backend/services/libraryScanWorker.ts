@@ -384,6 +384,12 @@ const SCAN_STATUS = {
   cancelled: "failed",
 } as const;
 
+export function isLibraryScanActive() {
+  const jobId = getScheduledLibraryScanJobId();
+  const status = jobId == null ? null : getLibraryScanStatus(jobId)?.status;
+  return status === "queued" || status === "running";
+}
+
 export function getLibraryScanStatus(jobId: string | number) {
   const normalizedJobId = Number(jobId);
   if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) return null;
