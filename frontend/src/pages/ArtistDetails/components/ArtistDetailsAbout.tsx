@@ -1,13 +1,10 @@
-import { Fragment, useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, X } from "../../../components/icons";
+import { X } from "../../../components/icons";
 import TooltipButton from "../../../components/TooltipButton";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
-import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
+import { buildArtistTags } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
-import lastFmLogo from "../../../../images/logos/last-fm-color.svg";
-import musicBrainzLogo from "../../../../images/logos/musicbrainz-color.svg";
-import listenBrainzLogo from "../../../../images/logos/listenbrainz-color.svg";
 
 import { UUID_REGEX } from "../../../../../lib/uuid.ts";
 import Tooltip from "../../../components/Tooltip";
@@ -31,25 +28,7 @@ const hostnameLabel = (href: string) => {
   }
 };
 
-const buildTags = (artist: Partial<ArtistDetailsResponse>) => {
-  const seen = new Set<string>();
-  const out: { key: string; name: string }[] = [];
-  const source = [
-    ...(Array.isArray(artist?.genres) ? artist.genres : []),
-    ...(Array.isArray(artist?.tags) ? artist.tags : []),
-  ];
-  for (const item of source) {
-    const name = String(typeof item === "string" ? item : item?.name || "").trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, name });
-  }
-  return out;
-};
-
-type RelationLink = { key: string; label: string; href: string; logo?: string };
+type RelationLink = { key: string; label: string; href: string };
 
 const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>): RelationLink[] => {
   const direct = Array.isArray(artist?.links) ? artist.links : [];
@@ -108,7 +87,7 @@ function ArtistBio({ name, bio }: { name: string; bio: string }) {
       </p>
       {clipped && (
         <button type="button" className="artist-about-bio-more" onClick={() => setOpen(true)}>
-          More
+          Read more
         </button>
       )}
       {open &&
@@ -143,40 +122,34 @@ function ArtistBio({ name, bio }: { name: string; bio: string }) {
   );
 }
 
-export function ArtistDetailsAbout({
-  artist,
-  coverImages,
-}: {
-  artist: Partial<ArtistDetailsResponse>;
-  coverImages: readonly ArtistCoverImage[] | null | undefined;
-}) {
-  const tags = useMemo(() => buildTags(artist), [artist]);
-  const visibleTags = tags.slice(0, 5);
-  const artistTypeLabel = getArtistType(artist?.type);
+const TAG_LIMIT = 10;
+const LINK_LIMIT = 5;
+
+export function ArtistDetailsAbout({ artist }: { artist: Partial<ArtistDetailsResponse> }) {
+  const [showAllLinks, setShowAllLinks] = useState(false);
+  const tags = useMemo(() => buildArtistTags(artist).slice(0, TAG_LIMIT), [artist]);
   const links = useMemo(() => {
+    const validId = artist?.id && UUID_REGEX.test(artist.id) ? artist.id : null;
     const primary: (RelationLink | null)[] = [
       artist?.name
         ? {
             key: "lastfm",
             label: "Last.fm",
             href: `https://www.last.fm/music/${encodeURIComponent(artist.name)}`,
-            logo: lastFmLogo,
           }
         : null,
-      artist?.id && UUID_REGEX.test(artist.id)
+      validId
         ? {
             key: "musicbrainz",
             label: "MusicBrainz",
-            href: `https://musicbrainz.org/artist/${artist.id}`,
-            logo: musicBrainzLogo,
+            href: `https://musicbrainz.org/artist/${validId}`,
           }
         : null,
-      artist?.id && UUID_REGEX.test(artist.id)
+      validId
         ? {
             key: "listenbrainz",
             label: "ListenBrainz",
-            href: `https://listenbrainz.org/artist/${encodeURIComponent(artist.id)}/`,
-            logo: listenBrainzLogo,
+            href: `https://listenbrainz.org/artist/${encodeURIComponent(validId)}/`,
           }
         : null,
     ];
@@ -189,113 +162,69 @@ export function ArtistDetailsAbout({
     });
     return [...primaryLinks, ...secondary];
   }, [artist]);
-  const aboutImage = useMemo(() => {
-    return getArtistHeroImage(coverImages);
-  }, [coverImages]);
+  const rating = artist?.rating?.value != null ? Number(artist.rating.value) : null;
+  const visibleLinks = showAllLinks ? links : links.slice(0, LINK_LIMIT);
+  const hiddenLinkCount = links.length - visibleLinks.length;
 
   if (!artist?.bio && tags.length === 0 && links.length === 0) return null;
 
   return (
     <section className="artist-section">
       <h2 className="artist-section-title">About</h2>
-      <div className="artist-about-grid">
-        <div className="artist-about-card">
-          {aboutImage ? (
-            <img
-              src={aboutImage}
-              alt=""
-              className="artist-about-card__image"
-              loading="lazy"
-              decoding="async"
-            />
+      <div className="artist-about">
+        <div className="artist-min-0">
+          {artist?.bio ? (
+            <ArtistBio name={artist.name || ""} bio={artist.bio} />
           ) : (
-            <div className="artist-about-card__fallback" />
+            <p className="artist-about-bio is-empty">No biography available.</p>
           )}
-          <div className="artist-about-card__wash" />
-
-          {artist?.rating?.value != null && (
-            <div className="artist-rating-badge">
-              <span className="artist-rating-badge__value">
-                {Number(artist.rating.value).toFixed(1)}
-              </span>
-              <span className="artist-rating-badge__label">Rating</span>
-            </div>
-          )}
-
-          <div
-            className={`artist-about-card__body${aboutImage ? " artist-about-card__body--overlay" : ""}`}
-          >
-            <div className="artist-about-meta">
-              {artistTypeLabel && <span>{artistTypeLabel}</span>}
-              {artist?.disambiguation && <span>{artist.disambiguation}</span>}
-              {visibleTags.length > 0 && (
-                <span className="artist-about-meta__tags">
-                  {visibleTags.map((tag, index) => (
-                    <Fragment key={tag.key}>
-                      {index > 0 ? <span aria-hidden="true"> · </span> : null}
-                      <Tooltip content={`View artists with tag: ${tag.name}`}>
-                        <RouteLink to={tagSearchPath(tag.name)} className="artist-about-meta__tag">
-                          {tag.name}
-                        </RouteLink>
-                      </Tooltip>
-                    </Fragment>
-                  ))}
-                </span>
-              )}
-            </div>
-            {artist?.bio ? (
-              <ArtistBio name={artist.name || ""} bio={artist.bio} />
-            ) : (
-              <p className="artist-modal__subcopy">No biography available.</p>
-            )}
-          </div>
         </div>
-
-        <aside className="artist-about-aside">
-          {tags.length > 0 && (
-            <div>
-              <h3 className="artist-about-side-title">Tags</h3>
-              <div className="artist-tag-list">
-                {tags.slice(0, 14).map((tag) => (
+        <dl className="artist-about-facts">
+          {rating != null && Number.isFinite(rating) ? (
+            <>
+              <dt>Rating</dt>
+              <dd>{rating.toFixed(1)} / 10</dd>
+            </>
+          ) : null}
+          {tags.length > 0 ? (
+            <>
+              <dt>Tags</dt>
+              <dd className="artist-about-facts__list">
+                {tags.map((tag) => (
                   <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
-                    <RouteLink to={tagSearchPath(tag.name)} className="artist-tag--discover">
-                      #{tag.name}
-                    </RouteLink>
+                    <RouteLink to={tagSearchPath(tag.name)}>{tag.name}</RouteLink>
                   </Tooltip>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {links.length > 0 && (
-            <div>
-              <h3 className="artist-about-side-title">Links</h3>
-              <div className="artist-external-links">
-                {links.slice(0, 10).map((link) => (
+              </dd>
+            </>
+          ) : null}
+          {links.length > 0 ? (
+            <>
+              <dt>Links</dt>
+              <dd className="artist-about-facts__list">
+                {visibleLinks.map((link) => (
                   <a
                     key={`${link.key}-${link.href}`}
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="artist-external-link"
                   >
-                    {link.logo ? (
-                      <img
-                        className="artist-external-link__logo"
-                        src={link.logo}
-                        alt=""
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <ExternalLink className="artist-icon-sm" />
-                    )}
-                    <span className="artist-truncate">{link.label}</span>
+                    {link.label}
                   </a>
                 ))}
-              </div>
-            </div>
-          )}
-        </aside>
+                {hiddenLinkCount > 0 ? (
+                  <button
+                    type="button"
+                    className="artist-about-facts__more"
+                    onClick={() => setShowAllLinks(true)}
+                  >
+                    {hiddenLinkCount} more
+                  </button>
+                ) : null}
+              </dd>
+            </>
+          ) : null}
+        </dl>
       </div>
     </section>
   );

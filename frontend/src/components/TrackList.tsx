@@ -104,7 +104,7 @@ export function FavoriteButton({
   );
 }
 
-function PlayingIndicator({ row }: { row: Pick<TrackListRow, "loading" | "playing"> }) {
+export function PlayingIndicator({ row }: { row: Pick<TrackListRow, "loading" | "playing"> }) {
   const state = row.loading ? "loading" : row.playing ? "playing" : "paused";
   return (
     <span className={`track-playing-indicator is-${state}`} aria-hidden="true">

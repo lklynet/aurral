@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from "react";
 import {
   Ban,
+  Library,
   MoreHorizontal,
   Pause,
   Pencil,
   Play,
+  RefreshCw,
   Share,
+  Shuffle,
   ThumbsDown,
   ThumbsUp,
 } from "../../../components/icons";
@@ -13,22 +15,55 @@ import { DotLoader } from "../../../components/DotLoader";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import { ArtistMonitoringButtons } from "../../../components/ArtistMonitoringButtons";
+import { LibraryItemMenu, type LibraryMenuItem } from "../../../components/LibraryItemMenu";
 import { useShareAction } from "../../../hooks/useShareAction";
+import { useMediaQuery } from "../../../hooks/useMediaQuery.ts";
+import RouteLink from "../../../components/RouteLink";
 import type { ArtistFeedbackAction } from "../../../utils/artistTaste.ts";
 import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
+
+export type ArtistLibrarySummary = {
+  to: string;
+  owned: number;
+  total: number;
+  incomplete: number;
+};
+
+function LibrarySummaryLink({ summary }: { summary: ArtistLibrarySummary }) {
+  const { to, owned, total, incomplete } = summary;
+  const full = total > 0 ? `${owned} of ${total} album${total === 1 ? "" : "s"}` : "In Library";
+  const note = incomplete > 0 ? `, ${incomplete} incomplete` : "";
+  return (
+    <RouteLink
+      to={to}
+      className="btn btn-ghost artist-actions__library"
+      aria-label={`${full}${note}. Open in Library`}
+    >
+      <Library aria-hidden="true" />
+      <span className="artist-actions__library-full">
+        {full}
+        {note ? <span className="artist-actions__library-note">{note}</span> : null}
+      </span>
+      <span className="artist-actions__library-short">Library</span>
+    </RouteLink>
+  );
+}
 
 export function ArtistDetailsActionBar({
   library,
   mbid,
   artistName = "",
   existsInLibrary,
-  libraryLink = null,
+  librarySummary = null,
   loadingLibrary,
   canChangeMonitoring,
   canAddArtist,
   buildingQueue = false,
   isArtistPlaybackActive,
   handlePreviewPlayAll,
+  handlePreviewShuffle,
+  canPlayPreviews,
+  missingDownloads = null,
   onEditIds,
   onTasteFeedback,
   tasteFeedbackUsed = {},
@@ -38,19 +73,22 @@ export function ArtistDetailsActionBar({
   mbid: string;
   artistName?: string;
   existsInLibrary: boolean;
-  libraryLink?: ReactNode;
+  librarySummary?: ArtistLibrarySummary | null;
   loadingLibrary: boolean;
   canChangeMonitoring: boolean;
   canAddArtist: boolean;
   buildingQueue?: boolean;
   isArtistPlaybackActive: boolean;
   handlePreviewPlayAll: () => void;
+  handlePreviewShuffle: () => void;
+  canPlayPreviews: boolean;
+  missingDownloads?: { count: number; pending: boolean; onFind: () => void } | null;
   onEditIds?: () => void;
   onTasteFeedback?: (action: ArtistFeedbackAction) => void;
   tasteFeedbackUsed?: Partial<Record<ArtistFeedbackAction, boolean>>;
   tasteActionPending?: ArtistFeedbackAction | null;
 }) {
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const narrow = useMediaQuery("(max-width: 359px)");
   const share = useShareAction();
   const isPreviewPlaying = isArtistPlaybackActive;
 
@@ -75,145 +113,123 @@ export function ArtistDetailsActionBar({
     );
   };
 
-  return (
-    <div className="artist-action-bar">
-      <div className="artist-action-bar__inner">
-        <div className="artist-action-bar__group">
-          <TooltipButton
-            type="button"
-            onClick={handlePreviewPlayAll}
-            disabled={buildingQueue}
-            className="btn btn-accent btn-round-lg"
-            aria-label={isPreviewPlaying ? "Pause playback" : "Play artist"}
-            title={isPreviewPlaying ? "Pause playback" : "Play artist"}
-          >
-            {buildingQueue ? (
-              <DotLoader size="md" label={null} />
-            ) : isPreviewPlaying ? (
-              <Pause className="artist-icon-md" />
-            ) : (
-              <Play className="artist-icon-md" />
-            )}
-          </TooltipButton>
-          {renderLibraryAction()}
-          {libraryLink}
-        </div>
+  const feedbackItem = (
+    action: ArtistFeedbackAction,
+    icon: LibraryMenuItem["icon"],
+    label: string,
+  ): LibraryMenuItem => ({
+    id: action,
+    label,
+    icon,
+    checked: !!tasteFeedbackUsed[action],
+    disabled: !!tasteActionPending,
+    onSelect: () => onTasteFeedback?.(action),
+  });
+  const moreItems: LibraryMenuItem[] = [
+    ...(narrow
+      ? [
+          {
+            id: "shuffle",
+            label: "Shuffle",
+            icon: Shuffle,
+            disabled: !canPlayPreviews,
+            onSelect: handlePreviewShuffle,
+          },
+          ...(missingDownloads
+            ? [
+                {
+                  id: "find-missing",
+                  label: `Find ${missingDownloads.count} missing album${missingDownloads.count === 1 ? "" : "s"}`,
+                  icon: RefreshCw,
+                  disabled: missingDownloads.pending,
+                  onSelect: missingDownloads.onFind,
+                },
+              ]
+            : []),
+        ]
+      : []),
+    {
+      id: "share",
+      label: "Share artist",
+      icon: Share,
+      disabled: !artistName,
+      separatorBefore: narrow,
+      onSelect: () => share({ kind: "artist", artistMbid: mbid, artistName }, artistName),
+    },
+    ...(onTasteFeedback
+      ? [
+          {
+            ...feedbackItem(
+              "more_like_this",
+              ThumbsUp,
+              getDiscoveryFeedbackLabel("more_like_this"),
+            ),
+            separatorBefore: true,
+          },
+          feedbackItem("less_like_this", ThumbsDown, getDiscoveryFeedbackLabel("less_like_this")),
+          {
+            ...feedbackItem(
+              "block_artist",
+              Ban,
+              tasteFeedbackUsed.block_artist
+                ? "Unblock artist"
+                : getDiscoveryFeedbackLabel("block_artist"),
+            ),
+            checked: undefined,
+          },
+        ]
+      : []),
+    ...(onEditIds
+      ? [
+          {
+            id: "edit-ids",
+            label: "Edit IDs",
+            icon: Pencil,
+            separatorBefore: true,
+            onSelect: onEditIds,
+          },
+        ]
+      : []),
+  ];
 
-        <div className="artist-row-actions">
-          <div className="artist-relative">
-            <TooltipButton
-              type="button"
-              onClick={() => setShowMoreMenu((value) => !value)}
-              className="btn btn-surface btn-icon-square"
-              aria-label="More artist actions"
-              title="More artist actions"
-            >
-              <MoreHorizontal className="artist-icon-md" />
-            </TooltipButton>
-            {showMoreMenu && (
-              <>
-                <button
-                  type="button"
-                  className="artist-backdrop-button"
-                  onClick={() => setShowMoreMenu(false)}
-                  aria-label="Close artist actions"
-                />
-                <div className="artist-dropdown artist-dropdown--right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      share({ kind: "artist", artistMbid: mbid, artistName }, artistName);
-                    }}
-                    disabled={!artistName}
-                    className="artist-menu-item"
-                  >
-                    <span className="artist-menu-item__main">
-                      <Share className="artist-icon-sm" />
-                      Share artist
-                    </span>
-                  </button>
-                  {onTasteFeedback && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onTasteFeedback("more_like_this");
-                          setShowMoreMenu(false);
-                        }}
-                        disabled={!!tasteActionPending}
-                        className={`artist-menu-item${tasteFeedbackUsed.more_like_this ? " is-active" : ""}`}
-                      >
-                        <span className="artist-menu-item__main">
-                          {tasteActionPending === "more_like_this" ? (
-                            <DotLoader size="sm" label={null} />
-                          ) : (
-                            <ThumbsUp className="artist-icon-sm" />
-                          )}
-                          {getDiscoveryFeedbackLabel("more_like_this")}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onTasteFeedback("less_like_this");
-                          setShowMoreMenu(false);
-                        }}
-                        disabled={!!tasteActionPending}
-                        className={`artist-menu-item${tasteFeedbackUsed.less_like_this ? " is-active" : ""}`}
-                      >
-                        <span className="artist-menu-item__main">
-                          {tasteActionPending === "less_like_this" ? (
-                            <DotLoader size="sm" label={null} />
-                          ) : (
-                            <ThumbsDown className="artist-icon-sm" />
-                          )}
-                          {getDiscoveryFeedbackLabel("less_like_this")}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onTasteFeedback("block_artist");
-                          setShowMoreMenu(false);
-                        }}
-                        disabled={!!tasteActionPending}
-                        className={`artist-menu-item artist-menu-item--danger${tasteFeedbackUsed.block_artist ? " is-active" : ""}`}
-                      >
-                        <span className="artist-menu-item__main">
-                          {tasteActionPending === "block_artist" ? (
-                            <DotLoader size="sm" label={null} />
-                          ) : (
-                            <Ban className="artist-icon-sm" />
-                          )}
-                          {tasteFeedbackUsed.block_artist
-                            ? "Unblock artist"
-                            : getDiscoveryFeedbackLabel("block_artist")}
-                        </span>
-                      </button>
-                    </>
-                  )}
-                  {onEditIds && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onEditIds();
-                        setShowMoreMenu(false);
-                      }}
-                      className="artist-menu-item"
-                    >
-                      <span className="artist-menu-item__main">
-                        <Pencil className="artist-icon-sm" />
-                        Edit IDs
-                      </span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+  return (
+    <div className="artist-actions">
+      <TooltipButton
+        type="button"
+        onClick={handlePreviewPlayAll}
+        disabled={buildingQueue || !canPlayPreviews}
+        className="btn btn-accent btn-round-lg artist-actions__play"
+        label={isPreviewPlaying ? `Pause ${artistName}` : `Play ${artistName}`}
+      >
+        {buildingQueue ? (
+          <DotLoader size="md" label={null} />
+        ) : isPreviewPlaying ? (
+          <Pause className="artist-icon-md" />
+        ) : (
+          <Play className="artist-icon-md" />
+        )}
+      </TooltipButton>
+      <TooltipButton
+        type="button"
+        onClick={handlePreviewShuffle}
+        disabled={!canPlayPreviews}
+        className="btn btn-ghost btn-icon-square artist-actions__shuffle"
+        label={`Shuffle ${artistName}`}
+      >
+        <Shuffle aria-hidden="true" />
+      </TooltipButton>
+      {renderLibraryAction()}
+      {librarySummary ? <LibrarySummaryLink summary={librarySummary} /> : null}
+      <LibraryItemMenu
+        label={artistName || "Artist"}
+        menuLabel="Artist actions"
+        triggerLabel="More artist actions"
+        triggerClassName="btn btn-ghost btn-icon-square"
+        triggerIcon={<MoreHorizontal aria-hidden="true" />}
+        contextMenu={false}
+        align="start"
+        items={moreItems}
+      />
     </div>
   );
 }

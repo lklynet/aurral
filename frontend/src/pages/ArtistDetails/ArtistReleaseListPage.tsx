@@ -19,6 +19,7 @@ import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import PillToggle from "../../components/PillToggle";
 import ReleaseStatusCheck from "./components/ReleaseStatusCheck";
+import { ArtistReleaseCard } from "./components/ArtistReleaseCard";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -43,10 +44,10 @@ import { getAlbumAddAction } from "../../utils/albumAddAction";
 import { getReleaseGroupRatingsBatch } from "../../utils/api/endpoints/artists.ts";
 import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
-import { artworkHoverTint } from "../../utils/imageColors.ts";
 import StatePanel from "../../components/StatePanel";
 import Pagination from "../../components/Pagination";
 import { useClampPage, usePageParam } from "../../hooks/usePageParam.ts";
+import "./ArtistDetailsPage.css";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -416,61 +417,23 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     }
 
     return (
-      <article key={releaseGroup.id} className="artist-release-card" {...artworkHoverTint}>
-        <div className="artist-release-card__cover">
-          <ReleaseCoverImage
-            src={cover}
-            fallback={artistCoverImage}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            placeholder={
-              <div className="artist-release-card__placeholder">
-                <Music className="artist-icon-lg" />
-              </div>
-            }
-          />
-          <div className="artist-release-card__action">
-            {isComplete ? (
-              <ReleaseStatusCheck partial={status?.partial} />
-            ) : status?.status === "waiting" ? (
-              <ReleaseWaitBadge releaseDate={releaseGroup["first-release-date"]} />
-            ) : canAddAlbum ? (
-              <div>
-                <AddActionButton
-                  {...getAlbumAddAction({ releaseDate: releaseGroup["first-release-date"] })}
-                  onAdd={() =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")
-                  }
-                  isLoading={albumBusy}
-                  loadingLabel="Downloading"
-                  disabled={albumBusy}
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <h2
-          className={`artist-release-card__title ${isAppearsOn ? "artist-clamp-2" : "artist-truncate"}`}
-        >
-          <OptionalLink
-            link={releaseLink(releaseGroup, cover || artistCoverImage || "")}
-            className="card-link"
-          >
-            <Tooltip content={releaseGroup.title}>
-              <span className="card-link__label">{releaseGroup.title}</span>
-            </Tooltip>
-          </OptionalLink>
-        </h2>
-        <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
-        {metric.label && (
-          <Tooltip content={metric.title}>
-            <p className="artist-release-card__metric">
-              <ReleaseMetric metric={metric} />
-            </p>
-          </Tooltip>
-        )}
-      </article>
+      <ArtistReleaseCard
+        key={releaseGroup.id}
+        releaseGroup={releaseGroup}
+        coverUrl={cover}
+        fallbackCoverUrl={artistCoverImage}
+        link={releaseLink(releaseGroup, cover || artistCoverImage || "")}
+        meta={metaLabel}
+        status={status}
+        busy={albumBusy}
+        onDownload={
+          canAddAlbum
+            ? () => library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")
+            : null
+        }
+        metric={metric}
+        headingLevel="h2"
+      />
     );
   };
 

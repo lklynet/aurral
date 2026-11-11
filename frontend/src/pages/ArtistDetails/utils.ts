@@ -183,6 +183,21 @@ const ARTIST_TYPE_LABELS = {
 export const getArtistType = (type: string | null | undefined) =>
   (type && ownText(ARTIST_TYPE_LABELS, type)) || type;
 
+export const buildArtistTags = (
+  artist: Partial<Pick<ArtistDetailsResponse, "genres" | "tags">>,
+) => {
+  const seen = new Set<string>();
+  const tags: { key: string; name: string }[] = [];
+  for (const item of [...(artist.genres ?? []), ...(artist.tags ?? [])]) {
+    const name = String(typeof item === "string" ? item : item?.name || "").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    tags.push({ key, name });
+  }
+  return tags;
+};
+
 export const buildTasteArtist = ({
   id,
   name,

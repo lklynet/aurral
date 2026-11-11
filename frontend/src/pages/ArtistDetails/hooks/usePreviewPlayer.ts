@@ -94,6 +94,13 @@ export function usePreviewPlayer(
     }
   };
 
+  const handlePreviewShuffle = () => {
+    const tracks = getPlayableTracks().map((track) =>
+      normalizePreviewTrack(track, artistName, { artistMbid: mbid }),
+    );
+    if (tracks.length > 0) playQueue(tracks, { source: artistSource, shuffle: true });
+  };
+
   return {
     previewTracks,
     setPreviewTracks,
@@ -104,5 +111,7 @@ export function usePreviewPlayer(
     isArtistPlaybackActive,
     handlePreviewPlay,
     handlePreviewPlayAll,
+    handlePreviewShuffle,
+    canPlayPreviews: previewTracks.some((track) => track?.preview_url),
   };
 }

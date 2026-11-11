@@ -1,29 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { getArtistHeroImage, type ArtistCoverImage } from "../utils";
+import {
+  buildArtistTags,
+  getArtistHeroImage,
+  getArtistType,
+  type ArtistCoverImage,
+} from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
-import Tooltip from "../../../components/Tooltip";
-import RouteLink from "../../../components/RouteLink";
 import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.ts";
 
-const normalizeTagName = (value: string | null | undefined) => String(value || "").trim();
+const HERO_GENRE_LIMIT = 3;
 
-const buildTags = (artist: Partial<ArtistDetailsResponse>) => {
-  const seen = new Set<string>();
-  const tags: { key: string; name: string }[] = [];
-  const source = [
-    ...(Array.isArray(artist?.genres) ? artist.genres : []),
-    ...(Array.isArray(artist?.tags) ? artist.tags : []),
-  ];
-  for (const item of source) {
-    const name = normalizeTagName(typeof item === "string" ? item : item?.name);
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tags.push({ key, name });
-  }
-  return tags;
+const buildFacts = (artist: Partial<ArtistDetailsResponse>) => {
+  const genres = buildArtistTags(artist)
+    .slice(0, HERO_GENRE_LIMIT)
+    .map((tag) => tag.name.toLowerCase())
+    .join(", ");
+  return {
+    lead: [getArtistType(artist.type), artist.disambiguation].filter(
+      (fact): fact is string => !!fact,
+    ),
+    genres: genres ? genres.charAt(0).toUpperCase() + genres.slice(1) : "",
+  };
 };
 
 export function ArtistDetailsHero({
@@ -39,8 +37,7 @@ export function ArtistDetailsHero({
   const [imageFailed, setImageFailed] = useState(false);
   const [retryImage, setRetryImage] = useState("");
   const displayedImage = retryImage || heroImage;
-  const tags = useMemo(() => buildTags(artist), [artist]);
-  const visibleTags = tags.slice(0, 8);
+  const facts = useMemo(() => buildFacts(artist), [artist]);
   const showImage = displayedImage && !imageFailed;
   const artworkStyle = useSharedArtworkStyle();
 
@@ -50,7 +47,7 @@ export function ArtistDetailsHero({
   }, [heroImage]);
 
   return (
-    <section className="artist-hero">
+    <section className={`artist-hero${showImage ? "" : " artist-hero--plain"}`}>
       <div className="artist-hero__inner" style={artworkStyle}>
         {showImage ? (
           <>
@@ -72,27 +69,19 @@ export function ArtistDetailsHero({
             />
             <div className="artist-hero__wash" />
           </>
-        ) : (
-          <div className="artist-hero__fallback" />
-        )}
+        ) : null}
 
         <div className={`artist-hero__content${showImage ? " artist-hero__content--overlay" : ""}`}>
           <h1 className="artist-hero__title">{artist.name}</h1>
 
-          {visibleTags.length > 0 && (
-            <div className="artist-tag-list">
-              {visibleTags.map((tag) => (
-                <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
-                  <RouteLink
-                    to={`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`}
-                    className="artist-tag"
-                  >
-                    #{tag.name}
-                  </RouteLink>
-                </Tooltip>
+          {facts.lead.length > 0 || facts.genres ? (
+            <p className="artist-hero__facts">
+              {facts.lead.map((fact) => (
+                <span key={fact}>{fact}</span>
               ))}
-            </div>
-          )}
+              {facts.genres ? <span className="artist-hero__genres">{facts.genres}</span> : null}
+            </p>
+          ) : null}
         </div>
       </div>
     </section>
