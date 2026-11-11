@@ -25,7 +25,6 @@ const SETTINGS_MARKERS: [key: string, done: (value: unknown) => boolean][] = [
   ["schemaVersion", (value) => Number(value) >= 4],
   ["storedDataMigration", (value) => v.is(versioned, value) && value.version >= 3],
   ["identityMarkerMigration", (value) => v.is(versioned, value) && value.version >= 2],
-  ["playlistStartupMigration", (value) => v.is(versioned, value) && value.version >= 1],
   [
     "aurralDownloadFolderMigration",
     (value) => v.is(versioned, value) && value.version >= 1 && value.status !== "pending",

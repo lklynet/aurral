@@ -57,6 +57,15 @@ test.each([
     [],
   ],
   [
+    "a 2.x playlist startup step that kept failing",
+    () => {
+      const db = databaseWith(FINISHED_2X);
+      db.prepare("DELETE FROM settings WHERE key = 'playlistStartupMigration'").run();
+      return db;
+    },
+    [],
+  ],
+  [
     "an interrupted folder move",
     () =>
       databaseWith({
