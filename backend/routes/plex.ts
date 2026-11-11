@@ -17,7 +17,7 @@ import {
   finishPlexSignIn,
   getPlexServer,
   plexHistoryAccount,
-  plexPlaylistError,
+  plexPlaylistStatus,
   PlexError,
   removePlexServer,
   savePlexServer,
@@ -49,6 +49,7 @@ export default new Hono<AppEnv>()
   .basePath("/plex")
   .get("/", requireAuth, requireUserAccount, (c) => {
     const server = getPlexServer();
+    const status = plexPlaylistStatus();
     return c.json(
       {
         connected: Boolean(server),
@@ -57,7 +58,8 @@ export default new Hono<AppEnv>()
             ? {
                 url: server.url,
                 sendPlaylists: server.sendPlaylists,
-                playlistError: plexPlaylistError(),
+                playlistError: status.error,
+                playlistNote: status.note,
               }
             : null,
       },
