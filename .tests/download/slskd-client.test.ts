@@ -676,6 +676,38 @@ test("deleteSearch cancels a running search and deletes it only after slskd fina
   }
 });
 
+test("deleteSearch deletes a search slskd still lists as running long after it started", async () => {
+  const calls: string[] = [];
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    calls.push(`${request.method} ${request.url}`);
+    response.setHeader("content-type", "application/json");
+    if (request.method === "GET") {
+      response.end(
+        JSON.stringify({
+          state: "InProgress",
+          startedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+          endedAt: null,
+        }),
+      );
+      return;
+    }
+    response.writeHead(request.method === "DELETE" ? 204 : 200);
+    response.end();
+  });
+  try {
+    const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+    assert.equal(await new SlskdClient({ url: mock.url }).deleteSearch("orphaned"), true);
+    assert.deepEqual(calls, [
+      "PUT /api/v0/searches/orphaned",
+      "GET /api/v0/searches/orphaned?includeResponses=false",
+      "DELETE /api/v0/searches/orphaned",
+    ]);
+  } finally {
+    await mock.close();
+  }
+});
+
 test("cleanupAfterRun retains history targets when search finalization cannot be confirmed", async () => {
   const originalSettings = dbOps.getSettings();
   const mock = await createMockHttpServer((request, response) => {
