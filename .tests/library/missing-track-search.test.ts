@@ -35,7 +35,7 @@ const [
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
-  () => import("../../backend/services/aurralMissingTrackSearch.ts"),
+  () => import("../../backend/services/missingTrackSearch.ts"),
   () => import("../../backend/services/jobs/schedules.ts"),
   () => import("../../backend/services/jobs/systemTasks.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
@@ -469,8 +469,8 @@ test("Retry skips unmonitored tracks, and turning an album back on monitors all 
 
   const toggled = createAlbum({ tracks: ["missing", "missing"] });
   setTrackMonitored(requireFixture(toggled.tracks[1]).id, false);
-  await libraryManager.setAurralAlbumMonitoring(toggled.album.id, { monitored: false });
-  await libraryManager.setAurralAlbumMonitoring(toggled.album.id, { monitored: true });
+  await libraryManager.setAlbumMonitoring(toggled.album.id, { monitored: false });
+  await libraryManager.setAlbumMonitoring(toggled.album.id, { monitored: true });
   assert.deepEqual(
     albumJobs(toggled.albumMbid)
       .map((job) => job.trackMbid)
@@ -546,7 +546,7 @@ test("searching an album leaves cancelled tracks alone, including an older cance
   );
   const newerFailed = addTrackJob({ ...secondTrack, state: "failed" });
 
-  const result = await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  const result = await libraryManager.searchAlbumMissingTracks(album.id);
 
   assert.equal(getJob(jobIds[0]).status, "cancelled");
   assert.equal(getJob(olderCancelled).status, "cancelled");
@@ -562,7 +562,7 @@ test("searching an album keeps its tracks in the Library when a playlist started
   const { album, jobIds } = createAlbum({ tracks: ["blocked", "failed"] });
   for (const jobId of jobIds) downloadTracker.setStartedByPlaylist(jobId, "playlist");
 
-  await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  await libraryManager.searchAlbumMissingTracks(album.id);
 
   assert.deepEqual(
     jobIds.map((jobId) => getJob(jobId).startedByPlaylist),
@@ -572,9 +572,9 @@ test("searching an album keeps its tracks in the Library when a playlist started
 
 test("searching an album after it was unmonitored queues nothing", async () => {
   const { album, albumMbid, jobIds } = createAlbum({ tracks: ["failed", "missing"] });
-  await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: false });
+  await libraryManager.setAlbumMonitoring(album.id, { monitored: false });
 
-  await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  await libraryManager.searchAlbumMissingTracks(album.id);
 
   assert.equal(getJob(jobIds[0]).status, "failed");
   assert.equal(albumJobs(albumMbid).length, 1);
@@ -637,7 +637,7 @@ test("an album asked for before it comes out waits, then is searched once when i
   try {
     await libraryManager.addAlbum(artist.id, requireFixture(albumMbid), album.title, {});
     assert.equal(albumJobs(albumMbid).length, 0);
-    assert.equal(libraryManager.getAurralAlbumStatus(album.id).status, "unreleased");
+    assert.equal(libraryManager.getAlbumStatus(album.id).status, "unreleased");
     assert.equal(await runMissingTrackSearch(), 0);
 
     vi.useFakeTimers({ toFake: ["Date"], now: releasedAt });

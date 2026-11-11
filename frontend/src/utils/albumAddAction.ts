@@ -4,7 +4,7 @@ import { formatCalendarDate } from "./dateTime.ts";
 
 type ReleaseLibraryInfo = {
   trackCount?: number | null;
-  managedBy?: string | null;
+  managed?: boolean;
   monitored?: boolean | null;
   trackFileCount?: number | null;
   percentOfTracks?: number | null;
@@ -51,11 +51,7 @@ export const countReleaseTracks = <T extends ReleaseLibraryInfo>(
   releaseTrackCount: number,
 ) => {
   const trackCount = Number(libraryInfo?.trackCount || 0);
-  if (
-    libraryInfo?.managedBy !== "aurral" ||
-    libraryInfo.monitored !== false ||
-    releaseTrackCount <= trackCount
-  ) {
+  if (!libraryInfo?.managed || libraryInfo.monitored !== false || releaseTrackCount <= trackCount) {
     return libraryInfo;
   }
   return {

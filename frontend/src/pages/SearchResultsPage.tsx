@@ -25,7 +25,7 @@ import SearchAlbumResults, { type SearchAlbum } from "../components/SearchAlbumR
 import SearchArtistResults from "../components/SearchArtistResults";
 import AddActionButton from "../components/AddActionButton";
 import ReleaseWaitBadge from "../components/ReleaseWaitBadge";
-import { isAwaitingRelease } from "../utils/aurralAlbumStatus.ts";
+import { isAwaitingRelease } from "../utils/albumStatus.ts";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import SearchMixedResultList, {
   type SearchImageMap,
@@ -98,8 +98,6 @@ type AlbumLibraryState =
   | boolean
   | {
       inLibrary?: boolean;
-      providerAlbumId?: string | null;
-      providerArtistId?: string | null;
       status?: string;
       monitored?: boolean;
       trackFileCount?: number;

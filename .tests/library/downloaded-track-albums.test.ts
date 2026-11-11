@@ -173,7 +173,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
   await scanFile(1, { downloadedByAurral: false });
 
   const adopted = albumState();
-  assert.equal(adopted.album?.managedBy, "aurral");
+  assert.equal(adopted.album?.managed, true);
   assert.equal(adopted.album?.monitored, false);
   assert.deepEqual(adopted.monitored, [true, false, undefined]);
 
@@ -182,7 +182,6 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     albumName: "Playlist Album",
     artistMbid,
     artistName: "Playlist Artist",
-    managedBy: "aurral",
   });
 
   assert.equal(requested.status, 201);
@@ -192,7 +191,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
   assert.deepEqual(downloaded.monitored, [true, true, true]);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
 
-  await libraryManager.setAurralAlbumMonitoring(downloaded.albumId, { monitored: false });
+  await libraryManager.setAlbumMonitoring(downloaded.albumId, { monitored: false });
   assert.deepEqual(albumState().monitored, [false, false, false]);
   assert.deepEqual(queuedTrackMbids(), []);
 
@@ -201,7 +200,6 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     albumName: "Playlist Album",
     artistMbid,
     artistName: "Playlist Artist",
-    managedBy: "aurral",
   });
   assert.equal(albumState().album?.monitored, true);
   assert.deepEqual(albumState().monitored, [true, true, true]);
@@ -210,7 +208,7 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
 
 test("downloading a missing track of an unmonitored Aurral album monitors and queues only that track", async () => {
   const { albumId } = albumState();
-  await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: false });
+  await libraryManager.setAlbumMonitoring(albumId, { monitored: false });
   const missing = requireFixture(albumState().album)
     .trackIds.map((id) =>
       getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id),

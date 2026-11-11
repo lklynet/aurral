@@ -125,7 +125,6 @@ test("a compilation keeps Various Artists on the album and matches each track by
       albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
       artistMbid: variousArtists,
       artistName: "Various Artists",
-      managedBy: "aurral",
     }),
   });
   assert.equal(requested.status, 201, await requested.text());
@@ -224,7 +223,7 @@ test("a compilation track whose stored aliases can't be read is still fetched by
     .prepare<[string], { id: number }>("SELECT id FROM library_tracks WHERE title = ?")
     .get("Go All the Way")!;
   const monitor = (monitored: boolean) =>
-    app.request(`/library/tracks/aurral/${track.id}`, {
+    app.request(`/library/tracks/${track.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ monitored }),

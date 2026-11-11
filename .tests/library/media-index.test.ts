@@ -2698,19 +2698,19 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones som
     artist,
     "Scanned Away",
     { tags: { album: "Scanned Away" }, monitored: false },
-    { managedBy: "aurral" },
+    { managed: true },
   );
   album(
     artist,
     "Requested",
     { librarySource: "aurral", trackListComplete: true, monitored: true },
-    { managedBy: "aurral", monitorMode: "monitored" },
+    { managed: true, monitorMode: "monitored" },
   );
   album(
     artist,
     "Unmonitored",
     { librarySource: "aurral", trackListComplete: true, monitored: false },
-    { managedBy: "aurral", monitorMode: "unmonitored" },
+    { managed: true, monitorMode: "unmonitored" },
   );
   const wanted = upsertLibraryAlbum({
     identityKey: `owners:${process.pid}:Wanted`,

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { requestAlbumFromSearch } from "../../utils/api/endpoints/library.ts";
 import { describeAlbumRequestResult } from "../../utils/albumAddAction.ts";
-import { buildAurralAlbumRetryPayload } from "../../utils/aurralAlbumStatus.ts";
+import { buildAlbumRetryPayload } from "../../utils/albumStatus.ts";
 import type { LibraryAlbum, LibraryArtist } from "../../utils/libraryPageData.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -33,7 +33,7 @@ export function useAlbumDownload({
     try {
       if (libraryAlbum) {
         const result = await requestAlbumFromSearch(
-          buildAurralAlbumRetryPayload({ album: libraryAlbum, artist: libraryArtist }),
+          buildAlbumRetryPayload({ album: libraryAlbum, artist: libraryArtist }),
         );
         const queued = result?.jobIds?.length || 0;
         showSuccess(

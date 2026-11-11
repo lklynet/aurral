@@ -2,19 +2,19 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
-  buildAurralAlbumRetryPayload,
-  describeAurralAlbumStatus,
+  buildAlbumRetryPayload,
+  describeAlbumStatus,
   isAwaitingRelease,
   shouldPollAlbumStatus,
   shouldPollAlbumStatuses,
-} from "../../frontend/src/utils/aurralAlbumStatus.ts";
+} from "../../frontend/src/utils/albumStatus.ts";
 
-const actionLabels = (state: NonNullable<ReturnType<typeof describeAurralAlbumStatus>>) =>
+const actionLabels = (state: NonNullable<ReturnType<typeof describeAlbumStatus>>) =>
   state.actions.map((action) => action.label);
 
 test("a partial album offers Retry when a source failed and otherwise downloads missing tracks", () => {
   const recovery = { code: "source_failed" as const, message: "No source had the tracks." };
-  const state = describeAurralAlbumStatus({ status: "partial", recovery });
+  const state = describeAlbumStatus({ status: "partial", recovery });
   assert.ok(state != null);
   assert.deepEqual(actionLabels(state), ["Retry"]);
   assert.deepEqual(state.recovery, {
@@ -25,7 +25,7 @@ test("a partial album offers Retry when a source failed and otherwise downloads 
 });
 
 test("recovery codes link to the place that fixes them", () => {
-  const sourceMissing = describeAurralAlbumStatus({
+  const sourceMissing = describeAlbumStatus({
     status: "blocked",
     recovery: { code: "download_source_missing", message: "Configure a download client." },
   });
@@ -37,7 +37,7 @@ test("recovery codes link to the place that fixes them", () => {
     label: "Set up a download client",
   });
 
-  const review = describeAurralAlbumStatus({
+  const review = describeAlbumStatus({
     status: "blocked",
     recovery: { code: "review_required", message: "Some tracks need review." },
   });
@@ -45,7 +45,7 @@ test("recovery codes link to the place that fixes them", () => {
   assert.equal(review.recovery?.message, "Some tracks need review.");
   assert.deepEqual(review.recovery?.link, { to: "/activity/queue", label: "Review in Activity" });
 
-  const failed = describeAurralAlbumStatus({
+  const failed = describeAlbumStatus({
     status: "failed",
     recovery: { code: "source_failed", message: "Search failed." },
   });
@@ -55,9 +55,9 @@ test("recovery codes link to the place that fixes them", () => {
 });
 
 test("unknown statuses produce no Aurral state", () => {
-  assert.equal(describeAurralAlbumStatus({ status: "added" }), null);
-  assert.equal(describeAurralAlbumStatus({ status: "searching" }), null);
-  assert.equal(describeAurralAlbumStatus(), null);
+  assert.equal(describeAlbumStatus({ status: "added" }), null);
+  assert.equal(describeAlbumStatus({ status: "searching" }), null);
+  assert.equal(describeAlbumStatus(), null);
 });
 
 test("polling continues only while work is queued or downloading", () => {
@@ -80,15 +80,15 @@ test("library lists poll only while an album in the batch is active", () => {
   assert.equal(shouldPollAlbumStatuses(undefined), false);
   assert.equal(
     shouldPollAlbumStatuses({
-      "aurral:1": { status: "complete" },
-      "aurral:2": { status: "failed" },
+      "1": { status: "complete" },
+      "2": { status: "failed" },
     }),
     false,
   );
   assert.equal(
     shouldPollAlbumStatuses({
-      "aurral:1": { status: "complete" },
-      "aurral:2": { status: "queued" },
+      "1": { status: "complete" },
+      "2": { status: "queued" },
     }),
     true,
   );
@@ -96,7 +96,7 @@ test("library lists poll only while an album in the batch is active", () => {
 
 test("retry re-requests the album through Aurral", () => {
   assert.deepEqual(
-    buildAurralAlbumRetryPayload({
+    buildAlbumRetryPayload({
       album: { mbid: "album-mbid", title: "Disposable Album" },
       artist: { mbid: "artist-mbid", name: "Disposable Artist" },
     }),
@@ -108,7 +108,7 @@ test("retry re-requests the album through Aurral", () => {
     },
   );
   assert.equal(
-    buildAurralAlbumRetryPayload({ album: { releaseGroupMbid: "rg-mbid", title: "A" }, artist: {} })
+    buildAlbumRetryPayload({ album: { releaseGroupMbid: "rg-mbid", title: "A" }, artist: {} })
       .albumMbid,
     "rg-mbid",
   );
@@ -117,9 +117,9 @@ test("retry re-requests the album through Aurral", () => {
 test("only a monitored Aurral album with no files and a future date waits for its release", () => {
   const day = (offset: number) =>
     new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const waiting = { managedBy: "aurral", monitored: true, releaseDate: day(30), trackFileCount: 0 };
+  const waiting = { managed: true, monitored: true, releaseDate: day(30), trackFileCount: 0 };
   assert.equal(isAwaitingRelease(waiting), true);
-  assert.equal(isAwaitingRelease({ ...waiting, managedBy: null }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, managed: false }), false);
   assert.equal(isAwaitingRelease({ ...waiting, monitored: false }), false);
   assert.equal(isAwaitingRelease({ ...waiting, trackFileCount: 1 }), false);
   assert.equal(isAwaitingRelease({ ...waiting, releaseDate: day(0) }), false);

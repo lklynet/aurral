@@ -10,7 +10,7 @@ import {
   getPlaylistStatusSnapshot,
   getPlaylistsContainingTrack,
 } from "../../../services/playlists/playlistStatusSnapshot.ts";
-import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.ts";
+import { indexUnmonitoredJobs } from "../../../services/unmonitoredJobs.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAdmin, requireAuth } from "../../../middleware/guards.ts";
 import { hasPermission } from "../../../services/auth.ts";
@@ -20,7 +20,7 @@ import {
   cancelTrackDownload,
   cancelTrackDownloads,
   retryTrackDownload,
-} from "../../../services/aurralAlbumJobs.ts";
+} from "../../../services/albumJobs.ts";
 import { getTrackJobRequesterId } from "../../../services/aurralHistoryService.ts";
 import {
   LIBRARY_JOB_TYPE,

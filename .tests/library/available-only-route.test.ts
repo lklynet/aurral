@@ -260,8 +260,8 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     metadata: { added: "2000-01-01T00:00:00.000Z" },
   });
   db.prepare("UPDATE library_artists SET created_at = 1 WHERE id = ?").run(artist.id);
-  const originalPlan = libraryManager.planAurralArtistMonitoring;
-  libraryManager.planAurralArtistMonitoring = async () => ({
+  const originalPlan = libraryManager.planArtistMonitoring;
+  libraryManager.planArtistMonitoring = async () => ({
     releases: [],
     topTracks: [],
     skipped: [],
@@ -274,7 +274,7 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     ).items.map((entry) => entry.name);
   try {
     assert.ok(!(await newest()).includes("Known Empty"));
-    const monitored = await libraryManager.setAurralArtistMonitoring(mbid, {
+    const monitored = await libraryManager.applyArtistMonitoring(mbid, {
       useDefault: true,
       rules: null,
     });
@@ -287,6 +287,6 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     assert.equal(deleted.success, true);
     assert.ok(!(await newest()).includes("Known Empty"));
   } finally {
-    libraryManager.planAurralArtistMonitoring = originalPlan;
+    libraryManager.planArtistMonitoring = originalPlan;
   }
 });

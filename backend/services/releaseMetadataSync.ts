@@ -1,4 +1,4 @@
-import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./aurralMonitoring.ts";
+import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./monitoring.ts";
 import { UUID_REGEX } from "../../lib/uuid.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { releaseMetadataQueue } from "./jobs/queues.ts";

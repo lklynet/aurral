@@ -11,7 +11,7 @@ export function toQueueTracks(trackIds: number[]) {
     const track = tracks.get(trackId);
     const playable = (track?.albums ?? []).flatMap(({ albumId }) => {
       const album = albums.get(albumId);
-      const file = album && selectCanonicalFile(track?.files, album.id, album.managedBy ?? null);
+      const file = album && selectCanonicalFile(track?.files, album.id, Boolean(album.managed));
       return album && file?.available ? [{ album, file }] : [];
     });
     const [first] = playable;

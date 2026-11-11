@@ -1,6 +1,6 @@
 import { Clock } from "./icons";
 import Tooltip from "./Tooltip";
-import { formatReleaseWait } from "../utils/aurralAlbumStatus.ts";
+import { formatReleaseWait } from "../utils/albumStatus.ts";
 
 export default function ReleaseWaitBadge({
   releaseDate,

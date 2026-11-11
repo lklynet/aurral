@@ -35,14 +35,13 @@ test("manager state uses library ids and round-trips through the store", () => {
     entityId: 7,
     monitorMode: "all",
   });
-  assert.equal(store.getManagedBy("album", 7), "aurral");
-  assert.equal(store.getManagedBy("album", "7"), "aurral");
+  assert.ok(store.getLibraryManagementEntry("album", "7"));
   const { updatedAt, ...entry } = requireFixture(store.getLibraryManagementEntry("album", 7));
-  assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all", monitorRules: null });
+  assert.deepEqual(entry, { monitorMode: "all", monitorRules: null });
   assert.ok(updatedAt != null && Number.isSafeInteger(updatedAt) && updatedAt > 0);
 
   assert.equal(store.clearLibraryManagement("album", 7), true);
-  assert.equal(store.getManagedBy("album", 7), null);
+  assert.equal(store.getLibraryManagementEntry("album", 7), null);
 });
 
 test("artist monitoring rules survive same-mode writes and clear when the mode changes", () => {
@@ -67,8 +66,8 @@ test("artist monitoring rules survive same-mode writes and clear when the mode c
 test("manager state written by another process is visible without a restart", async () => {
   const { default: Database } = await import("better-sqlite3");
   store.setLibraryManagement({ entityKind: "album", entityId: 11 });
-  assert.equal(store.getManagedBy("album", 11), "aurral");
-  assert.equal(store.getManagedBy("album", 12), null);
+  assert.ok(store.getLibraryManagementEntry("album", 11));
+  assert.equal(store.getLibraryManagementEntry("album", 12), null);
 
   const otherProcess = new Database(db.name);
   try {
@@ -79,7 +78,7 @@ test("manager state written by another process is visible without a restart", as
        VALUES ('album', 12, 'monitored', ?, ?)`,
       )
       .run(now, now);
-    assert.equal(store.getManagedBy("album", 12), "aurral");
+    assert.ok(store.getLibraryManagementEntry("album", 12));
 
     otherProcess
       .prepare(
@@ -94,7 +93,7 @@ test("manager state written by another process is visible without a restart", as
     assert.equal(store.getLibraryManagementEntry("album", 12)!.monitorMode, "monitored");
 
     otherProcess.prepare("DELETE FROM library_management WHERE entity_id = 11").run();
-    assert.equal(store.getManagedBy("album", 11), null);
+    assert.equal(store.getLibraryManagementEntry("album", 11), null);
   } finally {
     otherProcess.close();
     store.clearLibraryManagement("album", 12);
@@ -112,7 +111,7 @@ test("manager state rejects invalid kinds and ids", () => {
   );
 });
 
-test("read model exposes managedBy and monitorMode without inventing values", () => {
+test("read model exposes managed and monitorMode without inventing values", () => {
   const library = {
     artists: [
       readArtist({
@@ -191,11 +190,11 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
   assert.ok(managed != null);
   const open = model.artists.find((a) => a.id === 12);
   assert.ok(open != null);
-  assert.equal(managed.managedBy, "aurral");
+  assert.equal(managed.managed, true);
   assert.equal(managed.monitorMode, "all");
-  assert.equal(open.managedBy, null);
+  assert.equal(open.managed, false);
   assert.equal(open.monitorMode, null);
-  assert.equal(model.albums.find((a) => a.id === 21)!.managedBy, null);
+  assert.equal(model.albums.find((a) => a.id === 21)!.managed, false);
 });
 
 test("library page cache reflects ownership changes without manual invalidation", () => {
@@ -227,16 +226,13 @@ test("library page cache reflects ownership changes without manual invalidation"
 
   store.setLibraryManagement({ entityKind: "artist", entityId: artist.id });
   const before = getLibraryPage({ kind: "artists", pageSize: 100 });
-  assert.equal(
-    before.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy,
-    "aurral",
-  );
+  assert.equal(before.items.find((entry) => String(entry.id) === String(artist.id))?.managed, true);
 
   store.clearLibraryManagement("artist", artist.id);
   const cleared = getLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(
-    cleared.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy,
-    null,
+    cleared.items.find((entry) => String(entry.id) === String(artist.id))?.managed,
+    false,
   );
 });
 

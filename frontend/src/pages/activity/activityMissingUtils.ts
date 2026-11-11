@@ -11,10 +11,10 @@ export interface MissingJob {
   trackName?: string | null;
 }
 
-export const isMissingAurralJob = (job: MissingJob | null | undefined) =>
+export const isMissingJob = (job: MissingJob | null | undefined) =>
   job?.status === "failed" && !job?.upgradeForJobId && job?.monitored !== false;
 
-export const isCutoffUnmetAurralJob = (job: MissingJob | null | undefined) =>
+export const isCutoffUnmetJob = (job: MissingJob | null | undefined) =>
   job?.status === "done" &&
   job?.qualityOwned === true &&
   job?.qualityState !== "preferred" &&

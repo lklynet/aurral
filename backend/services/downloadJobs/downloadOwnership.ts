@@ -9,7 +9,7 @@ import {
   getActiveDownloadAttemptId,
   isDownloadJobCancelled,
 } from "./downloadCancellation.ts";
-import { buildAurralTrackDestination } from "../downloadPaths.ts";
+import { buildTrackDestination } from "../downloadPaths.ts";
 import { sanitizePathPart } from "../downloadUtils.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { normalizeLockOwners, withDownloadStepLock } from "./downloadLocks.ts";
@@ -78,7 +78,7 @@ function currentJob(jobId: string) {
 export function downloadDestinationForJob(
   job: Pick<DownloadJob, "artistName" | "albumName"> & JobFields<"playlistId" | "playlistType">,
 ) {
-  return buildAurralTrackDestination(
+  return buildTrackDestination(
     job.playlistId || job.playlistType,
     sanitizePathPart(job.artistName, "Unknown Artist"),
     sanitizePathPart(job.albumName, "Unknown Album"),

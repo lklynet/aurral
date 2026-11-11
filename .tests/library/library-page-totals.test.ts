@@ -132,7 +132,6 @@ test("an album track page carries the album's provider id and monitored state", 
   assert.equal(summaryAlbum.id, album.id);
   assert.equal(summaryAlbum.providerId, 512);
   assert.equal(summaryAlbum.monitored, true);
-  assert.equal(summaryAlbum.monitorOption, "all");
   const summaryArtist = requireFixture(page.artists[0]);
   assert.equal("providerId" in summaryArtist && summaryArtist.providerId, 41);
   assert.equal("monitored" in summaryArtist && summaryArtist.monitored, true);

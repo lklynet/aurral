@@ -17,7 +17,7 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
-type MonitoringApply = NonNullable<Parameters<typeof libraryManager.acquireAurralReleases>[0]>;
+type MonitoringApply = NonNullable<Parameters<typeof libraryManager.acquireReleases>[0]>;
 type Payload = { readonly [key: string]: unknown };
 type RunContext = {
   job: TypedJob<SystemTask> | null;
@@ -331,14 +331,14 @@ const SYSTEM_TASKS = {
     schedule: { everyMs: 24 * HOUR },
     async run() {
       const { libraryManager } = await import("../libraryManager.ts");
-      await libraryManager.reconcileAurralMonitoring();
+      await libraryManager.reconcileMonitoring();
     },
   },
   "aurral-missing-track-search": {
     queue: "system",
     schedule: { everyMs: HOUR },
     async run() {
-      const { runMissingTrackSearch } = await import("../aurralMissingTrackSearch.ts");
+      const { runMissingTrackSearch } = await import("../missingTrackSearch.ts");
       await runMissingTrackSearch();
     },
   },
@@ -346,7 +346,7 @@ const SYSTEM_TASKS = {
     queue: "system",
     async run(payload) {
       const { libraryManager } = await import("../libraryManager.ts");
-      await libraryManager.acquireAurralReleases(parseMonitoringApply(payload));
+      await libraryManager.acquireReleases(parseMonitoringApply(payload));
     },
   },
   "wrapped-build": {

@@ -111,7 +111,7 @@ const artists: LibraryArtist[] = catalog.map((entry, index) => ({
   sortName: entry.artist,
   metadata: { genres: [...new Set(entry.albums.flatMap((album) => album.genres))] },
   albumIds: albums.filter((album) => album.artistId === index + 1).map((album) => album.id),
-  managedBy: null,
+  managed: false,
   monitorMode: null,
   sources: ["aurral"],
   available: true,

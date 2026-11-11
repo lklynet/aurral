@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { listOf } from "../db/helpers/storedSchemas.ts";
-import { MONITORED_AURRAL_ALBUM_CONDITION } from "./aurralMonitoring.ts";
+import { MONITORED_AURRAL_ALBUM_CONDITION } from "./monitoring.ts";
 import type {
   LibraryArtistsRow,
   LibraryReleaseCalendarArtistsRow,

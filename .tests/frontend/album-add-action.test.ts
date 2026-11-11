@@ -49,7 +49,7 @@ test("an album that isn't out yet says it will wait, before and after the reques
 test("an unmonitored Aurral album counts the release's tracks, so a downloaded single isn't complete", () => {
   const single = {
     inLibrary: true,
-    managedBy: "aurral",
+    managed: true,
     monitored: false,
     trackCount: 1,
     trackFileCount: 1,
@@ -61,7 +61,7 @@ test("an unmonitored Aurral album counts the release's tracks, so a downloaded s
   assert.deepEqual([counted.trackCount, counted.percentOfTracks], [4, 25]);
   for (const library of [
     { ...single, monitored: true },
-    { ...single, managedBy: "lidarr" },
+    { ...single, managed: false },
     { ...single, trackCount: 4, trackFileCount: 4 },
   ]) {
     assert.equal(countReleaseTracks(library, 4), library);
@@ -71,7 +71,7 @@ test("an unmonitored Aurral album counts the release's tracks, so a downloaded s
 test("release display keeps albums with an incomplete track list incomplete", () => {
   const lookup = {
     inLibrary: true,
-    managedBy: "aurral",
+    managed: true,
     monitored: true,
     trackListComplete: false,
     trackCount: 1,
@@ -93,7 +93,7 @@ test("release display keeps albums with an incomplete track list incomplete", ()
 test("release display shows an incomplete album's share as a whole percent", () => {
   const lookup = {
     inLibrary: true,
-    managedBy: "aurral",
+    managed: true,
     monitored: false,
     trackCount: 1,
     trackFileCount: 1,

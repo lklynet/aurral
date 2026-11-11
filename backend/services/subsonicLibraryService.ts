@@ -337,7 +337,7 @@ const toSong = (
   album: LibraryAlbum | null = findAlbumForTrack(library, track),
 ): LibrarySong => {
   const artist = findArtistForAlbum(library, album);
-  const file = firstFile(track, album?.id, album?.managedBy);
+  const file = firstFile(track, album?.id, album?.managed);
   const genres = [
     ...new Set([...entityGenres(artist), ...entityGenres(album), ...entityGenres(track)]),
   ];
@@ -406,7 +406,7 @@ const albumData = (library: IndexedLibrary, album: LibraryAlbum) => {
     coverArt: coverArtForAlbum(library, album),
     songCount: tracks.length,
     duration: tracks.reduce(
-      (total, track) => total + seconds(firstFile(track, album.id, album.managedBy)?.durationMs),
+      (total, track) => total + seconds(firstFile(track, album.id, album.managed)?.durationMs),
       0,
     ),
     starred: library.starredAt?.get(`album:${album.identityKey}`),
@@ -1865,7 +1865,7 @@ export function resolveStreamPath(value: string, user: SubsonicUser) {
   );
   const track = findLibraryEntry(library, parsed);
   const album = findAlbumForTrack(library, track);
-  const file = firstFile(track, album?.id, album?.managedBy);
+  const file = firstFile(track, album?.id, album?.managed);
   return file?.available && file.path ? file.path : null;
 }
 

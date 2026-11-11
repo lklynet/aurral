@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertCircle, EyeOff, Share } from "../../components/icons";
 import AddActionButton from "../../components/AddActionButton";
-import { formatReleaseWait, isAwaitingRelease } from "../../utils/aurralAlbumStatus.ts";
-import { AurralAlbumStatus } from "../../components/AurralAlbumStatus";
+import { formatReleaseWait, isAwaitingRelease } from "../../utils/albumStatus.ts";
+import { AlbumDownloadStatus } from "../../components/AlbumDownloadStatus";
 import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
 import {
   CollectionHeader,
@@ -245,7 +245,7 @@ function AlbumPage() {
     isAwaitingRelease(
       libraryAlbum
         ? {
-            managedBy: libraryAlbum.managedBy,
+            managed: libraryAlbum.managed,
             monitored: albumState.albumMonitored,
             releaseDate: libraryAlbum.releaseDate,
             trackFileCount: libraryFileCount,
@@ -461,11 +461,11 @@ function AlbumPage() {
     albumTracks.some((track) => String(track.id) === String(actions.currentTrack?.id));
   const loadAlbumDetail = async () => ({ tracks: albumTracks, lookup: null });
 
-  const showAurralStatus = Boolean(
+  const showStatus = Boolean(
     libraryAlbum && albumState.albumMonitoring.monitored && !isPreviewLibrary,
   );
   const showLibraryPill =
-    !showAurralStatus &&
+    !showStatus &&
     Boolean(libraryDisplay.label) &&
     libraryDisplay.kind !== "incomplete" &&
     !(libraryAlbum && libraryDisplay.isComplete);
@@ -632,8 +632,8 @@ function AlbumPage() {
           )
         }
         status={
-          showAurralStatus && libraryAlbum ? (
-            <AurralAlbumStatus
+          showStatus && libraryAlbum ? (
+            <AlbumDownloadStatus
               key={libraryAlbum.id}
               album={libraryAlbum}
               artist={libraryArtist}

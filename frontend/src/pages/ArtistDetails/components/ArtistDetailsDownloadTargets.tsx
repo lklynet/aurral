@@ -18,7 +18,7 @@ import { useShareAction } from "../../../hooks/useShareAction";
 import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.ts";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
-  buildAurralPick,
+  buildPick,
   buildAlbumHeaderMeta,
   sumTrackDurationMs,
   getReleaseGroupCoverUrl,
@@ -119,7 +119,7 @@ export function ArtistDetailsDownloadTargets({
   const requestedReleaseGroupId =
     requestedPick?.artistId === artist?.id ? requestedPick!.releaseGroupId : null;
   const missingReleasePick = useMemo(
-    () => buildAurralPick({ releaseGroups, getAlbumStatus, requestedReleaseGroupId }),
+    () => buildPick({ releaseGroups, getAlbumStatus, requestedReleaseGroupId }),
     [releaseGroups, getAlbumStatus, requestedReleaseGroupId],
   );
   const [showAllTracks, setShowAllTracks] = useState(false);

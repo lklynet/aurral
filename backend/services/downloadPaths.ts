@@ -75,7 +75,7 @@ export function findLibraryFileVariant(filePath: string) {
 
 export const libraryPathKey = (filePath: string) => folderKey(path.resolve(filePath));
 
-export function buildAurralTrackDestination(
+export function buildTrackDestination(
   playlistId: string | null | undefined,
   artistDir: string | null | undefined,
   albumDir: string | null | undefined,
@@ -104,7 +104,7 @@ export function buildLibraryTrackPath(
 ) {
   return path.resolve(
     root,
-    buildAurralTrackDestination(
+    buildTrackDestination(
       null,
       sanitizePathPart(track?.artistName, "Unknown Artist"),
       sanitizePathPart(track?.albumName, "Unknown Album"),

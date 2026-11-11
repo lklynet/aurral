@@ -95,7 +95,7 @@ contain additional fields. Arrays can be empty. Fields marked nullable can be
 | `GET /api/library/lookup/:mbid`              | Artist MusicBrainz ID                                                                                                                                                                                                                                                      | Boolean `exists` and `fromLibraryIndex`, nullable object `artist`, array `albums`, and nullable string `libraryArtistId`                                                                                                                                                                   |
 | `POST /api/library/lookup/batch`             | Array `mbids`                                                                                                                                                                                                                                                              | Object keyed by requested IDs, with boolean values                                                                                                                                                                                                                                         |
 | `POST /api/library/albums/lookup/batch`      | Array `mbids`                                                                                                                                                                                                                                                              | Object keyed by found album IDs, with album lookup objects                                                                                                                                                                                                                                 |
-| `POST /api/library/albums/request`           | `albumMbid`, `albumName`, `artistMbid`, `artistName`; optional `triggerSearch` and `managedBy`                                                                                                                                                                             | HTTP `201` with boolean `success`, `createdArtist`, `createdAlbum`, and `queued`; objects `artist` and `album`; strings `status` and `managedBy`                                                                                                                                           |
+| `POST /api/library/albums/request`           | `albumMbid`, `albumName`, `artistMbid`, `artistName`                                                                                                                                                                                                                       | HTTP `201` with boolean `success`, `createdArtist`, `createdAlbum`, and `queued`; objects `artist` and `album`; string `status`                                                                                                                                                            |
 | `POST /api/library/downloads/track`          | `artistName`, `trackName`; optional track and album identifiers                                                                                                                                                                                                            | Boolean `success` and `queued`. An owned track returns HTTP `200` with `alreadyOwned=true`. An existing queued request returns HTTP `202` with string `jobId` and `alreadyQueued=true`. Other accepted requests return HTTP `202`; `jobId` can be nullable for an already monitored track. |
 | `POST /api/playlists/flows`                  | `name`, `size`, `mix`, `scheduleDays`, and `scheduleTime`, or a supported `templateId`                                                                                                                                                                                     | Boolean `success` and object `flow`                                                                                                                                                                                                                                                        |
 | `GET /api/playlists/status`                  | Requires `accessPlaylists`                                                                                                                                                                                                                                                 | Arrays `flows` and `staticPlaylists`; objects `stats`, `flowStats`, `worker`, and `hint`                                                                                                                                                                                                   |
@@ -153,14 +153,12 @@ tracks have strings `title` and `artistName`, nullable string `mbid`, and array
 `files`. These IDs are different from MusicBrainz IDs and Subsonic IDs.
 
 Album lookup objects contain boolean `inLibrary` and `monitored`, nullable
-strings `libraryAlbumId`, `libraryArtistId`, `providerAlbumId`, and
-`providerArtistId`, string `status`, numeric
+strings `libraryAlbumId` and `libraryArtistId`, string `status`, numeric
 `trackCount` and `trackFileCount`, and array `ownedTrackMbids`. An absent key
 means that the server did not find the album. `ownedTrackMbids` identifies
 available tracks; it does not promise a complete album track list.
 `libraryAlbumId` and `libraryArtistId` are null when the album is not in the
-Library. `providerAlbumId` and `providerArtistId` are always null. They are
-kept for older apps.
+Library.
 
 Flow objects contain strings `id` and `name`, numeric `size` and `ownerUserId`,
 boolean `enabled`, and object `mix`. Existing legacy flows can have a nullable
@@ -195,8 +193,14 @@ current names.
 | `albumCanonicalId` on track search results, `canonicalAlbumId` on activity  | `libraryAlbumId`                                        |
 | `canonicalAlbumId`, `canonicalArtistId` on album lookups                    | `libraryAlbumId`, `libraryArtistId`                     |
 | `canonicalTrackId` in `POST /api/library/downloads/track`                   | `libraryTrackId`                                        |
+| `managedBy` on Library artists, albums, tracks, and album lookups           | Boolean `managed`                                       |
+| `managedBy` and `triggerSearch` in `POST /api/library/albums/request`       | Removed                                                 |
+| `/api/library/albums/aurral/:albumId`                                       | `/api/library/albums/:albumId`                          |
+| `/api/library/tracks/aurral/:trackId`                                       | `/api/library/tracks/:trackId`                          |
+| `aurral:<albumId>` in `GET /api/library/downloads/status`                   | The Library album ID                                    |
+| `monitorOption` on artist requests and on artists and albums                | `monitoring` on requests. Removed from responses        |
 
 In version 1, `libraryAlbumId` and `libraryArtistId` on album lookups and
 album search results held the IDs of the service that manages the album. In
-version 2 they hold Library IDs on lookups, and `providerAlbumId` and
-`providerArtistId` hold the service's IDs on both.
+version 2 they hold Library IDs on lookups. Version 2 has no `providerAlbumId`
+or `providerArtistId`.

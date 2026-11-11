@@ -6,10 +6,10 @@ import { MonitoringRulesFields } from "../../../components/MonitoringRulesFields
 import PillToggle from "../../../components/PillToggle";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
-import type { MonitoringExclusion } from "../../../../../backend/services/aurralMonitoringStore.ts";
+import type { MonitoringExclusion } from "../../../../../backend/services/monitoringStore.ts";
 import { libraryMonitoringClient } from "../../../utils/api/clients/libraryMonitoring.ts";
 import { slowLibraryFetch } from "../../../utils/api/endpoints/library.ts";
-import { describeAurralMonitoringError } from "../../../utils/aurralMonitoring.ts";
+import { describeMonitoringError } from "../../../utils/monitoring.ts";
 import { formatDate } from "../../../utils/dateTime";
 import {
   describeDownloadCount,
@@ -99,7 +99,7 @@ function DefaultRulesForm({ defaults }: { defaults: MonitoringDefaults }) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.monitoringDefaults });
     } catch (error) {
       showError(
-        `Could not save the default rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+        `Could not save the default rules. Nothing changed. ${describeMonitoringError(error, "Try again.")}`,
       );
     } finally {
       setBusy(false);
@@ -123,7 +123,7 @@ function DefaultRulesForm({ defaults }: { defaults: MonitoringDefaults }) {
       );
     } catch (error) {
       showError(
-        `Could not check the new rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+        `Could not check the new rules. Nothing changed. ${describeMonitoringError(error, "Try again.")}`,
       );
     } finally {
       setBusy(false);
@@ -286,7 +286,7 @@ function RemovedGroup() {
       queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
     onError: (error, exclusion) =>
       showError(
-        `Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+        `Could not allow ${exclusion.title} again. Nothing changed. ${describeMonitoringError(error, "Try again.")}`,
       ),
   });
   const exclusions = query.data ?? [];

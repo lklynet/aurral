@@ -8,10 +8,10 @@ import {
 } from "../../../utils/api/endpoints/library.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
 import {
-  buildAurralAlbumRetryPayload,
+  buildAlbumRetryPayload,
   formatReleaseWait,
   isAwaitingRelease,
-} from "../../../utils/aurralAlbumStatus.ts";
+} from "../../../utils/albumStatus.ts";
 import {
   deduplicateAlbums,
   buildLibraryReleaseGroups,
@@ -167,14 +167,14 @@ export function useArtistDetailsLibrary({
 
       setLibraryArtist((previous) => {
         const foreignArtistId = addedArtist.foreignArtistId || addedArtist.mbid || artistMbid;
-        if (addedArtist.managedBy) {
+        if (addedArtist.managed) {
           return { ...previous, ...addedArtist, id: addedArtistId, foreignArtistId };
         }
         return {
           ...previous,
           ...addedArtist,
           id: addedArtistId,
-          managedBy: previous?.managedBy || null,
+          managed: Boolean(previous?.managed),
           foreignArtistId,
         };
       });
@@ -190,7 +190,7 @@ export function useArtistDetailsLibrary({
           {
             ...addedAlbum,
             id: addedAlbumId,
-            managedBy: "aurral",
+            managed: true,
             mbid: addedAlbum.mbid || addedAlbum.foreignAlbumId || albumId,
             foreignAlbumId: addedAlbum.foreignAlbumId || addedAlbum.mbid || albumId,
             monitored: true,
@@ -230,7 +230,7 @@ export function useArtistDetailsLibrary({
   const missingDownloads = libraryAlbums.filter((album) => {
     const albumId = String(album.id ?? "");
     if (!albumId || albumId.startsWith("pending-")) return false;
-    if (album.managedBy !== "aurral") return false;
+    if (!album.managed) return false;
     if (isLibraryAlbumComplete(album)) return false;
     if (ownedByKey.has(album.mbid || album.foreignAlbumId || "")) return false;
     if (isAwaitingRelease({ ...album, trackFileCount: album.statistics?.trackFileCount })) {
@@ -252,7 +252,7 @@ export function useArtistDetailsLibrary({
       const results = await Promise.all(
         eligibleAlbums.map((album) =>
           requestAlbumFromSearch(
-            buildAurralAlbumRetryPayload({
+            buildAlbumRetryPayload({
               album,
               artist: {
                 mbid: album.artistMbid || libraryArtist?.foreignArtistId || libraryArtist?.mbid,

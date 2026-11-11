@@ -1708,11 +1708,11 @@ test("a track unmonitored while its upgrade's release details are read gets no u
     available: true,
   });
   const unmonitoring: {
-    result: ReturnType<typeof libraryManager.setAurralTrackMonitoring> | null;
+    result: ReturnType<typeof libraryManager.setTrackMonitoring> | null;
   } = { result: null };
   await serveGroups(t, [], {
     missing: () => {
-      unmonitoring.result ??= libraryManager.setAurralTrackMonitoring(String(track.id), {
+      unmonitoring.result ??= libraryManager.setTrackMonitoring(String(track.id), {
         monitored: false,
       });
       return true;

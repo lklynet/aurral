@@ -96,7 +96,7 @@ test("a monitoring change that cannot load releases leaves the artist as it was"
   const artist = seedArtist("none");
 
   const result = await libraryManager.setArtistMonitoring(artistMbid, {
-    monitorOption: "all",
+    monitoring: { monitored: true },
     user: admin,
   });
 
@@ -106,7 +106,7 @@ test("a monitoring change that cannot load releases leaves the artist as it was"
 
 test("adding an artist through monitoring needs permission to add artists", async () => {
   const result = await libraryManager.setArtistMonitoring(artistMbid, {
-    monitorOption: "all",
+    monitoring: { monitored: true },
     artistName: "Automation Artist",
     user: { id: 1, username: "test", role: "user", permissions: { changeMonitoring: true } },
   });

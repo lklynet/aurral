@@ -6,47 +6,42 @@ import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
-import {
-  setAurralAlbumMonitoring,
-  type AurralMonitoringResult,
-} from "../utils/api/endpoints/library.ts";
+import { setAlbumMonitoring, type MonitoringResult } from "../utils/api/endpoints/library.ts";
 import {
   describeAlbumMonitoringResult,
   getAlbumMonitoredState,
   getMonitoringMenuAction,
   shouldConfirmUnmonitor,
-  type AurralAlbumMonitoredRef,
-} from "../utils/aurralMonitoring.ts";
+  type AlbumMonitoredRef,
+} from "../utils/monitoring.ts";
 import { ConfirmModal } from "./ConfirmModal.tsx";
 
-type AurralAlbumId = string | number;
+type AlbumId = string | number;
 
-export interface AurralAlbumRef extends AurralAlbumMonitoredRef {
-  id: AurralAlbumId;
+export interface LibraryAlbumRef extends AlbumMonitoredRef {
+  id: AlbumId;
   title?: string;
 }
 
-interface AurralAlbumMonitoringOptions {
-  album: AurralAlbumRef | null;
+interface AlbumMonitoringOptions {
+  album: LibraryAlbumRef | null;
   enabled: boolean;
   canChange: boolean;
   hasMissingTracks: boolean;
-  onChanged?: (albumId: AurralAlbumId, result: AurralMonitoringResult) => void;
+  onChanged?: (albumId: AlbumId, result: MonitoringResult) => void;
 }
 
-export function useAurralAlbumMonitoring({
+export function useAlbumMonitoring({
   album,
   enabled,
   canChange,
   hasMissingTracks,
   onChanged,
-}: AurralAlbumMonitoringOptions) {
+}: AlbumMonitoringOptions) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
-  const [confirmingId, setConfirmingId] = useState<AurralAlbumId | null>(null);
-  const [override, setOverride] = useState<{ albumId: AurralAlbumId; monitored: boolean } | null>(
-    null,
-  );
+  const [confirmingId, setConfirmingId] = useState<AlbumId | null>(null);
+  const [override, setOverride] = useState<{ albumId: AlbumId; monitored: boolean } | null>(null);
   const savedMonitored = enabled ? getAlbumMonitoredState(album) : null;
   const monitored =
     savedMonitored !== null && override?.albumId === album?.id
@@ -64,11 +59,11 @@ export function useAurralAlbumMonitoring({
     setConfirmingId(null);
     setOverride({ albumId, monitored: nextMonitored });
     try {
-      const result = await setAurralAlbumMonitoring(albumId, nextMonitored);
+      const result = await setAlbumMonitoring(albumId, nextMonitored);
       const { message, warning } = describeAlbumMonitoringResult(result);
       (warning ? showError : showSuccess)(message);
       onChanged?.(albumId, result);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(albumId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.albumStatus(albumId) });
     } catch (error) {
       showError(
         `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${currentAlbum.title || "this album"}. Nothing changed. ${getApiErrorMessage(error, "Try again.")}`,
@@ -83,10 +78,10 @@ export function useAurralAlbumMonitoring({
     if (!monitored) return apply(true);
     const status = await queryClient
       .fetchQuery({
-        queryKey: queryKeys.aurralAlbumStatus(albumId),
+        queryKey: queryKeys.albumStatus(albumId),
         queryFn: ({ signal }) =>
           parseResponse(
-            libraryAlbumsClient.albums.aurral[":albumId"].status.$get(
+            libraryAlbumsClient.albums[":albumId"].status.$get(
               { param: { albumId: encodeURIComponent(albumId) } },
               { init: { signal } },
             ),

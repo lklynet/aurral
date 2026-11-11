@@ -6,7 +6,7 @@ import {
   legacyMonitorMode,
   resolveArtistMonitoring,
   storedRules,
-} from "./aurralMonitoring.ts";
+} from "./monitoring.ts";
 import { getLibraryManagementEntry, setLibraryManagement } from "./libraryManagementStore.ts";
 import { getNormalizedText } from "./providers/brainzmashRanking.ts";
 
@@ -40,17 +40,17 @@ export function saveMonitoringDefaults(defaults: ReturnType<typeof getMonitoring
 
 export function getStoredArtistMonitoring(artistId: string | number) {
   const entry = getLibraryManagementEntry("artist", artistId);
-  return entry?.managedBy === "aurral" ? entry.monitorRules || null : null;
+  return entry?.monitorRules || null;
 }
 
-export function getAurralArtistMonitoring(
+export function readArtistMonitoring(
   artistId: string | number,
   defaults = getMonitoringDefaults(),
 ) {
   return resolveArtistMonitoring(getStoredArtistMonitoring(artistId), defaults);
 }
 
-export function setAurralArtistMonitoringState(
+export function setArtistMonitoringState(
   artistId: string | number,
   stored: Parameters<typeof resolveArtistMonitoring>[0],
   defaults = getMonitoringDefaults(),

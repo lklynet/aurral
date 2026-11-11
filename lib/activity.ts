@@ -1,9 +1,6 @@
-import type {
-  AurralAlbumGrab,
-  AurralRequestItem,
-} from "../backend/services/aurralHistoryRequests.ts";
+import type { AlbumGrab, RequestItem } from "../backend/services/aurralHistoryRequests.ts";
 
-export type ActivityRequest = AurralRequestItem & {
+export type ActivityRequest = RequestItem & {
   children?: ActivityRequest[];
   createdAt?: number | null;
   error?: string | null;
@@ -19,7 +16,7 @@ export type ActivityRequest = AurralRequestItem & {
 
 export type AlbumActivityRequest = ActivityRequest & {
   children: ActivityRequest[];
-  albumGrab: AurralAlbumGrab;
+  albumGrab: AlbumGrab;
 };
 
 export const DOWNLOAD_CLIENTS: Partial<Record<string, string>> = {

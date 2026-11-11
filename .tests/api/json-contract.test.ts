@@ -532,8 +532,6 @@ test("library pages, lookups, album requests, and track requests preserve their 
   fields(albums[albumMbid], {
     inLibrary: "boolean",
     fromLibraryIndex: "boolean",
-    providerAlbumId: "string|null",
-    providerArtistId: "string|null",
     libraryAlbumId: "string|null",
     libraryArtistId: "string|null",
     status: "string",
@@ -543,10 +541,6 @@ test("library pages, lookups, album requests, and track requests preserve their 
     ownedTrackMbids: "array",
   });
   assert.deepEqual(albums[albumMbid].ownedTrackMbids, [trackMbid]);
-  assert.deepEqual(
-    [albums[albumMbid].providerAlbumId, albums[albumMbid].providerArtistId],
-    [null, null],
-  );
   const requested = await call("/api/library/albums/request", {
     method: "POST",
     status: 201,
@@ -555,7 +549,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
       albumName: album.title,
       artistMbid,
       artistName: artist.name,
-      managedBy: "aurral",
+      managed: true,
     },
   });
   fields(requested, {
@@ -565,7 +559,6 @@ test("library pages, lookups, album requests, and track requests preserve their 
     createdArtist: "boolean",
     createdAlbum: "boolean",
     status: "string",
-    managedBy: "string",
     queued: "boolean",
   });
   assert.equal(requested.success, true);

@@ -26,8 +26,8 @@ export type IndexedLibrary = ReturnType<typeof indexFocusedLibrary>;
 export const firstFile = (
   track: LibraryTrack | null | undefined,
   albumId: number | null = null,
-  managedBy: string | null = null,
-) => selectCanonicalFile(track?.files, albumId, managedBy);
+  managed = false,
+) => selectCanonicalFile(track?.files, albumId, managed);
 
 export const year = (value: string | null | undefined) => {
   const match = /^(\d{4})/.exec(String(value || ""));
@@ -87,7 +87,7 @@ export const trackFromLibrary = (
     albumMbid: album?.releaseGroupMbid || album?.mbid,
     trackMbid: track?.mbid,
     releaseYear: year(album?.releaseDate),
-    durationMs: firstFile(track, album?.id, album?.managedBy)?.durationMs,
+    durationMs: firstFile(track, album?.id, album?.managed)?.durationMs,
     trackNumber: track?.albums?.[0]?.trackNumber,
   });
 };
@@ -135,7 +135,7 @@ export function resolveLibraryTracks(descriptors: (PlaylistTrackInput | null | u
   }
   const resolveFile = (entry: LibraryTrack) => {
     const album = findAlbumForTrack(library, entry);
-    return { album, file: firstFile(entry, album?.id, album?.managedBy) };
+    return { album, file: firstFile(entry, album?.id, album?.managed) };
   };
   const playable = (entry: LibraryTrack) => {
     const { file } = resolveFile(entry);

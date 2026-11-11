@@ -1,28 +1,28 @@
-import { FACTORY_MONITOR_RULES } from "../../backend/services/aurralMonitoring.ts";
+import { FACTORY_MONITOR_RULES } from "../../backend/services/monitoring.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
-  canDownloadAurralAlbum,
+  canDownloadAlbum,
   describeAlbumMonitoringResult,
-  describeAurralMonitoringError,
+  describeMonitoringError,
   getAlbumMonitoredState,
   getMonitoringMenuAction,
   shouldConfirmUnmonitor,
-  summarizeAurralMonitoring,
-} from "../../frontend/src/utils/aurralMonitoring.ts";
+  summarizeMonitoring,
+} from "../../frontend/src/utils/monitoring.ts";
 
 test("summary counts queued releases and top tracks", () => {
   const monitored = { monitored: true, rules: { ...FACTORY_MONITOR_RULES, newReleases: true } };
   assert.equal(
-    summarizeAurralMonitoring(
+    summarizeMonitoring(
       { releaseGroupIds: ["rg1"], topTracks: [], skipped: [], queued: true },
       monitored,
     ).headline,
     "Queued 1 release for download",
   );
   assert.equal(
-    summarizeAurralMonitoring(
+    summarizeMonitoring(
       {
         releaseGroupIds: ["rg1", "rg2"],
         topTracks: [{ title: "a" }, { title: "b" }],
@@ -34,7 +34,7 @@ test("summary counts queued releases and top tracks", () => {
     "Queued 2 releases and 2 top tracks for download",
   );
   assert.equal(
-    summarizeAurralMonitoring(
+    summarizeMonitoring(
       { releaseGroupIds: [], topTracks: [{ title: "a" }], skipped: [], queued: true },
       monitored,
     ).headline,
@@ -44,29 +44,26 @@ test("summary counts queued releases and top tracks", () => {
 
 test("summary says what happens when nothing was queued", () => {
   const empty = { releaseGroupIds: [], topTracks: [], skipped: [], queued: false };
+  assert.equal(summarizeMonitoring(empty, { monitored: false }).headline, "Monitoring turned off");
   assert.equal(
-    summarizeAurralMonitoring(empty, { monitored: false }).headline,
-    "Monitoring turned off",
-  );
-  assert.equal(
-    summarizeAurralMonitoring(empty, {
+    summarizeMonitoring(empty, {
       monitored: true,
       rules: { ...FACTORY_MONITOR_RULES, newReleases: true },
     }).headline,
     "Watching for new releases",
   );
   assert.equal(
-    summarizeAurralMonitoring(empty, {
+    summarizeMonitoring(empty, {
       monitored: true,
       rules: { ...FACTORY_MONITOR_RULES, newReleases: false },
     }).headline,
     "Nothing new to download",
   );
-  assert.equal(summarizeAurralMonitoring(undefined).headline, "Nothing new to download");
+  assert.equal(summarizeMonitoring(undefined).headline, "Nothing new to download");
 });
 
 test("summary lists skipped releases by reason with counts and keeps unknown reasons", () => {
-  const summary = summarizeAurralMonitoring(
+  const summary = summarizeMonitoring(
     {
       releaseGroupIds: ["rg1"],
       skipped: [
@@ -97,7 +94,7 @@ const requestError = (status: number, data: Record<string, string>) =>
   Object.assign(new Error("Request failed"), { response: { status, data } });
 
 test("metadata_unavailable explains that monitoring did not change", () => {
-  const message = describeAurralMonitoringError(
+  const message = describeMonitoringError(
     requestError(503, {
       code: "metadata_unavailable",
       error: "Artist releases are unavailable; monitoring was not changed",
@@ -109,43 +106,40 @@ test("metadata_unavailable explains that monitoring did not change", () => {
 
 test("other monitoring errors keep the server message", () => {
   assert.equal(
-    describeAurralMonitoringError(requestError(503, { message: "Service is busy" })),
+    describeMonitoringError(requestError(503, { message: "Service is busy" })),
     "Service is busy",
   );
   assert.equal(
-    describeAurralMonitoringError(
-      requestError(400, { code: "unsupported_monitor_mode", error: "Bad mode" }),
+    describeMonitoringError(
+      requestError(400, { code: "invalid_monitor_rules", error: "Bad rules" }),
     ),
-    "Bad mode",
+    "Bad rules",
   );
-  assert.equal(describeAurralMonitoringError(new Error("Network Error")), "Network Error");
-  assert.equal(describeAurralMonitoringError({}, "Failed to update"), "Failed to update");
+  assert.equal(describeMonitoringError(new Error("Network Error")), "Network Error");
+  assert.equal(describeMonitoringError({}, "Failed to update"), "Failed to update");
 });
 
 test("album monitored state follows the server for Aurral albums", () => {
   assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "monitored" }),
+    getAlbumMonitoredState({ managed: true, monitored: true, monitorMode: "monitored" }),
     true,
   );
+  assert.equal(getAlbumMonitoredState({ managed: true, monitored: true, monitorMode: null }), true);
   assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: null }),
-    true,
-  );
-  assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitored: false, monitorMode: "unmonitored" }),
+    getAlbumMonitoredState({ managed: true, monitored: false, monitorMode: "unmonitored" }),
     false,
   );
   assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "unmonitored" }),
+    getAlbumMonitoredState({ managed: true, monitored: true, monitorMode: "unmonitored" }),
     false,
   );
-  assert.equal(getAlbumMonitoredState({ managedBy: "aurral" }), false);
+  assert.equal(getAlbumMonitoredState({ managed: true }), false);
 });
 
 test("album monitored state reads the library page shape", () => {
   assert.equal(
     getAlbumMonitoredState({
-      managedBy: "aurral",
+      managed: true,
       monitorMode: null,
       metadata: { monitored: true },
     }),
@@ -153,7 +147,7 @@ test("album monitored state reads the library page shape", () => {
   );
   assert.equal(
     getAlbumMonitoredState({
-      managedBy: "aurral",
+      managed: true,
       monitorMode: null,
       metadata: { monitored: false },
     }),
@@ -164,7 +158,7 @@ test("album monitored state reads the library page shape", () => {
 test("a server response for the album overrides the stored library metadata", () => {
   assert.equal(
     getAlbumMonitoredState({
-      managedBy: "aurral",
+      managed: true,
       monitored: false,
       monitorMode: "unmonitored",
       metadata: { monitored: true },
@@ -173,7 +167,7 @@ test("a server response for the album overrides the stored library metadata", ()
   );
   assert.equal(
     getAlbumMonitoredState({
-      managedBy: "aurral",
+      managed: true,
       monitored: true,
       monitorMode: "monitored",
       metadata: { monitored: false },
@@ -183,7 +177,7 @@ test("a server response for the album overrides the stored library metadata", ()
 });
 
 test("albums that Aurral does not manage have no monitored toggle", () => {
-  assert.equal(getAlbumMonitoredState({ managedBy: null, monitored: true }), null);
+  assert.equal(getAlbumMonitoredState({ managed: false, monitored: true }), null);
   assert.equal(getAlbumMonitoredState({ monitored: true }), null);
   assert.equal(getAlbumMonitoredState(null), null);
 });
@@ -197,25 +191,19 @@ test("anything with missing files is monitored by downloading it, so the menu on
 
 test("the album download is offered for unmonitored Aurral albums with missing tracks", () => {
   const album = {
-    managedBy: "aurral",
+    managed: true,
     monitored: false,
     monitorMode: null,
     releaseGroupMbid: "rg",
   };
-  assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: true }), true);
-  assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: false }), false);
+  assert.equal(canDownloadAlbum(album, { hasMissingTracks: true }), true);
+  assert.equal(canDownloadAlbum(album, { hasMissingTracks: false }), false);
+  assert.equal(canDownloadAlbum({ ...album, monitored: true }, { hasMissingTracks: true }), false);
   assert.equal(
-    canDownloadAurralAlbum({ ...album, monitored: true }, { hasMissingTracks: true }),
+    canDownloadAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }),
     false,
   );
-  assert.equal(
-    canDownloadAurralAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }),
-    false,
-  );
-  assert.equal(
-    canDownloadAurralAlbum({ ...album, managedBy: null }, { hasMissingTracks: true }),
-    false,
-  );
+  assert.equal(canDownloadAlbum({ ...album, managed: false }, { hasMissingTracks: true }), false);
 });
 
 test("unmonitoring asks first only while downloads are unfinished", () => {

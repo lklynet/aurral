@@ -6,11 +6,11 @@ import {
   getLibraryTrackPath,
   type LibraryTrackFile,
 } from "./libraryQueryService.ts";
-import { getManagedByMap, type LibraryOwner } from "./libraryManagementStore.ts";
+import { getManagementMap } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import type { LibraryMetadata } from "./libraryMetadata.ts";
 
-type ManagementByEntityId = ReturnType<typeof getManagedByMap>;
+type ManagementByEntityId = ReturnType<typeof getManagementMap>;
 
 type LibraryArtistRecord = {
   id: number;
@@ -37,7 +37,7 @@ type LibraryAlbumRecord = {
   albumArtist: string | null;
   releaseDate: string | null;
   metadata: LibraryMetadata | null;
-  managedBy?: LibraryOwner | null;
+  managed?: boolean;
   source?: string | null;
   trackIds: number[];
   sources: string[];
@@ -99,7 +99,7 @@ const buildArtist = (
     identityKey: artist.identityKey,
     providerId,
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
-    managedBy: management?.managedBy ?? null,
+    managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
     mbid: artist.mbid,
     foreignArtistId: artist.metadata?.foreignArtistId || artist.mbid || artist.identityKey,
@@ -108,12 +108,6 @@ const buildArtist = (
     sortName: artist.sortName,
     addedAt: null,
     monitored: Boolean(artist.metadata?.monitored),
-    monitorOption:
-      artist.metadata?.monitorOption ||
-      artist.metadata?.addOptions?.monitor ||
-      artist.metadata?.monitor ||
-      "none",
-    addOptions: artist.metadata?.addOptions || null,
     statistics: {
       albumCount: hasSummary ? Number(artist.albumCount || 0) : artistAlbums.length,
       trackCount,
@@ -135,7 +129,7 @@ const buildAlbum = (
     .map((trackId) => tracksById.get(trackId))
     .filter(Boolean) as LibraryTrackRecord[];
   const sizeOnDisk = albumTracks.reduce((total, track) => {
-    const file = selectCanonicalFile(track.files, album.id, album.managedBy);
+    const file = selectCanonicalFile(track.files, album.id, album.managed);
     return total + (file?.available ? Number(file.size || 0) : 0);
   }, 0);
   const trackFileCount = albumTracks.filter((track) =>
@@ -148,7 +142,7 @@ const buildAlbum = (
     identityKey: album.identityKey,
     providerId,
     source: album.source || (album.sources?.length === 1 ? album.sources[0] : null),
-    managedBy: management?.managedBy ?? null,
+    managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
     providerArtistId: album.metadata?.artistId ?? null,
     artistId: album.artistId,
@@ -164,7 +158,7 @@ const buildAlbum = (
     addedAt: null,
     monitored: Boolean(album.metadata?.monitored),
     trackListComplete:
-      management?.managedBy !== "aurral" ||
+      !management ||
       album.metadata?.trackListComplete === true ||
       Boolean(album.metadata?.trackList?.release),
     statistics: {
@@ -180,7 +174,7 @@ const buildAlbum = (
 };
 
 const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
-  const file: LibraryTrackFile | null = selectCanonicalFile(track.files, album.id, album.managedBy);
+  const file: LibraryTrackFile | null = selectCanonicalFile(track.files, album.id, album.managed);
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,
@@ -203,7 +197,7 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
     streamFormat: file?.format || null,
     addedAt: null,
     source: file?.source || null,
-    managedBy: album.managedBy ?? null,
+    managed: Boolean(album.managed),
     monitorMode: album.monitorMode ?? null,
     monitored: track.monitored !== false,
     available: Boolean(file?.available),
@@ -216,8 +210,8 @@ export function buildLibraryReadModel(library: LibraryReadInput) {
   const artistsById = new Map(artists.map((artist) => [artist.id, artist]));
   const tracksById = new Map(tracks.map((track) => [track.id, track]));
   const management = {
-    artist: getManagedByMap("artist"),
-    album: getManagedByMap("album"),
+    artist: getManagementMap("artist"),
+    album: getManagementMap("album"),
   };
   const readAlbums = albums.map((album) =>
     buildAlbum(album, artistsById, tracksById, management.album),
@@ -256,7 +250,7 @@ export function getLibraryReadModelForArtistPage({
   });
   return {
     artists: (library.artists as LibraryArtistRecord[]).map((artist) =>
-      buildArtist(artist, new Map(), getManagedByMap("artist")),
+      buildArtist(artist, new Map(), getManagementMap("artist")),
     ),
     albums: [],
     tracks: [],

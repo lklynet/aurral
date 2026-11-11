@@ -270,33 +270,6 @@ export function legacyMonitorMode(effective: { rules: MonitorRules } | null | un
   return effective.rules.catalog === "latest" ? "latest" : "future";
 }
 
-// Earlier builds stored one mode per artist. "all" became the default rules;
-// "first" never followed new releases, so its album stays and the artist
-// stops being monitored.
-export function monitoringFromLegacyMode(
-  mode: unknown,
-): ArtistMonitoringRequest | null | undefined {
-  switch (
-    String(mode || "none")
-      .trim()
-      .toLowerCase()
-  ) {
-    case "all":
-      return { useDefault: true, rules: null };
-    case "future":
-      return { useDefault: false, rules: { ...FACTORY_MONITOR_RULES, catalog: "none" } };
-    case "latest":
-      return {
-        useDefault: false,
-        rules: { ...FACTORY_MONITOR_RULES, catalog: "latest", latestCount: 1 },
-      };
-    case "none":
-      return null;
-    default:
-      return undefined;
-  }
-}
-
-export async function listAurralArtistReleases(artistMbid: string) {
+export async function listArtistReleases(artistMbid: string) {
   return listArtistAlbums(artistMbid, { hydrateLimit: 100 });
 }

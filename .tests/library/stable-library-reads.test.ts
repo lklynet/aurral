@@ -392,7 +392,6 @@ test("an artist with unreadable metadata fields keeps the rest of its details", 
     assert.equal(projection?.foreignArtistId, artist.identity_key);
     assert.equal(projection?.monitorNewItems, "all");
     assert.equal(projection?.quality, "standard");
-    assert.deepEqual(projection?.addOptions, { monitor: "none" });
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
