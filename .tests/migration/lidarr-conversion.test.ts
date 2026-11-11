@@ -137,12 +137,15 @@ test("an install that Lidarr ran keeps its music in read-only folders, and its a
   );
   saveReadOnlyFolderPaths([otherFolder]);
 
-  const band = artist("Band", {
-    librarySource: "lidarr",
-    id: 7,
-    monitored: true,
-    genres: ["rock"],
-  });
+  const band = artist(
+    "Band",
+    { librarySource: "lidarr", id: 7, monitored: true, genres: ["rock"] },
+    "11111111-1111-4111-8111-111111111111",
+  );
+  const requestedOnce = artist("Single", {}, "33333333-3333-4333-8333-333333333333");
+  manage("artist", requestedOnce, "lidarr", "none");
+  const unidentified = artist("Unknown");
+  manage("artist", unidentified, "lidarr", "all");
   const record = album(band, "Record", { librarySource: "lidarr", id: 70 });
   const song = track("Song");
   const lidarrFile = path.join(lidarrFolder, "Band", "Record", "01 Song.flac");

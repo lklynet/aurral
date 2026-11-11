@@ -6,6 +6,7 @@ interface DeleteArtistModalProps {
   show: boolean;
   artistName?: string | null;
   libraryArtistName?: string | null;
+  sources?: string[];
   deleteFiles: boolean;
   onDeleteFilesChange: (checked: boolean) => void;
   onCancel: () => void;
@@ -17,6 +18,7 @@ export function DeleteArtistModal({
   show,
   artistName,
   libraryArtistName,
+  sources = [],
   deleteFiles,
   onDeleteFilesChange,
   onCancel,
@@ -33,6 +35,9 @@ export function DeleteArtistModal({
   });
 
   if (!show) return null;
+  const name = artistName || libraryArtistName;
+  const hasLibraryFolderFiles = sources.includes("aurral");
+  const readOnlyOnly = !hasLibraryFolderFiles && sources.includes("readonly");
   return (
     <div className="artist-modal-backdrop">
       <div
@@ -46,12 +51,18 @@ export function DeleteArtistModal({
         <h3 id={titleId} className="artist-modal__title">
           Delete artist
         </h3>
-        <p className="artist-modal__copy">
-          Delete <strong>{artistName || libraryArtistName}</strong> and its albums from your
-          library?
-        </p>
+        {readOnlyOnly ? (
+          <p className="artist-modal__copy">
+            Aurral stops monitoring <strong>{name}</strong> and drops its wanted albums. Its music
+            in read-only folders stays in the Library.
+          </p>
+        ) : (
+          <p className="artist-modal__copy">
+            Delete <strong>{name}</strong> and its albums from your library?
+          </p>
+        )}
 
-        <div>
+        {hasLibraryFolderFiles ? (
           <label className="artist-checkbox-label">
             <input
               type="checkbox"
@@ -66,7 +77,7 @@ export function DeleteArtistModal({
               </p>
             </div>
           </label>
-        </div>
+        ) : null}
 
         <div className="artist-modal__actions">
           <button

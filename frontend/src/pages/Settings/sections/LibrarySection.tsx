@@ -55,7 +55,8 @@ const countLabel = (count: number, word: string) =>
 function folderStatus(folder: ReadOnlyFolder, scanning: boolean) {
   if (!folder.readable) return { text: "Aurral cannot read this folder.", warning: true };
   if (scanning && folder.tracks === 0) return { text: "Scanning…" };
-  return { text: countLabel(folder.tracks, "track") };
+  const tracks = countLabel(folder.tracks, "track");
+  return { text: folder.insideLibraryFolder ? `${tracks}, inside the Library folder` : tracks };
 }
 
 function LibraryFolderGroup() {
@@ -155,6 +156,7 @@ function ReadOnlyFoldersGroup({ onChanged }: { onChanged: () => Promise<void> })
   const [removeBusy, setRemoveBusy] = useState(false);
   const folders = query.data?.folders ?? [];
   const scanning = query.data?.scanning === true;
+  const handover = folders.some((folder) => folder.path === removing && folder.insideLibraryFolder);
 
   const add = async () => {
     setAdding(true);
@@ -278,10 +280,15 @@ function ReadOnlyFoldersGroup({ onChanged }: { onChanged: () => Promise<void> })
       </SettingsGroup>
       <ConfirmModal
         open={Boolean(removing)}
-        title="Remove this read-only folder?"
-        body={`The music in ${removing} leaves the Library. The files stay on disk. Playlist and flow tracks that use them download again.`}
-        confirmLabel="Remove folder"
-        busyLabel="Removing…"
+        title={handover ? "Let Aurral manage this folder?" : "Remove this read-only folder?"}
+        body={
+          handover
+            ? `The music in ${removing} becomes part of the Library folder. Aurral can replace and delete these files like any Library file. Nothing leaves the Library or downloads again.`
+            : `The music in ${removing} leaves the Library. The files stay on disk. Playlist and flow tracks that use them download again.`
+        }
+        confirmLabel={handover ? "Manage folder" : "Remove folder"}
+        tone={handover ? "primary" : "danger"}
+        busyLabel={handover ? "Saving…" : "Removing…"}
         busy={removeBusy}
         onCancel={() => setRemoving(null)}
         onConfirm={remove}

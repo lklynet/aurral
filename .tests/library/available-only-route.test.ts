@@ -284,7 +284,7 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     assert.ok(names.indexOf("Known Empty") < names.indexOf("Owns Some"));
 
     const deleted = await libraryManager.deleteArtist(mbid, false);
-    assert.equal(deleted.success, true);
+    assert.deepEqual(deleted, { success: true, remains: false });
     assert.ok(!(await newest()).includes("Known Empty"));
   } finally {
     libraryManager.planArtistMonitoring = originalPlan;

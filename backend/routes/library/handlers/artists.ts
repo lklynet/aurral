@@ -226,7 +226,14 @@ export default new Hono<AppEnv>()
             isErrorStatus(result?.statusCode) ? result.statusCode : 503,
           );
         }
-        return c.json({ success: true, message: "Artist deleted successfully" }, 200);
+        return c.json(
+          {
+            success: true,
+            remains: result.remains === true,
+            message: "Artist deleted successfully",
+          },
+          200,
+        );
       } catch (error) {
         return c.json(
           { error: "Failed to delete artist", message: asAppError(error)?.message },

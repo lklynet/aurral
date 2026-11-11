@@ -156,7 +156,11 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
 
       const artistIds = db
         .prepare<[], number>(
-          "SELECT entity_id FROM library_management WHERE entity_kind = 'artist' AND managed_by = 'lidarr' ORDER BY entity_id",
+          `SELECT management.entity_id FROM library_management AS management
+           JOIN library_artists AS artist ON artist.id = management.entity_id
+           WHERE management.entity_kind = 'artist' AND management.managed_by = 'lidarr'
+             AND coalesce(management.monitor_mode, 'none') <> 'none' AND artist.mbid IS NOT NULL
+           ORDER BY management.entity_id`,
         )
         .pluck()
         .all();

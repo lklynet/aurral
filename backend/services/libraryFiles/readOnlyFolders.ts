@@ -66,7 +66,7 @@ const countTracksStmt = db
   )
   .pluck();
 
-async function describeFolder(folder: string) {
+async function describeFolder(folder: string, libraryFolder: string) {
   const prefix = folder.endsWith(path.sep) ? folder : `${folder}${path.sep}`;
   const readable = await fs.access(folder, fsConstants.R_OK | fsConstants.X_OK).then(
     () => true,
@@ -75,6 +75,7 @@ async function describeFolder(folder: string) {
   return {
     path: folder,
     readable,
+    insideLibraryFolder: isPathWithin(libraryFolder, folder),
     tracks: countTracksStmt.get(folder, prefix.length, prefix)!,
   };
 }
@@ -86,8 +87,11 @@ function isLibraryScanActive() {
 }
 
 export async function describeReadOnlyFolders() {
+  const libraryFolder = resolveDownloadRoot();
   return {
-    folders: await Promise.all(readOnlyFolderPaths().map(describeFolder)),
+    folders: await Promise.all(
+      readOnlyFolderPaths().map((folder) => describeFolder(folder, libraryFolder)),
+    ),
     scanning: isLibraryScanActive(),
   };
 }
