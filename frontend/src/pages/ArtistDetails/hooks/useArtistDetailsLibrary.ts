@@ -1,57 +1,41 @@
-import { useMemo, useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  getLibraryAlbums,
-  getLibraryArtist,
-  lookupArtistInLibrary,
-  requestAlbumFromSearch,
-} from "../../../utils/api/endpoints/library.ts";
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { requestAlbumFromSearch } from "../../../utils/api/endpoints/library.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
 import {
   buildAlbumRetryPayload,
   formatReleaseWait,
   isAwaitingRelease,
 } from "../../../utils/albumStatus.ts";
-import {
-  deduplicateAlbums,
-  buildLibraryReleaseGroups,
-  isLibraryAlbumComplete,
-  ownedAlbumKey,
-} from "../utils";
+import { buildLibraryReleaseGroups, isLibraryAlbumComplete, ownedAlbumKey } from "../utils";
 import { asApiError } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
-import type { LibraryArtistRecord, useArtistDetailsStream } from "./useArtistDetailsStream.ts";
+import type { useArtistDetails } from "./useArtistDetails.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
 import { getApiErrorMessage, getApiErrorText } from "../../../utils/api/errors.ts";
 
-type ArtistDetailsStream = ReturnType<typeof useArtistDetailsStream>;
+type ArtistDetailsData = ReturnType<typeof useArtistDetails>;
 export type ArtistDetailsLibrary = ReturnType<typeof useArtistDetailsLibrary>;
 type ToastFn = ReturnType<typeof useToast>["showSuccess"];
 export type LibraryAlbumId = string | number;
-type LibraryAlbums = ArtistDetailsStream["libraryAlbums"];
-export type LibraryAlbum = LibraryAlbums[number];
+export type LibraryAlbum = ArtistDetailsData["libraryAlbums"][number];
 
 type ArtistDetailsLibraryOptions = Pick<
-  ArtistDetailsStream,
+  ArtistDetailsData,
   | "artist"
   | "libraryArtist"
-  | "setLibraryArtist"
   | "libraryAlbums"
-  | "setLibraryAlbums"
   | "existsInLibrary"
-  | "setExistsInLibrary"
   | "ownedAlbums"
+  | "refreshLibrary"
 > & {
   showSuccess: ToastFn;
   showError: ToastFn;
   showInfo: ToastFn;
 };
 
-const invalidateLibraryQueries = (
-  mbid: string | null = null,
-  artistId: string | number | null = null,
-) => {
+const invalidateLibraryQueries = (mbid: string | null = null) => {
   const queryKeysToInvalidate = [
     queryKeys.libraryPagePrefix,
     queryKeys.libraryViewPrefix,
@@ -65,7 +49,6 @@ const invalidateLibraryQueries = (
       queryKeys.libraryLookupDetails(mbid),
     );
   }
-  if (artistId != null) queryKeysToInvalidate.push(queryKeys.libraryAlbums(artistId));
   return Promise.all(
     queryKeysToInvalidate.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
   );
@@ -74,12 +57,10 @@ const invalidateLibraryQueries = (
 export function useArtistDetailsLibrary({
   artist,
   libraryArtist,
-  setLibraryArtist,
   libraryAlbums,
-  setLibraryAlbums,
   existsInLibrary,
-  setExistsInLibrary,
   ownedAlbums,
+  refreshLibrary,
   showSuccess,
   showError,
   showInfo,
@@ -87,59 +68,15 @@ export function useArtistDetailsLibrary({
   const [requestingAlbum, setRequestingAlbum] = useState<string | null>(null);
   const [reSearchingMissingAlbums, setReSearchingMissingAlbums] = useState(false);
   const { isAlbumDownloading } = useActiveDownloads();
-  const libraryAlbumsQueryKey = queryKeys.libraryAlbums(libraryArtist?.id);
-  const libraryAlbumsQuery = useQuery<LibraryAlbums>({
-    queryKey: libraryAlbumsQueryKey,
-    queryFn: ({ signal }) => getLibraryAlbums(libraryArtist!.id!, { signal }),
-    enabled: Boolean(libraryArtist?.id),
-    initialData: libraryAlbums,
-    initialDataUpdatedAt: 0,
-    staleTime: 0,
-  });
   const requestAlbumMutation = useMutation({
     mutationFn: requestAlbumFromSearch,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryAlbumLookupPrefix }),
   });
 
-  useEffect(() => {
-    if (!libraryArtist?.id || !Array.isArray(libraryAlbumsQuery.data)) return;
-    setLibraryAlbums(deduplicateAlbums(libraryAlbumsQuery.data));
-  }, [libraryAlbumsQuery.data, libraryArtist?.id, setLibraryAlbums]);
-
   const reloadLibraryState = async () => {
     const mbid = artist?.id || libraryArtist?.mbid;
-    if (!mbid) return;
-    await invalidateLibraryQueries(mbid);
-    const lookup = await lookupArtistInLibrary(mbid, { bypassCache: true });
-    if (lookup.exists && lookup.artist) {
-      await resolveLookupArtist(lookup.artist);
-    } else {
-      setExistsInLibrary(false);
-      setLibraryArtist(null);
-      setLibraryAlbums([]);
-    }
-  };
-
-  const resolveLookupArtist = async (lookupArtist: LibraryArtistRecord | null) => {
-    if (!lookupArtist) return null;
-    const lookupMbid = lookupArtist.mbid || lookupArtist.foreignArtistId;
-    let fullArtist: LibraryArtistRecord;
-    try {
-      fullArtist = await getLibraryArtist(lookupMbid, { bypassCache: true });
-    } catch {
-      fullArtist = {
-        ...lookupArtist,
-        foreignArtistId: lookupArtist.foreignArtistId || lookupArtist.mbid!,
-      };
-    }
-    if (!fullArtist?.id) return null;
-    setLibraryArtist(fullArtist);
-    setExistsInLibrary(true);
-    setLibraryAlbums(
-      deduplicateAlbums(await getLibraryAlbums(fullArtist.id, { bypassCache: true })),
-    );
-    return fullArtist;
+    if (mbid) await invalidateLibraryQueries(mbid);
   };
 
   const handleRequestAlbum = async (albumId: string, title: string) => {
@@ -149,54 +86,16 @@ export function useArtistDetailsLibrary({
       if (!artist?.id || !artist?.name) {
         throw new Error("Artist information not available");
       }
-      const artistMbid = artist.id;
-
       const result = await requestAlbumMutation.mutateAsync({
         albumMbid: albumId,
         albumName: title,
         artistMbid: artist.id,
         artistName: artist.name,
       });
-      const addedArtist = result?.artist;
-      const addedAlbum = result?.album;
-      if (!addedArtist?.id || !addedAlbum?.id) {
+      if (!result?.artist?.id || !result?.album?.id) {
         throw new Error("The album request did not complete");
       }
-      const addedAlbumId = addedAlbum.id;
-      const addedArtistId = addedArtist.id;
-
-      setLibraryArtist((previous) => {
-        const foreignArtistId = addedArtist.foreignArtistId || addedArtist.mbid || artistMbid;
-        if (addedArtist.managed) {
-          return { ...previous, ...addedArtist, id: addedArtistId, foreignArtistId };
-        }
-        return {
-          ...previous,
-          ...addedArtist,
-          id: addedArtistId,
-          managed: Boolean(previous?.managed),
-          foreignArtistId,
-        };
-      });
-      setExistsInLibrary(true);
-      setLibraryAlbums((previous) =>
-        deduplicateAlbums([
-          ...previous.filter(
-            (album) =>
-              album.id !== `pending-${albumId}` &&
-              album.mbid !== albumId &&
-              album.foreignAlbumId !== albumId,
-          ),
-          {
-            ...addedAlbum,
-            id: addedAlbumId,
-            managed: true,
-            mbid: addedAlbum.mbid || addedAlbum.foreignAlbumId || albumId,
-            foreignAlbumId: addedAlbum.foreignAlbumId || addedAlbum.mbid || albumId,
-            monitored: true,
-          },
-        ]),
-      );
+      await refreshLibrary();
       const outcome = describeAlbumRequestResult(result, title);
       (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {

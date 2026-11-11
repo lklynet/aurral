@@ -401,6 +401,15 @@ export interface ListenHistorySourcesRow {
   account: string;
 }
 
+export interface ListenbrainzReleaseGroupsRow {
+  mbid: string | null;
+  first_release_date: string | null;
+  dates_checked_at: number | null;
+  listen_count: number | null;
+  listener_count: number | null;
+  popularity_checked_at: number | null;
+}
+
 export interface MetadataProviderBudgetRow {
   base_url: string | null;
   next_request_at: number;

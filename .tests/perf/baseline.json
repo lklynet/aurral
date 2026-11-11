@@ -121,15 +121,27 @@
   },
   "discover artist": {
     "queries": {
-      "cold": 21,
-      "warm": 4
+      "cold": 61,
+      "warm": 29
     },
-    "bytes": 379,
+    "bytes": 542,
     "scans": [],
     "calls": {
-      "brainzmash": {
+      "api.deezer.com": {
+        "cold": 2,
+        "warm": 1
+      },
+      "api.listenbrainz.org": {
         "cold": 1,
+        "warm": 1
+      },
+      "brainzmash": {
+        "cold": 2,
         "warm": 0
+      },
+      "labs.api.listenbrainz.org": {
+        "cold": 1,
+        "warm": 1
       }
     }
   },
@@ -163,23 +175,19 @@
   },
   "similar artists": {
     "queries": {
-      "cold": 29,
-      "warm": 5
+      "cold": 20,
+      "warm": 6
     },
     "bytes": 14,
     "scans": [],
     "calls": {
-      "api.deezer.com": {
-        "cold": 2,
-        "warm": 1
-      },
       "brainzmash": {
-        "cold": 2,
+        "cold": 1,
         "warm": 0
       },
       "labs.api.listenbrainz.org": {
         "cold": 1,
-        "warm": 1
+        "warm": 0
       }
     }
   },

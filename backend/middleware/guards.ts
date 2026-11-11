@@ -98,7 +98,6 @@ const isOpen = (method: string, path: string) =>
 const tokenPaths = [
   /^\/api\/library\/stream\/[^/]+\/[^/]+$/i,
   /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i,
-  /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i,
   /^\/api\/playlists\/stream\/[^/]+$/i,
   /^\/api\/playlists\/staging-stream\/[^/]+$/i,
 ];

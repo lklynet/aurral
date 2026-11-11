@@ -1,5 +1,4 @@
-import ArtworkImage from "../../../components/ArtworkImage";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Music, RefreshCw } from "../../../components/icons";
 import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
@@ -25,6 +24,7 @@ import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 import { artworkHoverTint } from "../../../utils/imageColors.ts";
 import TooltipButton from "../../../components/TooltipButton";
 import { albumPath } from "../../../../../lib/albumPath.ts";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 
 const viewModes = [
   { value: "popular", label: "Popular releases" },
@@ -79,8 +79,6 @@ const getVisibleReleases = (
 export function ArtistDetailsReleaseGroups({
   artist,
   loadingReleases,
-  albumCovers,
-  fulfilledCoverIds,
   artistCoverImage,
   getAlbumStatus,
   libraryReleaseGroups,
@@ -91,13 +89,10 @@ export function ArtistDetailsReleaseGroups({
   handleRequestAlbum,
   requestingAlbum,
   artistName,
-  onVisibleCoverIdsChange,
   viewAllLink,
 }: {
   artist: Partial<ArtistDetailsResponse>;
   loadingReleases?: boolean;
-  albumCovers: Record<string, string | undefined>;
-  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
   artistCoverImage: string | null | undefined;
   getAlbumStatus: ReturnType<typeof useArtistDetailsLibrary>["getAlbumStatus"];
   libraryReleaseGroups: LibraryReleaseGroup[];
@@ -108,7 +103,6 @@ export function ArtistDetailsReleaseGroups({
   handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
   requestingAlbum: string | null;
   artistName: string;
-  onVisibleCoverIdsChange?: (ids: string[]) => void;
   viewAllLink: { to: string; state?: object };
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
@@ -126,17 +120,6 @@ export function ArtistDetailsReleaseGroups({
     () => getVisibleReleases(releaseGroups, libraryReleaseGroups, viewMode, previewLimit),
     [libraryReleaseGroups, previewLimit, releaseGroups, viewMode],
   );
-
-  useEffect(() => {
-    onVisibleCoverIdsChange?.(
-      visibleReleaseGroups.flatMap((item) => (item.id && !item.libraryAlbumId ? [item.id] : [])),
-    );
-  }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
-
-  const coverOptions = (releaseGroup: ReleaseGroup) => ({
-    artistFallback: artistCoverImage,
-    resolved: fulfilledCoverIds?.has(releaseGroup.id),
-  });
 
   const releaseLink = (releaseGroup: ReleaseGroup, coverUrl: string) =>
     releaseGroup.libraryAlbumId
@@ -208,11 +191,7 @@ export function ArtistDetailsReleaseGroups({
         {visibleReleaseGroups.map((releaseGroup) => {
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);
-          const coverUrl = getReleaseGroupCoverUrl(
-            releaseGroup,
-            albumCovers,
-            coverOptions(releaseGroup),
-          );
+          const coverUrl = getReleaseGroupCoverUrl(releaseGroup);
           return (
             <article
               key={releaseGroup.id}
@@ -221,13 +200,18 @@ export function ArtistDetailsReleaseGroups({
               {...artworkHoverTint}
             >
               <div className="artist-release-card__cover" data-artwork>
-                {coverUrl ? (
-                  <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="artist-release-card__placeholder">
-                    <Music className="artist-icon-lg" />
-                  </div>
-                )}
+                <ReleaseCoverImage
+                  src={coverUrl}
+                  fallback={artistCoverImage}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  placeholder={
+                    <div className="artist-release-card__placeholder">
+                      <Music className="artist-icon-lg" />
+                    </div>
+                  }
+                />
                 <div className="artist-release-card__action">
                   {status?.status === "available" || status?.status === "added" ? (
                     <ReleaseStatusCheck partial={status?.partial} />
@@ -253,7 +237,10 @@ export function ArtistDetailsReleaseGroups({
                 </div>
               </div>
               <h3 className="artist-release-card__title artist-clamp-2">
-                <OptionalLink link={releaseLink(releaseGroup, coverUrl)} className="card-link">
+                <OptionalLink
+                  link={releaseLink(releaseGroup, coverUrl || artistCoverImage || "")}
+                  className="card-link"
+                >
                   {releaseGroup.title}
                 </OptionalLink>
               </h3>

@@ -8,7 +8,7 @@ import { parseFile } from "music-metadata";
 import taglib from "node-taglib-sharp";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
-import { json, stubFetch } from "../helpers/artistStream.ts";
+import { json, stubFetch } from "../helpers/stubFetch.ts";
 import { useFakeClock } from "../helpers/fakeClock.ts";
 
 useFakeClock();

@@ -17,6 +17,7 @@ const [
   { default: search },
   { default: similar },
   { FlowTrackSource },
+  { listenbrainzCache },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -26,12 +27,14 @@ const [
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/routes/artists/handlers/similar.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
+  () => import("../../backend/services/apiClients/listenbrainz.ts"),
 );
 
 const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const LIBRARY = { name: "Library One", mbid: mbid(2) };
 const QUIET = { name: "Quiet Artist", mbid: mbid(3) };
+const NEIGHBOR = { name: "Neighbor Artist", mbid: mbid(4) };
 const RELATED = { name: "Related Pick", mbid: mbid(31) };
 const RELATED_PHOTO = "https://cdn-images.dzcdn.net/images/artist/related/1000x1000.jpg";
 const CLOSE_PICK = { name: "Close Pick", mbid: mbid(11) };
@@ -48,6 +51,13 @@ const similarBySeed = new Map([
     ],
   ],
   [LIBRARY.mbid, [{ ...SHARED_PICK, score: 800 }]],
+  [
+    NEIGHBOR.mbid,
+    [
+      { ...CLOSE_PICK, score: 900 },
+      { ...SHARED_PICK, score: 450 },
+    ],
+  ],
 ]);
 
 const originalFetch = globalThis.fetch;
@@ -241,19 +251,29 @@ test("without a Last.fm key tag search lists MusicBrainz's artists for the tag",
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
 });
 
-test("without a Last.fm key artist pages list ListenBrainz similar artists", async () => {
-  const response = await similar.request(
-    `/artists/${LIKED.mbid}/similar?${new URLSearchParams({ artistName: LIKED.name })}`,
-  );
-  const body: { artists: { name: string; match: number }[] } = await response.json();
+test("without a Last.fm key artist pages list ListenBrainz similar artists and keep them across restarts", async () => {
+  const loadSimilar = async () => {
+    const response = await similar.request(
+      `/artists/${NEIGHBOR.mbid}/similar?${new URLSearchParams({ artistName: NEIGHBOR.name })}`,
+    );
+    const body: { artists: { name: string; match: number }[] } = await response.json();
+    return body.artists.map((artist) => [artist.name, artist.match]);
+  };
+  const expected = [
+    [CLOSE_PICK.name, 100],
+    [SHARED_PICK.name, 50],
+  ];
 
-  assert.deepEqual(
-    body.artists.map((artist) => [artist.name, artist.match]),
-    [
-      [CLOSE_PICK.name, 100],
-      [SHARED_PICK.name, 50],
-      [LIBRARY.name, 33],
-    ],
+  assert.deepEqual(await loadSimilar(), expected);
+  listenbrainzCache.flushAll();
+  assert.deepEqual(await loadSimilar(), expected);
+  assert.equal(
+    requests.filter(
+      (url) =>
+        url.pathname === "/similar-artists/json" &&
+        url.searchParams.get("artist_mbids") === NEIGHBOR.mbid,
+    ).length,
+    1,
   );
 });
 

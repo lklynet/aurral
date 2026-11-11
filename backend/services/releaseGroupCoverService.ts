@@ -194,9 +194,13 @@ const fetchReleaseGroupCoverUncached = async (
   const normalizedAlbumTitle = typeof albumTitle === "string" ? albumTitle.trim() : "";
   let sawTransientError = false;
   let deezerArtistId = null;
+  let deezerArtistName = normalizedArtistName;
+  let deezerAlbumTitle = normalizedAlbumTitle;
   try {
     const album = await getAlbumByMbid(releaseGroupMbid);
     deezerArtistId = getLinkedDeezerArtistId(album?.artists?.[0]?.links);
+    deezerArtistName ||= album?.artists?.[0]?.name || "";
+    deezerAlbumTitle ||= album?.title || "";
     const result = await buildReleaseGroupCoverResult(cacheKey, album);
     if (result.imageUrl) {
       return result;
@@ -240,9 +244,9 @@ const fetchReleaseGroupCoverUncached = async (
   const deezerCover = await fetchDeezerAlbumCover(
     cacheKey,
     {
-      artistName: normalizedArtistName,
+      artistName: deezerArtistName,
       deezerArtistId,
-      albumTitle: normalizedAlbumTitle,
+      albumTitle: deezerAlbumTitle,
     },
     { persist: false },
   );
@@ -295,33 +299,18 @@ const normalizeBatchItem = (item: BatchItemInput) => {
 
 type BatchItem = NonNullable<ReturnType<typeof normalizeBatchItem>>;
 
-export const attachCachedCoverUrls = <T extends { id?: string | null }>(
-  releaseGroups: T[] = [],
-  limit: number | null = null,
-) => {
-  if (!Array.isArray(releaseGroups) || releaseGroups.length === 0) {
-    return releaseGroups;
-  }
-  const targets =
-    typeof limit === "number" && limit > 0 ? releaseGroups.slice(0, limit) : releaseGroups;
-  const targetIds = new Set(targets.map((releaseGroup) => releaseGroup?.id).filter(Boolean));
-  if (targetIds.size === 0) {
-    return releaseGroups;
-  }
-  const cachedEntries = dbOps.getImages([...targetIds].map((id) => `${RG_CACHE_PREFIX}${id}`));
+export const withCoverUrls = <T extends { id: string }>(releaseGroups: T[]) => {
+  if (!releaseGroups.length) return [];
+  const cached = dbOps.getImages(releaseGroups.map(({ id }) => `${RG_CACHE_PREFIX}${id}`));
   return releaseGroups.map((releaseGroup) => {
-    if (!releaseGroup?.id || !targetIds.has(releaseGroup.id)) {
-      return releaseGroup;
-    }
-    const cached = cachedEntries[`${RG_CACHE_PREFIX}${releaseGroup.id}`];
-    if (!cached?.imageUrl || cached.imageUrl === "NOT_FOUND") {
-      return releaseGroup;
-    }
-    const coverUrl = toPublicCoverUrl(cached.imageUrl);
-    if (!coverUrl) {
-      return releaseGroup;
-    }
-    return { ...releaseGroup, coverUrl };
+    const imageUrl = cached[`${RG_CACHE_PREFIX}${releaseGroup.id}`]?.imageUrl ?? null;
+    return {
+      ...releaseGroup,
+      coverUrl:
+        imageUrl === "NOT_FOUND"
+          ? null
+          : toPublicCoverUrl(imageUrl) || releaseGroupCoverImageUrl(releaseGroup.id),
+    };
   });
 };
 

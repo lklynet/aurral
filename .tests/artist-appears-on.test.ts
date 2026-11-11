@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { testClient } from "hono/testing";
 import { test } from "vite-plus/test";
 
 import appearsOn from "../backend/routes/artists/handlers/appearsOn.ts";
-import { json, openArtistStream, stubFetch } from "./helpers/artistStream.ts";
+import { dbOps } from "../backend/db/helpers/index.ts";
+import { json, stubFetch } from "./helpers/stubFetch.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 
 useFakeClock();
@@ -106,52 +108,41 @@ test("appears-on lists other artists' releases once each, newest first, and neve
   assert.equal(response.body.hasMore, false);
 });
 
-test("artist stream sends appearances without waiting for the discography", async (t: import("vite-plus/test").TestContext) => {
+test("appears-on follows the artist's saved MusicBrainz ID", async (t) => {
   const mbid = "44444444-4444-4444-8444-444444444444";
-  let releaseDiscography!: () => void;
-  const discographyGate = new Promise<void>((resolve) => {
-    releaseDiscography = resolve;
-  });
-  stubFetch(t, async (url: URL) => {
-    if (isTrackArtistBrowse(url, mbid)) {
-      return json({
-        "release-count": 1,
-        "release-offset": 0,
-        releases: [
-          mbRelease({
-            id: "r-feature",
-            groupId: "rg-stream-feature",
-            title: "Host Album",
-            date: "2010-09-09",
-            by: credit(GUEST_HOST, "Host Artist"),
-          }),
-        ],
-      });
-    }
-    if (url.pathname === `/artist/${mbid}`) await discographyGate;
-    return json({}, 404);
-  });
-
-  const stream = openArtistStream(mbid, { artistName: "Guest Artist", appearsOnLimit: "24" });
+  const corrected = "77777777-7777-4777-8777-777777777777";
+  dbOps.setArtistOverride(mbid, { musicbrainzId: corrected, deezerArtistId: null });
   t.onTestFinished(() => {
-    releaseDiscography();
-    stream.close();
+    dbOps.deleteArtistOverride(mbid);
+  });
+  stubFetch(t, (url) => {
+    if (!isTrackArtistBrowse(url, corrected)) return json({}, 404);
+    return json({
+      "release-count": 1,
+      "release-offset": 0,
+      releases: [
+        mbRelease({
+          id: "r-corrected",
+          groupId: "rg-corrected",
+          title: "Host Album",
+          date: "2010-09-09",
+          by: credit(GUEST_HOST, "Host Artist"),
+        }),
+      ],
+    });
   });
 
-  const appearsOn = await stream.waitFor(
-    ({ event, data }) => event === "artist" && "appears-on-release-groups" in data,
-  );
-  assert.deepEqual(
-    appearsOn.data["appears-on-release-groups"].map((item: { id: string }) => item.id),
-    ["rg-stream-feature"],
-  );
-  assert.equal(
-    stream.events().some(({ data }) => "release-groups" in data),
-    false,
-  );
+  const response = await testClient(appearsOn).artists[":mbid"]["appears-on"].$post({
+    param: { mbid },
+    json: { limit: 24 },
+  });
+  const body = await response.json();
 
-  releaseDiscography();
-  await stream.waitFor(({ event }) => event === "complete");
+  assert.ok("items" in body);
+  assert.deepEqual(
+    body.items.map(({ id }) => id),
+    ["rg-corrected"],
+  );
 });
 
 test("appears-on skips a release Aurral can't read and still pages by what MusicBrainz sent", async (t) => {

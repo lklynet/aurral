@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { testClient } from "hono/testing";
 import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 import { signedInAs } from "./helpers/honoApp.ts";
@@ -18,21 +19,14 @@ vi.mock("node:zlib", async (importOriginal) => {
   };
 });
 
-const [
-  state,
-  { dbOps },
-  { getArtistImage },
-  { default: details },
-  { default: artistCover },
-  { default: artistStream },
-] = await setupIsolatedBackend(
-  "artist-image-race",
-  () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/imageService.ts"),
-  () => import("../backend/routes/artists/handlers/details.ts"),
-  () => import("../backend/routes/artists/handlers/cover.ts"),
-  () => import("../backend/routes/artists/handlers/stream.ts"),
-);
+const [state, { dbOps }, { getArtistImage }, { default: details }, { default: artistCover }] =
+  await setupIsolatedBackend(
+    "artist-image-race",
+    () => import("../backend/db/helpers/index.ts"),
+    () => import("../backend/services/imageService.ts"),
+    () => import("../backend/routes/artists/handlers/details.ts"),
+    () => import("../backend/routes/artists/handlers/cover.ts"),
+  );
 
 useFakeClock();
 
@@ -127,7 +121,10 @@ async function putOverride(mbid: string, body: { musicbrainzId?: string }) {
 }
 
 async function cover(mbid: string) {
-  const response = await app.request(`/artists/${mbid}/cover`);
+  const response = await testClient(app).artists[":mbid"].cover.$get({
+    param: { mbid },
+    query: {},
+  });
   assert.equal(response.status, 200);
   return response.json();
 }
@@ -292,7 +289,7 @@ test("an artist without an image never takes a namesake's image or page", async 
   }
 });
 
-test("an old stream not-found result cannot overwrite the current image", async () => {
+test("an old cover not-found result cannot overwrite the current image", async () => {
   const mbid = artistId(12);
   const replacement = artistId(112);
   const oldGate = gate();
@@ -309,12 +306,7 @@ test("an old stream not-found result cannot overwrite the current image", async 
       picture_big: null,
     };
   });
-  const oldStream = Promise.resolve(artistStream.request(`/artists/${mbid}/stream`)).then(
-    async (response) => {
-      assert.equal(response.status, 200);
-      return response.text();
-    },
-  );
+  const oldCover = cover(mbid);
   await oldGate.started;
   let latest:
     | Promise<{
@@ -330,9 +322,9 @@ test("an old stream not-found result cannot overwrite the current image", async 
     assert.equal((await latest).url, newImage);
   } finally {
     oldGate.release();
-    await Promise.allSettled([oldStream, latest]);
+    await Promise.allSettled([oldCover, latest]);
   }
-  assert.match(await oldStream, /event: cover\ndata: \{"images":\[\]\}/);
+  assert.deepEqual((await oldCover).images, []);
   assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
 });
 

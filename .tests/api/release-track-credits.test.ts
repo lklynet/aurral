@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import releaseGroup from "../../backend/routes/artists/handlers/releaseGroup.ts";
-import { json, stubFetch } from "../helpers/artistStream.ts";
+import { json, stubFetch } from "../helpers/stubFetch.ts";
 import { useFakeClock } from "../helpers/fakeClock.ts";
 
 useFakeClock();

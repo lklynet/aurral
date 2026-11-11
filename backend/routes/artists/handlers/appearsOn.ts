@@ -8,6 +8,8 @@ import {
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
+import { dbOps } from "../../../db/helpers/index.ts";
 
 const clamped = (min: number, max: number, fallback: number) =>
   v.optional(
@@ -27,10 +29,11 @@ const appearsOnBody = v.object({
 export default new Hono<AppEnv>()
   .basePath("/artists")
   .post("/:mbid/appears-on", validate("json", appearsOnBody), async (c) => {
-    const mbid = c.req.param("mbid");
-    if (!UUID_REGEX.test(mbid)) {
+    const routeMbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(routeMbid)) {
       return c.json({ error: "Invalid MBID format" }, 400);
     }
+    const mbid = dbOps.getArtistOverride(routeMbid)?.musicbrainzId || routeMbid;
 
     const { limit, offset, excludeIds } = c.req.valid("json");
     const excluded = new Set(excludeIds.map((id) => id.trim()).filter((id) => UUID_REGEX.test(id)));
@@ -53,7 +56,7 @@ export default new Hono<AppEnv>()
         });
         unseenItems = availableItems.filter((item) => !excluded.has(item.id));
       }
-      const items = unseenItems.slice(0, limit);
+      const items = withCoverUrls(unseenItems.slice(0, limit));
       return c.json(
         {
           items,

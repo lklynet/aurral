@@ -46,10 +46,23 @@ const dropLidarrMode: Migration = (db) => {
   `);
 };
 
+const storeListenbrainzReleaseGroups: Migration = (db) =>
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS listenbrainz_release_groups (
+      mbid TEXT PRIMARY KEY,
+      first_release_date TEXT,
+      dates_checked_at INTEGER,
+      listen_count INTEGER,
+      listener_count INTEGER,
+      popularity_checked_at INTEGER
+    );
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
   dropLidarrMode,
+  storeListenbrainzReleaseGroups,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

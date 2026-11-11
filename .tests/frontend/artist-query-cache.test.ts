@@ -2,33 +2,6 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-test("artist REST details coalesce identical requests through Query", async (t: import("vite-plus/test").TestContext) => {
-  vi.resetModules();
-  const previousFetch = globalThis.fetch;
-  let requestCount = 0;
-  globalThis.fetch = async () => {
-    requestCount += 1;
-    return new Response(JSON.stringify({ id: "artist-1", name: "Artist" }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-  t.onTestFinished(async () => {
-    globalThis.fetch = previousFetch;
-  });
-
-  const { getArtistDetails } = await import("../../frontend/src/utils/api/endpoints/artists.ts");
-  const options = { mode: "core", releaseTypes: ["Album"] };
-  const [first, second] = await Promise.all([
-    getArtistDetails("artist-1", "Artist", options),
-    getArtistDetails("artist-1", "Artist", options),
-  ]);
-
-  assert.equal(requestCount, 1);
-  assert.deepEqual(first, second);
-  assert.equal(first.id, "artist-1");
-});
-
 test("artist cover refreshes do not reuse or get overwritten by normal requests", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const previousFetch = globalThis.fetch;

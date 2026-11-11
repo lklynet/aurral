@@ -1,8 +1,5 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
-import {
-  listenbrainzGetReleaseGroupDates,
-  listenbrainzGetReleaseGroupListens,
-} from "../../../services/apiClients/listenbrainz.ts";
+import { listenbrainzGetReleaseGroupStats } from "../../../services/apiClients/listenbrainz.ts";
 import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { isKnownGenre } from "../../../services/musicGenres.ts";
 import type { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients/index.ts";
@@ -75,33 +72,27 @@ export async function getSimilarArtistCards(
 }
 
 const LISTENBRAINZ_WAIT_MS = 2000;
-const LISTENBRAINZ_DATE_LOOKUP_LIMIT = 300;
-
-const settleWithin = <A, B>(waitMs: number, [first, second]: [Promise<A>, Promise<B>]) => {
-  let timer: NodeJS.Timeout | undefined;
-  const deadline = new Promise<Map<string, never>>((resolve) => {
-    timer = setTimeout(resolve, waitMs, new Map<string, never>());
-  });
-  return Promise.all([Promise.race([first, deadline]), Promise.race([second, deadline])]).finally(
-    () => clearTimeout(timer),
-  );
-};
 
 export async function withListenBrainzStats(releaseGroups: ReleaseGroupSummary[]) {
-  if (!releaseGroups.length) return releaseGroups;
-  const undatedIds = releaseGroups
-    .filter((releaseGroup) => !releaseGroup["first-release-date"])
-    .slice(0, LISTENBRAINZ_DATE_LOOKUP_LIMIT)
-    .map(({ id }) => id);
-  const [listens, dates] = await settleWithin(LISTENBRAINZ_WAIT_MS, [
-    listenbrainzGetReleaseGroupListens(releaseGroups.map(({ id }) => id)),
-    listenbrainzGetReleaseGroupDates(undatedIds),
-  ]);
-  return releaseGroups.map((releaseGroup) => ({
-    ...releaseGroup,
-    ...listens.get(releaseGroup.id),
-    "first-release-date": releaseGroup["first-release-date"] || dates.get(releaseGroup.id) || null,
-  }));
+  const { records, pending } = await listenbrainzGetReleaseGroupStats(releaseGroups, {
+    waitMs: LISTENBRAINZ_WAIT_MS,
+  });
+  return {
+    pending,
+    releaseGroups: releaseGroups.map((releaseGroup) => {
+      const record = records.get(releaseGroup.id);
+      return {
+        ...releaseGroup,
+        ...(record?.listen_count &&
+          record.listener_count && {
+            listenCount: record.listen_count,
+            listenerCount: record.listener_count,
+          }),
+        "first-release-date":
+          releaseGroup["first-release-date"] || record?.first_release_date || null,
+      };
+    }),
+  };
 }
 
 export function buildArtistBase(

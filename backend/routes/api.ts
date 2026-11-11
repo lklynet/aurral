@@ -4,7 +4,6 @@ import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { logger } from "../services/logger.ts";
 import artists from "./artists/index.ts";
-import artistStream from "./artists/handlers/stream.ts";
 import auth from "./auth.ts";
 import backup from "./backup.ts";
 import deezer from "./deezer.ts";
@@ -78,7 +77,6 @@ export const api = new Hono<AppEnv>()
   .route("/", playlistImports)
   .route("/", playlistJobs)
   .route("/", playlistWorker)
-  .route("/", artistStream)
   .route("/", artists)
   .route("/", search)
   .route("/", imageProxy)
