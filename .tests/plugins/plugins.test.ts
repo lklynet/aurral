@@ -32,6 +32,7 @@ const [
   { activePlugin, pluginInput, setSafeMode, whilePluginTests },
   { resolveRequestUser },
   { playlistOperationQueue },
+  { logger },
 ] = await setupIsolatedBackend(
   "plugins",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -50,6 +51,7 @@ const [
   () => import("../../backend/services/plugins/pluginStore.ts"),
   () => import("../../backend/services/auth.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
+  () => import("../../backend/services/logger.ts"),
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
@@ -233,10 +235,19 @@ test("an error the plugin throws is reported without turning it off", async () =
   );
   await turnOn("down");
   const playlistId = ownedPlaylist();
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await run(owner, "down", "send", playlistId);
-    assert.equal((await response.json()).error, "Plugin down: Box is unreachable");
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await run(owner, "down", "send", playlistId);
+      assert.equal((await response.json()).error, "Plugin down: Box is unreachable");
+    }
+    assert.deepEqual(
+      warn.mock.calls.map(([category, message]) => [category, message]),
+      Array.from({ length: 3 }, () => ["plugin:down", "Box is unreachable"]),
+    );
+  } finally {
+    warn.mockRestore();
   }
   const [down] = (await listPlugins()).plugins;
   assert.equal(down?.enabled, true);

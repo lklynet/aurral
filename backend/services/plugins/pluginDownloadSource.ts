@@ -34,6 +34,7 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
     input: Record<string, unknown>,
     output: Schema,
     timeoutMs: number,
+    options?: { logFailures: boolean },
   ) => {
     try {
       return await callPlugin(
@@ -41,6 +42,7 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
         { path, input: { ...pluginInput(plugin), ...input } },
         output,
         timeoutMs,
+        options,
       );
     } catch (error) {
       if (error instanceof PluginError) throw new DownloadSourceError(error.message);
@@ -56,7 +58,9 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
         search: (track, upgrade) =>
           call("downloadSource.search", { track, upgrade }, searchResults, SEARCH_TIMEOUT_MS),
         download: (input) =>
-          call("downloadSource.download", input, trackDownloadResult, DOWNLOAD_TIMEOUT_MS),
+          call("downloadSource.download", input, trackDownloadResult, DOWNLOAD_TIMEOUT_MS, {
+            logFailures: false,
+          }),
       },
     }),
     ...(manifest?.albums === true && {
@@ -64,7 +68,9 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
         search: (album, upgrade) =>
           call("downloadSource.searchAlbum", { album, upgrade }, albumResults, SEARCH_TIMEOUT_MS),
         download: (input) =>
-          call("downloadSource.downloadAlbum", input, albumDownloadResult, DOWNLOAD_TIMEOUT_MS),
+          call("downloadSource.downloadAlbum", input, albumDownloadResult, DOWNLOAD_TIMEOUT_MS, {
+            logFailures: false,
+          }),
         ...(manifest.files && {
           files: {
             list: (id) => call("downloadSource.listFiles", { id }, fileResults, STATUS_TIMEOUT_MS),
@@ -75,7 +81,8 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
         }),
       },
     }),
-    status: (input) => call("downloadSource.status", input, statusResult, STATUS_TIMEOUT_MS),
+    status: (input) =>
+      call("downloadSource.status", input, statusResult, STATUS_TIMEOUT_MS, { logFailures: false }),
     discard: async (id) => {
       await call("downloadSource.discard", { id }, v.unknown(), STATUS_TIMEOUT_MS);
     },
