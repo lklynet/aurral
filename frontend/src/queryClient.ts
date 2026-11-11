@@ -170,11 +170,12 @@ export const queryKeys = {
   artistCover: (mbid: MaybeText): QueryKey => ["artists", "cover", mbid || null],
   releaseGroupDetails: (id: MaybeText): QueryKey => ["artists", "release-group", id],
   releaseTrackCredits: (id: MaybeText): QueryKey => ["artists", "release-track-credits", id],
-  releaseGroupTracks: (id: MaybeText, context: unknown): QueryKey => [
+  releaseGroupTracks: (id: MaybeText): QueryKey => ["artists", "release-group-tracks", id],
+  releaseGroupPreviews: (id: MaybeText, hints: unknown): QueryKey => [
     "artists",
-    "release-group-tracks",
+    "release-group-previews",
     id,
-    context,
+    hints,
   ],
   releaseGroupRatings: (ids: string[]): QueryKey => [
     "artists",

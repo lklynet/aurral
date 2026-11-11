@@ -36,10 +36,10 @@ import {
 } from "../../queryOptions.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import {
-  getReleaseGroupTracks,
   getReleaseTrackCredits,
   type ReleaseGroupTrack,
 } from "../../utils/api/endpoints/artists.ts";
+import { useReleaseGroupTracks } from "../../hooks/useReleaseGroupTracks.ts";
 import { formatArtistCredit } from "../../../../lib/artistCredit.ts";
 import { buildAlbumAddAction, countReleaseTracks } from "../../utils/albumAddAction";
 import { favoriteId, firstAvailableFile } from "../../utils/libraryPageData.ts";
@@ -180,55 +180,20 @@ function AlbumPage() {
   const title = libraryAlbum?.title || release.title || routeSeed?.title || "";
   const headerPending = !title && (libraryLoading || releaseDetailsQuery.isPending);
 
-  const trackContext = useMemo(
-    () =>
-      libraryAlbum
-        ? {
-            artistMbid: libraryArtist?.mbid || locationState?.artistMbid || undefined,
-            artistName: libraryArtist?.name || libraryAlbum.albumArtist || "",
-            albumTitle: libraryAlbum.title,
-            releaseDate: libraryAlbum.releaseDate || "",
-          }
-        : {
-            artistMbid: artistMbid || undefined,
-            artistName,
-            albumTitle: release.title || title,
-            releaseType: release["primary-type"] || "",
-            releaseDate: release["first-release-date"] || "",
-            deezerAlbumId: release._deezerAlbumId || "",
-          },
-    [
-      artistMbid,
-      artistName,
-      libraryAlbum,
-      libraryArtist?.mbid,
-      libraryArtist?.name,
-      locationState,
-      release,
-      title,
-    ],
-  );
-  const tracksQuery = useQuery({
-    queryKey: queryKeys.releaseGroupTracks(releaseGroupMbid, trackContext),
-    queryFn: ({ signal }) =>
-      getReleaseGroupTracks(releaseGroupMbid ?? "", { ...trackContext, signal }),
-    enabled:
-      Boolean(releaseGroupMbid) &&
-      !libraryLoading &&
-      Boolean(libraryAlbum || !releaseDetailsQuery.isPending),
-    staleTime: 5 * 60 * 1000,
+  const {
+    tracks: releaseTracks,
+    isPending: tracksLoading,
+    error: tracksError,
+  } = useReleaseGroupTracks(releaseGroupMbid, {
+    artistMbid: locationState?.artistMbid || undefined,
+    deezerAlbumId: focusRelease?.deezerAlbumId ? String(focusRelease.deezerAlbumId) : undefined,
   });
-  const releaseTracks = useMemo(
-    () => (Array.isArray(tracksQuery.data) ? tracksQuery.data : []),
-    [tracksQuery.data],
-  );
-  const tracksLoading = Boolean(releaseGroupMbid) && tracksQuery.isPending;
 
   useEffect(() => {
-    if (tracksQuery.error && !albumTracks.length && !releaseDetailsQuery.isError) {
+    if (tracksError && !albumTracks.length && !releaseDetailsQuery.isError) {
       showError("Failed to load tracks");
     }
-  }, [albumTracks.length, releaseDetailsQuery.isError, showError, tracksQuery.error]);
+  }, [albumTracks.length, releaseDetailsQuery.isError, showError, tracksError]);
 
   const libraryDisplay = resolveReleaseLibraryDisplay(
     countReleaseTracks(libraryInfo, releaseTracks.length),
@@ -554,7 +519,7 @@ function AlbumPage() {
         : releaseDetailsQuery;
   if (
     !albumRef ||
-    (failed && (albumRef.kind === "library" || (failed.isError && (!title || tracksQuery.isError))))
+    (failed && (albumRef.kind === "library" || (failed.isError && (!title || tracksError))))
   ) {
     const status = asApiError(failed?.error)?.response?.status;
     const notFound = !failed?.isError || status === 404 || status === 400;

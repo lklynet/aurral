@@ -668,10 +668,12 @@ export function scoreDeezerTrackMatch(track: TrackLike, deezerTrack: TrackLike) 
   return score;
 }
 
+type Previewed<T> = T & { preview_url?: string; previewProvider?: string; previewTrackId?: string };
+
 export function attachDeezerTrackPreviews<T extends TrackLike>(
   tracks: T[],
   deezerTracks: Awaited<ReturnType<typeof deezerGetAlbumTracks>>,
-) {
+): Previewed<T>[] {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks || [];
   if (!Array.isArray(deezerTracks) || deezerTracks.length === 0) return tracks;
 
@@ -729,7 +731,7 @@ export async function enrichTracksWithDeezerPreviews<T extends TrackLike>(
     releaseDate?: string;
     cacheKey?: string;
   } = {},
-) {
+): Promise<Previewed<T>[]> {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks || [];
   const normalizedCacheKey =
     cacheKey ||

@@ -112,6 +112,13 @@ export const scenarios: Scenario[] = [
     ],
   },
   { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
+  {
+    name: "discover album tracks",
+    requests: () => [
+      `/api/artists/release-group/${DISCOVER_ALBUM}/tracks`,
+      `/api/artists/release-group/${DISCOVER_ALBUM}/previews`,
+    ],
+  },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
   { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },

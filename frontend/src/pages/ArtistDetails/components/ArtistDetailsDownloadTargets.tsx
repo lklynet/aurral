@@ -14,7 +14,7 @@ import { OptionalLink } from "../../../components/RouteLink";
 import TooltipButton from "../../../components/TooltipButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { useShareAction } from "../../../hooks/useShareAction";
-import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.ts";
+import { useReleaseGroupTracks } from "../../../hooks/useReleaseGroupTracks.ts";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
   buildPick,
@@ -28,7 +28,6 @@ import { TrackPlayButton } from "./TrackPlayButton";
 import { useReleasePreviewQueue } from "../../album/releaseTracks.tsx";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
-import { queryKeys } from "../../../queryClient.ts";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
 import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
@@ -129,29 +128,13 @@ export function ArtistDetailsDownloadTargets({
     () => mergeReleaseDetails(releaseGroup, releaseDetailsQuery.data),
     [releaseGroup, releaseDetailsQuery.data],
   );
-  const trackContext = useMemo(
-    () => ({
-      artistMbid: artist?.id || "",
-      artistName: artist?.name || "",
-      albumTitle: missingReleasePick?.title || releaseGroup?.title || "",
-      releaseType: missingReleasePick?.type || releaseGroup?.["primary-type"] || "",
-      releaseDate: releaseGroup?.["first-release-date"] || "",
-      deezerAlbumId: releaseGroup?._deezerAlbumId || "",
-    }),
-    [artist?.id, artist?.name, missingReleasePick?.title, missingReleasePick?.type, releaseGroup],
+  const { tracks, isPending: loadingTracks } = useReleaseGroupTracks(
+    missingReleasePick?.releaseGroupId,
+    {
+      artistMbid: artist?.id || undefined,
+      deezerAlbumId: releaseGroup?._deezerAlbumId ? String(releaseGroup._deezerAlbumId) : undefined,
+    },
   );
-  const tracksQuery = useQuery({
-    queryKey: queryKeys.releaseGroupTracks(missingReleasePick?.releaseGroupId, trackContext),
-    queryFn: ({ signal }) =>
-      getReleaseGroupTracks(missingReleasePick!.releaseGroupId, { ...trackContext, signal }),
-    enabled: Boolean(missingReleasePick?.releaseGroupId),
-    staleTime: 5 * 60 * 1000,
-  });
-  const tracks = useMemo(
-    () => (Array.isArray(tracksQuery.data) ? tracksQuery.data : []),
-    [tracksQuery.data],
-  );
-  const loadingTracks = tracksQuery.isPending;
 
   useEffect(() => {
     setShowAllTracks(false);
