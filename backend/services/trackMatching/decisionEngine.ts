@@ -18,6 +18,7 @@ import {
   readYoutubeUpload,
 } from "./youtubeEvidence.ts";
 import type { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
+import { isVariousArtistsCredit } from "./titleText.ts";
 
 type RawSearchResult = RawCandidate & { file?: string | null; source?: never; song?: unknown };
 type NormalizedCandidate = CandidateTrack<RawSearchResult> & { song?: never };
@@ -96,7 +97,9 @@ function matcherCandidate(
     artists: candidate.artists?.length
       ? candidate.artists
       : (evidence?.folder?.artistScore ?? 0) >= 92
-        ? [request.artistName].filter(Boolean)
+        ? requestArtistNames(request)
+            .filter((name) => !isVariousArtistsCredit(name))
+            .slice(0, 1)
         : [],
     durationMs: candidate.durationMs,
     recordingMbid: candidate.recordingMbid,
