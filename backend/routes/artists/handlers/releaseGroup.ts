@@ -6,10 +6,7 @@ import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import {
-  fetchReleaseGroupCoverUrl,
-  resolveReleaseGroupCoversBatch,
-} from "../../../services/releaseGroupCoverService.ts";
+import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
 import {
   getArtistByMbid,
@@ -28,23 +25,8 @@ import { queryText } from "../utils.ts";
 import { musicbrainzGetReleaseTrackCredits } from "../../../services/apiClients/musicbrainz.ts";
 
 type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
-type ReleaseGroupCovers = Awaited<ReturnType<typeof resolveReleaseGroupCoversBatch>>;
 
 const ratingsBody = v.object({ ids: v.optional(v.array(v.string()), []) });
-
-const coversBody = v.object({
-  items: v.optional(
-    v.array(
-      v.object({
-        mbid: v.optional(v.string()),
-        id: v.optional(v.string()),
-        artistName: v.optional(v.string()),
-        albumTitle: v.optional(v.string()),
-      }),
-    ),
-    [],
-  ),
-});
 
 const coverQuery = v.object({
   refresh: v.optional(v.string()),
@@ -95,28 +77,6 @@ export default new Hono<AppEnv>()
         { error: "Failed to load release ratings", message: asAppError(error)?.message },
         502,
       );
-    }
-  })
-  .post("/release-groups/covers", validate("json", coversBody), async (c) => {
-    const { items } = c.req.valid("json");
-    const noCovers: ReleaseGroupCovers = {};
-    if (!items.length) return c.json({ covers: noCovers }, 200);
-    try {
-      const covers = await resolveReleaseGroupCoversBatch(items);
-      const hasTransientError = Object.values(covers).some((entry) => entry?.transientError);
-      c.header(
-        "Cache-Control",
-        hasTransientError
-          ? "public, max-age=60, stale-while-revalidate=300"
-          : "public, max-age=31536000, immutable",
-      );
-      return c.json({ covers }, 200);
-    } catch (error) {
-      logger.error("releaseGroup", "Error in release-groups covers batch route:", {
-        message: asAppError(error)?.message,
-      });
-      c.header("Cache-Control", "public, max-age=60");
-      return c.json({ covers: noCovers }, 200);
     }
   })
   .get("/release-group/:mbid", cacheFor(3600), async (c) => {

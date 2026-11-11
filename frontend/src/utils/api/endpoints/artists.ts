@@ -23,10 +23,6 @@ type ReleaseGroupRatings = InferResponseType<
   (typeof artistsClient)["release-groups"]["ratings"]["$post"],
   200
 >;
-type ReleaseGroupCoverEntry = InferResponseType<
-  (typeof artistsClient)["release-groups"]["covers"]["$post"],
-  200
->["covers"][string];
 type ReleaseGroupCoverResponse = InferResponseType<
   (typeof artistsClient)["release-group"][":mbid"]["cover"]["$get"],
   200
@@ -34,8 +30,6 @@ type ReleaseGroupCoverResponse = InferResponseType<
 type ArtistVideo = NonNullable<
   InferResponseType<(typeof artistsClient)[":mbid"]["video"]["$get"], 200>["video"]
 > & { trackTitle: string };
-
-type ReleaseGroupCoverItem = { mbid: string; artistName: string; albumTitle: string };
 
 const coverFetch = apiFetchWithin(4000);
 
@@ -100,8 +94,6 @@ export const getReleaseGroupRatingsBatch = async (
   });
 };
 
-const RELEASE_GROUP_COVER_BATCH_SIZE = 24;
-
 const normalizeCoverPart = (value: string | null | undefined) =>
   String(value || "")
     .trim()
@@ -112,13 +104,6 @@ const releaseGroupCoverCacheKey = (
   artistName: string | null | undefined = "",
   albumTitle: string | null | undefined = "",
 ) => `release-group:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
-
-const releaseGroupBatchCoverCacheKey = (
-  mbid: string,
-  artistName: string | null | undefined = "",
-  albumTitle: string | null | undefined = "",
-) =>
-  `release-group-batch:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
 
 export const getArtistCover = async (
   mbid: string | number,
@@ -143,66 +128,6 @@ export const getArtistCover = async (
       ),
     { bypassCache: refresh },
   );
-};
-
-export const getReleaseGroupCoversBatch = async (
-  items: {
-    mbid?: string | null;
-    id?: string;
-    artistName?: string | null;
-    albumTitle?: string | null;
-  }[] = [],
-): Promise<Record<string, ReleaseGroupCoverEntry>> => {
-  const normalizedItems = items
-    .map((item) => ({
-      mbid: String(item?.mbid || item?.id || "").trim(),
-      artistName: typeof item?.artistName === "string" ? item.artistName.trim() : "",
-      albumTitle: typeof item?.albumTitle === "string" ? item.albumTitle.trim() : "",
-    }))
-    .filter((item) => item.mbid);
-  if (!normalizedItems.length) {
-    return {};
-  }
-  const covers: Record<string, ReleaseGroupCoverEntry> = {};
-  const uncachedItems: ReleaseGroupCoverItem[] = [];
-  normalizedItems.forEach((item) => {
-    const cached = getCoverCacheEntry<ReleaseGroupCoverEntry>(
-      releaseGroupBatchCoverCacheKey(item.mbid, item.artistName, item.albumTitle),
-    );
-    if (cached) covers[item.mbid] = cached;
-    else uncachedItems.push(item);
-  });
-  if (!uncachedItems.length) return covers;
-  const batchKey = normalizedItems
-    .map((item) => `${item.mbid}:${item.artistName.toLowerCase()}:${item.albumTitle.toLowerCase()}`)
-    .sort()
-    .join("\0");
-  if (coverInflightRequests.has(batchKey)) {
-    return coverInflightRequests.get(batchKey) as Promise<Record<string, ReleaseGroupCoverEntry>>;
-  }
-  const request = (async () => {
-    for (let index = 0; index < uncachedItems.length; index += RELEASE_GROUP_COVER_BATCH_SIZE) {
-      const batch = uncachedItems.slice(index, index + RELEASE_GROUP_COVER_BATCH_SIZE);
-      const { covers: batchCovers } = await parseResponse(
-        artistsClient["release-groups"].covers.$post({ json: { items: batch } }),
-      );
-      Object.assign(covers, batchCovers);
-      Object.entries(batchCovers).forEach(([mbid, cover]) => {
-        const item = batch.find((candidate) => candidate.mbid === mbid);
-        if (item && !cover?.transientError) {
-          setCoverCacheEntry(
-            releaseGroupBatchCoverCacheKey(mbid, item.artistName, item.albumTitle),
-            cover,
-          );
-        }
-      });
-    }
-    return covers;
-  })().finally(() => {
-    coverInflightRequests.delete(batchKey);
-  });
-  coverInflightRequests.set(batchKey, request);
-  return request;
 };
 
 export const getReleaseGroupCover = async (

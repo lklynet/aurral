@@ -11,6 +11,7 @@ import { getLibraryArtistMbids, getLibrarySearchPage } from "./libraryQueryServi
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.ts";
 import { parsePositiveInt } from "./searchService.ts";
+import { withCoverUrls } from "./releaseGroupCoverService.ts";
 import {
   MATCH,
   albumSearchTexts,
@@ -331,10 +332,11 @@ function withLibraryArtists(catalog: Catalog, limit: number): Catalog {
   });
   const mark = <T extends UnifiedSearchItem | null>(item: T): T =>
     item?.type === "artist" && owned.has(item.id) ? { ...item, inLibrary: true } : item;
+  const [top = null] = catalog.top?.type === "album" ? withCoverUrls([catalog.top]) : [catalog.top];
   return {
-    top: mark(catalog.top),
+    top: mark(top),
     artists: artists.map(mark),
-    albums: catalog.albums.slice(0, limit),
+    albums: withCoverUrls(catalog.albums.slice(0, limit)),
     tracks: catalog.tracks.slice(0, limit),
   };
 }

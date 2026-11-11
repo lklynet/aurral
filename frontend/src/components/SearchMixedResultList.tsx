@@ -16,12 +16,10 @@ import Tooltip from "./Tooltip";
 export type SearchItem = NonNullable<Parameters<typeof getSearchResultKey>[0]> & {
   status?: string;
 };
-export type SearchImageMap = Record<string, string | null | undefined>;
 
 interface SearchMixedResultListProps {
   items: SearchItem[];
   query?: string;
-  albumCovers?: SearchImageMap;
   renderAction?: ((item: SearchItem) => ReactNode) | null;
 }
 
@@ -67,12 +65,10 @@ function getSecondaryLabel(item: SearchItem) {
 
 function ResultThumbnail({
   item,
-  albumCovers,
   artworkUrlFor,
 }: {
   artworkUrlFor: ReturnType<typeof usePlaylistArtwork>["artworkUrlFor"];
   item: SearchItem;
-  albumCovers: SearchImageMap;
 }) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
@@ -94,11 +90,9 @@ function ResultThumbnail({
   const coverSrc =
     item.type === "playlist"
       ? getSearchPlaylistArtworkUrl(item, artworkUrlFor)
-      : item.type === "album"
-        ? albumCovers[String(item.id)] || item.coverUrl
-        : item.type === "track"
-          ? albumCovers[String(item.albumMbid)] || item.coverUrl
-          : null;
+      : item.type === "album" || item.type === "track"
+        ? item.coverUrl
+        : null;
 
   return (
     <span className="search-mixed-results__thumb">
@@ -125,7 +119,6 @@ function ResultThumbnail({
 function SearchMixedResultList({
   items,
   query = "",
-  albumCovers = {},
   renderAction = null,
 }: SearchMixedResultListProps) {
   const { artworkUrlFor } = usePlaylistArtwork();
@@ -156,11 +149,7 @@ function SearchMixedResultList({
           <li key={getSearchResultKey(item, index)}>
             <div className="search-mixed-results__row">
               <div className="search-mixed-results__main">
-                <ResultThumbnail
-                  item={item}
-                  albumCovers={albumCovers}
-                  artworkUrlFor={artworkUrlFor}
-                />
+                <ResultThumbnail item={item} artworkUrlFor={artworkUrlFor} />
                 {link ? (
                   <RouteLink
                     to={link.to}
