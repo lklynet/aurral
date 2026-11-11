@@ -2,7 +2,7 @@ import ArtworkImage from "./ArtworkImage";
 import { useState } from "react";
 import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import AddActionButton, { type LibraryDestination } from "./AddActionButton";
+import AddActionButton from "./AddActionButton";
 import ReleaseWaitBadge from "./ReleaseWaitBadge";
 import { isAwaitingRelease } from "../utils/aurralAlbumStatus.ts";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
@@ -23,8 +23,6 @@ export type SearchAlbum = {
   releaseDate?: string | null;
   primaryType?: string | null;
   secondaryTypes?: string[] | null;
-  ownerConflict?: { message: string } | null;
-  managedBy?: string | null;
   monitored?: boolean;
   trackFileCount?: number;
 };
@@ -34,8 +32,7 @@ type SearchAlbumResultsProps = {
   albumCovers: SearchImageMap;
   canAddAlbum: boolean;
   pendingAlbumIds: Record<string, boolean | undefined>;
-  onAlbumAction: (album: SearchAlbum, managedBy: string) => void;
-  libraryDestination: LibraryDestination;
+  onAlbumAction: (album: SearchAlbum) => void;
   viewMode?: "grid" | "list";
 };
 
@@ -90,13 +87,11 @@ function AlbumAction({
   isPending,
   canAddAlbum,
   onAlbumAction,
-  libraryDestination,
 }: {
   album: SearchAlbum;
   isPending: boolean;
   canAddAlbum: boolean;
   onAlbumAction: SearchAlbumResultsProps["onAlbumAction"];
-  libraryDestination: LibraryDestination;
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
   const downloading = isPending || isAlbumDownloading(album.id);
@@ -120,9 +115,8 @@ function AlbumAction({
 
   return (
     <AddActionButton
-      {...getAlbumAddAction(album, libraryDestination)}
-      ownerConflict={album.ownerConflict}
-      onAdd={(managedBy) => onAlbumAction(album, managedBy)}
+      {...getAlbumAddAction(album)}
+      onAdd={() => onAlbumAction(album)}
       isLoading={downloading}
       loadingLabel="Downloading"
       disabled={actionDisabled}
@@ -136,7 +130,6 @@ function SearchAlbumResults({
   canAddAlbum,
   pendingAlbumIds,
   onAlbumAction,
-  libraryDestination,
   viewMode = "grid",
 }: SearchAlbumResultsProps) {
   const albumLink = (album: SearchAlbum) => {
@@ -205,7 +198,6 @@ function SearchAlbumResults({
               isPending={isPending}
               canAddAlbum={canAddAlbum}
               onAlbumAction={onAlbumAction}
-              libraryDestination={libraryDestination}
             />
           </div>
         </article>
@@ -238,7 +230,6 @@ function SearchAlbumResults({
               isPending={isPending}
               canAddAlbum={canAddAlbum}
               onAlbumAction={onAlbumAction}
-              libraryDestination={libraryDestination}
             />
           </div>
         </div>

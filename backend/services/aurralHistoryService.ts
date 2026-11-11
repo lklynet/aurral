@@ -268,26 +268,6 @@ export const recordDiscoveryRefreshFailed = recorder(
     }),
 );
 
-export const recordArtistAdded = recorder(
-  ({ artistName, artistMbid }: { artistName?: string | null; artistMbid?: string | null } = {}) => {
-    const mbid = String(artistMbid || "").trim();
-    const name = String(artistName || "").trim();
-    if (!mbid || !name) return null;
-    const id = stableId("artist_added", mbid);
-    if (dbOps.getAurralHistoryById(id)) return null;
-    return upsertAurralHistory({
-      referenceId: mbid,
-      kind: "artist_added",
-      title: `Added ${name} to library`,
-      subtitle: "Artist added via Lidarr",
-      status: "completed",
-      statusLabel: "Added",
-      href: buildArtistHref(mbid),
-      metadata: { artistMbid: mbid, artistName: name },
-    });
-  },
-);
-
 const requesterFromUser = (user: RequesterUser | null | undefined): HistoryRequester | null => {
   if (user?.id == null) return null;
   const username = String(user.username || "").trim();
@@ -346,17 +326,12 @@ export const recordAlbumRequested = recorder(
     albumName,
     artistName,
     artistMbid,
-    managedBy = null,
     requestGroupId = null,
-    searching: requestedSearching = false,
     user = null,
   }: AlbumRef & {
-    managedBy?: string | null;
     requestGroupId?: string | null;
-    searching?: boolean;
     user?: RequesterUser | null;
   } = {}) => {
-    const searching = requestedSearching && managedBy !== "aurral";
     const name = String(albumName || "").trim() || "Album";
     const artist = String(artistName || "").trim();
     const ref = String(albumId || artistMbid || name).trim();
@@ -366,18 +341,18 @@ export const recordAlbumRequested = recorder(
     const entry = upsertAurralHistory({
       referenceId: ref,
       kind: "album_requested",
-      title: searching ? `Searching Lidarr for ${name}` : `Requested ${name}`,
+      title: `Requested ${name}`,
       subtitle: artist || null,
-      status: searching ? "processing" : "completed",
-      statusLabel: searching ? "Searching" : "Requested",
+      status: "completed",
+      statusLabel: "Requested",
       href: buildArtistHref(artistMbid),
       metadata: {
         albumId,
         albumName: name,
         artistName: artist,
         artistMbid,
-        ...(managedBy && { managedBy }),
-        ...(managedBy === "aurral" && albumId != null && { canonicalAlbumId: String(albumId) }),
+        managedBy: "aurral",
+        ...(albumId != null && { canonicalAlbumId: String(albumId) }),
         ...(requestGroupId && { requestGroupId }),
         ...requester,
       },
@@ -389,24 +364,6 @@ export const recordAlbumRequested = recorder(
     });
     return entry;
   },
-);
-
-export const recordAlbumSearchStarted = recorder(
-  ({
-    albumId,
-    albumName,
-    artistName,
-    artistMbid,
-    user = null,
-  }: AlbumRef & { user?: RequesterUser | null } = {}) =>
-    recordAlbumRequested({
-      albumId,
-      albumName,
-      artistName,
-      artistMbid,
-      searching: true,
-      user,
-    }),
 );
 
 export const recordMissingTrackSearch = recorder(
@@ -439,45 +396,6 @@ export const recordMissingTrackSearch = recorder(
         searchedAt,
       },
       createdAt: searchedAt,
-    });
-  },
-);
-
-export const recordAlbumSearchFailed = recorder(
-  ({
-    albumId,
-    albumName,
-    artistName,
-    artistMbid,
-    statusLabel = "Not found",
-    user = null,
-    referenceId = null,
-  }: AlbumRef & {
-    statusLabel?: string;
-    user?: RequesterUser | null;
-    referenceId?: string | null;
-  } = {}) => {
-    const name = String(albumName || "").trim() || "Album";
-    const artist = String(artistName || "").trim();
-    const ref = String(referenceId || albumId || artistMbid || name).trim();
-    if (!ref) return null;
-    const existing = dbOps.getAurralHistoryById(stableId("album_requested", ref));
-    const requester = requesterFromUser(user) || requesterFromMetadata(existing?.metadata);
-    return upsertAurralHistory({
-      referenceId: ref,
-      kind: "album_requested",
-      title: `No results for ${name}`,
-      subtitle: artist || null,
-      status: "failed",
-      statusLabel,
-      href: buildArtistHref(artistMbid),
-      metadata: {
-        albumId,
-        albumName: name,
-        artistName: artist,
-        artistMbid,
-        ...requester,
-      },
     });
   },
 );
@@ -539,35 +457,6 @@ export const albumRequestReferenceId = (entry: AurralHistoryEntry) => {
   }
   return String(entry?.metadata?.albumId || entry?.metadata?.artistMbid || "").trim();
 };
-
-export const recordAlbumImportCompleted = recorder(
-  ({ albumId, albumName, artistName, artistMbid }: AlbumRef = {}) => {
-    const normalizedAlbumId = String(albumId ?? "").trim();
-    if (!normalizedAlbumId) return null;
-
-    const stableEntry = dbOps.getAurralHistoryById(stableId("album_requested", normalizedAlbumId));
-    const existing =
-      stableEntry?.kind === "album_requested"
-        ? stableEntry
-        : dbOps
-            .getAurralHistory({ since: Date.now() - MAX_AGE_MS, limit: 300 })
-            .find(
-              (entry) =>
-                entry.kind === "album_requested" &&
-                String(entry.metadata?.albumId ?? "").trim() === normalizedAlbumId,
-            );
-    if (!existing || existing.kind !== "album_requested") return null;
-    if (existing.statusLabel === "Downloaded") return existing;
-
-    return recordAlbumSearchCompleted({
-      albumId: normalizedAlbumId,
-      albumName: albumName || existing.metadata?.albumName,
-      artistName: artistName || existing.metadata?.artistName,
-      artistMbid: artistMbid || existing.metadata?.artistMbid,
-      referenceId: albumRequestReferenceId(existing),
-    });
-  },
-);
 
 export const recordFlowGenerationStarted = recorder(
   ({ flowId }: { flowId?: string | null } = {}) => {
@@ -659,18 +548,13 @@ export const recordTrackReused = recorder(
     const playlistName = resolvePlaylistName(playlistId);
     const trackName = String(track.trackName || track.title || "Track").trim();
     const artistName = String(track.artistName || track.artist || "Artist").trim();
-    const fromLabel =
-      sourceType === "lidarr"
-        ? "from Lidarr library"
-        : sourceType === "aurral"
-          ? "from Aurral library"
-          : "from library";
+    const fromLabel = sourceType === "aurral" ? "from Aurral library" : "from library";
     return appendAurralHistory({
-      kind: sourceType === "lidarr" ? "track_reused_lidarr" : "track_reused_aurral",
+      kind: "track_reused_aurral",
       title: `Reused ${trackName}`,
       subtitle: `${artistName} · ${playlistName} · ${fromLabel}`,
       status: "completed",
-      statusLabel: sourceType === "lidarr" ? "From Lidarr" : "From library",
+      statusLabel: "From library",
       href: buildPlaylistHref(playlistId),
       metadata: {
         playlistId,

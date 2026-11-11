@@ -5,9 +5,6 @@ import TooltipButton from "../../../components/TooltipButton";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
-import type { AppSettingsResponse } from "../../../utils/api/clients/settings.ts";
-import type { LibraryArtistRecord } from "../hooks/useArtistDetailsStream.ts";
-import lidarrLogo from "../../../../images/logos/lidarr-color.svg";
 import lastFmLogo from "../../../../images/logos/last-fm-color.svg";
 import musicBrainzLogo from "../../../../images/logos/musicbrainz-color.svg";
 import listenBrainzLogo from "../../../../images/logos/listenbrainz-color.svg";
@@ -148,43 +145,16 @@ function ArtistBio({ name, bio }: { name: string; bio: string }) {
 
 export function ArtistDetailsAbout({
   artist,
-  libraryArtist,
-  appSettings,
-  lidarrConnected,
-  existsInLibrary,
   coverImages,
 }: {
   artist: Partial<ArtistDetailsResponse>;
-  libraryArtist: LibraryArtistRecord | null;
-  appSettings: AppSettingsResponse | null;
-  lidarrConnected: boolean;
-  existsInLibrary: boolean;
   coverImages: readonly ArtistCoverImage[] | null | undefined;
 }) {
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 5);
   const artistTypeLabel = getArtistType(artist?.type);
   const links = useMemo(() => {
-    const lidarrArtistId = artist?.id || libraryArtist?.foreignArtistId || libraryArtist?.mbid;
-    const lidarrUrl =
-      appSettings?.integrations?.lidarr?.externalUrl || appSettings?.integrations?.lidarr?.url;
-    const lidarrHref =
-      lidarrConnected && lidarrUrl && lidarrArtistId
-        ? `${lidarrUrl.replace(/\/$/, "")}/${
-            existsInLibrary
-              ? `artist/${lidarrArtistId}`
-              : `add/search?term=lidarr:${encodeURIComponent(lidarrArtistId)}`
-          }`
-        : null;
     const primary: (RelationLink | null)[] = [
-      lidarrHref
-        ? {
-            key: "lidarr",
-            label: "Lidarr",
-            href: lidarrHref,
-            logo: lidarrLogo,
-          }
-        : null,
       artist?.name
         ? {
             key: "lastfm",
@@ -218,7 +188,7 @@ export function ArtistDetailsAbout({
       return true;
     });
     return [...primaryLinks, ...secondary];
-  }, [appSettings, artist, existsInLibrary, libraryArtist, lidarrConnected]);
+  }, [artist]);
   const aboutImage = useMemo(() => {
     return getArtistHeroImage(coverImages);
   }, [coverImages]);

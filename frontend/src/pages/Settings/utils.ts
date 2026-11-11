@@ -15,8 +15,6 @@ export type SavedSettings =
   | Partial<InferResponseType<typeof settingsClient.$post, 200>>;
 
 export const normalizeSettings = (savedSettings: SavedSettings) => {
-  const lidarr: NonNullable<StoredIntegrations["lidarr"]> =
-    savedSettings.integrations?.lidarr || {};
   const lastfm: NonNullable<StoredIntegrations["lastfm"]> =
     savedSettings.integrations?.lastfm || {};
   const metadata: NonNullable<StoredIntegrations["metadata"]> =
@@ -66,19 +64,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       },
     },
     integrations: {
-      lidarr: {
-        url: "",
-        externalUrl: "",
-        apiKey: "",
-        searchOnAdd: false,
-        defaultMonitorOption: "none",
-        ...lidarr,
-        qualityProfileId:
-          lidarr.qualityProfileId != null ? parseInt(String(lidarr.qualityProfileId), 10) : null,
-        metadataProfileId:
-          lidarr.metadataProfileId != null ? parseInt(String(lidarr.metadataProfileId), 10) : null,
-        tagId: lidarr.tagId != null ? parseInt(String(lidarr.tagId), 10) : null,
-      },
       lastfm: {
         apiKey: "",
         discoveryPeriod: "1month",

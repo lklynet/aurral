@@ -14,7 +14,6 @@ const [
   managementStore,
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { libraryManager },
   { requestLibraryTrack },
 ] = await setupIsolatedBackend(
@@ -25,19 +24,17 @@ const [
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryTrackRequests.ts"),
 );
 
-const lidarrCalls: unknown[][] = [];
 let sequence = 0;
 
 async function createAlbum({
-  managedBy = "aurral",
+  readOnly = false,
   monitored = true,
   tracks = ["missing"],
-}: { tracks?: string[]; monitored?: boolean; managedBy?: string } = {}) {
+}: { tracks?: string[]; monitored?: boolean; readOnly?: boolean } = {}) {
   sequence += 1;
   const suffix = String(sequence).padStart(12, "0");
   const artistMbid = `bbbbbbbb-bbbb-4bbb-8bbb-${suffix}`;
@@ -55,12 +52,13 @@ async function createAlbum({
     title: `Monitoring Album ${sequence}`,
     metadata: { monitored },
   });
-  managementStore.setLibraryManagement({
-    entityKind: "album",
-    entityId: album.id,
-    managedBy,
-    monitorMode: monitored ? null : "unmonitored",
-  });
+  if (!readOnly) {
+    managementStore.setLibraryManagement({
+      entityKind: "album",
+      entityId: album.id,
+      monitorMode: monitored ? null : "unmonitored",
+    });
+  }
   const jobIds = [];
   const filePaths = [];
   const albumTracks: {
@@ -95,7 +93,7 @@ async function createAlbum({
         scanId: undefined,
         trackId: track.id,
         albumId: album.id,
-        source: managedBy,
+        source: readOnly ? "readonly" : "aurral",
         path: filePath,
       });
       filePaths[index] = filePath;
@@ -107,7 +105,6 @@ async function createAlbum({
           albumName: album.title,
           albumMbid,
           trackMbid,
-          managedBy: "aurral",
         },
         "library",
       );
@@ -129,12 +126,6 @@ const albumJobs = (albumMbid: string) =>
   downloadTracker.getAll().filter((job) => job.albumMbid === albumMbid);
 
 const originalSettings = dbOps.getSettings();
-const originalLidarr = {
-  isConfigured: lidarrClient.isConfigured,
-  request: lidarrClient.request,
-  getArtist: lidarrClient.getArtist,
-  getArtistByMbid: lidarrClient.getArtistByMbid,
-};
 const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
@@ -145,23 +136,14 @@ beforeAll(() => {
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     },
   });
-  lidarrClient.isConfigured = () => false;
-  for (const method of ["request", "getArtist", "getArtistByMbid"] as const) {
-    lidarrClient[method] = async (...args: unknown[]) => {
-      lidarrCalls.push([method, ...args]);
-      throw new Error("Lidarr must not be called");
-    };
-  }
   downloadWorker.start = async () => {};
 });
 
 beforeEach(() => {
   downloadTracker.clearAll();
-  lidarrCalls.length = 0;
 });
 
 afterAll(async () => {
-  Object.assign(lidarrClient, originalLidarr);
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await cleanupIsolatedState(isolatedState);
@@ -230,7 +212,6 @@ test("a track unmonitored while its album is turned back on is not queued", asyn
       albumName: album.title,
       albumMbid,
       trackMbid: requireFixture(tracks[0]).mbid,
-      managedBy: "aurral",
     },
     "library",
   );
@@ -306,9 +287,9 @@ test("unmonitoring a track without an MBID leaves a same-titled track's download
   assert.equal(albumJobs(albumMbid).filter((job) => job.status === "cancelled").length, 0);
 });
 
-test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr", async () => {
+test("a track in a read-only album can be unmonitored", async () => {
   const { artist, tracks, jobIds } = await createAlbum({
-    managedBy: "lidarr",
+    readOnly: true,
     tracks: ["pending"],
   });
   libraryStore.upsertLibraryTrack({
@@ -335,11 +316,10 @@ test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr"
   assert.equal(getJob(jobIds[0]).status, "cancelled");
   assert.equal(getJob(ownerJob).status, "cancelled");
   assert.equal(getJob(otherArtistJob).status, "pending");
-  assert.deepEqual([...lidarrCalls], []);
 });
 
-test("downloading a missing track in a Lidarr album leaves the download to the track route", async () => {
-  const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["missing"] });
+test("downloading a missing track in a read-only album leaves the download to the track route", async () => {
+  const { tracks } = await createAlbum({ readOnly: true, tracks: ["missing"] });
 
   const result = await libraryManager.monitorAurralTrack({
     libraryTrackId: requireFixture(tracks[0]).id,
@@ -347,7 +327,6 @@ test("downloading a missing track in a Lidarr album leaves the download to the t
 
   assert.equal(result, null);
   assert.equal(trackMonitored(requireFixture(tracks[0]).id), 1);
-  assert.deepEqual([...lidarrCalls], []);
 });
 
 test("requesting a guest track retains canonical album ownership for acquisition", async () => {
@@ -381,8 +360,8 @@ test("requesting a guest track retains canonical album ownership for acquisition
   assert.equal(job.trackMbid, track.mbid);
 });
 
-test("a Lidarr track request keeps the album owner's identity on its fallback job", async () => {
-  const { artist, album, albumMbid, tracks } = await createAlbum({ managedBy: "lidarr" });
+test("a track request in a read-only album keeps the album owner's identity on its fallback job", async () => {
+  const { artist, album, albumMbid, tracks } = await createAlbum({ readOnly: true });
   const track = requireFixture(tracks[0]);
   libraryStore.upsertLibraryTrack({
     identityKey: track.identity_key,
@@ -411,7 +390,6 @@ test("a Lidarr track request keeps the album owner's identity on its fallback jo
   assert.equal(job.artistMbid, artist.mbid);
   assert.equal(job.albumMbid, albumMbid);
   assert.equal(job.trackMbid, track.mbid);
-  assert.deepEqual([...lidarrCalls], []);
 });
 
 function getJob(id: Parameters<typeof downloadTracker.getJob>[0]) {

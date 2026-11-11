@@ -8,7 +8,6 @@ import {
   libraryLookupBatchQuery,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
-  settleLibraryOwnerConflict,
   type ArtistsInLibrary,
 } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
@@ -50,10 +49,7 @@ import {
   describeAlbumRequestResult,
   getAlbumAddAction,
   isAlbumCompleteInLibrary,
-  shouldTriggerAlbumSearch,
 } from "../utils/albumAddAction";
-import { buildAlbumRequestPayload } from "../utils/libraryDestination";
-import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import {
   PAGE_SIZE,
@@ -89,9 +85,7 @@ type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
 type SearchResultItem = SearchItem & {
   durationMs?: number | null;
   monitored?: boolean;
-  managedBy?: string | null;
   trackFileCount?: number;
-  ownerConflict?: { message: string };
 };
 type AlbumActionTarget = Pick<
   SearchResultItem,
@@ -104,14 +98,12 @@ type AlbumLibraryState =
   | boolean
   | {
       inLibrary?: boolean;
-      managedBy?: string | null;
       providerAlbumId?: string | null;
       providerArtistId?: string | null;
       status?: string;
       monitored?: boolean;
       trackFileCount?: number;
       releaseDate?: string;
-      ownerConflict?: { message: string };
     };
 
 const EMPTY_SEARCH_PAGES: CatalogSearchPage[] = [];
@@ -167,7 +159,6 @@ function SearchResults() {
   const albumOptionsMenuRef = useRef<HTMLDivElement>(null);
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
-  const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
@@ -493,29 +484,19 @@ function SearchResults() {
   );
 
   const handleAlbumAction = useCallback(
-    async (album: AlbumActionTarget, managedBy: string = libraryDestination.primary) => {
+    async (album: AlbumActionTarget) => {
       if (!album?.id) return;
       const albumId = String(album.id);
-      const shouldTriggerSearch = shouldTriggerAlbumSearch({
-        status: album.status,
-        inLibrary: album.inLibrary,
-        monitored: album.monitored,
-      });
       setPendingAlbumIds((prev) => ({ ...prev, [albumId]: true }));
       try {
-        const result = await requestAlbumFromSearch(
-          buildAlbumRequestPayload({
-            albumMbid: albumId,
-            albumName: album.title,
-            artistMbid: album.artistMbid,
-            artistName: album.artistName,
-            managedBy,
-            triggerSearch: shouldTriggerSearch,
-          }),
-        );
+        const result = await requestAlbumFromSearch({
+          albumMbid: albumId,
+          albumName: album.title,
+          artistMbid: album.artistMbid,
+          artistName: album.artistName,
+        });
         const nextAlbum = {
           inLibrary: true,
-          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
           libraryAlbumId: result.album?.id,
           libraryArtistId: result.artist?.id,
           status: result?.queued ? "processing" : result.status,
@@ -527,21 +508,12 @@ function SearchResults() {
         const outcome = describeAlbumRequestResult(result, album.title);
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
-        const conflict = settleLibraryOwnerConflict(err);
-        if (conflict) {
-          setAlbumLibraryLookup((prev) => ({
-            ...prev,
-            [albumId]: { ownerConflict: conflict },
-          }));
-          showInfo(`${album.title}: ${conflict.message}`);
-          return;
-        }
         showError(`Could not download the album: ${getApiErrorMessage(err, "Unknown error")}`);
       } finally {
         setPendingAlbumIds(({ [albumId]: _, ...prev }) => prev);
       }
     },
-    [libraryDestination.primary, showError, showInfo, showSuccess],
+    [showError, showInfo, showSuccess],
   );
 
   const handleSearchTrackAdd = useCallback(
@@ -676,9 +648,8 @@ function SearchResults() {
         const pending = !!pendingAlbumIds[albumId] || isAlbumDownloading(albumId);
         return (
           <AddActionButton
-            {...getAlbumAddAction(item, libraryDestination)}
-            ownerConflict={item.ownerConflict}
-            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
+            {...getAlbumAddAction(item)}
+            onAdd={() => handleAlbumAction(item)}
             isLoading={pending}
             loadingLabel="Downloading"
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
@@ -692,7 +663,6 @@ function SearchResults() {
       canAddAlbum,
       handleAlbumAction,
       isAlbumDownloading,
-      libraryDestination,
       handleSearchTrackAdd,
       isSearchResultInLibrary,
       loadStaticPlaylists,
@@ -1102,7 +1072,6 @@ function SearchResults() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
-                      libraryDestination={libraryDestination}
                       viewMode="grid"
                     />
                   )}
@@ -1124,7 +1093,6 @@ function SearchResults() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
-                      libraryDestination={libraryDestination}
                       viewMode="grid"
                     />
                   )}
@@ -1136,7 +1104,6 @@ function SearchResults() {
                   canAddAlbum={canAddAlbum}
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
-                  libraryDestination={libraryDestination}
                   viewMode={albumViewMode}
                 />
               ) : (

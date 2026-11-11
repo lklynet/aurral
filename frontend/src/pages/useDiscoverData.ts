@@ -3,13 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { libraryMiscClient } from "../utils/api/clients/libraryMisc.ts";
-import {
-  requestAlbumFromSearch,
-  settleLibraryOwnerConflict,
-  type ArtistsInLibrary,
-} from "../utils/api/endpoints/library.ts";
-import { buildAlbumRequestPayload } from "../utils/libraryDestination";
-import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { requestAlbumFromSearch, type ArtistsInLibrary } from "../utils/api/endpoints/library.ts";
 import { useNearbyShows } from "../hooks/useNearbyShows";
 import {
   readStoredRecentlyAdded,
@@ -36,7 +30,6 @@ export type RecentRelease = RecentReleases[number];
 export function useDiscoverData() {
   const { user: authUser, hasPermission, bootstrap } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
-  const libraryDestination = useLibraryDestination();
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
   const {
     data: nearbyShowsData,
@@ -127,23 +120,19 @@ export function useDiscoverData() {
   );
 
   const handleRecentReleaseAlbumAction = useCallback(
-    async (album: RecentRelease, managedBy = libraryDestination.primary) => {
+    async (album: RecentRelease) => {
       const albumKey = getRecentReleaseKey(album);
       const albumMbid = album?.mbid || album?.foreignAlbumId;
       const artistMbid = album?.artistMbid || album?.foreignArtistId;
       if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
       try {
-        const result = await requestAlbumFromSearch(
-          buildAlbumRequestPayload({
-            albumMbid,
-            albumName: album.albumName || album.title,
-            artistMbid,
-            artistName: album.artistName,
-            managedBy,
-            triggerSearch: true,
-          }),
-        );
+        const result = await requestAlbumFromSearch({
+          albumMbid,
+          albumName: album.albumName || album.title,
+          artistMbid,
+          artistName: album.artistName,
+        });
         queryClient.invalidateQueries({
           queryKey: queryKeys.recentReleases(authUser?.id),
         });
@@ -153,11 +142,6 @@ export function useDiscoverData() {
         );
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
-        const conflict = settleLibraryOwnerConflict(err);
-        if (conflict) {
-          showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
-          return;
-        }
         showError(
           `Could not download the album: ${
             getApiErrorText(err, "message") ||
@@ -169,7 +153,7 @@ export function useDiscoverData() {
         setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
       }
     },
-    [authUser?.id, getRecentReleaseKey, libraryDestination, showError, showInfo, showSuccess],
+    [authUser?.id, getRecentReleaseKey, showError, showInfo, showSuccess],
   );
 
   return {
@@ -196,7 +180,6 @@ export function useDiscoverData() {
     canAddAlbum,
     discoveryStatus,
     getRecentReleaseKey,
-    libraryDestination,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
   };

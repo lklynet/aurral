@@ -3,7 +3,6 @@ import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import type { SettingsRow } from "../db/rows.ts";
 import { JOB_TABLES_SQL } from "./job-queue-migration.ts";
-import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
 import { renamePlaylistPermission } from "./playlist-permission-migration.ts";
 import { migrateStaticPlaylistsToLibrary } from "./static-playlist-library-migration.ts";
 
@@ -50,8 +49,6 @@ export function createAurral3Schema(db: Database.Database) {
     lastfm_username TEXT,
     listen_history_provider TEXT,
     listen_history_username TEXT,
-    lidarr_root_folder_path TEXT,
-    lidarr_quality_profile_id INTEGER,
     listen_history_url TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     is_protected INTEGER NOT NULL DEFAULT 0,
@@ -337,7 +334,6 @@ export function createAurral3Schema(db: Database.Database) {
     quick_searched_sources TEXT NOT NULL DEFAULT '[]',
     held_for_review TEXT,
     album_grab_failures INTEGER NOT NULL DEFAULT 0,
-    managed_by TEXT,
     request_group_id TEXT,
     reused_library_file INTEGER NOT NULL DEFAULT 0
   );
@@ -407,12 +403,6 @@ export function createAurral3Schema(db: Database.Database) {
     musicbrainz_id TEXT,
     deezer_artist_id TEXT,
     updated_at INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS lidarr_artist_id_map (
-    musicbrainz_id TEXT PRIMARY KEY,
-    lidarr_foreign_artist_id TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS library_artists (
@@ -536,8 +526,6 @@ export function createAurral3Schema(db: Database.Database) {
     files_failed INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE INDEX IF NOT EXISTS idx_lidarr_artist_id_map_foreign_id
-    ON lidarr_artist_id_map (lidarr_foreign_artist_id);
   CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id
     ON library_albums (artist_id);
   CREATE INDEX IF NOT EXISTS idx_library_album_credits_artist_mbid
@@ -807,8 +795,6 @@ export function createAurral3Schema(db: Database.Database) {
     ON library_media_files (track_id, album_id, source, available, created_at DESC);
 `);
 
-  ensureUniqueLidarrArtistIdIndex(db);
-
   tryAddColumn("ALTER TABLE download_jobs ADD COLUMN started_by_playlist TEXT");
 
   db.transaction(() => {
@@ -839,7 +825,6 @@ export function createAurral3Schema(db: Database.Database) {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_kind TEXT NOT NULL,
     entity_id INTEGER NOT NULL,
-    managed_by TEXT NOT NULL,
     monitor_mode TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
@@ -850,8 +835,6 @@ export function createAurral3Schema(db: Database.Database) {
 
   CREATE INDEX IF NOT EXISTS idx_library_management_entity
     ON library_management (entity_kind, entity_id);
-  CREATE INDEX IF NOT EXISTS idx_library_management_managed_by
-    ON library_management (managed_by);
 `);
   db.transaction(() => {
     const columns = db

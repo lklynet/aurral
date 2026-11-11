@@ -74,7 +74,7 @@ test("runStorageHealthCheck fails when a path mapping local folder is missing", 
     ...dbOps.getSettings(),
     pathMappings: [
       {
-        source: "lidarr",
+        source: "slskd",
         remote: "/mnt/music",
         local: path.join(isolatedState.baseDir, "missing-mapped-music"),
       },
@@ -125,7 +125,7 @@ test("native playback passes when any available file is readable", async () => {
   await fs.writeFile(readablePath, "audio");
   upsertLibraryMediaFile({
     trackId: track.id,
-    source: "lidarr",
+    source: "readonly",
     path: path.join(requireFixture(process.env.DOWNLOAD_FOLDER), "0-stale.flac"),
     available: true,
   });
@@ -156,31 +156,6 @@ test("runStorageHealthCheck does not warn about preferred shared-root convention
     downloads?.steps.some((step) => step.id === "shared-root"),
     false,
   );
-});
-
-test("storage health warns when any Lidarr root overlaps the Aurral root", async () => {
-  const downloadFolder = process.env.DOWNLOAD_FOLDER;
-  assert.ok(downloadFolder != null);
-  const nestedLidarrRoot = path.join(downloadFolder, "lidarr");
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      lidarr: {
-        rootFolderPath: path.join(isolatedState.baseDir, "separate-lidarr"),
-        rootFolderPaths: [nestedLidarrRoot],
-      },
-    },
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const downloads = result.sections.find((section) => section.id === "downloads");
-  assert.ok(downloads != null);
-  const overlap = downloads?.steps.find((step) => step.id === "root-overlap");
-  assert.ok(overlap != null);
-
-  assert.equal(overlap?.status, "warn");
-  assert.match(requireFixture(overlap.detail), new RegExp(nestedLidarrRoot.replaceAll("/", "\\/")));
-  assert.equal(downloads.status, "warn");
 });
 
 test("passing checks never include remediation text", async () => {

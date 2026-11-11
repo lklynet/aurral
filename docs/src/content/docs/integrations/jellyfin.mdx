@@ -9,7 +9,7 @@ Jellyfin is optional. Jellyfin scans the Library folder and imports the playlist
 
 1. Mount the same media root in Aurral and Jellyfin, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 2. In Jellyfin, add the Library folder, for example `/data/downloads/aurral`, to a music library. It can be its own library or an extra folder in your existing one.
-3. If playlists reuse tracks from Lidarr, make sure the Lidarr root folder, such as `/data/music`, is in a Jellyfin music library too.
+3. If playlists use tracks from a read-only folder, such as `/data/music`, make sure that folder is in a Jellyfin music library too.
 4. Turn on **Enable real time monitoring** for the library, so Jellyfin picks up changes without a scheduled scan.
 
 ## Playlists
@@ -18,7 +18,7 @@ Aurral writes an M3U file for each enabled flow and each static playlist to `_pl
 
 - Jellyfin imports each file as a playlist that every Jellyfin user can see.
 - Jellyfin applies a change a minute or two after the file changes. Aurral writes each changed file again a few minutes later, so tracks that Jellyfin was still indexing appear too.
-- The files list each track by its full path in Aurral. Jellyfin must see the Library folder and the Lidarr root folder at the same paths.
+- The files list each track by its full path in Aurral. Jellyfin must see the Library folder and your read-only folders at the same paths.
 - When a playlist is deleted or its flow is turned off, Aurral removes its file and Jellyfin removes the playlist.
 
 Edit these playlists in Aurral, not in Jellyfin.

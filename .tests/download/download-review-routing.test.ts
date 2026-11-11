@@ -224,7 +224,7 @@ test("pipeline completion queues only committed files and settling does not expa
   assert.ok(registry != null);
   assert.deepEqual(registry.changedPaths, committedPaths);
   assert.notEqual(registry.force, true);
-  assert.equal(registry.includeLidarr, false);
+  assert.equal(registry.includeReadOnly, false);
 });
 
 async function writeOneSecondMp3(

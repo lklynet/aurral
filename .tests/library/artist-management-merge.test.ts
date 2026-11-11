@@ -33,7 +33,6 @@ test("merging an artist into its MBID identity retains management settings", () 
   managementStore.setLibraryManagement({
     entityKind: "artist",
     entityId: fallback.id,
-    managedBy: "aurral",
     monitorMode: "all",
   });
 
@@ -72,13 +71,12 @@ test("a canonical artist's management choice wins during a merge", () => {
   managementStore.setLibraryManagement({
     entityKind: "artist",
     entityId: fallback.id,
-    managedBy: "aurral",
     monitorMode: "all",
   });
   managementStore.setLibraryManagement({
     entityKind: "artist",
     entityId: resolved.id,
-    managedBy: "lidarr",
+    monitorMode: "none",
   });
 
   libraryStore.upsertLibraryArtist({
@@ -89,8 +87,8 @@ test("a canonical artist's management choice wins during a merge", () => {
   });
 
   assert.equal(
-    managementStore.getLibraryManagementEntry("artist", resolved.id)?.managedBy,
-    "lidarr",
+    managementStore.getLibraryManagementEntry("artist", resolved.id)?.monitorMode,
+    "none",
   );
   assert.equal(managementStore.getLibraryManagementEntry("artist", fallback.id), null);
 });

@@ -9,11 +9,7 @@ import {
   buildMetadataRecord,
   scanMusicRoot,
 } from "../libraryFileScanner.ts";
-import {
-  activeLidarrRoots,
-  createLibraryScanExclusion,
-  readOnlyFolderPaths,
-} from "../libraryFolders.ts";
+import { createLibraryScanExclusion, readOnlyFolderPaths } from "../libraryFolders.ts";
 import {
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
@@ -89,7 +85,6 @@ export async function adoptLibraryFileIdentity(
     metadataEnricher: () => enrichment,
     isExcluded: createLibraryScanExclusion("aurral", {
       downloadRoot: root,
-      lidarrRoots: activeLidarrRoots(null),
       readOnlyRoots: readOnlyFolderPaths(),
     }),
   });

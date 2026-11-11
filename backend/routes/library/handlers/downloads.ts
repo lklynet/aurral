@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
-import { dbOps } from "../../../db/helpers/index.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
@@ -18,22 +17,9 @@ import {
 } from "../../../services/downloadSourceService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
-import { lidarrClient } from "../../../services/lidarrClient.ts";
-import {
-  recordAlbumRequested,
-  recordAlbumSearchStarted,
-} from "../../../services/aurralHistoryService.ts";
 import { invalidateRequestsCache } from "../../requests.ts";
-import {
-  getActiveLidarrAlbums,
-  getAllDownloadStatuses,
-  getDownloadStatusesForAlbumIds,
-  getLidarrStatusSnapshot,
-  invalidateAllDownloadStatusesCache,
-  type AlbumDownloadStatus,
-} from "../../../services/lidarrStatusSnapshot.ts";
 
-export const getActiveLibraryDownloads = async () => {
+export const getActiveLibraryDownloads = () => {
   const albums = new Set<string>();
   const artists = new Set<string>();
   const tracks = [];
@@ -46,17 +32,6 @@ export const getActiveLibraryDownloads = async () => {
     if (!job.requestGroupId) continue;
     if (job.albumMbid) albums.add(job.albumMbid);
     if (job.artistMbid) artists.add(job.artistMbid);
-  }
-  try {
-    for (const album of await getActiveLidarrAlbums()) {
-      if (album.foreignAlbumId) albums.add(album.foreignAlbumId);
-      if (album.artist?.foreignArtistId) artists.add(album.artist.foreignArtistId);
-    }
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.warn("downloads", "Failed to read active Lidarr downloads", {
-      message: failure?.message,
-    });
   }
   return { albums: [...albums], artists: [...artists], tracks };
 };
@@ -83,8 +58,6 @@ const trackInput = v.object({
   albumTrackTitles: v.optional(v.nullable(v.array(v.string()))),
   libraryTrackId: v.optional(v.nullable(id)),
 });
-
-const albumInput = v.object({ albumId: v.optional(id) });
 
 const statusQuery = v.object({
   albumIds: v.optional(v.union([v.string(), v.array(v.string())])),
@@ -196,140 +169,6 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .post(
-    "/downloads/album",
-    requireAuth,
-    requirePermission("addAlbum"),
-    validate("json", albumInput),
-    async (c) => {
-      try {
-        const { albumId } = c.req.valid("json");
-        if (!albumId) return c.json({ error: "albumId is required" }, 400);
-
-        if (!lidarrClient || !lidarrClient.isConfigured()) {
-          return c.json({ error: "Lidarr is not configured" }, 400);
-        }
-
-        const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
-        if (!album) return c.json({ error: "Album not found" }, 404);
-
-        const artist = album.artistId
-          ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
-          : null;
-        if (artist) {
-          await libraryManager.ensureArtistMonitored(artist);
-        }
-        if (!album.monitored) {
-          await libraryManager.updateAlbum(albumId, { monitored: true });
-        }
-
-        const settings = dbOps.getSettings();
-        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-
-        if (searchOnAdd) await lidarrClient.triggerAlbumSearch(Number(albumId));
-        invalidateAllDownloadStatusesCache();
-
-        recordAlbumRequested({
-          albumId,
-          albumName: album.albumName,
-          artistName: artist?.artistName || album.artistName,
-          artistMbid: artist?.mbid || artist?.foreignArtistId,
-          searching: searchOnAdd,
-          user: c.var.user,
-        });
-
-        return c.json(
-          {
-            success: true,
-            message: searchOnAdd ? "Album search triggered" : "Album added to library",
-          },
-          200,
-        );
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.error("library", "Error initiating album download:", failure?.message);
-        return c.json(
-          { error: "Failed to initiate album download", message: failure?.message },
-          500,
-        );
-      }
-    },
-  )
-  .post(
-    "/downloads/album/search",
-    requireAuth,
-    requirePermission("addAlbum"),
-    validate("json", albumInput),
-    async (c) => {
-      const { albumId } = c.req.valid("json");
-      try {
-        if (!albumId) return c.json({ error: "albumId is required" }, 400);
-
-        if (!lidarrClient || !lidarrClient.isConfigured()) {
-          return c.json({ error: "Lidarr is not configured" }, 400);
-        }
-
-        const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
-        if (!album) return c.json({ error: "Album not found" }, 404);
-
-        const artist = album.artistId
-          ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
-          : null;
-        if (artist) {
-          await libraryManager.ensureArtistMonitored(artist);
-        }
-        if (!album.monitored) {
-          await libraryManager.updateAlbum(albumId, { monitored: true });
-        }
-
-        await lidarrClient.triggerAlbumSearch(Number(albumId));
-        invalidateAllDownloadStatusesCache();
-
-        recordAlbumSearchStarted({
-          albumId,
-          albumName: album.albumName,
-          artistName: artist?.artistName || album.artistName,
-          artistMbid: artist?.mbid || artist?.foreignArtistId,
-          user: c.var.user,
-        });
-
-        return c.json({ success: true, message: "Album search triggered" }, 200);
-      } catch (error) {
-        const failure = asAppError(error);
-        logger.error("downloads", `Failed to trigger album search ${albumId}:`, {
-          message: failure?.message,
-        });
-        return c.json({ error: "Failed to trigger album search", message: failure?.message }, 500);
-      }
-    },
-  )
-  .get("/downloads", async (c) => {
-    try {
-      if (!lidarrClient.isConfigured()) return c.json([], 200);
-      const queue = (await getLidarrStatusSnapshot()).provider.queue;
-      return c.json(
-        queue.map((item) => ({
-          id: item.id,
-          type: "album",
-          state: item.status || "queued",
-          title: item.title,
-          artistName: item.artist?.artistName,
-          albumTitle: item.album?.title,
-          progress:
-            item.size && item.sizeleft !== undefined
-              ? Math.round((1 - item.sizeleft / item.size) * 100)
-              : 0,
-          source: "lidarr",
-        })),
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        { error: "Failed to fetch downloads", message: asAppError(error)?.message },
-        500,
-      );
-    }
-  })
   .get("/downloads/status", noCache, validate("query", statusQuery), async (c) => {
     try {
       const { albumIds } = c.req.valid("query");
@@ -339,14 +178,11 @@ export default new Hono<AppEnv>()
       const aurralIds = albumIdArray.filter((id) => id.startsWith(aurralPrefix));
       const statuses: Record<
         string,
-        | AlbumDownloadStatus
-        | Extract<
-            ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number],
-            { error?: undefined }
-          >
-      > = await getDownloadStatusesForAlbumIds(
-        albumIdArray.filter((id) => !id.startsWith(aurralPrefix)),
-      );
+        Extract<
+          ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number],
+          { error?: undefined }
+        >
+      > = {};
       const aurralStatuses = libraryManager.getAurralAlbumStatuses(
         aurralIds.map((key) => key.slice(aurralPrefix.length)),
       );
@@ -364,20 +200,10 @@ export default new Hono<AppEnv>()
   })
   .get("/downloads/active", noCache, async (c) => {
     try {
-      return c.json(await getActiveLibraryDownloads(), 200);
+      return c.json(getActiveLibraryDownloads(), 200);
     } catch (error) {
       return c.json(
         { error: "Failed to fetch active downloads", message: asAppError(error)?.message },
-        500,
-      );
-    }
-  })
-  .get("/downloads/status/all", noCache, async (c) => {
-    try {
-      return c.json(await getAllDownloadStatuses(), 200);
-    } catch (error) {
-      return c.json(
-        { error: "Failed to fetch download status", message: asAppError(error)?.message },
         500,
       );
     }

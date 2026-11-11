@@ -1,56 +1,6 @@
 import { isUnreleased } from "../../../lib/releaseDate.ts";
 import { Download } from "../components/icons";
-import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { formatCalendarDate } from "./dateTime.ts";
-
-export const ALBUM_DOWNLOADING_STATUSES = new Set([
-  "adding",
-  "searching",
-  "downloading",
-  "moving",
-  "processing",
-]);
-const ACTIVE_ALBUM_STATUSES = new Set([...ALBUM_DOWNLOADING_STATUSES, "failed"]);
-
-export const shouldTriggerAlbumSearch = ({
-  inLibrary = false,
-  monitored = false,
-  status = "",
-  hasFiles = false,
-  percentOfTracks = 0,
-  sizeOnDisk = 0,
-  trackFileCount = 0,
-}: {
-  inLibrary?: boolean | null;
-  monitored?: boolean;
-  status?: string | null;
-  hasFiles?: boolean;
-  percentOfTracks?: number;
-  sizeOnDisk?: number;
-  trackFileCount?: number;
-} = {}) => {
-  const normalizedStatus = String(status || "").trim();
-  if (
-    hasFiles ||
-    normalizedStatus === "available" ||
-    normalizedStatus === "added" ||
-    Number(percentOfTracks) >= 100 ||
-    Number(sizeOnDisk) > 0 ||
-    Number(trackFileCount) > 0
-  ) {
-    return false;
-  }
-  if (normalizedStatus === "monitored" || ACTIVE_ALBUM_STATUSES.has(normalizedStatus)) {
-    return true;
-  }
-  if (normalizedStatus === "unmonitored" || normalizedStatus === "missing") {
-    return false;
-  }
-  if (normalizedStatus === "inLibrary") {
-    return Boolean(monitored);
-  }
-  return Boolean(inLibrary && monitored);
-};
 
 type ReleaseLibraryInfo = {
   trackCount?: number | null;
@@ -68,36 +18,13 @@ type AlbumRequestResult = {
   album?: { releaseDate?: string | null } | null;
 };
 
-type AlbumDestination = Partial<ReturnType<typeof useLibraryDestination>>;
-
-export const buildAlbumAddAction = (
-  _search: boolean,
-  destination: AlbumDestination = {},
-  releaseDate?: string | null,
-) => ({
+export const buildAlbumAddAction = (releaseDate?: string | null) => ({
   label: isUnreleased(releaseDate) ? "Download when it's out" : "Download album",
   icon: Download,
-  destination,
 });
 
-type AlbumSearchInput = Parameters<typeof shouldTriggerAlbumSearch>[0] & {
-  releaseDate?: string | null;
-};
-
-export function getAlbumAddAction<T extends object>(
-  input: T & AlbumSearchInput,
-  destination?: AlbumDestination,
-): ReturnType<typeof buildAlbumAddAction>;
-export function getAlbumAddAction(
-  input?: AlbumSearchInput,
-  destination?: AlbumDestination,
-): ReturnType<typeof buildAlbumAddAction>;
-export function getAlbumAddAction(
-  input: AlbumSearchInput = {},
-  destination: AlbumDestination = {},
-) {
-  return buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination, input.releaseDate);
-}
+export const getAlbumAddAction = ({ releaseDate }: { releaseDate?: string | null } = {}) =>
+  buildAlbumAddAction(releaseDate);
 
 export const isAlbumCompleteInLibrary = ({
   status = "",
@@ -105,10 +32,13 @@ export const isAlbumCompleteInLibrary = ({
   percentOfTracks = 0,
   sizeOnDisk = 0,
   trackFileCount = 0,
-}: Pick<
-  NonNullable<Parameters<typeof shouldTriggerAlbumSearch>[0]>,
-  "status" | "hasFiles" | "percentOfTracks" | "sizeOnDisk" | "trackFileCount"
-> = {}) =>
+}: {
+  status?: string | null;
+  hasFiles?: boolean;
+  percentOfTracks?: number;
+  sizeOnDisk?: number;
+  trackFileCount?: number;
+} = {}) =>
   hasFiles ||
   status === "available" ||
   status === "added" ||

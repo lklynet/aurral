@@ -4,13 +4,7 @@ import path from "node:path";
 import { db } from "../../config/db-sqlite.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { enqueueSystemTask } from "../jobs/systemTasks.ts";
-import { lidarrClient } from "../lidarrClient.ts";
-import {
-  activeLidarrRoots,
-  isPathWithin,
-  readOnlyFolderPaths,
-  saveReadOnlyFolderPaths,
-} from "../libraryFolders.ts";
+import { isPathWithin, readOnlyFolderPaths, saveReadOnlyFolderPaths } from "../libraryFolders.ts";
 import {
   getLibraryScanStatus,
   getScheduledLibraryScanJobId,
@@ -72,7 +66,7 @@ const countTracksStmt = db
   )
   .pluck();
 
-async function describeFolder(folder: string, lidarrRoots: string[]) {
+async function describeFolder(folder: string) {
   const prefix = folder.endsWith(path.sep) ? folder : `${folder}${path.sep}`;
   const readable = await fs.access(folder, fsConstants.R_OK | fsConstants.X_OK).then(
     () => true,
@@ -82,7 +76,6 @@ async function describeFolder(folder: string, lidarrRoots: string[]) {
     path: folder,
     readable,
     tracks: countTracksStmt.get(folder, prefix.length, prefix)!,
-    lidarrRoot: lidarrRoots.find((root) => isPathWithin(root, folder)) || null,
   };
 }
 
@@ -93,18 +86,15 @@ function isLibraryScanActive() {
 }
 
 export async function describeReadOnlyFolders() {
-  const lidarrRoots = activeLidarrRoots(lidarrClient);
   return {
-    folders: await Promise.all(
-      readOnlyFolderPaths().map((folder) => describeFolder(folder, lidarrRoots)),
-    ),
+    folders: await Promise.all(readOnlyFolderPaths().map(describeFolder)),
     scanning: isLibraryScanActive(),
   };
 }
 
 async function applyFolderChange(folders: string[]) {
   saveReadOnlyFolderPaths(folders);
-  scheduleLibraryScan({ includeLidarr: true });
+  scheduleLibraryScan({ includeReadOnly: true });
   const { refreshLibraryFileWatcher } = await import("../libraryFileWatcher.ts");
   await refreshLibraryFileWatcher();
 }

@@ -20,8 +20,6 @@ const libraryStore = await import("../../backend/services/libraryMediaStore.ts")
 const { buildLibraryReadModel } = await import("../../backend/services/libraryReadModel.ts");
 const { getLibrary, getLibraryPage } =
   await import("../../backend/services/libraryQueryService.ts");
-const { computeLibraryRootOverlaps } =
-  await import("../../backend/services/downloadFolderConfig.ts");
 
 beforeAll(() => {
   resetDatabase(db);
@@ -35,7 +33,6 @@ test("manager state uses library ids and round-trips through the store", () => {
   store.setLibraryManagement({
     entityKind: "album",
     entityId: 7,
-    managedBy: "aurral",
     monitorMode: "all",
   });
   assert.equal(store.getManagedBy("album", 7), "aurral");
@@ -44,43 +41,33 @@ test("manager state uses library ids and round-trips through the store", () => {
   assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all", monitorRules: null });
   assert.ok(updatedAt != null && Number.isSafeInteger(updatedAt) && updatedAt > 0);
 
-  store.setLibraryManagement({ entityKind: "album", entityId: 7, managedBy: "lidarr" });
-  const { updatedAt: _updatedAt, ...changedEntry } = requireFixture(
-    store.getLibraryManagementEntry("album", 7),
-  );
-  assert.deepEqual(changedEntry, { managedBy: "lidarr", monitorMode: null, monitorRules: null });
-
   assert.equal(store.clearLibraryManagement("album", 7), true);
   assert.equal(store.getManagedBy("album", 7), null);
 });
 
-test("artist monitoring rules survive same-mode writes and clear when the manager or mode changes", () => {
+test("artist monitoring rules survive same-mode writes and clear when the mode changes", () => {
   const rules = { default: true, catalogAt: 1, newSince: 1 };
   const write = (
     fields: Omit<Parameters<typeof store.setLibraryManagement>[0], "entityKind" | "entityId">,
   ) => store.setLibraryManagement({ entityKind: "artist", entityId: 9, ...fields });
 
-  write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
-  write({ managedBy: "aurral", monitorMode: "all" });
+  write({ monitorMode: "all", monitorRules: rules });
+  write({ monitorMode: "all" });
   assert.deepEqual(store.getLibraryManagementEntry("artist", 9)!.monitorRules, rules);
 
-  write({ managedBy: "aurral", monitorMode: "none" });
+  write({ monitorMode: "none" });
   assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
 
-  write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
-  write({ managedBy: "lidarr", monitorMode: "all" });
-  assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
-
-  write({ managedBy: "aurral", monitorMode: "none", monitorRules: rules });
-  write({ managedBy: "aurral", monitorMode: "none", monitorRules: null });
+  write({ monitorMode: "none", monitorRules: rules });
+  write({ monitorMode: "none", monitorRules: null });
   assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
   store.clearLibraryManagement("artist", 9);
 });
 
 test("manager state written by another process is visible without a restart", async () => {
   const { default: Database } = await import("better-sqlite3");
-  store.setLibraryManagement({ entityKind: "album", entityId: 11, managedBy: "lidarr" });
-  assert.equal(store.getManagedBy("album", 11), "lidarr");
+  store.setLibraryManagement({ entityKind: "album", entityId: 11 });
+  assert.equal(store.getManagedBy("album", 11), "aurral");
   assert.equal(store.getManagedBy("album", 12), null);
 
   const otherProcess = new Database(db.name);
@@ -88,8 +75,8 @@ test("manager state written by another process is visible without a restart", as
     const now = Date.now() + 1;
     otherProcess
       .prepare(
-        `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
-       VALUES ('album', 12, 'aurral', 'monitored', ?, ?)`,
+        `INSERT INTO library_management (entity_kind, entity_id, monitor_mode, created_at, updated_at)
+       VALUES ('album', 12, 'monitored', ?, ?)`,
       )
       .run(now, now);
     assert.equal(store.getManagedBy("album", 12), "aurral");
@@ -114,18 +101,14 @@ test("manager state written by another process is visible without a restart", as
   }
 });
 
-test("manager state rejects invalid owners, kinds, and ids", () => {
+test("manager state rejects invalid kinds and ids", () => {
   assert.throws(
-    () => store.setLibraryManagement({ entityKind: "track", entityId: 1, managedBy: "aurral" }),
+    () => store.setLibraryManagement({ entityKind: "track", entityId: 1 }),
     /entity kind/i,
   );
   assert.throws(
-    () => store.setLibraryManagement({ entityKind: "artist", entityId: 0, managedBy: "aurral" }),
+    () => store.setLibraryManagement({ entityKind: "artist", entityId: 0 }),
     /entity id/i,
-  );
-  assert.throws(
-    () => store.setLibraryManagement({ entityKind: "artist", entityId: 1, managedBy: "slskd" }),
-    /manager/i,
   );
 });
 
@@ -138,7 +121,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
         mbid: "artist-managed",
         name: "Managed Artist",
 
-        sources: ["lidarr"],
+        sources: ["readonly"],
         available: true,
         metadata: { monitored: true },
       }),
@@ -160,7 +143,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
         artistId: 11,
         title: "Managed Album",
         trackIds: [31],
-        sources: ["lidarr"],
+        sources: ["readonly"],
         available: true,
         metadata: {},
       }),
@@ -182,7 +165,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
         title: "One",
         albums: [{ albumId: 21, discNumber: 1, trackNumber: 1 }],
         files: [],
-        sources: ["lidarr"],
+        sources: ["readonly"],
         available: true,
       }),
       readTrack({
@@ -200,7 +183,6 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
   store.setLibraryManagement({
     entityKind: "artist",
     entityId: 11,
-    managedBy: "lidarr",
     monitorMode: "all",
   });
 
@@ -209,7 +191,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
   assert.ok(managed != null);
   const open = model.artists.find((a) => a.id === 12);
   assert.ok(open != null);
-  assert.equal(managed.managedBy, "lidarr");
+  assert.equal(managed.managedBy, "aurral");
   assert.equal(managed.monitorMode, "all");
   assert.equal(open.managedBy, null);
   assert.equal(open.monitorMode, null);
@@ -243,18 +225,11 @@ test("library page cache reflects ownership changes without manual invalidation"
     available: true,
   });
 
-  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral" });
+  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id });
   const before = getLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(
     before.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy,
     "aurral",
-  );
-
-  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "lidarr" });
-  const updated = getLibraryPage({ kind: "artists", pageSize: 100 });
-  assert.equal(
-    updated.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy,
-    "lidarr",
   );
 
   store.clearLibraryManagement("artist", artist.id);
@@ -285,7 +260,6 @@ test("library cache reflects ownership changed by another connection", async () 
   store.setLibraryManagement({
     entityKind: "artist",
     entityId: artist.id,
-    managedBy: "aurral",
     monitorMode: "all",
   });
   assert.equal(getLibrary()!.artists.find((entry) => entry.id === artist.id)!.monitorMode, "all");
@@ -304,69 +278,4 @@ test("library cache reflects ownership changed by another connection", async () 
   } finally {
     otherConnection.close();
   }
-});
-
-test("root overlap warnings cover equal and nested roots without rejecting", () => {
-  assert.deepEqual(
-    computeLibraryRootOverlaps({ aurralRoot: "/data/media", lidarrRoots: ["/data/other"] }),
-    [],
-  );
-  assert.deepEqual(
-    computeLibraryRootOverlaps({ aurralRoot: "/data/media", lidarrRoots: [null, ""] }),
-    [],
-  );
-
-  const equal = computeLibraryRootOverlaps({
-    aurralRoot: "/data/media/",
-    lidarrRoots: ["/data/media"],
-  });
-  assert.equal(equal.length, 1);
-  assert.equal(equal[0]?.type, "equal");
-
-  const nestedLidarr = computeLibraryRootOverlaps({
-    aurralRoot: "/data/media",
-    lidarrRoots: ["/data/media/music"],
-  });
-  assert.equal(nestedLidarr.length, 1);
-  assert.equal(nestedLidarr[0]?.type, "nested-b-in-a");
-
-  const nestedAurral = computeLibraryRootOverlaps({
-    aurralRoot: "/data/media/music",
-    lidarrRoots: ["/data/media"],
-  });
-  assert.equal(nestedAurral.length, 1);
-  assert.equal(nestedAurral[0]?.type, "nested-a-in-b");
-
-  const deduped = computeLibraryRootOverlaps({
-    aurralRoot: "/data/media",
-    lidarrRoots: ["/data/media", "/data/media"],
-  });
-  assert.equal(deduped.length, 1);
-
-  const filesystemRoot = computeLibraryRootOverlaps({
-    aurralRoot: "/",
-    lidarrRoots: ["/music"],
-  });
-  assert.equal(filesystemRoot.length, 1);
-  assert.equal(filesystemRoot[0]?.type, "nested-b-in-a");
-
-  const driveRoot = computeLibraryRootOverlaps({
-    aurralRoot: "C:/",
-    lidarrRoots: ["C:/Music"],
-  });
-  assert.equal(driveRoot.length, 1);
-  assert.equal(driveRoot[0]?.type, "nested-b-in-a");
-
-  const driveRootEqual = computeLibraryRootOverlaps({
-    aurralRoot: "C:/",
-    lidarrRoots: ["C:/"],
-  });
-  assert.equal(driveRootEqual[0]?.type, "equal");
-
-  const backslashRoot = computeLibraryRootOverlaps({
-    aurralRoot: "C:\\music\\aurral",
-    lidarrRoots: ["C:/music"],
-  });
-  assert.equal(backslashRoot.length, 1);
-  assert.equal(backslashRoot[0]?.type, "nested-a-in-b");
 });

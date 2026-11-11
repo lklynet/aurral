@@ -54,7 +54,7 @@ test("recovery codes link to the place that fixes them", () => {
   assert.equal(failed.recovery?.link, null);
 });
 
-test("unknown or Lidarr statuses produce no Aurral state", () => {
+test("unknown statuses produce no Aurral state", () => {
   assert.equal(describeAurralAlbumStatus({ status: "added" }), null);
   assert.equal(describeAurralAlbumStatus({ status: "searching" }), null);
   assert.equal(describeAurralAlbumStatus(), null);
@@ -105,7 +105,6 @@ test("retry re-requests the album through Aurral", () => {
       albumName: "Disposable Album",
       artistMbid: "artist-mbid",
       artistName: "Disposable Artist",
-      managedBy: "aurral",
     },
   );
   assert.equal(
@@ -120,7 +119,7 @@ test("only a monitored Aurral album with no files and a future date waits for it
     new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const waiting = { managedBy: "aurral", monitored: true, releaseDate: day(30), trackFileCount: 0 };
   assert.equal(isAwaitingRelease(waiting), true);
-  assert.equal(isAwaitingRelease({ ...waiting, managedBy: "lidarr" }), false);
+  assert.equal(isAwaitingRelease({ ...waiting, managedBy: null }), false);
   assert.equal(isAwaitingRelease({ ...waiting, monitored: false }), false);
   assert.equal(isAwaitingRelease({ ...waiting, trackFileCount: 1 }), false);
   assert.equal(isAwaitingRelease({ ...waiting, releaseDate: day(0) }), false);

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { downloadClientLabel } from "../../frontend/src/pages/activity/activityListUtils.ts";
 import { groupAlbumGrabRequests, matchesActivityView } from "../../lib/activity.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { activityRequest } from "./fixtures.ts";
 
 type ActivityRequest = Parameters<typeof groupAlbumGrabRequests>[0][number];
 
@@ -16,37 +17,31 @@ function albumTracks({
   phase?: NonNullable<ActivityRequest["albumGrab"]>["phase"];
 } = {}): ActivityRequest[] {
   const memberJobIds = statuses.map((_, index) => `${id}-${index}`);
-  return statuses.map((status, index): ActivityRequest => ({
-    id: `history-${memberJobIds[index]}`,
-    jobId: memberJobIds[index],
-    kind: "track_download",
-    playlistId: "library",
-    albumId: null,
-    albumMbid: null,
-    canReSearch: false,
-    inQueue: false,
-    source: "aurral",
-    type: "track",
-    albumName: "Everything Now",
-    artistName: "Arcade Fire",
-    requestGroupId: `${id}-request`,
-    trackName: `Song ${index + 1}`,
-    trackNumber: index + 1,
-    status,
-    statusLabel: status === "processing" ? "Downloading" : status,
-    requestedAt: "2026-09-29T15:06:00Z",
-    completedAt: status === "completed" ? "2026-09-29T15:08:00Z" : null,
-    actualDownloadSource: status === "completed" ? "slskd" : null,
-    downloadMethod: status === "completed" ? "album" : null,
-    albumGrab: {
-      id,
-      memberJobIds,
-      fallbackReason: null,
-      phase,
-      source: "slskd",
+  return statuses.map((status, index) =>
+    activityRequest({
+      id: `history-${memberJobIds[index]}`,
+      jobId: memberJobIds[index] ?? null,
+      albumName: "Everything Now",
+      artistName: "Arcade Fire",
+      requestGroupId: `${id}-request`,
+      trackName: `Song ${index + 1}`,
+      trackNumber: index + 1,
+      status,
+      statusLabel: status === "processing" ? "Downloading" : status,
       requestedAt: "2026-09-29T15:06:00Z",
-    },
-  }));
+      completedAt: status === "completed" ? "2026-09-29T15:08:00Z" : null,
+      actualDownloadSource: status === "completed" ? "slskd" : null,
+      downloadMethod: status === "completed" ? "album" : null,
+      albumGrab: {
+        id,
+        memberJobIds,
+        fallbackReason: null,
+        phase,
+        source: "slskd",
+        requestedAt: "2026-09-29T15:06:00Z",
+      },
+    }),
+  );
 }
 
 test("an album grab keeps completed tracks inside its queue row until every track is terminal", () => {

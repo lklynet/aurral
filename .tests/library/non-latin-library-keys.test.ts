@@ -227,7 +227,7 @@ async function seedMergedLibrary(
     trackNumber: 1,
     syncSearch: false,
   });
-  setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  setLibraryManagement({ entityKind: "album", entityId: album.id });
   const scanId = store.beginLibraryScan({ source: "aurral", rootPath: root });
   for (const filePath of paths) {
     const file = await stat(filePath);

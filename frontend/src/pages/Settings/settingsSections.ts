@@ -60,7 +60,6 @@ export function resolveSettingsPath(path: string | null, canManageServer: boolea
 
 export type SettingsSearchContext = {
   canManageServer: boolean;
-  lidarrConnected: boolean;
   signInMethods: boolean;
   sidebarArt: boolean;
 };
@@ -81,10 +80,6 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
       when: "signInMethods",
     },
     "API access": "API key X-Api-Key api_key token copy rotate",
-    "Lidarr defaults": {
-      keywords: "root folder quality profile artist adds",
-      when: "lidarrConnected",
-    },
   },
   listening: {
     Services: "scrobbling listening history recommendations",
@@ -126,12 +121,6 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     "Read-only folders": "existing music never changes",
     "Import a folder": "ingest existing music move copy hardlink fill in missing tags",
     "Clean up Library": "rename organize tags files naming folders",
-    "Library managers": "Lidarr",
-    Lidarr: {
-      item: "lidarr",
-      keywords:
-        "connection API key server URL root folder quality profile metadata profile tag monitor search on add community guide",
-    },
   },
   monitoring: {
     "Default rules":

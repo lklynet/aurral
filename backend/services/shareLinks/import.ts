@@ -67,7 +67,6 @@ function retainUnmonitored(kind: string, id: number) {
     setLibraryManagement({
       entityKind: kind,
       entityId: id,
-      managedBy: "aurral",
       monitorMode: "none",
     });
 }

@@ -37,27 +37,6 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("an install without Lidarr still reports a library root folder", async () => {
-  dbOps.updateSettings({ onboardingComplete: true, integrations: {} });
-
-  const payload = await bootstrapAsUser();
-
-  assert.equal(payload.lidarrConfigured, false);
-  assert.equal(payload.rootFolderConfigured, true);
-});
-
-test("disabling Lidarr keeps the library root folder configured", async () => {
-  dbOps.updateSettings({
-    onboardingComplete: true,
-    integrations: { lidarr: { url: "http://127.0.0.1:9", apiKey: "key", enabled: false } },
-  });
-
-  const payload = await bootstrapAsUser();
-
-  assert.equal(payload.lidarrConfigured, false);
-  assert.equal(payload.rootFolderConfigured, true);
-});
-
 test("unauthenticated health exposes the native matcher policy version", async () => {
   const response = await app.request("/health");
   const payload = await response.json();

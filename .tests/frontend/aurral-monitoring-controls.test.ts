@@ -75,7 +75,6 @@ test("summary lists skipped releases by reason with counts and keeps unknown rea
         { reason: "covered" },
         { reason: "excluded" },
         { reason: "unmonitored" },
-        { reason: "managed_by_lidarr" },
         { reason: "brand_new_reason" },
       ],
       topTracksError: "Top tracks are unavailable right now. Aurral tries again tomorrow.",
@@ -88,7 +87,6 @@ test("summary lists skipped releases by reason with counts and keeps unknown rea
     "1 skipped because another release has its songs",
     "1 skipped because you removed it",
     "1 skipped because you unmonitored it",
-    "1 managed by Lidarr",
     "1 skipped",
     "Top tracks are unavailable right now. Aurral tries again tomorrow",
   ]);
@@ -185,7 +183,7 @@ test("a server response for the album overrides the stored library metadata", ()
 });
 
 test("albums that Aurral does not manage have no monitored toggle", () => {
-  assert.equal(getAlbumMonitoredState({ managedBy: "lidarr", monitored: true }), null);
+  assert.equal(getAlbumMonitoredState({ managedBy: null, monitored: true }), null);
   assert.equal(getAlbumMonitoredState({ monitored: true }), null);
   assert.equal(getAlbumMonitoredState(null), null);
 });
@@ -215,7 +213,7 @@ test("the album download is offered for unmonitored Aurral albums with missing t
     false,
   );
   assert.equal(
-    canDownloadAurralAlbum({ ...album, managedBy: "lidarr" }, { hasMissingTracks: true }),
+    canDownloadAurralAlbum({ ...album, managedBy: null }, { hasMissingTracks: true }),
     false,
   );
 });

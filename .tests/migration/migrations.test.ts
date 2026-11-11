@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { test } from "vite-plus/test";
-import { migrate } from "../../backend/config/migrations.ts";
+import { migrate, migrations } from "../../backend/config/migrations.ts";
 
 const version = (db: Database.Database) => db.pragma("user_version", { simple: true });
 
@@ -37,4 +37,63 @@ test("a failed migration leaves the database as it was", () => {
   );
   assert.equal(version(db), 1);
   assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'added'").get(), undefined);
+});
+
+test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 2));
+  db.exec(`
+    ALTER TABLE library_management ADD COLUMN managed_by TEXT NOT NULL DEFAULT 'aurral';
+    ALTER TABLE download_jobs ADD COLUMN managed_by TEXT;
+    ALTER TABLE users ADD COLUMN lidarr_root_folder_path TEXT;
+    ALTER TABLE users ADD COLUMN lidarr_quality_profile_id INTEGER;
+    CREATE INDEX idx_library_management_managed_by ON library_management (managed_by);
+    CREATE TABLE lidarr_artist_id_map (musicbrainz_id TEXT PRIMARY KEY);
+  `);
+  const setting = (key: string, value: unknown) =>
+    db
+      .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+      .run(key, JSON.stringify(value));
+  const slskd = { url: "http://slskd.test" };
+  const kept = { source: "slskd", remote: "/downloads", local: "/data/downloads" };
+  setting("integrations", { lidarr: { url: "http://lidarr.test", apiKey: "key" }, slskd });
+  setting("rootFolderPath", "/music");
+  setting("pathMappings", [kept, { source: "Lidarr", remote: "/music", local: "/data/music" }]);
+  db.prepare(
+    `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
+     VALUES ('artist', 1, 'aurral', 'all', 1, 1)`,
+  ).run();
+  const request = db.prepare(
+    `INSERT INTO aurral_history (id, kind, title, status, status_label, created_at)
+     VALUES (?, 'album_requested', 'Album', ?, ?, 1)`,
+  );
+  request.run("searching", "processing", "Searching");
+  request.run("requested", "completed", "Requested");
+
+  migrate(db);
+
+  const read = (key: string): unknown =>
+    JSON.parse(
+      db.prepare<[string], string>("SELECT value FROM settings WHERE key = ?").pluck().get(key) ??
+        "null",
+    );
+  assert.deepEqual(read("integrations"), { slskd });
+  assert.equal(read("rootFolderPath"), null);
+  assert.deepEqual(read("pathMappings"), [kept]);
+  assert.deepEqual(db.prepare("SELECT entity_id, monitor_mode FROM library_management").all(), [
+    { entity_id: 1, monitor_mode: "all" },
+  ]);
+  const columns = (table: string) =>
+    db.prepare<[string], string>("SELECT name FROM pragma_table_info(?)").pluck().all(table);
+  assert.ok(!columns("library_management").includes("managed_by"));
+  assert.ok(!columns("download_jobs").includes("managed_by"));
+  assert.ok(!columns("users").some((column) => column.startsWith("lidarr_")));
+  assert.deepEqual(
+    db.prepare("SELECT id, status, status_label FROM aurral_history ORDER BY id").all(),
+    [
+      { id: "requested", status: "completed", status_label: "Requested" },
+      { id: "searching", status: "cancelled", status_label: "Cancelled" },
+    ],
+  );
 });

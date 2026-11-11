@@ -29,8 +29,7 @@ const unmonitoredTracksStmt = db.prepare<[], UnmonitoredTrack>(`
   JOIN library_tracks AS track ON track.id = link.track_id
   JOIN library_management AS management
     ON management.entity_kind = 'album' AND management.entity_id = album.id
-  WHERE management.managed_by = 'aurral'
-    AND NOT (${monitoredTrackCondition("track")})
+  WHERE NOT (${monitoredTrackCondition("track")})
 `);
 
 const albumKey = (value: string | null | undefined) =>
@@ -50,9 +49,7 @@ export function indexUnmonitoredJobs() {
   }
   return (
     job:
-      | JobFields<
-          "finalPath" | "albumMbid" | "playlistType" | "managedBy" | "trackMbid" | "trackName"
-        >
+      | JobFields<"finalPath" | "albumMbid" | "playlistType" | "trackMbid" | "trackName">
       | null
       | undefined,
   ) => {

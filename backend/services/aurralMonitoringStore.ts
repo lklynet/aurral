@@ -58,7 +58,6 @@ export function setAurralArtistMonitoringState(
   return setLibraryManagement({
     entityKind: "artist",
     entityId: artistId,
-    managedBy: "aurral",
     monitorMode: legacyMonitorMode(resolveArtistMonitoring(stored, defaults)),
     monitorRules: stored,
   });

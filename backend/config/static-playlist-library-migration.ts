@@ -19,11 +19,10 @@ type OwnedRow = Pick<
   | "status"
   | "final_path"
   | "external_path"
-  | "managed_by"
   | "reused_library_file"
   | "upgrade_for_job_id"
   | "created_at"
-> & { id: string };
+> & { id: string; managed_by: string | null };
 
 const playlistTrack = (row: OwnedRow) => ({
   id: row.id,

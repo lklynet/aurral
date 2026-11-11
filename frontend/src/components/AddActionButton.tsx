@@ -6,23 +6,15 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { MoreVertical, Plus, RefreshCw, type IconComponent } from "./icons";
-import Tooltip from "./Tooltip";
+import { MoreVertical, Plus, type IconComponent } from "./icons";
 import TooltipButton from "./TooltipButton";
-import SearchLibraryCheck from "./SearchLibraryCheck";
 import { DotLoader } from "./DotLoader";
 import { LibraryItemMenu, type LibraryMenuItem } from "./LibraryItemMenu";
-import { getAddToManagerLabel } from "../utils/libraryDestination";
-import type { useLibraryDestination } from "../hooks/useLibraryDestination";
-
-export type LibraryDestination = ReturnType<typeof useLibraryDestination>;
 
 export type AddActionButtonProps = ComponentPropsWithoutRef<"button"> & {
   label?: string | null;
-  destination?: Partial<LibraryDestination> | null;
-  onAdd?: (managedBy: LibraryDestination["primary"], event: MouseEvent<HTMLButtonElement>) => void;
+  onAdd?: (event: MouseEvent<HTMLButtonElement>) => void;
   items?: LibraryMenuItem[] | null;
-  ownerConflict?: { message: string } | null;
   icon?: IconComponent;
   isLoading?: boolean;
   busy?: boolean;
@@ -40,11 +32,9 @@ const keepActivationKeysLocal = (event: KeyboardEvent) => {
 
 const AddActionButton = forwardRef(function AddActionButton(
   {
-    label,
-    destination = null,
+    label = "Add to library",
     onAdd,
     items = null,
-    ownerConflict = null,
     icon: Icon = Plus,
     isLoading = false,
     busy = false,
@@ -58,21 +48,6 @@ const AddActionButton = forwardRef(function AddActionButton(
   }: AddActionButtonProps,
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
-  if (ownerConflict) {
-    return (
-      <Tooltip content={ownerConflict.message}>
-        <span
-          className="btn-add-action btn-add-action--managed"
-          role="img"
-          aria-label={ownerConflict.message}
-          tabIndex={0}
-        >
-          <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
-        </span>
-      </Tooltip>
-    );
-  }
-
   const classes = [
     "btn",
     children ? null : "btn-add-action",
@@ -85,40 +60,16 @@ const AddActionButton = forwardRef(function AddActionButton(
     <span className="btn-add-action__label">Add to library</span>
   ) : null;
   const opensMenu = !children && buttonProps["aria-haspopup"] === "menu";
-  const primary = destination?.primary || null;
-  const isDisabled = disabled || isLoading || (destination ? !destination.ready : false);
-  const handleClick =
-    onAdd && primary
-      ? (event: MouseEvent<HTMLButtonElement>) => {
-          event.stopPropagation();
-          onAdd(primary, event);
-        }
-      : buttonProps.onClick;
-
-  if (destination?.error) {
-    return (
-      <TooltipButton
-        ref={ref}
-        label="Could not check library destinations. Retry"
-        aria-label="Retry library destinations"
-        className={classes}
-        disabled={disabled || isLoading}
-        onClick={(event) => {
-          event.stopPropagation();
-          destination.retry?.();
-        }}
-        onKeyDown={keepActivationKeysLocal}
-      >
-        <span className="btn-add-action__icon">
-          <RefreshCw aria-hidden="true" />
-        </span>
-      </TooltipButton>
-    );
-  }
+  const isDisabled = disabled || isLoading;
+  const handleClick = onAdd
+    ? (event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        onAdd(event);
+      }
+    : buttonProps.onClick;
 
   if (items) {
-    const menuLabel =
-      ((isLoading || busy) && loadingLabel) || (label ?? getAddToManagerLabel(primary));
+    const menuLabel = ((isLoading || busy) && loadingLabel) || label || "Add to library";
     return (
       <div onKeyDown={keepActivationKeysLocal}>
         <LibraryItemMenu
@@ -153,10 +104,7 @@ const AddActionButton = forwardRef(function AddActionButton(
       {...buttonProps}
       ref={ref}
       label={
-        destination && !destination.ready
-          ? "Checking library destinations"
-          : ((isLoading || busy) && loadingLabel) ||
-            (buttonProps.title ?? label ?? getAddToManagerLabel(primary))
+        ((isLoading || busy) && loadingLabel) || buttonProps.title || label || "Add to library"
       }
       type={type}
       className={opensMenu ? `${classes} btn-add-action--menu` : classes}
@@ -169,11 +117,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     >
       {children ?? (
         <span className="btn-add-action__icon">
-          {isLoading || busy || (destination && !destination.ready) ? (
-            <DotLoader size="sm" label={null} />
-          ) : (
-            <Icon aria-hidden="true" />
-          )}
+          {isLoading || busy ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
         </span>
       )}
       {children ? null : visibleLabel}

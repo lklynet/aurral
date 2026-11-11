@@ -4,7 +4,7 @@
       "cold": 13,
       "warm": 13
     },
-    "bytes": 1541,
+    "bytes": 1466,
     "scans": []
   },
   "library home": {
@@ -116,13 +116,13 @@
       "cold": 28,
       "warm": 28
     },
-    "bytes": 14050,
+    "bytes": 13330,
     "scans": []
   },
   "discover artist": {
     "queries": {
-      "cold": 22,
-      "warm": 5
+      "cold": 21,
+      "warm": 4
     },
     "bytes": 379,
     "scans": [],
@@ -185,7 +185,7 @@
   },
   "playlists": {
     "queries": {
-      "cold": 40,
+      "cold": 39,
       "warm": 19
     },
     "bytes": 4503,

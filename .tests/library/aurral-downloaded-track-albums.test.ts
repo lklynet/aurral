@@ -16,11 +16,8 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  libraryStore,
-  managementStore,
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { libraryManager },
   { getLibraryForAlbumIds },
   { scanMusicRoot },
@@ -30,11 +27,8 @@ const [
   "aurral-downloaded-track-albums",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
@@ -148,7 +142,6 @@ const queuedTrackMbids = () =>
     .sort();
 
 const originalSettings = dbOps.getSettings();
-const originalLidarrConfigured = lidarrClient.isConfigured;
 const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
@@ -165,12 +158,10 @@ beforeAll(() => {
     },
   });
   clearMetadataProviderCaches();
-  lidarrClient.isConfigured = () => false;
   downloadWorker.start = async () => {};
 });
 
 afterAll(async () => {
-  lidarrClient.isConfigured = originalLidarrConfigured;
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();
@@ -241,31 +232,4 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
   assert.deepEqual(albumState().monitored, [false, false, true]);
   assert.equal(albumState().album?.monitored, false);
-});
-
-test("a file scanned into a Lidarr album stays Lidarr's", async () => {
-  const lidarrAlbumMbid = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-  const artist = db
-    .prepare<unknown[], { id: number }>("SELECT id FROM library_artists WHERE mbid = ?")
-    .get(artistMbid);
-  const album = libraryStore.upsertLibraryAlbum({
-    identityKey: `release-group:${lidarrAlbumMbid}`,
-    mbid: lidarrAlbumMbid,
-    releaseGroupMbid: lidarrAlbumMbid,
-    artistId: requireFixture(artist).id,
-    title: "Lidarr Album",
-  });
-  managementStore.setLibraryManagement({
-    entityKind: "album",
-    entityId: album.id,
-    managedBy: "lidarr",
-  });
-
-  await scanFile(0, {
-    downloadedByAurral: true,
-    albumTitle: "Lidarr Album",
-    releaseGroupMbid: lidarrAlbumMbid,
-  });
-
-  assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
 });

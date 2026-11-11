@@ -3,9 +3,8 @@ import path from "node:path";
 import { asAppError } from "../../lib/errors.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.ts";
-import { lidarrClient } from "./lidarrClient.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
-import { getPathMappings, type PathMapping } from "./pathMappings.ts";
+import { type PathMapping } from "./pathMappings.ts";
 import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.ts";
 import { logger, safeLogDiagnostic, type RuntimeLogger } from "./logger.ts";
@@ -171,18 +170,7 @@ export function createLibraryFileWatcher({
 }
 
 export function resolveLibraryWatchRoots() {
-  const roots: WatchRootEntry[] = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
-  if (lidarrClient.isConfigured()) {
-    // Path mapping checks whether the original path exists; defer that I/O to
-    // the watcher child along with recursive watcher creation.
-    roots.push(
-      ...lidarrClient
-        .getConfiguredRootFolderPaths()
-        .filter(Boolean)
-        .map((root) => ({ path: root, pathMappings: getPathMappings("lidarr") })),
-    );
-  }
-  return roots.filter(Boolean);
+  return [resolveDownloadRoot(), ...readOnlyFolderPaths()].filter(Boolean);
 }
 
 let watcherStarted = false;
@@ -198,7 +186,7 @@ export async function refreshLibraryFileWatcher({
     roots: resolveLibraryWatchRoots(),
     onChange: (changedRoots, changedPaths) =>
       scheduleLibraryScan({
-        includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
+        includeReadOnly: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
         changedPaths,
       }),
     onError: (error, root) => {

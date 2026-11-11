@@ -3,10 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import * as v from "valibot";
-import {
-  invalidateLibraryManagementCache,
-  notifyLibraryManagementChanged,
-} from "./libraryManagementStore.ts";
+import { invalidateLibraryManagementCache } from "./libraryManagementStore.ts";
 import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import {
   isSilenceTrack,
@@ -81,19 +78,6 @@ const joinFallbackKey = (keyPart: KeyPart, parts: unknown[]) => {
   const normalized = parts.map(keyPart).filter(Boolean);
   return normalized.length ? `name:${normalized.join(":")}` : null;
 };
-
-const LIDARR_METADATA_KEYS = [
-  "librarySource",
-  "id",
-  "monitored",
-  "monitor",
-  "monitorNewItems",
-  "addOptions",
-  "path",
-  "qualityProfile",
-  "rootFolderPath",
-  "statistics",
-];
 
 const getLibraryMediaFileStmt = db.prepare<[string, string], LibraryMediaFilesRow>(
   "SELECT * FROM library_media_files WHERE source = ? AND path = ?",
@@ -297,8 +281,8 @@ function mergeLibraryArtistInto(
     db
       .prepare<[number, number]>(`
     INSERT OR IGNORE INTO library_management
-      (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
-    SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
+      (entity_kind, entity_id, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
+    SELECT entity_kind, ?, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
     FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?
   `)
       .run(resolved.id, fallback.id).changes > 0;
@@ -391,7 +375,6 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
       .get(artistId);
     if (!artist) return { error: "not_found" };
     const metadata = readRawLibraryMetadata(artist.metadata_json);
-    if (metadata.id != null) return { error: "lidarr_managed" };
     const fallbackKey = buildFallbackIdentityKey("artist", artist.name);
     const fallbackTaken =
       !mbid &&
@@ -567,52 +550,6 @@ export function upsertLibraryArtist({
   })();
   if (libraryChanged) invalidateLibraryCache();
   return artist;
-}
-
-function clearLidarrMetadata(
-  table: "library_artists" | "library_albums",
-  where: string,
-  parameters: string[],
-) {
-  const row = db
-    .prepare<string[], Pick<LibraryArtistsRow | LibraryAlbumsRow, "id" | "metadata_json">>(
-      `SELECT id, metadata_json FROM ${table} WHERE ${where} LIMIT 1`,
-    )
-    .get(...parameters);
-  if (!row) return false;
-  const metadata = readRawLibraryMetadata(row.metadata_json);
-  for (const key of LIDARR_METADATA_KEYS) delete metadata[key];
-  db.prepare<[string | null, number, number]>(
-    `UPDATE ${table} SET metadata_json = ?, updated_at = ? WHERE id = ?`,
-  ).run(stringify(metadata), now(), row.id);
-  invalidateLibraryCache();
-  return true;
-}
-
-export function clearLibraryLidarrArtist(reference: unknown) {
-  const value = normalizeText(reference);
-  if (!value) return false;
-  return clearLidarrMetadata(
-    "library_artists",
-    `mbid = ? OR identity_key = ? OR (
-      json_valid(metadata_json)
-      AND CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT) = ?
-    )`,
-    [value, value, value],
-  );
-}
-
-export function clearLibraryLidarrAlbum(reference: unknown) {
-  const value = normalizeText(reference);
-  if (!value) return false;
-  return clearLidarrMetadata(
-    "library_albums",
-    `mbid = ? OR release_group_mbid = ? OR identity_key = ? OR (
-      json_valid(metadata_json)
-      AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
-    )`,
-    [value, value, value, value],
-  );
 }
 
 const albumCreditsStmt = db.prepare<[number], Pick<LibraryAlbumCreditsRow, "artist_mbid">>(
@@ -1073,8 +1010,8 @@ export function rekeyLibraryAlbum(albumId: number, identityKey: string | null) {
       ).run(target.id, id);
       db.prepare<[number, number]>(
         `INSERT OR IGNORE INTO library_management
-        (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
-       SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+        (entity_kind, entity_id, monitor_mode, created_at, updated_at, last_missing_search_at)
+       SELECT entity_kind, ?, monitor_mode, created_at, updated_at, last_missing_search_at
        FROM library_management WHERE entity_kind = 'album' AND entity_id = ?`,
       ).run(target.id, id);
       db.prepare<[number]>("DELETE FROM library_album_tracks WHERE album_id = ?").run(id);
@@ -1252,8 +1189,8 @@ export function followLibraryFileIdentity(
 }
 
 // A file the scan filed under other rows leaves no empty link behind on the
-// untagged album or track it was on. Rows with MusicBrainz IDs may be
-// Lidarr's or a wanted album's, so they keep theirs.
+// untagged album or track it was on. Rows with MusicBrainz IDs may be a
+// wanted album's, so they keep theirs.
 export function releaseLibraryFileRows(
   before: { named: boolean; albumId: number | null; trackId: number },
   after: { albumId: number; trackId: number },
@@ -1298,8 +1235,7 @@ const TRACK_IS_LISTED = `(json_valid(album.metadata_json) AND EXISTS (
   SELECT 1 FROM json_each(album.metadata_json, '$.trackList.recordings') WHERE value = track.mbid
 ))`;
 
-// Aurral and Lidarr keep the albums they were asked for, with or without
-// files: a requested album still downloading, or one unmonitored so artist
+// Aurral keeps the albums it was asked for, with or without files: a requested album still downloading, or one unmonitored so artist
 // monitoring leaves it out.
 export const ALBUM_IS_OWNED = `(
   CASE WHEN json_valid(album.metadata_json)
@@ -1309,7 +1245,7 @@ export const ALBUM_IS_OWNED = `(
   OR EXISTS (
     SELECT 1 FROM library_management AS owner
     WHERE owner.entity_kind = 'album' AND owner.entity_id = album.id
-      AND (owner.managed_by != 'aurral' OR owner.monitor_mode IS NOT NULL)
+      AND owner.monitor_mode IS NOT NULL
   )
 )`;
 
@@ -1632,7 +1568,6 @@ export function setLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid: s
       .get(albumId);
     if (!album) return { error: "not_found" } as const;
     const metadata = readRawLibraryMetadata(album.metadata_json);
-    if (metadata.id != null) return { error: "lidarr_managed" } as const;
     if (hasReleaseTags(metadata.tags)) return { error: "tagged" } as const;
     const fallbackKey = buildFallbackIdentityKey("album", album.artist_key, album.title);
     const fallbackTaken =
@@ -2387,24 +2322,20 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
       for (const target of targets) {
         db.prepare<[number, number]>(
           `INSERT INTO library_management
-            (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
-           SELECT 'album', ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+            (entity_kind, entity_id, monitor_mode, created_at, updated_at, last_missing_search_at)
+           SELECT 'album', ?, monitor_mode, created_at, updated_at, last_missing_search_at
            FROM library_management WHERE entity_kind = 'album' AND entity_id = ?
            ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
-             monitor_mode = COALESCE(library_management.monitor_mode, excluded.monitor_mode)
-           WHERE library_management.managed_by = excluded.managed_by`,
+             monitor_mode = COALESCE(library_management.monitor_mode, excluded.monitor_mode)`,
         ).run(target.id, album.id);
         if (monitored) {
-          db.prepare<[number, number]>(
+          db.prepare<[number]>(
             `UPDATE library_albums
              SET metadata_json = json_set(
                CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
                '$.monitored', json('true'))
-             WHERE id = ? AND NOT EXISTS (
-               SELECT 1 FROM library_management
-               WHERE entity_kind = 'album' AND entity_id = ? AND managed_by = 'lidarr'
-             )`,
-          ).run(target.id, target.id);
+             WHERE id = ?`,
+          ).run(target.id);
         }
       }
       if (!final) continue;
@@ -2437,8 +2368,8 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
         }
         db.prepare<[number, number]>(
           `INSERT OR IGNORE INTO library_management
-            (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
-           SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
+            (entity_kind, entity_id, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
+           SELECT entity_kind, ?, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
            FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?`,
         ).run(target.id, artist.id);
       }
@@ -2824,150 +2755,4 @@ export async function withLibraryScan<T extends LibraryScanCounts>(
 
 export function getLibraryMediaFile({ source, path }: { source: string; path: string }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
-}
-
-const AURRAL_REQUESTED_ALBUM = `
-  json_valid(album.metadata_json) AND (
-    json_extract(album.metadata_json, '$.trackListComplete') = 1
-    OR json_extract(album.metadata_json, '$.monitored') = 1
-  )
-`;
-
-// Lidarr owns an album with files in its root folders unless Aurral was
-// asked for that album. This also returns albums that older scans claimed
-// for Aurral because one of their tracks was an Aurral download.
-export function assignLidarrAlbumOwners() {
-  const timestamp = now();
-  const changed = db
-    .prepare<[number, number]>(
-      `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
-     SELECT 'album', album.id, 'lidarr', NULL, ?, ?
-     FROM library_albums AS album
-     WHERE EXISTS (
-       SELECT 1 FROM library_media_files AS media
-       WHERE media.album_id = album.id AND media.source = 'lidarr' AND media.available = 1
-     )
-     ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
-       managed_by = 'lidarr',
-       monitor_mode = NULL,
-       updated_at = excluded.updated_at
-     WHERE library_management.managed_by = 'aurral'
-       AND library_management.monitor_mode IS NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM library_albums AS album
-         WHERE album.id = library_management.entity_id AND ${AURRAL_REQUESTED_ALBUM}
-       )`,
-    )
-    .run(timestamp, timestamp).changes;
-  if (changed > 0) {
-    notifyLibraryManagementChanged();
-    invalidateLibraryCache();
-  }
-  return changed;
-}
-
-const LIDARR_METADATA_PATHS = [...LIDARR_METADATA_KEYS, "monitorOption"]
-  .map((key) => `'$.${key}'`)
-  .join(", ");
-
-// Turning Lidarr off removes everything its root folders added. Aurral's own
-// files, the tracks Aurral asked for, and the songs an album's track list
-// names stay. What Lidarr managed and still has Aurral files becomes
-// Aurral's, unmonitored.
-export function hasLidarrLibraryData() {
-  return (
-    db
-      .prepare<[], { present: number }>(
-        `SELECT EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
-       OR EXISTS (SELECT 1 FROM library_management WHERE managed_by = 'lidarr')
-       OR EXISTS (
-         SELECT 1 FROM library_artists
-         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
-       )
-       OR EXISTS (
-         SELECT 1 FROM library_albums
-         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
-       ) AS present`,
-      )
-      .get()!.present === 1
-  );
-}
-
-export function removeLidarrLibrary() {
-  if (!hasLidarrLibraryData()) return false;
-  const timestamp = now();
-  db.transaction(() => {
-    const trackIds = db
-      .prepare<[], number>(
-        "SELECT DISTINCT track_id FROM library_media_files WHERE source = 'lidarr'",
-      )
-      .pluck()
-      .all();
-    db.prepare<[]>("DELETE FROM library_media_files WHERE source = 'lidarr'").run();
-    const hasMedia = db.prepare<[number], { 1: number }>(
-      "SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1",
-    );
-    const unlinkOutsideAurral = db.prepare<[number]>(
-      `DELETE FROM library_album_tracks
-       WHERE track_id = ? AND album_id NOT IN (
-         SELECT entity_id FROM library_management
-         WHERE entity_kind = 'album' AND managed_by = 'aurral'
-       ) AND NOT EXISTS (
-         SELECT 1 FROM library_media_files AS media
-         WHERE media.track_id = library_album_tracks.track_id
-           AND (media.album_id = library_album_tracks.album_id OR media.album_id IS NULL)
-       ) AND NOT EXISTS (
-         SELECT 1 FROM library_albums AS album, library_tracks AS track
-         WHERE album.id = library_album_tracks.album_id AND track.id = library_album_tracks.track_id
-           AND ${TRACK_IS_LISTED}
-       )`,
-    );
-    const isLinked = db.prepare<[number], { 1: number }>(
-      "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
-    );
-    const deleteTrack = db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?");
-    for (const trackId of trackIds) {
-      unlinkOutsideAurral.run(trackId);
-      if (!hasMedia.get(trackId) && !isLinked.get(trackId)) deleteTrack.run(trackId);
-    }
-    db.prepare<[]>(
-      `DELETE FROM library_albums
-       WHERE NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = library_albums.id)
-         AND id NOT IN (
-           SELECT entity_id FROM library_management
-           WHERE entity_kind = 'album' AND managed_by = 'aurral'
-         )`,
-    ).run();
-    db.prepare<[]>(
-      `DELETE FROM library_artists
-       WHERE NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = library_artists.id)
-         AND id NOT IN (
-           SELECT entity_id FROM library_management
-           WHERE entity_kind = 'artist' AND managed_by = 'aurral'
-         )`,
-    ).run();
-    db.prepare<[]>(
-      `DELETE FROM library_management
-       WHERE (entity_kind = 'album' AND entity_id NOT IN (SELECT id FROM library_albums))
-          OR (entity_kind = 'artist' AND entity_id NOT IN (SELECT id FROM library_artists))`,
-    ).run();
-    db.prepare<[number]>(
-      `UPDATE library_management
-       SET managed_by = 'aurral',
-         monitor_mode = CASE entity_kind WHEN 'artist' THEN 'none' ELSE NULL END,
-         updated_at = ?
-       WHERE managed_by = 'lidarr'`,
-    ).run(timestamp);
-    for (const table of ["library_artists", "library_albums"]) {
-      db.prepare<[number]>(
-        `UPDATE ${table}
-         SET metadata_json = json_remove(metadata_json, ${LIDARR_METADATA_PATHS}), updated_at = ?
-         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'`,
-      ).run(timestamp);
-    }
-    finishLibraryScan(beginLibraryScan({ source: "lidarr-removal" }));
-  }).immediate();
-  notifyLibraryManagementChanged();
-  invalidateLibraryCache();
-  return true;
 }

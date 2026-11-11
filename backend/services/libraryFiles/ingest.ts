@@ -17,7 +17,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.ts";
 import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.ts";
-import { configuredLidarrFolders, isPathWithin, readOnlyFolderPaths } from "../libraryFolders.ts";
+import { isPathWithin, readOnlyFolderPaths } from "../libraryFolders.ts";
 import { getLibraryMediaFile } from "../libraryMediaStore.ts";
 import { invalidateLibraryQueryCache } from "../libraryQueryService.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
@@ -132,10 +132,7 @@ export async function resolveIngestSource(
   return source;
 }
 
-export async function checkIngestSource({
-  sourcePath,
-  lidarrClient = null,
-}: { sourcePath?: unknown; lidarrClient?: Parameters<typeof configuredLidarrFolders>[0] } = {}) {
+export async function checkIngestSource({ sourcePath }: { sourcePath?: unknown } = {}) {
   const downloadRoot = resolveDownloadRoot();
   const source = await resolveIngestSource(sourcePath, { downloadRoot });
   let audioFiles = 0;
@@ -144,8 +141,6 @@ export async function checkIngestSource({
     firstFile ||= filePath;
     audioFiles += 1;
   }
-  const lidarrRoot =
-    configuredLidarrFolders(lidarrClient).find((root) => overlaps(root, source)) || null;
   return {
     sourcePath: source,
     downloadRoot: path.resolve(downloadRoot),
@@ -153,7 +148,6 @@ export async function checkIngestSource({
     hardlink: firstFile
       ? await probeHardlink(firstFile, downloadRoot)
       : { available: false, reason: "The folder has no music files." },
-    lidarrRoot,
     readOnlyFolder: readOnlyFolderPaths().find((root) => overlaps(root, source)) || null,
   };
 }
@@ -636,7 +630,7 @@ export function ingestScanRequest(
     ["done", "duplicate"].includes(item.status) && item.targetPath ? [item.targetPath] : [],
   );
   if (operation.options.mode === "move") changedPaths.push(...items.map((item) => item.sourcePath));
-  return { includeLidarr: operation.options.mode === "move", changedPaths };
+  return { includeReadOnly: operation.options.mode === "move", changedPaths };
 }
 
 // Album art beside the music follows it when the whole folder went to one
@@ -743,9 +737,9 @@ const fileExists = (filePath: string) =>
     () => false,
   );
 
-async function rescan(changedPaths: string[], { includeLidarr }: { includeLidarr: boolean }) {
+async function rescan(changedPaths: string[], { includeReadOnly }: { includeReadOnly: boolean }) {
   if (!changedPaths.length) return;
-  scheduleLibraryScan({ includeLidarr, changedPaths });
+  scheduleLibraryScan({ includeReadOnly, changedPaths });
 }
 
 // Album art this ingest brought along goes with the last music it filed in a
@@ -901,7 +895,7 @@ async function settleIngest(operation: LibraryFileOperation) {
       await takeBackAlbumArt(folder, images, operation.options.mode);
     placed = placed.filter(({ item }) => !removed.has(item.target_path));
     updateLibraryFileOperation(operation.id, { summary: { doubles: "checked" } });
-    await rescan(changed, { includeLidarr: operation.options.mode === "move" });
+    await rescan(changed, { includeReadOnly: operation.options.mode === "move" });
   }
   if (operation.summary.monitor === "pending") {
     await monitorTracks(operation, placed);

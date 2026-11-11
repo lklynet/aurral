@@ -3,13 +3,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { requestsClient } from "../utils/api/clients/requests.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
-import { triggerAlbumSearch } from "../utils/api/endpoints/library.ts";
 import { getStagingStreamUrl } from "../utils/api/playlistUrls.ts";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getActivityPollIntervalMs } from "../utils/requestScheduling.ts";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
 import {
@@ -84,10 +82,8 @@ function ActivityPage() {
   const { view: viewParam } = useParams();
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
-  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const [localError, setLocalError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
-  const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState<Record<string, boolean>>({});
   const [reviewingJobs, setReviewingJobs] = useState<Record<string, "approve" | "deny">>({});
   const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
   const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
@@ -128,17 +124,13 @@ function ActivityPage() {
       type: "active",
     });
   }, [activityQueryKey, isMissingView]);
-  const { isConnected: downloadsWsConnected } = useWebSocketChannel("downloads", (message) => {
-    if (message?.type === "download_statuses") refreshFromStatusEvent();
-  });
-  const { isConnected: playlistsWsConnected } = useWebSocketChannel(
+  const { isConnected: activityWsConnected } = useWebSocketChannel(
     "playlists",
     (message) => {
       if (message?.type === "playlist_status") refreshFromStatusEvent();
     },
     { enabled: hasFlowAccess },
   );
-  const activityWsConnected = downloadsWsConnected && (!hasFlowAccess || playlistsWsConnected);
   useEffect(() => {
     if (activityWsConnected) refreshFromStatusEvent();
   }, [activityWsConnected, refreshFromStatusEvent]);
@@ -177,7 +169,7 @@ function ActivityPage() {
       return visibleRequests.map((request): ActivityListEntry => ({
         type: "item",
         request,
-        key: request.id || request.mbid,
+        key: request.id,
       }));
     }
     return buildHistoryListEntries(visibleRequests);
@@ -239,9 +231,6 @@ function ActivityPage() {
     },
     [activityQueryKey, updateRequests],
   );
-  const reSearchMutation = useMutation({
-    mutationFn: ({ albumId }: { albumId: string }) => triggerAlbumSearch(albumId),
-  });
   const approveMutation = useMutation({
     mutationFn: (jobId: string) =>
       parseResponse(
@@ -267,35 +256,6 @@ function ActivityPage() {
       void queryClient.invalidateQueries({ queryKey: activityQueryKey });
     },
   });
-
-  const handleReSearchAlbum = async (request: ActivityRequest) => {
-    const albumId = request.albumId;
-    if (!albumId || reSearchingAlbumIds[albumId]) return;
-    setReSearchingAlbumIds((prev) => ({ ...prev, [albumId]: true }));
-    try {
-      await reSearchMutation.mutateAsync({ albumId });
-      updateRequests((prev) =>
-        prev.map((item) =>
-          String(item.albumId) === String(albumId)
-            ? {
-                ...item,
-                requestedAt: new Date().toISOString(),
-                status: "processing",
-                statusLabel: "Searching",
-                title: item.albumName
-                  ? `Searching Lidarr for ${item.albumName}`
-                  : item.title?.replace(/^No results for /, "Searching Lidarr for ") || item.title,
-                canReSearch: false,
-              }
-            : item,
-        ),
-      );
-    } catch {
-      setLocalError("Failed to trigger album search.");
-    } finally {
-      setReSearchingAlbumIds(({ [albumId]: _, ...prev }) => prev);
-    }
-  };
 
   const reviewBlockedJob = async (jobId: string | null | undefined, action: "approve" | "deny") => {
     if (!jobId || reviewingJobs[jobId]) return;
@@ -501,13 +461,11 @@ function ActivityPage() {
                 );
               }
               const rowProps = {
-                reSearchingAlbumIds,
                 reviewingJobs,
                 controllingJobs,
                 jobErrors,
                 currentTrack,
                 isPlaying,
-                onReSearch: lidarrConnected ? handleReSearchAlbum : undefined,
                 onApprove: (jobId: string | null | undefined) => reviewBlockedJob(jobId, "approve"),
                 onDeny: (jobId: string | null | undefined) => reviewBlockedJob(jobId, "deny"),
                 onCancel: (jobId: string | null | undefined) => controlDownloadJob(jobId, "cancel"),

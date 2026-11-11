@@ -84,7 +84,7 @@ volumes:
 
 1. Mount the same media root in Aurral and Navidrome, at the same container path.
 2. In Navidrome, add a library for the Library folder, for example `/data/downloads/aurral`.
-3. If playlists reuse tracks from Lidarr, add the Lidarr root folder, such as `/data/music`, as a library too.
+3. If playlists use tracks from a read-only folder, such as `/data/music`, add that folder as a library too.
 
 Navidrome watches its libraries and picks up new files on its own.
 
@@ -93,7 +93,7 @@ Navidrome watches its libraries and picks up new files on its own.
 Aurral writes an M3U file for each enabled flow and each static playlist to `_playlists` in the Library folder. Navidrome imports these files as playlists and updates a playlist when its file changes. **Settings > Library > Playlist files** shows the folder.
 
 - Navidrome imports playlist files only while `ND_AUTOIMPORTPLAYLISTS` is on, which is the default.
-- The files list each track by its full path in Aurral. Navidrome must see the Library folder and the Lidarr root folder at the same paths.
+- The files list each track by its full path in Aurral. Navidrome must see the Library folder and your read-only folders at the same paths.
 - Navidrome gives imported playlists to its first admin user and keeps them private. To show a playlist to other users, make it public in Navidrome.
 - When a playlist is deleted, renamed, or its flow is turned off, Aurral removes its file. Navidrome keeps the old playlist with no tracks. Delete it in Navidrome.
 

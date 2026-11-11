@@ -13,7 +13,7 @@ authentication. An API key gives administrator access. Routes that change data
 are not read-only.
 
 `GET` and media routes read data. `POST`, `PUT`, `PATCH`, and `DELETE` routes
-can change Aurral, Lidarr, files, users, or external services.
+can change Aurral, files, users, or external services.
 
 ## Health and authentication
 
@@ -65,12 +65,6 @@ For local password authentication, connect with the session token as
 auto-login for WebSocket connections. The instance API key does not work for
 WebSocket connections.
 
-## Incoming webhooks
-
-| Method | Path                   | Purpose                                           |
-| ------ | ---------------------- | ------------------------------------------------- |
-| `POST` | `/api/webhooks/lidarr` | Receive Lidarr import events for requested albums |
-
 ## Library
 
 | Method   | Path                                                          | Purpose                                                                                                                                                                                                                                                |
@@ -79,35 +73,32 @@ WebSocket connections.
 | `GET`    | `/api/library/artists/:mbid`                                  | Get a library artist                                                                                                                                                                                                                                   |
 | `GET`    | `/api/library/artists/:id/cover`                              | Get a Library artist's image, or the art of one of its albums                                                                                                                                                                                          |
 | `POST`   | `/api/library/artists`                                        | Add an artist                                                                                                                                                                                                                                          |
-| `GET`    | `/api/library/artists/:mbid/monitoring`                       | Get the active manager's monitoring for an artist                                                                                                                                                                                                      |
+| `GET`    | `/api/library/artists/:mbid/monitoring`                       | Get an artist's monitoring                                                                                                                                                                                                                             |
 | `PUT`    | `/api/library/artists/:mbid`                                  | Update artist monitoring                                                                                                                                                                                                                               |
-| `POST`   | `/api/library/artists/:mbid/monitoring/preview`               | Plan an Aurral artist's monitoring with `{ "monitoring": … }` without saving it                                                                                                                                                                        |
+| `POST`   | `/api/library/artists/:mbid/monitoring/preview`               | Plan an artist's monitoring with `{ "monitoring": … }` without saving it                                                                                                                                                                               |
 | `GET`    | `/api/library/monitoring/defaults`                            | Read the default monitoring rules and how many artists use them                                                                                                                                                                                        |
 | `POST`   | `/api/library/monitoring/defaults/preview`                    | Count what new default rules would download with `{ "rules": … }`. Admin only                                                                                                                                                                          |
 | `PUT`    | `/api/library/monitoring/defaults`                            | Save the default monitoring rules with `{ "rules": … }`. Admin only                                                                                                                                                                                    |
 | `POST`   | `/api/library/lidarr-conversion/dismiss`                      | Dismiss the report shown after Aurral 3 takes over a Library that Lidarr ran. `{ "monitorArtists": true }` also starts default monitoring for those artists. Admin only                                                                                |
 | `GET`    | `/api/library/monitoring/exclusions?artistMbid=`              | List the albums and tracks deleted from monitoring, for one artist or all                                                                                                                                                                              |
 | `DELETE` | `/api/library/monitoring/exclusions/:id`                      | Let monitoring download an excluded album or track again                                                                                                                                                                                               |
-| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr`           | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached             |
-| `POST`   | `/api/library/artists/:mbid/refresh`                          | Refresh an artist in Lidarr                                                                                                                                                                                                                            |
+| `DELETE` | `/api/library/artists/:mbid?deleteFiles=true\|false`          | Delete an artist. An artist without a MusicBrainz ID takes its Library `id` instead. `deleteFiles=true` also deletes its files in the Library folder                                                                                                   |
 | `PUT`    | `/api/library/artists/:id/mbid`                               | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }`                                                                                                                                                      |
 | `GET`    | `/api/library/artists/:id/matches?q=`                         | MusicBrainz artists a library artist could be, searched by `q` or its name                                                                                                                                                                             |
 | `GET`    | `/api/library/albums/:id/matches?q=`                          | MusicBrainz release groups a library album could be: its artist's releases when the artist has a MusicBrainz ID, otherwise a search by `q` or its title                                                                                                |
-| `PUT`    | `/api/library/albums/:id/release-group`                       | Set a library album's MusicBrainz release group with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }`. Returns `409` for a Lidarr album or one whose files have MusicBrainz album tags                                                           |
-| `GET`    | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr`   | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID                                                                                                                                                    |
+| `PUT`    | `/api/library/albums/:id/release-group`                       | Set a library album's MusicBrainz release group with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }`. Returns `409` for an album whose files have MusicBrainz album tags                                                                        |
+| `GET`    | `/api/library/albums?artistId=:id`                            | List an artist's albums                                                                                                                                                                                                                                |
 | `GET`    | `/api/library/albums/:id`                                     | Get an album                                                                                                                                                                                                                                           |
 | `GET`    | `/api/library/albums/:id/cover`                               | Get an album's Library artwork as an image. Art in the album's files comes first                                                                                                                                                                       |
 | `POST`   | `/api/library/albums`                                         | Add an album                                                                                                                                                                                                                                           |
 | `POST`   | `/api/library/albums/request`                                 | Request an album from search data                                                                                                                                                                                                                      |
-| `PUT`    | `/api/library/albums/:id`                                     | Update an album                                                                                                                                                                                                                                        |
-| `DELETE` | `/api/library/albums/:id`                                     | Delete an album                                                                                                                                                                                                                                        |
-| `PUT`    | `/api/library/albums/aurral/:albumId`                         | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`                                                                                                                                         |
-| `GET`    | `/api/library/albums/aurral/:albumId/status`                  | Get the download status of an Aurral-managed album                                                                                                                                                                                                     |
-| `POST`   | `/api/library/albums/aurral/:albumId/cancel`                  | Cancel queued and active downloads for an Aurral-managed album                                                                                                                                                                                         |
-| `DELETE` | `/api/library/albums/aurral/:albumId?deleteFiles=true\|false` | Remove an Aurral-managed album                                                                                                                                                                                                                         |
+| `PUT`    | `/api/library/albums/aurral/:albumId`                         | Monitor or stop monitoring an album and all of its tracks with `{ "monitored": true \| false }`                                                                                                                                                        |
+| `GET`    | `/api/library/albums/aurral/:albumId/status`                  | Get the download status of an album                                                                                                                                                                                                                    |
+| `POST`   | `/api/library/albums/aurral/:albumId/cancel`                  | Cancel queued and active downloads for an album                                                                                                                                                                                                        |
+| `DELETE` | `/api/library/albums/aurral/:albumId?deleteFiles=true\|false` | Remove an album                                                                                                                                                                                                                                        |
 | `GET`    | `/api/library/tracks`                                         | List album tracks                                                                                                                                                                                                                                      |
 | `DELETE` | `/api/library/tracks/:id`                                     | Delete a library track file and prune Library records when no media remains. Returns `409` when its only file is in a read-only folder                                                                                                                 |
-| `PUT`    | `/api/library/tracks/aurral/:trackId`                         | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track. Stopping cancels an upgrade in progress                                               |
+| `PUT`    | `/api/library/tracks/aurral/:trackId`                         | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. Stopping cancels an upgrade in progress                                                                                                                                      |
 | `POST`   | `/api/library/refresh`                                        | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again                                                                                                                                                               |
 | `GET`    | `/api/library/refresh`                                        | Read the ID and status of the scheduled library scan                                                                                                                                                                                                   |
 | `GET`    | `/api/library/refresh/:jobId`                                 | Read the status of a library scan                                                                                                                                                                                                                      |
@@ -115,7 +106,7 @@ WebSocket connections.
 | `GET`    | `/api/library/files/read-only-folders`                        | List read-only folders with each one's track count and whether Aurral can read it, and whether a library scan is running. Admin only                                                                                                                   |
 | `POST`   | `/api/library/files/read-only-folders`                        | Add a read-only folder with `{ "path": "…" }` and scan it. Returns `400` when the folder is missing, unreadable, or overlaps the Library folder or another read-only folder                                                                            |
 | `DELETE` | `/api/library/files/read-only-folders`                        | Remove a read-only folder with `{ "path": "…" }`. Its music leaves the Library and its files stay                                                                                                                                                      |
-| `POST`   | `/api/library/files/ingest/check`                             | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder or read-only folder it is in                                                                                                 |
+| `POST`   | `/api/library/files/ingest/check`                             | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any read-only folder it is in                                                                                                                       |
 | `POST`   | `/api/library/files/ingest`                                   | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums", "fillTags": true }`. `monitor` defaults to `none`, and `fillTags` to `false`. Returns `409` while another operation runs |
 | `POST`   | `/api/library/files/cleanup`                                  | Start renaming Library files in the Library folder to Aurral's names and filling in their missing tags. Returns `409` while another operation runs                                                                                                     |
 | `GET`    | `/api/library/files/operations/:id`                           | Read an operation's status, progress, and counts                                                                                                                                                                                                       |
@@ -129,48 +120,32 @@ WebSocket connections.
 | `GET`    | `/api/library/playback-queue`                                 | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100                                                                                                                                                                      |
 | `GET`    | `/api/library/stream/:albumId/:trackId`                       | Stream a Library track                                                                                                                                                                                                                                 |
 | `GET`    | `/api/library/file-stream/:albumId/:trackId`                  | Stream an album track file                                                                                                                                                                                                                             |
-| `GET`    | `/api/library/rootfolder`                                     | List Lidarr root-folder paths                                                                                                                                                                                                                          |
 | `GET`    | `/api/library/lookup/:mbid`                                   | Check whether an artist is in the library                                                                                                                                                                                                              |
 | `POST`   | `/api/library/lookup/batch`                                   | Check multiple artists                                                                                                                                                                                                                                 |
 | `POST`   | `/api/library/albums/lookup/batch`                            | Check multiple albums                                                                                                                                                                                                                                  |
 | `GET`    | `/api/library/recent`                                         | List the 20 artists with the newest library files                                                                                                                                                                                                      |
 | `GET`    | `/api/library/recent-releases`                                | List recent missing releases                                                                                                                                                                                                                           |
-| `GET`    | `/api/library/downloads`                                      | List download jobs                                                                                                                                                                                                                                     |
-| `GET`    | `/api/library/downloads/status`                               | Get the statuses for the required `albumIds` query. Use `aurral:<albumId>` for Aurral albums                                                                                                                                                           |
-| `GET`    | `/api/library/downloads/status/all`                           | Get all download statuses                                                                                                                                                                                                                              |
+| `GET`    | `/api/library/downloads/status`                               | Get the statuses for the required `albumIds` query, as `aurral:<albumId>`                                                                                                                                                                              |
 | `POST`   | `/api/library/downloads/track`                                | Download or request a track                                                                                                                                                                                                                            |
-| `POST`   | `/api/library/downloads/album`                                | Monitor an album and optionally run the configured search                                                                                                                                                                                              |
-| `POST`   | `/api/library/downloads/album/search`                         | Trigger a Lidarr album search                                                                                                                                                                                                                          |
-| `POST`   | `/api/library/downloads/tracks/:trackId/research`             | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running                                                                                                                  |
-| `POST`   | `/api/library/downloads/tracks/:trackId/replacement-job`      | Get the download job to use for a manual replacement search of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running                                                                               |
+| `POST`   | `/api/library/downloads/tracks/:trackId/research`             | Search for a replacement of a library track. Send the `albumId`. Returns `409` when a search for the track is already running                                                                                                                          |
+| `POST`   | `/api/library/downloads/tracks/:trackId/replacement-job`      | Get the download job to use for a manual replacement search of a library track. Send the `albumId`. Returns `409` when a search for the track is already running                                                                                       |
 
-New artists and albums go to Lidarr when it is connected, and to Aurral
-otherwise. Artists and albums that Aurral already has stay Aurral's. The artist
-and album add routes accept an optional `managedBy` value. A value other than
-the active manager returns `409` with `library_manager_unavailable`, except
-`aurral` for an album that Aurral already manages. A `GET /api/library/albums`
-list for a Lidarr artist also includes that artist's Aurral albums.
+The `aurral` album and track routes take the Library album or track ID.
+Cancelling or removing an album that Aurral only plays from a read-only folder
+returns `409` with `album_owner_conflict`. `POST /api/library/albums/request`
+still accepts `managedBy` and `triggerSearch` from older clients and ignores
+them.
 
-Aurral album routes take the Library album ID, not a Lidarr album ID. They
-return `409` with the current manager when Lidarr manages the album. An album
-status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
-`failed`, `partial`, or `missing`. It includes per-track `counts` and, when
+An album status is one of `complete`, `downloading`, `queued`, `blocked`,
+`cancelled`, `failed`, `partial`, or `missing`. It includes per-track `counts` and, when
 `blocked`, `failed`, or `partial` needs action, a `recovery` object with a
 `code` (`download_source_missing`, `review_required`, or `source_failed`) and
 a `message`. Album add and request responses include the same status as
 `albumStatus`.
 
-`PUT /api/library/artists/:mbid` sets the active manager's monitoring. With
-Lidarr, send `{ "monitorOption": "…", "artistName": "…" }` with `none`,
-`existing`, `all`, `future`, `missing`, `latest`, or `first`. The route adds the
-artist to Lidarr when needed, which requires the `addArtist` permission, and
-hands Lidarr any album it starts monitoring that Aurral has tracks from. The
-monitoring read returns `{ manager, added, monitorOption, inAurral, error }`,
-where `inAurral` says whether Aurral holds part of the artist, and
-`monitorOption` is `null` when the artist's Lidarr monitoring was changed in
-Lidarr itself. Lidarr rejects `monitoring` with `lidarr_monitoring`.
-
-For Aurral, send `{ "monitoring": { "monitored": true, "useDefault": true } }`,
+`PUT /api/library/artists/:mbid` sets an artist's monitoring. It adds the
+artist when needed, which requires the `addArtist` permission. Send
+`{ "monitoring": { "monitored": true, "useDefault": true } }`,
 `{ "monitoring": { "monitored": true, "useDefault": false, "rules": … } }`, or
 `{ "monitoring": { "monitored": false } }`. Rules have these fields, and a
 missing field takes the factory default:
@@ -192,20 +167,19 @@ tracks, return `400` with `invalid_monitor_rules`. Older clients can send
 become the matching rules, and `none` stops monitoring. Other options return
 `400` with `unsupported_monitor_mode`.
 
-The Aurral monitoring read and update return `monitored`, `useDefault`,
+The monitoring read and update return `monitored`, `useDefault`,
 `rules`, and `defaultRules`. The update and the preview also return
 `monitoring` with `releaseGroupIds` and `releases` for the releases being
 queued, `topTracks`, `skipped` with a `reason` for each skipped release
-(`complete`, `covered`, `excluded`, `unmonitored`, `managed_by_lidarr`, or
+(`complete`, `covered`, `excluded`, `unmonitored`, or
 `metadata_unavailable`), and `skippedTracks` with a `reason` for each skipped
 top track (`excluded`, `in_library`, `on_release`, or `queued`). If artist
 metadata is unavailable, the route returns `503` with `metadata_unavailable`
 and keeps the previous monitoring. `POST /api/library/artists` accepts the same
-`monitoring` and `monitorOption`. For Lidarr, `none` adds the artist without
-monitoring, and leaving it out uses the Lidarr default.
+`monitoring` and `monitorOption`.
 
 `DELETE /api/library/albums/aurral/:albumId` and
-`DELETE /api/library/artists/:mbid` for an Aurral-managed artist cancel
+`DELETE /api/library/artists/:mbid` cancel
 unfinished downloads first. They return `409` with `download_cancellation_failed`
 when a download client does not confirm the cancellation. Removing an album
 records an exclusion, so the artist's monitoring leaves it out, and the
@@ -215,16 +189,15 @@ exclusion that keeps it out of the artist's top tracks.
 
 Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
-tracks. Without a configured download source, an Aurral album request saves
+tracks. Without a configured download source, an album request saves
 the album and reports `download_source_missing` instead of queueing downloads.
-For Aurral-managed albums, a complete Usenet, Tidarr, Soulseek, or deemix release can
+A complete Usenet, Tidarr, Soulseek, or deemix release can
 fill several track jobs with one download attempt. If only some files verify,
-the remaining tracks continue through per-track fallback. Lidarr-managed
-albums keep Lidarr acquisition behavior.
+the remaining tracks continue through per-track fallback.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission. When `libraryTrackId` or `trackMbid` names a track in
-an Aurral-managed album, the request monitors that track, queues it with its
+an album, the request monitors that track, queues it with its
 album, and responds with `monitored: true`.
 
 ## Artist metadata
@@ -253,14 +226,12 @@ detail route instead.
 
 ## Search and requests
 
-| Method   | Path                           | Purpose                                                                    |
-| -------- | ------------------------------ | -------------------------------------------------------------------------- |
-| `GET`    | `/api/search`                  | Search artists, albums, or tags                                            |
-| `GET`    | `/api/search/unified`          | Unified search suggestions or results                                      |
-| `GET`    | `/api/search/link`             | Find the MusicBrainz artist, album, and track for a streaming-service link |
-| `GET`    | `/api/requests`                | List current artist and album requests                                     |
-| `DELETE` | `/api/requests/:mbid`          | Remove an artist request                                                   |
-| `DELETE` | `/api/requests/album/:albumId` | Remove an album request                                                    |
+| Method | Path                  | Purpose                                                                    |
+| ------ | --------------------- | -------------------------------------------------------------------------- |
+| `GET`  | `/api/search`         | Search artists, albums, or tags                                            |
+| `GET`  | `/api/search/unified` | Unified search suggestions or results                                      |
+| `GET`  | `/api/search/link`    | Find the MusicBrainz artist, album, and track for a streaming-service link |
+| `GET`  | `/api/requests`       | List current artist and album requests                                     |
 
 `GET /api/search` requires `q`. Its optional `scope` is `artist` (default),
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
@@ -287,8 +258,7 @@ song.link. Other links return `400`. A link the service cannot find returns
 for a day.
 
 `GET /api/requests` accepts `refresh=true` to
-rebuild the list. A refreshed list reuses Lidarr's queue and history when
-Aurral read them in the last 10 seconds. Aurral items include
+rebuild the list. Items include
 `libraryAlbumId` and `requestGroupId` when they're known, and album downloads
 include `albumGrab.libraryAlbumId`.
 
@@ -462,57 +432,48 @@ These routes retrieve public playlists anonymously. Preview accepts a supported 
 
 ## Users
 
-| Method   | Path                               | Purpose                                                                                            |
-| -------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/users`                       | List users                                                                                         |
-| `POST`   | `/api/users`                       | Create a user                                                                                      |
-| `PATCH`  | `/api/users/:id`                   | Update a user                                                                                      |
-| `DELETE` | `/api/users/:id`                   | Delete a user                                                                                      |
-| `GET`    | `/api/users/me/listening-history`  | Get the current user's Last.fm, ListenBrainz, and Koito history sources                            |
-| `PATCH`  | `/api/users/me/listening-history`  | Set or clear any of the current user's history sources                                             |
-| `GET`    | `/api/users/me/identities`         | List the sign-in identities linked to the current user                                             |
-| `DELETE` | `/api/users/me/identities/:id`     | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
-| `GET`    | `/api/users/me/lidarr-preferences` | Current user's Lidarr preferences                                                                  |
-| `PATCH`  | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences                                                           |
-| `GET`    | `/api/users/me/discover-layout`    | Current user's discovery layout                                                                    |
-| `PATCH`  | `/api/users/me/discover-layout`    | Update current user's discovery layout                                                             |
-| `GET`    | `/api/users/me/theme`              | Current user's theme settings and saved themes, or `null`                                          |
-| `PUT`    | `/api/users/me/theme`              | Replace the current user's theme settings. Returns `400` when the theme is invalid                 |
-| `POST`   | `/api/users/me/password`           | Change current user's password                                                                     |
+| Method   | Path                              | Purpose                                                                                            |
+| -------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/users`                      | List users                                                                                         |
+| `POST`   | `/api/users`                      | Create a user                                                                                      |
+| `PATCH`  | `/api/users/:id`                  | Update a user                                                                                      |
+| `DELETE` | `/api/users/:id`                  | Delete a user                                                                                      |
+| `GET`    | `/api/users/me/listening-history` | Get the current user's Last.fm, ListenBrainz, and Koito history sources                            |
+| `PATCH`  | `/api/users/me/listening-history` | Set or clear any of the current user's history sources                                             |
+| `GET`    | `/api/users/me/identities`        | List the sign-in identities linked to the current user                                             |
+| `DELETE` | `/api/users/me/identities/:id`    | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
+| `GET`    | `/api/users/me/discover-layout`   | Current user's discovery layout                                                                    |
+| `PATCH`  | `/api/users/me/discover-layout`   | Update current user's discovery layout                                                             |
+| `GET`    | `/api/users/me/theme`             | Current user's theme settings and saved themes, or `null`                                          |
+| `PUT`    | `/api/users/me/theme`             | Replace the current user's theme settings. Returns `400` when the theme is invalid                 |
+| `POST`   | `/api/users/me/password`          | Change current user's password                                                                     |
 
 ## Administration and settings
 
 Every route in this section requires an administrator.
 
-| Method | Path                                         | Purpose                                                                        |
-| ------ | -------------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET`  | `/api/settings`                              | Read settings                                                                  |
-| `POST` | `/api/settings`                              | Update settings                                                                |
-| `GET`  | `/api/settings/storage-health`               | Return the result of the last storage health check. It does not run the checks |
-| `POST` | `/api/settings/storage-health/check`         | Run the storage health check again                                             |
-| `GET`  | `/api/settings/tasks`                        | List scheduled maintenance tasks                                               |
-| `POST` | `/api/settings/tasks/clear-stale`            | Clear stale task runs                                                          |
-| `GET`  | `/api/settings/lidarr/profiles`              | List Lidarr quality profiles                                                   |
-| `GET`  | `/api/settings/lidarr/metadata-profiles`     | List Lidarr metadata profiles                                                  |
-| `GET`  | `/api/settings/lidarr/root-folders`          | List Lidarr root folders                                                       |
-| `GET`  | `/api/settings/lidarr/tags`                  | List Lidarr tags                                                               |
-| `GET`  | `/api/settings/lidarr/test-library-access`   | Test Lidarr library access                                                     |
-| `GET`  | `/api/settings/lidarr/test`                  | Test Lidarr configuration                                                      |
-| `POST` | `/api/settings/lidarr/apply-community-guide` | Apply recommended Lidarr settings                                              |
-| `POST` | `/api/settings/slskd/test`                   | Test slskd                                                                     |
-| `POST` | `/api/settings/prowlarr/test`                | Test Prowlarr                                                                  |
-| `GET`  | `/api/settings/prowlarr/indexers`            | List Prowlarr Usenet indexers                                                  |
-| `POST` | `/api/settings/nzbget/test`                  | Test NZBGet                                                                    |
-| `POST` | `/api/settings/sabnzbd/test`                 | Test SABnzbd                                                                   |
-| `POST` | `/api/settings/ytdlp/test`                   | Test yt-dlp                                                                    |
-| `GET`  | `/api/settings/download-clients`             | Read download client settings metadata                                         |
-| `POST` | `/api/settings/download-clients/:key/test`   | Test a download client                                                         |
-| `POST` | `/api/settings/gotify/test`                  | Test Gotify                                                                    |
-| `POST` | `/api/settings/webhook/test`                 | Test one webhook configuration                                                 |
-| `GET`  | `/api/settings/playlist-files`               | Read the playlist file folder and naming setting                               |
-| `PUT`  | `/api/settings/playlist-files`               | Change the owner prefix in playlist file names                                 |
-| `GET`  | `/api/backup`                                | Download a backup zip. Requires a password entered in the last 15 minutes      |
-| `POST` | `/api/backup/restore`                        | Restore a backup zip sent as the request body, then restart                    |
+| Method | Path                                       | Purpose                                                                        |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------ |
+| `GET`  | `/api/settings`                            | Read settings                                                                  |
+| `POST` | `/api/settings`                            | Update settings                                                                |
+| `GET`  | `/api/settings/storage-health`             | Return the result of the last storage health check. It does not run the checks |
+| `POST` | `/api/settings/storage-health/check`       | Run the storage health check again                                             |
+| `GET`  | `/api/settings/tasks`                      | List scheduled maintenance tasks                                               |
+| `POST` | `/api/settings/tasks/clear-stale`          | Clear stale task runs                                                          |
+| `POST` | `/api/settings/slskd/test`                 | Test slskd                                                                     |
+| `POST` | `/api/settings/prowlarr/test`              | Test Prowlarr                                                                  |
+| `GET`  | `/api/settings/prowlarr/indexers`          | List Prowlarr Usenet indexers                                                  |
+| `POST` | `/api/settings/nzbget/test`                | Test NZBGet                                                                    |
+| `POST` | `/api/settings/sabnzbd/test`               | Test SABnzbd                                                                   |
+| `POST` | `/api/settings/ytdlp/test`                 | Test yt-dlp                                                                    |
+| `GET`  | `/api/settings/download-clients`           | Read download client settings metadata                                         |
+| `POST` | `/api/settings/download-clients/:key/test` | Test a download client                                                         |
+| `POST` | `/api/settings/gotify/test`                | Test Gotify                                                                    |
+| `POST` | `/api/settings/webhook/test`               | Test one webhook configuration                                                 |
+| `GET`  | `/api/settings/playlist-files`             | Read the playlist file folder and naming setting                               |
+| `PUT`  | `/api/settings/playlist-files`             | Change the owner prefix in playlist file names                                 |
+| `GET`  | `/api/backup`                              | Download a backup zip. Requires a password entered in the last 15 minutes      |
+| `POST` | `/api/backup/restore`                      | Restore a backup zip sent as the request body, then restart                    |
 
 ## Logs
 
@@ -561,12 +522,9 @@ recording require a user's login session.
 These routes accept requests only until onboarding is complete. During initial
 setup, Aurral does not require a credential for these routes.
 
-| Method | Path                                       | Purpose                       |
-| ------ | ------------------------------------------ | ----------------------------- |
-| `POST` | `/api/onboarding/lidarr/profiles`          | List Lidarr quality profiles  |
-| `POST` | `/api/onboarding/lidarr/metadata-profiles` | List Lidarr metadata profiles |
-| `POST` | `/api/onboarding/lidarr/test`              | Test Lidarr credentials       |
-| `POST` | `/api/onboarding/complete`                 | Complete onboarding           |
+| Method | Path                       | Purpose             |
+| ------ | -------------------------- | ------------------- |
+| `POST` | `/api/onboarding/complete` | Complete onboarding |
 
 ## Files and images
 

@@ -620,21 +620,10 @@ test("Clean up keeps a file's track number from its tags when the Library's albu
   assert.equal(await exists(download), false);
 });
 
-test("Clean up leaves Lidarr's files alone when Lidarr shares the Library folder", async () => {
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...settings,
-    integrations: {
-      ...settings.integrations,
-      lidarr: {
-        enabled: true,
-        url: "http://127.0.0.1:9",
-        apiKey: "test-key",
-        rootFolderPath: root,
-      },
-    },
-  });
-  const lidarrFile = await makeTrack(
+test("Clean up leaves a read-only folder inside the Library folder alone", async (t: import("vite-plus/test").TestContext) => {
+  t.onTestFinished(() => dbOps.setJSONSetting("readOnlyFolders", []));
+  dbOps.setJSONSetting("readOnlyFolders", [path.join(root, "Shared Artist")]);
+  const readOnlyFile = await makeTrack(
     path.join(root, "Shared Artist", "Shared Album (2001)", "Shared Artist - 01 - Song.flac"),
     {
       artist: "Shared Artist",
@@ -644,12 +633,12 @@ test("Clean up leaves Lidarr's files alone when Lidarr shares the Library folder
     },
   );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const bytes = await readFile(lidarrFile);
+  const bytes = await readFile(readOnlyFile);
 
   const { items } = await cleanUp();
 
   assert.deepEqual([...items], []);
-  assert.deepEqual(await readFile(lidarrFile), bytes);
+  assert.deepEqual(await readFile(readOnlyFile), bytes);
   assert.equal(await exists(path.join(root, "Shared Artist", "Shared Album")), false);
 });
 

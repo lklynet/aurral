@@ -1,14 +1,10 @@
 import { getTagArtists } from "./musicDataSource/index.ts";
 import { buildImageProxyUrl } from "./imageProxyService.ts";
 import { selectBestArtistImage } from "./imageRanking.ts";
-import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.ts";
 import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
 } from "./providers/brainzmashProvider.ts";
-import { normalizePercentOfTracks } from "./lidarrAlbumStats.ts";
-import { asAppError } from "../../lib/errors.ts";
-import { logger } from "./logger.ts";
 import {
   PRIMARY_RELEASE_TYPES as PRIMARY_RELEASE_TYPE_LIST,
   SECONDARY_RELEASE_TYPES as SECONDARY_RELEASE_TYPE_LIST,
@@ -23,56 +19,7 @@ type TagArtist = Awaited<ReturnType<typeof getTagArtists>>["artists"][number];
 type ProviderArtist = Awaited<ReturnType<typeof providerSearchArtists>>["items"][number];
 type ProviderAlbum = Awaited<ReturnType<typeof providerSearchAlbums>>["items"][number];
 
-interface AlbumLibraryLookupEntry {
-  inLibrary: true;
-  monitored: boolean;
-  providerAlbumId: string | null;
-  providerArtistId: string | null;
-  status: "available" | "monitored" | "unmonitored";
-}
-
 const ALL_RELEASE_TYPES = new Set([...PRIMARY_RELEASE_TYPE_LIST, ...SECONDARY_RELEASE_TYPE_LIST]);
-async function getAlbumLibraryLookup(albumMbids: string[]) {
-  const lookup = new Map<string, AlbumLibraryLookupEntry>();
-  if (!lidarrClient.isConfigured() || albumMbids.length === 0) {
-    return lookup;
-  }
-
-  try {
-    const wanted = [...new Set(albumMbids)].slice(0, LIDARR_ALBUM_LOOKUP_BATCH_MAX);
-    const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted);
-    for (const [index, foreignAlbumId] of wanted.entries()) {
-      const result = albums[index];
-      if (!result) continue;
-      if (result.status === "rejected") {
-        logger.warn("library", "Album search enrichment lookup failed", {
-          foreignAlbumId,
-          message: asAppError(result.reason)?.message || String(result.reason),
-        });
-        continue;
-      }
-      const album = result.value;
-      if (!album) continue;
-      const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
-      const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
-      const monitored = Boolean(album?.monitored);
-      const hasFiles = percentOfTracks >= 100 || sizeOnDisk > 0;
-      lookup.set(foreignAlbumId, {
-        inLibrary: true,
-        monitored,
-        providerAlbumId: album.id !== undefined && album.id !== null ? String(album.id) : null,
-        providerArtistId:
-          album.artistId !== undefined && album.artistId !== null ? String(album.artistId) : null,
-        status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
-      });
-    }
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.warn("library", "Album search enrichment failed", { message: failure?.message });
-  }
-
-  return lookup;
-}
 
 export function normalizeAlbumReleaseTypesFilter(releaseTypes: unknown) {
   const values: unknown[] = Array.isArray(releaseTypes)
@@ -119,7 +66,7 @@ function normalizeArtistItem(item: ProviderArtist) {
   };
 }
 
-function normalizeAlbumItem(item: ProviderAlbum, lookup: AlbumLibraryLookupEntry | null = null) {
+function normalizeAlbumItem(item: ProviderAlbum) {
   return {
     type: "album",
     id: item.id,
@@ -130,11 +77,10 @@ function normalizeAlbumItem(item: ProviderAlbum, lookup: AlbumLibraryLookupEntry
     primaryType: item.type || null,
     secondaryTypes: Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
     coverUrl: item.coverUrl || null,
-    inLibrary: !!lookup,
-    providerAlbumId: lookup?.providerAlbumId || null,
-    providerArtistId: lookup?.providerArtistId || null,
-    status: lookup?.status || "missing",
-    ...(lookup && { monitored: Boolean(lookup.monitored) }),
+    inLibrary: false,
+    providerAlbumId: null,
+    providerArtistId: null,
+    status: "missing",
     score: item.score || 0,
   };
 }
@@ -172,9 +118,6 @@ export async function searchAlbums(
     releaseTypes: selectedReleaseTypes,
     sort: normalizedSort,
   });
-  const albumLookup = await getAlbumLibraryLookup(
-    result.items.map((item) => item.id).filter((id): id is string => id !== undefined),
-  );
   return {
     scope: "album",
     query,
@@ -182,9 +125,7 @@ export async function searchAlbums(
     count: result.count,
     offset: result.offset,
     hasMore: result.offset + result.items.length < result.count,
-    items: result.items.map((item) =>
-      normalizeAlbumItem(item, item.id === undefined ? undefined : albumLookup.get(item.id)),
-    ),
+    items: result.items.map(normalizeAlbumItem),
   };
 }
 

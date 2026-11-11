@@ -2,13 +2,11 @@ import { useRef, useState, type ReactNode } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { Eye, MoreVertical, Plus, SlidersHorizontal } from "./icons";
-import AddActionButton from "./AddActionButton";
 import { ArtistMonitoringRulesDialog } from "./ArtistMonitoringRulesDialog";
 import { DotLoader } from "./DotLoader";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import { useToast } from "../contexts/ToastContext";
-import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { libraryArtistsClient } from "../utils/api/clients/libraryArtists.ts";
@@ -18,7 +16,6 @@ import {
   buildArtistMonitoringItems,
   describeArtistMonitoring,
   describeArtistMonitoringChange,
-  getArtistMonitorOption,
   isArtistMonitored,
 } from "../utils/artistMonitoring.ts";
 
@@ -38,9 +35,7 @@ interface UseArtistMonitoringOptions {
   onChanged?: (() => unknown) | null;
 }
 
-const isUnchanged = (state: MonitoringData | null, request: MonitoringRequest) => {
-  if (request.monitorOption) return request.monitorOption === getArtistMonitorOption(state);
-  const monitoring = request.monitoring!;
+const isUnchanged = (state: MonitoringData | null, { monitoring }: MonitoringRequest) => {
   if (!state || state.added === false) return monitoring.monitored === false;
   const { monitored, useDefault, rules } = monitoring;
   if (monitored !== isArtistMonitored(state)) return false;
@@ -49,10 +44,7 @@ const isUnchanged = (state: MonitoringData | null, request: MonitoringRequest) =
 
 const optimisticState = (existing: MonitoringData | undefined, request: MonitoringRequest) => {
   if (!existing) return existing;
-  if (request.monitorOption)
-    return { ...existing, added: true, monitorOption: request.monitorOption };
-  if (existing.manager !== "aurral") return existing;
-  const { monitored, useDefault } = request.monitoring!;
+  const { monitored, useDefault } = request.monitoring;
   return {
     ...existing,
     added: true,
@@ -68,7 +60,6 @@ export function useArtistMonitoring({
   canAdd = false,
   onChanged = null,
 }: UseArtistMonitoringOptions) {
-  const destination = useLibraryDestination();
   const { isArtistDownloading } = useActiveDownloads();
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
@@ -89,7 +80,6 @@ export function useArtistMonitoring({
     staleTime: 0,
   });
   const state = monitoringQuery.data || null;
-  const manager = state?.manager || destination.primary;
   const name = artistName || "this artist";
 
   const choose = async (request: MonitoringRequest) => {
@@ -128,17 +118,12 @@ export function useArtistMonitoring({
   const reason = (() => {
     if (monitoringQuery.isError) return "Could not check monitoring. Reload the page to try again.";
     if (!state) return "Checking monitoring";
-    if (state.error) return state.error;
     return null;
   })();
 
   const canMonitor = state ? (state.added ? canChange : canAdd) : false;
 
   return {
-    state,
-    destination,
-    manager,
-    ready: destination.ready && !destination.error,
     pending,
     downloading: isArtistDownloading(mbid),
     monitored: isArtistMonitored(state),
@@ -146,29 +131,27 @@ export function useArtistMonitoring({
     reason,
     monitoringItems: canMonitor
       ? buildArtistMonitoringItems({
-          manager,
           state,
           onSelect: choose,
-          onEditRules: manager === "aurral" ? () => setRulesOpen(true) : null,
+          onEditRules: () => setRulesOpen(true),
         }).map((item) =>
           item.id === "monitor:rules" ? { ...item, icon: SlidersHorizontal } : item,
         )
       : [],
-    dialog:
-      manager === "aurral" && mbid ? (
-        <ArtistMonitoringRulesDialog
-          open={rulesOpen}
-          mbid={mbid}
-          artistName={name}
-          state={state?.manager === "aurral" ? state : null}
-          saving={pending}
-          onClose={() => setRulesOpen(false)}
-          onError={showError}
-          onSave={async (monitoring) => {
-            if (await choose({ monitoring })) setRulesOpen(false);
-          }}
-        />
-      ) : null,
+    dialog: mbid ? (
+      <ArtistMonitoringRulesDialog
+        open={rulesOpen}
+        mbid={mbid}
+        artistName={name}
+        state={state}
+        saving={pending}
+        onClose={() => setRulesOpen(false)}
+        onError={showError}
+        onSave={async (monitoring) => {
+          if (await choose({ monitoring })) setRulesOpen(false);
+        }}
+      />
+    ) : null,
   };
 }
 
@@ -190,20 +173,9 @@ const ButtonContent = ({
   </>
 );
 
-type ArtistMonitoringButtonsProps = UseArtistMonitoringOptions & {
-  onCustomizeLidarr?: (() => void) | null;
-};
-
-export function ArtistMonitoringButtons({
-  onCustomizeLidarr = null,
-  ...props
-}: ArtistMonitoringButtonsProps) {
+export function ArtistMonitoringButtons(props: UseArtistMonitoringOptions) {
   const monitoring = useArtistMonitoring(props);
-  const { manager, monitored, reason, monitoringItems, pending, downloading, state } = monitoring;
-
-  if (!monitoring.ready) {
-    return <AddActionButton destination={monitoring.destination} showLabel />;
-  }
+  const { monitored, reason, monitoringItems, pending, downloading } = monitoring;
 
   const icon = monitored ? <Eye aria-hidden="true" /> : <Plus aria-hidden="true" />;
   const label = monitored ? monitoring.label : "Monitor";
@@ -241,20 +213,6 @@ export function ArtistMonitoringButtons({
     );
   }
 
-  const customizeItems =
-    manager === "lidarr" && state?.added === false && onCustomizeLidarr
-      ? [
-          {
-            id: "customize",
-            label: "Customize add…",
-            icon: SlidersHorizontal,
-            separatorBefore: true,
-            closeBeforeSelect: true,
-            onSelect: onCustomizeLidarr,
-          },
-        ]
-      : [];
-
   return (
     <>
       <LibraryItemMenu
@@ -266,7 +224,7 @@ export function ArtistMonitoringButtons({
         disabled={pending}
         contextMenu={false}
         align="start"
-        items={[...monitoringItems, ...customizeItems]}
+        items={monitoringItems}
       />
       {monitoring.dialog}
     </>

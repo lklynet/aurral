@@ -1,5 +1,4 @@
 import { getAppBasePath } from "../basePath.ts";
-import type { LibraryAvailability } from "../libraryDestination.ts";
 
 const getDefaultApiBaseUrl = () => {
   if (import.meta.env.DEV) return "/api";
@@ -15,9 +14,6 @@ export interface ApiErrorBody {
   message?: string;
   error?: string | Record<string, unknown>;
   code?: string;
-  managedBy?: string | null;
-  availability?: LibraryAvailability | null;
-  conflict?: { managedBy?: string | null; availability?: LibraryAvailability | null } | null;
 }
 
 export interface ApiErrorResponse {
@@ -227,15 +223,6 @@ export const fetchCoverWithMemo = async <T extends CoverCacheValue>(
     }),
   );
 };
-
-export const lidarrCredentialParams = (
-  url: string | undefined,
-  apiKey: string | undefined,
-  { trimUrl = false }: { trimUrl?: boolean } = {},
-) => ({
-  ...(url && { url: trimUrl ? url.replace(/\/+$/, "") : url }),
-  ...(apiKey && { apiKey }),
-});
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 

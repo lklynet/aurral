@@ -175,7 +175,7 @@ export class PlaylistManager {
   }
 
   scheduleScanLibrary(force = false) {
-    return scheduleLibraryScan({ force, includeLidarr: false });
+    return scheduleLibraryScan({ force, includeReadOnly: false });
   }
 
   _rememberArtwork(playlistId: string, state: PlaylistArtworkState) {

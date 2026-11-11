@@ -159,8 +159,8 @@ strings `libraryAlbumId`, `libraryArtistId`, `providerAlbumId`, and
 means that the server did not find the album. `ownedTrackMbids` identifies
 available tracks; it does not promise a complete album track list.
 `libraryAlbumId` and `libraryArtistId` are null when the album is not in the
-Library. `providerAlbumId` and `providerArtistId` are null when no service such
-as Lidarr manages it.
+Library. `providerAlbumId` and `providerArtistId` are always null. They are
+kept for older apps.
 
 Flow objects contain strings `id` and `name`, numeric `size` and `ownerUserId`,
 boolean `enabled`, and object `mix`. Existing legacy flows can have a nullable

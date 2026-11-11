@@ -2,7 +2,8 @@ import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryManagementRow } from "../db/rows.ts";
 
-export type LibraryOwner = "aurral" | "lidarr";
+// Aurral manages every artist and album that has an entry.
+export type LibraryOwner = "aurral";
 type ManagementEntry = {
   managedBy: LibraryOwner;
   monitorMode: string | null;
@@ -12,22 +13,19 @@ type ManagementEntry = {
 type EntityKind = "artist" | "album";
 type ManagementCache = Record<EntityKind, Map<number, ManagementEntry>>;
 
-const LIBRARY_OWNERS = new Set(["aurral", "lidarr"]);
 const isEntityKind = (kind: string): kind is EntityKind => kind === "artist" || kind === "album";
 
-// Monitoring rules belong to one manager and mode. A write that changes either
-// without giving rules clears them, so stale rules never come back.
+// Monitoring rules belong to one mode. A write that changes the mode without
+// giving rules clears them, so stale rules never come back.
 const upsertStmt = db.prepare<Record<string, unknown>>(`
   INSERT INTO library_management
-    (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at)
-  VALUES (@kind, @id, @owner, @mode, @rules, @now, @now)
+    (entity_kind, entity_id, monitor_mode, monitor_rules, created_at, updated_at)
+  VALUES (@kind, @id, @mode, @rules, @now, @now)
   ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
-    managed_by = excluded.managed_by,
     monitor_mode = excluded.monitor_mode,
     monitor_rules = CASE
       WHEN @rulesGiven = 1 THEN excluded.monitor_rules
-      WHEN library_management.managed_by = excluded.managed_by
-        AND library_management.monitor_mode IS excluded.monitor_mode
+      WHEN library_management.monitor_mode IS excluded.monitor_mode
         THEN library_management.monitor_rules
       ELSE NULL
     END,
@@ -42,20 +40,14 @@ const selectAllStmt = db.prepare<
   [],
   Pick<
     LibraryManagementRow,
-    "entity_kind" | "entity_id" | "managed_by" | "monitor_mode" | "monitor_rules" | "updated_at"
+    "entity_kind" | "entity_id" | "monitor_mode" | "monitor_rules" | "updated_at"
   >
->(
-  "SELECT entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, updated_at FROM library_management",
-);
+>("SELECT entity_kind, entity_id, monitor_mode, monitor_rules, updated_at FROM library_management");
 
 const dataVersionStmt = db.prepare<[], { data_version: number }>("PRAGMA data_version");
 let cache: ManagementCache | null = null;
 let cacheDataVersion: number | null | undefined = null;
 let changeListeners: (() => void)[] = [];
-
-function isLibraryOwner(value: string): value is LibraryOwner {
-  return value === "aurral" || value === "lidarr";
-}
 
 function parseRules(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
@@ -82,9 +74,9 @@ function getCache(): ManagementCache {
     cache = { artist: new Map(), album: new Map() };
     for (const row of selectAllStmt.all()) {
       const map = isEntityKind(row.entity_kind) ? cache[row.entity_kind] : undefined;
-      if (map && isLibraryOwner(row.managed_by)) {
+      if (map) {
         map.set(row.entity_id, {
-          managedBy: row.managed_by,
+          managedBy: "aurral",
           monitorMode: row.monitor_mode || null,
           monitorRules: parseRules(row.monitor_rules),
           updatedAt: row.updated_at || null,
@@ -117,11 +109,6 @@ export function invalidateLibraryManagementCache() {
   cache = null;
 }
 
-export function notifyLibraryManagementChanged() {
-  invalidateLibraryManagementCache();
-  notifyChanged();
-}
-
 export function getLibraryManagementEntry(entityKind: string, entityId: unknown) {
   if (!isEntityKind(entityKind)) return null;
   const id = Number(entityId);
@@ -141,36 +128,27 @@ export function getManagedByMap(entityKind: string) {
 export function setLibraryManagement({
   entityKind,
   entityId,
-  managedBy,
   monitorMode = null,
   monitorRules,
 }: {
   entityKind?: string;
   entityId?: unknown;
-  managedBy?: string;
   monitorMode?: string | null;
   monitorRules?: unknown;
 } = {}) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
-  const owner = String(managedBy || "")
-    .trim()
-    .toLowerCase();
   if (!isEntityKind(kind)) {
     throw new Error(`Invalid library management entity kind: ${entityKind}`);
   }
   if (!Number.isSafeInteger(id) || id <= 0) {
     throw new Error(`Invalid library management entity id: ${entityId}`);
   }
-  if (!LIBRARY_OWNERS.has(owner)) {
-    throw new Error(`Invalid library manager: ${managedBy}`);
-  }
   const normalizedMonitorMode = monitorMode == null ? null : String(monitorMode).trim() || null;
   const rulesGiven = monitorRules !== undefined;
   upsertStmt.run({
     kind,
     id,
-    owner,
     mode: normalizedMonitorMode,
     rules: rulesGiven && monitorRules ? JSON.stringify(monitorRules) : null,
     rulesGiven: rulesGiven ? 1 : 0,

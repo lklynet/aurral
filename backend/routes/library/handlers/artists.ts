@@ -10,9 +10,8 @@ import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 import { artistQueueTracks } from "../../../services/queueTracks.ts";
-import { asAppError, type AppError } from "../../../../lib/errors.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
-import { lidarrClient } from "../../../services/lidarrClient.ts";
 
 const listQuery = v.object({
   limit: v.optional(v.string()),
@@ -20,8 +19,6 @@ const listQuery = v.object({
   readPath: v.optional(v.string()),
   source: v.optional(v.string()),
 });
-
-const id = v.union([v.string(), v.number()]);
 
 const monitoringInput = v.object({
   monitored: v.optional(v.boolean()),
@@ -32,14 +29,9 @@ const monitoringInput = v.object({
 const addInput = v.object({
   foreignArtistId: v.optional(v.string()),
   artistName: v.optional(v.string()),
-  quality: v.optional(v.nullable(v.string())),
   monitorOption: v.optional(v.nullable(v.string())),
   monitoring: v.optional(v.nullable(monitoringInput)),
-  rootFolderPath: v.optional(v.nullable(v.string())),
-  qualityProfileId: v.optional(v.nullable(id)),
-  tagId: v.optional(v.nullable(id)),
   releaseGroupMbid: v.optional(v.nullable(v.string())),
-  managedBy: v.optional(v.nullable(v.string())),
 });
 
 const updateInput = v.object({
@@ -50,7 +42,6 @@ const updateInput = v.object({
 
 const deleteQuery = v.object({
   deleteFiles: v.optional(v.string()),
-  manager: v.optional(v.string()),
 });
 
 export default new Hono<AppEnv>()
@@ -88,7 +79,7 @@ export default new Hono<AppEnv>()
     try {
       const mbid = c.req.param("mbid");
       if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
-      return c.json(await libraryManager.getArtistMonitoring(mbid), 200);
+      return c.json(libraryManager.getArtistMonitoring(mbid), 200);
     } catch (error) {
       return c.json(
         { error: "Failed to read artist monitoring", message: asAppError(error)?.message },
@@ -130,14 +121,9 @@ export default new Hono<AppEnv>()
         const {
           foreignArtistId: mbid,
           artistName,
-          quality,
           monitorOption,
           monitoring,
-          rootFolderPath,
-          qualityProfileId,
-          tagId,
           releaseGroupMbid,
-          managedBy: requestedManagedBy,
         } = c.req.valid("json");
 
         if (!mbid || !artistName) {
@@ -145,18 +131,7 @@ export default new Hono<AppEnv>()
         }
         if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
 
-        let managedBy;
-        try {
-          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
-        } catch (error) {
-          const failure = asAppError(error);
-          return c.json(
-            { error: failure?.message, code: failure?.code || null },
-            isErrorStatus(failure?.statusCode) ? failure.statusCode : 400,
-          );
-        }
-
-        const existingArtist = await libraryManager.getArtist(mbid, { managedBy });
+        const existingArtist = libraryManager.getArtist(mbid);
         if (existingArtist?.id) {
           return c.json(
             {
@@ -173,36 +148,11 @@ export default new Hono<AppEnv>()
           );
         }
 
-        let preparedAddOptions = null;
-        try {
-          preparedAddOptions = await libraryManager.resolveArtistAddOptions({
-            user,
-            managedBy,
-            quality,
-            monitorOption,
-            monitoring,
-            rootFolderPath,
-            qualityProfileId,
-            tagId,
-            albumOnly: Boolean(releaseGroupMbid),
-            albumMbid: releaseGroupMbid || null,
-          });
-        } catch (error) {
-          const failure: (AppError & { field?: string }) | undefined = asAppError(error);
-          return c.json(
-            {
-              error: "Failed to validate Lidarr add options",
-              message: failure?.message,
-              field: failure?.field || null,
-              code: failure?.code || null,
-            },
-            failure?.statusCode === 400 ? 400 : 500,
-          );
-        }
-
-        const artist = await libraryManager.addArtistWithResolvedOptions(mbid, artistName, {
-          ...preparedAddOptions,
+        const artist = await libraryManager.addArtist(mbid, artistName, {
           user,
+          monitorOption,
+          monitoring,
+          albumOnly: Boolean(releaseGroupMbid),
         });
         if (isFailure(artist)) {
           logger.error("library", `Failed to add artist ${artistName}:`, {
@@ -268,16 +218,11 @@ export default new Hono<AppEnv>()
     async (c) => {
       try {
         const mbid = c.req.param("mbid");
-        const { deleteFiles, manager = null } = c.req.valid("query");
+        const { deleteFiles } = c.req.valid("query");
         if (!UUID_REGEX.test(mbid) && !/^[1-9]\d*$/.test(mbid)) {
           return c.json({ error: "Use an artist's MusicBrainz ID or Library id" }, 400);
         }
-        if (manager !== null && manager !== "aurral" && manager !== "lidarr") {
-          return c.json({ error: "manager must be 'aurral' or 'lidarr'" }, 400);
-        }
-        const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true", {
-          manager,
-        });
+        const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true");
         if (!result?.success) {
           const message = result?.error || "Failed to delete artist";
           return c.json(
@@ -293,32 +238,4 @@ export default new Hono<AppEnv>()
         );
       }
     },
-  )
-  .post("/artists/:mbid/refresh", requireAuth, requirePermission("changeMonitoring"), async (c) => {
-    try {
-      const mbid = c.req.param("mbid");
-      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
-      const artist = await libraryManager.getArtist(mbid);
-      if (!artist) return c.json({ error: "Artist not found" }, 404);
-
-      const albums = await libraryManager.getAlbums(artist.id);
-      if (lidarrClient && lidarrClient.isConfigured()) {
-        const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-        const lidarrAlbums = lidarrArtist?.monitored
-          ? await lidarrClient.getAllAlbums({ artistIds: [lidarrArtist.id] })
-          : [];
-        if (lidarrArtist && lidarrAlbums.some((album) => album.monitored)) {
-          await lidarrClient.triggerArtistSearch(lidarrArtist.id);
-        }
-      }
-      return c.json(
-        { success: true, message: "Artist refreshed successfully", albums: albums.length },
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        { error: "Failed to refresh artist", message: asAppError(error)?.message },
-        500,
-      );
-    }
-  });
+  );

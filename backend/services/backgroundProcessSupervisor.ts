@@ -26,7 +26,7 @@ export type WorkerMessage =
   | { type: "job-finished"; queue: string; jobId: number }
   | { type: "queue-wake"; queue: string }
   | { type: "log"; entry: LogEntry }
-  | { type: "cache-invalidate"; cache: "playlists" | "lidarr-artists" | "news" }
+  | { type: "cache-invalidate"; cache: "playlists" | "news" }
   | {
       type: "websocket-broadcast";
       channel: string;

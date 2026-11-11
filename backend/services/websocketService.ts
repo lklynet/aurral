@@ -15,8 +15,6 @@ import {
 import type { getPlaylistStatusSnapshot } from "./playlists/playlistStatusSnapshot.ts";
 import type { getDiscoveryMode } from "./discovery/helpers.ts";
 
-export type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
-
 type DiscoveryUpdateFields = {
   isUpdating: boolean;
   configured?: boolean;
@@ -31,13 +29,6 @@ type DiscoveryUpdateFields = {
 };
 
 export type WebSocketChannelPayload =
-  | {
-      type: "download_statuses";
-      statuses: Partial<Record<string, DownloadStatusEntry>>;
-      stale: boolean;
-      error: string | null;
-      updatedAt: string | null;
-    }
   | { type: "library_scan_completed" }
   | { type: "release_metadata_refreshed" }
   | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }

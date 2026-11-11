@@ -14,7 +14,6 @@ const text = lenient(v.string());
 const nullableText = lenient(v.nullable(v.string()));
 const flag = lenient(v.boolean());
 const count = lenient(number);
-const id = lenient(v.nullable(number));
 
 const service = <Entries extends v.ObjectEntries>(entries: Entries) =>
   lenient(v.looseObject(entries));
@@ -121,20 +120,6 @@ export const integrationSettingsSchema = v.looseObject({
       listOf(v.looseObject({ id: text, name: text, url: v.string(), group: text, enabled: flag })),
     ),
     groups: lenient(recordOf(v.boolean())),
-  }),
-  lidarr: service({
-    url: text,
-    externalUrl: text,
-    apiKey: text,
-    rootFolderPath: nullableText,
-    rootFolderPaths: lenient(listOf(v.string())),
-    qualityProfileId: id,
-    metadataProfileId: id,
-    tagId: id,
-    defaultMonitorOption: text,
-    searchOnAdd: flag,
-    enabled: flag,
-    insecure: flag,
   }),
   metadata: service({
     provider: text,

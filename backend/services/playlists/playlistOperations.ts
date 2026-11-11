@@ -46,7 +46,6 @@ import {
   restoreDownloadJobCancellations,
 } from "../downloadJobs/downloadCancellation.ts";
 import { cancelPlaylistDownloadWork } from "../downloadJobs/downloadCancellationService.ts";
-import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
 import type {
   LibraryAlbumTracksRow,
   LibraryMediaFilesRow,
@@ -226,8 +225,7 @@ const linkIndexedFiles = async (tracks: unknown, ownerUserId: unknown) => {
       linked.push(track);
       continue;
     }
-    const finalPath =
-      file.source === "lidarr" ? resolveLocalPath(file.path, getPathMappings("lidarr")) : file.path;
+    const finalPath = file.path;
     const existing = libraryJobsByPath.get(finalPath);
     if (existing) {
       linked.push({ ...input, canonicalJobId: existing.id });
@@ -238,7 +236,7 @@ const linkIndexedFiles = async (tracks: unknown, ownerUserId: unknown) => {
       linked.push(track);
       continue;
     }
-    const external = file.source === "lidarr" || file.source === "readonly";
+    const external = file.source === "readonly";
     downloadTracker.setDone(jobId, finalPath, input.albumName, external ? file.path : null, {
       reusedLibraryFile: true,
     });
@@ -697,7 +695,7 @@ async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {
     return { alreadyProcessing: true };
   }
   const previousFinalPath = job.finalPath;
-  if (job.status === "done" && job.managedBy === "aurral" && isAurralOwnedPath(job.finalPath)) {
+  if (job.status === "done" && isAurralOwnedPath(job.finalPath)) {
     const replacementJobId = downloadTracker.addReplacementSearchJob(job);
     if (!replacementJobId) {
       return { alreadyProcessing: true };

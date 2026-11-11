@@ -2,7 +2,6 @@ import type { MonitoringRules } from "./monitoringRules.ts";
 import { getApiErrorBody, getApiErrorMessage } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
 import { shouldPollAlbumStatus, type AlbumStatus } from "./aurralAlbumStatus.ts";
-import { normalizeLibraryManager } from "./libraryDestination.ts";
 import { describeDownloadCount, plural } from "./monitoringRules.ts";
 
 export interface AurralMonitoringPlan {
@@ -33,19 +32,6 @@ interface MonitoringResult {
   cleanupFailed?: boolean;
 }
 
-export const MONITOR_OPTIONS = [
-  { value: "none", label: "None (artist only)" },
-  { value: "existing", label: "Existing albums" },
-  { value: "all", label: "All albums" },
-  { value: "future", label: "Future albums" },
-  { value: "missing", label: "Missing albums" },
-  { value: "latest", label: "Latest album" },
-  { value: "first", label: "First album" },
-];
-
-export const getMonitorOptionLabel = (value: string) =>
-  MONITOR_OPTIONS.find((option) => option.value === value)?.label || value;
-
 const SKIPPED_DETAILS: { reason: string; text: (count: number) => string }[] = [
   { reason: "complete", text: (count) => `${count} already in your library` },
   {
@@ -61,7 +47,6 @@ const SKIPPED_DETAILS: { reason: string; text: (count: number) => string }[] = [
     reason: "unmonitored",
     text: (count) => `${count} skipped because you unmonitored ${count === 1 ? "it" : "them"}`,
   },
-  { reason: "managed_by_lidarr", text: (count) => `${count} managed by Lidarr` },
   { reason: "metadata_unavailable", text: (count) => `${count} could not be checked` },
 ];
 
@@ -118,7 +103,7 @@ export const describeAurralMonitoringError = (
 };
 
 export const getAlbumMonitoredState = (album: AurralAlbumMonitoredRef | null) => {
-  if (normalizeLibraryManager(album?.managedBy) !== "aurral") return null;
+  if (album?.managedBy !== "aurral") return null;
   const monitored = album!.monitored ?? album!.metadata?.monitored;
   return monitored === true && album!.monitorMode !== "unmonitored";
 };

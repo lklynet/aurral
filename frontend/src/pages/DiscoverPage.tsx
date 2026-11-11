@@ -117,7 +117,6 @@ function DiscoverPage() {
     setAppliedNearbyZip,
     canAddAlbum,
     getRecentReleaseKey,
-    libraryDestination,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
     discoveryStatus,
@@ -394,7 +393,6 @@ function DiscoverPage() {
                   canAddAlbum={canAddAlbum}
                   isPending={!!pendingRecentReleaseIds[getRecentReleaseKey(album)]}
                   onAlbumAction={handleRecentReleaseAlbumAction}
-                  libraryDestination={libraryDestination}
                 />
               </div>
             ))}

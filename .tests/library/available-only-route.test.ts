@@ -13,11 +13,10 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }, { api }] =
+const [isolatedState, { db }, libraryStore, { setLibraryManagement }, { api }] =
   await setupIsolatedBackend(
     "canonical-available-only-route",
     () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/libraryMediaStore.ts"),
     () => import("../../backend/services/libraryManagementStore.ts"),
     () => import("../../backend/routes/api.ts"),
@@ -71,7 +70,7 @@ beforeAll(() => {
   upsertLibraryMediaFile({
     trackId: ownedTrack.id,
     albumId: ownedAlbum.id,
-    source: "lidarr",
+    source: "readonly",
     path: "/library/Owns Some/Owned Album/01 Owned Track.flac",
     available: true,
   });
@@ -90,12 +89,12 @@ beforeAll(() => {
   upsertLibraryMediaFile({
     trackId: catalogTrack.id,
     albumId: catalogAlbum.id,
-    source: "lidarr",
+    source: "readonly",
     path: "/library/Owns Some/Catalog Album/01 Catalog Track.flac",
     available: false,
   });
 
-  // Artist who owns nothing (e.g. deleted in Lidarr but lingering) — issue #750.
+  // Artist who owns nothing but lingers in the index: issue #750.
   const emptyArtist = upsertLibraryArtist({
     identityKey: "empty-artist",
     name: "Owns Nothing",
@@ -114,25 +113,23 @@ beforeAll(() => {
   upsertLibraryMediaFile({
     trackId: emptyTrack.id,
     albumId: emptyAlbum.id,
-    source: "lidarr",
+    source: "readonly",
     path: "/library/Owns Nothing/Unowned Album/01 Unowned Track.flac",
     available: false,
   });
 
-  for (const [name, managedBy, monitorRules] of [
-    ["Monitored Empty", "aurral", { default: true }],
-    ["Deleted Empty", "aurral", null],
-    ["Lidarr Empty", "lidarr", null],
+  for (const [name, monitorRules] of [
+    ["Monitored Empty", { default: true }],
+    ["Deleted Empty", null],
   ] as const) {
     const artist = upsertLibraryArtist({
       identityKey: `${name}-artist`,
       name,
-      metadata: { monitored: true, ...(managedBy === "lidarr" && { librarySource: "lidarr" }) },
+      metadata: { monitored: true },
     });
     setLibraryManagement({
       entityKind: "artist",
       entityId: artist.id,
-      managedBy,
       monitorMode: monitorRules ? "all" : "none",
       monitorRules,
     });
@@ -157,7 +154,6 @@ beforeAll(() => {
     setLibraryManagement({
       entityKind: "album",
       entityId: album.id,
-      managedBy: "aurral",
       monitorMode: monitored ? "monitored" : "unmonitored",
     });
   }
@@ -170,36 +166,30 @@ afterAll(async () => {
 const titles = (page: Page<"albums" | "artists">) =>
   page.items.map((entry) => ("title" in entry ? entry.title : entry.name)).sort();
 
-test("the Library lists what can be played and what Aurral is fetching, with or without Lidarr", async () => {
-  for (const lidarr of [
-    { url: "http://lidarr:8686", apiKey: "test-key", availableOnly: false },
-    {},
-  ]) {
-    dbOps.updateSettings({ integrations: { lidarr } });
-    const albums = await callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
-    assert.deepEqual(titles(albums), ["Owned Album", "Requested Album"]);
-    assert.equal(albums.total, 2);
-    const artists = await callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
-    assert.deepEqual(titles(artists), ["Fetching", "Monitored Empty", "Owns Some"]);
-    assert.equal(artists.total, 3);
-    assert.deepEqual(
-      artists.items.map((artist) => ("albumCount" in artist ? artist.albumCount : undefined)),
-      [1, 0, 1],
-    );
-    const ownsSome = artists.items.find((artist) => artist.name === "Owns Some");
-    assert.ok(ownsSome);
-    assert.deepEqual(
-      titles(
-        await callLibraryPage({
-          kind: "albums",
-          page: "1",
-          pageSize: "50",
-          artistId: String(ownsSome.id),
-        }),
-      ),
-      ["Owned Album"],
-    );
-  }
+test("the Library lists what can be played and what Aurral is fetching", async () => {
+  const albums = await callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
+  assert.deepEqual(titles(albums), ["Owned Album", "Requested Album"]);
+  assert.equal(albums.total, 2);
+  const artists = await callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
+  assert.deepEqual(titles(artists), ["Fetching", "Monitored Empty", "Owns Some"]);
+  assert.equal(artists.total, 3);
+  assert.deepEqual(
+    artists.items.map((artist) => ("albumCount" in artist ? artist.albumCount : undefined)),
+    [1, 0, 1],
+  );
+  const ownsSome = artists.items.find((artist) => artist.name === "Owns Some");
+  assert.ok(ownsSome);
+  assert.deepEqual(
+    titles(
+      await callLibraryPage({
+        kind: "albums",
+        page: "1",
+        pageSize: "50",
+        artistId: String(ownsSome.id),
+      }),
+    ),
+    ["Owned Album"],
+  );
 });
 
 test("Library search finds artists Aurral monitors before their music arrives", () => {
@@ -212,7 +202,7 @@ test("Library search finds artists Aurral monitors before their music arrives", 
 
 test("a source filter lists and counts only albums and artists with playable files from that source", async () => {
   for (const kind of ["albums", "artists"] as const) {
-    const page = await callLibraryPage({ kind, page: "1", pageSize: "50", source: "lidarr" });
+    const page = await callLibraryPage({ kind, page: "1", pageSize: "50", source: "readonly" });
     assert.deepEqual(titles(page), [kind === "albums" ? "Owned Album" : "Owns Some"]);
     assert.equal(page.total, 1);
   }
@@ -293,7 +283,7 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     assert.ok(names.includes("Known Empty"));
     assert.ok(names.indexOf("Known Empty") < names.indexOf("Owns Some"));
 
-    const deleted = await libraryManager.deleteArtist(mbid, false, { manager: "aurral" });
+    const deleted = await libraryManager.deleteArtist(mbid, false);
     assert.equal(deleted.success, true);
     assert.ok(!(await newest()).includes("Known Empty"));
   } finally {

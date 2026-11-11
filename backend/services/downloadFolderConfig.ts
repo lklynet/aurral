@@ -1,8 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
-import type { StoredIntegrations } from "../db/helpers/settings.ts";
-import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 import { stripTrailingSeparators } from "./textUtils.ts";
 
 let storedDownloadFolderPath: string | null = null;
@@ -343,70 +341,4 @@ export function listBrowseDirectory(
     suggestedDownloadFolderExists: isExistingDirectory(suggestedDownloadFolder),
     entries,
   };
-}
-
-function normalizeRootForCompare(value: unknown) {
-  let normalized = String(value || "")
-    .trim()
-    .split("\\")
-    .join("/");
-  if (!normalized) return "";
-  while (normalized.length > 1 && normalized.endsWith("/")) {
-    normalized = normalized.slice(0, -1);
-  }
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
-
-function compareRoots(left: string, right: string) {
-  const a = normalizeRootForCompare(left);
-  const b = normalizeRootForCompare(right);
-  if (!a || !b) return "disjoint";
-  if (a === b) return "equal";
-  const aPrefix = a.endsWith("/") ? a : `${a}/`;
-  const bPrefix = b.endsWith("/") ? b : `${b}/`;
-  if (b.startsWith(aPrefix)) return "nested-b-in-a";
-  if (a.startsWith(bPrefix)) return "nested-a-in-b";
-  return "disjoint";
-}
-
-export function getOverlapCheckedLidarrRoots(lidarrSettings: StoredIntegrations["lidarr"] = {}) {
-  if (lidarrSettings?.enabled === false) return [];
-  const mappings = getPathMappings("lidarr");
-  return (
-    [
-      ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
-      lidarrSettings?.rootFolderPath,
-    ].filter(Boolean) as string[]
-  ).map((root) => resolveLocalPath(root, mappings));
-}
-
-export function computeLibraryRootOverlaps({
-  aurralRoot,
-  lidarrRoots,
-}: { aurralRoot?: unknown; lidarrRoots?: unknown } = {}) {
-  const resolvedAurralRoot = String(aurralRoot || "").trim();
-  if (!resolvedAurralRoot) return [];
-  const candidates = (Array.isArray(lidarrRoots) ? lidarrRoots : [lidarrRoots])
-    .map((root) => String(root || "").trim())
-    .filter(Boolean);
-  const warnings = [];
-  const seen = new Set<string>();
-  for (const lidarrRoot of candidates) {
-    const relation = compareRoots(resolvedAurralRoot, lidarrRoot);
-    if (relation === "disjoint" || seen.has(`${relation}:${lidarrRoot}`)) {
-      continue;
-    }
-    seen.add(`${relation}:${lidarrRoot}`);
-    warnings.push({
-      type: relation,
-      lidarrRoot,
-      message:
-        relation === "equal"
-          ? "The Lidarr root folder is the Library folder. Aurral treats every file there as Lidarr's and never deletes it."
-          : relation === "nested-b-in-a"
-            ? "The Lidarr root folder is inside the Library folder. Aurral leaves that folder to Lidarr while Lidarr is on."
-            : "The Library folder is inside the Lidarr root folder. Lidarr can rename, import, or delete Aurral's downloads.",
-    });
-  }
-  return warnings;
 }

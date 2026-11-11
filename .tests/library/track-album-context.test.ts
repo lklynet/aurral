@@ -196,7 +196,6 @@ function libraryAlbum({
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
   });
   return album;
 }

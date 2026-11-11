@@ -8,10 +8,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import {
-  requestAlbumFromSearch,
-  settleLibraryOwnerConflict,
-} from "../utils/api/endpoints/library.ts";
+import { requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
 import { discoveryClient } from "../utils/api/clients/discovery.ts";
@@ -38,13 +35,7 @@ import {
   buildTrackPlaylistPayload,
   type SearchSuggestion,
 } from "../utils/globalSearchUtils";
-import {
-  describeAlbumRequestResult,
-  getAlbumAddAction,
-  shouldTriggerAlbumSearch,
-} from "../utils/albumAddAction";
-import { buildAlbumRequestPayload } from "../utils/libraryDestination";
-import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { describeAlbumRequestResult, getAlbumAddAction } from "../utils/albumAddAction";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
@@ -60,9 +51,7 @@ import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 
 type SuggestionMode = "tag" | "unified";
-type SuggestionItem = SearchSuggestion & {
-  ownerConflict?: NonNullable<Awaited<ReturnType<typeof settleLibraryOwnerConflict>>>;
-};
+type SuggestionItem = SearchSuggestion & {};
 type SuggestionAlbum = Extract<SuggestionItem, { type: "album" }>;
 type SuggestionTrack = Extract<SuggestionItem, { type: "track" }>;
 type SuggestionRow =
@@ -99,7 +88,6 @@ function GlobalSearch() {
   const location = useLocation();
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
-  const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
   const {
     staticPlaylists,
@@ -332,27 +320,18 @@ function GlobalSearch() {
   );
 
   const handleAlbumAction = useCallback(
-    async (album: SuggestionAlbum, managedBy = libraryDestination.primary) => {
+    async (album: SuggestionAlbum) => {
       if (!album?.id) return;
-      const shouldTriggerSearch = shouldTriggerAlbumSearch({
-        status: album.status,
-        inLibrary: album.inLibrary,
-      });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id!]: true }));
       try {
-        const result = await requestAlbumFromSearch(
-          buildAlbumRequestPayload({
-            albumMbid: album.id,
-            albumName: album.title,
-            artistMbid: album.artistMbid,
-            artistName: album.artistName,
-            managedBy,
-            triggerSearch: shouldTriggerSearch,
-          }),
-        );
+        const result = await requestAlbumFromSearch({
+          albumMbid: album.id,
+          albumName: album.title,
+          artistMbid: album.artistMbid,
+          artistName: album.artistName,
+        });
         const nextAlbum = {
           inLibrary: true,
-          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
           libraryAlbumId: result.album?.id,
           libraryArtistId: result.artist?.id,
           status: result?.queued ? "processing" : result.status,
@@ -361,12 +340,6 @@ function GlobalSearch() {
         const outcome = describeAlbumRequestResult(result, album.title);
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
-        const conflict = settleLibraryOwnerConflict(err);
-        if (conflict) {
-          updateSuggestionItem(album, { ownerConflict: conflict });
-          showInfo(`${album.title}: ${conflict.message}`);
-          return;
-        }
         showError(
           `Could not download the album: ${
             getApiErrorText(err, "message") ||
@@ -378,7 +351,7 @@ function GlobalSearch() {
         setPendingAlbumIds(({ [album.id!]: _, ...prev }) => prev);
       }
     },
-    [libraryDestination.primary, showError, showInfo, showSuccess, updateSuggestionItem],
+    [showError, showInfo, showSuccess, updateSuggestionItem],
   );
 
   const handleSearchTrackAdd = useCallback(
@@ -453,9 +426,8 @@ function GlobalSearch() {
         const pending = !!pendingAlbumIds[item.id] || isAlbumDownloading(item.id);
         return (
           <AddActionButton
-            {...getAlbumAddAction(item, libraryDestination)}
-            ownerConflict={item.ownerConflict}
-            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
+            {...getAlbumAddAction(item)}
+            onAdd={() => handleAlbumAction(item)}
             isLoading={pending}
             loadingLabel="Downloading"
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
@@ -487,7 +459,6 @@ function GlobalSearch() {
       canAddAlbum,
       handleAlbumAction,
       isAlbumDownloading,
-      libraryDestination,
       handleSearchTrackAdd,
       loadStaticPlaylists,
       pendingAlbumIds,

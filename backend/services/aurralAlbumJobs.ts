@@ -36,8 +36,7 @@ const normalizeKey = (value: unknown) =>
     .trim()
     .toLowerCase();
 
-export const isAurralAlbumJob = (job: JobFields<"playlistType" | "managedBy">) =>
-  job.playlistType === "library" && job.managedBy === "aurral";
+export const isAurralAlbumJob = (job: JobFields<"playlistType">) => job.playlistType === "library";
 
 // An album's jobs carry its release group or, from older versions, the
 // release ID that a scan stored as the album's mbid.

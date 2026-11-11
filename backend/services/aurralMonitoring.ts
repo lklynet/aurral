@@ -50,10 +50,7 @@ export const FACTORY_MONITOR_RULES: MonitorRules = Object.freeze({
   topTracks: 0,
 });
 
-export const AURRAL_ALBUM_CONDITION = `
-  management.entity_kind = 'album'
-  AND management.managed_by = 'aurral'
-`;
+export const AURRAL_ALBUM_CONDITION = `management.entity_kind = 'album'`;
 
 export const MONITORED_AURRAL_ALBUM_CONDITION = `
   ${AURRAL_ALBUM_CONDITION}

@@ -8,14 +8,12 @@ import { userIdentityOps } from "./userIdentities.ts";
 import registerCache from "./cache.ts";
 import registerDiscovery from "./discovery.ts";
 import registerOverrides from "./overrides.ts";
-import registerLidarr from "./lidarr.ts";
 import registerHistory from "./history.ts";
 import registerInbox from "./inbox.ts";
 
 registerCache(dbOps);
 registerDiscovery(dbOps);
 registerOverrides(dbOps);
-registerLidarr(dbOps);
 registerHistory(dbOps);
 registerInbox(dbOps);
 

@@ -4,7 +4,6 @@ import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAdmin, requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { lidarrClient } from "../../../services/lidarrClient.ts";
 import { checkIngestSource } from "../../../services/libraryFiles/ingest.ts";
 import {
   cancelLibraryFileOperation,
@@ -125,10 +124,7 @@ export default new Hono<AppEnv>()
     validate("json", sourceInput),
     async (c) => {
       try {
-        return c.json(
-          await checkIngestSource({ sourcePath: c.req.valid("json").sourcePath, lidarrClient }),
-          200,
-        );
+        return c.json(await checkIngestSource({ sourcePath: c.req.valid("json").sourcePath }), 200);
       } catch (error) {
         return sendError(c, error);
       }

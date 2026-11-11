@@ -77,21 +77,21 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
   if (setting.get(MIGRATION_KEY)) return null;
   const finish = () =>
     db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(MIGRATION_KEY);
-  const hasLibrary = db
-    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_management'")
+  const hasLidarrMode = db
+    .prepare("SELECT 1 FROM pragma_table_info('library_management') WHERE name = 'managed_by'")
     .get();
   const lidarr = v.parse(lidarrSettings, parse(setting.get("integrations"))).lidarr ?? {};
   const connected =
     lidarr.enabled !== false && Boolean(lidarr.apiKey || process.env.LIDARR_API_KEY?.trim());
   const hasLidarrData =
-    hasLibrary &&
+    hasLidarrMode &&
     db
       .prepare(
         `SELECT 1 WHERE EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
            OR EXISTS (SELECT 1 FROM library_management WHERE managed_by = 'lidarr')`,
       )
       .get();
-  if (!hasLibrary || (!connected && !hasLidarrData)) {
+  if (!hasLidarrMode || (!connected && !hasLidarrData)) {
     finish();
     return null;
   }
@@ -182,12 +182,6 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
       ).run();
       db.prepare(
         "UPDATE download_jobs SET managed_by = 'aurral' WHERE managed_by = 'lidarr'",
-      ).run();
-
-      db.prepare(
-        `INSERT INTO settings (key, value) VALUES ('integrations', '{"lidarr":{"enabled":false}}')
-         ON CONFLICT (key) DO UPDATE SET value = json_set(value, '$.lidarr.enabled', json('false'))
-         WHERE json_valid(value)`,
       ).run();
 
       const converted = { convertedAt: now, folders, artistIds };

@@ -48,7 +48,7 @@ test("starting removes the login stored in integration settings once", async () 
     before.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('integrations', ?)").run(
       JSON.stringify({
         general: { authUser: "owner", authPassword: "first-password", apiKey: "kept" },
-        lidarr: { url: "http://lidarr" },
+        slskd: { url: "http://slskd" },
       }),
     );
     before.prepare("DELETE FROM settings WHERE key = 'migration:settings-login-v1'").run();
@@ -61,7 +61,7 @@ test("starting removes the login stored in integration settings once", async () 
       .get();
     assert.deepEqual(JSON.parse(stored?.value ?? "null"), {
       general: { apiKey: "kept" },
-      lidarr: { url: "http://lidarr" },
+      slskd: { url: "http://slskd" },
     });
     db.close();
   } finally {

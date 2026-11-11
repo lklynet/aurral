@@ -8,7 +8,7 @@ Aurral copied Lidarr's monitor modes: all, future, latest, and first. They cover
 
 ## Decision
 
-An Aurral artist is monitored or not. A monitored artist either follows the live default rules or has its own. Lidarr artists keep Lidarr's modes and Lidarr does their monitoring.
+An artist is monitored or not. A monitored artist either follows the live default rules or has its own.
 
 - **Rules.** `catalog` (`none`, `all`, `since`, `latest`), `sinceYear`, `latestCount`, `newReleases`, `types`, `extraTypes`, `edition`, and `topTracks`. `backend/services/aurralMonitoring.ts` validates and applies them. Rules that take nothing are rejected.
 - **Storage.** `library_management.monitor_rules` holds `{ default: true, catalogAt, newSince }` or `{ default: false, rules, catalogAt, newSince }`. `NULL` means not monitored. `monitor_mode` and the artist's metadata still carry the nearest old mode, so an older build that reads them after a downgrade keeps working. The upsert clears `monitor_rules` when the manager or mode changes without new rules, so stale rules never come back.

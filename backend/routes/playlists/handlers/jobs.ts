@@ -103,7 +103,6 @@ function getAccessibleManualSearchJob(
     if (
       job.status !== "done" ||
       job.upgradeForJobId ||
-      job.managedBy !== "aurral" ||
       !isAurralOwnedPath(job.finalPath) ||
       downloadTracker.findActiveUpgradeJob(job)
     ) {

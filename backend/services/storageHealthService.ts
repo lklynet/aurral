@@ -6,17 +6,13 @@ import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.ts";
-import { lidarrClient } from "./lidarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { commitDownloadedFile } from "./downloadUtils.ts";
 import {
-  computeLibraryRootOverlaps,
   getFilesystemBrowseRoots,
-  getOverlapCheckedLidarrRoots,
   resolveEnvDownloadFolder,
   getSuggestedDownloadFolderPath,
 } from "./downloadFolderConfig.ts";
@@ -458,21 +454,6 @@ async function checkDownloadsSection() {
   const downloadFolder = String(settings.downloadFolderPath || resolveDownloadRoot() || "").trim();
   const suggested = getSuggestedDownloadFolderPath();
 
-  const rootOverlaps = computeLibraryRootOverlaps({
-    aurralRoot: downloadFolder,
-    lidarrRoots: getOverlapCheckedLidarrRoots(settings.integrations?.lidarr),
-  });
-  if (rootOverlaps.length > 0) {
-    steps.push(
-      healthStep("root-overlap", "warn", "Aurral and Lidarr roots are separate libraries", {
-        detail: rootOverlaps
-          .map((warning) => `${warning.lidarrRoot}: ${warning.message}`)
-          .join(" "),
-        fix: "Use separate folders. While they overlap, Lidarr can rename, import, or delete files in the shared folder, and Aurral leaves files in a Lidarr root folder to Lidarr.",
-      }),
-    );
-  }
-
   if (!downloadFolder) {
     steps.push(
       healthStep("configured", "fail", "Library folder is configured", {
@@ -549,38 +530,6 @@ async function checkDownloadsSection() {
   }
 
   return buildSection("downloads", "Aurral downloads", steps);
-}
-
-async function checkLidarrSection() {
-  lidarrClient.updateConfig();
-  if (lidarrClient.isEnabled() === false) {
-    return {
-      section: buildSection("lidarr", "Lidarr library", [], {
-        skipped: true,
-        skipReason: "Lidarr is disabled.",
-      }),
-      sample: null,
-      rootPaths: [],
-    };
-  }
-  if (!lidarrClient.isConfigured()) {
-    return {
-      section: buildSection("lidarr", "Lidarr library", [], {
-        skipped: true,
-        skipReason: "Lidarr is not configured.",
-      }),
-      sample: null,
-      rootPaths: [],
-    };
-  }
-
-  const result = await runLidarrLibraryAccessTest(lidarrClient);
-
-  return {
-    section: buildSection("lidarr", "Lidarr library", result.steps || []),
-    sample: result.sample || null,
-    rootPaths: result.rootPaths || [],
-  };
 }
 
 type DownloadClientKey = "slskd" | "nzbget" | "sabnzbd" | "tidarr";
@@ -806,7 +755,7 @@ async function checkNativePlaybackSection() {
   if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "warn", "Library media is ready for native playback", {
-        fix: "Add music to the Library folder or connect Lidarr, then scan the Library and run Storage Health again.",
+        fix: "Add music to the Library folder or a read-only folder, then scan the Library and run Storage Health again.",
       }),
     ]);
   }
@@ -849,13 +798,11 @@ async function checkNativePlaybackSection() {
 async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
   const volumeSection = await checkSharedVolumeSection();
   const downloadsSection = await checkDownloadsSection();
-  const { section: lidarrSection } = await checkLidarrSection();
 
   const sections = [
     volumeSection,
     await checkPathMappingsSection(),
     downloadsSection,
-    lidarrSection,
     await checkNativePlaybackSection(),
     await checkSlskdSection(),
     await checkNzbgetSection(),

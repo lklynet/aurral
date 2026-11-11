@@ -166,7 +166,6 @@ test("manual replacement queues the exact candidate without changing the current
     {
       artistName: "An Artist",
       trackName: "Current Song",
-      managedBy: "aurral",
     },
     "replacement-test",
   );
@@ -212,7 +211,6 @@ test("failed manual replacement handoff leaves the current track intact", () => 
     {
       artistName: "An Artist",
       trackName: "Current Song",
-      managedBy: "aurral",
     },
     "replacement-test",
   );

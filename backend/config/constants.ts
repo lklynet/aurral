@@ -110,18 +110,6 @@ export const defaultData = {
         enabled: true,
         feeds: [],
       },
-      lidarr: {
-        url: "",
-        externalUrl: "",
-        apiKey: "",
-        rootFolderPath: null,
-        rootFolderPaths: [],
-        qualityProfileId: null,
-        metadataProfileId: null,
-        tagId: null,
-        defaultMonitorOption: "none",
-        searchOnAdd: false,
-      },
       metadata: {
         provider: "brainzmash",
         baseUrl: "",

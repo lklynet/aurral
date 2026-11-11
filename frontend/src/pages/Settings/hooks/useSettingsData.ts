@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { useToast } from "../../../contexts/ToastContext";
 import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
-import { lidarrCredentialParams } from "../../../utils/api/core.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
@@ -13,19 +12,16 @@ import { allReleaseTypes } from "../constants";
 import { checkForChanges, normalizeSettings, type SettingsState } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { appSettingsQueryOptions } from "../../../queryOptions.ts";
-import { useSettingsItem } from "../SettingsLayout";
 import { afterTextEntry } from "../../../utils/afterTextEntry.ts";
 import { readApiError } from "../../../utils/api/errors.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
-type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };
 
 const defaultSettings = {
   dateTimeFormat: "browser",
   subsonic: {
     favoriteAutoKeep: true,
   },
-  rootFolderPath: "",
   downloadFolderPath: "",
   pathMappings: [],
   quality: "standard",
@@ -161,16 +157,6 @@ const defaultSettings = {
         concerts: true,
       },
     },
-    lidarr: {
-      url: "",
-      externalUrl: "",
-      apiKey: "",
-      qualityProfileId: null,
-      metadataProfileId: null,
-      tagId: null,
-      defaultMonitorOption: "none",
-      searchOnAdd: false,
-    },
     metadata: {
       provider: "brainzmash",
       baseUrl: "",
@@ -221,59 +207,7 @@ const settingsSaveSettled = () =>
     });
   });
 
-const getLidarrResourceConfig = (settings: SettingsState) => {
-  const lidarr = settings?.integrations?.lidarr || {};
-  return {
-    url: lidarr.url || "",
-    apiKey: lidarr.apiKey || "",
-  };
-};
-
-const buildLidarrQueries = (
-  { url, apiKey, credentialsRevision }: LidarrResourceConfig,
-  enabled?: boolean,
-) => {
-  const query = lidarrCredentialParams(url, apiKey);
-  return [
-    {
-      queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        parseResponse(settingsClient.lidarr["root-folders"].$get({ query }, { init: { signal } })),
-      enabled: enabled && Boolean(url && apiKey),
-      staleTime: 60_000,
-    },
-    {
-      queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        parseResponse(settingsClient.lidarr.profiles.$get({ query }, { init: { signal } })),
-      enabled: enabled && Boolean(url && apiKey),
-      staleTime: 60_000,
-    },
-    {
-      queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        parseResponse(
-          settingsClient.lidarr["metadata-profiles"].$get({ query }, { init: { signal } }),
-        ),
-      enabled: enabled && Boolean(url && apiKey),
-      staleTime: 60_000,
-    },
-    {
-      queryKey: queryKeys.lidarrTags(url, credentialsRevision),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        parseResponse(settingsClient.lidarr.tags.$get({ query }, { init: { signal } })),
-      enabled: enabled && Boolean(url && apiKey),
-      staleTime: 60_000,
-    },
-  ] as const;
-};
-
-export function useSettingsData(
-  showSuccess: Toast,
-  showError: Toast,
-  showInfo: Toast,
-  activeSection: string,
-) {
+export function useSettingsData(showSuccess: Toast, showError: Toast) {
   const [settings, setSettingsState] = useState<SettingsState>(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<SettingsState | null>(null);
@@ -288,24 +222,6 @@ export function useSettingsData(
   );
   const settingsActivationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
-  const lidarrResourceConfigRef = useRef({ url: "", apiKey: "", credentialsRevision: 0 });
-  const [lidarrResourceConfig, setLidarrResourceConfig] = useState(lidarrResourceConfigRef.current);
-
-  const updateLidarrResourceConfig = useCallback((config: { url: string; apiKey: string }) => {
-    const previous = lidarrResourceConfigRef.current;
-    const url = config.url || "";
-    const apiKey = config.apiKey || "";
-    if (previous.url === url && previous.apiKey === apiKey) return previous;
-    const next = {
-      url,
-      apiKey,
-      credentialsRevision: previous.credentialsRevision + 1,
-    };
-    lidarrResourceConfigRef.current = next;
-    setLidarrResourceConfig(next);
-    return next;
-  }, []);
-
   const settingsQuery = useQuery({ ...appSettingsQueryOptions(), enabled: false });
   const downloadClientQuery = useQuery({
     queryKey: queryKeys.downloadClientSettings,
@@ -329,40 +245,12 @@ export function useSettingsData(
     onSuccess: (savedSettings) => {
       queryClient.setQueryData(queryKeys.appSettings, savedSettings);
       queryClient.invalidateQueries({ queryKey: queryKeys.appHealth });
-      // Settings such as the Lidarr "available only" toggle change what the
-      // Library endpoints return without changing the query key, so mark the
-      // Library views stale on save to pick up the new filtering on next view.
+      // Some settings change what the Library endpoints return without changing
+      // the query key, so mark the Library views stale on save.
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     },
   });
-  const settingsItem = useSettingsItem();
-  const lidarrQueries = useQueries({
-    queries: buildLidarrQueries(
-      lidarrResourceConfig,
-      activeSection === "library" &&
-        settingsItem === "lidarr" &&
-        settings.integrations?.lidarr?.enabled !== false,
-    ),
-  });
-  const [
-    lidarrRootFoldersQuery,
-    lidarrProfilesQuery,
-    lidarrMetadataProfilesQuery,
-    lidarrTagsQuery,
-  ] = lidarrQueries;
-  const lidarrRootFolders = Array.isArray(lidarrRootFoldersQuery.data)
-    ? lidarrRootFoldersQuery.data
-    : [];
-  const lidarrProfiles = Array.isArray(lidarrProfilesQuery.data) ? lidarrProfilesQuery.data : [];
-  const lidarrMetadataProfiles = Array.isArray(lidarrMetadataProfilesQuery.data)
-    ? lidarrMetadataProfilesQuery.data
-    : [];
-  const lidarrTags = Array.isArray(lidarrTagsQuery.data) ? lidarrTagsQuery.data : [];
-  const loadingLidarrRootFolders = lidarrRootFoldersQuery.isFetching;
-  const loadingLidarrProfiles = lidarrProfilesQuery.isFetching;
-  const loadingLidarrMetadataProfiles = lidarrMetadataProfilesQuery.isFetching;
-  const loadingLidarrTags = lidarrTagsQuery.isFetching;
   const downloadClientSettings = downloadClientQuery.data?.clients || null;
   const saving = settingsSaveMutation.isPending;
   const { mutateAsync: saveSettings } = settingsSaveMutation;
@@ -390,7 +278,6 @@ export function useSettingsData(
       const savedSettings = settingsResult.data!;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
-      updateLidarrResourceConfig(getLidarrResourceConfig(updatedSettings));
       settingsRef.current = updatedSettings;
       originalSettingsRef.current = savedSnapshot;
       setSettingsState(updatedSettings);
@@ -410,40 +297,7 @@ export function useSettingsData(
     } catch {
       setSettingsLoaded(true);
     }
-  }, [refetchDownloadClients, refetchSettings, refreshHealth, updateLidarrResourceConfig]);
-
-  const refreshLidarrResources = useCallback(
-    async (config: { url: string; apiKey: string } | null = null) => {
-      const nextConfig = updateLidarrResourceConfig(
-        config || getLidarrResourceConfig(settingsRef.current),
-      );
-      if (!nextConfig.url || !nextConfig.apiKey) return [];
-      const [rootFolders, profiles, metadataProfiles, tags] = buildLidarrQueries(nextConfig);
-      return Promise.all([
-        queryClient.fetchQuery({
-          queryKey: rootFolders.queryKey,
-          queryFn: rootFolders.queryFn,
-          staleTime: 0,
-        }),
-        queryClient.fetchQuery({
-          queryKey: profiles.queryKey,
-          queryFn: profiles.queryFn,
-          staleTime: 0,
-        }),
-        queryClient.fetchQuery({
-          queryKey: metadataProfiles.queryKey,
-          queryFn: metadataProfiles.queryFn,
-          staleTime: 0,
-        }),
-        queryClient.fetchQuery({
-          queryKey: tags.queryKey,
-          queryFn: tags.queryFn,
-          staleTime: 0,
-        }),
-      ]);
-    },
-    [updateLidarrResourceConfig],
-  );
+  }, [refetchDownloadClients, refetchSettings, refreshHealth]);
 
   useEffect(() => {
     fetchSettings();
@@ -474,7 +328,6 @@ export function useSettingsData(
         const savedSettings = await saveSettings(settingsToSave);
         const normalizedSettings = normalizeSettings(savedSettings);
         const savedSnapshot = structuredClone(normalizedSettings);
-        updateLidarrResourceConfig(getLidarrResourceConfig(normalizedSettings));
 
         originalSettingsRef.current = savedSnapshot;
         if (mountedRef.current) setOriginalSettings(savedSnapshot);
@@ -513,7 +366,7 @@ export function useSettingsData(
         return false;
       }
     },
-    [saveSettings, showError, updateLidarrResourceConfig],
+    [saveSettings, showError],
   );
 
   persistSettingsRef.current = persistSettings;
@@ -597,74 +450,6 @@ export function useSettingsData(
     clearCache();
   }, [clearCache]);
 
-  const communityGuideMutation = useMutation({
-    mutationFn: () => parseResponse(settingsClient.lidarr["apply-community-guide"].$post()),
-    onError: (err) => {
-      const failure = readApiError(err);
-      const errorMsg = failure.message || failure.error || failure.text;
-      showError(`Failed to apply community guide: ${errorMsg}`);
-    },
-  });
-  const applyingCommunityGuide = communityGuideMutation.isPending;
-  const { mutateAsync: applyCommunityGuide } = communityGuideMutation;
-
-  const handleApplyCommunityGuide = useCallback(async () => {
-    let result;
-    try {
-      result = await applyCommunityGuide();
-    } catch {
-      return;
-    }
-    showSuccess("Guide settings applied.");
-
-    let nextSettings = settingsRef.current;
-    const qualityProfile = result.results?.qualityProfile;
-    const metadataProfile = result.results?.metadataProfile;
-    if (qualityProfile?.id) {
-      nextSettings = {
-        ...nextSettings,
-        integrations: {
-          ...nextSettings.integrations,
-          lidarr: {
-            ...(nextSettings.integrations?.lidarr || {}),
-            qualityProfileId: qualityProfile.id,
-          },
-        },
-      };
-      showInfo(`Default quality profile set to '${qualityProfile.name}'`);
-    }
-    if (metadataProfile?.id) {
-      nextSettings = {
-        ...nextSettings,
-        integrations: {
-          ...nextSettings.integrations,
-          lidarr: {
-            ...(nextSettings.integrations?.lidarr || {}),
-            metadataProfileId: metadataProfile.id,
-          },
-        },
-      };
-      showInfo(`Default metadata profile set to '${metadataProfile.name}'`);
-    }
-    if (nextSettings !== settingsRef.current) updateSettings(nextSettings);
-    if (qualityProfile || metadataProfile) {
-      try {
-        await refreshLidarrResources();
-      } catch (err) {
-        const failure = readApiError(err);
-        const errorMsg = failure.message || failure.error || failure.text;
-        showError(`Failed to apply community guide: ${errorMsg}`);
-      }
-    }
-  }, [
-    applyCommunityGuide,
-    refreshLidarrResources,
-    updateSettings,
-    showSuccess,
-    showError,
-    showInfo,
-  ]);
-
   return {
     health,
     settings,
@@ -682,16 +467,5 @@ export function useSettingsData(
     clearingCache,
     handleRefreshDiscovery,
     handleClearCache,
-    lidarrRootFolders,
-    loadingLidarrRootFolders,
-    lidarrProfiles,
-    loadingLidarrProfiles,
-    lidarrMetadataProfiles,
-    loadingLidarrMetadataProfiles,
-    lidarrTags,
-    loadingLidarrTags,
-    refreshLidarrResources,
-    applyingCommunityGuide,
-    handleApplyCommunityGuide,
   };
 }

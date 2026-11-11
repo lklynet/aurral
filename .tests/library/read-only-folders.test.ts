@@ -37,7 +37,7 @@ const [
   { resolveDownloadRoot },
   { reuseTrackForPlaylist },
   { downloadTracker },
-  { downloadWorker, DownloadWorker },
+  { downloadWorker },
   { processSystemTask },
   { clearScheduledLibraryScan },
   { saveAppSettings },
@@ -56,8 +56,6 @@ const [
   () => import("../../backend/services/appSettings.ts"),
 );
 
-const lidarrOn = { isConfigured: () => true };
-const lidarrOff = { isConfigured: () => false };
 const temporaryFolders: string[] = [];
 
 beforeEach(async () => {
@@ -126,15 +124,10 @@ async function callLibrary(method: string, routePath: string, body?: { path: str
 
 const fileRow = (filePath: string) =>
   db
-    .prepare<
-      unknown[],
-      { source: string; track_id: number; monitored: number; managed_by: string }
-    >(
-      `SELECT media.source, media.track_id, track.monitored, management.managed_by
+    .prepare<unknown[], { source: string; track_id: number; monitored: number }>(
+      `SELECT media.source, media.track_id, track.monitored
        FROM library_media_files AS media
        JOIN library_tracks AS track ON track.id = media.track_id
-       LEFT JOIN library_management AS management
-         ON management.entity_kind = 'album' AND management.entity_id = media.album_id
        WHERE media.path = ?`,
     )
     .all(filePath);
@@ -156,14 +149,13 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
     [folder],
   );
 
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  await scanConfiguredLibrary();
 
   assert.deepEqual(fileRow(filePath), [
     {
       source: "readonly",
       track_id: requireFixture(fileRow(filePath)[0]).track_id,
       monitored: 0,
-      managed_by: "aurral",
     },
   ]);
   const listed = await callLibrary("GET", "/files/read-only-folders");
@@ -228,13 +220,13 @@ test("removing a read-only folder takes its music out of the Library and keeps t
   const folder = await makeFolder("removed");
   const filePath = await makeTrack(folder, "Gone Artist", "Gone Album", "Gone Song");
   await callLibrary("POST", "/files/read-only-folders", { path: folder });
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  await scanConfiguredLibrary();
   assert.equal(fileRow(filePath).length, 1);
 
   const removed = await callLibrary("DELETE", "/files/read-only-folders", { path: folder });
   assert.equal(removed.status, 200);
   assert.deepEqual([...removed.body.folders], []);
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  await scanConfiguredLibrary();
 
   assert.deepEqual(fileRow(filePath), []);
   assert.equal(
@@ -245,19 +237,18 @@ test("removing a read-only folder takes its music out of the Library and keeps t
 });
 
 test("a scan kept to the Library folder reaches the read-only folders that hold its paths, and no others", async (t) => {
-  const inside = path.join(resolveDownloadRoot(), "Shared With Lidarr");
+  const inside = path.join(resolveDownloadRoot(), "Shared Folder");
   t.onTestFinished(() => rm(inside, { recursive: true, force: true }));
   const outside = await makeFolder("outside");
   dbOps.setJSONSetting("readOnlyFolders", [inside, outside]);
   const outsideKept = await makeTrack(outside, "Outside Artist", "Outside Album", "Kept Song");
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  await scanConfiguredLibrary();
   const sources = (filePath: string) => fileRow(filePath).map((row) => row.source);
 
   const named = await makeTrack(inside, "Inside Artist", "Inside Album", "Named Song");
   const outsideNamed = await makeTrack(outside, "Outside Artist", "Outside Album", "Named Song", 2);
   await scanConfiguredLibrary({
-    lidarrClient: lidarrOff,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [named, outsideNamed],
   });
   assert.deepEqual(sources(named), ["readonly"]);
@@ -265,30 +256,10 @@ test("a scan kept to the Library folder reaches the read-only folders that hold 
 
   const walked = await makeTrack(inside, "Inside Artist", "Inside Album", "Walked Song", 2);
   const outsideUnseen = await makeTrack(outside, "Outside Artist", "Outside Album", "New Song", 3);
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff, includeLidarr: false });
+  await scanConfiguredLibrary({ includeReadOnly: false });
   assert.deepEqual(sources(walked), ["readonly"]);
   assert.deepEqual(sources(outsideUnseen), []);
   assert.deepEqual(sources(outsideKept), ["readonly"]);
-});
-
-test("a Lidarr root added as a read-only folder keeps its music when Lidarr is turned off", async () => {
-  const folder = await makeFolder("lidarr-root");
-  const filePath = await makeTrack(folder, "Moving Artist", "Moving Album", "Moving Song");
-  await callLibrary("POST", "/files/read-only-folders", { path: folder });
-
-  await scanConfiguredLibrary({ lidarrClient: lidarrOn, lidarrRoots: [folder] });
-  assert.deepEqual(
-    fileRow(filePath).map((row) => row.source),
-    ["lidarr"],
-  );
-
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff, lidarrRoots: [folder] });
-  const rows = fileRow(filePath);
-  assert.deepEqual(
-    rows.map((row) => [row.source, row.managed_by]),
-    [["readonly", "aurral"]],
-  );
-  assert.ok((await stat(filePath)).isFile());
 });
 
 test("playlists use a read-only file in place and download their own copy once the folder is removed", async () => {
@@ -296,7 +267,7 @@ test("playlists use a read-only file in place and download their own copy once t
   const filePath = await makeTrack(folder, "Shared Artist", "Shared Album", "Shared Song");
   const before = await fingerprint(filePath);
   await callLibrary("POST", "/files/read-only-folders", { path: folder });
-  await scanConfiguredLibrary({ lidarrClient: lidarrOff });
+  await scanConfiguredLibrary();
 
   const playlistId = `read-only-playlist-${process.pid}`;
   const reuse = await reuseTrackForPlaylist(
@@ -310,10 +281,6 @@ test("playlists use a read-only file in place and download their own copy once t
   assert.ok(job != null);
   assert.equal(job.status, "done");
   assert.equal(job.externalPath, filePath);
-
-  assert.ok(downloadWorker instanceof DownloadWorker);
-  await downloadWorker.releaseLidarrFiles();
-  assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "done");
 
   vi.spyOn(downloadWorker, "start").mockResolvedValue(undefined);
   await callLibrary("DELETE", "/files/read-only-folders", { path: folder });

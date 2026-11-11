@@ -5,7 +5,6 @@ import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
 type AlbumGrabJob = Pick<DownloadJob, "id" | "createdAt"> & { status: string } & JobFields<
-    | "managedBy"
     | "playlistType"
     | "requestGroupId"
     | "albumMbid"
@@ -72,20 +71,13 @@ export function recordAlbumGrabQueued(
 ) {
   if (payload?.albumGrab !== true || !Array.isArray(payload.albumGroupJobIds)) return;
   const leader = jobs.find((job) => job.id === payload.jobId);
-  if (
-    !leader ||
-    leader.managedBy !== "aurral" ||
-    leader.playlistType !== "library" ||
-    !leader.requestGroupId ||
-    !leader.albumMbid
-  )
+  if (!leader || leader.playlistType !== "library" || !leader.requestGroupId || !leader.albumMbid)
     return;
   const members = payload.albumGroupJobIds
     .map((id) => jobs.find((job) => job.id === id))
     .filter(
       (job) =>
         job &&
-        job.managedBy === "aurral" &&
         job.playlistType === "library" &&
         job.requestGroupId === leader.requestGroupId &&
         job.albumMbid === leader.albumMbid,
@@ -284,11 +276,7 @@ export function recordAlbumGrabPhase(
 // worker, before their first track starts the album attempt.
 export function queuedAlbumGrabs(jobs: AlbumGrabJob[]) {
   const waiting = jobs.flatMap(({ requestGroupId, albumMbid, ...job }) =>
-    job.status === "pending" &&
-    job.managedBy === "aurral" &&
-    job.playlistType === "library" &&
-    requestGroupId &&
-    albumMbid
+    job.status === "pending" && job.playlistType === "library" && requestGroupId && albumMbid
       ? [{ ...job, requestGroupId, albumMbid }]
       : [],
   );

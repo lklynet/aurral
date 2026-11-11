@@ -13,7 +13,42 @@ const indexFinishedDownloadNames: Migration = (db) =>
       WHERE status = 'done' AND final_path IS NOT NULL AND (track_name GLOB '*[^ -~]*' OR length(track_name) <> length(CAST(track_name AS BLOB)));
   `);
 
-export const migrations: Migration[] = [createAurral3Schema, indexFinishedDownloadNames];
+// Aurral runs every Library, so nothing reads who managed an artist, an album,
+// or a download, and Lidarr's settings, IDs, and open requests have no reader.
+const dropLidarrMode: Migration = (db) => {
+  db.exec("DROP INDEX IF EXISTS idx_library_management_managed_by");
+  const hasColumn = db.prepare<[string, string]>(
+    "SELECT 1 FROM pragma_table_info(?) WHERE name = ?",
+  );
+  for (const [table, column] of [
+    ["library_management", "managed_by"],
+    ["download_jobs", "managed_by"],
+    ["users", "lidarr_root_folder_path"],
+    ["users", "lidarr_quality_profile_id"],
+  ] as const) {
+    if (hasColumn.get(table, column)) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+  }
+  db.exec(`
+    DROP TABLE IF EXISTS lidarr_artist_id_map;
+    UPDATE settings SET value = json_remove(value, '$.lidarr')
+      WHERE key = 'integrations' AND json_valid(value);
+    DELETE FROM settings WHERE key = 'rootFolderPath';
+    UPDATE settings SET value = (
+        SELECT json_group_array(json(mapping.value)) FROM json_each(settings.value) AS mapping
+        WHERE mapping.type = 'object'
+          AND lower(trim(coalesce(mapping.value ->> '$.source', ''))) <> 'lidarr'
+      )
+      WHERE key = 'pathMappings' AND json_valid(value) AND json_type(value) = 'array';
+    UPDATE aurral_history SET status = 'cancelled', status_label = 'Cancelled'
+      WHERE kind = 'album_requested' AND status = 'processing';
+  `);
+};
+
+export const migrations: Migration[] = [
+  createAurral3Schema,
+  indexFinishedDownloadNames,
+  dropLidarrMode,
+];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
   const applied = () => Number(db.pragma("user_version", { simple: true }));

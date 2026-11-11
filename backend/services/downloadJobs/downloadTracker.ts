@@ -49,7 +49,6 @@ export const OFF_RELEASE_REASON = "Track is not on the requested release; search
 export type DownloadTrackInput = DownloadTrackFields & {
   reason?: string | null;
   requestGroupId?: string | null;
-  managedBy?: string | null;
 };
 
 type RequestKind = "album" | "track";
@@ -230,7 +229,6 @@ function rowToJob(row: DownloadJobsRow) {
     playlistId: row.owner_id || row.owner_type,
     playlistGeneration: Number(row.playlist_generation ?? 0),
     playlistType: row.owner_type || row.owner_id,
-    managedBy: row.managed_by === "lidarr" ? ("lidarr" as const) : ("aurral" as const),
     requestGroupId: row.request_group_id || null,
     requestKind: row.request_kind === "album" ? ("album" as const) : ("track" as const),
     albumGrabAttempted: row.album_grab_attempted === 1,
@@ -322,7 +320,6 @@ const insertStmt = db.prepare(`
     owner_id,
     playlist_generation,
     owner_type,
-    managed_by,
     request_group_id,
     status,
     staging_path,
@@ -345,7 +342,7 @@ const insertStmt = db.prepare(`
     reused_library_file,
     started_by_playlist
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -1330,7 +1327,6 @@ export class DownloadTracker {
       job.playlistId || job.playlistType,
       job.playlistGeneration ?? 0,
       job.playlistType || job.playlistId,
-      job.managedBy === "lidarr" ? "lidarr" : "aurral",
       job.requestGroupId ?? null,
       job.status,
       job.stagingPath ?? null,
@@ -1432,7 +1428,6 @@ export class DownloadTracker {
         ? options.playlistGeneration!
         : getPlaylistDownloadGeneration(playlistId),
       playlistType,
-      managedBy: track?.managedBy === "lidarr" ? "lidarr" : "aurral",
       requestGroupId: track?.requestGroupId ? String(track.requestGroupId).trim() || null : null,
       requestKind: options?.requestKind === "album" ? "album" : "track",
       quickSearchedSources: [],
@@ -1466,7 +1461,6 @@ export class DownloadTracker {
     const existing = [...this.jobs.values()].find(
       (job) =>
         job.status === "done" &&
-        job.managedBy === "aurral" &&
         !job.upgradeForJobId &&
         job.finalPath &&
         path.resolve(job.finalPath) === resolvedPath,
@@ -1474,7 +1468,7 @@ export class DownloadTracker {
     if (existing) return existing;
 
     const id = this.addJob(
-      { ...track, managedBy: "aurral", reason: track?.reason || "Aurral library track" },
+      { ...track, reason: track?.reason || "Aurral library track" },
       "library",
       { playlistId: "library" },
     );

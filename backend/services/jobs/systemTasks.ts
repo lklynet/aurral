@@ -32,7 +32,7 @@ interface SystemTaskDefinition {
   description?: string;
   schedule?: { everyMs: number; priority?: number };
   startup?: { delayMs: number; priority: number };
-  invalidates?: "news" | "lidarr-artists";
+  invalidates?: "news";
   interruptible?: true;
   prepare?: (context: {
     signal: AbortSignal;
@@ -113,11 +113,7 @@ const SYSTEM_TASKS = {
     async run() {
       const { hasCompletedLibraryScan, scheduleLibraryScan } =
         await import("../libraryScanWorker.ts");
-      const { lidarrClient } = await import("../lidarrClient.ts");
-      const { hasLidarrLibraryData } = await import("../libraryMediaStore.ts");
-      if (!hasCompletedLibraryScan() || (!lidarrClient.isConfigured() && hasLidarrLibraryData())) {
-        scheduleLibraryScan();
-      }
+      if (!hasCompletedLibraryScan()) scheduleLibraryScan();
     },
   },
   "release-metadata-refresh": {
@@ -385,18 +381,6 @@ const SYSTEM_TASKS = {
       });
     },
   },
-  "lidarr-files-release": {
-    queue: "system",
-    label: "Lidarr turned off",
-    description: "Downloads Aurral copies of playlist and flow tracks that used Lidarr files.",
-    async run() {
-      const { downloadWorker } = await import("../downloadJobs/downloadWorker.ts");
-      if (!("releaseLidarrFiles" in downloadWorker)) {
-        throw new TypeError("downloadWorker.releaseLidarrFiles is not a function");
-      }
-      await downloadWorker.releaseLidarrFiles();
-    },
-  },
   "read-only-folder-release": {
     queue: "system",
     label: "Read-only folder removed",
@@ -409,16 +393,8 @@ const SYSTEM_TASKS = {
       await downloadWorker.releaseReadOnlyFolderFiles(stringList(payload.folders) ?? []);
     },
   },
-  "lidarr-retry": {
-    queue: "system",
-    label: "Lidarr retry",
-    description: "Retries Lidarr library access after a temporary connection problem.",
-    invalidates: "lidarr-artists",
-    async run() {
-      const { libraryManager } = await import("../libraryManager.ts");
-      await libraryManager.syncLidarrArtists({ forceRefresh: true });
-    },
-  },
+  "lidarr-files-release": retired("system"),
+  "lidarr-retry": retired("system"),
   "playback-library-scan": retired("playback"),
   "library-index-refresh": retired("system"),
 } satisfies Record<string, SystemTaskDefinition>;

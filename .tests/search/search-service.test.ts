@@ -12,7 +12,6 @@ import {
   searchArtists,
 } from "../../backend/services/searchService.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
-import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 
 test("searchArtists normalizes BrainzMash artists", async () => {
   let requests = 0;
@@ -210,97 +209,16 @@ test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release typ
   assert.deepEqual(normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"), ["Album", "Live"]);
 });
 
-const boardsOfCanada = {
-  id: 7,
-  artistName: "Boards of Canada",
-  foreignArtistId: "artist-mbid",
-  monitor: "none",
-};
-
-const geogaddi = {
-  id: 42,
-  artistId: 7,
-  foreignAlbumId: "album-mbid",
-  title: "Geogaddi",
-  monitored: true,
-  statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
-};
-
-test("requestAlbumFromSearch searches a new artist's album once, after the artist add", async () => {
-  let artistAddOptions: Parameters<typeof libraryManager.addArtistWithResolvedOptions>[2];
-
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
-  vi.spyOn(libraryManager, "getArtist").mockResolvedValue(null);
-  vi.spyOn(libraryManager, "resolveArtistAddOptions").mockImplementation(
-    async () =>
-      ({
-        quality: "standard",
-        monitorOption: "none",
-        rootFolderPath: "/music/main",
-        qualityProfileId: 7,
-      }) as Awaited<ReturnType<typeof libraryManager.resolveArtistAddOptions>>,
-  );
-  vi.spyOn(libraryManager, "addArtistWithResolvedOptions").mockImplementation(
-    async (_mbid, _name, options) => {
-      artistAddOptions = options;
-      return {
-        id: "7",
-        mbid: "artist-mbid",
-        foreignArtistId: "artist-mbid",
-        artistName: "Boards of Canada",
-        monitorOption: "none",
-      } as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
-    },
-  );
-  vi.spyOn(libraryManager, "addAlbum").mockImplementation(
-    async (artistId, albumMbid, albumName, options) => {
-      assert.equal(artistId, "7");
-      assert.equal(albumMbid, "album-mbid");
-      assert.equal(albumName, "Geogaddi");
-      assert.equal(options?.triggerSearch, true);
-      return {
-        id: "42",
-        artistId: "7",
-        mbid: "album-mbid",
-        foreignAlbumId: "album-mbid",
-        albumName: "Geogaddi",
-        monitored: true,
-        statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
-      } as Awaited<ReturnType<typeof libraryManager.addAlbum>>;
-    },
-  );
-
-  const result = await libraryManager.requestAlbumFromSearch({
-    albumMbid: "album-mbid",
-    albumName: "Geogaddi",
-    artistMbid: "artist-mbid",
-    artistName: "Boards of Canada",
-    triggerSearch: true,
-    user: testUser(1, { permissions: { addAlbum: true, addArtist: true } }),
-  });
-
-  assert.equal(result.success, true);
-  assert.equal(result.createdArtist, true);
-  assert.equal(result.createdAlbum, true);
-  assert.equal(result.triggeredSearch, true);
-  assert.equal(result.album.id, "42");
-  assert.equal(artistAddOptions?.triggerSearch, false);
-});
-
 test("requestAlbumFromSearch preserves an addAlbum conflict status", async () => {
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
-  vi.spyOn(libraryManager, "getArtist").mockResolvedValue({
+  vi.spyOn(libraryManager, "getArtist").mockReturnValue({
     id: "7",
     artistName: "Boards of Canada",
     foreignArtistId: "artist-mbid",
-  } as Awaited<ReturnType<typeof libraryManager.getArtist>>);
-  vi.spyOn(libraryManager, "ensureArtistMonitored").mockImplementation(async (artist) => artist);
+  } as ReturnType<typeof libraryManager.getArtist>);
   vi.spyOn(libraryManager, "addAlbum").mockImplementation(
     async () =>
       ({
-        error: "Album already exists in Lidarr under a different artist",
+        error: "Album belongs to a different artist",
         statusCode: 409,
       }) as Awaited<ReturnType<typeof libraryManager.addAlbum>>,
   );
@@ -315,18 +233,14 @@ test("requestAlbumFromSearch preserves an addAlbum conflict status", async () =>
       }),
     (error) => {
       assert.equal(asAppError(error)?.statusCode, 409);
-      assert.equal(
-        asAppError(error)?.message ?? "",
-        "Album already exists in Lidarr under a different artist",
-      );
+      assert.equal(asAppError(error)?.message ?? "", "Album belongs to a different artist");
       return true;
     },
   );
 });
 
 test("requestAlbumFromSearch rejects when artist must be created without addArtist permission", async () => {
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(libraryManager, "getArtist").mockResolvedValue(null);
+  vi.spyOn(libraryManager, "getArtist").mockReturnValue(null);
 
   await assert.rejects(
     () =>
@@ -343,116 +257,4 @@ test("requestAlbumFromSearch rejects when artist must be created without addArti
       return true;
     },
   );
-});
-
-test("addAlbum checks artist monitoring while monitoring only the requested album", async () => {
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: false });
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
-  vi.spyOn(lidarrClient, "addAlbum").mockResolvedValue(geogaddi);
-  const updateArtistMonitoring = vi
-    .spyOn(lidarrClient, "updateArtistMonitoring")
-    .mockResolvedValue({
-      ...boardsOfCanada,
-      monitored: true,
-      monitorNewItems: "none",
-      addOptions: { monitor: "none" },
-    });
-
-  const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi");
-
-  assert.equal(album.id, "42");
-  assert.deepEqual(updateArtistMonitoring.mock.calls, [[7, "none"]]);
-});
-
-test("addAlbum force-refreshes and searches an existing album", async () => {
-  const existingAlbum = { ...geogaddi, foreignAlbumId: "fresh-album-mbid" };
-
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
-  const getAlbumByMbid = vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(existingAlbum);
-  vi.spyOn(lidarrClient, "getAlbum").mockResolvedValue(existingAlbum);
-  const addAlbum = vi.spyOn(lidarrClient, "addAlbum").mockResolvedValue(existingAlbum);
-  const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});
-
-  const album = await libraryManager.addAlbum(7, "fresh-album-mbid", "Geogaddi", {
-    triggerSearch: true,
-  });
-
-  assert.equal(album.id, "42");
-  assert.equal(getAlbumByMbid.mock.calls[0]?.[1]?.forceRefresh, true);
-  assert.equal(addAlbum.mock.calls.length, 0);
-  assert.deepEqual(triggerAlbumSearch.mock.calls, [[42]]);
-});
-
-test("addAlbum coalesces concurrent requests for the same album", async () => {
-  let releaseAdd!: () => void;
-  const addGate = new Promise<void>((resolve) => {
-    releaseAdd = resolve;
-  });
-
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
-  const addAlbum = vi.spyOn(lidarrClient, "addAlbum").mockImplementation(async () => {
-    await addGate;
-    return { ...geogaddi, foreignAlbumId: "concurrent-album-mbid" };
-  });
-
-  const firstRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
-  const secondRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
-  releaseAdd();
-
-  const [first, second] = await Promise.all([firstRequest, secondRequest]);
-  assert.equal(addAlbum.mock.calls.length, 1);
-  assert.equal(first.id, "42");
-  assert.equal(second.id, "42");
-});
-
-test("addAlbum reports when Lidarr already owns an album under another artist", async () => {
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue({
-    id: 99,
-    artistId: 8,
-    foreignAlbumId: "owned-by-another-artist",
-    title: "Geogaddi",
-    monitored: true,
-  });
-  const addAlbum = vi
-    .spyOn(lidarrClient, "addAlbum")
-    .mockRejectedValue(new Error("AlbumExistsValidator: This album has already been added"));
-
-  const result = await libraryManager.addAlbum(7, "owned-by-another-artist", "Geogaddi");
-
-  assert.equal(result.statusCode, 409);
-  assert.equal(result.error, "Album already exists in Lidarr under a different artist");
-  assert.equal(addAlbum.mock.calls.length, 0);
-});
-
-test("addAlbum monitors and searches the requested album after Lidarr conflict lag", async () => {
-  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
-  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: false });
-  vi.spyOn(lidarrClient, "getAlbumByMbid")
-    .mockResolvedValueOnce(undefined)
-    .mockResolvedValueOnce({ ...geogaddi, monitored: false });
-  const updateArtistMonitoring = vi
-    .spyOn(lidarrClient, "updateArtistMonitoring")
-    .mockResolvedValue({ ...boardsOfCanada, monitored: true });
-  vi.spyOn(lidarrClient, "addAlbum").mockRejectedValue(
-    new Error("AlbumExistsValidator: This album has already been added"),
-  );
-  const monitorAlbum = vi.spyOn(lidarrClient, "monitorAlbum").mockResolvedValue(geogaddi);
-  const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});
-  vi.spyOn(lidarrClient, "getAlbum").mockResolvedValue(geogaddi);
-
-  const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi", {
-    triggerSearch: true,
-  });
-
-  assert.equal(album.id, "42");
-  assert.equal(album.monitored, true);
-  assert.deepEqual(updateArtistMonitoring.mock.calls, [[7, "none"]]);
-  assert.deepEqual(monitorAlbum.mock.calls, [[42, true]]);
-  assert.deepEqual(triggerAlbumSearch.mock.calls, [[42]]);
 });

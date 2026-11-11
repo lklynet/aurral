@@ -33,7 +33,6 @@ interface AurralAlbumStatusProps {
   album: AurralAlbumRef;
   artist?: AlbumArtistRef | null;
   canManage?: boolean;
-  canRetry?: boolean;
   onChanged?: () => void;
   onSettled?: () => void;
 }
@@ -42,7 +41,6 @@ export function AurralAlbumStatus({
   album,
   artist,
   canManage = false,
-  canRetry = true,
   onChanged,
   onSettled,
 }: AurralAlbumStatusProps) {
@@ -75,9 +73,7 @@ export function AurralAlbumStatus({
   }, [onSettled, statusQuery.data?.status]);
 
   if (!state || state.status === "complete") return null;
-  const actions = canRetry
-    ? state.actions
-    : state.actions.filter((action) => action.id === "cancel");
+  const { actions } = state;
 
   const runAction = async (action: AlbumStatusAction) => {
     setPendingAction(action.id);

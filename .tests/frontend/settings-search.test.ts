@@ -12,7 +12,6 @@ import {
 
 const everything: SettingsSearchContext = {
   canManageServer: true,
-  lidarrConnected: true,
   signInMethods: true,
   sidebarArt: true,
 };
@@ -49,13 +48,12 @@ test("settings search opens services on their own page and groups on their secti
 });
 
 test("settings search lists page names, then other names, then keyword matches", () => {
-  assert.deepEqual(paths("lidarr"), ["profile", "library/lidarr", "library"]);
+  assert.deepEqual(paths("plex"), ["listening/plex", "library"]);
   assert.equal(paths("status")[0], "status");
 });
 
 test("settings search hides groups the page would not show", () => {
-  const hidden = { ...everything, lidarrConnected: false, signInMethods: false };
-  assert.equal(paths("lidarr defaults", hidden).length, 0);
+  const hidden = { ...everything, signInMethods: false };
   assert.equal(paths("sign in methods", hidden).length, 0);
   const member = { ...hidden, canManageServer: false };
   assert.ok(paths("api key", member).includes("profile"));

@@ -5,7 +5,6 @@ import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.ts";
-import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { downloadTracker } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import {
@@ -39,7 +38,7 @@ async function downloadsDir() {
   return root;
 }
 
-test("deletes Aurral-owned track files without Lidarr", async () => {
+test("deletes Aurral-owned track files", async () => {
   const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-${process.pid}-${Date.now()}`;
@@ -80,8 +79,6 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
     { artistName: "Artist", trackName: "Track", trackMbid: `${identity}-different-mbid` },
     "library",
   );
-
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
     assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
@@ -210,7 +207,6 @@ test("deleting a library track removes it from playlists that referenced its dow
   });
   const keptTracks = playlist.tracks.slice(1);
 
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
   const playlistSync = vi
     .spyOn(playlistManager, "requestPlaylistSync")
     .mockImplementation(() => null);
@@ -310,7 +306,6 @@ test("deleting a library track deletes a file a playlist reused and drops it fro
   });
   const keptTracks = playlist.tracks.slice(1);
 
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   try {
@@ -392,7 +387,6 @@ test("deletes a library file committed while track removal waits for its lock", 
   let deletion;
   try {
     await commitEntered;
-    vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
     deletion = libraryManager.deleteTrack(String(track.id));
     assert.equal(isDownloadJobCancelled(jobId), true);
     releaseCommit();
@@ -471,7 +465,6 @@ test("records successful Aurral deletions when another file fails", async () => 
     }
     return originalUnlink(filePath);
   });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
     assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), {
@@ -594,7 +587,6 @@ test("keeps a library job and track when provider cancellation fails, then retri
       slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
     },
   });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
     const failedDeletion = await libraryManager.deleteTrack(String(track.id));
@@ -628,99 +620,4 @@ test("keeps a library job and track when provider cancellation fails, then retri
     await mock.close();
     await rm(root, { recursive: true, force: true });
   }
-});
-
-test("deletes a scanned Lidarr track through the Lidarr album with the same MusicBrainz ID", async (t: import("vite-plus/test").TestContext) => {
-  const identity = `lidarr-track-delete-${process.pid}-${Date.now()}`;
-  const albumMbid = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
-  const trackMbid = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
-  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Scanned Artist" });
-  const album = upsertLibraryAlbum({
-    identityKey: `release-group:${albumMbid}`,
-    mbid: albumMbid,
-    releaseGroupMbid: albumMbid,
-    artistId: artist.id,
-    title: "Scanned Album",
-    metadata: { tags: {} },
-  });
-  const track = upsertLibraryTrack({
-    identityKey: `recording:${trackMbid}`,
-    mbid: trackMbid,
-    title: "Scanned Track",
-    artistName: "Scanned Artist",
-    metadata: { tags: {} },
-  });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  upsertLibraryMediaFile({
-    trackId: track.id,
-    albumId: album.id,
-    source: "lidarr",
-    path: `/music/${identity}/01 Scanned Track.flac`,
-    available: true,
-  });
-  t.onTestFinished(() => {
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async (mbid) =>
-    mbid === albumMbid ? { id: 70, foreignAlbumId: albumMbid } : undefined,
-  );
-  vi.spyOn(lidarrClient, "getTracksByAlbumId").mockImplementation(async (albumId) =>
-    albumId === 70
-      ? [{ id: 1, foreignRecordingId: trackMbid, trackFileId: 99, hasFile: true }]
-      : [],
-  );
-  const deleted = vi.spyOn(lidarrClient, "deleteTrackFile").mockImplementation(async () => {});
-
-  assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
-  assert.deepEqual(
-    deleted.mock.calls.map((call) => call[0]),
-    [99],
-  );
-});
-
-test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t: import("vite-plus/test").TestContext) => {
-  const identity = `lidarr-title-delete-${process.pid}-${Date.now()}`;
-  const albumMbid = "d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3";
-  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Title Artist" });
-  const album = upsertLibraryAlbum({
-    identityKey: `release-group:${albumMbid}`,
-    mbid: albumMbid,
-    releaseGroupMbid: albumMbid,
-    artistId: artist.id,
-    title: "Title Album",
-  });
-  const track = upsertLibraryTrack({
-    identityKey: `${identity}:track`,
-    title: "Intro",
-    artistName: "Title Artist",
-  });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  upsertLibraryMediaFile({
-    trackId: track.id,
-    albumId: album.id,
-    source: "lidarr",
-    path: `/music/${identity}/01 Intro.flac`,
-    available: true,
-  });
-  t.onTestFinished(() => {
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async () => ({
-    id: 71,
-    foreignAlbumId: "album-mbid",
-  }));
-  vi.spyOn(lidarrClient, "getTracksByAlbumId").mockImplementation(async () => [
-    { id: 1, title: "Intro", trackFileId: 101, hasFile: true },
-    { id: 2, title: "Intro", trackFileId: 102, hasFile: true },
-  ]);
-  const deleted = vi.spyOn(lidarrClient, "deleteTrackFile").mockImplementation(async () => {});
-
-  const result = await libraryManager.deleteTrack(String(track.id));
-
-  assert.equal(result.success, false);
-  assert.equal(deleted.mock.calls.length, 0);
 });

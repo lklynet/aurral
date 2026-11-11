@@ -1,7 +1,7 @@
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
-import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -28,14 +28,12 @@ const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, {
 
 const { api } = await import("../../backend/routes/api.ts");
 const { getArtistLibraryLookup } = await import("../../backend/routes/library/handlers/misc.ts");
-const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 
 const KNOWN_MBID = "55555555-5555-4555-8555-555555555551";
 const OTHER_MBID = "55555555-5555-4555-8555-555555555552";
 const MISSING_MBID = "55555555-5555-4555-8555-555555555553";
 const MATCHED_BY_NAME_MBID = "55555555-5555-4555-8555-555555555554";
 const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
-const LIDARR_MBID = "55555555-5555-4555-8555-555555555556";
 const PICKED_GROUP = "66666666-6666-4666-8666-666666666661";
 const OTHER_GROUP = "66666666-6666-4666-8666-666666666662";
 const MISSING_GROUP = "66666666-6666-4666-8666-666666666663";
@@ -114,7 +112,6 @@ afterAll(async () => {
 });
 
 let fixtureCount = 0;
-const lidarrConnected = { isConfigured: () => true };
 
 function createArtist(
   name: string,
@@ -144,7 +141,7 @@ function createArtist(
   libraryStore.upsertLibraryMediaFile({
     trackId: track.id,
     albumId: album.id,
-    source: "lidarr",
+    source: "readonly",
     path: `/library/${fixtureCount}.flac`,
     available: true,
   });
@@ -287,16 +284,14 @@ test("clearing a wrong automatic match keeps the artist unmatched on later scans
   const { artist } = createArtist("Wrongly Matched");
   await indexService.scanConfiguredLibrary({
     musicRoot,
-    includeLidarr: false,
-    lidarrClient: lidarrConnected,
+    includeReadOnly: false,
   });
   assert.equal(artistRow(artist.id).mbid, MATCHED_BY_NAME_MBID);
 
   const response = await updateMbid(artist.id, null);
   await indexService.scanConfiguredLibrary({
     musicRoot,
-    includeLidarr: false,
-    lidarrClient: lidarrConnected,
+    includeReadOnly: false,
   });
 
   assert.equal(response.status, 200);
@@ -305,48 +300,25 @@ test("clearing a wrong automatic match keeps the artist unmatched on later scans
 
 test("MBID edits are rejected without changing the artist when they cannot be verified", async () => {
   const { artist } = createArtist("Unverified Artist");
-  const lidarr = createArtist("Lidarr Artist", { metadata: { id: 42 } });
 
   const missing = await updateMbid(artist.id, MISSING_MBID);
   const invalid = await updateMbid(artist.id, "not-an-mbid");
-  const lidarrManaged = await updateMbid(lidarr.artist.id, KNOWN_MBID);
   providerAvailable = false;
   provider.clearMetadataProviderCaches();
   const offline = await updateMbid(artist.id, OTHER_MBID);
 
-  assert.deepEqual(
-    [missing.status, invalid.status, lidarrManaged.status, offline.status],
-    [404, 400, 409, 503],
-  );
+  assert.deepEqual([missing.status, invalid.status, offline.status], [404, 400, 503]);
   assert.equal(artistRow(artist.id).mbid, null);
-  assert.equal(artistRow(lidarr.artist.id).mbid, null);
 });
 
-test("the Discover lookup points to the library artist whether or not Lidarr manages it", async () => {
+test("the Discover lookup points to the library artist", () => {
   const indexed = createArtist("Indexed Only Artist", { mbid: LINKED_MBID });
-  const managed = createArtist("Lidarr Managed Artist", {
-    mbid: LIDARR_MBID,
-    metadata: { id: 4242 },
-  });
-  const lidarrArtist = {
-    id: 4242,
-    foreignArtistId: LIDARR_MBID,
-    artistName: "Lidarr Managed Artist",
-  };
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (mbid) =>
-    mbid === LIDARR_MBID ? lidarrArtist : null,
-  );
-  vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
 
-  const indexedLookup = await getArtistLibraryLookup(LINKED_MBID);
-  const managedLookup = await getArtistLibraryLookup(LIDARR_MBID);
-  const missingLookup = await getArtistLibraryLookup(MISSING_MBID);
+  const indexedLookup = getArtistLibraryLookup(LINKED_MBID);
+  const missingLookup = getArtistLibraryLookup(MISSING_MBID);
 
-  assert.equal(indexedLookup.exists, false);
+  assert.equal(indexedLookup.exists, true);
   assert.equal(indexedLookup.libraryArtistId, String(indexed.artist.id));
-  assert.equal(managedLookup.exists, true);
-  assert.equal(managedLookup.libraryArtistId, String(managed.artist.id));
   assert.equal(missingLookup.libraryArtistId, null);
 });
 
@@ -401,20 +373,17 @@ test("album matches are rejected without changing the album when they cannot be 
   const { album } = createArtist("Refused Album Artist");
   const tagged = createArtist("Tagged Album Artist");
   setAlbumMetadata(tagged.album.id, { tags: { musicbrainz_releasegroupid: OTHER_GROUP } });
-  const lidarr = createArtist("Lidarr Album Artist");
-  setAlbumMetadata(lidarr.album.id, { id: 7 });
 
   const statuses = [
     (await updateReleaseGroup(album.id, MISSING_GROUP)).status,
     (await updateReleaseGroup(album.id, "not-an-mbid")).status,
     (await updateReleaseGroup(tagged.album.id, OTHER_GROUP)).status,
-    (await updateReleaseGroup(lidarr.album.id, OTHER_GROUP)).status,
   ];
 
-  assert.deepEqual(statuses, [404, 400, 409, 409]);
+  assert.deepEqual(statuses, [404, 400, 409]);
   assert.deepEqual(
-    [album, tagged.album, lidarr.album].map((entry) => albumRow(entry.id)?.release_group_mbid),
-    [null, null, null],
+    [album, tagged.album].map((entry) => albumRow(entry.id)?.release_group_mbid),
+    [null, null],
   );
 });
 

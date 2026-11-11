@@ -251,7 +251,7 @@ export async function cleanUpPlaybackServers() {
   const removedFiles = await removeRetainedFiles();
   forgetLegacyData();
   if (removedFiles.length) {
-    scheduleLibraryScan({ includeLidarr: false, changedPaths: removedFiles });
+    scheduleLibraryScan({ includeReadOnly: false, changedPaths: removedFiles });
   }
   return { pending, removedFiles };
 }

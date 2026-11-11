@@ -24,7 +24,7 @@ export type LibraryTarget = {
   [Kind in keyof LibraryEntityByKind]: { kind: Kind; entity: LibraryEntityByKind[Kind] };
 }[keyof LibraryEntityByKind];
 
-export type LibraryRemoval = LibraryTarget & { manager?: string | null };
+export type LibraryRemoval = LibraryTarget;
 
 export type TrackDownloadState = { jobId: string | null; status: string };
 

@@ -40,7 +40,6 @@ import {
   SkeletonText,
   SkeletonTrackList,
 } from "../components/Skeletons";
-import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { libraryClient } from "../utils/api/clients/library.ts";
@@ -63,7 +62,6 @@ import {
   describeAurralAlbumStatus,
   shouldPollAlbumStatuses,
 } from "../utils/aurralAlbumStatus.ts";
-import { canRemoveLibraryArtist } from "../utils/libraryDestination.ts";
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import {
@@ -132,6 +130,9 @@ const QUERY_DEBOUNCE_MS = 250;
 
 const wait = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
+const canRemoveLibraryArtist = (artist: LibraryArtist) =>
+  Boolean(artist.mbid) || artist.sources?.some((source) => source === "aurral") === true;
+
 const artistAlbumTotal = (artist: LibraryArtist) =>
   ("albumCount" in artist ? artist.albumCount : undefined) ?? artist.albumIds?.length ?? 0;
 
@@ -162,7 +163,6 @@ function LibraryPage() {
   const navigate = useNavigate();
   const { section: routeSection, artistId: routeArtistId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { bootstrap } = useAuth();
   const { showError, showSuccess } = useToast();
   const navigationType = useNavigationType();
   const urlQuery = searchParams.get("q") || "";
@@ -675,8 +675,8 @@ function LibraryPage() {
     onChanged: invalidateLibraryViews,
   });
   const libraryArtistMonitoringItems = (() => {
-    if (!libraryArtist?.mbid || isPreviewLibrary || !libraryArtistMonitoring.ready) return [];
-    const { label, manager, monitoringItems, reason } = libraryArtistMonitoring;
+    if (!libraryArtist?.mbid || isPreviewLibrary) return [];
+    const { label, monitoringItems, reason } = libraryArtistMonitoring;
     const submenuItems = reason
       ? [{ id: "monitoring-blocked", label: reason, disabled: true }]
       : monitoringItems;
@@ -684,7 +684,7 @@ function LibraryPage() {
       ? [
           {
             id: "monitoring",
-            label: manager === "aurral" ? label : `Monitor: ${label}`,
+            label,
             icon: Eye,
             separatorBefore: true,
             submenuItems,
@@ -1333,14 +1333,8 @@ function LibraryPage() {
     </>
   );
 
-  const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
   const renderStatus = () => (
     <>
-      {providerWarning && (
-        <p className="native-library-notice" role="status">
-          Lidarr is unavailable. Showing the last indexed library.
-        </p>
-      )}
       {loading &&
         (isDetail ? (
           <div className="native-library-content">

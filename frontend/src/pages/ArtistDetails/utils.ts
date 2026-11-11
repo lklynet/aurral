@@ -1,6 +1,5 @@
 import { RELEASE_LIST_VIEW_MODE_KEY } from "./constants.ts";
 import { TAG_COLORS } from "../../utils/discoverUtils.ts";
-import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import {
   releaseTypeOf,
@@ -64,12 +63,8 @@ export interface ReleaseLibraryInfo {
   sizeOnDisk?: number;
 }
 
-export interface ReleaseDownloadStatus {
-  status?: string | null;
-}
-
 interface ReleaseLibraryDisplay {
-  kind: "missing" | "complete" | "failed" | "active" | "incomplete" | "monitored" | "unmonitored";
+  kind: "missing" | "complete" | "incomplete" | "monitored" | "unmonitored";
   label: string | null;
   isComplete: boolean;
   isInLibrary: boolean;
@@ -194,16 +189,6 @@ const ARTIST_TYPE_LABELS = {
   Other: "Other",
 };
 
-const DOWNLOAD_STATUS_LABELS = {
-  adding: "Adding...",
-  searching: "Searching...",
-  downloading: "Downloading...",
-  moving: "Moving files...",
-  added: "Added",
-  processing: "Searching...",
-  failed: "Failed",
-};
-
 export const getArtistType = (type: string | null | undefined) =>
   (type && ownText(ARTIST_TYPE_LABELS, type)) || type;
 
@@ -223,9 +208,6 @@ export const buildTasteArtist = ({
   tags: (tags || []).map((tag) => tag.name),
   genres: genres || [],
 });
-
-export const getDownloadStatusLabel = (status: string) =>
-  ownText(DOWNLOAD_STATUS_LABELS, status) || status;
 
 export const getCoverImage = (coverImages: readonly ArtistCoverImage[] | null | undefined) => {
   if (!coverImages?.length) return null;
@@ -400,27 +382,14 @@ export function buildAlbumHeaderMeta({
 
 export const resolveReleaseLibraryDisplay = (
   libraryInfo: ReleaseLibraryInfo | null | undefined,
-  downloadStatus: ReleaseDownloadStatus | null | undefined,
-) => {
-  const withAction = (display: ReleaseLibraryDisplay) => ({
-    ...display,
-    triggerSearch: shouldTriggerAlbumSearch({
-      inLibrary: display.isInLibrary,
-      monitored: libraryInfo?.monitored,
-      status: downloadStatus?.status,
-      percentOfTracks: libraryInfo?.percentOfTracks,
-      sizeOnDisk: libraryInfo?.sizeOnDisk,
-      trackFileCount: libraryInfo?.trackFileCount,
-    }),
-  });
-
+): ReleaseLibraryDisplay => {
   if (!libraryInfo?.inLibrary) {
-    return withAction({
+    return {
       kind: "missing",
       label: null,
       isComplete: false,
       isInLibrary: false,
-    });
+    };
   }
 
   const percent = Number(libraryInfo.percentOfTracks || 0);
@@ -433,26 +402,16 @@ export const resolveReleaseLibraryDisplay = (
     (trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles);
 
   if (isComplete) {
-    return withAction({
+    return {
       kind: "complete",
       label: "In library",
       isComplete: true,
       isInLibrary: true,
-    });
-  }
-
-  const activeStatus = String(downloadStatus?.status || "").trim();
-  if (activeStatus && activeStatus !== "partial") {
-    return withAction({
-      kind: activeStatus === "failed" ? "failed" : "active",
-      label: getDownloadStatusLabel(activeStatus),
-      isComplete: false,
-      isInLibrary: true,
-    });
+    };
   }
 
   if (libraryInfo.trackListComplete === false || percent > 0) {
-    return withAction({
+    return {
       kind: "incomplete",
       label:
         libraryInfo.trackListComplete === false
@@ -460,24 +419,24 @@ export const resolveReleaseLibraryDisplay = (
           : `Incomplete · ${Math.max(1, Math.floor(percent))}%`,
       isComplete: false,
       isInLibrary: true,
-    });
+    };
   }
 
   if (libraryInfo.monitored) {
-    return withAction({
+    return {
       kind: "monitored",
       label: "Monitored",
       isComplete: false,
       isInLibrary: true,
-    });
+    };
   }
 
-  return withAction({
+  return {
     kind: "unmonitored",
     label: null,
     isComplete: false,
     isInLibrary: true,
-  });
+  };
 };
 
 const getReleaseListeners = (releaseGroup: ReleaseGroup | null | undefined) =>
@@ -576,7 +535,7 @@ export const buildAurralPick = <T extends ReleaseGroup>({
 };
 
 export const isLibraryPlaybackTrack = (track: PlayableTrack | null | undefined) =>
-  track?.previewProvider === "lidarr" || !!track?.streamPath;
+  !!track?.streamPath;
 
 export const getTrackPlayAccessibilityLabel = (
   track: PlayableTrack | null | undefined,

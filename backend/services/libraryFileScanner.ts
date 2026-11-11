@@ -352,10 +352,6 @@ function normalizeScanPaths(rootPath: string, filePaths: string[] | null) {
   ];
 }
 
-const albumHasLidarrFileStmt = db.prepare(
-  "SELECT 1 FROM library_media_files WHERE album_id = ? AND source = 'lidarr' AND available = 1 LIMIT 1",
-);
-
 const trackPerformerStmt = db.prepare<
   [string | null, string, string, string | null],
   { artist_tag: string }
@@ -387,8 +383,8 @@ async function forgetMissingFiles(source: string, rootPath: string, paths: strin
 function claimUnownedAlbum(
   album: Pick<LibraryAlbumsRow, "id" | "identity_key" | "artist_id" | "title">,
 ) {
-  if (getLibraryManagementEntry("album", album.id) || albumHasLidarrFileStmt.get(album.id)) return;
-  setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  if (getLibraryManagementEntry("album", album.id)) return;
+  setLibraryManagement({ entityKind: "album", entityId: album.id });
   upsertLibraryAlbum({
     identityKey: album.identity_key,
     artistId: album.artist_id,

@@ -3,11 +3,9 @@ import fsp from "fs/promises";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import { db } from "../config/db-sqlite.ts";
-import type { LibraryAlbumsRow, LibraryArtistsRow, LibraryTracksRow } from "../db/rows.ts";
-import { UUID_REGEX } from "../../lib/uuid.ts";
+import type { LibraryArtistsRow, LibraryTracksRow } from "../db/rows.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isUnreleased } from "../../lib/releaseDate.ts";
-import { dbOps, userOps } from "../db/helpers/index.ts";
 import { hasPermission } from "./auth.ts";
 import {
   getLibraryArtistProjection,
@@ -23,23 +21,11 @@ import {
 } from "./libraryQueryService.ts";
 import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
-import {
-  lidarrClient,
-  type LidarrAlbum,
-  type LidarrAlbumTypeOption,
-  type LidarrArtist,
-  type LidarrTrack,
-  type LidarrTrackFile,
-} from "./lidarrClient.ts";
-import { normalizePercentOfTracks } from "./lidarrAlbumStats.ts";
-import { LIDARR_MONITOR_OPTIONS } from "./lidarrMonitorOptions.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   buildIdentityKey,
-  clearLibraryLidarrAlbum,
-  clearLibraryLidarrArtist,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
   removeLibraryAlbumTracksWithoutAvailableMedia,
@@ -60,7 +46,7 @@ import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationSe
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.ts";
 import { removeEmptiedFolder, removeSidecars } from "./libraryFiles/fileTransfer.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
-import { activeLidarrRoots, libraryFolderOwner } from "./libraryFolders.ts";
+import { libraryFolderOwner, readOnlyFolderPaths } from "./libraryFolders.ts";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.ts";
 import { chooseRequestedRelease } from "./releaseResolver.ts";
 import {
@@ -107,14 +93,8 @@ import {
 } from "./aurralMonitoringStore.ts";
 import { getArtistTopTracks } from "./musicDataSource/index.ts";
 import { getNormalizedText } from "./providers/brainzmashRanking.ts";
-import { systemTaskQueue } from "./jobs/queues.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
-import {
-  musicbrainzGetArtistReleaseGroups,
-  musicbrainzGetArtistIdentityByMbid,
-} from "./apiClients/index.ts";
-import { guessArtistMbid } from "./artistMatch.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { logger } from "./logger.ts";
 import {
@@ -123,12 +103,8 @@ import {
   selectAlbumRelease,
 } from "./providers/brainzmashProvider.ts";
 import { isSilenceTrack, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
-import { recordArtistAdded, recordTrackJobQueued } from "./aurralHistoryService.ts";
-const LIDARR_RETRY_MS = 60000;
+import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 const metadataLookups = new PQueue({ concurrency: 4 });
-const ARTIST_LIST_CACHE_TTL_MS = 15 * 60 * 1000;
-const TRACKS_CACHE_TTL_MS = 120000;
-const TRACKS_CACHE_MAX = 300;
 
 type LibraryArtistRecord = ReturnType<typeof getLibraryForAlbumReferences>["artists"][number];
 
@@ -144,29 +120,14 @@ type AlbumMetadata = LibraryMetadata & {
   requestedRelease?: string | null;
   trackListComplete?: boolean;
   trackList?: { release?: string | null } | null;
-  aurralHandoverAt?: number;
   secondaryTypes?: string[];
   genres?: string[];
   images?: unknown[] | null;
 };
 
-type TrackMetadata = LibraryMetadata & {
-  trackFileId?: unknown;
-  trackFile?: { id?: unknown } | null;
-  file?: { id?: unknown } | null;
-};
-
 type LibraryAlbumRecord = Omit<LibraryAlbum, "metadata"> & { metadata: AlbumMetadata | null };
-type LibraryTrackRecord = Omit<LibraryTrack, "metadata"> & { metadata: TrackMetadata | null };
+type LibraryTrackRecord = Omit<LibraryTrack, "metadata"> & { metadata: LibraryMetadata | null };
 
-type MappedLidarrArtist = ReturnType<LibraryManager["mapLidarrArtist"]>;
-type MappedLidarrTrack = ReturnType<LibraryManager["mapLidarrTrack"]>;
-
-let _cachedArtists: MappedLidarrArtist[] = [];
-let _lastLidarrFailureAt = 0;
-let _artistsCachedAt = 0;
-let _artistsInflight: Promise<MappedLidarrArtist[]> | null = null;
-const _tracksCache = new Map<string, { tracks: MappedLidarrTrack[]; expires: number }>();
 const _albumMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _artistMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _trackMonitoringUpdates = new Map<number, Promise<unknown>>();
@@ -248,7 +209,6 @@ type ReleaseSkipReason =
   | "complete"
   | "covered"
   | "excluded"
-  | "managed_by_lidarr"
   | "metadata_unavailable"
   | "unmonitored";
 type TrackSkipReason = "excluded" | "in_library" | "on_release" | "queued";
@@ -259,28 +219,14 @@ type MonitoringPlan = {
   skippedTracks: { title: string; reason: TrackSkipReason }[];
   topTracksError: string | null;
 };
-type MonitorableArtist = {
-  id?: string | number | null;
-  mbid?: string | null;
-  foreignArtistId?: string | null;
-  monitored?: boolean;
-  monitorOption?: string;
-  addOptions?: { monitor?: string | null } | null;
-  addedAt?: string | null;
-  name?: string;
-};
 type MethodResult<Name extends keyof LibraryManager> = LibraryManager[Name] extends (
   ...args: never[]
 ) => infer Result
   ? WithAbsentKeys<Awaited<Result>>
   : never;
-type AlbumMonitoringView = MethodResult<"getAlbums">[number];
-type MappedLidarrAlbum = ReturnType<LibraryManager["mapLidarrAlbum"]>;
 type Failure = { error: string | undefined; statusCode?: number; code?: string | number | null };
 type AlbumConflict = ReturnType<typeof buildAlbumConflict>;
-type AlbumAddResult = WithAbsentKeys<
-  Awaited<ReturnType<LibraryManager["_addAurralAlbum"] | LibraryManager["_addAlbum"]>>
->;
+type AlbumAddResult = MethodResult<"_addAurralAlbum">;
 type DefaultMonitoringArtist = ReturnType<LibraryManager["_defaultMonitoringArtists"]>[number];
 type NoError = { error?: undefined; statusCode?: undefined; code?: undefined };
 type LibraryDeletion = {
@@ -307,20 +253,10 @@ type CodedError = Error & { statusCode?: number; code?: string };
 type LibraryUser = Pick<RequestUser, "id" | "username" | "role" | "permissions"> | null;
 type MonitoringArtist = { id?: string | number | null; mbid: string | null; name: string };
 type ArtistAddOptions = {
-  managedBy?: string | null;
   user?: LibraryUser;
-  quality?: string | null;
   monitorOption?: string | null;
   monitoring?: MonitoringInput | null;
   albumOnly?: boolean;
-  albumMbid?: string | null;
-  triggerSearch?: boolean;
-  rootFolderPath?: string | null;
-  qualityProfileId?: number | string | null;
-  savedRootFolderPath?: string | null;
-  savedQualityProfileId?: number | string | null;
-  tagId?: number | string | null;
-  metadataProfileId?: number | string | null;
 };
 const announceArtistAdded = (artistName: string, { albumOnly, user }: ArtistAddOptions) => {
   if (albumOnly) return;
@@ -334,9 +270,7 @@ const announceArtistAdded = (artistName: string, { albumOnly, user }: ArtistAddO
 };
 
 type AlbumAddOptions = {
-  managedBy?: string | null;
   user?: LibraryUser;
-  triggerSearch?: boolean;
   monitorMode?: string | null;
   monitorOption?: string | null;
   monitored?: boolean;
@@ -392,21 +326,6 @@ const describeAurralMonitoring = (
   defaultRules: defaults.rules,
 });
 
-type AurralArtistMonitoringState = {
-  manager: "aurral";
-  added: boolean;
-  inAurral: boolean;
-  error: null;
-} & ReturnType<typeof describeAurralMonitoring>;
-
-type LidarrArtistMonitoringState = {
-  manager: "lidarr";
-  added: boolean;
-  monitorOption: string | null;
-  inAurral: boolean;
-  error: string | null;
-};
-
 const summarizeMonitoringPlan = (plan: MonitoringPlan, queued: boolean) => ({
   queued,
   releaseGroupIds: plan.releases.map((release) => release.id),
@@ -431,24 +350,9 @@ async function serializeMonitoringUpdate<T>(
     if (updates.get(id) === current) updates.delete(id);
   }
 }
-export function invalidateLidarrArtistCache() {
-  _cachedArtists = [];
-  _artistsCachedAt = 0;
-  _lastLidarrFailureAt = 0;
-  _tracksCache.clear();
-}
 const _albumAddInflight = new Map<string, Promise<AlbumAddResult>>();
-const _artistMappingInflight = new Map<string, Promise<string | null>>();
 const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
-  "Album already exists in Lidarr under a different artist";
-const LIBRARY_MANAGERS = new Set(["aurral", "lidarr"]);
-
-function normalizeLibraryManager(value: unknown) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  return LIBRARY_MANAGERS.has(normalized) ? normalized : null;
-}
+  "Album identity already belongs to a different artist";
 
 type AlbumConflictSource = {
   id?: string | number;
@@ -466,8 +370,6 @@ function buildAlbumConflict(album: AlbumConflictSource, message: string | null =
     album?.statistics || {};
   const details = {
     managedBy: album?.managedBy || null,
-    manager: album?.managedBy || null,
-    currentManager: album?.managedBy || null,
     sources: Array.isArray(album?.sources) ? album.sources : [],
     libraryId: album?.id || null,
     providerId: album?.providerId || album?.foreignAlbumId || album?.mbid || null,
@@ -508,11 +410,6 @@ function throwLibraryError<Result extends { error?: string | null } | null | und
   const error: CodedError = new Error(result.error);
   Object.assign(error, result);
   throw error;
-}
-
-function scheduleLibraryReconciliation() {
-  invalidateLibraryQueryCache();
-  return scheduleLibraryScan({ includeLidarr: true });
 }
 
 type MappedLibraryAlbum = ReturnType<typeof mapLibraryAlbum>;
@@ -595,76 +492,6 @@ function libraryArtistFallback(reference: unknown) {
   return getLibraryArtistProjection({ reference })[0] || null;
 }
 
-const lidarrMonitorOptionStmt = db
-  .prepare<[string | null, string | null], string>(`
-  SELECT management.monitor_mode FROM library_artists AS artist
-  JOIN library_management AS management
-    ON management.entity_kind = 'artist' AND management.entity_id = artist.id
-  WHERE (artist.mbid = ? OR artist.identity_key = ?) AND management.managed_by = 'lidarr'
-`)
-  .pluck();
-
-function storedLidarrMonitorOption(
-  mbid: string | null,
-  foreignArtistId: string | null,
-  monitorNewItems: string | null | undefined,
-) {
-  const identityKey = foreignArtistId ? buildIdentityKey("lidarr-artist", foreignArtistId) : null;
-  const option = mbid || identityKey ? lidarrMonitorOptionStmt.get(mbid, identityKey) : null;
-  if (!option || option === "none") return null;
-  const followsNewAlbums = option === "all" || option === "future";
-  return followsNewAlbums === (monitorNewItems === "all") ? option : null;
-}
-
-function recordLidarrOwner(lidarrArtist: LidarrArtist, lidarrAlbum: LidarrAlbum | null = null) {
-  const artistProviderId = String(lidarrArtist?.foreignArtistId || "").trim();
-  const artistName = String(lidarrArtist?.artistName || "").trim();
-  if (!artistProviderId || !artistName) return;
-  const claim = (entityKind: string, entityId: string | number, monitorMode: string | null) => {
-    if (getLibraryManagementEntry(entityKind, entityId)) return;
-    setLibraryManagement({ entityKind, entityId, managedBy: "lidarr", monitorMode });
-  };
-  try {
-    const artistIsMbid = UUID_REGEX.test(artistProviderId);
-    const artist =
-      libraryArtistFallback(artistProviderId) ||
-      upsertLibraryArtist({
-        identityKey: buildIdentityKey(artistIsMbid ? "mbid" : "lidarr-artist", artistProviderId),
-        mbid: artistIsMbid ? artistProviderId : null,
-        name: artistName,
-        sortName: lidarrArtist.sortName || null,
-        metadata: { ...lidarrArtist, librarySource: "lidarr" },
-      });
-    claim("artist", artist.id, lidarrArtist.addOptions?.monitor || null);
-
-    const albumProviderId = String(lidarrAlbum?.foreignAlbumId || "").trim();
-    const albumTitle = String(lidarrAlbum?.title || "").trim();
-    if (!albumProviderId || !albumTitle) return;
-    const albumIsMbid = UUID_REGEX.test(albumProviderId);
-    const album =
-      libraryAlbumForReference(albumProviderId) ||
-      upsertLibraryAlbum({
-        identityKey: buildIdentityKey(
-          albumIsMbid ? "release-group" : "lidarr-album",
-          albumProviderId,
-        ),
-        mbid: albumIsMbid ? albumProviderId : null,
-        releaseGroupMbid: albumIsMbid ? albumProviderId : null,
-        artistId: artist.id,
-        title: albumTitle,
-        albumArtist: artistName,
-        releaseDate: lidarrAlbum!.releaseDate || null,
-        metadata: { ...lidarrAlbum, librarySource: "lidarr" },
-      });
-    claim("album", album.id, null);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.warn("library", "Could not record Lidarr ownership", {
-      message: failure?.message || String(error),
-    });
-  }
-}
-
 type LibraryArtistProjection = NonNullable<ReturnType<typeof libraryArtistFallback>>;
 
 function libraryForArtist(
@@ -698,14 +525,6 @@ function libraryAlbumsForArtist(
   );
 }
 
-function aurralHoldsArtist(artist: LibraryArtistProjection | null | undefined) {
-  if (!artist) return false;
-  return (
-    artist.managedBy === "aurral" ||
-    libraryAlbumsForArtist(artist.id).some((album) => album.managedBy === "aurral")
-  );
-}
-
 function libraryAlbumForReference(reference: string | number | null | undefined) {
   const library = libraryForAlbum(reference);
   const album = library.albums[0];
@@ -721,15 +540,6 @@ function libraryTracksForAlbum(reference: string | number | null | undefined) {
   return library.tracks
     .filter((track) => track.albums.some((entry) => entry.albumId === album.id))
     .map((track) => mapLibraryTrack(track, album));
-}
-
-function isLidarrNotFoundError(error: unknown) {
-  const failure = asAppError(error);
-  return (
-    failure?.response?.status === 404 ||
-    failure?.status === 404 ||
-    /\b404\b|not found in lidarr/i.test(String(failure?.message || ""))
-  );
 }
 
 // An album's jobs carry its release group or, from older versions, its
@@ -769,9 +579,7 @@ async function removeLibraryDownloadJobs(
     if (job.playlistType !== "library") continue;
     const jobTrackMbid = normalize(job.trackMbid);
     const belongsElsewhere =
-      albumKey &&
-      (job.managedBy === "lidarr" ||
-        (normalize(job.albumMbid) && !albumKeys.has(normalize(job.albumMbid))));
+      albumKey && normalize(job.albumMbid) && !albumKeys.has(normalize(job.albumMbid));
     const matchesTrack =
       !belongsElsewhere &&
       trackKeys.some((track) =>
@@ -780,8 +588,7 @@ async function removeLibraryDownloadJobs(
           : track.artistNames.has(normalize(job.artistName)) &&
             normalize(job.trackName) === track.title,
       );
-    const matchesAlbum =
-      albumKey && job.managedBy === "aurral" && albumKeys.has(normalize(job.albumMbid));
+    const matchesAlbum = albumKey && albumKeys.has(normalize(job.albumMbid));
     if (matchesTrack || matchesAlbum) {
       removedJobIds.add(job.id);
     }
@@ -798,7 +605,7 @@ async function dropDownloadJobs(jobIds: Set<string | null | undefined>) {
   const committedPaths = new Set<string>();
   for (const job of jobsToRemove) {
     const completedJob = downloadTracker.getJob(job.id);
-    if (completedJob?.managedBy !== "lidarr" && completedJob?.finalPath) {
+    if (completedJob?.finalPath) {
       committedPaths.add(completedJob.finalPath);
     }
     downloadTracker.removeJob(job.id);
@@ -815,10 +622,7 @@ async function dropDownloadJobs(jobIds: Set<string | null | undefined>) {
 }
 
 async function deleteAurralLibraryFiles(paths: string[]) {
-  const folders = {
-    downloadRoot: resolveDownloadRoot(),
-    lidarrRoots: activeLidarrRoots(lidarrClient),
-  };
+  const folders = { downloadRoot: resolveDownloadRoot(), readOnlyRoots: readOnlyFolderPaths() };
   const deletablePaths = new Set(
     paths
       .filter((filePath) => libraryFolderOwner(filePath, folders) === "aurral")
@@ -880,122 +684,8 @@ async function deleteAurralLibraryFiles(paths: string[]) {
   return rejected ? (asAppError(rejected.reason) ?? new Error(String(rejected.reason))) : null;
 }
 
-function buildTrackFileIndex(trackFiles: LidarrTrackFile[]) {
-  return new Map(trackFiles.map((file) => [file.id, file]));
-}
-
-function enrichLidarrTrackWithFiles(
-  track: LidarrTrack,
-  trackFileById: Map<number, LidarrTrackFile>,
-) {
-  if (track.trackFile?.path || track.trackFileId == null) return track;
-  const trackFile = trackFileById.get(track.trackFileId);
-  return trackFile ? { ...track, trackFile } : track;
-}
-
-function albumNeedsTrackFiles({
-  albumSizeOnDisk,
-  isAlbumComplete,
-  tracks,
-}: {
-  albumSizeOnDisk: number;
-  isAlbumComplete: boolean;
-  tracks: LidarrTrack[];
-}) {
-  if (albumSizeOnDisk > 0 || isAlbumComplete) return true;
-  if (!Array.isArray(tracks)) return false;
-  return tracks.some(
-    (track) => track?.hasFile === true || Number.isFinite(Number(track?.trackFileId)),
-  );
-}
-
-function findCachedArtistByMbid(mbid: string) {
-  if (!mbid || !Array.isArray(_cachedArtists) || _cachedArtists.length === 0) {
-    return null;
-  }
-  return (
-    _cachedArtists.find((artist) => artist?.mbid === mbid || artist?.foreignArtistId === mbid) ||
-    null
-  );
-}
-
-function findCachedArtistById(id: string | number) {
-  const value = String(id ?? "").trim();
-  if (!value || !Array.isArray(_cachedArtists) || _cachedArtists.length === 0) {
-    return null;
-  }
-  return _cachedArtists.find((artist) => String(artist?.id ?? "").trim() === value) || null;
-}
-
-function upsertCachedArtist(mappedArtist: MappedLidarrArtist) {
-  if (!mappedArtist) return;
-  const mbid = mappedArtist.mbid || mappedArtist.foreignArtistId;
-  if (!mbid) return;
-  const existingIndex = _cachedArtists.findIndex(
-    (artist) => artist?.mbid === mbid || artist?.foreignArtistId === mbid,
-  );
-  if (existingIndex >= 0) {
-    _cachedArtists[existingIndex] = mappedArtist;
-    return;
-  }
-  _cachedArtists.unshift(mappedArtist);
-}
-
-function removeCachedArtistByMbid(mbid: string) {
-  if (!mbid || !Array.isArray(_cachedArtists) || _cachedArtists.length === 0) {
-    return;
-  }
-  _cachedArtists = _cachedArtists.filter(
-    (artist) => artist?.mbid !== mbid && artist?.foreignArtistId !== mbid,
-  );
-}
-
-const MANAGER_UNAVAILABLE = {
-  lidarr: "Lidarr manages artists and albums while it is connected",
-  aurral: "Lidarr is not connected, so Aurral manages artists and albums",
-};
-
-function getActiveLibraryManager() {
-  return lidarrClient.isConfigured() ? "lidarr" : "aurral";
-}
-
-function scheduleLidarrRetry() {
-  const waiting = systemTaskQueue
-    .list()
-    .some((job) => job.kind === "lidarr-retry" && job.state === "pending");
-  if (!waiting) enqueueSystemTask({ kind: "lidarr-retry" }, { delayMs: 60_000 });
-}
-
 export function getCachedArtistCount() {
-  return getCachedArtists().length;
-}
-
-export function getCachedArtists() {
-  const libraryArtists = getLibraryArtistProjection({ pageSize: 10000 });
-  return libraryArtists.length > 0
-    ? libraryArtists
-    : Array.isArray(_cachedArtists)
-      ? _cachedArtists
-      : [];
-}
-
-function getSettings() {
-  return dbOps.getSettings();
-}
-
-function normalizeReleaseTypeName(value: unknown) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function getMetadataProfileTypeName(item: LidarrAlbumTypeOption | null | undefined) {
-  if (!item) return "";
-  if (typeof item === "string") return item;
-  if (typeof item.name === "string") return item.name;
-  if (typeof item.value === "string") return item.value;
-  if (typeof item.albumType?.name === "string") return item.albumType.name;
-  return "";
+  return getLibraryArtistProjection({ pageSize: 10000 }).length;
 }
 
 export function buildPlaybackQueueFromLibrary({
@@ -1040,38 +730,8 @@ export function buildPlaybackQueueFromLibrary({
   );
 }
 
-export { buildTrackFileIndex, enrichLidarrTrackWithFiles, albumNeedsTrackFiles };
-
 export class LibraryManager {
-  async resolveManagedBy(requested: unknown) {
-    const active = getActiveLibraryManager();
-    const explicit = String(requested || "")
-      .trim()
-      .toLowerCase();
-    if (!explicit || explicit === active) return active;
-    const known = LIBRARY_MANAGERS.has(explicit);
-    const error: CodedError = new Error(
-      known ? MANAGER_UNAVAILABLE[active] : "managedBy must be 'aurral' or 'lidarr'",
-    );
-    error.statusCode = known ? 409 : 400;
-    error.code = known ? "library_manager_unavailable" : "invalid_library_manager";
-    throw error;
-  }
-
-  // Aurral keeps the albums it already has while Lidarr is connected.
-  async resolveAlbumManagedBy(requested: unknown, albumMbid: string | null | undefined) {
-    const reference = String(albumMbid || "").trim();
-    if (
-      normalizeLibraryManager(requested) === "aurral" &&
-      reference &&
-      libraryAlbumForReference(reference)?.managedBy === "aurral"
-    ) {
-      return "aurral";
-    }
-    return this.resolveManagedBy(requested);
-  }
-
-  async _addAurralArtist(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
+  async _addArtist(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
     const normalizedMbid = String(mbid || "").trim();
     const requestedName = String(artistName || "").trim();
     if (!normalizedMbid || !requestedName) {
@@ -1086,7 +746,6 @@ export class LibraryManager {
         setLibraryManagement({
           entityKind: "artist",
           entityId: existing.id,
-          managedBy: "aurral",
           monitorMode: "none",
         });
       }
@@ -1139,7 +798,6 @@ export class LibraryManager {
     setLibraryManagement({
       entityKind: "artist",
       entityId: artist.id,
-      managedBy: "aurral",
       monitorMode: "none",
     });
     scheduleReleaseMetadataRefresh();
@@ -1153,694 +811,25 @@ export class LibraryManager {
   }
 
   async addArtist(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
-    let managedBy;
-    try {
-      managedBy = await this.resolveManagedBy(options.managedBy);
-    } catch (error) {
-      const failure = asAppError(error);
-      return {
-        error: failure?.message,
-        statusCode: failure?.statusCode || 400,
-        code: failure?.code || null,
-      };
-    }
-    if (managedBy === "aurral") {
-      return this._addAurralArtist(mbid, artistName, {
-        ...options,
-        managedBy,
-      });
-    }
-
-    if (!lidarrClient.isConfigured()) {
-      return { error: "Lidarr is not configured" };
-    }
-    const isArtistAlreadyAddedError = (error: unknown) => {
-      const message = String(asAppError(error)?.message || "").toLowerCase();
-      return (
-        message.includes("artistexistsvalidator") ||
-        message.includes("already been added") ||
-        message.includes("constraint failed")
-      );
-    };
-    try {
-      const lidarrSettings = getSettings();
-      const lidarrArtist = await lidarrClient.addArtist(mbid, artistName, {
-        albumOnly: options.albumOnly === true,
-        albumMbid: options.albumMbid,
-        triggerSearch: options.triggerSearch === true,
-        monitorOption: options.monitorOption || "none",
-        rootFolderPath: options.rootFolderPath,
-        savedRootFolderPath: options.savedRootFolderPath,
-        qualityProfileId: options.qualityProfileId,
-        savedQualityProfileId: options.savedQualityProfileId,
-        tagId: options.tagId,
-        metadataProfileId:
-          options.metadataProfileId || lidarrSettings.integrations?.lidarr?.metadataProfileId,
-      });
-      logger.info("library", `[LibraryManager] Added artist "${artistName}" to Lidarr`);
-      const mappedArtist = this.mapLidarrArtist(lidarrArtist);
-      upsertCachedArtist(mappedArtist);
-      recordLidarrOwner(lidarrArtist);
-      scheduleLibraryReconciliation();
-      announceArtistAdded(mappedArtist.artistName || artistName, options);
-      recordArtistAdded({
-        artistName: mappedArtist.artistName || artistName,
-        artistMbid: mappedArtist.mbid || mbid,
-      });
-      return mappedArtist;
-    } catch (error) {
-      const failure = asAppError(error);
-      if (isArtistAlreadyAddedError(error)) {
-        try {
-          const existing = await this.getArtist(mbid, { forceRefresh: true });
-          if (existing) {
-            return existing;
-          }
-        } catch {}
-      }
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to add artist to Lidarr: ${failure?.message}`,
-      );
-      return { error: failure?.message };
-    }
+    const artist: MethodResult<"_addArtist"> = await this._addArtist(mbid, artistName, options);
+    if (artist?.error || options.albumOnly) return artist;
+    const { request } = resolveAurralMonitoringRequest(options);
+    return request ? this.setAurralArtistMonitoring(mbid, request) : artist;
   }
 
-  async resolveArtistAddOptions(options: ArtistAddOptions = {}) {
-    const managedBy = await this.resolveManagedBy(options.managedBy);
-    const settings = getSettings();
-    if (managedBy === "aurral") {
-      return {
-        managedBy,
-        quality: options.quality || settings.quality || "standard",
-        monitorOption: options.monitorOption || "none",
-        monitoring: options.monitoring ?? null,
-        albumOnly: options.albumOnly === true,
-        albumMbid: options.albumMbid || null,
-        rootFolderPath: null,
-        qualityProfileId: null,
-        tagId: options.tagId ?? null,
-      };
-    }
-
-    if (!lidarrClient.isConfigured()) {
-      return { error: "Lidarr is not configured" };
-    }
-
-    const defaultMonitorOption = settings.integrations?.lidarr?.defaultMonitorOption || "none";
-    const requestedMonitorOption =
-      options.albumOnly === true ? "none" : options.monitorOption || defaultMonitorOption;
-    const currentUser = options.user?.id != null ? userOps.getUserById(options.user.id) : null;
-    const preparedAddOptions = await lidarrClient.resolveArtistAddConfiguration({
-      requestRootFolderPath: options.rootFolderPath,
-      requestQualityProfileId: options.qualityProfileId,
-      savedRootFolderPath: currentUser?.lidarrRootFolderPath,
-      savedQualityProfileId: currentUser?.lidarrQualityProfileId,
-      settings,
-    });
-
-    return {
-      managedBy,
-      quality: options.quality || settings.quality || "standard",
-      monitorOption: requestedMonitorOption,
-      albumOnly: options.albumOnly === true,
-      albumMbid: options.albumMbid || null,
-      rootFolderPath: preparedAddOptions?.resolved?.rootFolderPath || null,
-      qualityProfileId: preparedAddOptions?.resolved?.qualityProfileId ?? null,
-      tagId: options.tagId ?? null,
-      preparedAddOptions,
-    };
+  getArtist(reference: unknown) {
+    return libraryArtistFallback(reference);
   }
 
-  async applyArtistMonitoringDefaults(
-    artist: MonitorableArtist,
-    albums: AlbumMonitoringView[] | null = null,
-  ) {
-    if (!artist?.monitored || !artist?.monitorOption || artist.monitorOption === "none") {
-      return;
-    }
-
-    const allAlbums: AlbumMonitoringView[] = Array.isArray(albums)
-      ? albums
-      : await this.getAlbums(artist.id, null, { forceRefresh: true });
-    let eligibleAlbums = allAlbums.filter((album) => !("managedBy" in album));
-
-    if (lidarrClient.isConfigured() && artist?.id) {
-      try {
-        const lidarrArtist: LidarrArtist | null = await lidarrClient.getArtist(artist.id);
-        const settings = getSettings();
-        const fallbackMetadataProfileId = settings.integrations?.lidarr?.metadataProfileId;
-        const metadataProfileId = lidarrArtist?.metadataProfileId || fallbackMetadataProfileId;
-        const profiles = metadataProfileId ? await lidarrClient.getMetadataProfiles() : null;
-        const metadataProfile = profiles?.find(
-          (profile) => String(profile.id) === String(metadataProfileId),
-        );
-
-        let allowedPrimaryTypes = null;
-        if (metadataProfile?.primaryAlbumTypes) {
-          const allowed = new Set<string>();
-          for (const item of metadataProfile.primaryAlbumTypes) {
-            const name = getMetadataProfileTypeName(item);
-            if (!name) continue;
-            const isAllowed = typeof item === "string" ? true : item.allowed !== false;
-            if (!isAllowed) continue;
-            allowed.add(normalizeReleaseTypeName(name));
-          }
-          if (allowed.size > 0) {
-            allowedPrimaryTypes = allowed;
-          }
-        }
-
-        if (allowedPrimaryTypes) {
-          const mbid = artist.mbid || artist.foreignArtistId || artist.id?.toString?.();
-          const releaseGroups: Awaited<
-            ReturnType<typeof musicbrainzGetArtistReleaseGroups>
-          >[number][] = mbid ? await musicbrainzGetArtistReleaseGroups(mbid) : [];
-          const mbidToType = new Map(
-            releaseGroups.map((rg) => [rg.id, normalizeReleaseTypeName(rg["primary-type"])]),
-          );
-          eligibleAlbums = eligibleAlbums.filter((album) => {
-            const key = album.mbid || album.foreignAlbumId || album.id?.toString?.();
-            const type = key == null ? undefined : mbidToType.get(key);
-            if (!type) return true;
-            return allowedPrimaryTypes.has(type);
-          });
-        }
-      } catch {}
-    }
-
-    const albumsToMonitor = [];
-    const sortedAlbums = [...eligibleAlbums].sort((a, b) => {
-      const dateA = a.releaseDate || a.addedAt || "";
-      const dateB = b.releaseDate || b.addedAt || "";
-      return dateB.localeCompare(dateA);
-    });
-
-    switch (artist.monitorOption) {
-      case "existing":
-      case "all":
-        albumsToMonitor.push(...eligibleAlbums.filter((album) => !album.monitored));
-        break;
-      case "latest": {
-        const latestAlbum = sortedAlbums[0];
-        if (latestAlbum && !latestAlbum.monitored) {
-          albumsToMonitor.push(latestAlbum);
-        }
-        break;
-      }
-      case "first": {
-        const oldestAlbum = sortedAlbums[sortedAlbums.length - 1];
-        if (oldestAlbum && !oldestAlbum.monitored) {
-          albumsToMonitor.push(oldestAlbum);
-        }
-        break;
-      }
-      case "missing":
-        albumsToMonitor.push(
-          ...eligibleAlbums.filter((album) => {
-            const stats = album.statistics || {};
-            return !album.monitored && (stats.percentOfTracks || 0) < 100;
-          }),
-        );
-        break;
-      case "future": {
-        const artistAddedDate = new Date(artist.addedAt ?? 0);
-        albumsToMonitor.push(
-          ...eligibleAlbums.filter((album) => {
-            if (album.monitored) return false;
-            if (!album.releaseDate) return false;
-            const releaseDate = new Date(album.releaseDate);
-            return releaseDate > artistAddedDate;
-          }),
-        );
-        break;
-      }
-    }
-
-    if (lidarrClient.isConfigured()) {
-      const settings = getSettings();
-      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-      await Promise.allSettled(
-        albumsToMonitor.map(async (album) => {
-          try {
-            const updated: MethodResult<"updateAlbum"> = await this.updateAlbum(String(album.id), {
-              monitored: true,
-            });
-            if (updated?.error) throw new Error(updated.error);
-            await this._handAurralAlbumToLidarr(album.mbid);
-            if (searchOnAdd) await lidarrClient.triggerAlbumSearch(Number(album.id));
-          } catch (err) {
-            const failure = asAppError(err);
-            logger.error(
-              "library",
-              `Failed to monitor/search album ${album.albumName}: ${failure?.message}`,
-            );
-          }
-        }),
-      );
-    }
-  }
-
-  async addArtistWithResolvedOptions(
-    mbid: string,
-    artistName: string,
-    options: ArtistAddOptions = {},
-  ) {
-    const albumOnly = options.albumOnly === true;
-    const requestedMonitorOption = options.monitorOption || "none";
-    const artist: MethodResult<"addArtist"> = await this.addArtist(mbid, artistName, {
-      managedBy: options.managedBy,
-      user: options.user,
-      quality: options.quality,
-      albumOnly,
-      albumMbid: options.albumMbid,
-      triggerSearch: options.triggerSearch === true,
-      monitorOption: requestedMonitorOption,
-      monitoring: options.monitoring,
-      rootFolderPath: options.rootFolderPath,
-      qualityProfileId: options.qualityProfileId,
-      tagId: options.tagId,
-    });
-    if (artist?.error) {
-      return artist;
-    }
-    if (options.managedBy === "aurral" && !albumOnly) {
-      const { request } = resolveAurralMonitoringRequest(options);
-      if (request) return this.setAurralArtistMonitoring(mbid, request);
-    }
-    if (artist.managedBy === "lidarr" && !albumOnly && requestedMonitorOption !== "none") {
-      this._handOverLidarrMonitoredAlbums(String(artist.id)).catch((error: unknown) => {
-        logger.warn("library", "Failed to hand albums Lidarr monitors over to Lidarr", {
-          artistId: artist.id,
-          message: asAppError(error)?.message,
-        });
-      });
-    }
-    return artist;
-  }
-
-  async _handOverLidarrMonitoredAlbums(artistId: string) {
-    if (!lidarrClient.isConfigured()) return;
-    await lidarrClient.waitForArtistAdded(artistId);
-    const albums = await this.getAlbums(artistId, null, {
-      forceRefresh: true,
-      managedBy: "lidarr",
-    });
-    for (const album of albums) {
-      if (!("managedBy" in album) && album.monitored)
-        await this._handAurralAlbumToLidarr(album.mbid);
-    }
-  }
-
-  async addArtistWithPreferences(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
-    const resolvedOptions = await this.resolveArtistAddOptions(options);
-    if (resolvedOptions?.error) {
-      return resolvedOptions;
-    }
-    return this.addArtistWithResolvedOptions(mbid, artistName, {
-      ...resolvedOptions,
-      user: options.user,
-      albumOnly: options.albumOnly === true,
-      albumMbid: options.albumMbid || resolvedOptions.albumMbid || null,
-      triggerSearch: options.triggerSearch === true,
-    });
-  }
-
-  async getArtist(
-    mbid: string,
-    {
-      forceRefresh = false,
-      managedBy = null,
-    }: { forceRefresh?: boolean; managedBy?: string | null } = {},
-  ) {
-    const libraryArtist = libraryArtistFallback(mbid);
-    if (normalizeLibraryManager(managedBy) === "aurral") return libraryArtist;
-    if (!lidarrClient.isConfigured()) return libraryArtist;
-    if (!forceRefresh) {
-      const cachedArtist = findCachedArtistByMbid(mbid);
-      if (cachedArtist) {
-        return cachedArtist;
-      }
-    }
-    try {
-      const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh });
-      if (!lidarrArtist) return managedBy == null ? libraryArtist : null;
-      const mappedArtist = this.mapLidarrArtist(lidarrArtist);
-      upsertCachedArtist(mappedArtist);
-      return mappedArtist;
-    } catch (error) {
-      if (!isLidarrNotFoundError(error)) {
-        return findCachedArtistByMbid(mbid) || libraryArtistFallback(mbid);
-      }
-      return managedBy == null ? libraryArtist : null;
-    }
-  }
-
-  async getArtistById(
-    id: string | number,
-    { managedBy = null }: { managedBy?: string | null } = {},
-  ) {
-    const manager = normalizeLibraryManager(managedBy);
-    const found = libraryArtistFallback(id);
-    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
-    const libraryArtist = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
-    if (!lidarrClient.isConfigured()) return libraryArtist;
-    try {
-      const lidarrArtist = await lidarrClient.getArtist(id);
-      if (!lidarrArtist) return findCachedArtistById(id) || libraryArtist;
-      await this.backfillLidarrArtistMappings([lidarrArtist]);
-      return this.mapLidarrArtist(lidarrArtist);
-    } catch (error) {
-      if (!isLidarrNotFoundError(error)) return findCachedArtistById(id) || libraryArtist;
-      return managedBy == null ? libraryArtist : null;
-    }
-  }
-
-  async ensureArtistMonitored<T extends MonitorableArtist>(
-    artist: T,
-    monitorOption: string | null = null,
-  ) {
-    if (!artist || artist.monitored !== false) {
-      return artist;
-    }
-
-    const mbid = artist.mbid || artist.foreignArtistId;
-    if (!mbid) {
-      return artist;
-    }
-
-    const nextMonitorOption =
-      [monitorOption, artist.monitorOption, artist.addOptions?.monitor].find(Boolean) || "none";
-    const updated: MethodResult<"updateArtist"> = await this.updateArtist(mbid, {
-      monitored: true,
-      monitorOption: nextMonitorOption,
-    });
-    return failed(updated) ? artist : updated;
-  }
-
-  async syncLidarrArtists({ forceRefresh = false } = {}) {
-    if (
-      forceRefresh !== true &&
-      _cachedArtists.length > 0 &&
-      Date.now() - _artistsCachedAt < ARTIST_LIST_CACHE_TTL_MS
-    ) {
-      return _cachedArtists;
-    }
-    if (_artistsInflight) return _artistsInflight;
-
-    _artistsInflight = (async () => {
-      try {
-        if (!lidarrClient.isConfigured()) {
-          return _cachedArtists;
-        }
-        if (
-          forceRefresh !== true &&
-          _lastLidarrFailureAt &&
-          Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS
-        ) {
-          return _cachedArtists;
-        }
-        try {
-          const lidarrArtists = await lidarrClient.getArtists({
-            forceRefresh: forceRefresh === true,
-          });
-          _lastLidarrFailureAt = 0;
-          await this.backfillLidarrArtistMappings(lidarrArtists);
-          _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
-          _artistsCachedAt = Date.now();
-          scheduleLibraryReconciliation();
-          return _cachedArtists;
-        } catch (error) {
-          const failure = asAppError(error);
-          const wasHealthy = _lastLidarrFailureAt === 0;
-          _lastLidarrFailureAt = Date.now();
-          scheduleLidarrRetry();
-          if (wasHealthy) {
-            const msg = failure?.message || String(error);
-            logger.warn(
-              "library",
-              `[LibraryManager] Lidarr unavailable: ${msg} - using cached artists (if any). Retrying every 60s.`,
-            );
-          }
-          return _cachedArtists;
-        }
-      } catch (_) {
-        return _cachedArtists;
-      }
-    })().finally(() => {
-      _artistsInflight = null;
-    });
-    return _artistsInflight;
-  }
-
-  mapLidarrArtist(lidarrArtist: LidarrArtist) {
-    const artistPath = lidarrArtist.path ?? null;
-    const artistId = Number(lidarrArtist.id);
-    const foreignArtistId = String(lidarrArtist.foreignArtistId || "").trim() || null;
-    const mappedMbid = dbOps.getLidarrArtistMbid(foreignArtistId);
-    const mbid =
-      mappedMbid || (foreignArtistId && UUID_REGEX.test(foreignArtistId) ? foreignArtistId : null);
-    const normalizedArtistId =
-      Number.isSafeInteger(artistId) && artistId > 0 ? String(artistId) : null;
-    const monitorOption =
-      lidarrArtist.addOptions?.monitor ||
-      storedLidarrMonitorOption(mbid, foreignArtistId, lidarrArtist.monitorNewItems) ||
-      "none";
-    const normalizedMonitorOption = monitorOption || "none";
-    return {
-      id: normalizedArtistId,
-      mbid,
-      foreignArtistId,
-      artistName: lidarrArtist.artistName,
-      managedBy: "lidarr" as LibraryOwner,
-      path: artistPath,
-      addedAt: lidarrArtist.added || new Date().toISOString(),
-      monitored: lidarrArtist.monitored || false,
-      monitorOption: normalizedMonitorOption,
-      monitorNewItems: lidarrArtist.monitorNewItems || "none",
-      addOptions: {
-        monitor: normalizedMonitorOption,
-      },
-      quality: "standard",
-      albumFolders: true,
-      statistics: lidarrArtist.statistics || {
-        albumCount: 0,
-        trackCount: 0,
-        sizeOnDisk: 0,
-      },
-    };
-  }
-
-  async resolveLidarrArtistMbid(lidarrArtist: LidarrArtist) {
-    const providerId = String(lidarrArtist?.foreignArtistId || "").trim();
-    const artistName = String(lidarrArtist?.artistName || "").trim();
-    if (!providerId || !artistName || UUID_REGEX.test(providerId)) return null;
-
-    const existingMbid = dbOps.getLidarrArtistMbid(providerId);
-    if (existingMbid) return existingMbid;
-
-    const mbid = await guessArtistMbid(artistName);
-    if (!UUID_REGEX.test(String(mbid || ""))) return null;
-
-    const identity = await musicbrainzGetArtistIdentityByMbid(mbid);
-    const identityName = String(identity?.name || "").trim();
-    const normalizedArtistName = artistName.toLowerCase();
-    const acceptedArtistNames = new Set(
-      [identityName, ...(Array.isArray(identity?.aliases) ? identity.aliases : [])]
-        .map((name) =>
-          String(name || "")
-            .trim()
-            .toLowerCase(),
+  async deleteArtist(reference: string, deleteFiles = false): Promise<LibraryDeletion> {
+    const artist = /^\d+$/.test(reference)
+      ? getLibraryArtistProjection({ reference: Number(reference) }).find(
+          (entry) => Number(entry.id) === Number(reference),
         )
-        .filter(Boolean),
-    );
-    const providerIds = Array.isArray(identity?.providerIds) ? identity.providerIds : [];
-    const matchesProviderId = providerIds.some(
-      (value) =>
-        String(value || "")
-          .trim()
-          .toLowerCase() === providerId.toLowerCase(),
-    );
-    if (!identityName || !acceptedArtistNames.has(normalizedArtistName) || !matchesProviderId) {
-      return null;
-    }
-
-    try {
-      dbOps.setLidarrArtistIdMap(mbid!, providerId);
-      return mbid;
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code !== "LIDARR_ARTIST_ID_CONFLICT") throw error;
-      return null;
-    }
-  }
-
-  async backfillLidarrArtistMappings(lidarrArtists: LidarrArtist[]) {
-    const candidates: LidarrArtist[] = [];
-    const seen = new Set<string>();
-    for (const artist of Array.isArray(lidarrArtists) ? lidarrArtists : []) {
-      const providerId = String(artist?.foreignArtistId || "").trim();
-      if (
-        !providerId ||
-        UUID_REGEX.test(providerId) ||
-        seen.has(providerId) ||
-        dbOps.getLidarrArtistMbid(providerId)
-      ) {
-        continue;
-      }
-      seen.add(providerId);
-      candidates.push(artist);
-    }
-
-    await mapWithConcurrency(candidates, 2, (artist: LidarrArtist) => {
-      const providerId = String(artist?.foreignArtistId || "").trim();
-      let mappingRequest = _artistMappingInflight.get(providerId);
-      if (!mappingRequest) {
-        mappingRequest = this.resolveLidarrArtistMbid(artist)
-          .catch(() => null)
-          .finally(() => {
-            if (_artistMappingInflight.get(providerId) === mappingRequest) {
-              _artistMappingInflight.delete(providerId);
-            }
-          });
-        _artistMappingInflight.set(providerId, mappingRequest);
-      }
-      return mappingRequest;
-    });
-  }
-
-  async updateArtist(
-    mbid: string,
-    updates: { monitored?: boolean; monitorOption?: string | null },
-  ) {
-    if (!lidarrClient.isConfigured()) {
-      return { error: "Lidarr is not configured" };
-    }
-    try {
-      const lidarrArtist: LidarrArtist | null = await lidarrClient.getArtistByMbid(mbid, {
-        forceRefresh: true,
-      });
-      if (!lidarrArtist) return { error: "Artist not found in Lidarr" };
-      if (updates.monitored !== undefined || updates.monitorOption !== undefined) {
-        const monitorOption = updates.monitorOption || "none";
-        const normalizedMonitorOption = monitorOption || "none";
-        await lidarrClient.updateArtistMonitoring(lidarrArtist.id, monitorOption);
-        logger.info(
-          "library",
-          `[LibraryManager] Updated Lidarr monitoring for "${lidarrArtist.artistName}" to "${monitorOption}"`,
-        );
-        const updated = await lidarrClient.getArtist(lidarrArtist.id);
-        if (!updated) throw new Error("Artist not found in Lidarr");
-        const mapped = this.mapLidarrArtist(updated);
-        mapped.monitorOption = normalizedMonitorOption;
-        mapped.addOptions = {
-          ...(mapped.addOptions || {}),
-          monitor: normalizedMonitorOption,
-        };
-        upsertCachedArtist(mapped);
-        scheduleLibraryReconciliation();
-        return mapped;
-      }
-      return this.mapLidarrArtist(lidarrArtist);
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to update artist in Lidarr: ${failure?.message}`,
-      );
-      return { error: failure?.message };
-    }
-  }
-
-  async deleteArtist(
-    mbid: string,
-    deleteFiles = false,
-    { manager = null }: { manager?: string | null } = {},
-  ): Promise<LibraryDeletion> {
-    if (/^\d+$/.test(String(mbid)))
-      return this._deleteLibraryArtistById(Number(mbid), deleteFiles, { manager });
-    if (manager === "lidarr") return this._deleteLidarrArtist(mbid, deleteFiles);
-    if (manager === "aurral") {
-      const libraryArtist = libraryArtistFallback(mbid);
-      if (!libraryArtist)
-        return { success: false, error: "Artist not found in Aurral", statusCode: 404 };
-      return this._deleteAurralArtist(libraryArtist, deleteFiles);
-    }
-
-    let inLidarr = false;
-    if (lidarrClient.isConfigured()) {
-      try {
-        inLidarr = Boolean(await lidarrClient.getArtistByMbid(mbid));
-      } catch (error) {
-        const failure = asAppError(error);
-        if (!isLidarrNotFoundError(error)) {
-          return {
-            success: false,
-            error: `Lidarr could not be reached: ${failure?.message}`,
-            statusCode: 503,
-          };
-        }
-      }
-    }
-    const libraryArtist = libraryArtistFallback(mbid);
-    const aurralArtist =
-      libraryArtist && (!inLidarr || aurralHoldsArtist(libraryArtist)) ? libraryArtist : null;
-    if (!inLidarr && !aurralArtist) {
+      : libraryArtistFallback(reference);
+    if (!artist)
       return { success: false, error: "Artist not found in your library", statusCode: 404 };
-    }
-    if (inLidarr) {
-      const removed = await this._deleteLidarrArtist(mbid, deleteFiles);
-      if (!removed.success) return removed;
-    }
-    return aurralArtist ? this._deleteAurralArtist(aurralArtist, deleteFiles) : { success: true };
-  }
-
-  // An artist without a MusicBrainz ID, such as one ingested from untagged
-  // files, is found by its Library id. Lidarr only knows artists by ID.
-  async _deleteLibraryArtistById(
-    id: number,
-    deleteFiles: boolean,
-    { manager = null }: { manager?: string | null } = {},
-  ): Promise<LibraryDeletion> {
-    const libraryArtist = getLibraryArtistProjection({ reference: id }).find(
-      (artist) => Number(artist.id) === id,
-    );
-    if (!libraryArtist)
-      return { success: false, error: "Artist not found in your library", statusCode: 404 };
-    if (libraryArtist.mbid) return this.deleteArtist(libraryArtist.mbid, deleteFiles, { manager });
-    if (manager === "lidarr" || !aurralHoldsArtist(libraryArtist)) {
-      return { success: false, error: "Delete this artist in Lidarr", statusCode: 409 };
-    }
-    return this._deleteAurralArtist(libraryArtist, deleteFiles);
-  }
-
-  async _deleteLidarrArtist(mbid: string, deleteFiles: boolean) {
-    if (!lidarrClient.isConfigured()) {
-      return { success: false, error: "Lidarr is not configured", statusCode: 503 };
-    }
-    try {
-      const lidarrArtist = await lidarrClient.getArtistByMbid(mbid);
-      if (!lidarrArtist)
-        return { success: false, error: "Artist not found in Lidarr", statusCode: 404 };
-      await lidarrClient.deleteArtist(lidarrArtist.id, deleteFiles);
-      dbOps.deleteLidarrArtistIdMap(mbid);
-      removeCachedArtistByMbid(mbid);
-      clearLibraryLidarrArtist(mbid);
-      clearLibraryLidarrArtist(lidarrArtist.foreignArtistId);
-      scheduleLibraryReconciliation();
-      logger.info(
-        "library",
-        `[LibraryManager] Deleted artist "${lidarrArtist.artistName}" from Lidarr`,
-      );
-      return { success: true };
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to delete artist from Lidarr: ${failure?.message}`,
-      );
-      return { success: false, error: failure?.message };
-    }
+    return this._deleteAurralArtist(artist, deleteFiles);
   }
 
   async _finishAurralAlbum(albumReference: string | number, options: AlbumAddOptions = {}) {
@@ -1952,7 +941,7 @@ export class LibraryManager {
         if (stat?.isFile()) {
           trackedJobIds.push(completedJob.id);
           scheduleLibraryScan({
-            includeLidarr: false,
+            includeReadOnly: false,
             changedPaths: [completedJob.finalPath!],
           });
           continue;
@@ -2037,7 +1026,6 @@ export class LibraryManager {
               albumTrackCount: albumTracks.length,
               albumTrackTitles,
               artistAliases: artistAliasesFor(track),
-              managedBy: "aurral",
               requestGroupId,
               reason: "Aurral album request",
             },
@@ -2145,7 +1133,6 @@ export class LibraryManager {
       const existing = libraryAlbumForReference(release.id);
       const override = existing ? getLibraryManagementEntry("album", Number(existing.id)) : null;
       if (exclusions.isAlbumExcluded(release.id)) skip(release, "excluded");
-      else if (existing?.managedBy === "lidarr") skip(release, "managed_by_lidarr");
       else if (override?.monitorMode === "unmonitored") skip(release, "unmonitored");
       else if (existing && existing.statistics.percentOfTracks >= 100) {
         if (rules.edition === "expanded" && !this.albumWantsExpandedEdition(release.id)) {
@@ -2278,50 +1265,13 @@ export class LibraryManager {
     return true;
   }
 
-  async getArtistMonitoring(
-    mbid: string,
-  ): Promise<AurralArtistMonitoringState | LidarrArtistMonitoringState> {
+  getArtistMonitoring(mbid: string) {
     const artist = libraryArtistFallback(mbid);
-    const manager = artist?.managedBy === "aurral" ? "aurral" : getActiveLibraryManager();
-    const inAurral = aurralHoldsArtist(artist);
-    if (manager === "aurral") {
-      const defaults = getMonitoringDefaults();
-      const effective =
-        artist?.managedBy === "aurral"
-          ? getAurralArtistMonitoring(Number(artist.id), defaults)
-          : null;
-      return {
-        manager,
-        added: Boolean(artist),
-        inAurral,
-        error: null,
-        ...describeAurralMonitoring(effective, defaults),
-      };
-    }
-    const state: LidarrArtistMonitoringState = {
-      manager,
-      added: false,
-      monitorOption: "none",
-      inAurral,
-      error: null,
-    };
-    try {
-      const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-      if (lidarrArtist) {
-        const mapped = this.mapLidarrArtist(lidarrArtist);
-        state.added = true;
-        state.monitorOption = !mapped.monitored
-          ? "none"
-          : mapped.monitorOption !== "none"
-            ? mapped.monitorOption
-            : mapped.monitorNewItems === "all"
-              ? null
-              : "none";
-      }
-    } catch (error) {
-      if (!isLidarrNotFoundError(error)) state.error = "Lidarr could not be reached";
-    }
-    return state;
+    const defaults = getMonitoringDefaults();
+    const effective = artist?.managedBy
+      ? getAurralArtistMonitoring(Number(artist.id), defaults)
+      : null;
+    return { added: Boolean(artist), ...describeAurralMonitoring(effective, defaults) };
   }
 
   async setArtistMonitoring(
@@ -2338,114 +1288,21 @@ export class LibraryManager {
       user?: LibraryUser;
     } = {},
   ) {
-    const option = String(monitorOption || "none");
-    const name = String(artistName || libraryArtistFallback(mbid)?.name || "").trim();
-    const forbidden = {
-      error: "Permission required: addArtist",
-      statusCode: 403,
-      code: "forbidden",
-    };
-
-    const existingArtist = libraryArtistFallback(mbid);
-    if (existingArtist?.managedBy === "aurral" || getActiveLibraryManager() === "aurral") {
-      const resolved = resolveAurralMonitoringRequest({ monitoring, monitorOption });
-      if (resolved.error) return resolved;
-      const artist = existingArtist;
-      if (!resolved.request && artist?.managedBy !== "aurral") {
-        return { ...(artist || { mbid }), monitored: false, monitorOption: "none" };
+    const artist = libraryArtistFallback(mbid);
+    const resolved = resolveAurralMonitoringRequest({ monitoring, monitorOption });
+    if (resolved.error) return resolved;
+    if (!resolved.request && !artist?.managedBy) {
+      return { ...(artist || { mbid }), monitored: false, monitorOption: "none" };
+    }
+    if (!artist) {
+      if (!hasPermission(user, "addArtist")) {
+        return { error: "Permission required: addArtist", statusCode: 403, code: "forbidden" };
       }
-      if (!artist) {
-        if (!hasPermission(user, "addArtist")) return forbidden;
-        const created: MethodResult<"_addAurralArtist"> = await this._addAurralArtist(mbid, name, {
-          user,
-        });
-        if (created?.error) return created;
-      }
-      return this.setAurralArtistMonitoring(mbid, resolved.request);
+      const name = String(artistName || "").trim();
+      const created: MethodResult<"_addArtist"> = await this._addArtist(mbid, name, { user });
+      if (created?.error) return created;
     }
-
-    if (monitoring != null) {
-      return {
-        error: "Lidarr manages this artist's monitoring. Choose a Lidarr monitor option.",
-        statusCode: 400,
-        code: "lidarr_monitoring",
-      };
-    }
-    if (!LIDARR_MONITOR_OPTIONS.has(option)) {
-      return {
-        error: `Lidarr does not support the "${option}" mode`,
-        statusCode: 400,
-        code: "unsupported_monitor_mode",
-      };
-    }
-    let lidarrArtist = null;
-    try {
-      lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-    } catch (error) {
-      const failure = asAppError(error);
-      if (!isLidarrNotFoundError(error)) {
-        return { error: `Lidarr could not be reached: ${failure?.message}`, statusCode: 503 };
-      }
-    }
-    if (lidarrArtist) {
-      await lidarrClient.updateArtistMonitoring(lidarrArtist.id, option);
-    } else {
-      if (option === "none") return { mbid, monitored: false, monitorOption: "none" };
-      if (!hasPermission(user, "addArtist")) return forbidden;
-      const added: MethodResult<"addArtistWithPreferences"> = await this.addArtistWithPreferences(
-        mbid,
-        name,
-        { user, monitorOption: option },
-      );
-      if (added?.error) return added;
-    }
-
-    const refreshed = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-    if (!refreshed) return { error: "Artist not found in Lidarr", statusCode: 404 };
-    const artist =
-      libraryArtistFallback(mbid) ||
-      libraryArtistFallback(buildIdentityKey("lidarr-artist", refreshed.foreignArtistId));
-    if (artist) {
-      setLibraryManagement({
-        entityKind: "artist",
-        entityId: Number(artist.id),
-        managedBy: "lidarr",
-        monitorMode: option,
-      });
-    }
-    const mapped = { ...this.mapLidarrArtist(refreshed), monitorOption: option };
-    mapped.addOptions = { ...(mapped.addOptions || {}), monitor: option };
-    upsertCachedArtist(mapped);
-    const stored =
-      artist &&
-      db
-        .prepare<[number], Pick<LibraryArtistsRow, "identity_key">>(
-          "SELECT identity_key FROM library_artists WHERE id = ?",
-        )
-        .get(Number(artist.id));
-    if (stored) {
-      upsertLibraryArtist({
-        identityKey: stored.identity_key,
-        mbid: artist.mbid,
-        name: artist.name,
-        metadata: {
-          monitored: mapped.monitored,
-          monitor: option,
-          monitorOption: option,
-          monitorNewItems: mapped.monitorNewItems,
-          addOptions: { monitor: option },
-        },
-      });
-    }
-    if (option !== "none") {
-      const albums = await this.getAlbums(mapped.id, null, {
-        forceRefresh: true,
-        managedBy: "lidarr",
-      });
-      await this.applyArtistMonitoringDefaults(mapped, albums);
-    }
-    scheduleLibraryReconciliation();
-    return mapped;
+    return this.setAurralArtistMonitoring(mbid, resolved.request);
   }
 
   async setAurralArtistMonitoring(mbid: string, request: AurralMonitoringRequest | null) {
@@ -2458,8 +1315,9 @@ export class LibraryManager {
       if (!currentArtist) return { error: "Artist not found in the library", statusCode: 404 };
       const artistId = Number(currentArtist.id);
       const defaults = getMonitoringDefaults();
-      const previous =
-        currentArtist.managedBy === "aurral" ? getAurralArtistMonitoring(artistId, defaults) : null;
+      const previous = currentArtist.managedBy
+        ? getAurralArtistMonitoring(artistId, defaults)
+        : null;
       const stored = request ? nextArtistMonitoring(previous, request, defaults) : null;
       const effective = resolveArtistMonitoring(stored, defaults);
       const plan = await this.planAurralArtistMonitoring(currentArtist, effective);
@@ -2548,18 +1406,10 @@ export class LibraryManager {
     const resolved = resolveAurralMonitoringRequest({ monitoring });
     if (resolved.error) return resolved;
     const artist = libraryArtistFallback(mbid);
-    if (artist?.managedBy === "lidarr") {
-      return {
-        error: "Lidarr manages this artist's monitoring",
-        statusCode: 409,
-        code: "lidarr_monitoring",
-      };
-    }
     const defaults = getMonitoringDefaults();
-    const previous =
-      artist?.managedBy === "aurral"
-        ? getAurralArtistMonitoring(Number(artist.id), defaults)
-        : null;
+    const previous = artist?.managedBy
+      ? getAurralArtistMonitoring(Number(artist.id), defaults)
+      : null;
     const stored = resolved.request
       ? nextArtistMonitoring(previous, resolved.request, defaults)
       : null;
@@ -2662,7 +1512,7 @@ export class LibraryManager {
     if (isAlbumMonitoringExcluded(albumMbid)) return false;
     const album = libraryAlbumForReference(albumMbid);
     const albumState = album && getLibraryManagementEntry("album", Number(album.id));
-    return album?.managedBy !== "lidarr" && albumState?.monitorMode !== "unmonitored";
+    return albumState?.monitorMode !== "unmonitored";
   }
 
   async acquireAurralReleases({
@@ -2876,7 +1726,6 @@ export class LibraryManager {
       setLibraryManagement({
         entityKind: "album",
         entityId: album.id,
-        managedBy: "aurral",
         monitorMode: monitored ? "monitored" : "unmonitored",
       });
       upsertLibraryAlbum({
@@ -3107,16 +1956,7 @@ export class LibraryManager {
       ]),
     ];
     if (deleteFiles) {
-      const lidarrFile = db.prepare(
-        "SELECT 1 FROM library_media_files WHERE source = 'lidarr' AND available = 1 AND path IN (?, ?)",
-      );
-      const sharedWithLidarr = new Set(
-        paths.filter((filePath) => lidarrFile.get(filePath, path.resolve(filePath))),
-      );
-      markLibraryMediaFilesUnavailable("aurral", [...sharedWithLidarr]);
-      const error = await deleteAurralLibraryFiles(
-        paths.filter((filePath) => !sharedWithLidarr.has(filePath)),
-      );
+      const error = await deleteAurralLibraryFiles(paths);
       if (error) {
         logger.error(
           "library",
@@ -3134,20 +1974,14 @@ export class LibraryManager {
   }
 
   async _deleteAurralArtist(artist: LibraryArtistProjection, deleteFiles: boolean) {
-    const ownsArtist =
-      getLibraryManagementEntry("artist", Number(artist.id))?.managedBy !== "lidarr";
-    if (ownsArtist) {
-      setLibraryManagement({
-        entityKind: "artist",
-        entityId: Number(artist.id),
-        managedBy: "aurral",
-        monitorMode: "none",
-        monitorRules: null,
-      });
-    }
+    setLibraryManagement({
+      entityKind: "artist",
+      entityId: Number(artist.id),
+      monitorMode: "none",
+      monitorRules: null,
+    });
     const library = libraryForArtist(artist.id);
     for (const album of library.albums) {
-      if (album.managedBy === "lidarr") continue;
       const result = await this._removeAurralAlbumContents(album, library, deleteFiles);
       if (result.error) {
         return {
@@ -3158,11 +1992,9 @@ export class LibraryManager {
         };
       }
     }
-    if (ownsArtist) {
-      clearLibraryManagement("artist", Number(artist.id));
-      clearArtistMonitoringExclusions(artist.mbid);
-      removeLibraryArtistIfEmpty(artist.id);
-    }
+    clearLibraryManagement("artist", Number(artist.id));
+    clearArtistMonitoringExclusions(artist.mbid);
+    removeLibraryArtistIfEmpty(artist.id);
     logger.info("library", `[LibraryManager] Removed Aurral artist "${artist.name}"`);
     return { success: true };
   }
@@ -3196,24 +2028,6 @@ export class LibraryManager {
     if (existing && String(existing.artistId) !== String(artist.id)) {
       return buildAlbumConflict(existing, "Album identity already belongs to a different artist");
     }
-    if (existing?.managedBy && existing.managedBy !== "aurral") {
-      return buildAlbumConflict(existing);
-    }
-    const storedAlbum = existing
-      ? null
-      : db
-          .prepare<[string | null], Pick<LibraryAlbumsRow, "id" | "title">>(
-            "SELECT id, title FROM library_albums WHERE identity_key = ?",
-          )
-          .get(buildIdentityKey("release-group", normalizedAlbumMbid));
-    const storedOwner = getLibraryManagementEntry("album", storedAlbum?.id)?.managedBy;
-    if (storedOwner && storedOwner !== "aurral") {
-      return buildAlbumConflict({
-        ...storedAlbum,
-        managedBy: storedOwner,
-        mbid: normalizedAlbumMbid,
-      });
-    }
     const userRequest = !options.monitoringToken;
     if (userRequest) clearAlbumMonitoringExclusion(normalizedAlbumMbid);
     const wasMonitored = existing !== null && isMonitoredAurralAlbum(existing.id);
@@ -3233,7 +2047,6 @@ export class LibraryManager {
         setLibraryManagement({
           entityKind: "album",
           entityId: tracked.existing.id,
-          managedBy: "aurral",
           monitorMode: options.monitorMode || options.monitorOption || null,
         });
       }
@@ -3434,7 +2247,6 @@ export class LibraryManager {
       setLibraryManagement({
         entityKind: "album",
         entityId: albumRecord.id,
-        managedBy: "aurral",
         monitorMode,
       });
       return albumRecord;
@@ -3465,163 +2277,30 @@ export class LibraryManager {
     albumName: string,
     options: AlbumAddOptions = {},
   ): Promise<AlbumAddResult | AlbumConflict | Failure> {
-    let managedBy;
-    try {
-      managedBy = await this.resolveAlbumManagedBy(options.managedBy, releaseGroupMbid);
-    } catch (error) {
-      const failure = asAppError(error);
-      return {
-        error: failure?.message,
-        statusCode: failure?.statusCode || 400,
-        code: failure?.code || null,
-      };
-    }
     const albumKey = String(releaseGroupMbid || "")
       .trim()
       .toLowerCase();
-    if (!albumKey) {
-      return managedBy === "aurral"
-        ? this._addAurralAlbum(artistId, releaseGroupMbid, albumName, { ...options, managedBy })
-        : this._addAlbum(artistId, releaseGroupMbid, albumName, { ...options, managedBy });
-    }
+    if (!albumKey) return this._addAurralAlbum(artistId, releaseGroupMbid, albumName, options);
 
     const existingRequest = _albumAddInflight.get(albumKey);
     if (existingRequest) {
       const result = await existingRequest;
-      if (result?.managedBy && result.managedBy !== managedBy) {
-        return buildAlbumConflict(result);
-      }
       if (result?.artistId != null && String(result.artistId) !== String(artistId)) {
-        return {
-          ...buildAlbumConflict(result, ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR),
-        };
+        return buildAlbumConflict(result, ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR);
       }
       return result;
     }
 
-    const added: Promise<AlbumAddResult> =
-      managedBy === "aurral"
-        ? this._addAurralAlbum(artistId, releaseGroupMbid, albumName, { ...options, managedBy })
-        : this._addAlbum(artistId, releaseGroupMbid, albumName, { ...options, managedBy });
-    const request = added
-      .then(async (result) => {
-        if (managedBy === "lidarr" && !result?.error) {
-          await this._handAurralAlbumToLidarr(String(releaseGroupMbid).trim());
-        }
-        return result;
-      })
-      .finally(() => {
-        if (_albumAddInflight.get(albumKey) === request) {
-          _albumAddInflight.delete(albumKey);
-        }
-      });
+    const request: Promise<AlbumAddResult> = this._addAurralAlbum(
+      artistId,
+      releaseGroupMbid,
+      albumName,
+      options,
+    ).finally(() => {
+      if (_albumAddInflight.get(albumKey) === request) _albumAddInflight.delete(albumKey);
+    });
     _albumAddInflight.set(albumKey, request);
     return request;
-  }
-
-  async _addAlbum(
-    artistId: string | number,
-    releaseGroupMbid: string,
-    albumName: string,
-    options: AlbumAddOptions = {},
-  ): Promise<MappedLidarrAlbum | Failure> {
-    if (!lidarrClient.isConfigured()) {
-      return { error: "Lidarr is not configured" };
-    }
-    try {
-      const isAlbumAlreadyAddedError = (error: unknown) => {
-        const msg = String(asAppError(error)?.message || "").toLowerCase();
-        return (
-          msg.includes("this album has already been added") ||
-          msg.includes("albumexistsvalidator") ||
-          msg.includes("foreignalbumid") ||
-          msg.includes("unique constraint")
-        );
-      };
-      const settings = getSettings();
-      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-      const shouldTriggerSearch =
-        options.triggerSearch === true || (options.triggerSearch === undefined && searchOnAdd);
-      const artistNumericId = parseInt(String(artistId), 10);
-      const mapExistingAlbum = async (
-        existingAlbum: LidarrAlbum | null | undefined,
-        fallbackArtist: LidarrArtist,
-      ): Promise<MappedLidarrAlbum | Failure> => {
-        if (!existingAlbum) return { error: "Failed to resolve existing album in Lidarr" };
-        if (existingAlbum.artistId != null && existingAlbum.artistId !== artistNumericId) {
-          return { error: ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR, statusCode: 409 };
-        }
-        if (!existingAlbum.monitored) await lidarrClient.monitorAlbum(existingAlbum.id, true);
-        if (shouldTriggerSearch) await lidarrClient.triggerAlbumSearch(existingAlbum.id);
-        const refreshedExisting =
-          (await lidarrClient.getAlbum(existingAlbum.id).catch(() => existingAlbum)) ??
-          existingAlbum;
-        const refreshedArtist =
-          (await lidarrClient.getArtist(artistId).catch(() => fallbackArtist)) ?? fallbackArtist;
-        const mapped = this.mapLidarrAlbum(refreshedExisting, refreshedArtist);
-        recordLidarrOwner(refreshedArtist, refreshedExisting);
-        scheduleLibraryReconciliation();
-        return mapped;
-      };
-      let lidarrArtist = await lidarrClient.waitForArtistAdded(artistId);
-      if (!lidarrArtist) return { error: "Artist not found in Lidarr" };
-      if (lidarrArtist.monitored === false) {
-        lidarrArtist = await lidarrClient.updateArtistMonitoring(
-          artistId,
-          lidarrArtist.addOptions?.monitor || "none",
-        );
-      }
-      const existing = await lidarrClient.getAlbumByMbid(releaseGroupMbid, {
-        forceRefresh: true,
-      });
-      if (existing) return mapExistingAlbum(existing, lidarrArtist);
-      let lidarrAlbum: LidarrAlbum;
-      try {
-        lidarrAlbum = await lidarrClient.addAlbum(artistId, releaseGroupMbid, albumName, {
-          monitored: true,
-          triggerSearch: shouldTriggerSearch,
-        });
-      } catch (error) {
-        if (!isAlbumAlreadyAddedError(error)) throw error;
-        return mapExistingAlbum(
-          await lidarrClient.getAlbumByMbid(releaseGroupMbid, { forceRefresh: true }),
-          lidarrArtist,
-        );
-      }
-      const updatedArtist = await lidarrClient.getArtist(artistId);
-      if (!lidarrAlbum) throw new Error("Album not found in Lidarr");
-      if (!updatedArtist) throw new Error("Artist not found in Lidarr");
-      const mapped = this.mapLidarrAlbum(lidarrAlbum, updatedArtist);
-      recordLidarrOwner(updatedArtist, lidarrAlbum);
-      scheduleLibraryReconciliation();
-      return mapped;
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to add album to Lidarr: ${failure?.message}`,
-      );
-      return { error: failure?.message };
-    }
-  }
-
-  async _handAurralAlbumToLidarr(albumMbid: string | null | undefined) {
-    const existing = albumMbid ? libraryAlbumForReference(albumMbid) : null;
-    if (existing?.managedBy !== "aurral") return;
-    const album = libraryForAlbum(existing.id).albums[0];
-    if (!album) return;
-    db.transaction(() => {
-      setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "lidarr" });
-      setAlbumTracksMonitoredStmt.run(0, album.id);
-      upsertLibraryAlbum({
-        identityKey: album.identityKey,
-        artistId: album.artistId,
-        title: album.title,
-        metadata: { ...album.metadata, aurralHandoverAt: Date.now() },
-      });
-    }).immediate();
-    invalidateLibraryQueryCache({ persistedGenres: false });
-    await cancelAurralAlbumJobs(albumJobKeys(album));
   }
 
   async requestAlbumFromSearch({
@@ -3629,19 +2308,14 @@ export class LibraryManager {
     albumName,
     artistMbid,
     artistName,
-    triggerSearch = false,
     user = null,
-    managedBy: requestedManagedBy = null,
   }: {
     albumMbid?: string | null;
     albumName?: string | null;
     artistMbid?: string | null;
     artistName?: string | null;
-    triggerSearch?: boolean;
     user?: LibraryUser;
-    managedBy?: string | null;
   } = {}) {
-    const managedBy = await this.resolveAlbumManagedBy(requestedManagedBy, albumMbid);
     const normalizedAlbumMbid = String(albumMbid || "").trim();
     const normalizedAlbumName = String(albumName || "").trim();
     const normalizedArtistMbid = String(artistMbid || "").trim();
@@ -3658,88 +2332,13 @@ export class LibraryManager {
       throw error;
     }
 
-    if (managedBy === "aurral") {
-      const existingAlbum = libraryAlbumForReference(normalizedAlbumMbid);
-      let artist = await this.getArtist(normalizedArtistMbid, {
-        managedBy: "aurral",
-      });
-      let createdArtist = false;
-
-      if (existingAlbum?.managedBy && existingAlbum.managedBy !== "aurral") {
-        throwLibraryError(buildAlbumConflict(existingAlbum));
-      }
-      if (existingAlbum && artist && String(existingAlbum.artistId) !== String(artist.id)) {
-        throwLibraryError(
-          buildAlbumConflict(existingAlbum, "Album identity already belongs to a different artist"),
-        );
-      }
-
-      if (!artist) {
-        if (!hasPermission(user, "addArtist")) {
-          const error: CodedError = new Error(
-            "Permission required: addArtist to create the album artist",
-          );
-          error.statusCode = 403;
-          throw error;
-        }
-        const created: MethodResult<"addArtistWithResolvedOptions"> =
-          await this.addArtistWithResolvedOptions(normalizedArtistMbid, normalizedArtistName, {
-            managedBy: "aurral",
-            user,
-            monitorOption: "none",
-            albumOnly: true,
-            albumMbid: normalizedAlbumMbid,
-            triggerSearch: false,
-          });
-        throwLibraryError(created);
-        artist = created;
-        createdArtist = true;
-      }
-
-      if (!artist?.id) {
-        const error: CodedError = new Error("Failed to resolve artist in the library");
-        error.statusCode = 503;
-        throw error;
-      }
-
-      const album: MethodResult<"addAlbum"> = await this.addAlbum(
-        artist.id,
-        normalizedAlbumMbid,
-        normalizedAlbumName,
-        {
-          managedBy: "aurral",
-          user,
-          triggerSearch: triggerSearch === true,
-        },
-      );
-      throwLibraryError(album);
-      return {
-        success: true,
-        artist,
-        album,
-        createdArtist,
-        createdAlbum: !existingAlbum,
-        triggeredSearch: Boolean(album?.jobIds?.length),
-        status: album.status,
-        managedBy: "aurral",
-        jobIds: album.jobIds || [],
-        requestGroupId: album.requestGroupId || null,
-        albumStatus: album.albumStatus || null,
-      };
-    }
-
-    if (!lidarrClient.isConfigured()) {
-      const error: CodedError = new Error("Lidarr is not configured");
-      error.statusCode = 503;
-      throw error;
-    }
-
-    const settings = getSettings();
-    const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-    const shouldTriggerSearch = triggerSearch === true || searchOnAdd;
-
-    let artist = await this.getArtist(normalizedArtistMbid, { managedBy });
+    const existingAlbum = libraryAlbumForReference(normalizedAlbumMbid);
+    let artist = this.getArtist(normalizedArtistMbid);
     let createdArtist = false;
+
+    if (existingAlbum && artist && String(existingAlbum.artistId) !== String(artist.id)) {
+      throwLibraryError(buildAlbumConflict(existingAlbum, ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR));
+    }
 
     if (!artist) {
       if (!hasPermission(user, "addArtist")) {
@@ -3749,267 +2348,50 @@ export class LibraryManager {
         error.statusCode = 403;
         throw error;
       }
-
-      const resolvedArtistAddOptions: MethodResult<"resolveArtistAddOptions"> =
-        await this.resolveArtistAddOptions({
-          user,
-          managedBy,
-        });
-      if (resolvedArtistAddOptions?.error) {
-        const error: CodedError = new Error(resolvedArtistAddOptions.error);
-        error.statusCode = 503;
-        throw error;
-      }
-      const created: MethodResult<"addArtistWithResolvedOptions"> =
-        await this.addArtistWithResolvedOptions(normalizedArtistMbid, normalizedArtistName, {
-          ...resolvedArtistAddOptions,
-          user,
-          managedBy,
-          albumOnly: true,
-          albumMbid: normalizedAlbumMbid,
-          triggerSearch: false,
-        });
-      if (failed(created)) {
-        const error: CodedError = new Error(created.error);
-        error.statusCode = 503;
-        throw error;
-      }
+      const created: MethodResult<"addArtist"> = await this.addArtist(
+        normalizedArtistMbid,
+        normalizedArtistName,
+        { user, albumOnly: true },
+      );
+      throwLibraryError(created);
       artist = created;
       createdArtist = true;
     }
 
     if (!artist?.id) {
-      const error: CodedError = new Error("Failed to resolve artist in Lidarr");
+      const error: CodedError = new Error("Failed to resolve artist in the library");
       error.statusCode = 503;
       throw error;
     }
 
-    artist = await this.ensureArtistMonitored(artist);
-
-    let existingAlbum = await lidarrClient.getAlbumByMbid(normalizedAlbumMbid, {
-      forceRefresh: true,
-    });
-    if (
-      existingAlbum &&
-      existingAlbum.artistId != null &&
-      String(existingAlbum.artistId) !== String(artist.id)
-    ) {
-      const error: CodedError = new Error(ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR);
-      error.statusCode = 409;
-      throw error;
-    }
-
     const album: MethodResult<"addAlbum"> = await this.addAlbum(
-      artist.id!,
+      artist.id,
       normalizedAlbumMbid,
       normalizedAlbumName,
-      {
-        managedBy,
-        user,
-        triggerSearch: shouldTriggerSearch,
-      },
+      { user },
     );
-
-    if (failed(album)) {
-      const error: CodedError = new Error(album.error);
-      error.statusCode =
-        typeof album.statusCode === "number" &&
-        Number.isInteger(album.statusCode) &&
-        album.statusCode >= 400
-          ? album.statusCode
-          : 503;
-      throw error;
-    }
-
-    const albumStatus =
-      (album.statistics?.percentOfTracks ?? 0) >= 100 || (album.statistics?.sizeOnDisk ?? 0) > 0
-        ? "available"
-        : shouldTriggerSearch
-          ? "searching"
-          : "inLibrary";
-
+    throwLibraryError(album);
     return {
       success: true,
       artist,
       album,
       createdArtist,
       createdAlbum: !existingAlbum,
-      triggeredSearch: shouldTriggerSearch,
-      status: albumStatus,
+      triggeredSearch: Boolean(album?.jobIds?.length),
+      status: album.status,
+      managedBy: "aurral",
+      jobIds: album.jobIds || [],
+      requestGroupId: album.requestGroupId || null,
+      albumStatus: album.albumStatus || null,
     };
   }
 
-  async getAlbums(
-    artistId: unknown,
-    lidarrArtist: LidarrArtist | null = null,
-    options: { managedBy?: string | null; includeAurral?: boolean; forceRefresh?: boolean } = {},
-  ) {
-    const manager = normalizeLibraryManager(options.managedBy);
-    if (
-      manager === "aurral" ||
-      (manager == null && libraryArtistFallback(artistId)?.managedBy === "aurral")
-    ) {
-      return libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
-    }
-    if (!lidarrClient.isConfigured()) {
-      return libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
-    }
-    try {
-      const resolvedArtist = lidarrArtist || (await lidarrClient.getArtist(String(artistId)));
-      if (!resolvedArtist) {
-        return [];
-      }
-      const allAlbums = await lidarrClient.getAllAlbums({
-        artistIds: [String(artistId)],
-        forceRefresh: options.forceRefresh,
-      });
-      const artistAlbums = allAlbums.filter((a) => a.artistId === parseInt(String(artistId)));
-      const lidarrAlbums = artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
-      if (!options.includeAurral) return lidarrAlbums;
-      const lidarrMbids = new Set<string | null>(
-        lidarrAlbums.map((album) => album.mbid).filter((mbid): mbid is string => Boolean(mbid)),
-      );
-      const aurralAlbums = libraryAlbumsForArtist(resolvedArtist.foreignArtistId, {
-        includeSharedAlbums: true,
-      }).filter((album) => album.managedBy === "aurral" && !lidarrMbids.has(album.mbid));
-      return [...lidarrAlbums, ...aurralAlbums];
-    } catch (error) {
-      const failure = asAppError(error);
-      if (isLidarrNotFoundError(error)) return [];
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to fetch albums from Lidarr: ${failure?.message}`,
-      );
-      return manager ? [] : libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
-    }
+  getAlbums(artistId: unknown) {
+    return libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
   }
 
-  async getAlbumById(
-    id: string | number,
-    { managedBy = null }: { managedBy?: string | null } = {},
-  ) {
-    const manager = normalizeLibraryManager(managedBy);
-    const found = libraryAlbumForReference(id);
-    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
-    const libraryAlbum = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
-    if (!lidarrClient.isConfigured()) return libraryAlbum;
-    if (!id || id === "undefined" || id === "null") {
-      return null;
-    }
-    try {
-      const lidarrAlbum = await lidarrClient.getAlbum(id);
-      if (!lidarrAlbum) return managedBy == null ? libraryAlbum : null;
-      const lidarrArtist = await lidarrClient.getArtist(String(lidarrAlbum.artistId));
-      if (!lidarrArtist) return libraryAlbum;
-      return this.mapLidarrAlbum(lidarrAlbum, lidarrArtist);
-    } catch (error) {
-      if (isLidarrNotFoundError(error)) return managedBy == null ? libraryAlbum : null;
-      return libraryAlbum;
-    }
-  }
-
-  mapLidarrAlbum(lidarrAlbum: LidarrAlbum, lidarrArtist: LidarrArtist) {
-    const albumPath = lidarrArtist.path
-      ? path.join(lidarrArtist.path, this.sanitizePath(lidarrAlbum.title!))
-      : null;
-    const rawStats = lidarrAlbum.statistics || {};
-
-    return {
-      id: lidarrAlbum.id?.toString() || lidarrAlbum.foreignAlbumId,
-      artistId: lidarrAlbum.artistId?.toString() || lidarrArtist.id?.toString(),
-      artistName: lidarrArtist.artistName ?? null,
-      mbid: lidarrAlbum.foreignAlbumId,
-      foreignAlbumId: lidarrAlbum.foreignAlbumId,
-      albumName: lidarrAlbum.title,
-      path: albumPath,
-      addedAt: null,
-      releaseDate: lidarrAlbum.releaseDate || null,
-      monitored: lidarrAlbum.monitored || false,
-      statistics: {
-        trackCount: rawStats.trackCount || 0,
-        sizeOnDisk: rawStats.sizeOnDisk || 0,
-        percentOfTracks: normalizePercentOfTracks(rawStats.percentOfTracks),
-      },
-    };
-  }
-
-  async updateAlbum(id: string | number, updates: { monitored?: boolean }) {
-    if (!lidarrClient.isConfigured()) {
-      return { error: "Lidarr is not configured" };
-    }
-    const maxAttempts = 3;
-    const delayMs = 1500;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const lidarrAlbum = await lidarrClient.getAlbum(id);
-        if (!lidarrAlbum) {
-          if (attempt < maxAttempts) {
-            await new Promise((r) => setTimeout(r, delayMs));
-            continue;
-          }
-          return { error: "Album not found in Lidarr" };
-        }
-        if (updates.monitored !== undefined) {
-          await lidarrClient.monitorAlbum(id, updates.monitored);
-        }
-        const updated = await lidarrClient.getAlbum(id);
-        if (!updated) throw new Error("Album not found in Lidarr");
-        const lidarrArtist = await lidarrClient.getArtist(String(updated.artistId));
-        if (!lidarrArtist) throw new Error("Artist not found in Lidarr");
-        const mapped = this.mapLidarrAlbum(updated, lidarrArtist);
-        scheduleLibraryReconciliation();
-        return mapped;
-      } catch (error) {
-        const failure = asAppError(error);
-        const msg = failure?.message || "";
-        const isTransient =
-          msg.includes("503") ||
-          msg.includes("502") ||
-          msg.includes("504") ||
-          msg.includes("Service Unavailable") ||
-          msg.includes("Bad Gateway") ||
-          msg.includes("Gateway Timeout");
-        if (isTransient && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, delayMs));
-          continue;
-        }
-        logger.error(
-          "library",
-          `[LibraryManager] Failed to update album in Lidarr: ${failure?.message}`,
-        );
-        return { error: failure?.message };
-      }
-    }
-    return { error: "Album not found in Lidarr" };
-  }
-
-  async deleteLidarrAlbumByMbid(albumMbid: string, deleteFiles = false) {
-    if (!lidarrClient.isConfigured()) {
-      return { success: false, error: "Lidarr is not configured", statusCode: 503 };
-    }
-    const album = await lidarrClient.getAlbumByMbid(albumMbid, { forceRefresh: true });
-    if (!album?.id)
-      return { success: false, error: "Lidarr does not have this album", statusCode: 404 };
-    return this.deleteAlbum(album.id, deleteFiles);
-  }
-
-  async deleteAlbum(id: string | number, deleteFiles = false) {
-    if (!lidarrClient.isConfigured()) {
-      return { success: false, error: "Lidarr is not configured" };
-    }
-    try {
-      await lidarrClient.deleteAlbum(id, deleteFiles);
-      clearLibraryLidarrAlbum(id);
-      scheduleLibraryReconciliation();
-      return { success: true };
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to delete album from Lidarr: ${failure?.message}`,
-      );
-      return { success: false, error: failure?.message };
-    }
+  getAlbumById(id: string | number) {
+    return libraryAlbumForReference(id);
   }
 
   async deleteTrack(id: string) {
@@ -4022,8 +2404,7 @@ export class LibraryManager {
       if (!track) return { success: false, code: "not_found", error: "Track not found" };
 
       const aurralFiles = track.files.filter((file) => file.source === "aurral" && file.path);
-      const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
-      if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
+      if (aurralFiles.length > 0) {
         let committedPaths;
         try {
           committedPaths = await removeLibraryDownloadJobs(library, [track]);
@@ -4073,163 +2454,23 @@ export class LibraryManager {
         }
       }
 
-      if (
-        lidarrFiles.length === 0 &&
-        track.files.some((file) => file.source === "readonly" && file.available)
-      ) {
+      if (track.files.some((file) => file.source === "readonly" && file.available)) {
         return {
           success: false,
           code: "read_only",
           error: "The track's file is in a read-only folder",
         };
       }
-      if (!lidarrClient.isConfigured()) {
-        return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };
-      }
-      const lidarrLibrary: LibraryCollection = getLibraryTrack({
-        trackId: id,
-        source: "lidarr",
-        availableOnly: false,
-      });
-      const lidarrTrack = lidarrLibrary.tracks.find((entry) => String(entry.id) === String(id));
-      if (!lidarrTrack) return { success: false, code: "not_found", error: "Track not found" };
-
-      const metadata: TrackMetadata = lidarrTrack.metadata || {};
-      let trackFileId = Number(metadata.trackFileId || metadata.trackFile?.id || metadata.file?.id);
-      if (!Number.isFinite(trackFileId)) {
-        const trackAlbums = Array.isArray(lidarrTrack.albums) ? lidarrTrack.albums : [];
-        const album = lidarrLibrary.albums.find((entry) =>
-          trackAlbums.some((relation) => String(relation.albumId) === String(entry.id)),
-        );
-        let lidarrAlbumId = Number(album?.metadata?.id);
-        const albumMbid = album?.releaseGroupMbid || album?.mbid;
-        if (!Number.isFinite(lidarrAlbumId) && albumMbid) {
-          lidarrAlbumId = Number((await lidarrClient.getAlbumByMbid(albumMbid))?.id);
-        }
-        if (Number.isFinite(lidarrAlbumId)) {
-          const lidarrTracks: LidarrTrack[] = await lidarrClient.getTracksByAlbumId(lidarrAlbumId);
-          const reference = String(metadata.id ?? track.mbid ?? "");
-          const title = String(track.title || "")
-            .trim()
-            .toLowerCase();
-          const sameTitle = title
-            ? lidarrTracks.filter(
-                (entry) =>
-                  entry.hasFile &&
-                  String(entry.title || "")
-                    .trim()
-                    .toLowerCase() === title,
-              )
-            : [];
-          const match =
-            lidarrTracks.find(
-              (entry) =>
-                reference &&
-                [entry.id, entry.foreignRecordingId, entry.foreignTrackId].some(
-                  (candidate) => String(candidate ?? "") === reference,
-                ),
-            ) || (sameTitle.length === 1 ? sameTitle[0] : null);
-          trackFileId = Number(match?.trackFileId);
-        }
-      }
-      if (!Number.isFinite(trackFileId)) {
-        return {
-          success: false,
-          code: "not_found",
-          error: "Track file not found in Lidarr",
-        };
-      }
-
-      await lidarrClient.deleteTrackFile(trackFileId);
-      scheduleLibraryReconciliation();
-      return { success: true };
+      return { success: false, code: "not_found", error: "Track has no file to delete" };
     } catch (error) {
       const failure = asAppError(error);
       logger.error("library", `[LibraryManager] Failed to delete track file: ${failure?.message}`);
-      const status = failure?.response?.status;
-      const code =
-        status === 404
-          ? "not_found"
-          : !failure?.response || (status !== undefined && status >= 500)
-            ? "lidarr_unavailable"
-            : "failed";
-      return { success: false, code, error: failure?.message };
+      return { success: false, code: "failed", error: failure?.message };
     }
   }
 
-  async getTracks(
-    albumId: string | number,
-    { managedBy = null }: { managedBy?: string | null } = {},
-  ) {
-    if (!albumId || albumId === "undefined") {
-      return [];
-    }
-
-    const libraryAlbum = libraryAlbumForReference(albumId);
-    if (
-      normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && libraryAlbum?.managedBy === "aurral")
-    ) {
-      return libraryTracksForAlbum(albumId);
-    }
-
-    if (!lidarrClient.isConfigured()) {
-      return libraryTracksForAlbum(albumId);
-    }
-
-    const key = String(albumId);
-    const cached = _tracksCache.get(key);
-    if (cached && cached.expires > Date.now()) {
-      return cached.tracks;
-    }
-    try {
-      const lidarrAlbum: LidarrAlbum | null = await lidarrClient.getAlbum(albumId);
-      if (!lidarrAlbum) return managedBy == null ? libraryTracksForAlbum(albumId) : [];
-
-      const albumSizeOnDisk = lidarrAlbum.statistics?.sizeOnDisk || 0;
-      const isAlbumComplete =
-        normalizePercentOfTracks(lidarrAlbum.statistics?.percentOfTracks) >= 100 ||
-        albumSizeOnDisk > 0;
-
-      const rawTracks = await lidarrClient.getTracksByAlbumId(albumId);
-
-      const trackFileById = buildTrackFileIndex(
-        albumNeedsTrackFiles({ albumSizeOnDisk, isAlbumComplete, tracks: rawTracks })
-          ? await lidarrClient.getTrackFilesByAlbumId(albumId)
-          : [],
-      );
-
-      const result = rawTracks.map((track, index) =>
-        this.mapLidarrTrack(
-          enrichLidarrTrackWithFiles(track, trackFileById),
-          lidarrAlbum,
-          index + 1,
-        ),
-      );
-
-      if (_tracksCache.size >= TRACKS_CACHE_MAX) {
-        const firstKey = _tracksCache.keys().next().value;
-        if (firstKey !== undefined) _tracksCache.delete(firstKey);
-      }
-      _tracksCache.set(key, {
-        tracks: result,
-        expires: Date.now() + TRACKS_CACHE_TTL_MS,
-      });
-      return result;
-    } catch (error) {
-      const failure = asAppError(error);
-      if (cached) {
-        return cached.tracks;
-      }
-      if (isLidarrNotFoundError(error)) {
-        return managedBy == null ? libraryTracksForAlbum(albumId) : [];
-      }
-      logger.error(
-        "library",
-        `[LibraryManager] Failed to fetch tracks from Lidarr: ${failure?.message}`,
-      );
-      return libraryTracksForAlbum(albumId);
-    }
+  getTracks(albumId: string | number) {
+    return albumId && albumId !== "undefined" ? libraryTracksForAlbum(albumId) : [];
   }
 
   async getPlaybackQueue({ page = 1, pageSize = 100 } = {}) {
@@ -4242,31 +2483,6 @@ export class LibraryManager {
         pageSize,
       }),
     );
-  }
-
-  mapLidarrTrack(lidarrTrack: LidarrTrack, lidarrAlbum: LidarrAlbum, trackNumber = 0) {
-    const trackFile = lidarrTrack.trackFile ?? null;
-    const filePath = trackFile?.path || null;
-    return {
-      id:
-        lidarrTrack.id?.toString() ||
-        lidarrTrack.foreignRecordingId ||
-        `${lidarrAlbum.id}-${trackNumber}`,
-      albumId: lidarrAlbum.id?.toString(),
-      artistId: lidarrAlbum.artistId?.toString() || lidarrAlbum.artist?.id?.toString(),
-      mbid: lidarrTrack.foreignRecordingId || lidarrTrack.foreignTrackId,
-      trackName: lidarrTrack.title,
-      trackNumber: trackNumber || lidarrTrack.trackNumber || 0,
-      path: filePath,
-      hasFile: !!filePath,
-      size: trackFile?.size || 0,
-      quality: trackFile?.quality?.quality?.name || null,
-      addedAt: trackFile?.dateAdded || new Date().toISOString(),
-    };
-  }
-
-  sanitizePath(name: string) {
-    return name.replace(/[<>:"/\\|?*]/g, "_").trim();
   }
 }
 
@@ -4290,9 +2506,7 @@ type WithAbsentKeysOnResults<Method> = Method extends (...args: infer Args) => i
         : WithAbsentKeys<Result>
   : Method;
 type LibraryManagerApi = {
-  [Name in keyof LibraryManager]: Name extends "ensureArtistMonitored"
-    ? LibraryManager[Name]
-    : WithAbsentKeysOnResults<LibraryManager[Name]>;
+  [Name in keyof LibraryManager]: WithAbsentKeysOnResults<LibraryManager[Name]>;
 };
 
 export const libraryManager: LibraryManagerApi = new LibraryManager();

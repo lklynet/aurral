@@ -56,15 +56,6 @@ export const spotifyHistoryQueryOptions = (userId: MaybeId) =>
     staleTime: 30_000,
   });
 
-export const lidarrPreferencesQueryOptions = (userId: MaybeId) =>
-  queryOptions({
-    queryKey: queryKeys.lidarrPreferences(userId),
-    queryFn: ({ signal }) =>
-      parseResponse(usersClient.me["lidarr-preferences"].$get({}, { init: { signal } })),
-    enabled: userId != null,
-    staleTime: 30_000,
-  });
-
 export const appSettingsQueryOptions = () =>
   queryOptions({
     queryKey: queryKeys.appSettings,

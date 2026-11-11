@@ -94,7 +94,7 @@ function createFlow(name: string, showInLibrary: boolean) {
 }
 
 const scan = (changedPaths: string[] | null = null) =>
-  scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths });
+  scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false, changedPaths });
 
 const libraryTrackTitles = () =>
   getLibrary({ availableOnly: true })
@@ -208,7 +208,7 @@ test("flow tracks outside a new download root leave the library", async () => {
 
   const newRoot = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-new-root-"));
   try {
-    await scanConfiguredLibrary({ musicRoot: newRoot, includeLidarr: false });
+    await scanConfiguredLibrary({ musicRoot: newRoot, includeReadOnly: false });
     assert.deepEqual([...getLibrary({ availableOnly: false }).tracks], []);
   } finally {
     await rm(newRoot, { recursive: true, force: true });

@@ -16,7 +16,6 @@ import inbox from "./inbox.ts";
 import library from "./library/index.ts";
 import libraryStreams from "./library/streams.ts";
 import lidarrFeed from "./lidarrFeed.ts";
-import lidarrWebhook from "./lidarrWebhook.ts";
 import logs from "./logs.ts";
 import mcp from "./mcp.ts";
 import news from "./news.ts";
@@ -107,7 +106,6 @@ export const api = new Hono<AppEnv>()
   .route("/", shareLinks)
   .route("/", starPrompt)
   .route("/", wrapped)
-  .route("/", lidarrWebhook)
   .route("/", lidarrFeed)
   .route("/", logs);
 

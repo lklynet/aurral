@@ -120,10 +120,10 @@ test("scanned featured tracks are owned by both their performer and album owner"
   assert.deepEqual(getLibraryTrackOwnershipBatch(batch, { source: "aurral" }), expected);
   const unavailable = [false, false, false, false, false, false, false, false, false, false, false];
   assert.deepEqual(
-    references.map((reference) => getLibraryTrackOwnership({ ...reference, source: "lidarr" })),
+    references.map((reference) => getLibraryTrackOwnership({ ...reference, source: "readonly" })),
     unavailable,
   );
-  assert.deepEqual(getLibraryTrackOwnershipBatch(batch, { source: "lidarr" }), unavailable);
+  assert.deepEqual(getLibraryTrackOwnershipBatch(batch, { source: "readonly" }), unavailable);
 
   await rm(file);
   await scanMusicRoot({ rootPath: root, source: "aurral" });

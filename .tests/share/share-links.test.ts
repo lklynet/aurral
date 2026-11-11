@@ -161,7 +161,7 @@ async function seedAlbum({
     media.upsertLibraryMediaFile({
       trackId: track.id,
       albumId: album.id,
-      source: spec.source || "lidarr",
+      source: spec.source || "readonly",
       path: file.filePath,
       format: path.extname(spec.file).slice(1),
       size: file.bytes.length,

@@ -4,15 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSiteLogo } from "../hooks/useSiteLogo";
-import {
-  appSettingsQueryOptions,
-  listeningHistoryQueryOptions,
-  spotifyHistoryQueryOptions,
-} from "../queryOptions.ts";
+import { listeningHistoryQueryOptions, spotifyHistoryQueryOptions } from "../queryOptions.ts";
 import { SettingsServiceRow } from "./Settings/SettingsLayout";
 import { readSettingsPath } from "../navigation/settingsRoute";
-import { normalizeSettings } from "./Settings/utils";
-import { configuredStatus, lidarrConnected } from "./Settings/utils/serviceStatus";
+import { configuredStatus } from "./Settings/utils/serviceStatus";
 import {
   HISTORY_SERVERS,
   historyServerLabel,
@@ -41,17 +36,6 @@ function HistoryServerRows() {
       }
     />
   ));
-}
-
-function LidarrRow() {
-  const { data } = useQuery(appSettingsQueryOptions());
-  return (
-    <SettingsServiceRow
-      to="library/lidarr"
-      name="Lidarr"
-      status={data ? configuredStatus(lidarrConnected(normalizeSettings(data).integrations)) : null}
-    />
-  );
 }
 
 export default function Welcome() {
@@ -105,14 +89,6 @@ export default function Welcome() {
                 {hasPermission("accessSettings") ? <HistoryServerRows /> : null}
               </div>
             </section>
-            {hasPermission("accessSettings") ? (
-              <section className="onboarding-section" aria-label="Services">
-                <h3 className="onboarding-section__title">Services</h3>
-                <div className="settings-card">
-                  <LidarrRow />
-                </div>
-              </section>
-            ) : null}
           </OnboardingStep>
           <div className="onboarding-actions">
             <button

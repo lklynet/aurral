@@ -20,7 +20,6 @@ const [
   { dbOps },
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { getLibraryForAlbumIds },
   { clearMetadataProviderCaches },
   { api },
@@ -33,7 +32,6 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/routes/api.ts"),
@@ -92,7 +90,6 @@ const metadataServer = await createMockHttpServer((request, response) => {
 });
 
 const originalSettings = dbOps.getSettings();
-const originalLidarrConfigured = lidarrClient.isConfigured;
 const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
@@ -109,12 +106,10 @@ beforeAll(() => {
     },
   });
   clearMetadataProviderCaches();
-  lidarrClient.isConfigured = () => false;
   downloadWorker.start = async () => {};
 });
 
 afterAll(async () => {
-  lidarrClient.isConfigured = originalLidarrConfigured;
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();

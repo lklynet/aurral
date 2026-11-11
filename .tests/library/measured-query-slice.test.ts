@@ -39,7 +39,7 @@ beforeAll(() => {
   libraryStore.upsertLibraryMediaFile({
     trackId: track.id,
     albumId: album.id,
-    source: "lidarr",
+    source: "readonly",
     path: "/tmp/measured-query-slice.flac",
   });
 });
@@ -230,7 +230,7 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
     kind: "tracks",
     page: 1,
     pageSize: 20,
-    source: "lidarr",
+    source: "readonly",
     query: "Needle",
   });
   assert.deepEqual(

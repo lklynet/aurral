@@ -115,5 +115,4 @@ export const buildAurralAlbumRetryPayload = ({
   albumName: album?.title || "",
   artistMbid: artist?.mbid || "",
   artistName: artist?.name || "",
-  managedBy: "aurral",
 });

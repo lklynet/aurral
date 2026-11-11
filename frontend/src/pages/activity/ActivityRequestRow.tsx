@@ -24,13 +24,11 @@ import RouteLink from "../../components/RouteLink";
 import type { QueueEntry } from "../../utils/audioQueue.ts";
 
 export type ActivityRowActionProps = {
-  reSearchingAlbumIds: Record<string, boolean>;
   reviewingJobs: Record<string, "approve" | "deny">;
   controllingJobs: Record<string, "cancel" | "retry">;
   jobErrors: Record<string, string>;
   currentTrack: QueueEntry | null;
   isPlaying: boolean;
-  onReSearch?: (request: ActivityRequest) => void;
   onApprove: (jobId: string | null | undefined) => void;
   onDeny: (jobId: string | null | undefined) => void;
   onCancel: (jobId: string | null | undefined) => void;
@@ -65,7 +63,6 @@ export function getRequestTitle(request: ActivityRequest) {
   return (
     String(request.trackName || "").trim() ||
     String(request.albumName || "").trim() ||
-    String(request.name || "").trim() ||
     String(request.title || "").trim() ||
     "Activity"
   );
@@ -99,12 +96,10 @@ export function ActivityStatusIcon({ request }: { request: ActivityRequest }) {
 
 export function ActivityRowActions({
   request,
-  reSearchingAlbumIds,
   reviewingJobs,
   controllingJobs,
   currentTrack,
   isPlaying,
-  onReSearch,
   onApprove,
   onDeny,
   onCancel,
@@ -117,11 +112,6 @@ export function ActivityRowActions({
     String(request.trackName || "").trim() ||
     request.title?.replace(/^Review needed for /, "") ||
     "track";
-  const canReSearch =
-    Boolean(onReSearch) &&
-    request.canReSearch === true &&
-    request.albumId &&
-    !reSearchingAlbumIds[request.albumId];
   const reviewingJob = request.jobId ? reviewingJobs[request.jobId] : undefined;
   const isApproving = reviewingJob === "approve";
   const isDenying = reviewingJob === "deny";
@@ -168,15 +158,6 @@ export function ActivityRowActions({
             {isDenying ? <DotLoader size="sm" label={null} /> : <XCircle aria-hidden="true" />}
           </TooltipButton>
         </>
-      ) : null}
-      {canReSearch ? (
-        <TooltipButton
-          className="native-library-icon-button"
-          onClick={() => onReSearch!(request)}
-          label="Re-search"
-        >
-          <RotateCcw aria-hidden="true" />
-        </TooltipButton>
       ) : null}
       {canCancel ? (
         <TooltipButton
@@ -230,30 +211,9 @@ export default function ActivityRequestRow({
   jobErrors,
   ...actions
 }: ActivityRowActionProps & { request: ActivityRequest }) {
-  const isSlskd = request.source === "slskd";
-  const isUsenet =
-    request.source === "nzbget" || request.source === "sabnzbd" || request.source === "tidarr";
-  const isYtdlp = request.source === "ytdlp";
-  const isDeemix = request.source === "deemix";
-  const isTrackDownload =
-    isSlskd || isUsenet || isYtdlp || isDeemix || request.kind === "track_download";
-  const isAurral = request.source === "aurral" && !isTrackDownload;
-  const isActivity = request.type === "activity";
-  const isAlbum = request.type === "album";
   const blocked = isBlockedTrack(request);
   const displayTitle = getRequestTitle(request);
   const displayMeta = getRequestMeta(request, displayTitle);
-  const artistMbid = isAlbum ? request.artistMbid : request.mbid;
-  const hasArtistMbid = Boolean(artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
-  const rowLink =
-    request.href && (isAurral || isActivity)
-      ? { to: request.href }
-      : hasArtistMbid
-        ? {
-            to: `/artist/${artistMbid}`,
-            state: { artistName: isAlbum ? request.artistName || null : displayTitle },
-          }
-        : null;
   const status = getStatusMeta(request);
   const timelineAt = request.completedAt || request.requestedAt;
   const jobError = request.jobId ? jobErrors[request.jobId] : undefined;
@@ -271,11 +231,10 @@ export default function ActivityRequestRow({
       <ActivityStatusIcon request={request} />
       <div className="activity-row__details">
         <h2 className="activity-row__title">
-          {rowLink ? (
+          {request.href ? (
             <Tooltip content={displayTitle}>
               <RouteLink
-                to={rowLink.to}
-                state={rowLink.state}
+                to={request.href}
                 className="activity-row__title-button"
                 aria-label={`Open ${rowLabel}`}
               >

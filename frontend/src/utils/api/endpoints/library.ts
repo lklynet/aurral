@@ -14,9 +14,6 @@ import { libraryMatchesClient } from "../clients/libraryMatches.ts";
 import { libraryMiscClient } from "../clients/libraryMisc.ts";
 import { libraryTracksClient } from "../clients/libraryTracks.ts";
 import { bumpLibraryPageGeneration, queryClient, queryKeys } from "../../../queryClient.ts";
-import { getLibraryOwnerConflict } from "../../libraryDestination.ts";
-import type { buildAlbumRequestPayload, buildArtistAddPayload } from "../../libraryDestination.ts";
-import type { buildAurralAlbumRetryPayload } from "../../aurralAlbumStatus.ts";
 import {
   addActiveDownload,
   normalizeActiveDownloads,
@@ -207,14 +204,6 @@ export const clearLibraryPageCache = () => {
     queryKey: queryKeys.libraryPagePrefix,
     predicate: (query) => query.state.fetchStatus !== "fetching",
   });
-};
-
-export const settleLibraryOwnerConflict = (error: unknown) => {
-  const conflict = getLibraryOwnerConflict(error);
-  if (!conflict) return null;
-  clearLibraryPageCache();
-  queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
-  return conflict;
 };
 
 export const updateLibraryArtistMbid = async (artistId: string | number, mbid: string | null) => {
@@ -517,23 +506,10 @@ const refreshActiveDownloadsAfter = async <T>(request: Promise<T>): Promise<T> =
   }
 };
 
-export const addArtistToLibrary = async (artistData: ReturnType<typeof buildArtistAddPayload>) => {
-  const result = await refreshActiveDownloadsAfter(
-    parseResponse(libraryArtistsClient.artists.$post({ json: artistData })),
-  );
-  const mbid =
-    result?.artist?.foreignArtistId || result?.foreignArtistId || artistData?.foreignArtistId;
-  if (mbid) queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
-  return result;
-};
-
-const fetchLibraryAlbums = async (
-  artistId: string | number,
-  { signal, managedBy = null }: SignalOptions & { managedBy?: "aurral" | "lidarr" | null } = {},
-) => {
+const fetchLibraryAlbums = async (artistId: string | number, { signal }: SignalOptions = {}) => {
   const albums = await parseResponse(
     libraryAlbumsClient.albums.$get(
-      { query: { artistId: String(artistId), ...(managedBy && { managedBy }) } },
+      { query: { artistId: String(artistId) } },
       { init: { signal } },
     ),
   );
@@ -545,24 +521,22 @@ const fetchLibraryAlbums = async (
 
 export const getLibraryAlbums = (
   artistId: string | number,
-  {
-    signal,
-    bypassCache = false,
-    managedBy = null,
-  }: SignalOptions & { bypassCache?: boolean; managedBy?: "aurral" | "lidarr" | null } = {},
+  { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
 ) => {
-  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal, managedBy });
+  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal });
   return queryClient.fetchQuery({
-    queryKey: [...queryKeys.libraryAlbums(artistId), managedBy],
-    queryFn: ({ signal: querySignal }) =>
-      fetchLibraryAlbums(artistId, { signal: querySignal, managedBy }),
+    queryKey: queryKeys.libraryAlbums(artistId),
+    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal }),
     staleTime: bypassCache ? 0 : 15_000,
   });
 };
 
-type AlbumRequestPayload =
-  | ReturnType<typeof buildAlbumRequestPayload>
-  | ReturnType<typeof buildAurralAlbumRetryPayload>;
+type AlbumRequestPayload = {
+  albumMbid: string;
+  albumName: string | null | undefined;
+  artistMbid?: string | null;
+  artistName?: string | null;
+};
 
 const postAlbumRequest = (payload: AlbumRequestPayload) =>
   parseResponse(
@@ -662,11 +636,6 @@ export const reSearchLibraryTrack = (
         json: { albumId },
       }),
     ),
-  );
-
-export const triggerAlbumSearch = (albumId: string | number) =>
-  refreshActiveDownloadsAfter(
-    parseResponse(libraryDownloadsClient.downloads.album.search.$post({ json: { albumId } })),
   );
 
 const fetchDownloadStatus = (ids: string[], signal: AbortSignal | undefined) =>

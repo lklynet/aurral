@@ -1,7 +1,8 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { groupAlbumGrabRequests, lookupLabel, type ActivityRequest } from "../../lib/activity.ts";
+import { groupAlbumGrabRequests, lookupLabel } from "../../lib/activity.ts";
+import { activityRequest } from "./fixtures.ts";
 
 test("label lookups ignore inherited object keys", () => {
   const table = { slskd: "Soulseek" };
@@ -12,31 +13,15 @@ test("label lookups ignore inherited object keys", () => {
 });
 
 test("an album grab with a source named constructor shows the name as written", () => {
-  const row: ActivityRequest = {
+  const row = activityRequest({
     id: "job-1",
-    source: "aurral",
-    type: "activity",
-    title: "Track",
-    subtitle: null,
     status: "processing",
-    statusLabel: null,
     requestedAt: "2025-03-04T15:30:00.000Z",
-    href: null,
-    kind: "track_download",
-    playlistId: "library",
-    playlistName: null,
     jobId: "job-1",
     trackName: "Track",
     artistName: "Artist",
     albumName: "Album",
-    albumMbid: null,
-    albumId: null,
-    requestGroupId: null,
-    requestedBy: null,
-    sourceFilename: null,
-    releaseTitle: null,
     inQueue: true,
-    canReSearch: false,
     albumGrab: {
       id: "grab-1",
       memberJobIds: ["job-1"],
@@ -45,7 +30,7 @@ test("an album grab with a source named constructor shows the name as written", 
       fallbackReason: null,
       requestedAt: "2025-03-04T15:30:00.000Z",
     },
-  };
+  });
   const [grouped] = groupAlbumGrabRequests([row]);
   assert.ok(grouped !== undefined);
   assert.equal(grouped.sourceSummary, "constructor");

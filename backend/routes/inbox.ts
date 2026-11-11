@@ -39,7 +39,6 @@ async function addInboxItem(item: InboxItem, user: RequestUser) {
       albumName: metadataText(metadata, "albumName"),
       artistMbid: metadataText(metadata, "artistMbid"),
       artistName: metadataText(metadata, "artistName"),
-      triggerSearch: true,
       user,
     });
   }
@@ -49,14 +48,10 @@ async function addInboxItem(item: InboxItem, user: RequestUser) {
       error.statusCode = 403;
       throw error;
     }
-    const options = await libraryManager.resolveArtistAddOptions({ user });
-    return libraryManager.addArtistWithResolvedOptions(
+    return libraryManager.addArtist(
       metadataText(metadata, "artistMbid") ?? "",
       metadataText(metadata, "artistName") ?? "",
-      {
-        ...options,
-        user,
-      },
+      { user },
     );
   }
   const error: AppError = new Error("This inbox item cannot be added");

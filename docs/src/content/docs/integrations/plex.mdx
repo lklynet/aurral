@@ -9,7 +9,7 @@ Plex is optional. Plex scans the Library folder like any other music folder. Con
 
 1. Mount the same media root in Aurral and Plex, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 2. In Plex, add the Library folder, for example `/data/downloads/aurral`, to a music library. It can be its own library or an extra folder in your existing one.
-3. If playlists reuse tracks from Lidarr, add the Lidarr root folder, such as `/data/music`, to the same Plex music library.
+3. If playlists use tracks from a read-only folder, such as `/data/music`, add that folder to the same Plex music library.
 4. In the Plex server settings, turn on **Scan my library automatically**, so Plex picks up new files on its own.
 
 ## Connect the server
@@ -26,7 +26,7 @@ This also imports the owner's plays.
 
 With **Send playlists** on, Aurral adds every enabled flow and static playlist to Plex and updates it when the playlist changes. The playlists belong to the server owner's Plex account.
 
-- Plex reads each playlist file at the path Aurral wrote it, so Plex has to see the Library folder and the Lidarr root folder at the same paths as Aurral. If it can't find any of the tracks, **Settings > Listening > Plex** shows an error.
+- Plex reads each playlist file at the path Aurral wrote it, so Plex has to see the Library folder and your read-only folders at the same paths as Aurral. If it can't find any of the tracks, **Settings > Listening > Plex** shows an error.
 - Deleting or renaming a playlist, or turning off its flow, removes it from Plex. So do turning off **Send playlists** and **Disconnect server**.
 - Aurral finds its playlists in Plex by name. A playlist you made in Plex with the same name as an Aurral playlist is replaced.
 

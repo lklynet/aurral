@@ -1,8 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
-import { lidarrClient } from "../lidarrClient.ts";
-import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
+import { readOnlyFolderPaths } from "../libraryFolders.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { isNzbSource } from "../usenetClientCommon.ts";
 import type { DownloadJob, HeldForReviewDraft } from "./downloadTracker.ts";
@@ -13,18 +12,13 @@ type ReviewFileJob = Pick<
 > & { downloadClientId?: DownloadJob["downloadClientId"] | number };
 
 function isInLibraryFolder(filePath: string) {
-  const lidarrRoots = lidarrClient.isEnabled()
-    ? lidarrClient
-        .getConfiguredRootFolderPaths()
-        .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
-    : [];
-  return [resolveDownloadRoot(), ...lidarrRoots]
+  return [resolveDownloadRoot(), ...readOnlyFolderPaths()]
     .filter(Boolean)
     .some((root) => isPathInsideRoot(filePath, path.resolve(root)));
 }
 
 // A review file is a source's copy that Aurral has not imported. Discarding
-// it never touches a file in the Library folder or a Lidarr root folder.
+// it never touches a file in the Library folder or a read-only folder.
 export async function discardReviewFile(job: ReviewFileJob) {
   const stagingPath = String(job?.stagingPath || "").trim();
   if (!stagingPath) return;

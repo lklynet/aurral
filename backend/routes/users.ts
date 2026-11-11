@@ -31,7 +31,6 @@ import {
 } from "../services/listeningHistory.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
-import { lidarrClient } from "../services/lidarrClient.ts";
 
 type UserUpdate = Parameters<typeof userOps.updateUser>[1];
 
@@ -41,22 +40,6 @@ const reconcileLocalBypassAfterUserMutation = () => {
     websocketService.reconcileAuthState();
   }
   return result;
-};
-
-const normalizeRootFolderPath = (value: unknown) => {
-  const normalized = String(value || "").trim();
-  return normalized || null;
-};
-
-const normalizeQualityProfileId = (value: unknown) => {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return Math.trunc(parsed);
 };
 
 const isValidPermissions = (permissions: unknown): permissions is Record<string, boolean> =>
@@ -87,10 +70,6 @@ const listenHistoryBody = v.partial(
 );
 const themeBody = v.object({ theme: v.optional(v.unknown()) });
 const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
-const lidarrPreferencesBody = v.object({
-  rootFolderPath: nullableText,
-  qualityProfileId: v.optional(v.nullable(v.union([v.number(), v.string()]))),
-});
 const passwordBody = v.object({
   currentPassword: v.optional(v.string()),
   newPassword: v.optional(v.string()),
@@ -140,8 +119,6 @@ export default new Hono<AppEnv>()
           username: created.username,
           role: created.role,
           permissions: created.permissions,
-          lidarrRootFolderPath: created.lidarrRootFolderPath,
-          lidarrQualityProfileId: created.lidarrQualityProfileId,
         },
         201,
       );
@@ -197,8 +174,6 @@ export default new Hono<AppEnv>()
               id,
               username: existing.username,
               role: existing.role,
-              lidarrRootFolderPath: existing.lidarrRootFolderPath,
-              lidarrQualityProfileId: existing.lidarrQualityProfileId,
             },
             200,
           );
@@ -248,8 +223,6 @@ export default new Hono<AppEnv>()
             username: existing.username,
             role: existing.role,
             permissions: existing.permissions,
-            lidarrRootFolderPath: existing.lidarrRootFolderPath,
-            lidarrQualityProfileId: existing.lidarrQualityProfileId,
           },
           200,
         );
@@ -293,18 +266,6 @@ export default new Hono<AppEnv>()
       }
     },
   )
-  .get("/me/lidarr-preferences", requireAuth, async (c) => {
-    try {
-      const user = userOps.getUserById(c.var.user.id);
-      if (!user) {
-        return c.json({ error: "User not found" }, 404);
-      }
-      return c.json(await lidarrClient.getArtistAddPreferenceSummary(user), 200);
-    } catch (e) {
-      const failure = asAppError(e);
-      return c.json({ error: "Failed to get Lidarr preferences", message: failure?.message }, 500);
-    }
-  })
   .get("/me/theme", requireAuth, requireUserAccount, (c) => {
     try {
       const stored = dbOps.getUserTheme(c.var.user.id);
@@ -373,121 +334,6 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to save discover layout", message: failure?.message }, 500);
     }
   })
-  .patch(
-    "/me/lidarr-preferences",
-    requireAuth,
-    validate("json", lidarrPreferencesBody),
-    async (c) => {
-      try {
-        const user = userOps.getUserById(c.var.user.id);
-        if (!user) {
-          return c.json({ error: "User not found" }, 404);
-        }
-
-        const body = c.req.valid("json");
-        const hasRootFolderPath = body.rootFolderPath !== undefined;
-        const hasQualityProfileId = body.qualityProfileId !== undefined;
-
-        const nextRootFolderPath = hasRootFolderPath
-          ? body.rootFolderPath === null
-            ? null
-            : normalizeRootFolderPath(body.rootFolderPath)
-          : user.lidarrRootFolderPath;
-        const nextQualityProfileId = hasQualityProfileId
-          ? body.qualityProfileId === null
-            ? null
-            : normalizeQualityProfileId(body.qualityProfileId)
-          : user.lidarrQualityProfileId;
-
-        if (hasRootFolderPath && body.rootFolderPath !== null && !nextRootFolderPath) {
-          return c.json(
-            {
-              error: "Invalid Lidarr preferences",
-              message: "rootFolderPath must be a non-empty string or null",
-              field: "rootFolderPath",
-            },
-            400,
-          );
-        }
-
-        if (
-          hasQualityProfileId &&
-          body.qualityProfileId !== null &&
-          nextQualityProfileId === null
-        ) {
-          return c.json(
-            {
-              error: "Invalid Lidarr preferences",
-              message: "qualityProfileId must be a numeric id or null",
-              field: "qualityProfileId",
-            },
-            400,
-          );
-        }
-
-        if (!lidarrClient.isConfigured()) {
-          if (nextRootFolderPath !== null || nextQualityProfileId !== null) {
-            return c.json(
-              {
-                error: "Lidarr is not configured",
-                message: "Configure Lidarr before saving library defaults.",
-              },
-              503,
-            );
-          }
-          const updated = userOps.updateUser(c.var.user.id, {
-            lidarrRootFolderPath: null,
-            lidarrQualityProfileId: null,
-          });
-          return c.json(await lidarrClient.getArtistAddPreferenceSummary(updated), 200);
-        }
-
-        const summary = await lidarrClient.getArtistAddPreferenceSummary(user);
-        if (
-          nextRootFolderPath !== null &&
-          !summary.rootFolders.some((folder) => folder.path === nextRootFolderPath)
-        ) {
-          return c.json(
-            {
-              error: "Invalid Lidarr preferences",
-              message: `Unknown Lidarr root folder: ${nextRootFolderPath}`,
-              field: "rootFolderPath",
-            },
-            400,
-          );
-        }
-        if (
-          nextQualityProfileId !== null &&
-          !summary.qualityProfiles.some((profile) => profile.id === nextQualityProfileId)
-        ) {
-          return c.json(
-            {
-              error: "Invalid Lidarr preferences",
-              message: `Unknown Lidarr quality profile: ${nextQualityProfileId}`,
-              field: "qualityProfileId",
-            },
-            400,
-          );
-        }
-
-        const updated = userOps.updateUser(c.var.user.id, {
-          lidarrRootFolderPath: nextRootFolderPath,
-          lidarrQualityProfileId: nextQualityProfileId,
-        });
-        if (!updated) {
-          return c.json({ error: "Failed to save Lidarr preferences" }, 500);
-        }
-
-        return c.json(await lidarrClient.getArtistAddPreferenceSummary(updated), 200);
-      } catch (e) {
-        const failure = asAppError(e);
-        return c.json(
-          { error: "Failed to save Lidarr preferences", message: failure?.message },
-          500,
-        );
-      }
-    },
-  )
   .post("/me/password", requireAuth, requireRecentAuth(), validate("json", passwordBody), (c) => {
     try {
       const { currentPassword, newPassword } = c.req.valid("json");

@@ -26,20 +26,8 @@ import {
   buildArtistBase,
   withListenBrainzStats,
 } from "../shared/transform.ts";
-import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
-
-export function getLibraryLidarrArtist(reference: string) {
-  const artist = getLibraryArtistProjection({ reference })[0] || null;
-  if (!artist?.lidarrManaged) return null;
-  return {
-    id: artist.providerId || artist.id,
-    artistName: artist.artistName,
-    monitored: artist.monitored,
-    statistics: artist.statistics,
-  };
-}
 
 async function loadArtistDetails(
   mbid: string,
@@ -206,54 +194,6 @@ export default new Hono<AppEnv>()
 
       const override = dbOps.getArtistOverride(mbid);
       const resolvedMbid = override?.musicbrainzId || mbid;
-
-      const lidarrArtist =
-        getLibraryLidarrArtist(resolvedMbid) ||
-        (resolvedMbid === mbid ? null : getLibraryLidarrArtist(mbid));
-
-      if (lidarrArtist) {
-        const metadataArtist = coreOnly
-          ? null
-          : await getArtistByMbid(resolvedMbid).catch(() => null);
-        const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
-          musicbrainzGetArtistReleaseGroups(resolvedMbid, selectedReleaseTypes, {
-            includeTrackCounts: !appearsOnLimit,
-          }).then(withListenBrainzStats),
-          coreOnly
-            ? []
-            : musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {
-                limit: appearsOnLimit,
-              }).catch(() => []),
-        ]);
-        const tagPayload = coreOnly
-          ? { tags: [], genres: [] }
-          : await getArtistTagPayload(
-              resolvedMbid,
-              metadataArtist?.name || lidarrArtist.artistName,
-              metadataArtist,
-            );
-        return c.json(
-          {
-            ...buildArtistBase(
-              metadataArtist?.name || lidarrArtist.artistName,
-              resolvedMbid,
-              metadataArtist,
-            ),
-            tags: tagPayload.tags,
-            genres: tagPayload.genres,
-            "release-groups": releaseGroups,
-            "appears-on-release-groups": appearsOnReleaseGroups,
-            "release-group-count": releaseGroups.length,
-            "release-count": releaseGroups.length,
-            _lidarrData: {
-              id: lidarrArtist.id,
-              monitored: lidarrArtist.monitored,
-              statistics: lidarrArtist.statistics,
-            },
-          },
-          200,
-        );
-      }
 
       const fetchPromise = loadArtistDetails(resolvedMbid, {
         artistName: query.artistName,

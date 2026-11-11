@@ -4,11 +4,8 @@ type CanonicalFileCandidate = Partial<Omit<LibraryTrackFile, "available">> & {
   available?: unknown;
 };
 
-const sourceRank = (source: string | null | undefined, managedBy: string | null) => {
-  if (managedBy && source === managedBy) return 0;
-  if (source === "lidarr") return 1;
-  return 2;
-};
+const sourceRank = (source: string | null | undefined, managedBy: string | null) =>
+  managedBy && source === managedBy ? 0 : 1;
 
 export function selectCanonicalFile<T extends CanonicalFileCandidate>(
   files: T[] | null | undefined,

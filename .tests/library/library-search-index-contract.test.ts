@@ -99,7 +99,7 @@ test("targeted configured rescans update related searches and preserve failed or
     );
   };
   const scan = (changedPaths: string[] | null = null) =>
-    scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths, force: true });
+    scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false, changedPaths, force: true });
   const read = (query: string, availableOnly: boolean = true) =>
     getLibraryPage({ kind: "tracks", pageSize: 100, query, availableOnly });
   await writeAudio(0, "Original Album", "First Song", "Rock");

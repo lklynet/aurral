@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
-import { lidarrClient } from "./lidarrClient.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
+import { readOnlyFolderPaths } from "./libraryFolders.ts";
 
 const isPresent = (value: string | null): value is string => Boolean(value);
 
@@ -86,12 +86,7 @@ export async function removeSabnzbdDownloadFolder(
     );
   }
 
-  const libraries = [
-    resolveDownloadRoot(),
-    ...lidarrClient
-      .getConfiguredRootFolderPaths()
-      .map((root) => resolveLocalPath(root, getPathMappings("lidarr"))),
-  ].filter(Boolean);
+  const libraries = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
   for (const library of await Promise.all(
     libraries.map((root) => realpathOr(path.resolve(root))),
   )) {

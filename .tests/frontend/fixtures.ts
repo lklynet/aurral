@@ -1,4 +1,5 @@
 import type { LibraryAlbum, LibraryTrack } from "../../frontend/src/utils/libraryPageData.ts";
+import type { ActivityRequest } from "../../lib/activity.ts";
 
 export const libraryAlbum = (overrides: Partial<LibraryAlbum> = {}): LibraryAlbum => ({
   id: 1,
@@ -33,5 +34,34 @@ export const libraryFile = (
   available: true,
   format: null,
   durationMs: null,
+  ...overrides,
+});
+
+export const activityRequest = (overrides: Partial<ActivityRequest> = {}): ActivityRequest => ({
+  id: "activity-1",
+  source: "aurral",
+  type: "activity",
+  title: "Track",
+  subtitle: null,
+  status: "completed",
+  statusLabel: null,
+  requestedAt: "2026-01-01T00:00:00Z",
+  href: null,
+  kind: "track_download",
+  playlistId: "library",
+  playlistName: null,
+  jobId: null,
+  trackName: null,
+  artistName: null,
+  albumName: null,
+  albumMbid: null,
+  albumId: null,
+  libraryAlbumId: null,
+  requestGroupId: null,
+  requestedBy: null,
+  sourceFilename: null,
+  releaseTitle: null,
+  upgrade: null,
+  inQueue: false,
   ...overrides,
 });

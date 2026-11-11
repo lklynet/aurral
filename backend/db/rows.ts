@@ -121,7 +121,6 @@ export interface DownloadJobsRow {
   quick_searched_sources: string;
   held_for_review: string | null;
   album_grab_failures: number;
-  managed_by: string | null;
   request_group_id: string | null;
   reused_library_file: number;
   started_by_playlist: string | null;
@@ -299,7 +298,6 @@ export interface LibraryManagementRow {
   id: number;
   entity_kind: string;
   entity_id: number;
-  managed_by: string;
   monitor_mode: string | null;
   created_at: number;
   updated_at: number;
@@ -395,12 +393,6 @@ export interface LibraryTracksRow {
   created_at: number;
   updated_at: number;
   monitored: number;
-}
-
-export interface LidarrArtistIdMapRow {
-  musicbrainz_id: string | null;
-  lidarr_foreign_artist_id: string;
-  updated_at: number;
 }
 
 export interface ListenHistorySourcesRow {
@@ -635,8 +627,6 @@ export interface UsersRow {
   lastfm_username: string | null;
   listen_history_provider: string | null;
   listen_history_username: string | null;
-  lidarr_root_folder_path: string | null;
-  lidarr_quality_profile_id: number | null;
   listen_history_url: string | null;
   status: string;
   is_protected: number;

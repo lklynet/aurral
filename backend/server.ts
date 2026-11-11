@@ -9,11 +9,7 @@ import { app } from "./app.ts";
 import { getEnvApiKey, isProxyAuthEnabled } from "./services/auth.ts";
 import { isOidcEnabled } from "./services/oidcAuth.ts";
 import { logger, logUnhandledRejection } from "./services/logger.ts";
-import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
-import {
-  getLidarrStatusSnapshot,
-  hasActiveLidarrStatusSnapshot,
-} from "./services/lidarrStatusSnapshot.ts";
+import { websocketService } from "./services/websocketService.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
 import { warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
@@ -64,48 +60,6 @@ if (process.env.OIDC_ENABLED === "true" && !isOidcEnabled()) {
 const httpServer = createServer(getRequestListener(app.fetch, { overrideGlobalObjects: false }));
 websocketService.initialize(httpServer);
 
-const DOWNLOAD_STATUS_INTERVAL_MS = 10000;
-let lastDownloadStatusesPayload: string | null = null;
-let downloadStatusBroadcastInFlight = false;
-const hasWsSubscribers = (channel: string) => {
-  const stats = websocketService.getStats();
-  const total = Number(stats?.channels?.[channel] || 0);
-  return total > 0;
-};
-const broadcastDownloadStatuses = async () => {
-  if (downloadStatusBroadcastInFlight) return;
-  downloadStatusBroadcastInFlight = true;
-  try {
-    if (!hasWsSubscribers("downloads") && !hasActiveLidarrStatusSnapshot()) return;
-    const snapshot = await getLidarrStatusSnapshot();
-    const message: WebSocketChannelPayload = {
-      type: "download_statuses",
-      statuses: snapshot.statuses,
-      stale: snapshot.stale,
-      error: snapshot.error,
-      updatedAt: snapshot.updatedAt,
-    };
-    const payload = JSON.stringify(message);
-    if (payload !== lastDownloadStatusesPayload) {
-      lastDownloadStatusesPayload = payload;
-      websocketService.broadcast("downloads", message);
-    }
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.warn("system", "Failed to broadcast download statuses:", { message: failure?.message });
-  } finally {
-    downloadStatusBroadcastInFlight = false;
-  }
-};
-
-const broadcastIntervals: NodeJS.Timeout[] = [];
-
-const scheduleBroadcast = (fn: () => void, intervalMs: number) => {
-  fn();
-  broadcastIntervals.push(setInterval(fn, intervalMs));
-};
-
-scheduleBroadcast(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
 const stopPlaylistStatusBroadcasts = startPlaylistStatusBroadcasts();
 
 let shuttingDown = false;
@@ -114,9 +68,6 @@ const gracefulShutdown = async (signal: NodeJS.Signals) => {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info("system", `Received ${signal}, shutting down...`);
-  for (const interval of broadcastIntervals) {
-    clearInterval(interval);
-  }
   stopPlaylistStatusBroadcasts();
   stopAllPlugins();
   await shutdownJobWorkers({ timeoutMs: 5000 });

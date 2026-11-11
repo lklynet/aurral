@@ -38,7 +38,6 @@ export const RELEASE_SKIP_REASONS = {
   covered: "Another release has its songs",
   excluded: "You removed it",
   unmonitored: "You stopped monitoring it",
-  managed_by_lidarr: "Managed by Lidarr",
   metadata_unavailable: "Its tracklist could not be loaded",
 };
 
