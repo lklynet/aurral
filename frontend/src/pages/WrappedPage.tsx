@@ -20,6 +20,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
+import { getApiErrorText } from "../utils/api/errors.ts";
 import {
   useWrapped,
   useWrappedSeason,
@@ -1520,19 +1521,15 @@ export default function WrappedPage() {
     onError: () => toast.showError("Your Wrapped could not be started. Try again."),
   });
   const playlist = useMutation({
-    mutationFn: async () => {
-      const response = await wrappedClient.playlist.$post({ json: { timeZone } });
-      const result = await response.json();
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    },
+    mutationFn: () => parseResponse(wrappedClient.playlist.$post({ json: { timeZone } })),
     onSuccess: (result) => {
       toast.showSuccess(
         `Saved ${count(result.trackCount, "song")}${result.missingCount ? `. ${count(result.missingCount, "song")} not in your Library were left out` : ""}.`,
       );
       navigate(playlistPath(result.playlistId));
     },
-    onError: (error) => toast.showError(error.message || "The playlist could not be saved."),
+    onError: (error) =>
+      toast.showError(getApiErrorText(error, "error") ?? "The playlist could not be saved."),
   });
   if (!season) return <Navigate to="/" replace />;
 
