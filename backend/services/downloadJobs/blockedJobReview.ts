@@ -54,17 +54,18 @@ const publishApprovedImport = (job: DownloadJob, playlistId: string) => {
   approvalFollowUps.add(followUp);
 };
 
+const reviewFileExists = async (job: DownloadJob) =>
+  Boolean(job.stagingPath && (await fs.stat(job.stagingPath).catch(() => null))?.isFile());
+
 export async function approveBlockedJob(jobId: string) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
   const downloadAttemptId = getActiveDownloadAttemptId(job.id);
-  const sourcePath = String(job.stagingPath || "").trim();
-  if (!sourcePath) return { status: 400, error: "Staging file path missing" };
-  try {
-    await fs.access(sourcePath);
-  } catch {
-    return { status: 404, error: "Staging file no longer exists" };
+  if (!(await reviewFileExists(job))) {
+    await denyBlockedJob(job.id, { reason: "Review file is gone", fileGone: true });
+    return { status: 404, error: "The file to review is gone, so Aurral is searching again" };
   }
+  const sourcePath = String(job.stagingPath).trim();
   const ext = path.extname(sourcePath).toLowerCase();
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
@@ -113,7 +114,7 @@ export async function approveBlockedJob(jobId: string) {
 
 export async function denyBlockedJob(
   jobId: string,
-  { reason = "Denied by user" }: { reason?: string } = {},
+  { reason = "Denied by user", fileGone = false }: { reason?: string; fileGone?: boolean } = {},
 ) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
@@ -128,13 +129,15 @@ export async function denyBlockedJob(
     },
     async () => {
       if (!getBlockedJob(job.id)) return false;
-      await discardReviewFile(job);
-      const deniedSourceKey =
-        job.downloadSource === "slskd"
-          ? `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`
-          : String(job.releaseGuid || "").trim();
-      if (job.downloadSource && deniedSourceKey) {
-        downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
+      if (!fileGone) {
+        await discardReviewFile(job);
+        const deniedSourceKey =
+          job.downloadSource === "slskd"
+            ? `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`
+            : String(job.releaseGuid || "").trim();
+        if (job.downloadSource && deniedSourceKey) {
+          downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
+        }
       }
       downloadTracker.setPending(job.id, reason, { asRetryCycle: false });
       return true;
@@ -146,17 +149,22 @@ export async function denyBlockedJob(
   return { status: 200 };
 }
 
-// A song held for review longer than the configured wait is denied, so Aurral
-// searches for it again instead of waiting for a decision indefinitely.
-export async function denyExpiredReviews(now = Date.now()) {
+// A song held for review longer than the configured wait, or whose file is
+// gone, is searched again instead of waiting for a decision indefinitely.
+export async function retryStaleReviews(now = Date.now()) {
   const hours = dbOps.getSettings().reviewTimeoutHours;
-  if (!hours) return 0;
-  const cutoff = now - hours * 60 * 60 * 1000;
-  let denied = 0;
+  const cutoff = hours ? now - hours * 60 * 60 * 1000 : null;
+  let retried = 0;
   for (const job of downloadTracker.getByStatus("blocked")) {
-    if (!job.completedAt || job.completedAt > cutoff) continue;
-    const outcome = await denyBlockedJob(job.id, { reason: "Review timed out" });
-    if (outcome.status === 200) denied += 1;
+    const expired = cutoff !== null && job.completedAt != null && job.completedAt <= cutoff;
+    const options = expired
+      ? { reason: "Review timed out" }
+      : (await reviewFileExists(job))
+        ? null
+        : { reason: "Review file is gone", fileGone: true };
+    if (!options) continue;
+    const outcome = await denyBlockedJob(job.id, options);
+    if (outcome.status === 200) retried += 1;
   }
-  return denied;
+  return retried;
 }
