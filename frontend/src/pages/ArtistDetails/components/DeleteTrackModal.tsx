@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { createPortal } from "react-dom";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
@@ -27,7 +28,7 @@ export function DeleteTrackModal({
   });
 
   if (!show) return null;
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop">
       <div
         ref={dialogRef}
@@ -70,6 +71,7 @@ export function DeleteTrackModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

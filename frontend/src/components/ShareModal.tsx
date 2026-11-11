@@ -1,5 +1,4 @@
 import { useEffect, useId, useState } from "react";
-import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
@@ -252,7 +251,7 @@ export function ShareModal({
 
   if (!open) return null;
 
-  return createPortal(
+  return (
     <ModalShell
       open
       title={`Share ${KIND_LABELS[kind]}`}
@@ -349,7 +348,6 @@ export function ShareModal({
           ) : null}
         </div>
       )}
-    </ModalShell>,
-    document.body,
+    </ModalShell>
   );
 }

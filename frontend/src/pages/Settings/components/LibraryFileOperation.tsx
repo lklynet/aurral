@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { ArrowRight, X } from "../../../components/icons";
@@ -241,7 +242,7 @@ function ReviewDialog({
   });
   const shown = items.data?.items || [];
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -301,7 +302,8 @@ function ReviewDialog({
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

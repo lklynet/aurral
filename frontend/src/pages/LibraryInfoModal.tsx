@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { X } from "../components/icons";
@@ -220,7 +221,7 @@ export default function LibraryInfoModal({
     rows.push([Array.isArray(paths) && paths.length > 1 ? "Files" : "File", paths]);
   }
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <section
         ref={dialogRef}
@@ -262,6 +263,7 @@ export default function LibraryInfoModal({
           ))}
         </dl>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

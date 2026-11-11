@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
@@ -38,7 +39,7 @@ export function DeleteArtistModal({
   const name = artistName || libraryArtistName;
   const hasLibraryFolderFiles = sources.includes("aurral");
   const readOnlyOnly = !hasLibraryFolderFiles && sources.includes("readonly");
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop">
       <div
         ref={dialogRef}
@@ -100,6 +101,7 @@ export function DeleteArtistModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Plus, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
@@ -34,7 +35,7 @@ export function ModalShell({
   });
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="playlist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -70,7 +71,8 @@ export function ModalShell({
         <div className="playlist-modal__body">{children}</div>
         {footer ? <div className="playlist-modal__footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

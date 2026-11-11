@@ -329,7 +329,7 @@ function RulesDialog({
   );
   const shownRules = useDefault ? state?.defaultRules : customRules;
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -389,7 +389,8 @@ function RulesDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

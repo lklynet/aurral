@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import { ImagePlus, Link as LinkIcon, Upload, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage.tsx";
@@ -163,7 +164,7 @@ export default function ArtworkEditorModal({
     }
   })();
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -298,6 +299,7 @@ export default function ArtworkEditorModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
