@@ -257,6 +257,26 @@ export const updateLibraryAlbumReleaseGroup = async (
   return result;
 };
 
+export const fetchLibraryTrackMatches = (trackId: string | number, { signal }: SignalOptions) =>
+  parseResponse(
+    libraryMatchesClient.tracks[":id"].matches.$get(
+      { param: { id: encodeURIComponent(trackId) } },
+      { init: { signal } },
+    ),
+  );
+
+export const updateLibraryTrackRecording = async (trackId: string | number, mbid: string) => {
+  const result = await parseResponse(
+    libraryMatchesClient.tracks[":id"].recording.$put({
+      param: { id: encodeURIComponent(trackId) },
+      json: { mbid },
+    }),
+  );
+  clearLibraryPageCache();
+  void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
+  return result;
+};
+
 export const getLibraryCustomArtworkUrl = (
   kind: "album" | "track",
   id: string | number,

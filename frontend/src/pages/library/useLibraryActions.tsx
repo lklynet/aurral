@@ -77,7 +77,7 @@ import { DeleteAlbumModal } from "../ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "../ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "../ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "../LibraryInfoModal";
-import { AlbumMatchModal } from "./MatchModal";
+import { AlbumMatchModal, TrackMatchModal } from "./MatchModal";
 import ManualMissingSearchModal, {
   type ManualSearchJob,
 } from "../activity/ManualMissingSearchModal.tsx";
@@ -221,6 +221,10 @@ export function useLibraryActions({
   const [matchAlbum, setMatchAlbum] = useState<{
     album: LibraryAlbum;
     artist: LibraryArtist | null;
+  } | null>(null);
+  const [matchTrack, setMatchTrack] = useState<{
+    track: LibraryTrack;
+    album: LibraryAlbum;
   } | null>(null);
 
   const [deleteFiles, setDeleteFiles] = useState(false);
@@ -1250,6 +1254,16 @@ export function useLibraryActions({
             },
           ]
         : []),
+      ...(canMatchAlbum && researchAlbum?.releaseGroupMbid
+        ? [
+            {
+              id: "match",
+              label: "Match track",
+              icon: Fingerprint,
+              onSelect: () => setMatchTrack({ track, album: researchAlbum }),
+            },
+          ]
+        : []),
       ...(!file && !awaitingRelease
         ? [
             {
@@ -1484,6 +1498,19 @@ export function useLibraryActions({
                   ? `Matched ${matchAlbum.album.title || "Album"} to ${result.musicbrainzTitle || "MusicBrainz"}`
                   : `Removed the match from ${matchAlbum.album.title || "Album"}`,
             );
+          }}
+        />
+      ) : null}
+      {matchTrack ? (
+        <TrackMatchModal
+          key={matchTrack.track.id}
+          track={matchTrack.track}
+          album={matchTrack.album}
+          onClose={() => setMatchTrack(null)}
+          onSaved={(result) => {
+            setMatchTrack(null);
+            void invalidateLibraryViews();
+            showSuccess(`Matched ${matchTrack.track.title || "Track"} to ${result.title}`);
           }}
         />
       ) : null}

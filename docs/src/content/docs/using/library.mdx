@@ -197,7 +197,7 @@ For music from elsewhere, importing and **Clean up Library** fill in the tags a 
 
 ### Tag a file yourself
 
-When Aurral finds no confident MusicBrainz match for a file, it leaves the file's tags as they are and says so. The file then stays out of its album, or the album shows its track as missing. To fix it, tag the file yourself with [MusicBrainz Picard](https://picard.musicbrainz.org/) or another tag editor:
+When Aurral finds no confident MusicBrainz match for a file, it leaves the file's tags as they are and says so. The file then stays out of its album, or the album shows its track as missing. If the file is in a matched album in the Library folder, select **Match track** in its menu. Otherwise, tag the file yourself with [MusicBrainz Picard](https://picard.musicbrainz.org/) or another tag editor:
 
 1. Back up the file. A tag editor rewrites the file, and a save that fails or is interrupted can corrupt it. Aurral does not check or undo changes made outside it, so the files you edit are your responsibility.
 2. In Picard's **Options** menu, turn off **Rename Files** and **Move Files**, so the file stays where Aurral finds it.
@@ -277,6 +277,8 @@ Artists and albums named in another script, such as Japanese, Korean, or Cyrilli
 An unlinked artist stays in the Library. Its Discover page can still offer to add or monitor the artist, because Aurral cannot tell that the files belong to that artist.
 
 To fix a wrong or missing link, select **Match artist** in the artist's menu or **Match album** in the album's menu, pick the right one, and select **Save**. You can also paste a MusicBrainz ID or musicbrainz.org link. For a linked artist, **Match album** lists the artist's releases. If another Library artist or album already has that match, Aurral merges the two. A matched album takes its cover from MusicBrainz unless its files have art. Later scans keep your choice, and **Remove match** keeps the artist or album unlinked. An album whose files have MusicBrainz album tags keeps the match its tags give, so retag the files to change it.
+
+To fix a track with a wrong or partial title, select **Match track** in the track's menu, pick the right track from its album's tracklist, and select **Save**. Aurral writes that track's MusicBrainz title, artist, and track number to the file, and the track keeps its favorites and play counts. The album needs a match first. Files in read-only folders stay as they are, so tag those yourself.
 
 ## Known limits
 

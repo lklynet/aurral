@@ -127,7 +127,7 @@ function matchMusicBrainzTrack(
   return null;
 }
 
-function musicBrainzTags(
+export function musicBrainzTags(
   mbAlbum: NormalizedAlbum,
   { release, track }: { release: NormalizedRelease; track: NormalizedTrack },
 ) {

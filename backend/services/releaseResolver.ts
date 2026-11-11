@@ -197,7 +197,7 @@ export function chooseLibraryRelease(group: NormalizedAlbum) {
   return album ? albumEdition(group, album) : selectAlbumRelease(group);
 }
 
-function albumEdition(group: NormalizedAlbum, album: LibraryMetadata) {
+export function albumEdition(group: NormalizedAlbum, album: LibraryMetadata) {
   return chooseRequestedRelease(group, {
     requestedRelease: album.requestedRelease,
     listedRelease: album.trackList?.release,

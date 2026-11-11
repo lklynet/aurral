@@ -1,6 +1,7 @@
 export type PerfContext = {
   artistId: number;
   albumId: number;
+  trackId: number;
   lastAlbumPage: number;
   playlistId: string;
   editPlaylist: { id: string; songIds: string[][] };
@@ -166,6 +167,10 @@ export const scenarios: Scenario[] = [
   {
     name: "album match",
     requests: ({ albumId }) => [`/api/library/albums/${albumId}/matches`],
+  },
+  {
+    name: "track match",
+    requests: ({ trackId }) => [`/api/library/tracks/${trackId}/matches`],
   },
   {
     name: "artist match",
