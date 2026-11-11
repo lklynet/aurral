@@ -408,9 +408,10 @@ const LINK_FALLBACK = new Set<string | undefined>([
 async function renameLibraryFile(from: string, to: string) {
   await fs.mkdir(path.dirname(to), { recursive: true });
   let keptOld = false;
+  let linked = false;
   try {
     await fs.link(from, to);
-    keptOld = true;
+    keptOld = linked = true;
   } catch (error) {
     const failure = asAppError(error);
     if (failure?.code === "EEXIST") {
@@ -426,8 +427,17 @@ async function renameLibraryFile(from: string, to: string) {
       throw error;
     }
   }
+  if (keptOld) {
+    try {
+      await fs.unlink(from);
+    } catch (error) {
+      if (asAppError(error)?.code !== "ENOENT") {
+        if (linked) await fs.unlink(to).catch(() => {});
+        throw error;
+      }
+    }
+  }
   commitRename(from, to);
-  if (keptOld) await fs.unlink(from).catch(() => {});
   await transferSidecars(from, to, "move").catch(() => {});
 }
 
