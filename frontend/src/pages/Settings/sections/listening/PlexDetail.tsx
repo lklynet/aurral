@@ -127,6 +127,7 @@ export function PlexDetail() {
               {server.playlistError ? (
                 <SettingsNote tone="warning">{server.playlistError}</SettingsNote>
               ) : null}
+              {server.playlistNote ? <SettingsNote>{server.playlistNote}</SettingsNote> : null}
               <SettingsRow label="Server URL">
                 <span className="settings-row__value">{server.url}</span>
               </SettingsRow>

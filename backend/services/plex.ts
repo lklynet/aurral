@@ -21,7 +21,9 @@ const plexServerSchema = v.object({
   sendPlaylists: v.boolean(),
 });
 const serverSchema = v.nullable(plexServerSchema);
-const playlistStatusSchema = v.nullable(v.object({ error: v.nullable(v.string()) }));
+const playlistStatusSchema = v.nullable(
+  v.object({ error: v.nullable(v.string()), note: v.optional(v.nullable(v.string()), null) }),
+);
 const pendingRemovalsSchema = v.nullable(v.array(v.string()));
 const record = v.record(v.string(), v.unknown());
 const object = (value: unknown) => (v.is(record, value) ? value : {});
@@ -49,21 +51,24 @@ export function savePlexServer(server: PlexServer) {
     ...server,
     token: encryptWithKey(server.token, getSettingsEncryptionKey()),
   });
-  if (!server.sendPlaylists) setPlaylistError(null);
+  if (!server.sendPlaylists) setPlaylistStatus(NO_STATUS);
 }
 
 export function removePlexServer() {
   dbOps.setJSONSetting(SERVER_KEY, null);
-  setPlaylistError(null);
+  setPlaylistStatus(NO_STATUS);
   setPendingRemovals([]);
 }
 
-export function plexPlaylistError() {
-  return dbOps.getJSONSetting(PLAYLIST_STATUS_KEY, playlistStatusSchema)?.error ?? null;
+type PlaylistStatus = NonNullable<v.InferOutput<typeof playlistStatusSchema>>;
+const NO_STATUS: PlaylistStatus = { error: null, note: null };
+
+export function plexPlaylistStatus() {
+  return dbOps.getJSONSetting(PLAYLIST_STATUS_KEY, playlistStatusSchema) ?? NO_STATUS;
 }
 
-function setPlaylistError(error: string | null) {
-  dbOps.setJSONSetting(PLAYLIST_STATUS_KEY, { error });
+function setPlaylistStatus(status: PlaylistStatus) {
+  dbOps.setJSONSetting(PLAYLIST_STATUS_KEY, status);
 }
 
 const pendingRemovals = () =>
@@ -166,18 +171,32 @@ async function musicSectionFor(server: PlexServer, folder: string) {
     headers: plexHeaders(server.token),
     timeoutMs: TIMEOUT_MS,
   });
-  const section = unknownList(object(object(data).MediaContainer).Directory)
+  const sections = unknownList(object(object(data).MediaContainer).Directory)
     .map(object)
-    .find(
-      (directory) =>
-        directory.type === "artist" &&
-        unknownList(directory.Location).some((location) => {
-          const root = text(object(location).path).replace(/\/+$/, "");
-          return root && (folder === root || folder.startsWith(`${root}/`));
-        }),
-    );
+    .filter((directory) => directory.type === "artist")
+    .map((directory) => ({
+      key: text(directory.key),
+      title: text(directory.title),
+      match: Math.max(
+        ...unknownList(directory.Location)
+          .map((location) => text(object(location).path).replace(/\/+$/, ""))
+          .filter((root) => root && (folder === root || folder.startsWith(`${root}/`)))
+          .map((root) => root.length),
+      ),
+    }))
+    .filter((section) => section.match > 0);
+  const closest = Math.max(...sections.map((section) => section.match));
+  const tied = sections.filter((section) => section.match === closest);
+  const [section] = tied;
   if (!section) throw new PlexError(`No Plex music library has ${folder}`);
-  return text(section.key);
+  const titles = new Intl.ListFormat("en").format(tied.map(({ title }) => `"${title}"`));
+  return {
+    key: section.key,
+    note:
+      tied.length > 1
+        ? `Plex libraries ${titles} share ${folder}. Playlists go to "${section.title}".`
+        : null,
+  };
 }
 
 async function plexPlaylistKeys(server: PlexServer, title: string) {
@@ -213,6 +232,7 @@ export async function sendPlaylistsToPlex(
   if (!server?.sendPlaylists) return;
   const removals = [...new Set([...pendingRemovals(), ...remove])];
   if (!upload.length && !removals.length) return;
+  let note = plexPlaylistStatus().note;
   const stillSending = () => {
     const current = getPlexServer();
     return current?.sendPlaylists === true && current.url === server.url;
@@ -224,12 +244,13 @@ export async function sendPlaylistsToPlex(
     }
     const files = upload.filter((file) => !file.empty);
     for (const file of upload) if (file.empty) await deletePlexPlaylist(server, file.title);
-    const sectionId = files.length ? await musicSectionFor(server, libraryFolder) : "";
+    const section = files.length ? await musicSectionFor(server, libraryFolder) : { key: "", note };
+    note = section.note;
     for (const file of files) {
       if (!stillSending()) return;
       try {
         await http.post(`${server.url}/playlists/upload`, null, {
-          query: { sectionID: sectionId, path: file.path },
+          query: { sectionID: section.key, path: file.path },
           headers: plexHeaders(server.token),
           timeoutMs: TIMEOUT_MS,
         });
@@ -240,11 +261,12 @@ export async function sendPlaylistsToPlex(
         );
       }
     }
-    setPlaylistError(null);
+    setPlaylistStatus({ error: null, note });
   } catch (error) {
-    setPlaylistError(
-      error instanceof PlexError ? error.message : "Couldn't send playlists to Plex",
-    );
+    setPlaylistStatus({
+      error: error instanceof PlexError ? error.message : "Couldn't send playlists to Plex",
+      note,
+    });
   } finally {
     setPendingRemovals(removals);
   }

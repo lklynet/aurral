@@ -193,7 +193,12 @@ test("names stay unique when the owner prefix is off", () => {
   );
 });
 
-function fakePlex({ uploadStatus = 200 } = {}) {
+const defaultSections = () => [
+  { key: "2", type: "movie", Location: [{ path: downloadRoot }] },
+  { key: "3", type: "artist", Location: [{ path: path.dirname(downloadRoot) }] },
+];
+
+function fakePlex({ uploadStatus = 200, sections = defaultSections() } = {}) {
   const requests: string[] = [];
   const playlists = new Map<string, string>();
   const fail = { deletes: false };
@@ -203,14 +208,7 @@ function fakePlex({ uploadStatus = 200 } = {}) {
     if (url.href === "https://plex.tv/api/v2/user") return Response.json({ id: 5, username: "b" });
     if (url.pathname === "/accounts") return Response.json({ MediaContainer: { Account: [] } });
     if (url.pathname === "/library/sections")
-      return Response.json({
-        MediaContainer: {
-          Directory: [
-            { key: "2", type: "movie", Location: [{ path: downloadRoot }] },
-            { key: "3", type: "artist", Location: [{ path: path.dirname(downloadRoot) }] },
-          ],
-        },
-      });
+      return Response.json({ MediaContainer: { Directory: sections } });
     if (url.pathname === "/playlists/upload") {
       const file = url.searchParams.get("path") ?? "";
       requests.push(`upload ${url.searchParams.get("sectionID")} ${path.basename(file)}`);
@@ -251,7 +249,42 @@ test("Plex gets each changed playlist file and loses renamed or emptied ones", a
 
   assert.deepEqual(fake.requests, ["upload 3 Old.m3u", "delete Old", "upload 3 New.m3u"]);
   assert.deepEqual([...fake.playlists.keys()], ["New"]);
-  assert.equal(plex.plexPlaylistError(), null);
+  assert.equal(plex.plexPlaylistStatus().error, null);
+});
+
+test("Plex playlists go to the music library closest to the Library folder", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const library = (key: string, title: string, folder: string) => ({
+    key,
+    title,
+    type: "artist",
+    Location: [{ path: "/elsewhere" }, { path: folder }],
+  });
+  const fake = fakePlex({
+    sections: [
+      library("3", "Everything", path.dirname(downloadRoot)),
+      library("4", "Music", `${downloadRoot}/`),
+    ],
+  });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Mix" });
+  await addDownloadedTrack(playlist.id, "Song A");
+
+  await playlistManager.syncPlaylists();
+  assert.deepEqual(fake.requests, ["upload 4 Mix.m3u"]);
+  assert.equal(plex.plexPlaylistStatus().note, null);
+
+  fakePlex({
+    sections: [
+      library("3", "Everything", path.dirname(downloadRoot)),
+      library("4", "Music", `${downloadRoot}/`),
+      library("5", "Music 2", downloadRoot),
+    ],
+  });
+  await playlistManager.syncPlaylists({ rewrite: true });
+  assert.equal(
+    plex.plexPlaylistStatus().note,
+    `Plex libraries "Music" and "Music 2" share ${downloadRoot}. Playlists go to "Music".`,
+  );
 });
 
 test("a playlist Plex can't match shows an error until an upload works", async () => {
@@ -261,11 +294,11 @@ test("a playlist Plex can't match shows an error until an upload works", async (
   await addDownloadedTrack(playlist.id, "Song A");
 
   await playlistManager.syncPlaylists();
-  assert.match(plex.plexPlaylistError() ?? "", /Plex found none of the tracks in Mix/);
+  assert.match(plex.plexPlaylistStatus().error ?? "", /Plex found none of the tracks in Mix/);
 
   fakePlex();
   await playlistManager.syncPlaylists({ rewrite: true });
-  assert.equal(plex.plexPlaylistError(), null);
+  assert.equal(plex.plexPlaylistStatus().error, null);
 });
 
 test("a rename Plex couldn't apply removes the old playlist on the next sync", async () => {
