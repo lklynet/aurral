@@ -311,6 +311,18 @@ function readStoredMetadata<Schema extends v.GenericSchema>(
   return null;
 }
 
+const persistedMetadataReads = new Map<string, ReturnType<typeof dbOps.getMetadataResponseAsync>>();
+
+const readPersistedEntryOnce = (cacheKey: string) => {
+  const running = persistedMetadataReads.get(cacheKey);
+  if (running) return running;
+  const read = dbOps
+    .getMetadataResponseAsync(cacheKey)
+    .finally(() => persistedMetadataReads.delete(cacheKey));
+  persistedMetadataReads.set(cacheKey, read);
+  return read;
+};
+
 async function readCachedMetadata<Schema extends v.GenericSchema>(
   cacheKey: string,
   schema: Schema,
@@ -327,7 +339,9 @@ async function readCachedMetadata<Schema extends v.GenericSchema>(
     const persisted = readStoredMetadata(
       cacheKey,
       schema,
-      await dbOps.getMetadataResponseAsync(cacheKey),
+      await (persistent
+        ? dbOps.getMetadataResponseAsync(cacheKey)
+        : readPersistedEntryOnce(cacheKey)),
     );
     const current = readHot();
     if (!persisted) {

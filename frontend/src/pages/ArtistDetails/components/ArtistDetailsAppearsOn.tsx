@@ -1,5 +1,4 @@
-import ArtworkImage from "../../../components/ArtworkImage";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Music } from "../../../components/icons";
 import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
@@ -21,6 +20,7 @@ import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 import { artworkHoverTint } from "../../../utils/imageColors.ts";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 
 const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>
@@ -30,28 +30,22 @@ const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
 export function ArtistDetailsAppearsOn({
   artist,
   loadingAppearsOn = false,
-  albumCovers,
-  fulfilledCoverIds,
   artistCoverImage,
   getAlbumStatus,
   canAddAlbum,
   handleRequestAlbum,
   requestingAlbum,
   artistName,
-  onVisibleCoverIdsChange,
   viewAllLink,
 }: {
   artist: Partial<ArtistDetailsResponse>;
   loadingAppearsOn?: boolean;
-  albumCovers: Record<string, string | undefined>;
-  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
   artistCoverImage: string | null | undefined;
   getAlbumStatus: ReturnType<typeof useArtistDetailsLibrary>["getAlbumStatus"];
   canAddAlbum: boolean;
   handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
   requestingAlbum: string | null;
   artistName: string;
-  onVisibleCoverIdsChange?: (ids: string[]) => void;
   viewAllLink?: { to: string; state?: object } | null;
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
@@ -61,15 +55,6 @@ export function ArtistDetailsAppearsOn({
     () => sortLatest(releaseGroups).slice(0, previewLimit),
     [previewLimit, releaseGroups],
   );
-
-  useEffect(() => {
-    onVisibleCoverIdsChange?.(visibleReleaseGroups.map((item) => item.id).filter(Boolean));
-  }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
-
-  const coverOptions = (releaseGroup: ReleaseGroup) => ({
-    artistFallback: artistCoverImage,
-    resolved: fulfilledCoverIds?.has(releaseGroup.id),
-  });
 
   const releaseLink = (releaseGroup: ReleaseGroup, coverUrl: string) =>
     getReleaseGroupLink(releaseGroup, {
@@ -101,11 +86,7 @@ export function ArtistDetailsAppearsOn({
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);
           const artistCredit = releaseGroup["artist-credit"]?.[0]?.name || "";
-          const coverUrl = getReleaseGroupCoverUrl(
-            releaseGroup,
-            albumCovers,
-            coverOptions(releaseGroup),
-          );
+          const coverUrl = getReleaseGroupCoverUrl(releaseGroup);
           return (
             <article
               key={releaseGroup.id}
@@ -114,13 +95,18 @@ export function ArtistDetailsAppearsOn({
               {...artworkHoverTint}
             >
               <div className="artist-release-card__cover" data-artwork>
-                {coverUrl ? (
-                  <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="artist-release-card__placeholder">
-                    <Music className="artist-icon-lg" />
-                  </div>
-                )}
+                <ReleaseCoverImage
+                  src={coverUrl}
+                  fallback={artistCoverImage}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  placeholder={
+                    <div className="artist-release-card__placeholder">
+                      <Music className="artist-icon-lg" />
+                    </div>
+                  }
+                />
                 <div className="artist-release-card__action">
                   {status?.status === "available" || status?.status === "added" ? (
                     <ReleaseStatusCheck partial={status?.partial} />
@@ -146,7 +132,10 @@ export function ArtistDetailsAppearsOn({
                 </div>
               </div>
               <h3 className="artist-release-card__title artist-clamp-2">
-                <OptionalLink link={releaseLink(releaseGroup, coverUrl)} className="card-link">
+                <OptionalLink
+                  link={releaseLink(releaseGroup, coverUrl || artistCoverImage || "")}
+                  className="card-link"
+                >
                   {releaseGroup.title}
                 </OptionalLink>
               </h3>

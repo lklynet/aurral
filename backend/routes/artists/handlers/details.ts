@@ -21,6 +21,7 @@ import {
 } from "../utils.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { invalidateArtistImage } from "../../../services/imageService.ts";
+import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import {
   getArtistTagPayload,
   buildArtistBase,
@@ -28,6 +29,16 @@ import {
 } from "../shared/transform.ts";
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
+
+const TAG_WAIT_MS = 2000;
+
+const tagsWithin = (tags: ReturnType<typeof getArtistTagPayload>) => {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<Awaited<typeof tags>>((resolve) => {
+    timer = setTimeout(resolve, TAG_WAIT_MS, { tags: [], genres: [] });
+  });
+  return Promise.race([tags, deadline]).finally(() => clearTimeout(timer));
+};
 
 async function loadArtistDetails(
   mbid: string,
@@ -43,31 +54,35 @@ async function loadArtistDetails(
     appearsOnLimit: number | null;
   },
 ) {
-  const metadataArtist = coreOnly ? null : await getArtistByMbid(mbid).catch(() => null);
+  const metadataArtistPromise = getArtistByMbid(mbid).catch(() => null);
+  const releaseGroupsPromise = musicbrainzGetArtistReleaseGroups(
+    mbid,
+    selectedReleaseTypes,
+    coreOnly ? { includeTrackCounts: false } : { includeTrackCounts: !appearsOnLimit },
+  ).then(withListenBrainzStats);
+  const appearsOnPromise = coreOnly
+    ? Promise.resolve([])
+    : musicbrainzGetArtistAppearsOnReleaseGroups(mbid, { limit: appearsOnLimit }).catch(() => []);
+  const metadataArtist = await metadataArtistPromise;
   const name =
     artistName ||
     metadataArtist?.name ||
     (await musicbrainzGetArtistNameByMbid(mbid)) ||
     "Unknown Artist";
-  const tagPayload = coreOnly
-    ? { tags: [], genres: [] }
-    : await getArtistTagPayload(mbid, name, metadataArtist);
-  const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
-    musicbrainzGetArtistReleaseGroups(mbid, selectedReleaseTypes, {
-      includeTrackCounts: !appearsOnLimit,
-    }).then(withListenBrainzStats),
-    coreOnly
-      ? []
-      : musicbrainzGetArtistAppearsOnReleaseGroups(mbid, { limit: appearsOnLimit }).catch(() => []),
+  const [tagPayload, { releaseGroups, pending }, appearsOnReleaseGroups] = await Promise.all([
+    tagsWithin(getArtistTagPayload(mbid, name, metadataArtist)),
+    releaseGroupsPromise,
+    appearsOnPromise,
   ]);
   return {
     ...buildArtistBase(name, mbid, metadataArtist),
     tags: tagPayload.tags,
     genres: tagPayload.genres,
-    "release-groups": releaseGroups,
-    "appears-on-release-groups": appearsOnReleaseGroups,
+    "release-groups": withCoverUrls(releaseGroups),
+    "appears-on-release-groups": withCoverUrls(appearsOnReleaseGroups),
     "release-group-count": releaseGroups.length,
     "release-count": releaseGroups.length,
+    "release-stats-pending": pending,
   };
 }
 
@@ -176,7 +191,9 @@ export default new Hono<AppEnv>()
       if (pending) {
         logger.info("api", "Request already in progress, waiting", { requestKey });
         try {
-          return c.json(await pending, 200);
+          const artist = await pending;
+          if (artist["release-stats-pending"]) c.header("Cache-Control", "no-store");
+          return c.json(artist, 200);
         } catch (error) {
           const failure = asAppError(error);
           const status = failure?.response?.status;
@@ -204,7 +221,9 @@ export default new Hono<AppEnv>()
       pendingArtistRequests.set(requestKey, fetchPromise);
 
       try {
-        return c.json(await fetchPromise, 200);
+        const artist = await fetchPromise;
+        if (artist["release-stats-pending"]) c.header("Cache-Control", "no-store");
+        return c.json(artist, 200);
       } catch {
         return c.json(
           {
@@ -214,6 +233,7 @@ export default new Hono<AppEnv>()
             "appears-on-release-groups": [],
             "release-group-count": 0,
             "release-count": 0,
+            "release-stats-pending": false,
           },
           200,
         );

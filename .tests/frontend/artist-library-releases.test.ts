@@ -16,8 +16,9 @@ const managed = (mbid: string, monitored: boolean, sizeOnDisk = 0) => ({
   id: `lidarr-${mbid}`,
   mbid,
   albumName: mbid,
+  releaseDate: null,
   monitored,
-  statistics: { sizeOnDisk, percentOfTracks: 0 },
+  statistics: { trackCount: 10, trackFileCount: 0, sizeOnDisk, percentOfTracks: 0 },
 });
 
 test("the library tab lists albums with files plus requested albums still missing, once each", () => {

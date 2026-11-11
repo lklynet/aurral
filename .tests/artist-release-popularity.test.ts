@@ -1,10 +1,11 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { testClient } from "hono/testing";
+import { test, vi } from "vite-plus/test";
 
 import details from "../backend/routes/artists/handlers/details.ts";
 import { listenbrainzGetReleaseGroupListens } from "../backend/services/apiClients/listenbrainz.ts";
-import { json, openArtistStream, stubFetch } from "./helpers/artistStream.ts";
+import { json, stubFetch } from "./helpers/stubFetch.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 
 useFakeClock();
@@ -79,16 +80,21 @@ const summarize = (
     listenCount: releaseGroup.listenCount ?? null,
   }));
 
-const discographyOf = async (stream: ReturnType<typeof openArtistStream>) => {
-  const { data } = await stream.waitFor(
-    ({ event, data }) => event === "artist" && "release-groups" in data,
-  );
-  return summarize(data["release-groups"]);
-};
+const detailsClient = testClient(details);
 
-async function getArtistDetails(mbid: string) {
-  const response = await details.request(`/artists/${mbid}?mode=full&appearsOnLimit=6`);
-  return response.json();
+async function loadArtist(mbid: string) {
+  const response = await detailsClient.artists[":mbid"].$get({
+    param: { mbid },
+    query: { mode: "core" },
+  });
+  const artist = await response.json();
+  assert.ok("release-groups" in artist);
+  return {
+    discography: summarize(artist["release-groups"]),
+    releaseGroups: artist["release-groups"],
+    pending: artist["release-stats-pending"],
+    cacheControl: response.headers.get("cache-control"),
+  };
 }
 
 const stubPlaid = (
@@ -118,6 +124,12 @@ const scoredPlaid = [
   { title: "Double Figure", type: "Single", listenerCount: null, listenCount: null },
 ];
 
+const unscoredPlaid = scoredPlaid.map((release) => ({
+  ...release,
+  listenerCount: null,
+  listenCount: null,
+}));
+
 const plaidPopularity = ({ releases }: ReturnType<typeof plaid>) => [
   popularityRow(releases.polymer, 17712, 1397),
   popularityRow(releases.doubleFigureSingle, null, null),
@@ -126,7 +138,7 @@ const plaidPopularity = ({ releases }: ReturnType<typeof plaid>) => [
   popularityRow(releases.doubleFigure, 67384, 4906),
 ];
 
-test("the artist stream gives each release the ListenBrainz listeners of its own release group", async (t: import("vite-plus/test").TestContext) => {
+test("artist details give each release the ListenBrainz listeners of its own release group and keep them", async (t: import("vite-plus/test").TestContext) => {
   const artist = plaid(1);
   const requests: { release_group_mbids: string[] }[] = [];
   stubPlaid(t, artist, (body) => {
@@ -134,30 +146,16 @@ test("the artist stream gives each release the ListenBrainz listeners of its own
     return json(plaidPopularity(artist));
   });
 
-  const stream = openArtistStream(artist.mbid);
-  t.onTestFinished(() => stream.close());
+  const first = await loadArtist(artist.mbid);
+  const second = await loadArtist(artist.mbid);
 
-  assert.deepEqual(await discographyOf(stream), scoredPlaid);
-  await stream.waitFor(({ event }) => event === "complete");
+  assert.deepEqual(first.discography, scoredPlaid);
+  assert.deepEqual(second.discography, scoredPlaid);
+  assert.equal(first.pending, false);
   assert.deepEqual(requests, [
     { release_group_mbids: Object.values(artist.releases).map(({ id }) => id) },
   ]);
 });
-
-test("the artist details fallback gives releases the same ListenBrainz listeners as the stream", async (t) => {
-  const artist = plaid(2);
-  stubPlaid(t, artist, () => json(plaidPopularity(artist)));
-
-  const details = await getArtistDetails(artist.mbid);
-
-  assert.deepEqual(summarize(requireFixture(details)["release-groups"]), scoredPlaid);
-});
-
-const unscoredPlaid = scoredPlaid.map((release) => ({
-  ...release,
-  listenerCount: null,
-  listenCount: null,
-}));
 
 const listenBrainzFailures = [
   [
@@ -171,7 +169,7 @@ const listenBrainzFailures = [
 ] as const;
 
 listenBrainzFailures.forEach(([failure, respond], index) => {
-  test(`when ListenBrainz ${failure}, the artist stream still sends the discography and does not ask again right away`, async (t: import("vite-plus/test").TestContext) => {
+  test(`when ListenBrainz ${failure}, artist details still list the discography and do not ask again right away`, async (t: import("vite-plus/test").TestContext) => {
     const artist = plaid(3 + index);
     let popularityRequests = 0;
     let metadataRequests = 0;
@@ -189,11 +187,9 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
     );
 
     for (let load = 0; load < 2; load += 1) {
-      const stream = openArtistStream(artist.mbid);
-      t.onTestFinished(() => stream.close());
-
-      assert.deepEqual(await discographyOf(stream), unscoredPlaid);
-      await stream.waitFor(({ event }) => event === "complete");
+      const { discography, pending } = await loadArtist(artist.mbid);
+      assert.deepEqual(discography, unscoredPlaid);
+      assert.equal(pending, false);
     }
     assert.deepEqual(
       { popularityRequests, metadataRequests },
@@ -202,7 +198,7 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
   });
 });
 
-test("the artist stream fills missing release dates from ListenBrainz and keeps the dates it already has", async (t: import("vite-plus/test").TestContext) => {
+test("artist details fill missing release dates from ListenBrainz and keep the dates they already have", async (t: import("vite-plus/test").TestContext) => {
   const artist = plaid(6);
   const { releases } = artist;
   const listenBrainzDates = {
@@ -229,17 +225,10 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
     },
   );
 
-  const stream = openArtistStream(artist.mbid, { appearsOnLimit: "6" });
-  t.onTestFinished(() => stream.close());
-  const { data } = await stream.waitFor(
-    ({ event, data }) => event === "artist" && "release-groups" in data,
-  );
+  const { releaseGroups } = await loadArtist(artist.mbid);
 
   assert.deepEqual(
-    data["release-groups"].map((releaseGroup: { title: string; "first-release-date": string }) => [
-      releaseGroup.title,
-      releaseGroup["first-release-date"],
-    ]),
+    releaseGroups.map((releaseGroup) => [releaseGroup.title, releaseGroup["first-release-date"]]),
     [
       ["Double Figure", "2001-05-28"],
       ["FACT Mix 287: Plaid", "2011-09-30"],
@@ -258,19 +247,41 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
   ]);
 });
 
-test("the artist stream sends the discography without listeners when ListenBrainz does not answer in time", async (t: import("vite-plus/test").TestContext) => {
+test("artist details that miss the ListenBrainz deadline say so and the next load has the listeners", async (t: import("vite-plus/test").TestContext) => {
   const artist = plaid(5);
-  let answer!: (value: Response) => void;
-  const unanswered = new Promise<Response>((resolve) => {
-    answer = resolve;
+  const late = Promise.withResolvers<Response>();
+  stubPlaid(t, artist, () => late.promise);
+  t.onTestFinished(() => late.resolve(json([])));
+
+  const first = await loadArtist(artist.mbid);
+  late.resolve(json(plaidPopularity(artist)));
+  const second = await loadArtist(artist.mbid);
+
+  assert.deepEqual(
+    { discography: first.discography, pending: first.pending, cacheControl: first.cacheControl },
+    { discography: unscoredPlaid, pending: true, cacheControl: "no-store" },
+  );
+  assert.deepEqual(second.discography, scoredPlaid);
+  assert.equal(second.pending, false);
+});
+
+test("week-old listeners are served at once while ListenBrainz refreshes them", async (t: import("vite-plus/test").TestContext) => {
+  const artist = plaid(7);
+  const refresh = Promise.withResolvers<Response>();
+  let requests = 0;
+  stubPlaid(t, artist, () => {
+    requests += 1;
+    return requests === 1 ? json(plaidPopularity(artist)) : refresh.promise;
   });
-  stubPlaid(t, artist, () => unanswered);
-  t.onTestFinished(() => answer(json([])));
+  t.onTestFinished(() => refresh.resolve(json([])));
 
-  const stream = openArtistStream(artist.mbid);
-  t.onTestFinished(() => stream.close());
+  await loadArtist(artist.mbid);
+  vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
+  const stale = await loadArtist(artist.mbid);
 
-  assert.deepEqual(await discographyOf(stream), unscoredPlaid);
+  assert.deepEqual(stale.discography, scoredPlaid);
+  assert.equal(stale.pending, false);
+  assert.equal(requests, 2);
 });
 
 test("a discography of more than a thousand releases is scored in batches ListenBrainz accepts", async (t) => {

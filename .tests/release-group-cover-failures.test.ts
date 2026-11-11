@@ -21,13 +21,19 @@ const providerServer = await createMockHttpServer((request, response) => {
 });
 process.env.BRAINZMASH_BASE_URL = providerServer.url;
 
-const [isolatedState, { dbOps }, { clearMetadataProviderCaches }, { fetchReleaseGroupCoverUrl }] =
-  await setupIsolatedBackend(
-    "release-group-cover-failures",
-    () => import("../backend/db/helpers/index.ts"),
-    () => import("../backend/services/providers/brainzmashProvider.ts"),
-    () => import("../backend/services/releaseGroupCoverService.ts"),
-  );
+const [
+  isolatedState,
+  { dbOps },
+  { clearMetadataProviderCaches },
+  { fetchReleaseGroupCoverUrl, withCoverUrls },
+  { buildStableImageProxyUrl },
+] = await setupIsolatedBackend(
+  "release-group-cover-failures",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/releaseGroupCoverService.ts"),
+  () => import("../backend/services/imageProxyService.ts"),
+);
 
 dbOps.updateSettings({
   integrations: {
@@ -127,4 +133,23 @@ test("a failed metadata lookup still allows the artist/title fallback to return 
   assert.equal(result.transientError, false);
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
   assert.equal(warnings.mock.calls.length, 1);
+});
+
+test("every release group carries a cover URL that needs no metadata lookup", () => {
+  const cachedImage = "https://coverartarchive.org/release-group/cached/front-500.jpg";
+  dbOps.setImage(`rg:${mbid}`, cachedImage);
+  dbOps.setImage(`rg:${fallbackMbid}`, "NOT_FOUND");
+  const unknownMbid = "33333333-3333-4333-8333-333333333333";
+
+  const covered = withCoverUrls([{ id: mbid }, { id: fallbackMbid }, { id: unknownMbid }]);
+
+  assert.deepEqual(
+    covered.map(({ coverUrl }) => coverUrl),
+    [
+      buildStableImageProxyUrl(cachedImage),
+      null,
+      `/api/artists/release-group/${unknownMbid}/cover/image`,
+    ],
+  );
+  assert.deepEqual(requests, []);
 });

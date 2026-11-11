@@ -11,6 +11,7 @@ import { createOutagePause } from "./outagePause.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { dbOps } from "../../db/helpers/index.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
 interface ListenbrainzSubmitEvent {
@@ -33,11 +34,12 @@ interface ListenbrainzErrorDetails {
 }
 
 const listenbrainzCache = createCache(300);
-const listenbrainzListensCache = createCache<
-  Map<string, { listenCount: number; listenerCount: number }>
->(3600, 200);
-const listenbrainzDatesCache = createCache<Map<string, string>>(3600, 200);
-const LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS = 300;
+const releaseGroupLookupFailures = createCache<true>(300, 500);
+const releaseGroupLookups = new Map<string, Promise<void>>();
+const RELEASE_GROUP_POPULARITY_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const RELEASE_GROUP_MISSING_DATE_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
+const RELEASE_GROUP_DATE_LOOKUP_LIMIT = 300;
+const RELEASE_GROUP_LOOKUP_PRIORITY = 1;
 const LISTENBRAINZ_POPULARITY_BATCH_SIZE = 1000;
 const LISTENBRAINZ_METADATA_BATCH_SIZE = 100;
 
@@ -173,7 +175,14 @@ export async function listenbrainzRequest(
     baseUrl = LISTENBRAINZ_API,
     timeoutMs = LISTENBRAINZ_TIMEOUT_MS,
     data,
-  }: { token?: string | null; baseUrl?: string; timeoutMs?: number; data?: unknown } = {},
+    priority = 0,
+  }: {
+    token?: string | null;
+    baseUrl?: string;
+    timeoutMs?: number;
+    data?: unknown;
+    priority?: number;
+  } = {},
 ): Promise<unknown> {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
@@ -211,19 +220,22 @@ export async function listenbrainzRequest(
     let lastError: unknown = null;
     for (let retryCount = 0; retryCount <= LISTENBRAINZ_MAX_RETRIES; retryCount++) {
       try {
-        const response = await listenbrainzLimiter.schedule(() => {
-          const config: HttpOptions = {
-            query: params,
-            headers: {
-              "User-Agent": LISTENBRAINZ_USER_AGENT,
-              ...(isAuthenticated && { Authorization: `Token ${String(token).trim()}` }),
-            },
-            timeoutMs,
-          };
-          return pause.run(() =>
-            data ? http.post(`${root}${path}`, data, config) : http.get(`${root}${path}`, config),
-          );
-        });
+        const response = await listenbrainzLimiter.schedule(
+          () => {
+            const config: HttpOptions = {
+              query: params,
+              headers: {
+                "User-Agent": LISTENBRAINZ_USER_AGENT,
+                ...(isAuthenticated && { Authorization: `Token ${String(token).trim()}` }),
+              },
+              timeoutMs,
+            };
+            return pause.run(() =>
+              data ? http.post(`${root}${path}`, data, config) : http.get(`${root}${path}`, config),
+            );
+          },
+          { priority },
+        );
         const payload = response.status === 204 ? null : response.data;
         if (cacheKey) listenbrainzCache.set(cacheKey, payload);
         return payload;
@@ -274,46 +286,27 @@ const toBatches = <T>(items: T[], size: number) =>
 const toListenCount = (value: number | null | undefined) =>
   Number.isInteger(value) && value! > 0 ? value! : null;
 
-async function cachedListenbrainzLookup<V>(
-  cache: ReturnType<typeof createCache<Map<string, V>>>,
-  cacheKey: string,
-  lookup: () => Promise<Map<string, V>>,
-) {
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-  try {
-    const value = await lookup();
-    cache.set(cacheKey, value);
-    return value;
-  } catch {
-    const empty = new Map<string, V>();
-    cache.set(cacheKey, empty, LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS);
-    return empty;
-  }
-}
-
-export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids: string[]) =>
-  cachedListenbrainzLookup(listenbrainzListensCache, releaseGroupMbids.join(","), async () => {
-    const batches = await Promise.all(
-      toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
-        listenbrainzRequest(
-          "/1/popularity/release-group",
-          {},
-          { data: { release_group_mbids: mbids } },
-        ),
+export const listenbrainzGetReleaseGroupListens = async (releaseGroupMbids: string[]) => {
+  const batches = await Promise.all(
+    toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
+      listenbrainzRequest(
+        "/1/popularity/release-group",
+        {},
+        { data: { release_group_mbids: mbids }, priority: RELEASE_GROUP_LOOKUP_PRIORITY },
       ),
-    );
-    if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");
-    const listens = new Map<string, { listenCount: number; listenerCount: number }>();
-    for (const row of batches.flatMap((batch) => v.parse(popularityRowsSchema, batch))) {
-      const listenCount = toListenCount(row.total_listen_count);
-      const listenerCount = toListenCount(row.total_user_count);
-      if (row.release_group_mbid && listenCount && listenerCount) {
-        listens.set(row.release_group_mbid, { listenCount, listenerCount });
-      }
+    ),
+  );
+  if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");
+  const listens = new Map<string, { listenCount: number; listenerCount: number }>();
+  for (const row of batches.flatMap((batch) => v.parse(popularityRowsSchema, batch))) {
+    const listenCount = toListenCount(row.total_listen_count);
+    const listenerCount = toListenCount(row.total_user_count);
+    if (row.release_group_mbid && listenCount && listenerCount) {
+      listens.set(row.release_group_mbid, { listenCount, listenerCount });
     }
-    return listens;
-  });
+  }
+  return listens;
+};
 
 const listenbrainzMbids = lenient(v.array(v.nullable(v.string())));
 
@@ -382,24 +375,116 @@ const releaseGroupMetadataSchema = v.record(
 const isReleaseGroupMetadata = (batch: unknown) =>
   Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch!);
 
-export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
-  cachedListenbrainzLookup(listenbrainzDatesCache, releaseGroupMbids.join(","), async () => {
-    const batches = await Promise.all(
-      toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
-        listenbrainzRequest("/1/metadata/release_group/", { release_group_mbids: mbids.join(",") }),
+const listenbrainzGetReleaseGroupDates = async (releaseGroupMbids: string[]) => {
+  const batches = await Promise.all(
+    toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
+      listenbrainzRequest(
+        "/1/metadata/release_group/",
+        { release_group_mbids: mbids.join(",") },
+        { priority: RELEASE_GROUP_LOOKUP_PRIORITY },
       ),
-    );
-    if (!batches.every(isReleaseGroupMetadata)) {
-      throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
+    ),
+  );
+  if (!batches.every(isReleaseGroupMetadata)) {
+    throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
+  }
+  const dates = new Map<string, string>();
+  for (const batch of batches) {
+    for (const [mbid, metadata] of Object.entries(v.parse(releaseGroupMetadataSchema, batch))) {
+      const date = metadata.release_group?.date;
+      if (date) dates.set(mbid, date);
     }
-    const dates = new Map<string, string>();
-    for (const batch of batches) {
-      for (const [mbid, metadata] of Object.entries(v.parse(releaseGroupMetadataSchema, batch))) {
-        const date = metadata.release_group?.date;
-        if (date) dates.set(mbid, date);
-      }
-    }
-    return dates;
-  });
+  }
+  return dates;
+};
 
-export { listenbrainzCache, listenbrainzDatesCache, listenbrainzListensCache };
+const lookUpReleaseGroups = (kind: string, mbids: string[], lookUp: () => Promise<void>) => {
+  if (!mbids.length) return null;
+  const key = `${kind}:${mbids.join(",")}`;
+  if (releaseGroupLookupFailures.get(key)) return null;
+  const running = releaseGroupLookups.get(key);
+  if (running) return running;
+  const lookup = lookUp()
+    .catch(() => {
+      releaseGroupLookupFailures.set(key, true);
+    })
+    .finally(() => releaseGroupLookups.delete(key));
+  releaseGroupLookups.set(key, lookup);
+  return lookup;
+};
+
+const isDue = (checkedAt: number | null | undefined, maxAgeMs: number, now: number) =>
+  checkedAt == null || now - checkedAt > maxAgeMs;
+
+const settlesWithin = async (waitMs: number, lookups: Promise<void>[]) => {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<false>((resolve) => {
+    timer = setTimeout(resolve, waitMs, false);
+  });
+  try {
+    return await Promise.race([Promise.all(lookups).then(() => true), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export async function listenbrainzGetReleaseGroupStats(
+  releaseGroups: { id: string; "first-release-date"?: string | null }[],
+  { waitMs }: { waitMs: number },
+) {
+  const ids = releaseGroups.map(({ id }) => id);
+  const now = Date.now();
+  const stored = dbOps.getListenbrainzReleaseGroups(ids);
+  const popularityIds = ids.filter((id) =>
+    isDue(stored.get(id)?.popularity_checked_at, RELEASE_GROUP_POPULARITY_FRESH_MS, now),
+  );
+  const dateIds = releaseGroups
+    .filter((releaseGroup) => {
+      if (releaseGroup["first-release-date"]) return false;
+      const record = stored.get(releaseGroup.id);
+      return (
+        !record?.first_release_date &&
+        isDue(record?.dates_checked_at, RELEASE_GROUP_MISSING_DATE_RECHECK_MS, now)
+      );
+    })
+    .slice(0, RELEASE_GROUP_DATE_LOOKUP_LIMIT)
+    .map(({ id }) => id);
+  const lookups = [
+    {
+      unanswered: popularityIds.some((id) => stored.get(id)?.popularity_checked_at == null),
+      lookup: lookUpReleaseGroups("popularity", popularityIds, async () => {
+        const listens = await listenbrainzGetReleaseGroupListens(popularityIds);
+        dbOps.saveListenbrainzReleaseGroupPopularity(
+          new Map(popularityIds.map((id) => [id, listens.get(id) ?? null])),
+          Date.now(),
+        );
+      }),
+    },
+    {
+      unanswered: dateIds.some((id) => stored.get(id)?.dates_checked_at == null),
+      lookup: lookUpReleaseGroups("dates", dateIds, async () => {
+        const dates = await listenbrainzGetReleaseGroupDates(dateIds);
+        dbOps.saveListenbrainzReleaseGroupDates(
+          new Map(dateIds.map((id) => [id, dates.get(id) ?? null])),
+          Date.now(),
+        );
+      }),
+    },
+  ];
+  const awaited = lookups.flatMap(({ unanswered, lookup }) =>
+    unanswered && lookup ? [lookup] : [],
+  );
+  if (!awaited.length) return { records: stored, pending: false };
+  const answered = await settlesWithin(waitMs, awaited);
+  return {
+    records: answered ? dbOps.getListenbrainzReleaseGroups(ids) : stored,
+    pending: !answered,
+  };
+}
+
+export function clearListenbrainzReleaseGroupStats() {
+  releaseGroupLookupFailures.flushAll();
+  dbOps.clearListenbrainzReleaseGroups();
+}
+
+export { listenbrainzCache };

@@ -1,4 +1,3 @@
-import ArtworkImage from "../../../components/ArtworkImage";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -33,7 +32,7 @@ import { queryKeys } from "../../../queryClient.ts";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
 import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
-import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
+import type { ArtistDetails } from "../hooks/useArtistDetails.ts";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
 import type {
   PlaylistSelection,
@@ -41,13 +40,12 @@ import type {
   SharedPlaylist,
 } from "../../../components/TrackPlaylistMenu";
 import type { ReleaseGroup } from "../utils";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 
 type ArtistDetailsDownloadTargetsProps = {
   releaseGroups?: ReleaseGroup[];
   getAlbumStatus: ArtistDetailsLibrary["getAlbumStatus"];
   artist: ArtistDetails | null;
-  albumCovers: Record<string, string>;
-  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
   artistCoverImage: string | null | undefined;
   canAddAlbum: boolean;
   requestingAlbum: string | null;
@@ -93,8 +91,6 @@ export function ArtistDetailsDownloadTargets({
   releaseGroups = [],
   getAlbumStatus,
   artist,
-  albumCovers,
-  fulfilledCoverIds,
   artistCoverImage,
   canAddAlbum,
   requestingAlbum,
@@ -166,11 +162,8 @@ export function ArtistDetailsDownloadTargets({
       ? tracks
       : tracks.slice(0, TRACK_PREVIEW_LIMIT);
   const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
-  const pickCover = getReleaseGroupCoverUrl(releaseGroup, albumCovers);
-  const coverUrl = getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
-    artistFallback: artistCoverImage,
-    resolved: fulfilledCoverIds?.has(missingReleasePick?.releaseGroupId),
-  });
+  const pickCover = getReleaseGroupCoverUrl(releaseGroup);
+  const coverUrl = pickCover || artistCoverImage || "";
   const tint = useCollectionTint(coverUrl);
 
   const pickRelease = useMemo(
@@ -250,13 +243,19 @@ export function ArtistDetailsDownloadTargets({
           <CollectionHeader
             embedded
             cover={
-              coverUrl ? (
-                <ArtworkImage src={coverUrl} alt="" sizes="17rem" loading="lazy" decoding="async" />
-              ) : (
-                <span className="native-library-cover-fallback" aria-hidden="true">
-                  {title.trim().charAt(0).toUpperCase() || "—"}
-                </span>
-              )
+              <ReleaseCoverImage
+                src={pickCover}
+                fallback={artistCoverImage}
+                alt=""
+                sizes="17rem"
+                loading="lazy"
+                decoding="async"
+                placeholder={
+                  <span className="native-library-cover-fallback" aria-hidden="true">
+                    {title.trim().charAt(0).toUpperCase() || "—"}
+                  </span>
+                }
+              />
             }
             title={<OptionalLink link={titleLink}>{title}</OptionalLink>}
             meta={meta}

@@ -1,3 +1,4 @@
+import { queryOptions } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import {
   apiFetchWithin,
@@ -34,46 +35,9 @@ type ArtistVideo = NonNullable<
   InferResponseType<(typeof artistsClient)[":mbid"]["video"]["$get"], 200>["video"]
 > & { trackTitle: string };
 
-type ArtistDetailsOptions = {
-  mode?: string;
-  releaseTypes?: string[];
-  appearsOnLimit?: number;
-};
-
 type ReleaseGroupCoverItem = { mbid: string; artistName: string; albumTitle: string };
 
 const coverFetch = apiFetchWithin(4000);
-
-export const getArtistDetails = (
-  mbid: string,
-  artistName?: string,
-  options: ArtistDetailsOptions = {},
-) =>
-  queryClient.fetchQuery({
-    queryKey: queryKeys.artistDetails(mbid, { artistName, ...options }),
-    queryFn: ({ signal }) =>
-      parseResponse(
-        artistsClient[":mbid"].$get(
-          {
-            param: { mbid: encodeURIComponent(mbid) },
-            query: {
-              artistName: artistName || undefined,
-              mode: options.mode || undefined,
-              releaseTypes: options.releaseTypes?.length
-                ? options.releaseTypes.join(",")
-                : undefined,
-              appearsOnLimit:
-                Number.isFinite(Number(options.appearsOnLimit)) &&
-                Number(options.appearsOnLimit) > 0
-                  ? String(Number.parseInt(String(options.appearsOnLimit), 10))
-                  : undefined,
-            },
-          },
-          { init: { signal } },
-        ),
-      ),
-    staleTime: 60_000,
-  });
 
 export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
   parseResponse(
@@ -288,15 +252,18 @@ export const getReleaseGroupCover = async (
   return request;
 };
 
-export const getSimilarArtistsForArtist = (mbid: string, artistName = "", limit = 20) =>
-  queryClient.fetchQuery({
+export const artistSimilarQueryOptions = (mbid: string, artistName = "", limit = 20) =>
+  queryOptions({
     queryKey: queryKeys.artistSimilar(mbid, artistName, limit),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       parseResponse(
-        artistsClient[":mbid"].similar.$get({
-          param: { mbid: encodeURIComponent(mbid) },
-          query: { limit: String(limit), artistName: artistName.trim() || undefined },
-        }),
+        artistsClient[":mbid"].similar.$get(
+          {
+            param: { mbid: encodeURIComponent(mbid) },
+            query: { limit: String(limit), artistName: artistName.trim() || undefined },
+          },
+          { init: { signal, cache: "no-cache" } },
+        ),
       ),
     staleTime: 5 * 60 * 1000,
   });
@@ -361,5 +328,6 @@ export const updateArtistOverrides = async (
   queryClient.setQueryData(queryKeys.artistOverrides(mbid), result);
   await queryClient.invalidateQueries({ queryKey: queryKeys.artistDetailsPrefix });
   await queryClient.invalidateQueries({ queryKey: queryKeys.artistSimilarPrefix });
+  await queryClient.invalidateQueries({ queryKey: queryKeys.artistAppearsOn(mbid) });
   return result;
 };

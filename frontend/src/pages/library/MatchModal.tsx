@@ -10,6 +10,7 @@ import { AlertCircle, Check, Music } from "../../components/icons";
 import { ModalShell } from "../../components/PlaylistModals";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { queryKeys } from "../../queryClient.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 import {
   fetchLibraryAlbumMatches,
@@ -332,7 +333,7 @@ export function AlbumMatchModal({
         String(item.libraryAlbumId) !== String(album.id) &&
         "In your Library",
     ),
-    art: albumArt(item.coverUrl),
+    art: albumArt(resolveAuthenticatedApiAssetUrl(item.coverUrl)),
   });
   const known = new Set<string>(GROUPS.map(([type]) => type));
   const groups = fromDiscography

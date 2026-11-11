@@ -21,7 +21,7 @@ import {
   searchAlbums,
   searchArtists,
 } from "../../../services/providers/brainzmashProvider.ts";
-import { attachCachedCoverUrls } from "../../../services/releaseGroupCoverService.ts";
+import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import { listTrackMatches, matchLibraryTrack } from "../../../services/libraryFiles/trackMatch.ts";
 
 const MATCH_LIMIT = 12;
@@ -74,13 +74,8 @@ async function albumMatches(
   query: string,
 ) {
   const candidates = album.artist_mbid
-    ? attachCachedCoverUrls(await listArtistAlbums(album.artist_mbid, { hydrateLimit: 0 })).map(
-        (entry) => ({
-          ...entry,
-          releaseDate: null,
-          coverUrl:
-            "coverUrl" in entry && typeof entry.coverUrl === "string" ? entry.coverUrl : null,
-        }),
+    ? withCoverUrls(await listArtistAlbums(album.artist_mbid, { hydrateLimit: 0 })).map(
+        (entry) => ({ ...entry, releaseDate: null }),
       )
     : (
         await searchAlbums(query || album.title, {

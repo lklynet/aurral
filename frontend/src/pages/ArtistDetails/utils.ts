@@ -9,7 +9,7 @@ import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
 import type { LegacyReleaseGroupSummary } from "../../../../backend/services/providers/brainzmashMappers.ts";
-import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetailsStream.ts";
+import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetails.ts";
 
 export type ReleaseListViewMode = "grid" | "list";
 
@@ -135,7 +135,8 @@ export const buildLibraryReleaseGroups = ({
 }: {
   releaseGroups: readonly ReleaseGroup[];
   ownedAlbums: readonly OwnedAlbum[];
-  libraryAlbums: readonly LibraryAlbumEntry[];
+  libraryAlbums: readonly (LibraryAlbum &
+    Pick<LibraryAlbumEntry, "albumName" | "releaseDate" | "statistics">)[];
   requestingAlbum: string | null;
 }) => {
   const byId = new Map(releaseGroups.map((releaseGroup) => [releaseGroup.id, releaseGroup]));
@@ -149,7 +150,7 @@ export const buildLibraryReleaseGroups = ({
     add(ownedAlbumKey(album), {
       title: album.title,
       "first-release-date": album.releaseDate ?? undefined,
-      coverUrl: resolveAuthenticatedApiAssetUrl(album.coverUrl),
+      coverUrl: album.coverUrl,
       libraryAlbumId: album.libraryId,
     });
   }
@@ -165,16 +166,6 @@ export const buildLibraryReleaseGroups = ({
     });
   }
   return [...entries.values()];
-};
-
-export const deduplicateAlbums = <T extends LibraryAlbum>(albums: T[]): T[] => {
-  const seen = new Map<string | number, boolean>();
-  return albums.filter((album) => {
-    const key = album.id || `${album.mbid}-${album.artistId}`;
-    if (seen.has(key)) return false;
-    seen.set(key, true);
-    return true;
-  });
 };
 
 const ownText = (table: Partial<Record<string, string>>, key: string) =>
@@ -215,21 +206,8 @@ export const getCoverImage = (coverImages: readonly ArtistCoverImage[] | null | 
   return front?.image || coverImages[0]?.image;
 };
 
-export const getReleaseGroupCoverUrl = (
-  releaseGroup: ReleaseGroup | null | undefined,
-  albumCovers: Record<string, string | undefined> = {},
-  {
-    artistFallback = "",
-    resolved = false,
-  }: { artistFallback?: string | null; resolved?: boolean } = {},
-) => {
-  if (!releaseGroup) return "";
-  const id = releaseGroup.id || releaseGroup.mbid || releaseGroup.foreignAlbumId;
-  const albumCover =
-    (id && albumCovers[id]) || releaseGroup.coverUrl || releaseGroup._coverUrl || "";
-  if (albumCover) return albumCover;
-  return resolved && artistFallback ? artistFallback : "";
-};
+export const getReleaseGroupCoverUrl = (releaseGroup: ReleaseGroup | null | undefined) =>
+  resolveAuthenticatedApiAssetUrl(releaseGroup?.coverUrl || releaseGroup?._coverUrl);
 
 const getImageKinds = (image: ArtistCoverImage | null | undefined) => {
   const kinds = [
