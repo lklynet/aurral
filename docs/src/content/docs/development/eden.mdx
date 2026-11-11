@@ -1,0 +1,95 @@
+---
+title: Eden test lab
+description: Run Aurral against a seeded Library and working copies of the services it connects to, with one command.
+---
+
+Eden is a test lab that runs beside your checkout. One command gives you an Aurral with a Library, six months of listening history, and working copies of the services it connects to. None of it reaches a real service. The catalogue, the download networks, and the outside APIs are stand-ins that live in this repo, so every Eden is the same on every machine.
+
+You need Docker with Compose, plus the Node and pnpm the rest of the repo uses. Eden runs on Linux and macOS.
+
+## Start it
+
+```sh
+pnpm eden dev                      # Aurral and the core of the lab
+pnpm eden dev --with slskd,lidarr  # add services by name
+pnpm eden dev --all                # add every service
+```
+
+Sign in as `test` / `password`. A second account, `listener` / `password`, is a regular user with Last.fm and ListenBrainz linked.
+
+| Command            | What it does                                                           |
+| ------------------ | ---------------------------------------------------------------------- |
+| `pnpm eden up`     | Builds the lab and stops. Add `--with` or `--all` to add services      |
+| `pnpm eden dev`    | `up`, then runs Aurral's dev server against the lab                    |
+| `pnpm eden status` | Prints every address and login, and what Eden doesn't cover            |
+| `pnpm eden test`   | Builds a new lab with every service and runs the [journeys](#journeys) |
+| `pnpm eden down`   | Removes the lab: its containers, volumes, and everything it wrote      |
+
+The first `up` takes about a minute once the images are pulled. Services you added stay until `down`, so a later `pnpm eden dev` brings them back without the flag.
+
+## One lab per checkout
+
+Each checkout gets its own Eden. The Compose project is named after the checkout's path, the ports are picked once from what is free, and all state lives in `.eden/`, which git ignores. Two worktrees never share a service, a database, or a download folder, so one agent's test can't break another's.
+
+Eden never touches `backend/data` or `backend/.env`. `pnpm run dev` still starts your own Aurral on its own database.
+
+`pnpm eden down` followed by `pnpm eden up` is a fresh start. Run `down` before you delete a worktree, or its Docker volumes stay behind.
+
+## What every Eden has
+
+- **A catalogue** of 189 artists and 2,281 albums, recorded once from MusicBrainz data and stored in `eden/catalogue/data`. A small server replays it in place of the metadata service, and answers searches itself. An artist outside the catalogue is a 404, and the server logs the miss. It has two artists named Nirvana, artists with accents and symbols in their names, compilations, and box sets.
+- **A Library** of about 180 albums and 2,000 tracks from every third catalogue artist. The files are silent FLAC, written with the exact length of each track, its tags, its MusicBrainz IDs, and a cover. Every seventh album is missing its last tracks, so there is always something to complete.
+- **A world** of about 380 albums the Library doesn't have. This is what a download finds. Anything else isn't out there, which is the case a failed search needs.
+- **Listening history** for both accounts: about 3,500 plays over 180 days, the same ones every time.
+- **The outside**, a proxy that all of Aurral's requests to the internet go through. It answers for Deezer, ListenBrainz, Last.fm, MusicBrainz, LRCLIB, Ticketmaster, Apple's charts, and the location lookups, with answers built from the catalogue. Any other host gets a 502 right away. `http://127.0.0.1:<port>/requests` lists what Aurral asked, which is also how a test checks that a scrobble was sent.
+- **A stand-in for yt-dlp**, so the built-in download source searches and downloads the world and never reaches YouTube.
+
+The generated files are sparse: about 13 GB by their sizes, about 350 MB on disk.
+
+## Services
+
+| Name                    | What you get                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `navidrome`, `jellyfin` | Each scans the Library, has plays of its own, and is connected as a history server                  |
+| `koito`                 | A scrobble server with listens, linked to the admin                                                 |
+| `prowlarr`              | A Usenet indexer and a torrent indexer that list the world                                          |
+| `nzbget`, `sabnzbd`     | Usenet clients that download from a news server holding the world                                   |
+| `qbittorrent`           | Downloads the world's torrents from a web seed, with no tracker and no peers                        |
+| `slskd`                 | A private Soulseek network: a server, a peer sharing the world, and the slskd Aurral uses           |
+| `plugins`               | The official plugins, plus `eden-fixture`, which uses every plugin capability and records each call |
+| `lidarr`                | Lidarr on Eden's catalogue, indexer, and NZBGet, connected through the official plugin              |
+| `gotify`, `webhooks`    | A Gotify server and a webhook receiver that keeps what it was sent                                  |
+| `sso`                   | An OpenID Connect provider with two people and no passwords, and sign-in by proxy header            |
+| `feishin`, `airsonic`   | Two Subsonic clients in the browser, to point at Aurral                                             |
+
+A service that needs another brings it along. `lidarr` starts `nzbget`, `prowlarr`, and `plugins`.
+
+## What Eden doesn't cover
+
+- Tidarr and deemix, which download from paid accounts.
+- Plex and Google sign-in, which need accounts with those companies.
+- News feeds and images. Aurral fetches these straight from the real sites, past the proxy, so cover art and artist photos for music outside the Library load from the internet.
+
+`pnpm eden status` prints this list. It comes from `eden/coverage.ts`, which has an entry for every integration Aurral has settings for. A new integration fails the typecheck there until it gets a service or a reason.
+
+## Journeys
+
+A journey is an end-to-end test of one thing a user does, run against a full Eden: an album requested and downloaded through each source, a play that reaches Last.fm, a sign-in through the provider. They live in `eden/journeys` as `*.eden.test.ts`.
+
+```sh
+pnpm eden test
+```
+
+This removes the current lab, builds a new one with every service, and runs every journey. To iterate on one, keep `pnpm eden dev --all` running and use `pnpm exec vp test run --project eden <file>`.
+
+Journeys wait on real services, so they poll until a deadline. That is the one place tests may poll. Unit and integration tests still fake the service and wait on nothing.
+
+The Eden workflow runs the journeys every night and on pull requests that change `eden/`.
+
+## Change the lab
+
+- **An artist.** Add the MusicBrainz ID to `eden/catalogue/artists.ts`, then run `node eden/catalogue/record.ts <address>` against a metadata server you run yourself, never the public relay. It records only artists that have no file yet. Commit the new file in `eden/catalogue/data`.
+- **A service.** Add its container to `eden/compose.yml` with the image pinned by digest, write `eden/services/<name>.ts` with the steps that configure it and connect Aurral, and add it to `eden/services/index.ts`. Setup has to work from an empty container with no clicks.
+- **An outside API.** Add a file in `eden/outside` that answers for its hosts from the catalogue, and add it to `eden/outside/index.ts`.
+
+The catalogue is MusicBrainz data, which is public domain. Artist biographies come from Wikipedia under another license, so the recorder replaces them with a placeholder.

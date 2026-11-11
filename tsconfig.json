@@ -25,6 +25,7 @@
     "frontend/vite.config.ts",
     ".tests/**/*",
     "scripts",
+    "eden",
     "*.config.ts"
   ],
   "exclude": ["**/node_modules", "**/dist", "backend/data*"]

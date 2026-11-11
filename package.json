@@ -26,6 +26,7 @@
     "perf": "node scripts/perf.mts",
     "perf:baseline": "node scripts/perf.mts baseline",
     "dev": "node scripts/dev.mts",
+    "eden": "node eden/cli.ts",
     "dev:backend": "node --watch --env-file=backend/.env backend/server.ts",
     "dev:frontend": "pnpm --filter aurral-frontend run dev",
     "auth:reset-admin-password": "pnpm --filter aurral-backend run auth:reset-admin-password",

@@ -89,7 +89,7 @@ import {
   setArtistMonitoringState,
 } from "./monitoringStore.ts";
 import { getArtistTopTracks } from "./musicDataSource/index.ts";
-import { getNormalizedText } from "./providers/brainzmashRanking.ts";
+import { getNormalizedText, selectAlbumRelease } from "./providers/brainzmashRanking.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -97,7 +97,6 @@ import { logger } from "./logger.ts";
 import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
-  selectAlbumRelease,
 } from "./providers/brainzmashProvider.ts";
 import { isSilenceTrack, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";

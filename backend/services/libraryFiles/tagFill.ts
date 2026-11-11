@@ -4,8 +4,8 @@ import {
   getAlbumByMbid,
   isMetadataNotFoundError,
   resolveAlbumByArtistAndTitle,
-  selectAlbumRelease,
 } from "../providers/brainzmashProvider.ts";
+import { selectAlbumRelease } from "../providers/brainzmashRanking.ts";
 import type {
   NormalizedAlbum,
   NormalizedRelease,

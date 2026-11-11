@@ -1,0 +1,305 @@
+# Eden: the world around an Aurral under test. `pnpm eden up` runs one copy per
+# checkout, with its own project name and ports. Aurral reaches these and Eden's
+# stand-ins and nothing else. Images are pinned by digest so every Eden runs the same.
+
+x-eden-node: &eden-node
+  image: node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
+  working_dir: /repo
+  volumes:
+    - ${EDEN_REPO}:/repo:ro
+
+services:
+  metadata:
+    <<: *eden-node
+    command: ["node", "eden/metadata/server.ts"]
+    ports:
+      - "127.0.0.1:${EDEN_PORT_METADATA}:5002"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5002/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  outside:
+    <<: *eden-node
+    command: ["node", "eden/standins/outside.ts"]
+    ports:
+      - "127.0.0.1:${EDEN_PORT_OUTSIDE}:8080"
+    volumes:
+      - ${EDEN_REPO}:/repo:ro
+      - ${EDEN_OUTSIDE}:/outside:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  navidrome:
+    # 0.64.2
+    image: deluan/navidrome@sha256:38dc2727bfcfd5ede290f8ada114fc90368146f265ae4701ddddbcbe2a44ee52
+    environment:
+      ND_MUSICFOLDER: ${EDEN_LIBRARY}
+      ND_DEVAUTOCREATEADMINPASSWORD: password
+      ND_ENABLEINSIGHTSCOLLECTOR: "false"
+      ND_SCANNER_SCANONSTARTUP: "true"
+      ND_SCANNER_PURGEMISSING: always
+    ports:
+      - "127.0.0.1:${EDEN_PORT_NAVIDROME}:4533"
+    volumes:
+      - navidrome:/data
+      # Same path as on the host, so the tracks in Aurral's playlist files resolve here too.
+      - ${EDEN_LIBRARY}:${EDEN_LIBRARY}:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4533/ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  jellyfin:
+    # 12.4
+    image: jellyfin/jellyfin@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
+    ports:
+      - "127.0.0.1:${EDEN_PORT_JELLYFIN}:8096"
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ${EDEN_LIBRARY}:${EDEN_LIBRARY}:ro
+
+  koito:
+    # 0.3.2
+    image: gabehf/koito@sha256:3011de405ba2a5c56270928c2b0391add8aa3b3ed68363531b3c64b61f238857
+    environment:
+      KOITO_DEFAULT_USERNAME: test
+      KOITO_DEFAULT_PASSWORD: password
+      KOITO_ALLOWED_HOSTS: "*"
+    ports:
+      - "127.0.0.1:${EDEN_PORT_KOITO}:4110"
+    volumes:
+      - koito:/etc/koito
+
+  gotify:
+    # 3.1.1
+    image: gotify/server@sha256:44fc5bbd1c0618878e33073d38c2c13126b48f245c3fe12236b1da48eb203b86
+    environment:
+      GOTIFY_DEFAULTUSER_NAME: test
+      GOTIFY_DEFAULTUSER_PASS: password
+    ports:
+      - "127.0.0.1:${EDEN_PORT_GOTIFY}:80"
+    volumes:
+      - gotify:/app/data
+
+  webhook-sink:
+    <<: *eden-node
+    command: ["node", "eden/standins/webhook-sink.ts"]
+    ports:
+      - "127.0.0.1:${EDEN_PORT_WEBHOOK_SINK}:8080"
+
+  oidc:
+    <<: *eden-node
+    command: ["node", "eden/standins/oidc.ts"]
+    environment:
+      EDEN_OIDC_ISSUER: http://127.0.0.1:${EDEN_PORT_OIDC}
+    ports:
+      - "127.0.0.1:${EDEN_PORT_OIDC}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  feishin:
+    # 1.17.0
+    image: ghcr.io/jeffvli/feishin@sha256:6c75a4d3b99065ac245e2eb2b693fde3e5f2a6fe41c9e255da4fcb8948071965
+    environment:
+      ANALYTICS_DISABLED: "true"
+    ports:
+      - "127.0.0.1:${EDEN_PORT_FEISHIN}:9180"
+
+  airsonic:
+    image: tamland/airsonic-refix@sha256:b043224ae001c3dae162e5d0ad80d7ff0724525bf44e66f3f3be8c541688e1da
+    ports:
+      - "127.0.0.1:${EDEN_PORT_AIRSONIC}:80"
+
+  world:
+    <<: *eden-node
+    command: ["node", "eden/standins/world.ts"]
+    environment:
+      EDEN_WORLD_HOST_URL: http://127.0.0.1:${EDEN_PORT_WORLD}
+    ports:
+      - "127.0.0.1:${EDEN_PORT_WORLD}:8080"
+    volumes:
+      - ${EDEN_REPO}:/repo:ro
+      - ${EDEN_WORLD}:/world:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # NZBGet's own test news server, serving the world's releases as Usenet articles.
+  nserv:
+    image: &nzbget-image lscr.io/linuxserver/nzbget@sha256:f9fcc04ca26aa113a2b97aeeb90f1f8c4370234e0b620604422e19c209270ffd
+    entrypoint: ["/app/nzbget/nzbget", "--nserv", "-d", "/world", "-m", "-v", "1"]
+    volumes:
+      - ${EDEN_WORLD}/releases:/world:ro
+
+  prowlarr:
+    # 2.6.5
+    image: lscr.io/linuxserver/prowlarr@sha256:f9151e5bc1025c6d0a630d503210cdcb6bb55a7cc098562609d96a408d838902
+    environment:
+      PUID: ${EDEN_UID}
+      PGID: ${EDEN_GID}
+      PROWLARR__AUTH__APIKEY: ede0000000000000000000000000a001
+      PROWLARR__AUTH__METHOD: External
+    ports:
+      - "127.0.0.1:${EDEN_PORT_PROWLARR}:9696"
+    volumes:
+      - prowlarr:/config
+
+  lidarr:
+    # 3.2.1.5196, a nightly: the official plugin needs Lidarr 3.
+    image: lscr.io/linuxserver/lidarr@sha256:5618a549ba6ef21318d24f869764fa58f51629b063a1a1ebf11cf8f32d1f5b8a
+    environment:
+      PUID: ${EDEN_UID}
+      PGID: ${EDEN_GID}
+      LIDARR__AUTH__APIKEY: ede0000000000000000000000000a003
+      LIDARR__AUTH__METHOD: External
+    ports:
+      - "127.0.0.1:${EDEN_PORT_LIDARR}:8686"
+    volumes:
+      - lidarr:/config
+      - ${EDEN_LIDARR}:/music
+      - ${EDEN_DOWNLOADS}/nzbget:/downloads
+
+  nzbget:
+    # 26.3
+    image: *nzbget-image
+    environment:
+      PUID: ${EDEN_UID}
+      PGID: ${EDEN_GID}
+      NZBGET_USER: test
+      NZBGET_PASS: password
+    ports:
+      - "127.0.0.1:${EDEN_PORT_NZBGET}:6789"
+    volumes:
+      - nzbget:/config
+      - ${EDEN_DOWNLOADS}/nzbget:/downloads
+
+  sabnzbd:
+    # 5.1.3
+    image: lscr.io/linuxserver/sabnzbd@sha256:693c208f697d0b411410edd92a98b52c8c754c01f5c078a975cbc892044260f5
+    environment:
+      PUID: ${EDEN_UID}
+      PGID: ${EDEN_GID}
+    ports:
+      - "127.0.0.1:${EDEN_PORT_SABNZBD}:8080"
+    volumes:
+      - sabnzbd:/config
+      - ${EDEN_DOWNLOADS}/sabnzbd:/downloads
+
+  qbittorrent:
+    # 5.3.0
+    image: lscr.io/linuxserver/qbittorrent@sha256:e887804fa9de4c60f5f0fb1f3a7e4febe40a8f69fe736f70c4e8589b1f868dab
+    environment:
+      PUID: ${EDEN_UID}
+      PGID: ${EDEN_GID}
+      # The WebUI refuses a request whose Host port is not its own, so it listens on
+      # the same port inside the container as the one published on the host.
+      WEBUI_PORT: ${EDEN_PORT_QBITTORRENT}
+    ports:
+      - "127.0.0.1:${EDEN_PORT_QBITTORRENT}:${EDEN_PORT_QBITTORRENT}"
+    volumes:
+      - qbittorrent:/config
+      - ${EDEN_DOWNLOADS}/qbittorrent:/downloads
+
+  # A Soulseek network of two: this server, a peer sharing the world's releases, and
+  # the slskd Aurral talks to.
+  soulseek:
+    image: ghcr.io/soulfind-dev/soulfind@sha256:c4dbdf98eaee55f0b06727d0b3463787df9e89195abb45573186116a4d28506f
+    command: ["soulfind", "--port", "2242"]
+
+  slskd-peer:
+    # 0.26.0
+    image: slskd/slskd@sha256:ecd4026d4f8fb504e2cc55323efa2c1f5b56d20d3686b018249cc36b48ea17a6
+    user: "${EDEN_UID}:${EDEN_GID}"
+    command:
+      - ./slskd
+      - --no-auth
+      - --slsk-address=soulseek
+      - --slsk-port=2242
+      - --slsk-username=eden-peer
+      - --slsk-password=password
+      - --shared=/shared
+    tmpfs: &slskd-app
+      - /app:mode=1777
+    volumes:
+      - ${EDEN_WORLD}/releases:/shared:ro
+    depends_on:
+      - soulseek
+    healthcheck: &slskd-health
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5030/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  slskd:
+    image: slskd/slskd@sha256:ecd4026d4f8fb504e2cc55323efa2c1f5b56d20d3686b018249cc36b48ea17a6
+    user: "${EDEN_UID}:${EDEN_GID}"
+    command:
+      - ./slskd
+      - --username=test
+      - --password=password
+      - --api-key=ede0000000000000000000000000a002
+      - --slsk-address=soulseek
+      - --slsk-port=2242
+      - --slsk-username=eden
+      - --slsk-password=password
+      # The peer alone carries searches. With both in the search tree, which of the
+      # two the server sends a search to depends on who logged in first.
+      - --slsk-no-dnet
+      - --downloads=/downloads/complete
+      - --incomplete=/downloads/incomplete
+    ports:
+      - "127.0.0.1:${EDEN_PORT_SLSKD}:5030"
+    tmpfs: *slskd-app
+    volumes:
+      - ${EDEN_DOWNLOADS}/slskd:/downloads
+    depends_on:
+      - slskd-peer
+    healthcheck: *slskd-health
+
+volumes:
+  navidrome:
+  sabnzbd:
+  qbittorrent:
+  prowlarr:
+  lidarr:
+  nzbget:
+  koito:
+  gotify:
+  jellyfin-config:
+  jellyfin-cache:

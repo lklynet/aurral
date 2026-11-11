@@ -7,12 +7,12 @@ import {
   isMetadataNotFoundError,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
-  selectAlbumRelease,
 } from "../providers/brainzmashProvider.ts";
 import {
   scoreTextMatch as scoreTextMatchBase,
   getYear,
   pickResolvedDurationMs,
+  selectAlbumRelease,
 } from "../providers/brainzmashRanking.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { sameVersion, trackRequestFor } from "../releaseManifest.ts";
