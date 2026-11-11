@@ -6,7 +6,7 @@ import { getReleaseTypeLabel, getSearchResultLink } from "../utils/searchNavigat
 import { getArtistRecordId } from "../utils/artistTaste";
 import { isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import RouteLink from "./RouteLink";
-import ArtworkImage from "./ArtworkImage";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 
 type PreviewTrack = { title?: string | null };
@@ -73,22 +73,19 @@ function TopResultArtwork({
 
   const coverSrc = item.type === "album" || item.type === "track" ? item.coverUrl : null;
 
-  if (coverSrc) {
-    return (
-      <ArtworkImage
-        src={coverSrc}
-        alt=""
-        className="search-top-artist__image"
-        loading="lazy"
-        decoding="async"
-      />
-    );
-  }
-
-  return item.type === "playlist" ? (
-    <ListMusic className="artist-icon-lg" />
-  ) : (
-    <Music className="artist-icon-lg" />
+  return (
+    <ReleaseCoverImage
+      src={coverSrc}
+      alt=""
+      className="search-top-artist__image"
+      placeholder={
+        item.type === "playlist" ? (
+          <ListMusic className="artist-icon-lg" />
+        ) : (
+          <Music className="artist-icon-lg" />
+        )
+      }
+    />
   );
 }
 

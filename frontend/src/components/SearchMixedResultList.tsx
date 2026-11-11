@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import ArtworkImage from "./ArtworkImage";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import { Music } from "./icons";
 import ArtistImage from "./ArtistImage";
 import {
@@ -96,22 +96,21 @@ function ResultThumbnail({
 
   return (
     <span className="search-mixed-results__thumb">
-      {coverSrc ? (
-        <ArtworkImage
-          src={coverSrc}
-          alt=""
-          className="search-mixed-results__image"
-          sizes="3rem"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : item.type === "playlist" ? (
-        <span className="search-mixed-results__placeholder" aria-hidden="true" />
-      ) : (
-        <span className="search-mixed-results__placeholder" aria-hidden="true">
-          <Music className="artist-icon-sm" />
-        </span>
-      )}
+      <ReleaseCoverImage
+        src={coverSrc}
+        alt=""
+        className="search-mixed-results__image"
+        sizes="3rem"
+        placeholder={
+          item.type === "playlist" ? (
+            <span className="search-mixed-results__placeholder" aria-hidden="true" />
+          ) : (
+            <span className="search-mixed-results__placeholder" aria-hidden="true">
+              <Music className="artist-icon-sm" />
+            </span>
+          )
+        }
+      />
     </span>
   );
 }

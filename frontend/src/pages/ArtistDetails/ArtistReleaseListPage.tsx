@@ -25,7 +25,7 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useArtistDetails } from "./hooks/useArtistDetails";
 import { useArtistRouteState } from "./hooks/useArtistRouteState.ts";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
-import { ReleaseCoverImage } from "./components/ReleaseCoverImage";
+import { ReleaseCoverImage } from "../../components/ReleaseCoverImage";
 import { getReleaseGroupLink } from "../../utils/searchNavigation";
 import { OptionalLink } from "../../components/RouteLink";
 import {

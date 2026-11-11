@@ -20,7 +20,7 @@ import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 import { artworkHoverTint } from "../../../utils/imageColors.ts";
-import { ReleaseCoverImage } from "./ReleaseCoverImage";
+import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
 
 const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>

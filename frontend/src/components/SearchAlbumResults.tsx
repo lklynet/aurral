@@ -1,5 +1,4 @@
-import ArtworkImage from "./ArtworkImage";
-import { useState } from "react";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
@@ -56,28 +55,6 @@ function getReleaseTypeLabel(album: SearchAlbum) {
   const secondary = Array.isArray(album.secondaryTypes) ? album.secondaryTypes.filter(Boolean) : [];
   const types = [primary, ...secondary].filter(Boolean);
   return types.length ? types.join(" · ") : null;
-}
-
-function AlbumCover({ src, alt }: { src?: string | null; alt: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (!src || failed) {
-    return (
-      <div className="artist-release-card__placeholder">
-        <Music className="artist-icon-lg" aria-hidden="true" />
-      </div>
-    );
-  }
-
-  return (
-    <ArtworkImage
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 function AlbumAction({
@@ -163,13 +140,15 @@ function SearchAlbumResults({
             aria-label={`Open ${album.title}`}
           >
             <div className="artist-media-cell artist-list-cover">
-              {album.coverUrl ? (
-                <ArtworkImage src={album.coverUrl} alt="" loading="lazy" decoding="async" />
-              ) : (
-                <div className="artist-media-placeholder">
-                  <Music className="artist-icon-md" aria-hidden="true" />
-                </div>
-              )}
+              <ReleaseCoverImage
+                src={album.coverUrl}
+                alt=""
+                placeholder={
+                  <div className="artist-media-placeholder">
+                    <Music className="artist-icon-md" aria-hidden="true" />
+                  </div>
+                }
+              />
             </div>
           </OptionalLink>
           <div className="artist-min-0">
@@ -212,13 +191,15 @@ function SearchAlbumResults({
             className="artist-release-card__cover search-album-results__cover-link"
             aria-label={`Open ${album.title}`}
           >
-            {album.coverUrl ? (
-              <AlbumCover src={album.coverUrl} alt="" />
-            ) : (
-              <div className="artist-release-card__placeholder">
-                <Music className="artist-icon-lg" aria-hidden="true" />
-              </div>
-            )}
+            <ReleaseCoverImage
+              src={album.coverUrl}
+              alt=""
+              placeholder={
+                <div className="artist-release-card__placeholder">
+                  <Music className="artist-icon-lg" aria-hidden="true" />
+                </div>
+              }
+            />
           </OptionalLink>
           <div className="artist-release-card__action">
             <AlbumAction

@@ -24,7 +24,7 @@ import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 import { artworkHoverTint } from "../../../utils/imageColors.ts";
 import TooltipButton from "../../../components/TooltipButton";
 import { albumPath } from "../../../../../lib/albumPath.ts";
-import { ReleaseCoverImage } from "./ReleaseCoverImage";
+import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
 
 const viewModes = [
   { value: "popular", label: "Popular releases" },
