@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { cleanExpiredSessions } from "../../config/session-helpers.ts";
@@ -113,7 +114,11 @@ const SYSTEM_TASKS = {
     async run() {
       const { hasCompletedLibraryScan, scheduleLibraryScan } =
         await import("../libraryScanWorker.ts");
-      if (!hasCompletedLibraryScan()) scheduleLibraryScan();
+      const { readOnlyFolderPaths } = await import("../libraryFolders.ts");
+      const unscannedReadOnly = readOnlyFolderPaths().some(
+        (folder) => fs.existsSync(folder) && !hasCompletedLibraryScan("readonly", folder),
+      );
+      if (!hasCompletedLibraryScan() || unscannedReadOnly) scheduleLibraryScan();
     },
   },
   "release-metadata-refresh": {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { EventEmitter } from "node:events";
 import { requireFixture } from "../playlists/fixtures.ts";
 
@@ -26,6 +27,7 @@ const { db } = await import("../../backend/config/db-sqlite.ts");
 const { beginLibraryScan, finishLibraryScan } =
   await import("../../backend/services/libraryMediaStore.ts");
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.ts");
+const { saveReadOnlyFolderPaths } = await import("../../backend/services/libraryFolders.ts");
 const { libraryScanQueue } = await import("../../backend/services/jobs/queues.ts");
 const { SCHEDULES } = await import("../../backend/services/jobs/schedules.ts");
 const { createLibraryFileWatcher } = await import("../../backend/services/libraryFileWatcher.ts");
@@ -41,6 +43,7 @@ test("library bootstrap runs until the first completed scan", async () => {
   const queue = libraryScanQueue;
   db.prepare("DELETE FROM library_scan_runs").run();
   clearScheduledLibraryScan();
+  const readOnlyFolder = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-read-only-"));
   let bootstrapJobId: number | null = null;
   try {
     await processSystemTask({ kind: "library-index-bootstrap" });
@@ -53,10 +56,31 @@ test("library bootstrap runs until the first completed scan", async () => {
     finishLibraryScan(scanId);
     await processSystemTask({ kind: "library-index-bootstrap" });
     assert.equal(getScheduledLibraryScanJobId(), null);
+
+    const mounted = path.join(readOnlyFolder, "mounted");
+    const mountedLater = path.join(readOnlyFolder, "later");
+    fs.mkdirSync(mounted);
+    saveReadOnlyFolderPaths([mounted, mountedLater]);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    bootstrapJobId = getScheduledLibraryScanJobId();
+    assert.ok(bootstrapJobId, "read-only folders that were never scanned get a scan");
+    queue.cancel(bootstrapJobId);
+    clearScheduledLibraryScan();
+
+    finishLibraryScan(beginLibraryScan({ source: "readonly", rootPath: mounted }));
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    assert.equal(getScheduledLibraryScanJobId(), null);
+
+    fs.mkdirSync(mountedLater);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    bootstrapJobId = getScheduledLibraryScanJobId();
+    assert.ok(bootstrapJobId, "a folder mounted later gets its own scan");
   } finally {
     if (bootstrapJobId) queue.cancel(bootstrapJobId);
     clearScheduledLibraryScan();
-    db.prepare("DELETE FROM library_scan_runs WHERE source = 'test'").run();
+    saveReadOnlyFolderPaths([]);
+    fs.rmSync(readOnlyFolder, { recursive: true, force: true });
+    db.prepare("DELETE FROM library_scan_runs WHERE source IN ('test', 'readonly')").run();
   }
 });
 

@@ -132,9 +132,17 @@ export function getScheduledLibraryScanJobId() {
   return normalizeJobId(getScanRegistry().jobId);
 }
 
-export function hasCompletedLibraryScan() {
+export function hasCompletedLibraryScan(
+  source: string | null = null,
+  rootPath: string | null = null,
+) {
   return Boolean(
-    db.prepare("SELECT 1 FROM library_scan_runs WHERE status = 'complete' LIMIT 1").get(),
+    db
+      .prepare<[string | null, string | null, string | null, string | null]>(
+        `SELECT 1 FROM library_scan_runs WHERE status = 'complete'
+         AND (? IS NULL OR source = ?) AND (? IS NULL OR root_path = ?) LIMIT 1`,
+      )
+      .get(source, source, rootPath, rootPath),
   );
 }
 
