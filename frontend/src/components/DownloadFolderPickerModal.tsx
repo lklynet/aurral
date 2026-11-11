@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { parseResponse } from "hono/client";
 import { filesystemClient } from "../utils/api/clients/filesystem.ts";
 
-import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "./icons";
 import { getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
 import TooltipButton from "./TooltipButton";
+import { ModalBackdrop } from "./ModalBackdrop";
 interface FilesystemEntry {
   name: string;
   path: string;
@@ -171,8 +171,8 @@ export default function DownloadFolderPickerModal({
     }
   };
 
-  return createPortal(
-    <div
+  return (
+    <ModalBackdrop
       className="artist-modal-backdrop file-browser-modal-backdrop"
       onClick={handleBackdropClick}
     >
@@ -271,7 +271,6 @@ export default function DownloadFolderPickerModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

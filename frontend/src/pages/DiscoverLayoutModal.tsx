@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { createPortal } from "react-dom";
 import {
   DndContext,
   KeyboardSensor,
@@ -24,6 +23,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import TooltipButton from "../components/TooltipButton";
 import type { DiscoverSection } from "../utils/discoverUtils";
 import { isStyledSection, type DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
+import { ModalBackdrop } from "../components/ModalBackdrop";
 
 const FEED_STYLE_OPTIONS = [
   { value: "list", label: "List", name: "List" },
@@ -169,8 +169,8 @@ export function DiscoverLayoutModal({
 
   if (!open) return null;
 
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick} role="presentation">
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-customize-modal"
@@ -253,7 +253,6 @@ export function DiscoverLayoutModal({
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

@@ -1,7 +1,7 @@
 import { useId, useRef } from "react";
-import { createPortal } from "react-dom";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 interface DeleteAlbumModalProps {
   show: boolean;
@@ -32,8 +32,8 @@ export function DeleteAlbumModal({
   });
 
   if (!show) return null;
-  return createPortal(
-    <div className="artist-modal-backdrop">
+  return (
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -88,7 +88,6 @@ export function DeleteAlbumModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

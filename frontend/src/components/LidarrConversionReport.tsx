@@ -1,5 +1,4 @@
 import { useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
@@ -9,6 +8,7 @@ import { useReadOnlyFolders } from "../hooks/useLibraryFileOperation.ts";
 import { useSettingsRoute } from "../navigation/settingsRoute";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
 import { DotLoader } from "./DotLoader";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 const MOUNT_DOCS = "https://docs.aurral.org/getting-started/storage/#mount-a-read-only-folder";
 
@@ -46,8 +46,8 @@ export default function LidarrConversionReport() {
   if (!report || !open) return null;
   const { folders } = report;
 
-  return createPortal(
-    <div className="artist-modal-backdrop">
+  return (
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -118,7 +118,6 @@ export default function LidarrConversionReport() {
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }
