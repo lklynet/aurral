@@ -482,9 +482,10 @@ export async function listenbrainzGetReleaseGroupStats(
   };
 }
 
-export function clearListenbrainzReleaseGroupStats() {
+export function clearListenbrainzStats() {
   releaseGroupLookupFailures.flushAll();
   dbOps.clearListenbrainzReleaseGroups();
+  dbOps.clearListenbrainzArtistTags();
 }
 
 export { listenbrainzCache };

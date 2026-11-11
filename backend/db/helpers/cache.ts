@@ -7,6 +7,7 @@ import { listOf } from "./storedSchemas.ts";
 import type {
   DeezerMbidCacheRow,
   ImagesCacheRow,
+  ListenbrainzArtistTagsRow,
   ListenbrainzReleaseGroupsRow,
   MetadataResponseCacheRow,
   MusicbrainzArtistMbidCacheRow,
@@ -66,9 +67,34 @@ export interface CacheOps {
     checkedAt: number,
   ) => void;
   clearListenbrainzReleaseGroups: () => Database.RunResult;
+  getListenbrainzArtistTags: (mbids: string[]) => Map<string, ListenbrainzArtistTags>;
+  saveListenbrainzArtistTags: (tags: Map<string, ArtistTag[]>, checkedAt: number) => void;
+  clearListenbrainzArtistTags: () => Database.RunResult;
 }
 
 export type ListenbrainzReleaseGroupRecord = Omit<ListenbrainzReleaseGroupsRow, "mbid">;
+
+const artistTagsSchema = listOf(v.object({ name: v.string(), count: v.number() }));
+type ArtistTag = v.InferOutput<typeof artistTagsSchema>[number];
+type ListenbrainzArtistTags = { tags: ArtistTag[]; checkedAt: number };
+
+const getListenbrainzArtistTagsStmt = db.prepare<
+  [string],
+  ListenbrainzArtistTagsRow & { mbid: string }
+>("SELECT * FROM listenbrainz_artist_tags WHERE mbid IN (SELECT value FROM json_each(?))");
+const saveListenbrainzArtistTagsStmt = db.prepare<[string, string, number]>(
+  `INSERT INTO listenbrainz_artist_tags (mbid, tags_json, checked_at) VALUES (?, ?, ?)
+    ON CONFLICT(mbid) DO UPDATE SET
+      tags_json = excluded.tags_json,
+      checked_at = excluded.checked_at`,
+);
+const clearListenbrainzArtistTagsStmt = db.prepare<[]>("DELETE FROM listenbrainz_artist_tags");
+const saveListenbrainzArtistTags = db.transaction(
+  (tags: Map<string, ArtistTag[]>, checkedAt: number) => {
+    for (const [mbid, list] of tags)
+      saveListenbrainzArtistTagsStmt.run(mbid, JSON.stringify(list), checkedAt);
+  },
+);
 
 type CachedImageRow = Omit<ImagesCacheRow, "mbid"> & { mbid: string };
 type ImageSummaryRow = Pick<CachedImageRow, "mbid" | "image_url" | "images_json" | "cache_age">;
@@ -193,6 +219,17 @@ export default function register(dbOps: CacheOps) {
   dbOps.saveListenbrainzReleaseGroupDates = saveListenbrainzReleaseGroupDates;
   dbOps.saveListenbrainzReleaseGroupPopularity = saveListenbrainzReleaseGroupPopularity;
   dbOps.clearListenbrainzReleaseGroups = () => clearListenbrainzReleaseGroupsStmt.run();
+  dbOps.getListenbrainzArtistTags = function (mbids) {
+    const records = new Map<string, ListenbrainzArtistTags>();
+    if (!mbids.length) return records;
+    for (const row of getListenbrainzArtistTagsStmt.all(JSON.stringify(mbids))) {
+      const tags = dbHelpers.readJSON(artistTagsSchema, row.tags_json, "listenbrainz_artist_tags");
+      if (tags) records.set(row.mbid, { tags, checkedAt: row.checked_at });
+    }
+    return records;
+  };
+  dbOps.saveListenbrainzArtistTags = saveListenbrainzArtistTags;
+  dbOps.clearListenbrainzArtistTags = () => clearListenbrainzArtistTagsStmt.run();
 
   dbOps.getImage = function (mbid) {
     const row = getImageStmt.get(mbid);
