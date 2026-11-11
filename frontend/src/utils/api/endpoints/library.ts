@@ -63,7 +63,7 @@ export type LibraryPageResponse = InferResponseType<typeof libraryClient.$get, 2
 export type LibraryFavoritesResponse = InferResponseType<typeof libraryClient.favorites.$get, 200>;
 export type ArtistsInLibrary = InferResponseType<typeof libraryMiscClient.lookup.batch.$post, 200>;
 
-export type AurralMonitoringResult = {
+export type MonitoringResult = {
   monitored: boolean;
   cancelledJobIds?: string[];
   cleanupFailed?: boolean;
@@ -664,35 +664,35 @@ export const getDownloadStatus = async (
   });
 };
 
-export const cancelAurralAlbum = (albumId: string | number) =>
+export const cancelAlbum = (albumId: string | number) =>
   refreshActiveDownloadsAfter(
     parseResponse(
-      libraryAlbumsClient.albums.aurral[":albumId"].cancel.$post({
+      libraryAlbumsClient.albums[":albumId"].cancel.$post({
         param: { albumId: encodeURIComponent(albumId) },
       }),
     ),
   );
 
-export const setAurralAlbumMonitoring = (
+export const setAlbumMonitoring = (
   albumId: string | number,
   monitored: boolean,
-): Promise<AurralMonitoringResult> =>
+): Promise<MonitoringResult> =>
   refreshActiveDownloadsAfter(
     parseResponse(
-      libraryAlbumsClient.albums.aurral[":albumId"].$put({
+      libraryAlbumsClient.albums[":albumId"].$put({
         param: { albumId: encodeURIComponent(albumId) },
         json: { monitored },
       }),
     ),
   );
 
-export const setAurralTrackMonitoring = async (
+export const setTrackMonitoring = async (
   trackId: string | number,
   monitored: boolean,
-): Promise<AurralMonitoringResult> => {
+): Promise<MonitoringResult> => {
   const result = await refreshActiveDownloadsAfter(
     parseResponse(
-      libraryTracksClient.tracks.aurral[":trackId"].$put({
+      libraryTracksClient.tracks[":trackId"].$put({
         param: { trackId: encodeURIComponent(trackId) },
         json: { monitored },
       }),

@@ -15,7 +15,7 @@ import {
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
-import { clearTrackMonitoringExclusion } from "../../backend/services/aurralMonitoringStore.ts";
+import { clearTrackMonitoringExclusion } from "../../backend/services/monitoringStore.ts";
 import { flowPlaylistConfig } from "../../backend/services/playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "../../backend/services/playlists/playlistManager.ts";
 import {

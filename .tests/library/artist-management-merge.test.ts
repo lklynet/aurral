@@ -49,7 +49,6 @@ test("merging an artist into its MBID identity retains management settings", () 
     1,
   );
   const management = managementStore.getLibraryManagementEntry("artist", resolved.id);
-  assert.equal(management?.managedBy, "aurral");
   assert.equal(management?.monitorMode, "all");
   assert.equal(managementStore.getLibraryManagementEntry("artist", fallback.id), null);
 });

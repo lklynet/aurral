@@ -142,14 +142,11 @@ const stopMonitoring = (jobId: string | null) => {
       "SELECT id FROM library_tracks WHERE mbid = ?",
     )
     .get(getJob(jobId).trackMbid)!;
-  return request<{ monitored: boolean; cancelledJobIds: string[] }>(
-    `/api/library/tracks/aurral/${id}`,
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ monitored: false }),
-    },
-  );
+  return request<{ monitored: boolean; cancelledJobIds: string[] }>(`/api/library/tracks/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ monitored: false }),
+  });
 };
 
 const upgradeJobsOf = (jobId: string | null) =>

@@ -4,7 +4,7 @@ import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
 import ReleaseWaitBadge from "./ReleaseWaitBadge";
-import { isAwaitingRelease } from "../utils/aurralAlbumStatus.ts";
+import { isAwaitingRelease } from "../utils/albumStatus.ts";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";

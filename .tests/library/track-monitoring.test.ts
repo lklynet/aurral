@@ -152,10 +152,10 @@ afterAll(async () => {
 test("unmonitoring a track cancels its unfinished download and keeps finished files", async () => {
   const { tracks, jobIds, filePaths } = await createAlbum({ tracks: ["available", "pending"] });
 
-  const downloading = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[1]).id, {
+  const downloading = await libraryManager.setTrackMonitoring(requireFixture(tracks[1]).id, {
     monitored: false,
   });
-  const finished = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+  const finished = await libraryManager.setTrackMonitoring(requireFixture(tracks[0]).id, {
     monitored: false,
   });
 
@@ -168,9 +168,9 @@ test("unmonitoring a track cancels its unfinished download and keeps finished fi
 
 test("monitoring a track again fetches only that track when its album is monitored", async () => {
   const { albumMbid, tracks } = await createAlbum({ tracks: ["missing", "missing"] });
-  await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, { monitored: false });
+  await libraryManager.setTrackMonitoring(requireFixture(tracks[0]).id, { monitored: false });
 
-  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+  const result = await libraryManager.setTrackMonitoring(requireFixture(tracks[0]).id, {
     monitored: true,
   });
 
@@ -183,9 +183,9 @@ test("monitoring a track again fetches only that track when its album is monitor
 
 test("monitoring a track in an unmonitored album queues only that track", async () => {
   const { album, albumMbid, tracks } = await createAlbum({ tracks: ["missing", "missing"] });
-  await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: false });
+  await libraryManager.setAlbumMonitoring(album.id, { monitored: false });
 
-  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+  const result = await libraryManager.setTrackMonitoring(requireFixture(tracks[0]).id, {
     monitored: true,
   });
 
@@ -222,7 +222,7 @@ test("a track unmonitored while its album is turned back on is not queued", asyn
     album.title,
   );
 
-  const monitoring = libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
+  const monitoring = libraryManager.setAlbumMonitoring(album.id, { monitored: true });
   for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
   db.prepare("UPDATE library_tracks SET monitored = 0 WHERE id = ?").run(
     requireFixture(tracks[1]).id,
@@ -247,14 +247,14 @@ test("one track asked for is a track request, asking for the album's missing tra
         .map((row) => [row.track_mbid.slice(-2), row.request_kind]),
     );
 
-  const single = await libraryManager.monitorAurralTrack({
+  const single = await libraryManager.monitorTrack({
     libraryTrackId: requireFixture(tracks[0]).id,
   });
   assert.ok(single != null);
   assert.equal(single.queuedJobIds.length, 1);
   assert.deepEqual(requestKinds(), { "00": "track" });
 
-  await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  await libraryManager.searchAlbumMissingTracks(album.id);
   assert.deepEqual(requestKinds(), { "00": "album", "01": "album", "02": "album" });
 
   const second = downloadTracker
@@ -262,7 +262,7 @@ test("one track asked for is a track request, asking for the album's missing tra
     .find((job) => job.trackMbid === requireFixture(tracks[1]).mbid);
   assert.ok(second != null);
   downloadTracker.setFailed(second.id, "No source had the track");
-  const retried = await libraryManager.monitorAurralTrack({
+  const retried = await libraryManager.monitorTrack({
     libraryTrackId: requireFixture(tracks[1]).id,
   });
   assert.ok(retried != null);
@@ -281,7 +281,7 @@ test("unmonitoring a track without an MBID leaves a same-titled track's download
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: untagged.id, trackNumber: 3 });
 
-  await libraryManager.setAurralTrackMonitoring(untagged.id, { monitored: false });
+  await libraryManager.setTrackMonitoring(untagged.id, { monitored: false });
 
   assert.equal(getJob(jobIds[1]).status, "pending");
   assert.equal(albumJobs(albumMbid).filter((job) => job.status === "cancelled").length, 0);
@@ -307,7 +307,7 @@ test("a track in a read-only album can be unmonitored", async () => {
     "library",
   );
 
-  const result = await libraryManager.setAurralTrackMonitoring(requireFixture(tracks[0]).id, {
+  const result = await libraryManager.setTrackMonitoring(requireFixture(tracks[0]).id, {
     monitored: false,
   });
 
@@ -321,7 +321,7 @@ test("a track in a read-only album can be unmonitored", async () => {
 test("downloading a missing track in a read-only album leaves the download to the track route", async () => {
   const { tracks } = await createAlbum({ readOnly: true, tracks: ["missing"] });
 
-  const result = await libraryManager.monitorAurralTrack({
+  const result = await libraryManager.monitorTrack({
     libraryTrackId: requireFixture(tracks[0]).id,
   });
 

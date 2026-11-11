@@ -1,4 +1,4 @@
-import { FACTORY_MONITOR_RULES } from "../../backend/services/aurralMonitoring.ts";
+import { FACTORY_MONITOR_RULES } from "../../backend/services/monitoring.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 

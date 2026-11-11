@@ -1,10 +1,10 @@
 import type { MonitoringRules } from "./monitoringRules.ts";
 import { getApiErrorBody, getApiErrorMessage } from "./api/errors.ts";
 import { asApiError } from "./api/core.ts";
-import { shouldPollAlbumStatus, type AlbumStatus } from "./aurralAlbumStatus.ts";
+import { shouldPollAlbumStatus, type AlbumStatus } from "./albumStatus.ts";
 import { describeDownloadCount, plural } from "./monitoringRules.ts";
 
-export interface AurralMonitoringPlan {
+export interface MonitoringPlan {
   queued?: boolean;
   releaseGroupIds?: string[];
   topTracks?: unknown[];
@@ -12,13 +12,13 @@ export interface AurralMonitoringPlan {
   topTracksError?: string | null;
 }
 
-interface AurralMonitoringState {
+interface MonitoringState {
   monitored?: boolean;
   rules?: MonitoringRules | null;
 }
 
-export interface AurralAlbumMonitoredRef {
-  managedBy?: string | null;
+export interface AlbumMonitoredRef {
+  managed?: boolean;
   monitored?: boolean | null;
   monitorMode?: string | null;
   metadata?: { monitored?: boolean | null } | null;
@@ -50,10 +50,7 @@ const SKIPPED_DETAILS: { reason: string; text: (count: number) => string }[] = [
   { reason: "metadata_unavailable", text: (count) => `${count} could not be checked` },
 ];
 
-const summaryHeadline = (
-  plan: AurralMonitoringPlan,
-  { monitored, rules }: AurralMonitoringState = {},
-) => {
+const summaryHeadline = (plan: MonitoringPlan, { monitored, rules }: MonitoringState = {}) => {
   if (monitored === false) return "Monitoring turned off";
   const downloads = describeDownloadCount({
     releases: plan.releaseGroupIds?.length || 0,
@@ -64,11 +61,11 @@ const summaryHeadline = (
   return "Nothing new to download";
 };
 
-export const summarizeAurralMonitoring = (
-  monitoring: AurralMonitoringPlan | null | undefined,
-  state: AurralMonitoringState = {},
+export const summarizeMonitoring = (
+  monitoring: MonitoringPlan | null | undefined,
+  state: MonitoringState = {},
 ) => {
-  const plan: AurralMonitoringPlan = monitoring || {};
+  const plan: MonitoringPlan = monitoring || {};
   const counts = new Map<string, number>();
   for (const entry of plan.skipped || []) {
     counts.set(entry.reason, (counts.get(entry.reason) || 0) + 1);
@@ -89,7 +86,7 @@ export const summarizeAurralMonitoring = (
 const METADATA_UNAVAILABLE_MESSAGE =
   "Couldn't load this artist's releases from the metadata service, so monitoring was not changed. Try again in a moment.";
 
-export const describeAurralMonitoringError = (
+export const describeMonitoringError = (
   error: unknown,
   fallback = "Failed to update artist monitoring",
 ) => {
@@ -102,8 +99,8 @@ export const describeAurralMonitoringError = (
   return getApiErrorMessage(error, fallback);
 };
 
-export const getAlbumMonitoredState = (album: AurralAlbumMonitoredRef | null) => {
-  if (album?.managedBy !== "aurral") return null;
+export const getAlbumMonitoredState = (album: AlbumMonitoredRef | null) => {
+  if (!album?.managed) return null;
   const monitored = album!.monitored ?? album!.metadata?.monitored;
   return monitored === true && album!.monitorMode !== "unmonitored";
 };
@@ -119,8 +116,8 @@ export const getMonitoringMenuAction = ({
   return hasMissing ? null : "monitor";
 };
 
-export const canDownloadAurralAlbum = (
-  album: AurralAlbumMonitoredRef,
+export const canDownloadAlbum = (
+  album: AlbumMonitoredRef,
   { hasMissingTracks }: { hasMissingTracks: boolean },
 ) =>
   getAlbumMonitoredState(album) === false &&

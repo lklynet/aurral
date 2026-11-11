@@ -1,9 +1,5 @@
 import { asAppError } from "../../../lib/errors.ts";
-import {
-  cancelTrackDownload,
-  cancelTrackDownloads,
-  retryTrackDownload,
-} from "../aurralAlbumJobs.ts";
+import { cancelTrackDownload, cancelTrackDownloads, retryTrackDownload } from "../albumJobs.ts";
 import { syncStaticPlaylistImportHere } from "../importLists/importListSync.ts";
 import { queueQualityUpgrade, runQualityUpgradeCheck } from "../qualityProfileService.ts";
 import { approveBlockedJob, denyBlockedJob } from "./blockedJobReview.ts";

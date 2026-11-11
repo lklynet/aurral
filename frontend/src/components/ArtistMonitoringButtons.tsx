@@ -11,7 +11,7 @@ import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { libraryArtistsClient } from "../utils/api/clients/libraryArtists.ts";
 import { updateLibraryArtist } from "../utils/api/endpoints/library.ts";
-import { describeAurralMonitoringError } from "../utils/aurralMonitoring.ts";
+import { describeMonitoringError } from "../utils/monitoring.ts";
 import {
   buildArtistMonitoringItems,
   describeArtistMonitoring,
@@ -105,7 +105,7 @@ export function useArtistMonitoring({
       if (queryClient.getQueryData(queryKey) === optimistic)
         queryClient.setQueryData(queryKey, previous);
       showError(
-        `Could not ${adding ? "add" : "change monitoring for"} ${name}. ${adding ? "Nothing was added." : "Nothing changed."} ${describeAurralMonitoringError(error, "Try again.")}`,
+        `Could not ${adding ? "add" : "change monitoring for"} ${name}. ${adding ? "Nothing was added." : "Nothing changed."} ${describeMonitoringError(error, "Try again.")}`,
       );
       return false;
     } finally {

@@ -1,8 +1,8 @@
 import path from "path";
 import { db } from "../config/db-sqlite.ts";
-import { isAurralAlbumJob, jobMatchesTrack } from "./aurralAlbumJobs.ts";
+import { isAlbumJob, jobMatchesTrack } from "./albumJobs.ts";
 import type { JobFields } from "./downloadJobs/downloadTracker.ts";
-import { monitoredTrackCondition } from "./aurralMonitoring.ts";
+import { monitoredTrackCondition } from "./monitoring.ts";
 
 interface UnmonitoredTrack {
   albumMbid: string | null;
@@ -54,7 +54,7 @@ export function indexUnmonitoredJobs() {
       | undefined,
   ) => {
     if (job?.finalPath && filePaths.has(path.resolve(job.finalPath))) return true;
-    if (!job || !isAurralAlbumJob(job)) return false;
+    if (!job || !isAlbumJob(job)) return false;
     const key = albumKey(job.albumMbid);
     if (!key) return false;
     return (tracksByAlbum.get(key) || []).some((track) => jobMatchesTrack(job, track));

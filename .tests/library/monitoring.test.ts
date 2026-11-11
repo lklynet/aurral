@@ -48,7 +48,7 @@ const [
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
-  () => import("../../backend/services/aurralMonitoringStore.ts"),
+  () => import("../../backend/services/monitoringStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
@@ -372,12 +372,12 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-async function addAurralArtist(
+async function addArtist(
   monitorOption: string = "none",
   { mbid = artistMbid, name = "Monitor Artist" }: { mbid?: string; name?: string } = {},
 ) {
   return callRoute("POST /artists", {
-    body: { foreignArtistId: mbid, artistName: name, monitorOption, managedBy: "aurral" },
+    body: { foreignArtistId: mbid, artistName: name, monitorOption, managed: true },
   });
 }
 
@@ -391,12 +391,12 @@ test("monitoring an Aurral artist with the default rules queues its studio album
     body: {
       foreignArtistId: artistMbid,
       artistName: "Monitor Artist",
-      managedBy: "aurral",
+      managed: true,
       monitoring: { monitored: true },
     },
   });
   assert.equal(added.statusCode, 201);
-  assert.equal(added.body.artist.managedBy, "aurral");
+  assert.equal(added.body.artist.managed, true);
   assert.equal(added.body.artist.monitored, true);
   assert.equal(added.body.artist.useDefault, true);
   assert.deepEqual(added.body.artist.monitoring.releaseGroupIds, defaultIds);
@@ -418,7 +418,7 @@ test("monitoring an Aurral artist with the default rules queues its studio album
 test.each(["aurral", "readonly"])(
   "monitoring an artist downloads the songs missing from an album the Library lists from its %s files",
   async (source) => {
-    await addAurralArtist("none");
+    await addArtist("none");
     const artist = db
       .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryArtistsRow["id"] }>(
         "SELECT id FROM library_artists WHERE mbid = ?",
@@ -485,7 +485,7 @@ test.each(["aurral", "readonly"])(
 );
 
 test("older clients' monitor options map onto rules and options Aurral never had are refused", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   assert.deepEqual(queuedMonitoringTasks(), []);
 
   const latest = await callRoute("PUT /artists/:mbid", {
@@ -530,7 +530,7 @@ test("older clients' monitor options map onto rules and options Aurral never had
 });
 
 test("custom rules choose release types and how much of the back catalogue to take", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
 
   const cases = [
     [
@@ -576,7 +576,7 @@ test("custom rules choose release types and how much of the back catalogue to ta
 });
 
 test("a metadata outage reports an error and keeps the previous monitoring", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   metadataState.artistFails = true;
   clearMetadataProviderCaches();
 
@@ -590,7 +590,7 @@ test("a metadata outage reports an error and keeps the previous monitoring", asy
 test("adding an artist reports a metadata outage during monitoring", async () => {
   metadataState.artistFails = true;
   clearMetadataProviderCaches();
-  const response = await addAurralArtist("all");
+  const response = await addArtist("all");
   assert.equal(response.statusCode, 503);
   assert.equal(response.body.code, "metadata_unavailable");
   assert.deepEqual(queuedMonitoringTasks(), []);
@@ -601,7 +601,7 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
 });
 
 test("a later disable wins over an earlier artist monitoring request", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   clearMetadataProviderCaches();
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -622,7 +622,7 @@ test("a later disable wins over an earlier artist monitoring request", async () 
 });
 
 test("queued artist acquisition stops after monitoring is disabled or the rules change", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   await monitorWith({ monitored: true });
   assert.ok(queuedMonitoringTasks().length > 0);
   await monitorWith({ monitored: false });
@@ -640,7 +640,7 @@ test("queued artist acquisition stops after monitoring is disabled or the rules 
 });
 
 test("an artist disabled during metadata lookup does not acquire albums", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   const monitoring = await monitorWith(customRules({ types: ["album"] }));
   assert.equal(monitoring.statusCode, 200);
   const started = Promise.withResolvers<void>();
@@ -664,7 +664,7 @@ test("an artist disabled during metadata lookup does not acquire albums", async 
 });
 
 test("concurrent album disable and enable leaves the last choice active", async () => {
-  await addAurralArtist("all");
+  await addArtist("all");
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
@@ -673,11 +673,11 @@ test("concurrent album disable and enable leaves the last choice active", async 
     .get(releases.firstAlbum.id);
   assert.ok(album);
   const [disabled, enabled] = await Promise.all([
-    callRoute("PUT /albums/aurral/:canonicalId", {
+    callRoute("PUT /albums/:canonicalId", {
       params: { canonicalId: String(album.id) },
       body: { monitored: false },
     }),
-    callRoute("PUT /albums/aurral/:canonicalId", {
+    callRoute("PUT /albums/:canonicalId", {
       params: { canonicalId: String(album.id) },
       body: { monitored: true },
     }),
@@ -698,7 +698,7 @@ test("concurrent album disable and enable leaves the last choice active", async 
 });
 
 test("an album override survives artist monitoring changes and unmonitoring keeps finished tracks", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   await callRoute("PUT /artists/:mbid", {
     params: { mbid: artistMbid },
     body: { monitorOption: "latest" },
@@ -716,7 +716,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
     .get(releases.latestEp.id);
   assert.ok(album);
 
-  const unmonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
+  const unmonitored = await callRoute("PUT /albums/:canonicalId", {
     params: { canonicalId: String(album.id) },
     body: { monitored: false },
   });
@@ -750,7 +750,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
     "unmonitored",
   );
 
-  const remonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
+  const remonitored = await callRoute("PUT /albums/:canonicalId", {
     params: { canonicalId: String(album.id) },
     body: { monitored: true },
   });
@@ -759,7 +759,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   assert.equal(getJob(activeJob.id).status, "pending");
   assert.equal(albumJobs().length, 2);
 
-  const invalid = await callRoute("PUT /albums/aurral/:canonicalId", {
+  const invalid = await callRoute("PUT /albums/:canonicalId", {
     params: { canonicalId: String(album.id) },
     body: { monitored: "yes" },
   });
@@ -771,7 +771,7 @@ function futureDate(days: number) {
 }
 
 test("daily reconciliation queues new releases once, saves upcoming ones for release day, and keeps going past a failing artist", async () => {
-  await addAurralArtist("all");
+  await addArtist("all");
   await runQueuedMonitoringTasks();
   const initialJobs = downloadTracker.getAll().length;
   await callRoute("POST /artists", {
@@ -779,7 +779,7 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
       foreignArtistId: otherArtistMbid,
       artistName: "Other Artist",
       monitorOption: "future",
-      managedBy: "aurral",
+      managed: true,
     },
   });
   assert.deepEqual(queuedMonitoringTasks(), []);
@@ -837,10 +837,10 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
 });
 
 test("saving rules again keeps the cutoff for new releases while new releases stay on", async () => {
-  const added = await addAurralArtist("future");
+  const added = await addArtist("future");
   assert.equal(added.statusCode, 201);
   const start = Date.now() - 3 * 24 * 60 * 60 * 1000;
-  monitoringStore.setAurralArtistMonitoringState(artistRow()!.id, {
+  monitoringStore.setArtistMonitoringState(artistRow()!.id, {
     ...storedMonitoring(),
     catalogAt: start,
     newSince: start,
@@ -873,7 +873,7 @@ test("saving rules again keeps the cutoff for new releases while new releases st
 });
 
 test("Latest with new releases off keeps the same releases after the artist puts out another", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   const saved = await monitorWith(
     customRules({ catalog: "latest", latestCount: 1, newReleases: false }),
   );
@@ -896,7 +896,7 @@ test("Latest with new releases off keeps the same releases after the artist puts
 });
 
 test("a release whose every song is already wanted is skipped, but studio albums never are", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   const albumSingle = {
     id: "a2222222-2222-4222-8222-222222222210",
     title: "Album Single",
@@ -935,7 +935,7 @@ test("a release whose every song is already wanted is skipped, but studio albums
 });
 
 test("a deleted album stays out of monitoring until someone asks for it again", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   await monitorWith({ monitored: true });
   await runQueuedMonitoringTasks();
   const album = db
@@ -945,7 +945,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
     .get(releases.secondAlbum.id);
   assert.ok(album);
 
-  const removed = await callRoute("DELETE /albums/aurral/:canonicalId", {
+  const removed = await callRoute("DELETE /albums/:canonicalId", {
     params: { canonicalId: String(album.id) },
   });
   assert.equal(removed.statusCode, 200);
@@ -964,7 +964,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
   ]);
 
   const exclusions = await callRoute<
-    import("../../backend/services/aurralMonitoringStore.ts").MonitoringExclusion[]
+    import("../../backend/services/monitoringStore.ts").MonitoringExclusion[]
   >("GET /monitoring/exclusions", { query: { artistMbid } });
   assert.deepEqual(
     exclusions.body.map(({ kind, mbid, title }) => ({ kind, mbid, title })),
@@ -977,7 +977,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
       albumName: releases.secondAlbum.title,
       artistMbid,
       artistName: "Monitor Artist",
-      managedBy: "aurral",
+      managed: true,
     },
   });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
@@ -989,7 +989,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
 });
 
 test("allowing an excluded album again lets monitoring take it back", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   await monitorWith(customRules({ types: ["album"] }));
   await runQueuedMonitoringTasks();
   const album = db
@@ -998,15 +998,16 @@ test("allowing an excluded album again lets monitoring take it back", async () =
     )
     .get(releases.firstAlbum.id);
   assert.ok(album);
-  await callRoute("DELETE /albums/aurral/:canonicalId", {
+  await callRoute("DELETE /albums/:canonicalId", {
     params: { canonicalId: String(album.id) },
   });
   downloadTracker.clearAll();
 
   const [exclusion] = (
-    await callRoute<
-      import("../../backend/services/aurralMonitoringStore.ts").MonitoringExclusion[]
-    >("GET /monitoring/exclusions", { query: { artistMbid } })
+    await callRoute<import("../../backend/services/monitoringStore.ts").MonitoringExclusion[]>(
+      "GET /monitoring/exclusions",
+      { query: { artistMbid } },
+    )
   ).body;
   assert.ok(exclusion !== undefined);
   const allowed = await callRoute("DELETE /monitoring/exclusions/:id", {
@@ -1023,7 +1024,7 @@ test("allowing an excluded album again lets monitoring take it back", async () =
 });
 
 test("changing the default rules re-applies them to the artists that use them", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   await monitorWith({ monitored: true });
   await runQueuedMonitoringTasks();
   metadataState.otherReleases = [
@@ -1035,7 +1036,7 @@ test("changing the default rules re-applies them to the artists that use them", 
       artistMbid: otherArtistMbid,
     },
   ];
-  await addAurralArtist("none", { mbid: otherArtistMbid, name: "Other Artist" });
+  await addArtist("none", { mbid: otherArtistMbid, name: "Other Artist" });
   await monitorWith(customRules({ catalog: "none", newReleases: true }), otherArtistMbid);
   clearMonitoringTasks();
 
@@ -1128,7 +1129,7 @@ test("top tracks queue the artist's popular songs that monitored releases do not
     }
     throw new Error(`Unexpected Deezer request ${url}`);
   });
-  await addAurralArtist("none");
+  await addArtist("none");
   const root = path.join(isolatedState.baseDir, "featured-library");
   await fs.mkdir(root, { recursive: true });
   await fs.writeFile(path.join(root, "01.flac"), "featured audio");
@@ -1181,7 +1182,7 @@ test("top tracks queue the artist's popular songs that monitored releases do not
 });
 
 test("the expanded edition downloads the longer tracklist of an album", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   const deluxe = {
     id: "a2222222-2222-4222-8222-222222222212",
     title: "Deluxe Album",
@@ -1209,7 +1210,7 @@ test("the expanded edition downloads the longer tracklist of an album", async ()
 });
 
 test("switching to the expanded edition adds the extra tracks of albums already in the Library", async () => {
-  await addAurralArtist("none");
+  await addArtist("none");
   const deluxe = {
     id: "a2222222-2222-4222-8222-222222222212",
     title: "Deluxe Album",
@@ -1286,13 +1287,13 @@ type MonitoringSummary = {
 type RouteBody = {
   artist: {
     id: string;
-    managedBy: string;
+    managed: boolean;
     monitored: boolean;
     useDefault: boolean;
     monitoring: MonitoringSummary;
   };
   monitoring: MonitoringSummary;
-  rules: import("../../backend/services/aurralMonitoring.ts").MonitorRules;
+  rules: import("../../backend/services/monitoring.ts").MonitorRules;
   code: string;
   artistCount: number;
   failedArtistCount: number;

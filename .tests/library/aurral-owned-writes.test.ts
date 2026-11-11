@@ -116,8 +116,8 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
-    assert.equal(artist.managedBy, "aurral");
-    assert.equal(managementStore.getManagedBy("artist", artist.id), "aurral");
+    assert.equal(artist.managed, true);
+    assert.ok(managementStore.getLibraryManagementEntry("artist", artist.id));
 
     const request = await libraryManager.requestAlbumFromSearch({
       albumMbid,
@@ -126,7 +126,6 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
       artistName: "Aurral Artist",
       user: { id: 1, username: "test", role: "user", permissions: { addArtist: true } },
     });
-    assert.equal(request.managedBy, "aurral");
     assert.equal(request.status, "queued");
     assert.equal(requireFixture(request.albumStatus).status, "queued");
     assert.equal(requireFixture(request.albumStatus).counts.pending, 2);
@@ -187,11 +186,11 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
     assert.equal(requireFixture(scannedAlbum.statistics).trackFileCount, 1);
     assert.equal(path.relative(aurralRoot, mediaPath).startsWith(".."), false);
 
-    assert.equal((await libraryManager.getArtist(artistMbid))!.managedBy, "aurral");
+    assert.equal((await libraryManager.getArtist(artistMbid))!.managed, true);
     assert.equal((await libraryManager.getAlbums(artist.id)).length, 1);
     assert.equal(
-      (await libraryManager.getAlbumById(requireFixture(scannedAlbum.id)))!.managedBy,
-      "aurral",
+      (await libraryManager.getAlbumById(requireFixture(scannedAlbum.id)))!.managed,
+      true,
     );
     assert.equal((await libraryManager.getTracks(requireFixture(scannedAlbum.id))).length, 2);
 

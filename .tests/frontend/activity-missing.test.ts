@@ -2,34 +2,34 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
-  isCutoffUnmetAurralJob,
+  isCutoffUnmetJob,
   getMissingJobKey,
-  isMissingAurralJob,
+  isMissingJob,
   sortMissingJobs,
 } from "../../frontend/src/pages/activity/activityMissingUtils.ts";
 
 test("missing activity includes failed Aurral jobs but not upgrades", () => {
-  assert.equal(isMissingAurralJob({ status: "failed" }), true);
-  assert.equal(isMissingAurralJob({ status: "failed", upgradeForJobId: "job-1" }), false);
-  assert.equal(isMissingAurralJob({ status: "done" }), false);
-  assert.equal(isMissingAurralJob({ status: "failed", monitored: false }), false);
+  assert.equal(isMissingJob({ status: "failed" }), true);
+  assert.equal(isMissingJob({ status: "failed", upgradeForJobId: "job-1" }), false);
+  assert.equal(isMissingJob({ status: "done" }), false);
+  assert.equal(isMissingJob({ status: "failed", monitored: false }), false);
 });
 
 test("cutoff activity includes owned files below the preferred quality", () => {
   assert.equal(
-    isCutoffUnmetAurralJob({ status: "done", qualityOwned: true, qualityState: "upgrade" }),
+    isCutoffUnmetJob({ status: "done", qualityOwned: true, qualityState: "upgrade" }),
     true,
   );
   assert.equal(
-    isCutoffUnmetAurralJob({ status: "done", qualityOwned: true, qualityState: "preferred" }),
+    isCutoffUnmetJob({ status: "done", qualityOwned: true, qualityState: "preferred" }),
     false,
   );
   assert.equal(
-    isCutoffUnmetAurralJob({ status: "done", qualityOwned: false, qualityState: "upgrade" }),
+    isCutoffUnmetJob({ status: "done", qualityOwned: false, qualityState: "upgrade" }),
     false,
   );
   assert.equal(
-    isCutoffUnmetAurralJob({
+    isCutoffUnmetJob({
       status: "done",
       qualityOwned: true,
       qualityState: "upgrade",

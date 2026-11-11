@@ -54,7 +54,7 @@ export interface ArtistCoverImage {
 
 export interface ReleaseLibraryInfo {
   inLibrary?: boolean;
-  managedBy?: string | null;
+  managed?: boolean;
   monitored?: boolean;
   trackListComplete?: boolean;
   trackCount?: number;
@@ -503,7 +503,7 @@ const isUnrequestedReleaseGroup = (
   return !status || status === "unmonitored";
 };
 
-export const buildAurralPick = <T extends ReleaseGroup>({
+export const buildPick = <T extends ReleaseGroup>({
   releaseGroups = [],
   getAlbumStatus,
   requestedReleaseGroupId = null,

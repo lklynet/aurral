@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import { downloadTracker, type DownloadJob } from "./downloadTracker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.ts";
-import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPaths.ts";
+import { buildTrackDestination, resolveDownloadRoot } from "../downloadPaths.ts";
 import {
   commitDownloadedFile,
   joinUnderRoot,
@@ -69,7 +69,7 @@ export async function approveBlockedJob(jobId: string) {
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
   const playlistId = job.playlistId || job.playlistType;
-  const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
+  const destination = buildTrackDestination(playlistId, artistDir, albumDir, {
     ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
   });
   const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);

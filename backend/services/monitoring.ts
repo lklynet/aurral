@@ -297,6 +297,6 @@ export function monitoringFromLegacyMode(
   }
 }
 
-export async function listAurralArtistReleases(artistMbid: string) {
+export async function listArtistReleases(artistMbid: string) {
   return listArtistAlbums(artistMbid, { hydrateLimit: 100 });
 }

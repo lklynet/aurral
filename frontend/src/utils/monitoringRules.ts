@@ -1,4 +1,4 @@
-import type { MonitorRules } from "../../../backend/services/aurralMonitoring.ts";
+import type { MonitorRules } from "../../../backend/services/monitoring.ts";
 
 export type MonitoringRules = MonitorRules;
 

@@ -17,7 +17,7 @@ import {
   Shuffle,
   Trash2,
 } from "../../components/icons";
-import { useAurralTrackMonitoring } from "../../components/AurralTrackMonitoring";
+import { useTrackMonitoring } from "../../components/TrackMonitoring";
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import type { TrackListRow } from "../../components/TrackList";
@@ -44,7 +44,7 @@ import {
   getLibraryTrackReplacementJob,
   reSearchLibraryTrack,
   updateLibraryFavorites,
-  type AurralMonitoringResult,
+  type MonitoringResult,
   type CustomArtworkResult,
 } from "../../utils/api/endpoints/library.ts";
 import { buildAuthenticatedApiUrl } from "../../utils/api/core.ts";
@@ -60,8 +60,8 @@ import {
   yearOf,
 } from "../../utils/libraryPageData.ts";
 import type { LibraryMenuItem } from "../../components/LibraryItemMenu";
-import { isAwaitingRelease } from "../../utils/aurralAlbumStatus.ts";
-import { getAlbumMonitoredState } from "../../utils/aurralMonitoring.ts";
+import { isAwaitingRelease } from "../../utils/albumStatus.ts";
+import { getAlbumMonitoredState } from "../../utils/monitoring.ts";
 import { libraryPreviewData, libraryPreviewFavorites } from "../../utils/libraryPreviewData";
 import {
   LIBRARY_PAGE_SIZE,
@@ -569,7 +569,7 @@ export function useLibraryActions({
           );
         } else if (removal.kind === "album") {
           await parseResponse(
-            libraryAlbumsClient.albums.aurral[":albumId"].$delete({
+            libraryAlbumsClient.albums[":albumId"].$delete({
               param: { albumId: encodeURIComponent(removal.entity.id) },
               query: { deleteFiles: String(deleteFiles) },
             }),
@@ -742,11 +742,11 @@ export function useLibraryActions({
     [refreshLibraryActivity, setLibrary],
   );
   const updateTrackMonitoringState = useCallback(
-    (trackId: string | number, result: AurralMonitoringResult) =>
+    (trackId: string | number, result: MonitoringResult) =>
       patchLibraryTrack(trackId, { monitored: result?.monitored !== false }),
     [patchLibraryTrack],
   );
-  const trackMonitoring = useAurralTrackMonitoring({
+  const trackMonitoring = useTrackMonitoring({
     canChange: canChangeMonitoring,
     onChanged: updateTrackMonitoringState,
   });
@@ -1032,7 +1032,7 @@ export function useLibraryActions({
       : []),
     ...extra,
     ...pluginMenuItems("album", { albumId: album.id }),
-    ...(canDeleteAlbum && album.managedBy === "aurral"
+    ...(canDeleteAlbum && album.managed
       ? [
           {
             id: "delete",
@@ -1175,7 +1175,7 @@ export function useLibraryActions({
     const awaitingRelease =
       !file &&
       isAwaitingRelease({
-        managedBy: album?.managedBy,
+        managed: album?.managed,
         monitored: getAlbumMonitoredState(album ?? null),
         releaseDate: album?.releaseDate,
       });
@@ -1199,7 +1199,7 @@ export function useLibraryActions({
     const isFavorite = favoriteIds.has(favoriteId("song", track));
     const monitoringItem = trackMonitoring.getMenuItem(track, {
       aurral:
-        (album?.managedBy === "aurral" && (!file || hasDeletableTrackFile(track))) ||
+        (album?.managed && (!file || hasDeletableTrackFile(track))) ||
         hasAurralTrackFile(track) ||
         downloadPending,
       hasFile: Boolean(file),

@@ -108,7 +108,7 @@ function shareTracks(library: ReturnType<typeof loadLibrary>, preferredPaths = n
         );
         const file =
           files.find((entry) => entry.albumId === album.id && preferredPaths.has(entry.path)) ??
-          selectCanonicalFile(files, album.id, album.managedBy);
+          selectCanonicalFile(files, album.id, album.managed);
         if (!track || !file) return null;
         return {
           albumId: album.id,

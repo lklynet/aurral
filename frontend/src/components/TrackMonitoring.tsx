@@ -3,20 +3,14 @@ import { Eye, EyeOff } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
-import {
-  setAurralTrackMonitoring,
-  type AurralMonitoringResult,
-} from "../utils/api/endpoints/library.ts";
-import {
-  describeTrackMonitoringResult,
-  getMonitoringMenuAction,
-} from "../utils/aurralMonitoring.ts";
+import { setTrackMonitoring, type MonitoringResult } from "../utils/api/endpoints/library.ts";
+import { describeTrackMonitoringResult, getMonitoringMenuAction } from "../utils/monitoring.ts";
 import { ConfirmModal } from "./ConfirmModal.tsx";
 
-type AurralTrackId = number | string;
+type TrackId = number | string;
 
-interface AurralTrackRef {
-  id: AurralTrackId;
+interface TrackRef {
+  id: TrackId;
   title?: string | null;
   trackName?: string | null;
   monitored?: boolean;
@@ -28,30 +22,30 @@ interface TrackMenuOptions {
   downloadPending?: boolean;
 }
 
-const trackTitle = (track: AurralTrackRef | null | undefined) =>
+const trackTitle = (track: TrackRef | null | undefined) =>
   track?.title || track?.trackName || "this track";
 
-interface AurralTrackMonitoringOptions {
+interface TrackMonitoringOptions {
   canChange: boolean;
-  onChanged?: (trackId: AurralTrackId, result: AurralMonitoringResult) => void | Promise<void>;
+  onChanged?: (trackId: TrackId, result: MonitoringResult) => void | Promise<void>;
 }
 
-export function useAurralTrackMonitoring({ canChange, onChanged }: AurralTrackMonitoringOptions) {
+export function useTrackMonitoring({ canChange, onChanged }: TrackMonitoringOptions) {
   const { showSuccess, showError } = useToast();
-  const [pending, setPending] = useState<{ id: AurralTrackId; monitored: boolean } | null>(null);
-  const [confirming, setConfirming] = useState<AurralTrackRef | null>(null);
+  const [pending, setPending] = useState<{ id: TrackId; monitored: boolean } | null>(null);
+  const [confirming, setConfirming] = useState<TrackRef | null>(null);
 
-  const isMonitored = (track: AurralTrackRef | null | undefined) =>
+  const isMonitored = (track: TrackRef | null | undefined) =>
     pending && String(pending.id) === String(track?.id)
       ? pending.monitored
       : track?.monitored !== false;
 
-  const apply = async (track: AurralTrackRef, nextMonitored: boolean) => {
+  const apply = async (track: TrackRef, nextMonitored: boolean) => {
     if (pending) return;
     setPending({ id: track.id, monitored: nextMonitored });
     setConfirming(null);
     try {
-      const result = await setAurralTrackMonitoring(track.id, nextMonitored);
+      const result = await setTrackMonitoring(track.id, nextMonitored);
       const { message, warning } = describeTrackMonitoringResult(result);
       (warning ? showError : showSuccess)(message);
       await onChanged?.(track.id, result);
@@ -65,7 +59,7 @@ export function useAurralTrackMonitoring({ canChange, onChanged }: AurralTrackMo
   };
 
   const getMenuItem = (
-    track: AurralTrackRef,
+    track: TrackRef,
     { aurral = false, hasFile = false, downloadPending = false }: TrackMenuOptions = {},
   ) => {
     if (!aurral || !canChange || !Number.isInteger(Number(track?.id))) return null;
@@ -97,7 +91,7 @@ export function useAurralTrackMonitoring({ canChange, onChanged }: AurralTrackMo
         busyLabel="Stopping"
         busy={pending !== null}
         onCancel={() => setConfirming(null)}
-        onConfirm={() => apply(confirming as AurralTrackRef, false)}
+        onConfirm={() => apply(confirming as TrackRef, false)}
       />
     ),
   };

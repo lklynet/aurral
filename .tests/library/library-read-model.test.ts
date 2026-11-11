@@ -127,15 +127,15 @@ test("library read model preserves non-MBID provider artist identity", () => {
   );
 });
 
-test("library file reads prefer the album manager before Lidarr", () => {
+test("a managed album plays Aurral's copy of a track before a read-only one", () => {
   const file = requireFixture(
     selectCanonicalFile(
       [
-        { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
+        { albumId: 2, source: "readonly", path: "/music/a-read-only.flac", available: true },
         { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
       ],
       2,
-      "aurral",
+      true,
     ),
   );
 

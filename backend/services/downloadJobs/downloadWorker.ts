@@ -12,7 +12,7 @@ import {
   readReleaseManifest,
   RELEASE_WAIT_SECONDS,
 } from "../releaseResolver.ts";
-import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
+import { indexUnmonitoredJobs } from "../unmonitoredJobs.ts";
 import {
   repairOrphanedPlaylistTrackPaths,
   repairReusableTrackLinks,

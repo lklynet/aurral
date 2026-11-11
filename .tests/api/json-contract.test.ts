@@ -555,7 +555,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
       albumName: album.title,
       artistMbid,
       artistName: artist.name,
-      managedBy: "aurral",
+      managed: true,
     },
   });
   fields(requested, {
@@ -565,7 +565,6 @@ test("library pages, lookups, album requests, and track requests preserve their 
     createdArtist: "boolean",
     createdAlbum: "boolean",
     status: "string",
-    managedBy: "string",
     queued: "boolean",
   });
   assert.equal(requested.success, true);

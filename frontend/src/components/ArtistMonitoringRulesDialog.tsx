@@ -9,7 +9,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
 import { slowLibraryFetch } from "../utils/api/endpoints/library.ts";
-import { describeAurralMonitoringError } from "../utils/aurralMonitoring.ts";
+import { describeMonitoringError } from "../utils/monitoring.ts";
 import {
   RELEASE_SKIP_REASONS,
   TRACK_SKIP_REASONS,
@@ -135,7 +135,7 @@ function MonitoringPreview({ mbid, artistName, request }: MonitoringPreviewProps
       <h4 className="monitoring-preview__title">What Aurral downloads</h4>
       {preview.isError && !pending ? (
         <p className="monitoring-preview__status monitoring-preview__status--error" role="alert">
-          {describeAurralMonitoringError(
+          {describeMonitoringError(
             preview.error,
             "Could not check this artist's releases. Try again.",
           )}
@@ -232,7 +232,7 @@ function MonitoringExclusions({ mbid, onError }: MonitoringExclusionsProps) {
       ]),
     onError: (error, exclusion) =>
       onError(
-        `Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+        `Could not allow ${exclusion.title} again. Nothing changed. ${describeMonitoringError(error, "Try again.")}`,
       ),
   });
   const exclusions = Array.isArray(exclusionsQuery.data) ? exclusionsQuery.data : [];

@@ -1,12 +1,12 @@
 import type { MonitoringRules } from "./monitoringRules.ts";
-import { summarizeAurralMonitoring, type AurralMonitoringPlan } from "./aurralMonitoring.ts";
+import { summarizeMonitoring, type MonitoringPlan } from "./monitoring.ts";
 
 interface ArtistMonitoringState {
   added?: boolean;
   monitored?: boolean;
   useDefault?: boolean;
   rules?: MonitoringRules | null;
-  monitoring?: AurralMonitoringPlan;
+  monitoring?: MonitoringPlan;
 }
 
 type ArtistMonitoringRequest = {
@@ -69,6 +69,6 @@ export const describeArtistMonitoringChange = ({
   const change =
     response?.useDefault === false ? `Monitoring ${name} with custom rules` : `Monitoring ${name}`;
   return response?.monitoring
-    ? `${change}. ${summarizeAurralMonitoring(response.monitoring, response).message}`
+    ? `${change}. ${summarizeMonitoring(response.monitoring, response).message}`
     : change;
 };

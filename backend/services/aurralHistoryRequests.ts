@@ -303,7 +303,7 @@ export const syncProcessingActivityHistory = async () => {
   await syncFlowGenerationHistory(entries);
 };
 
-export interface AurralAlbumGrab {
+export interface AlbumGrab {
   id: string;
   memberJobIds: string[];
   phase: string;
@@ -314,7 +314,7 @@ export interface AurralAlbumGrab {
   libraryAlbumId?: string | null;
 }
 
-export interface AurralRequestItem {
+export interface RequestItem {
   id: string;
   source: string;
   type: "activity";
@@ -323,7 +323,7 @@ export interface AurralRequestItem {
   status: string;
   statusLabel: string | null;
   requestedAt: string;
-  albumGrab?: AurralAlbumGrab | null;
+  albumGrab?: AlbumGrab | null;
   completedAt?: string | null;
   actualDownloadSource?: string | null;
   downloadMethod?: string | null;
@@ -354,7 +354,7 @@ type HistoryRequestOptions = {
   trackName?: string | null;
   releaseTitle?: string | null;
   albumName?: string | null;
-  albumGrab?: AurralAlbumGrab | null;
+  albumGrab?: AlbumGrab | null;
   libraryAlbumId?: string | null;
   requestGroupId?: string | null;
 };
@@ -362,7 +362,7 @@ type HistoryRequestOptions = {
 export const toHistoryRequestItem = (
   entry: AurralHistoryEntry,
   options: HistoryRequestOptions = {},
-): AurralRequestItem => {
+): RequestItem => {
   const kind = entry.kind || null;
   const source = resolveHistorySource(kind, entry.metadata);
   const sourceFilename =

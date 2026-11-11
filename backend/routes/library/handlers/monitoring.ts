@@ -5,7 +5,7 @@ import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { removeMonitoringExclusion } from "../../../services/aurralMonitoringStore.ts";
+import { removeMonitoringExclusion } from "../../../services/monitoringStore.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { dismissLidarrConversionReport } from "../../../services/lidarrConversionReport.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -49,10 +49,7 @@ export default new Hono<AppEnv>()
       const mbid = c.req.param("mbid");
       if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
       try {
-        const result = await libraryManager.previewAurralArtistMonitoring(
-          mbid,
-          c.req.valid("json"),
-        );
+        const result = await libraryManager.previewArtistMonitoring(mbid, c.req.valid("json"));
         if (isFailure(result)) return sendFailure(c, result);
         return c.json(result, 200);
       } catch (error) {

@@ -6,7 +6,7 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 const [state, { downloadTracker }, { cancelTrackDownload }] = await setupIsolatedBackend(
   "cancel-removed-track",
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-  () => import("../../backend/services/aurralAlbumJobs.ts"),
+  () => import("../../backend/services/albumJobs.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 

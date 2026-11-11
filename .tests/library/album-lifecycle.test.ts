@@ -704,7 +704,7 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
   await fs.writeFile(path.join(stagingPath, "partial.m4a"), "partial download");
 
   try {
-    const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+    const cancelled = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
     assert.equal(cancelled.status, 200);
     assert.deepEqual(cancelled.body.cancelledJobIds.sort(), [downloadingJob, pendingJob].sort());
     assert.equal(getJob(doneJob).status, "done");
@@ -714,7 +714,7 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
     await assert.rejects(fs.access(stagingPath));
     assert.equal(downloadTracker.getNextPending(), null);
 
-    const repeated = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+    const repeated = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
     assert.equal(repeated.status, 200);
     assert.deepEqual([...repeated.body.cancelledJobIds], []);
   } finally {
@@ -729,11 +729,11 @@ test("album cancellation rejects unknown, malformed, and read-only albums", asyn
   });
   const otherJob = jobFor(1);
 
-  const missing = await callRoute("/library/albums/aurral/999999/cancel", "POST");
+  const missing = await callRoute("/library/albums/999999/cancel", "POST");
   assert.equal(missing.status, 404);
-  const malformed = await callRoute("/library/albums/aurral/12abc/cancel", "POST");
+  const malformed = await callRoute("/library/albums/12abc/cancel", "POST");
   assert.equal(malformed.status, 400);
-  const conflict = await callRoute(`/library/albums/aurral/${readOnlyAlbum.id}/cancel`, "POST");
+  const conflict = await callRoute(`/library/albums/${readOnlyAlbum.id}/cancel`, "POST");
   assert.equal(conflict.status, 409);
   assert.equal(conflict.body.code, "album_owner_conflict");
   assert.equal(getJob(otherJob).status, "pending");
@@ -748,7 +748,7 @@ test("album cancellation waits on provider cleanup without reviving the job", as
     downloadClientId: "unconfigured-sabnzbd-item",
   });
 
-  const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+  const cancelled = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
   assert.equal(cancelled.status, 200);
   assert.equal(cancelled.body.cleanupFailed, true);
   assert.equal(getJob(jobId).status, "cancel_requested");
@@ -839,7 +839,7 @@ test("album status aggregates library availability and per-track jobs", async (t
       const { album, jobFor } = createLibraryAlbum({
         availableTracks: scenario.availableTracks || 0,
       });
-      albumKeys.set(scenario.name, `aurral:${album.id}`);
+      albumKeys.set(scenario.name, String(album.id));
       scenario.jobs.forEach((jobStatus, index) => {
         if (!jobStatus) return;
         const jobId = jobFor(index);
@@ -852,10 +852,9 @@ test("album status aggregates library availability and per-track jobs", async (t
         if (jobStatus === "blocked") downloadTracker.setBlocked(jobId, "Low confidence match");
       });
 
-      const response = await callRoute(`/library/albums/aurral/${album.id}/status`);
+      const response = await callRoute(`/library/albums/${album.id}/status`);
       assert.equal(response.status, 200, scenario.name);
       assert.equal(response.body.status, scenario.status, scenario.name);
-      assert.equal(response.body.managedBy, "aurral", scenario.name);
       assert.equal(response.body.counts.total, 3, scenario.name);
       assert.equal(response.body.recovery?.code ?? null, scenario.recovery ?? null, scenario.name);
       if (scenario.recovery) assert.ok(response.body.recovery?.message, scenario.name);
@@ -867,8 +866,8 @@ test("album status aggregates library availability and per-track jobs", async (t
     const query = new URLSearchParams({
       albumIds: [
         ...polled.map((scenario) => keyFor(scenario)),
-        `aurral:${readOnlyAlbum.id}`,
-        "aurral:not-a-number",
+        String(readOnlyAlbum.id),
+        "not-a-number",
       ].join(","),
     });
     const batch = await callRoute<AlbumStatuses>(`/library/downloads/status?${query}`);
@@ -926,9 +925,9 @@ test("a download status poll finds album jobs under either album ID in any spell
     downloadTracker.reconcileCommittedJobs();
 
     const keys = [
-      `aurral:${legacy.album.id}`,
-      `aurral:${spelled.album.id}`,
-      `aurral:${untouched.album.id}`,
+      String(legacy.album.id),
+      String(spelled.album.id),
+      String(untouched.album.id),
     ] as const;
     const query = new URLSearchParams({ albumIds: keys.join(",") });
     const expected = {
@@ -965,7 +964,7 @@ test("re-requesting an Aurral album waits for a download source and retries canc
   downloadWorker.start = async () => {};
   const { album, albumMbid, artistMbid } = createLibraryAlbum();
   const albumJobs = () => downloadTracker.getAll().filter((job) => job.albumMbid === albumMbid);
-  const request = () => addAurralAlbum(artistMbid, albumMbid, album.title);
+  const request = () => addAlbum(artistMbid, albumMbid, album.title);
 
   try {
     setDownloadSourceConfigured(false);
@@ -983,7 +982,7 @@ test("re-requesting an Aurral album waits for a download source and retries canc
 
     downloadTracker.setDownloading(requireFixture(queued.jobIds[0]));
     downloadTracker.setFailed(requireFixture(queued.jobIds[1]), "No matching source result");
-    await libraryManager.cancelAurralAlbum(album.id);
+    await libraryManager.cancelAlbum(album.id);
     assert.equal(getJob(requireFixture(queued.jobIds[0])).status, "cancelled");
     assert.equal(getJob(requireFixture(queued.jobIds[1])).status, "failed");
 
@@ -1009,7 +1008,7 @@ test("re-requesting a missing completed file reports a missing download source",
   downloadTracker.setDone(jobId, path.join(isolatedState.dataDir, "deleted.flac"));
   setDownloadSourceConfigured(false);
 
-  const result = await addAurralAlbum(artistMbid, albumMbid, album.title);
+  const result = await addAlbum(artistMbid, albumMbid, album.title);
   assert.equal(result.status, "blocked");
   assert.equal(result.albumStatus.status, "blocked");
   assert.equal(result.albumStatus.recovery?.code, "download_source_missing");
@@ -1146,7 +1145,7 @@ test("an album asks for its most common edition and a shorter download leaves it
     albumName: "Edition Album",
     artistMbid,
     artistName: "Edition Artist",
-    managedBy: "aurral",
+    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
@@ -1228,7 +1227,7 @@ test("an album asks for its most common edition and a shorter download leaves it
   );
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
-  const status = await callRoute(`/library/albums/aurral/${requested.body.album.id}/status`);
+  const status = await callRoute(`/library/albums/${requested.body.album.id}/status`);
   assert.notEqual(status.body.status, "complete");
   assert.equal(status.body.counts.total, 3);
 });
@@ -1307,7 +1306,7 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
     albumName: "Expanded Album",
     artistMbid,
     artistName: "Expanded Artist",
-    managedBy: "aurral",
+    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   ids = requested.body.jobIds;
@@ -1429,7 +1428,7 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
     albumName: "Disc Album",
     artistMbid,
     artistName: "Disc Artist",
-    managedBy: "aurral",
+    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
@@ -1548,7 +1547,7 @@ test("an album asks for its release's own lengths and fills a missing one from p
     albumName: "Pressing Album",
     artistMbid,
     artistName: "Pressing Artist",
-    managedBy: "aurral",
+    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   assert.deepEqual(
@@ -1672,7 +1671,7 @@ test("asking for an album downloads the missing tracks of the edition its track 
     albumName: "Listed Album",
     artistMbid,
     artistName: "Listed Artist",
-    managedBy: "aurral",
+    managed: true,
   });
 
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
@@ -1793,7 +1792,7 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
     albumName: "Silent Album",
     artistMbid,
     artistName: "Silent Artist",
-    managedBy: "aurral",
+    managed: true,
   });
 
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
@@ -1905,8 +1904,7 @@ test("an album scanned with its release ID stays one album through downloads and
   );
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, path.join(root, "elsewhere.flac"));
-  const status = async () =>
-    (await callRoute(`/library/albums/aurral/${album.id}/status`)).body.status;
+  const status = async () => (await callRoute(`/library/albums/${album.id}/status`)).body.status;
 
   const duplicate = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${release}`,
@@ -1998,7 +1996,7 @@ test("an album scanned with its release ID queues by release group and cancels i
   const originalWorkerStart = downloadWorker.start;
   downloadWorker.start = async () => {};
   try {
-    const queued = await libraryManager.searchAurralAlbumMissingTracks(album.id);
+    const queued = await libraryManager.searchAlbumMissingTracks(album.id);
     assert.ok(queued.jobIds);
     assert.deepEqual(
       queued.jobIds.map((id) => getJob(id).albumMbid),
@@ -2020,12 +2018,12 @@ test("an album scanned with its release ID queues by release group and cancels i
     "library",
   );
 
-  const cancelled = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
+  const cancelled = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
   assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
   assert.equal(getJob(legacyJobId).status, "cancelled");
 });
 
-async function addAurralAlbum(artistMbid: string, albumMbid: string, albumName: string) {
+async function addAlbum(artistMbid: string, albumMbid: string, albumName: string) {
   const result = await libraryManager.addAlbum(artistMbid, albumMbid, albumName, {});
   const { albumStatus, jobIds } = result;
   assert.ok(albumStatus && jobIds, JSON.stringify(result));
@@ -2067,7 +2065,6 @@ type ActivityRow = {
 };
 type RouteBody = {
   status: string;
-  managedBy: string;
   code: string;
   counts: Record<string, number>;
   recovery?: { code: string; message: string } | null;

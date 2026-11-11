@@ -844,7 +844,7 @@ async function monitorTracks(operation: LibraryFileOperation, placed: Placed[]) 
   if (operation.options.monitor === "albums") {
     const { libraryManager } = await import("../libraryManager.ts");
     for (const albumId of albumIds) {
-      const result = await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: true });
+      const result = await libraryManager.setAlbumMonitoring(albumId, { monitored: true });
       if (result?.error) {
         logger.warn("library-files", "Ingest could not monitor an album", {
           albumId,

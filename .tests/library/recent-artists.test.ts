@@ -111,8 +111,8 @@ test("recent artists carry artwork and library identities, with or without a Mus
 
   const recent = await getRecent();
   assert.deepEqual(
-    recent.map((artist) => artist.managedBy),
-    ["aurral", null],
+    recent.map((artist) => artist.managed),
+    [true, false],
   );
   assert.equal(recent[0]?.mbid, mbid);
   assert.equal(recent[0]?.id, String(aurral.id));

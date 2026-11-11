@@ -2,9 +2,9 @@ import { db } from "../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryTracksRow } from "../db/rows.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import { ACTIVE_JOB_STATUSES, indexAurralAlbumJobs, jobMatchesTrack } from "./aurralAlbumJobs.ts";
+import { ACTIVE_JOB_STATUSES, indexAlbumJobs, jobMatchesTrack } from "./albumJobs.ts";
 import { recordMissingTrackSearch } from "./aurralHistoryService.ts";
-import { AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./aurralMonitoring.ts";
+import { AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./monitoring.ts";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.ts";
 import { libraryManager } from "./libraryManager.ts";
 import { ALBUM_IS_OWNED } from "./libraryMediaStore.ts";
@@ -102,7 +102,7 @@ function selectDueAlbums(intervalDays: number | null) {
   const now = Date.now();
   const dueBefore = intervalDays === null ? null : now - intervalDays * DAY_MS;
   const albums = candidateAlbumsStmt.all({ dueBefore, today: utcDay(now) });
-  const jobsForAlbum = indexAurralAlbumJobs(
+  const jobsForAlbum = indexAlbumJobs(
     albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]),
   );
   const candidates = albums
@@ -130,7 +130,7 @@ function selectDueAlbums(intervalDays: number | null) {
 
 async function searchAlbumMissingTracks(album: CandidateAlbum) {
   try {
-    const result = await libraryManager.searchAurralAlbumMissingTracks(album.id);
+    const result = await libraryManager.searchAlbumMissingTracks(album.id);
     if (result?.error) {
       logger.warn("library", "Missing-track search could not search an album", {
         albumId: album.id,

@@ -5,19 +5,19 @@ import { Link } from "react-router";
 import { RotateCcw, X } from "./icons";
 
 import { DotLoader } from "./DotLoader";
-import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
+import type { LibraryAlbumRef } from "./AlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
 import { SettingsLink } from "../navigation/settingsRoute";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { queryKeys } from "../queryClient.ts";
-import { cancelAurralAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
+import { cancelAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
 import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
 import {
-  buildAurralAlbumRetryPayload,
-  describeAurralAlbumStatus,
+  buildAlbumRetryPayload,
+  describeAlbumStatus,
   shouldPollAlbumStatus,
   type AlbumStatus,
-} from "../utils/aurralAlbumStatus.ts";
+} from "../utils/albumStatus.ts";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -26,31 +26,31 @@ interface AlbumArtistRef {
   name?: string;
 }
 
-type AlbumStatusState = NonNullable<ReturnType<typeof describeAurralAlbumStatus>>;
+type AlbumStatusState = NonNullable<ReturnType<typeof describeAlbumStatus>>;
 type AlbumStatusAction = AlbumStatusState["actions"][number];
 
-interface AurralAlbumStatusProps {
-  album: AurralAlbumRef;
+interface AlbumDownloadStatusProps {
+  album: LibraryAlbumRef;
   artist?: AlbumArtistRef | null;
   canManage?: boolean;
   onChanged?: () => void;
   onSettled?: () => void;
 }
 
-export function AurralAlbumStatus({
+export function AlbumDownloadStatus({
   album,
   artist,
   canManage = false,
   onChanged,
   onSettled,
-}: AurralAlbumStatusProps) {
+}: AlbumDownloadStatusProps) {
   const { showError } = useToast();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const statusQuery = useQuery({
-    queryKey: queryKeys.aurralAlbumStatus(album.id),
+    queryKey: queryKeys.albumStatus(album.id),
     queryFn: ({ signal }) =>
       parseResponse(
-        libraryAlbumsClient.albums.aurral[":albumId"].status.$get(
+        libraryAlbumsClient.albums[":albumId"].status.$get(
           { param: { albumId: encodeURIComponent(album.id) } },
           { init: { signal } },
         ),
@@ -60,7 +60,7 @@ export function AurralAlbumStatus({
       shouldPollAlbumStatus(query.state.data?.status) ? POLL_INTERVAL_MS : false,
     refetchIntervalInBackground: false,
   });
-  const state = describeAurralAlbumStatus(statusQuery.data || {});
+  const state = describeAlbumStatus(statusQuery.data || {});
   const previousStatusRef = useRef<AlbumStatus | null | undefined>(null);
 
   useEffect(() => {
@@ -79,9 +79,9 @@ export function AurralAlbumStatus({
     setPendingAction(action.id);
     try {
       if (action.id === "cancel") {
-        await cancelAurralAlbum(album.id);
+        await cancelAlbum(album.id);
       } else {
-        await requestAlbumFromSearch(buildAurralAlbumRetryPayload({ album, artist }));
+        await requestAlbumFromSearch(buildAlbumRetryPayload({ album, artist }));
       }
       await statusQuery.refetch();
       onChanged?.();

@@ -68,7 +68,7 @@ const requireTrackDeletion = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-const aurralTrackInput = v.object({ monitored: v.optional(v.boolean()) });
+const trackMonitoringInput = v.object({ monitored: v.optional(v.boolean()) });
 
 const queueQuery = v.object({ page: v.optional(v.string()), pageSize: v.optional(v.string()) });
 
@@ -119,14 +119,14 @@ export default new Hono<AppEnv>()
     }
   })
   .put(
-    "/tracks/aurral/:trackId",
+    "/tracks/:trackId",
     requireAuth,
     requirePermission("changeMonitoring"),
-    validate("json", aurralTrackInput),
+    validate("json", trackMonitoringInput),
     async (c) => {
       const { monitored } = c.req.valid("json");
       try {
-        const result = await libraryManager.setAurralTrackMonitoring(c.req.param("trackId"), {
+        const result = await libraryManager.setTrackMonitoring(c.req.param("trackId"), {
           monitored,
         });
         if (isFailure(result)) {

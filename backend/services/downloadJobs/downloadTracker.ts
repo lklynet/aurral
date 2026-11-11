@@ -21,7 +21,7 @@ import {
   stringifyStringListJson,
   type DownloadTrackFields,
 } from "../downloadUtils.ts";
-import { buildAurralTrackDestination } from "../downloadPaths.ts";
+import { buildTrackDestination } from "../downloadPaths.ts";
 import { upgradeSourceIds } from "../downloadSourceService.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
@@ -517,7 +517,7 @@ function buildPipelinePayload(job: DownloadJob) {
       recordingMbidAliases,
     },
     attempt: 0,
-    destination: buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
+    destination: buildTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
     upgrade: Boolean(job.upgradeForJobId) && !job.manualReplacementSearch,
     upgradeForJobId: job.upgradeForJobId || null,
     manualReplacementSearch: job.manualReplacementSearch === true,

@@ -3,9 +3,7 @@ import { db } from "../config/db-sqlite.ts";
 import type { LibraryManagementRow } from "../db/rows.ts";
 
 // Aurral manages every artist and album that has an entry.
-export type LibraryOwner = "aurral";
 type ManagementEntry = {
-  managedBy: LibraryOwner;
   monitorMode: string | null;
   monitorRules: Record<string, unknown> | null;
   updatedAt: number | null;
@@ -76,7 +74,6 @@ function getCache(): ManagementCache {
       const map = isEntityKind(row.entity_kind) ? cache[row.entity_kind] : undefined;
       if (map) {
         map.set(row.entity_id, {
-          managedBy: "aurral",
           monitorMode: row.monitor_mode || null,
           monitorRules: parseRules(row.monitor_rules),
           updatedAt: row.updated_at || null,
@@ -116,11 +113,7 @@ export function getLibraryManagementEntry(entityKind: string, entityId: unknown)
   return getCache()[entityKind].get(id) || null;
 }
 
-export function getManagedBy(entityKind: string, entityId: unknown) {
-  return getLibraryManagementEntry(entityKind, entityId)?.managedBy ?? null;
-}
-
-export function getManagedByMap(entityKind: string) {
+export function getManagementMap(entityKind: string) {
   if (!isEntityKind(entityKind)) return new Map<number, ManagementEntry>();
   return getCache()[entityKind];
 }

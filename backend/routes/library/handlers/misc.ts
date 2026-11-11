@@ -56,7 +56,7 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
         ? "available"
         : "partial",
   monitored: album.monitored,
-  managedBy: album.managedBy || null,
+  managed: Boolean(album.managed),
   trackListComplete: album.trackListComplete !== false,
   ...(album.trackListComplete !== false && {
     percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
@@ -127,7 +127,7 @@ export function getArtistLibraryLookup(mbid: string) {
   const ownedAlbums = ownedLibraryAlbums(albums);
   const found =
     getLibraryArtistProjection({ reference: mbid }).find(
-      (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
+      (candidate) => candidate.mbid === mbid && candidate.managed,
     ) ?? artist;
   if (found) {
     return {

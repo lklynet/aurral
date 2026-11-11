@@ -174,21 +174,13 @@ export default new Hono<AppEnv>()
       const { albumIds } = c.req.valid("query");
       if (!albumIds) return c.json({ error: "albumIds query parameter is required" }, 400);
       const albumIdArray = Array.isArray(albumIds) ? albumIds : albumIds.split(",");
-      const aurralPrefix = "aurral:";
-      const aurralIds = albumIdArray.filter((id) => id.startsWith(aurralPrefix));
       const statuses: Record<
         string,
-        Extract<
-          ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number],
-          { error?: undefined }
-        >
+        Extract<ReturnType<typeof libraryManager.getAlbumStatuses>[number], { error?: undefined }>
       > = {};
-      const aurralStatuses = libraryManager.getAurralAlbumStatuses(
-        aurralIds.map((key) => key.slice(aurralPrefix.length)),
-      );
-      aurralIds.forEach((key, index) => {
-        const status = aurralStatuses[index];
-        if (status && status.error === undefined) statuses[key] = status;
+      libraryManager.getAlbumStatuses(albumIdArray).forEach((status, index) => {
+        const id = albumIdArray[index];
+        if (id && status.error === undefined) statuses[id] = status;
       });
       return c.json(statuses, 200);
     } catch (error) {

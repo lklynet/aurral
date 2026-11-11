@@ -1002,7 +1002,7 @@ test("library responses do not expose filesystem paths", () => {
           >["metadata"],
         }),
         providerId: null,
-        managedBy: null,
+        managed: false,
         monitorMode: null,
         monitored: false,
         albumIds: [],

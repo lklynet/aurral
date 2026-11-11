@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { db } from "../../config/db-sqlite.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { recordTrackJobQueued } from "../aurralHistoryService.ts";
-import { cancelTrackDownload, cancelTrackDownloads } from "../aurralAlbumJobs.ts";
+import { cancelTrackDownload, cancelTrackDownloads } from "../albumJobs.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fileReuse.ts";

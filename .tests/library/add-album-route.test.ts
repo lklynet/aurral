@@ -32,7 +32,7 @@ test("adding an album answers 201 once the album is in the library", async () =>
       artistId: "7",
       releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
       albumName: "Route Album",
-      managedBy: "aurral",
+      managed: true,
     }),
   });
   assert.equal(response.status, 201);

@@ -40,7 +40,7 @@ import { matchLibraryArtist } from "./artistMatch.ts";
 import { logger } from "./logger.ts";
 import { createLibraryScanExclusion, readOnlyFolderPaths, isPathWithin } from "./libraryFolders.ts";
 
-interface AurralJobMetadata {
+interface JobMetadata {
   artistName: string;
   albumName: string | null;
   trackName: string;
@@ -64,7 +64,7 @@ type FolderScan = {
   removed?: number;
 };
 
-function getAurralJobMetadataByPath() {
+function getJobMetadataByPath() {
   const rows = db
     .prepare<
       [],
@@ -89,7 +89,7 @@ function getAurralJobMetadataByPath() {
        ORDER BY completed_at DESC, created_at DESC`,
     )
     .all();
-  const byPath = new Map<string, AurralJobMetadata>();
+  const byPath = new Map<string, JobMetadata>();
   for (const row of rows) {
     const filePath = String(row.final_path || "").trim();
     if (!filePath || byPath.has(path.resolve(filePath))) continue;
@@ -128,7 +128,7 @@ function getLibraryFlowPaths() {
 
 async function syncLibraryFlowFiles(
   musicRoot: string,
-  jobMetadataByPath: Map<string, AurralJobMetadata>,
+  jobMetadataByPath: Map<string, JobMetadata>,
   force: boolean,
   changedPaths: string[] | null,
   changedFiles: Set<string>,
@@ -155,8 +155,8 @@ async function syncLibraryFlowFiles(
   return { ...scan, removed, changed: scan.changed || removed > 0 };
 }
 
-async function canonicalizeAurralArtistNames(
-  jobMetadataByPath: Map<string, AurralJobMetadata>,
+async function canonicalizeArtistNames(
+  jobMetadataByPath: Map<string, JobMetadata>,
   paths: string[] | null = null,
 ) {
   const candidates = new Set<string>();
@@ -350,7 +350,7 @@ export async function scanConfiguredLibrary({
   musicRoot?: string;
   changedFiles?: Set<string>;
 } = {}) {
-  const jobMetadataByPath = getAurralJobMetadataByPath();
+  const jobMetadataByPath = getJobMetadataByPath();
   const targeted = Array.isArray(changedPaths);
   const localPaths = pathsWithin(musicRoot, changedPaths);
   let local: FolderScan | undefined;
@@ -387,7 +387,7 @@ export async function scanConfiguredLibrary({
       );
     }
     if (!targeted || localPaths.length > 0) {
-      await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
+      await canonicalizeArtistNames(jobMetadataByPath, targeted ? localPaths : null);
     }
     try {
       readOnly = await scanReadOnlyFolders(readOnlyRoots, {

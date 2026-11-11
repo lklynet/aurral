@@ -28,13 +28,15 @@ Playlist files live in `_playlists` in the Library folder. At boot, before the s
 
 These names stay, because something outside Aurral depends on them or renaming them would cost more than it explains:
 
-| Name                         | Where                       | Holds                                                   |
-| ---------------------------- | --------------------------- | ------------------------------------------------------- |
-| `playlistId`, `playlistType` | Job fields                  | The owner, `library` or a flow ID, or `quality-upgrade` |
-| `canonicalJobId`             | Static playlist track field | The Library job that the track references               |
-| `canonicalAlbumId`           | Stored activity metadata    | The Library album, read into `libraryAlbumId`           |
-| `shared`, `shared-song`      | Subsonic IDs                | Static playlists and their songs                        |
-| `downloadFolderPath`         | Settings key                | The Library folder                                      |
+| Name                         | Where                       | Holds                                                                          |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `playlistId`, `playlistType` | Job fields                  | The owner, `library` or a flow ID, or `quality-upgrade`                        |
+| `canonicalJobId`             | Static playlist track field | The Library job that the track references                                      |
+| `canonicalAlbumId`           | Stored activity metadata    | The Library album, read into `libraryAlbumId`                                  |
+| `shared`, `shared-song`      | Subsonic IDs                | Static playlists and their songs                                               |
+| `downloadFolderPath`         | Settings key                | The Library folder                                                             |
+| `aurral_history`             | Table                       | Activity history                                                               |
+| `managedBy`                  | Stored activity metadata    | `aurral` on a request Aurral made, which tells it from an older Lidarr request |
 
 Subsonic clients store `shared` and `shared-song` IDs for favorites, offline caches, and playlists, so a rename would make them treat existing items as new ones.
 

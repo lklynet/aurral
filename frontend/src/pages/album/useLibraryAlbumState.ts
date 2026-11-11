@@ -1,11 +1,11 @@
 import { useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { useAurralAlbumMonitoring } from "../../components/AurralAlbumMonitoring";
+import { useAlbumMonitoring } from "../../components/AlbumMonitoring";
 import { requestsClient } from "../../utils/api/clients/requests.ts";
-import type { AurralMonitoringResult } from "../../utils/api/endpoints/library.ts";
+import type { MonitoringResult } from "../../utils/api/endpoints/library.ts";
 import { firstAvailableFile, type LibraryAlbum } from "../../utils/libraryPageData.ts";
-import { canDownloadAurralAlbum } from "../../utils/aurralMonitoring.ts";
+import { canDownloadAlbum } from "../../utils/monitoring.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import type { ActivityRequest } from "../../../../lib/activity.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
@@ -82,13 +82,13 @@ export function useLibraryAlbumState({
     [refreshLibraryActivity, setLibrary],
   );
   const updateAlbumMonitoringState = useCallback(
-    (albumId: string | number, result: AurralMonitoringResult) => {
+    (albumId: string | number, result: MonitoringResult) => {
       const monitored = result?.monitored === true;
       patchAlbum(albumId, { monitored, monitorMode: monitored ? "monitored" : "unmonitored" });
     },
     [patchAlbum],
   );
-  const albumMonitoring = useAurralAlbumMonitoring({
+  const albumMonitoring = useAlbumMonitoring({
     album: libraryAlbum,
     enabled: Boolean(libraryAlbum) && !isPreviewLibrary,
     canChange: canChangeMonitoring,
@@ -110,14 +110,14 @@ export function useLibraryAlbumState({
   const markAlbumRequested = async () => {
     if (!libraryAlbum) return;
     patchAlbum(libraryAlbum.id, {
-      managedBy: "aurral",
+      managed: true,
       monitored: true,
       monitorMode: "monitored",
     });
     await reloadLibraryAlbumTracks();
   };
 
-  const managed = libraryAlbum?.managedBy === "aurral";
+  const managed = libraryAlbum?.managed;
   const albumMonitored = managed ? albumMonitoring.monitored : null;
   const libraryAlbumDownloading = isAlbumDownloading(
     libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid,
@@ -125,7 +125,7 @@ export function useLibraryAlbumState({
   const canDownloadLibraryAlbum = (hasMissingTracks: boolean) => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingTracks) return false;
     if (!(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid)) return false;
-    return !managed || canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
+    return !managed || canDownloadAlbum(libraryAlbum, { hasMissingTracks: true });
   };
 
   useEffect(() => {

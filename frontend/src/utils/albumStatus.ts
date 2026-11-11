@@ -2,20 +2,16 @@ import { isUnreleased } from "../../../lib/releaseDate.ts";
 import { formatCalendarDate } from "./dateTime.ts";
 
 export const isAwaitingRelease = ({
-  managedBy,
+  managed,
   monitored,
   releaseDate,
   trackFileCount,
 }: {
-  managedBy?: string | null;
+  managed?: boolean;
   monitored?: boolean | null;
   releaseDate?: string | null;
   trackFileCount?: number | null;
-}) =>
-  managedBy === "aurral" &&
-  monitored === true &&
-  !Number(trackFileCount) &&
-  isUnreleased(releaseDate);
+}) => managed && monitored === true && !Number(trackFileCount) && isUnreleased(releaseDate);
 
 export const formatReleaseWait = (releaseDate: string | null | undefined) => {
   const date = formatCalendarDate(releaseDate);
@@ -75,8 +71,6 @@ const albumActions = (status: string | null | undefined, recoveryCode: RecoveryC
   return [];
 };
 
-export const aurralAlbumStatusKey = (albumId: string | number) => `aurral:${albumId}`;
-
 export const shouldPollAlbumStatus = (status: string | null | undefined) =>
   ACTIVE_STATUSES.has(status);
 
@@ -84,11 +78,7 @@ export const shouldPollAlbumStatuses = (
   statuses: Record<string, AlbumStatusEntry | undefined> | null | undefined,
 ) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
-export const describeAurralAlbumStatus = ({
-  status,
-  recovery,
-  releaseDate,
-}: AlbumStatusEntry = {}) => {
+export const describeAlbumStatus = ({ status, recovery, releaseDate }: AlbumStatusEntry = {}) => {
   if (!status || !isAlbumStatus(status)) return null;
   const display = STATUS_DISPLAY[status];
   const code = recovery?.code || null;
@@ -104,7 +94,7 @@ export const describeAurralAlbumStatus = ({
   };
 };
 
-export const buildAurralAlbumRetryPayload = ({
+export const buildAlbumRetryPayload = ({
   album,
   artist,
 }: {

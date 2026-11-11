@@ -57,11 +57,7 @@ import {
   favoriteId,
   firstAvailableFile,
 } from "../utils/libraryPageData.ts";
-import {
-  aurralAlbumStatusKey,
-  describeAurralAlbumStatus,
-  shouldPollAlbumStatuses,
-} from "../utils/aurralAlbumStatus.ts";
+import { describeAlbumStatus, shouldPollAlbumStatuses } from "../utils/albumStatus.ts";
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import {
@@ -693,27 +689,26 @@ function LibraryPage() {
       : [];
   })();
 
-  const aurralAlbumStatusKeys = useMemo(() => {
+  const albumStatusIds = useMemo(() => {
     if (isPreviewLibrary) return [];
     return library.albums
       .filter((album) => {
-        if (album.managedBy !== "aurral") return false;
+        if (!album.managed) return false;
         const { total, available } = albumAvailability(album);
         return !total || available < total;
       })
-      .map((album) => aurralAlbumStatusKey(album.id))
+      .map((album) => String(album.id))
       .sort();
   }, [albumAvailability, isPreviewLibrary, library.albums]);
-  const aurralAlbumStatusesQuery = useQuery({
-    queryKey: queryKeys.downloadStatus(aurralAlbumStatusKeys),
-    queryFn: ({ signal }) =>
-      getDownloadStatus(aurralAlbumStatusKeys, { signal, bypassCache: true }),
-    enabled: aurralAlbumStatusKeys.length > 0,
+  const albumStatusesQuery = useQuery({
+    queryKey: queryKeys.downloadStatus(albumStatusIds),
+    queryFn: ({ signal }) => getDownloadStatus(albumStatusIds, { signal, bypassCache: true }),
+    enabled: albumStatusIds.length > 0,
     staleTime: 0,
     refetchInterval: (query) => (shouldPollAlbumStatuses(query.state.data) ? 4000 : false),
     refetchIntervalInBackground: false,
   });
-  const aurralAlbumStatuses = aurralAlbumStatusesQuery.data || {};
+  const albumStatuses = albumStatusesQuery.data || {};
 
   useDocumentTitle(
     isDetail
@@ -958,13 +953,12 @@ function LibraryPage() {
       !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
     const meta = albumCardMeta(album, albumAvailability(album));
     const isFavorite = favoriteIds.has(favoriteId("album", album));
-    const aurralState =
-      album.managedBy === "aurral"
-        ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
-        : null;
+    const downloadState = album.managed ? describeAlbumStatus(albumStatuses[album.id] || {}) : null;
     // The yellow track count already shows a partial album, so the label would only crowd it out.
     const cardStatus =
-      aurralState?.status === "complete" || aurralState?.status === "partial" ? null : aurralState;
+      downloadState?.status === "complete" || downloadState?.status === "partial"
+        ? null
+        : downloadState;
     const albumLinkState = {
       artistMbid: artist?.mbid || null,
       seed: {
@@ -1048,7 +1042,7 @@ function LibraryPage() {
               </span>
             )}
             {meta.details && meta.details + " · "}
-            {meta.partial && aurralState?.status !== "unreleased" ? (
+            {meta.partial && downloadState?.status !== "unreleased" ? (
               <span className="native-library-card__status" data-tone="warning">
                 {meta.count}
                 <span className="sr-only"> available</span>

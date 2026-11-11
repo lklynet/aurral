@@ -5,7 +5,7 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { lenient } from "../db/helpers/storedSchemas.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
-import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.ts";
+import { indexUnmonitoredJobs } from "./unmonitoredJobs.ts";
 import { getEnabledDownloadSources, upgradeSourceIds } from "./downloadSourceService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";

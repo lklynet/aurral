@@ -40,7 +40,7 @@ const app = signedInAs({ id: 1, username: "test", role: "admin", permissions: {}
 const removeAlbum = (
   album: import("../../backend/db/rows.ts").LibraryAlbumsRow,
   deleteFiles: boolean,
-) => callRoute(`/albums/aurral/${album.id}`, deleteFiles);
+) => callRoute(`/albums/${album.id}`, deleteFiles);
 const removeArtist = (
   artist: import("../../backend/db/rows.ts").LibraryArtistsRow,
   deleteFiles: boolean,
@@ -55,7 +55,7 @@ async function callRoute<Body = RouteBody>(path: string, deleteFiles: boolean) {
 }
 
 let sequence = 0;
-async function createAurralAlbum({
+async function createAlbum({
   trackCount = 2,
   filesFor = [0, 1],
   artist: existingArtist = null,
@@ -205,7 +205,7 @@ afterAll(async () => {
 });
 
 test("removing an Aurral album without files keeps them on disk and clears its state", async () => {
-  const { album, tracks, jobFor } = await createAurralAlbum({ trackCount: 3, filesFor: [0, 1] });
+  const { album, tracks, jobFor } = await createAlbum({ trackCount: 3, filesFor: [0, 1] });
   const pendingJob = jobFor(2);
 
   const response = await removeAlbum(album, false);
@@ -220,8 +220,8 @@ test("removing an Aurral album without files keeps them on disk and clears its s
 });
 
 test("removing an Aurral album with files deletes its files, including ones a playlist reused", async () => {
-  const { artist, album, tracks, jobFor } = await createAurralAlbum();
-  const other = await createAurralAlbum({ trackCount: 1, filesFor: [0] });
+  const { artist, album, tracks, jobFor } = await createAlbum();
+  const other = await createAlbum({ trackCount: 1, filesFor: [0] });
   const libraryJob = jobFor(0);
   assert.ok(libraryJob != null);
   downloadTracker.setDone(libraryJob, requireFixture(tracks[0]).filePath!, album.title);
@@ -248,7 +248,7 @@ test("removing an Aurral album with files deletes its files, including ones a pl
 });
 
 test("removing a mixed album keeps the read-only file, its track, and the album", async () => {
-  const { album, tracks } = await createAurralAlbum();
+  const { album, tracks } = await createAlbum();
   const readOnlyPath = path.join(isolatedState.dataDir, "read-only", `mixed-${album.id}.flac`);
   libraryStore.upsertLibraryMediaFile({
     trackId: requireFixture(tracks[1]).id,
@@ -280,7 +280,7 @@ test("removing a mixed album keeps the read-only file, its track, and the album"
 
 test("album removal stops before changing anything when downloads cannot be cancelled", async () => {
   const provider = await useFailingSlskd();
-  const { album, tracks, jobFor } = await createAurralAlbum();
+  const { album, tracks, jobFor } = await createAlbum();
   const jobId = jobFor(1);
   const clearSearch = registerSlskdSearch(jobId);
 
@@ -291,7 +291,7 @@ test("album removal stops before changing anything when downloads cannot be canc
     assert.notEqual(albumRow(album.id), undefined);
     assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
     assert.notEqual(getJob(jobId), null);
-    assert.equal(managementStore.getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
+    assert.ok(managementStore.getLibraryManagementEntry("album", album.id));
 
     provider.status = 204;
     const retried = await removeAlbum(album, true);
@@ -305,7 +305,7 @@ test("album removal stops before changing anything when downloads cannot be canc
 });
 
 test("removing an album of a monitored artist records an exclusion, and read-only albums are refused", async () => {
-  const { artist, album, tracks } = await createAurralAlbum();
+  const { artist, album, tracks } = await createAlbum();
   makeMonitoredArtist(artist);
 
   const removed = await removeAlbum(album, true);
@@ -321,7 +321,7 @@ test("removing an album of a monitored artist records an exclusion, and read-onl
   );
   assert.ok(managementStore.getLibraryManagementEntry("artist", artist.id)?.monitorRules);
 
-  const readOnly = await createAurralAlbum({ trackCount: 1 });
+  const readOnly = await createAlbum({ trackCount: 1 });
   managementStore.clearLibraryManagement("album", readOnly.album.id);
   const conflict = await removeAlbum(readOnly.album, true);
   assert.equal(conflict.statusCode, 409);
@@ -344,8 +344,8 @@ function makeMonitoredArtist(
 }
 
 test("removing a monitored Aurral artist clears its albums, files, and monitoring", async () => {
-  const first = await createAurralAlbum();
-  const second = await createAurralAlbum({ trackCount: 2, filesFor: [0], artist: first.artist });
+  const first = await createAlbum();
+  const second = await createAlbum({ trackCount: 2, filesFor: [0], artist: first.artist });
   makeMonitoredArtist(first.artist);
   const pendingJob = second.jobFor(1);
 
@@ -365,18 +365,18 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
   assert.equal(managementStore.getLibraryManagementEntry("artist", first.artist.id), null);
 
   const planned: (string | null)[] = [];
-  vi.spyOn(libraryManager, "planAurralArtistMonitoring").mockImplementation(async (artist) => {
+  vi.spyOn(libraryManager, "planArtistMonitoring").mockImplementation(async (artist) => {
     planned.push(artist.mbid);
     return { releases: [], topTracks: [] } as unknown as Awaited<
-      ReturnType<typeof libraryManager.planAurralArtistMonitoring>
+      ReturnType<typeof libraryManager.planArtistMonitoring>
     >;
   });
-  await libraryManager.reconcileAurralMonitoring();
+  await libraryManager.reconcileMonitoring();
   assert.equal(planned.includes(first.artist.mbid), false);
 });
 
 test("removing an Aurral artist without files keeps them on disk", async () => {
-  const { artist, album, tracks } = await createAurralAlbum();
+  const { artist, album, tracks } = await createAlbum();
   makeMonitoredArtist(artist, false);
 
   const response = await removeArtist(artist, false);
@@ -397,7 +397,7 @@ function withoutMusicBrainzId(artist: import("../../backend/db/rows.ts").Library
 }
 
 test("an ingested artist without a MusicBrainz ID is deleted with its files", async () => {
-  const created = await createAurralAlbum();
+  const created = await createAlbum();
   const artist = withoutMusicBrainzId(created.artist);
   const albumDir = path.dirname(requireFixture(created.tracks[0]).filePath!);
   await fs.writeFile(path.join(albumDir, "1.lrc"), "[00:00.00]la");
@@ -419,8 +419,8 @@ test("an ingested artist without a MusicBrainz ID is deleted with its files", as
 });
 
 test("removing the last album of an artist Aurral does not follow removes the artist", async () => {
-  const unfollowed = await createAurralAlbum();
-  const followed = await createAurralAlbum();
+  const unfollowed = await createAlbum();
+  const followed = await createAlbum();
   makeMonitoredArtist(followed.artist, false);
 
   assert.equal((await removeAlbum(unfollowed.album, true)).statusCode, 200);
@@ -432,8 +432,8 @@ test("removing the last album of an artist Aurral does not follow removes the ar
 
 test("a failed artist removal stops monitoring and finishes on retry", async () => {
   const provider = await useFailingSlskd();
-  const first = await createAurralAlbum();
-  const second = await createAurralAlbum({ artist: first.artist });
+  const first = await createAlbum();
+  const second = await createAlbum({ artist: first.artist });
   makeMonitoredArtist(first.artist);
   const blockedJob = second.jobFor(0);
   const clearSearch = registerSlskdSearch(blockedJob);
@@ -446,7 +446,6 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
     assert.notEqual(albumRow(second.album.id), undefined);
     assert.equal(await exists(requireFixture(second.tracks[0]).filePath!), true);
     const artistState = managementStore.getLibraryManagementEntry("artist", first.artist.id);
-    assert.equal(artistState?.managedBy, "aurral");
     assert.equal(artistState?.monitorMode, "none");
     assert.equal(artistState?.monitorRules, null);
 
@@ -464,7 +463,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
 });
 
 test("album removal keeps downloads that belong to another album", async () => {
-  const { artist, album, tracks, jobFor } = await createAurralAlbum();
+  const { artist, album, tracks, jobFor } = await createAlbum();
   const ownJob = jobFor(0);
   const otherAlbumJob = downloadTracker.addJob(
     {
@@ -485,7 +484,7 @@ test("album removal keeps downloads that belong to another album", async () => {
 });
 
 test("album removal never deletes a file in a read-only folder inside the Library folder", async (t) => {
-  const { album, tracks } = await createAurralAlbum();
+  const { album, tracks } = await createAlbum();
   const kept = requireFixture(tracks[0]).filePath!;
   dbOps.setJSONSetting("readOnlyFolders", [path.dirname(kept)]);
   t.onTestFinished(() => dbOps.setJSONSetting("readOnlyFolders", []));
@@ -497,7 +496,7 @@ test("album removal never deletes a file in a read-only folder inside the Librar
 });
 
 test("album removal never deletes a reused file outside the Library folder", async () => {
-  const { album, tracks, jobFor } = await createAurralAlbum({ trackCount: 2, filesFor: [1] });
+  const { album, tracks, jobFor } = await createAlbum({ trackCount: 2, filesFor: [1] });
   const reusedPath = path.join(isolatedState.baseDir, "music", `reused-${album.id}.flac`);
   await fs.mkdir(path.dirname(reusedPath), { recursive: true });
   await fs.writeFile(reusedPath, "reused audio");
@@ -514,7 +513,7 @@ test("album removal never deletes a reused file outside the Library folder", asy
 });
 
 test("album removal deletes files in a Library folder subfolder whose name starts with two dots", async () => {
-  const { album, tracks } = await createAurralAlbum({ trackCount: 1, filesFor: [] });
+  const { album, tracks } = await createAlbum({ trackCount: 1, filesFor: [] });
   const filePath = path.join(resolveDownloadRoot(), "..Live", `dotted-${album.id}.flac`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "audio");

@@ -34,7 +34,7 @@ export type LibraryAlbumEntry = {
   albumType?: string;
   releaseDate?: string | null;
   monitored: boolean;
-  managedBy?: string | null;
+  managed?: boolean;
   artistMbid?: string | null;
   artistName?: string | null;
   statistics: { trackFileCount?: number; sizeOnDisk: number; percentOfTracks: number };

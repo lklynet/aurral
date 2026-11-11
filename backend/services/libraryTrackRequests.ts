@@ -1,6 +1,6 @@
 import { db } from "../config/db-sqlite.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
-import { clearTrackMonitoringExclusion } from "./aurralMonitoringStore.ts";
+import { clearTrackMonitoringExclusion } from "./monitoringStore.ts";
 import { downloadTracker, type DownloadTrackInput } from "./downloadJobs/downloadTracker.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { getLibraryTrackOwnership } from "./libraryQueryService.ts";
@@ -76,7 +76,7 @@ export async function requestLibraryTrack(
   }
   const monitoredTrack = automatic
     ? null
-    : await libraryManager.monitorAurralTrack({
+    : await libraryManager.monitorTrack({
         libraryTrackId,
         trackMbid: track.trackMbid,
         albumMbid: track.albumMbid,
