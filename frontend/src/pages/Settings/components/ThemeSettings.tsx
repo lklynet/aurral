@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -334,7 +333,7 @@ function ThemeEditor({
     else showError?.("That theme was already removed.");
   };
 
-  return createPortal(
+  return (
     <ModalShell
       open
       title={title}
@@ -458,8 +457,7 @@ function ThemeEditor({
           </p>
         ) : null}
       </div>
-    </ModalShell>,
-    document.body,
+    </ModalShell>
   );
 }
 
@@ -491,7 +489,7 @@ function ThemeImport({
     }
   };
 
-  return createPortal(
+  return (
     <ModalShell
       open
       title="Import theme"
@@ -565,8 +563,7 @@ function ThemeImport({
           </p>
         ) : null}
       </div>
-    </ModalShell>,
-    document.body,
+    </ModalShell>
   );
 }
 

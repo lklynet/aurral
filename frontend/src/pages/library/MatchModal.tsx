@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router";
 import { libraryAlbumPath } from "../../../../lib/albumPath.ts";
 import ArtistImage from "../../components/ArtistImage";
@@ -118,7 +117,7 @@ function MatchModal({
     return null;
   };
 
-  return createPortal(
+  return (
     <ModalShell
       open
       className="match-modal"
@@ -213,8 +212,7 @@ function MatchModal({
           </p>
         ) : null}
       </div>
-    </ModalShell>,
-    document.body,
+    </ModalShell>
   );
 }
 

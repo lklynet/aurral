@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { parseResponse } from "hono/client";
 import { Plus } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
@@ -285,43 +284,38 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
           </SettingsPane>
         )}
       </SettingsShell>
-      {createPortal(
-        <>
-          {editOpen && flow ? (
-            <PlaylistEditModal
-              entry={flow}
-              title="Name and cover"
-              onClose={() => setEditOpen(false)}
-              onRename={rename}
-            />
-          ) : null}
-          <ConfirmModal
-            open={pendingLeave !== null}
-            title="Discard unsaved changes?"
-            body={leaveError}
-            confirmLabel="Discard"
-            busyLabel="Discarding"
-            onCancel={() => setPendingLeave(null)}
-            onConfirm={() => {
-              pendingLeave?.();
-              setPendingLeave(null);
-            }}
-          />
-          <ConfirmModal
-            open={pendingDownload !== null}
-            title={`Download ${formatTrackTotal(pendingDownload?.count ?? 0)} already in ${pendingDownload?.name ?? "this flow"}?`}
-            body="New tracks will download automatically from now on."
-            confirmLabel="Download now"
-            cancelLabel="Not now"
-            tone="primary"
-            busyLabel="Downloading"
-            busy={busy === "download"}
-            onCancel={() => setPendingDownload(null)}
-            onConfirm={downloadSaved}
-          />
-        </>,
-        document.body,
-      )}
+      {editOpen && flow ? (
+        <PlaylistEditModal
+          entry={flow}
+          title="Name and cover"
+          onClose={() => setEditOpen(false)}
+          onRename={rename}
+        />
+      ) : null}
+      <ConfirmModal
+        open={pendingLeave !== null}
+        title="Discard unsaved changes?"
+        body={leaveError}
+        confirmLabel="Discard"
+        busyLabel="Discarding"
+        onCancel={() => setPendingLeave(null)}
+        onConfirm={() => {
+          pendingLeave?.();
+          setPendingLeave(null);
+        }}
+      />
+      <ConfirmModal
+        open={pendingDownload !== null}
+        title={`Download ${formatTrackTotal(pendingDownload?.count ?? 0)} already in ${pendingDownload?.name ?? "this flow"}?`}
+        body="New tracks will download automatically from now on."
+        confirmLabel="Download now"
+        cancelLabel="Not now"
+        tone="primary"
+        busyLabel="Downloading"
+        busy={busy === "download"}
+        onCancel={() => setPendingDownload(null)}
+        onConfirm={downloadSaved}
+      />
     </>
   );
 }

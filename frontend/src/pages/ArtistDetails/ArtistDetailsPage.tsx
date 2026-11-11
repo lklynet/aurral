@@ -1,4 +1,5 @@
 import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Dispatch, SetStateAction } from "react";
 import type { ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -559,7 +560,7 @@ function EditArtistIdsModal({
   });
 
   if (!show) return null;
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -635,6 +636,7 @@ function EditArtistIdsModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

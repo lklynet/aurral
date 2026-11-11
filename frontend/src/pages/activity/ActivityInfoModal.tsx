@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { createPortal } from "react-dom";
 import { X } from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
@@ -111,7 +112,7 @@ export default function ActivityInfoModal({
   const title = text(item.trackName || item.albumName || item.title) || "Activity details";
   const rows = getRows(item);
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <section
         ref={dialogRef}
@@ -142,6 +143,7 @@ export default function ActivityInfoModal({
           ))}
         </dl>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

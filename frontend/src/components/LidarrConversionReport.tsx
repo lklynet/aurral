@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
@@ -45,7 +46,7 @@ export default function LidarrConversionReport() {
   if (!report || !open) return null;
   const { folders } = report;
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop">
       <div
         ref={dialogRef}
@@ -117,6 +118,7 @@ export default function LidarrConversionReport() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

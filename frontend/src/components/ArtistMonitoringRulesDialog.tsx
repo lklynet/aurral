@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import PillToggle from "./PillToggle";
@@ -328,7 +329,7 @@ function RulesDialog({
   );
   const shownRules = useDefault ? state?.defaultRules : customRules;
 
-  return (
+  return createPortal(
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
@@ -388,7 +389,8 @@ function RulesDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
