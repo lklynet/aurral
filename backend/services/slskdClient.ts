@@ -14,6 +14,7 @@ const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
 const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
 const DEFAULT_SEARCH_IDLE_TIMEOUT_MS = 15000;
+const CANCEL_SETTLE_MS = 10_000;
 const DEFAULT_FILE_LIMIT = 1000;
 const DEFAULT_RESPONSE_LIMIT = 150;
 const DEFAULT_MAX_PEER_QUEUE = 150;
@@ -1199,6 +1200,7 @@ export class SlskdClient {
       const cancelled = await client.put(endpoint, undefined, { signal });
       if (cancelled.status === 404) return true;
       if (cancelled.status >= 400) return false;
+      const cancelledAt = Date.now();
       while (!signal?.aborted) {
         const response = await client.get(endpoint, {
           signal,
@@ -1206,7 +1208,8 @@ export class SlskdClient {
         });
         if (response.status === 404) return true;
         if (response.status !== 200) return false;
-        if (readOne(searchSchema, response.data, { service: "slskd", endpoint }).endedAt) {
+        const search = readOne(searchSchema, response.data, { service: "slskd", endpoint });
+        if (search.endedAt || Date.now() - cancelledAt >= CANCEL_SETTLE_MS) {
           const deleted = await client.delete(endpoint, { signal });
           return [200, 204, 404].includes(deleted.status);
         }
