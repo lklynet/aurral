@@ -88,7 +88,7 @@ The most common defect is a change that works on the path you tested and is miss
 ## Dev servers
 
 - `pnpm eden dev` starts Aurral against this checkout's Eden: a seeded Library, listening history, and stand-ins for the catalogue and every outside API. Add `--with <service>` or `--all` for the services a task touches. `pnpm eden status` prints the addresses and logins.
-- `pnpm run dev` starts the backend and frontend with an empty database in `backend/data`. Use it for onboarding and first run. It listens on 3001 and 3009, and a live install is often on 3001 already. Set `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` in `backend/.env` to move it.
+- `pnpm run dev` starts the backend and frontend with an empty database in `backend/data`. Use it for onboarding and first run. It takes ports 3001 and 3009, or the next free ones, and prints its address.
 - Eden's state lives in `.eden/`. `pnpm eden down` removes it, and the next `up` is a fresh start. Run `down` before deleting a worktree.
 - The backend starts background workers as separate processes. Start servers with `setsid` and stop the whole group with `kill -- -<pgid>`, using the group from `ps -o pgid= <pid>`. See rule 1.
 - Need a second checkout? `git worktree add` it next to this one, not in `/tmp`. Remove it when done.
