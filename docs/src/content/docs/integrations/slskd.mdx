@@ -44,7 +44,7 @@ Soulseek matches whole words and splits file names at punctuation, so Aurral rep
 
 Soulseek hides results for some artist and album names entirely. No query finds those, so another download source has to supply them.
 
-Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency, and starts at most one search every 5 seconds, because the Soulseek server bans clients that search too quickly. slskd itself sends only a few searches at a time and queues the rest, so a search's time starts when slskd sends it, after at most 5 minutes in its queue.
+Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency, and starts at most one search every 7 seconds, because the Soulseek server bans an account for 30 minutes when it starts more than about 34 searches in 220 seconds. slskd itself sends only a few searches at a time and queues the rest, so a search's time starts when slskd sends it, after at most 5 minutes in its queue.
 
 ## When slskd is not logged in
 
