@@ -73,15 +73,21 @@ test("a maximum wait of zero keeps held songs indefinitely", async () => {
 });
 
 test.each([
-  ["the review task runs", async () => assert.equal(await retryStaleReviews(), 1)],
+  ["the review task runs", 0, async () => assert.equal(await retryStaleReviews(), 1)],
+  [
+    "its review expired",
+    24,
+    async () => assert.equal(await retryStaleReviews(Date.now() + 25 * HOUR), 1),
+  ],
   [
     "it is approved",
+    0,
     async (jobId: string) => assert.equal((await approveBlockedJob(jobId)).status, 404),
   ],
 ])(
   "a held song whose file is gone is searched again when %s, without denying its source",
-  async (_trigger, settle) => {
-    dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: 0 });
+  async (_trigger, reviewTimeoutHours, settle) => {
+    dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours });
     const held = await holdForReview("Vanished");
     downloadTracker.updateDownloadMetadata(held.jobId, {
       downloadSource: "ytdlp",

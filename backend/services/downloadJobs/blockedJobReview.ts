@@ -157,11 +157,11 @@ export async function retryStaleReviews(now = Date.now()) {
   let retried = 0;
   for (const job of downloadTracker.getByStatus("blocked")) {
     const expired = cutoff !== null && job.completedAt != null && job.completedAt <= cutoff;
-    const options = expired
-      ? { reason: "Review timed out" }
-      : (await reviewFileExists(job))
-        ? null
-        : { reason: "Review file is gone", fileGone: true };
+    const options = !(await reviewFileExists(job))
+      ? { reason: "Review file is gone", fileGone: true }
+      : expired
+        ? { reason: "Review timed out" }
+        : null;
     if (!options) continue;
     const outcome = await denyBlockedJob(job.id, options);
     if (outcome.status === 200) retried += 1;
