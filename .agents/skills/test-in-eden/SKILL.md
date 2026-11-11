@@ -29,10 +29,9 @@ Otherwise start `pnpm eden dev` with the services the change touches:
 `pnpm eden status` prints every address and login. The ports are in
 `.eden/ports.json` and differ per checkout, so never hardcode one.
 
-`pnpm eden dev` stays in the foreground. Start it in its own session and keep
-its PID. If the PID you kept is gone, find the owner of the web port with
-`ss -H -ltnp`, confirm its `/proc/<pid>/cwd` is this checkout, and stop that
-group. Never stop a process you found by name.
+`pnpm eden dev` stays in the foreground, so start it in its own session. To
+stop it and keep the lab, signal the PID in `.eden/dev.pid`. `pnpm eden down`
+stops it too, then removes the lab. Never stop a process you found by name.
 
 ## Pick test music
 
@@ -75,7 +74,7 @@ widths.
 
 ## Start over
 
-`pnpm eden down` removes the lab and everything it wrote. The next `up` is the
+`pnpm eden down` stops Aurral and removes the lab and everything it wrote. The next `up` is the
 same fresh start. Do this when a test left state you can't account for. Don't
 edit files in `.eden/` by hand.
 

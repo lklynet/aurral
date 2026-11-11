@@ -19,6 +19,7 @@ export const paths = {
   downloads: path.join(STATE_DIR, "downloads"),
   selected: path.join(STATE_DIR, "selected.json"),
   done: path.join(STATE_DIR, "done.json"),
+  devPid: path.join(STATE_DIR, "dev.pid"),
 };
 
 export const LOGIN = { username: "test", password: "password" } as const;

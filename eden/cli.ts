@@ -10,7 +10,7 @@ import { generateLibrary, generateWorld } from "./library/generate.ts";
 import { seedAurral } from "./seed.ts";
 import { isOwnKey } from "../lib/ownKey.ts";
 import { isService, serviceNames, services, withNeeds } from "./services/index.ts";
-import type { Service } from "./services/service.ts";
+import { until, type Service } from "./services/service.ts";
 import { LISTENER, LOGIN, paths, PROJECT, REPO_ROOT, resolvePorts, STATE_DIR } from "./state.ts";
 import type { Ports } from "./state.ts";
 
@@ -167,11 +167,32 @@ async function up(everything = false) {
   return env;
 }
 
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Stops the `eden dev` this checkout started, which stops Aurral with it. The command
+// check guards against a stale file whose number now belongs to another process.
+async function stopDev() {
+  if (!existsSync(paths.devPid)) return;
+  const pid = Number(readFileSync(paths.devPid, "utf8"));
+  const { stdout } = spawnSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" });
+  if (!Number.isInteger(pid) || !stdout.includes("eden/cli.ts")) return;
+  process.kill(pid, "SIGTERM");
+  await until("Aurral to stop", async () => !isRunning(pid), 30_000);
+}
+
 async function down() {
   if (!existsSync(STATE_DIR)) {
     console.log("This checkout has no Eden.");
     return;
   }
+  await stopDev();
   const ports = await resolvePorts();
   compose(ports, ["down", "--volumes", "--remove-orphans"]);
   rmSync(STATE_DIR, { recursive: true, force: true });
@@ -180,6 +201,7 @@ async function down() {
 
 async function dev() {
   const env = await up();
+  writeFileSync(paths.devPid, String(process.pid));
   const child = spawn(process.execPath, ["scripts/dev.mts"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
@@ -189,6 +211,7 @@ async function dev() {
     process.on(signal, () => child.kill(signal));
   }
   child.once("exit", (code) => {
+    rmSync(paths.devPid, { force: true });
     process.exitCode = code ?? 1;
   });
 }
