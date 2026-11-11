@@ -11013,12 +11013,6 @@ button.native-library-genre-row:focus-visible {
   white-space: nowrap;
 }
 
-.activity-list__load-more {
-  display: flex;
-  justify-content: center;
-  padding: 1.25rem 0 0.5rem;
-}
-
 .activity-page__missing {
   min-width: 0;
 }

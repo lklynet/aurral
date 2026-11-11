@@ -4,8 +4,6 @@ import { parseResponse } from "hono/client";
 import { Link, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import {
   ArrowDownAZ,
-  ArrowLeft,
-  ArrowRight,
   ArrowUpZA,
   Eye,
   Fingerprint,
@@ -27,6 +25,7 @@ import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu } from "../components/LibraryItemMenu";
 import { Select } from "../components/Select";
 import TooltipButton from "../components/TooltipButton";
+import Pagination from "../components/Pagination";
 import { FavoriteButton, TrackList } from "../components/TrackList";
 import { CollectionPlayButtons, useCollectionTint } from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
@@ -1689,30 +1688,13 @@ function LibraryPage() {
           {content}
         </div>
       )}
-      {!loading && !error && totalPages > 1 && (
-        <nav className="native-library-pagination" aria-label={sectionLabel + " pages"}>
-          <TooltipButton
-            className="native-library-icon-button"
-            onClick={() => setPageIndex(pageIndex - 1)}
-            disabled={pageIndex === 1}
-            label="Previous page"
-            aria-label="Previous page"
-          >
-            <ArrowLeft aria-hidden="true" />
-          </TooltipButton>
-          <span>
-            Page {pageIndex} of {totalPages}
-          </span>
-          <TooltipButton
-            className="native-library-icon-button"
-            onClick={() => setPageIndex(Math.min(totalPages, pageIndex + 1))}
-            disabled={pageIndex === totalPages}
-            label="Next page"
-            aria-label="Next page"
-          >
-            <ArrowRight aria-hidden="true" />
-          </TooltipButton>
-        </nav>
+      {!loading && !error && (
+        <Pagination
+          page={pageIndex}
+          pageCount={totalPages}
+          label={sectionLabel + " pages"}
+          onChange={setPageIndex}
+        />
       )}
     </div>
   );

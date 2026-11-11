@@ -286,7 +286,12 @@ const activityTime = (request: ActivityRequest) =>
 
 export function buildActivityPage(
   requests: ActivityRequest[],
-  { view, status, limit }: { view: ActivityView; status: ActivityStatus | null; limit: number },
+  {
+    view,
+    status,
+    offset = 0,
+    limit,
+  }: { view: ActivityView; status: ActivityStatus | null; offset?: number; limit: number },
 ) {
   const viewRequests = groupAlbumGrabRequests(requests).filter((request) =>
     matchesActivityView(request, view),
@@ -300,7 +305,7 @@ export function buildActivityPage(
       (a, b) =>
         times.get(b)! - times.get(a)! || String(b.id || "").localeCompare(String(a.id || "")),
     )
-    .slice(0, limit);
+    .slice(offset, offset + limit);
   return {
     view,
     items,

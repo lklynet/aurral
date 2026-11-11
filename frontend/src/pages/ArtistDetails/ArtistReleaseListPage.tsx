@@ -49,6 +49,8 @@ import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
 import { artworkHoverTint } from "../../utils/imageColors.ts";
 import StatePanel from "../../components/StatePanel";
+import Pagination from "../../components/Pagination";
+import { useClampPage, usePageParam } from "../../hooks/usePageParam.ts";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -121,6 +123,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
+        next.delete("page");
         for (const [key, value] of Object.entries(changes)) {
           if (value) next.set(key, value);
           else next.delete(key);
@@ -132,9 +135,10 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [visibleCoverIds, setVisibleCoverIds] = useState<string[]>([]);
-  const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASE_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = usePageParam();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const requestedRatingIdsRef = useRef(new Set<string>());
+  const fetchingAppearancesRef = useRef(false);
   const appearsOnOffsetRef = useRef<{ mbid: string | null | undefined; offset: number | null }>({
     mbid: null,
     offset: null,
@@ -158,6 +162,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     error,
     loadingReleases,
     loadingAppearsOn,
+    loadingLibrary,
     existsInLibrary,
     setExistsInLibrary,
     albumCovers,
@@ -220,9 +225,14 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       sortKey,
     ],
   );
+  const pageCount = Math.ceil(filteredReleaseGroups.length / RELEASE_PAGE_SIZE);
   const renderedReleaseGroups = useMemo(
-    () => filteredReleaseGroups.slice(0, visibleReleaseCount),
-    [filteredReleaseGroups, visibleReleaseCount],
+    () =>
+      filteredReleaseGroups.slice(
+        (pageIndex - 1) * RELEASE_PAGE_SIZE,
+        pageIndex * RELEASE_PAGE_SIZE,
+      ),
+    [filteredReleaseGroups, pageIndex],
   );
   const initialAppearsOnOffset =
     isAppearsOn && appearsOnOffsetRef.current.mbid === mbid
@@ -291,6 +301,27 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   }, [appearsOnQuery.data, isAppearsOn, loadingAppearsOn, releaseGroups, setArtist]);
   const hasMoreAppearances = isAppearsOn && (!appearsOnQuery.data || appearsOnQuery.hasNextPage);
   const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
+  const cachedAppearancesMerged = useMemo(() => {
+    const ids = new Set(releaseGroups.map((item) => item.id));
+    return (appearsOnQuery.data?.pages ?? []).every((page) =>
+      (page?.items ?? []).every((item) => !item?.id || ids.has(item.id)),
+    );
+  }, [appearsOnQuery.data, releaseGroups]);
+  const listSettled =
+    !loadingReleases &&
+    !(isAppearsOn && (loadingAppearsOn || !cachedAppearancesMerged)) &&
+    !(libraryTab && loadingLibrary);
+  const needsMoreAppearances =
+    hasMoreAppearances &&
+    !appearsOnQuery.isFetchNextPageError &&
+    filteredReleaseGroups.length < pageIndex * RELEASE_PAGE_SIZE;
+  useClampPage(
+    pageIndex,
+    listSettled && !needsMoreAppearances && !loadingMoreAppearances
+      ? Math.max(pageCount, 1)
+      : undefined,
+    setPageIndex,
+  );
 
   useEffect(() => {
     setVisibleCoverIds(
@@ -299,11 +330,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   }, [renderedReleaseGroups]);
 
   useEffect(() => {
-    setVisibleReleaseCount(RELEASE_PAGE_SIZE);
-  }, [searchTerm, selectedTab, showLiveAlbums]);
-
-  useEffect(() => {
-    setVisibleReleaseCount(RELEASE_PAGE_SIZE);
     requestedRatingIdsRef.current = new Set();
   }, [isAppearsOn, mbid]);
 
@@ -345,12 +371,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     };
   }, [isAppearsOn, loadingReleases, renderedReleaseGroups, setArtist]);
 
-  const loadNextPage = useCallback(async () => {
-    if (visibleReleaseCount < filteredReleaseGroups.length) {
-      setVisibleReleaseCount((current) => current + RELEASE_PAGE_SIZE);
-      return;
-    }
-    if (!isAppearsOn || !hasMoreAppearances || loadingMoreAppearances) return;
+  const fetchMoreAppearances = useCallback(async () => {
+    if (fetchingAppearancesRef.current) return false;
+    fetchingAppearancesRef.current = true;
     if (appearsOnOffsetRef.current.offset == null) {
       appearsOnOffsetRef.current.offset = initialAppearsOnOffset;
     }
@@ -369,20 +392,24 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             "appears-on-release-groups": [...byId.values()],
           };
         });
-        setVisibleReleaseCount((current) => current + items.length);
       }
+      return true;
     } catch {
-      return;
+      return false;
+    } finally {
+      fetchingAppearancesRef.current = false;
     }
+  }, [appearsOnQuery, initialAppearsOnOffset, setArtist]);
+
+  useEffect(() => {
+    if (!listSettled || !needsMoreAppearances || loadingMoreAppearances) return;
+    void fetchMoreAppearances();
   }, [
-    appearsOnQuery,
-    filteredReleaseGroups.length,
-    hasMoreAppearances,
-    initialAppearsOnOffset,
-    isAppearsOn,
+    fetchMoreAppearances,
+    listSettled,
     loadingMoreAppearances,
-    setArtist,
-    visibleReleaseCount,
+    needsMoreAppearances,
+    releaseGroups.length,
   ]);
 
   useEffect(() => {
@@ -402,6 +429,14 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [sortMenuOpen]);
+
+  const changePage = async (next: number) => {
+    if (hasMoreAppearances && filteredReleaseGroups.length < next * RELEASE_PAGE_SIZE) {
+      const loaded = await fetchMoreAppearances();
+      if (!loaded || filteredReleaseGroups.length < pageIndex * RELEASE_PAGE_SIZE) return;
+    }
+    setPageIndex(next);
+  };
 
   const handleViewModeChange = (next: ReleaseListViewMode) => {
     setViewMode(next);
@@ -722,19 +757,19 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           {renderedReleaseGroups.map((releaseGroup) => renderReleaseCard(releaseGroup))}
         </div>
       )}
-      {visibleReleaseCount < filteredReleaseGroups.length || (isAppearsOn && hasMoreAppearances) ? (
-        <div className="artist-loading" aria-live="polite">
-          <button
-            type="button"
-            className="btn btn-surface"
-            onClick={loadNextPage}
-            disabled={loadingMoreAppearances}
-          >
-            {loadingMoreAppearances ? <DotLoader size="sm" label={null} /> : null}
-            Load more
-          </button>
+      {needsMoreAppearances || loadingMoreAppearances ? (
+        <div className="artist-loading">
+          <DotLoader size="sm" label="Loading appearances" />
         </div>
-      ) : null}
+      ) : (
+        <Pagination
+          page={pageIndex}
+          pageCount={pageCount}
+          hasMore={hasMoreAppearances}
+          label={`${isAppearsOn ? "Appearance" : "Release"} pages`}
+          onChange={(next) => void changePage(next)}
+        />
+      )}
     </div>
   );
 }

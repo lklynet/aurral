@@ -79,6 +79,7 @@ const listQuery = v.object({ refresh: v.optional(v.string()) });
 const pageQuery = v.object({
   view: v.picklist(ACTIVITY_VIEW_IDS),
   status: v.optional(v.string()),
+  offset: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0))),
   limit: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1))),
   refresh: v.optional(v.string()),
 });
@@ -92,7 +93,7 @@ export default new Hono<AppEnv>()
   })
   .get("/page", requireAuth, noCache, validate("query", pageQuery), async (c) => {
     const user = c.var.user;
-    const { view, status, limit, refresh } = c.req.valid("query");
+    const { view, status, offset, limit, refresh } = c.req.valid("query");
     const requests: ActivityRequest[] | null = await loadRequests(user, isRefresh(refresh));
     if (!requests) return c.json({ error: "Failed to fetch requests" }, 500);
     const canCancelAny = hasPermission(user, "accessPlaylists");
@@ -104,6 +105,7 @@ export default new Hono<AppEnv>()
     const page = buildActivityPage(requests, {
       view,
       status: normalizeActivityStatus(view, status),
+      offset,
       limit: limit ?? ACTIVITY_PAGE_SIZE,
     });
     return c.json({ ...page, cancelable }, 200);

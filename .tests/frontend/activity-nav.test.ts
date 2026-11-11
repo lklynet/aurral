@@ -138,6 +138,18 @@ test("activity pages count the whole view but return only the requested slice", 
     ],
   );
 
+  const secondPage = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    offset: 2,
+    limit: 2,
+  });
+  assert.deepEqual(
+    secondPage.items.map(({ id }) => id),
+    ["old-review"],
+  );
+  assert.equal(secondPage.matching, 3);
+
   const reviews = buildActivityPage(requests, { view: "queue", status: "review", limit: 1 });
   assert.deepEqual(
     reviews.items.map(({ id }) => id),
