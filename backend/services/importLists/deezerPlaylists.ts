@@ -87,7 +87,7 @@ export const deezerPlaylistSchema = v.looseObject({
   nb_tracks: v.optional(v.number()),
   picture_xl: v.nullish(v.string()),
   picture_big: v.nullish(v.string()),
-  user: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  user: v.optional(v.looseObject({ id: v.optional(v.number()), name: v.optional(v.string()) })),
   creator: v.optional(v.looseObject({ name: v.optional(v.string()) })),
 });
 
