@@ -41,6 +41,10 @@ test("classifies final audio from measured metadata at exact tier thresholds", (
     ).tier,
     null,
   );
+  assert.equal(
+    classifyAudioQuality({ format: { codec: "ALAC", bitrate: 900000 } }, "track.m4a").tier,
+    null,
+  );
 });
 
 test("normalizes the one global profile and migrates the old slskd preference", () => {
@@ -77,6 +81,8 @@ test("uses enabled tiers and cutoff order for admission and upgrades", () => {
   assert.equal(isQualityUpgrade({ tier: "flac-standard" }, "mp3-128", profile), true);
   assert.equal(isQualityUpgrade({ tier: "mp3-320" }, "flac-hires", profile), true);
   assert.equal(isQualityUpgrade({ tier: "mp3-128" }, "mp3-320", profile), false);
+  assert.equal(isQualityUpgrade({ tier: "mp3-128" }, null, profile), false);
+  assert.equal(isQualityUpgrade({ tier: "mp3-320" }, null, profile), true);
 });
 
 test("prefilters advertised candidates without trusting unknown metadata", () => {

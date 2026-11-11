@@ -96,7 +96,7 @@ function readAudioFamily(parsed: ParsedAudio, filePath: string) {
   const ext = path.extname(String(filePath || "")).toLowerCase();
   const container = String(parsed?.format?.container || "").toLowerCase();
   const codec = String(parsed?.format?.codec || "").toLowerCase();
-  const lossless = parsed?.format?.lossless === true;
+  const lossless = parsed?.format?.lossless === true || codec.includes("alac");
   if (ext === ".flac" || container.includes("flac") || codec.includes("flac")) {
     return lossless === false ? null : "flac";
   }
@@ -173,8 +173,10 @@ export function isQualityUpgrade(
   const enabled = new Set(normalized.enabled);
   const candidateTier = String(candidate?.tier || "");
   if (!candidateTier || !enabled.has(candidateTier)) return false;
-  if (!currentTier || !enabled.has(currentTier)) return true;
-  return normalized.order.indexOf(candidateTier) < normalized.order.indexOf(currentTier);
+  const rank = normalized.order.indexOf(candidateTier);
+  if (!currentTier) return rank <= normalized.order.indexOf(normalized.cutoff);
+  if (!enabled.has(currentTier)) return true;
+  return rank < normalized.order.indexOf(currentTier);
 }
 
 export function getQualityTier(id: unknown) {
