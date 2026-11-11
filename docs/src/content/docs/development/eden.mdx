@@ -17,13 +17,13 @@ pnpm eden dev --all                # add every service
 
 Sign in as `test` / `password`. A second account, `listener` / `password`, is a regular user with Last.fm and ListenBrainz linked.
 
-| Command            | What it does                                                           |
-| ------------------ | ---------------------------------------------------------------------- |
-| `pnpm eden up`     | Builds the lab and stops. Add `--with` or `--all` to add services      |
-| `pnpm eden dev`    | `up`, then runs Aurral's dev server against the lab                    |
-| `pnpm eden status` | Prints every address and login, and what Eden doesn't cover            |
-| `pnpm eden test`   | Builds a new lab with every service and runs the [journeys](#journeys) |
-| `pnpm eden down`   | Removes the lab: its containers, volumes, and everything it wrote      |
+| Command            | What it does                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `pnpm eden up`     | Builds the lab and stops. Add `--with` or `--all` to add services                                              |
+| `pnpm eden dev`    | `up`, then runs Aurral's dev server against the lab                                                            |
+| `pnpm eden status` | Prints every address and login, and what Eden doesn't cover                                                    |
+| `pnpm eden test`   | Builds a new lab with every service and runs the [journeys](#journeys)                                         |
+| `pnpm eden down`   | Stops `pnpm eden dev` if it is running, then removes the lab: its containers, volumes, and everything it wrote |
 
 The first `up` takes about a minute once the images are pulled. Services you added stay until `down`, so a later `pnpm eden dev` brings them back without the flag.
 

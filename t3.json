@@ -1,0 +1,24 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Eden",
+      "command": "pnpm eden dev",
+      "icon": "play",
+      "stopOnSettle": true
+    },
+    {
+      "name": "Setup Worktree",
+      "command": "pnpm install --frozen-lockfile",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    },
+    {
+      "name": "Remove Eden",
+      "command": "pnpm eden down",
+      "icon": "configure",
+      "runOnSettle": true
+    }
+  ]
+}

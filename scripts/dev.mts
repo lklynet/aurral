@@ -1,11 +1,31 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { parseEnv } from "node:util";
 
 const envFile = process.env.AURRAL_ENV_FILE || "backend/.env";
 const backendEnv = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
-const apiPort = process.env.AURRAL_DEV_API_PORT || backendEnv.AURRAL_DEV_API_PORT || "3001";
-const webPort = process.env.AURRAL_DEV_WEB_PORT || backendEnv.AURRAL_DEV_WEB_PORT || "3009";
+
+const isFree = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const probe = createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(port, () => probe.close(() => resolve(true)));
+  });
+
+// A port set in the environment or the env file is used as given. Otherwise the
+// default steps up to the next free port, so two checkouts can run at once.
+async function devPort(name: string, fallback: number, taken?: string) {
+  const set = process.env[name] || backendEnv[name];
+  if (set) return set;
+  let port = fallback;
+  while (String(port) === taken || !(await isFree(port))) port += 1;
+  return String(port);
+}
+
+const apiPort = await devPort("AURRAL_DEV_API_PORT", 3001);
+const webPort = await devPort("AURRAL_DEV_WEB_PORT", 3009, apiPort);
+console.log(`Aurral dev: http://localhost:${webPort} (API on ${apiPort})`);
 
 const children: ChildProcess[] = [];
 let stopping = false;
