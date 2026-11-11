@@ -37,6 +37,8 @@ import {
 import Tooltip from "../../components/Tooltip";
 import type { PlaylistStatus } from "../../utils/playlistStats.ts";
 import StatePanel from "../../components/StatePanel";
+import Pagination from "../../components/Pagination";
+import { useClampPage, usePageParam } from "../../hooks/usePageParam.ts";
 
 const WANTED_PAGE_SIZE = 25;
 
@@ -212,7 +214,7 @@ export default function ActivityMissingPage() {
   const [actionStates, setActionStates] = useState<Record<string, MissingActionState>>({});
   const [filterValue, setFilterValue] = useState("");
   const [searchingAll, setSearchingAll] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = usePageParam();
   const jobsQueryKey = queryKeys.playlistJobs();
   const jobsQuery = useQuery({
     queryKey: jobsQueryKey,
@@ -255,10 +257,6 @@ export default function ActivityMissingPage() {
   );
 
   useEffect(() => {
-    setVisibleCount(WANTED_PAGE_SIZE);
-  }, [activeTab]);
-
-  useEffect(() => {
     const jobsByKey = new Map(jobs.map((job) => [getMissingJobKey(job), job]));
     setActionStates((current) => {
       const next: Record<string, MissingActionState> = {};
@@ -289,8 +287,16 @@ export default function ActivityMissingPage() {
         .includes(query);
     });
   }, [filterValue, jobs, showingCutoff]);
-  const pagedJobs = visibleJobs.slice(0, visibleCount);
-  const hasMoreJobs = visibleCount < visibleJobs.length;
+  const pageCount = Math.ceil(visibleJobs.length / WANTED_PAGE_SIZE);
+  useClampPage(pageIndex, loading ? undefined : Math.max(pageCount, 1), setPageIndex);
+  const pagedJobs = visibleJobs.slice(
+    (pageIndex - 1) * WANTED_PAGE_SIZE,
+    pageIndex * WANTED_PAGE_SIZE,
+  );
+  const changeFilter = (value: string) => {
+    setFilterValue(value);
+    if (pageIndex > 1) setPageIndex(1, { replace: true });
+  };
   const hasWantedJobs = jobs.some((job) =>
     showingCutoff ? isCutoffUnmetJob(job) : isMissingJob(job),
   );
@@ -452,7 +458,7 @@ export default function ActivityMissingPage() {
         {wantedMobileNav}
         <ActivityToolbar
           filterValue={filterValue}
-          onFilterChange={setFilterValue}
+          onFilterChange={changeFilter}
           action={searchAllButton}
           placeholder={filterPlaceholder}
         />
@@ -468,7 +474,7 @@ export default function ActivityMissingPage() {
       {wantedMobileNav}
       <ActivityToolbar
         filterValue={filterValue}
-        onFilterChange={setFilterValue}
+        onFilterChange={changeFilter}
         action={searchAllButton}
         placeholder={filterPlaceholder}
       />
@@ -517,17 +523,12 @@ export default function ActivityMissingPage() {
               onManualSearch={setManualSearchJob}
             />
           ))}
-          {hasMoreJobs ? (
-            <div className="activity-list__load-more">
-              <button
-                type="button"
-                className="btn btn-secondary btn-min-h"
-                onClick={() => setVisibleCount((count) => count + WANTED_PAGE_SIZE)}
-              >
-                Load more
-              </button>
-            </div>
-          ) : null}
+          <Pagination
+            page={pageIndex}
+            pageCount={pageCount}
+            label={`${showingCutoff ? "Cutoff unmet" : "Missing"} pages`}
+            onChange={setPageIndex}
+          />
         </div>
       ) : null}
       <ActivityInfoModal item={infoJob} onClose={() => setInfoJob(null)} />

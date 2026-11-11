@@ -40,6 +40,8 @@ import {
 } from "../../../lib/activity.ts";
 import StatePanel from "../components/StatePanel";
 import { ConfirmModal } from "../components/ConfirmModal";
+import Pagination from "../components/Pagination";
+import { useClampPage, usePageParam } from "../hooks/usePageParam.ts";
 
 type ActivityPageData = Omit<InferResponseType<typeof requestsClient.page.$get, 200>, "items"> & {
   items: ActivityRequest[];
@@ -49,9 +51,9 @@ const loadActivityPage = (
   {
     view,
     status,
-    limit,
+    offset,
     refresh,
-  }: { view: "queue" | "history"; status: ActivityStatus | null; limit: number; refresh: boolean },
+  }: { view: "queue" | "history"; status: ActivityStatus | null; offset: number; refresh: boolean },
   signal: AbortSignal,
 ): Promise<ActivityPageData> =>
   parseResponse(
@@ -60,7 +62,8 @@ const loadActivityPage = (
         query: {
           view,
           status: status ?? undefined,
-          limit: String(limit),
+          offset: String(offset),
+          limit: String(ACTIVITY_PAGE_SIZE),
           refresh: refresh ? "1" : undefined,
         },
       },
@@ -83,7 +86,6 @@ function ActivityPage() {
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const [localError, setLocalError] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reviewingJobs, setReviewingJobs] = useState<Record<string, "approve" | "deny">>({});
   const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
   const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
@@ -94,6 +96,7 @@ function ActivityPage() {
 
   const activeView = normalizeActivityView(viewParam);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [pageIndex, setPageIndex] = usePageParam();
   const activeStatus = normalizeActivityStatus(activeView, searchParams.get("status"));
   const isQueueView = activeView === "queue";
   const isHistoryView = activeView === "history";
@@ -136,14 +139,19 @@ function ActivityPage() {
   }, [activityWsConnected, refreshFromStatusEvent]);
   const pageView = isHistoryView ? "history" : "queue";
   const pageQueryKey = useMemo(
-    () => [...activityQueryKey, pageView, activeStatus, visibleCount],
-    [activityQueryKey, pageView, activeStatus, visibleCount],
+    () => [...activityQueryKey, pageView, activeStatus, pageIndex],
+    [activityQueryKey, pageView, activeStatus, pageIndex],
   );
   const activityQuery = useQuery({
     queryKey: pageQueryKey,
     queryFn: ({ signal }) =>
       loadActivityPage(
-        { view: pageView, status: activeStatus, limit: visibleCount, refresh: isListLikeView },
+        {
+          view: pageView,
+          status: activeStatus,
+          offset: (pageIndex - 1) * ACTIVITY_PAGE_SIZE,
+          refresh: isListLikeView,
+        },
         signal,
       ),
     enabled: !isMissingView,
@@ -161,7 +169,12 @@ function ActivityPage() {
     localError || getApiErrorText(activityQuery.error, "message") || activityQuery.error?.message;
 
   const visibleRequests = page?.items;
-  const hasMoreItems = (page?.matching ?? 0) > (visibleRequests?.length ?? 0);
+  const pageCount = Math.ceil((page?.matching ?? 0) / ACTIVITY_PAGE_SIZE);
+  useClampPage(
+    pageIndex,
+    page && !activityQuery.isPlaceholderData ? Math.max(pageCount, 1) : undefined,
+    setPageIndex,
+  );
 
   const listEntries = useMemo(() => {
     if (!visibleRequests) return [];
@@ -174,10 +187,6 @@ function ActivityPage() {
     }
     return buildHistoryListEntries(visibleRequests);
   }, [isListLikeView, visibleRequests]);
-
-  useEffect(() => {
-    setVisibleCount(ACTIVITY_PAGE_SIZE);
-  }, [activeView, activeStatus]);
 
   const setActiveStatus = (status: string | null) =>
     setSearchParams(status ? { status } : {}, { replace: true });
@@ -480,17 +489,12 @@ function ActivityPage() {
               );
             });
           })()}
-          {hasMoreItems && (
-            <div className="activity-list__load-more">
-              <button
-                type="button"
-                onClick={() => setVisibleCount((count) => count + ACTIVITY_PAGE_SIZE)}
-                className="btn btn-secondary btn-min-h"
-              >
-                Load more
-              </button>
-            </div>
-          )}
+          <Pagination
+            page={pageIndex}
+            pageCount={pageCount}
+            label={`${activeViewLabel} pages`}
+            onChange={setPageIndex}
+          />
         </div>
       )}
       <ActivityInfoModal item={infoRequest} onClose={() => setInfoRequest(null)} />
