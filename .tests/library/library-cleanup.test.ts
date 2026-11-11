@@ -299,6 +299,32 @@ test("rename never takes a name another file has", async () => {
   assert.deepEqual(await readFile(occupant), occupantBytes);
 });
 
+test("a rename that cannot remove the old name fails and leaves the file under one name", async () => {
+  const oldPath = await makeTrack(path.join(root, "Stuck", "x.flac"), {
+    artist: "Stuck",
+    album: "Album",
+    title: "Song",
+    track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const realUnlink = fsPromises.unlink;
+  vi.spyOn(fsPromises, "unlink").mockImplementation(async (target) => {
+    if (path.resolve(String(target)) === oldPath)
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return realUnlink(target);
+  });
+
+  const { items } = await cleanUp();
+
+  assert.deepEqual(
+    items.map((item) => [item.status, item.reason]),
+    [["failed", "Aurral could not rename the file: EACCES"]],
+  );
+  assert.equal(await exists(oldPath), true);
+  assert.equal(await exists(path.join(root, "Stuck", "Album", "01 - Song.flac")), false);
+  assert.equal(mediaAt(oldPath)?.available, 1);
+});
+
 const describe = (id: number) =>
   operations.describeLibraryFileOperation(getLibraryFileOperation(id));
 const availablePaths = (title: string) =>
