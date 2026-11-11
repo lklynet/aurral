@@ -162,6 +162,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     error,
     loadingReleases,
     loadingAppearsOn,
+    loadingLibrary,
     existsInLibrary,
     setExistsInLibrary,
     albumCovers,
@@ -300,9 +301,20 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   }, [appearsOnQuery.data, isAppearsOn, loadingAppearsOn, releaseGroups, setArtist]);
   const hasMoreAppearances = isAppearsOn && (!appearsOnQuery.data || appearsOnQuery.hasNextPage);
   const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
-  const listSettled = !loadingReleases && !(isAppearsOn && loadingAppearsOn);
+  const cachedAppearancesMerged = useMemo(() => {
+    const ids = new Set(releaseGroups.map((item) => item.id));
+    return (appearsOnQuery.data?.pages ?? []).every((page) =>
+      (page?.items ?? []).every((item) => !item?.id || ids.has(item.id)),
+    );
+  }, [appearsOnQuery.data, releaseGroups]);
+  const listSettled =
+    !loadingReleases &&
+    !(isAppearsOn && (loadingAppearsOn || !cachedAppearancesMerged)) &&
+    !(libraryTab && loadingLibrary);
   const needsMoreAppearances =
-    hasMoreAppearances && !appearsOnQuery.isFetchNextPageError && pageIndex > pageCount;
+    hasMoreAppearances &&
+    !appearsOnQuery.isFetchNextPageError &&
+    filteredReleaseGroups.length < pageIndex * RELEASE_PAGE_SIZE;
   useClampPage(
     pageIndex,
     listSettled && !needsMoreAppearances && !loadingMoreAppearances
@@ -419,9 +431,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   }, [sortMenuOpen]);
 
   const changePage = async (next: number) => {
-    if (next > pageCount && hasMoreAppearances) {
+    if (hasMoreAppearances && filteredReleaseGroups.length < next * RELEASE_PAGE_SIZE) {
       const loaded = await fetchMoreAppearances();
-      if (!loaded || pageIndex > pageCount) return;
+      if (!loaded || filteredReleaseGroups.length < pageIndex * RELEASE_PAGE_SIZE) return;
     }
     setPageIndex(next);
   };
