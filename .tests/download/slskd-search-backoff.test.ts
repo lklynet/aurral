@@ -17,7 +17,7 @@ const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
 afterAll(() => cleanupIsolatedState(state));
 beforeEach(() => resetDatabase(db));
 
-test("searches from different processes start at least five seconds apart", async () => {
+test("searches from different processes start at least seven seconds apart", async () => {
   const started: number[] = [];
   let mainStartedAt;
   const server = await createMockHttpServer((req, res) => {
@@ -42,12 +42,12 @@ test("searches from different processes start at least five seconds apart", asyn
         mainStartedAt ??= Date.now();
       },
     });
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(7000);
     await search;
     assert.equal(started.length, 2);
     assert.ok(mainStartedAt != null);
     assert.ok(
-      mainStartedAt - requireFixture(started[0]) >= 4500,
+      mainStartedAt - requireFixture(started[0]) >= 6500,
       `searches started ${mainStartedAt - requireFixture(started[0])}ms apart`,
     );
   } finally {
