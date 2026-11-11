@@ -45,19 +45,25 @@ const json = (response: ServerResponse, body: unknown, status = 200) => {
   response.end(JSON.stringify(body));
 };
 
-const page = (query: URLSearchParams) => `<!doctype html>
+// The page carries nothing from the request. Its script adds the request's own query
+// to each link, so the browser never renders text an address supplied.
+const PAGE = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
 <title>Eden sign-in</title>
 <body style="background:#000;color:#fff;font:16px system-ui;margin:48px auto;max-width:360px;padding:0 16px">
 <h1 style="font-size:20px">Sign in to Aurral as</h1>
 ${Object.entries(PEOPLE)
-  .map(([person, { name, groups }]) => {
-    const link = new URLSearchParams(query);
-    link.set("person", person);
-    return `<p><a style="color:#fff" href="/approve?${link.toString().replaceAll("&", "&amp;")}">${name}</a>, in ${groups.join(", ")}</p>`;
-  })
+  .map(
+    ([person, { name, groups }]) =>
+      `<p><a style="color:#fff" href="/approve" data-person="${person}">${name}</a>, in ${groups.join(", ")}</p>`,
+  )
   .join("\n")}
+<script>
+for (const link of document.querySelectorAll("a")) {
+  link.search = location.search + "&person=" + link.dataset.person;
+}
+</script>
 </body>`;
 
 createServer(async (request, response) => {
@@ -85,7 +91,7 @@ createServer(async (request, response) => {
   }
   if (url.pathname === "/authorize") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    return response.end(page(query));
+    return response.end(PAGE);
   }
   if (url.pathname === "/approve") {
     const person = query.get("person");
