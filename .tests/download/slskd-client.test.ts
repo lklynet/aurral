@@ -676,20 +676,18 @@ test("deleteSearch cancels a running search and deletes it only after slskd fina
   }
 });
 
-test("deleteSearch deletes a search slskd still lists as running long after it started", async () => {
+test("deleteSearch deletes a search slskd still lists as running well after cancelling it", async () => {
   const calls: string[] = [];
+  let clockOffset = 0;
+  const now = Date.now.bind(Date);
+  vi.spyOn(Date, "now").mockImplementation(() => now() + clockOffset);
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
     calls.push(`${request.method} ${request.url}`);
     response.setHeader("content-type", "application/json");
     if (request.method === "GET") {
-      response.end(
-        JSON.stringify({
-          state: "InProgress",
-          startedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
-          endedAt: null,
-        }),
-      );
+      if (request.url?.includes("orphaned")) clockOffset = 10_000;
+      response.end(JSON.stringify({ state: "InProgress", endedAt: null }));
       return;
     }
     response.writeHead(request.method === "DELETE" ? 204 : 200);
@@ -697,13 +695,13 @@ test("deleteSearch deletes a search slskd still lists as running long after it s
   });
   try {
     const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
-    assert.equal(await new SlskdClient({ url: mock.url }).deleteSearch("orphaned"), true);
-    assert.deepEqual(calls, [
-      "PUT /api/v0/searches/orphaned",
-      "GET /api/v0/searches/orphaned?includeResponses=false",
-      "DELETE /api/v0/searches/orphaned",
-    ]);
+    const client = new SlskdClient({ url: mock.url });
+    assert.equal(await client.deleteSearch("settling", { timeoutMs: 500 }), false);
+    assert.ok(!calls.includes("DELETE /api/v0/searches/settling"));
+    assert.equal(await client.deleteSearch("orphaned"), true);
+    assert.equal(calls.at(-1), "DELETE /api/v0/searches/orphaned");
   } finally {
+    vi.mocked(Date.now).mockRestore();
     await mock.close();
   }
 });
