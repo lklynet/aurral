@@ -115,7 +115,7 @@ export default defineConfig({
         rules: { "aurral/single-main": "off" },
       },
       {
-        files: ["backend/**", "lib/**", "scripts/**", ".tests/**"],
+        files: ["backend/**", "lib/**", "scripts/**", "eden/**", ".tests/**"],
         rules: { "import/extensions": ["error", "always", { ignorePackages: true }] },
       },
       {
@@ -147,6 +147,14 @@ export default defineConfig({
           ...testSetup,
           name: "integration",
           include: [".tests/**/*.int.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "eden",
+          include: ["eden/journeys/**/*.eden.test.ts"],
+          testTimeout: 300_000,
+          fileParallelism: false,
         },
       },
     ],

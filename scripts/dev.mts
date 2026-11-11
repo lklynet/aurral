@@ -2,7 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 
-const backendEnv = existsSync("backend/.env") ? parseEnv(readFileSync("backend/.env", "utf8")) : {};
+const envFile = process.env.AURRAL_ENV_FILE || "backend/.env";
+const backendEnv = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
 const apiPort = process.env.AURRAL_DEV_API_PORT || backendEnv.AURRAL_DEV_API_PORT || "3001";
 const webPort = process.env.AURRAL_DEV_WEB_PORT || backendEnv.AURRAL_DEV_WEB_PORT || "3009";
 
@@ -48,7 +49,7 @@ process.on("SIGTERM", () => {
   stop();
 });
 
-start(process.execPath, ["--watch", "--env-file=backend/.env", "backend/server.ts"], {
+start(process.execPath, ["--watch", `--env-file=${envFile}`, "backend/server.ts"], {
   ...process.env,
   PORT: apiPort,
 });

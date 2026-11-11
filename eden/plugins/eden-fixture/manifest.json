@@ -1,0 +1,34 @@
+{
+  "id": "eden-fixture",
+  "name": "Eden Fixture",
+  "version": "1.0.0",
+  "api": 1,
+  "description": "Uses every plugin capability and writes down each call it receives, so a test can check what Aurral sent.",
+  "repository": "https://github.com/lklynet/aurral",
+  "uses": ["Eden's generated releases", "Aurral's API"],
+  "settings": [
+    { "key": "world", "label": "Releases folder", "type": "text", "required": true },
+    { "key": "greeting", "label": "Greeting", "type": "text", "help": "Shown by Test." },
+    { "key": "secret", "label": "Secret", "type": "password" },
+    { "key": "limit", "label": "Search results", "type": "number" },
+    { "key": "fail", "label": "Fail every call", "type": "boolean" }
+  ],
+  "test": true,
+  "actions": [
+    { "id": "playlist", "label": "Eden: note this playlist", "target": "playlist" },
+    { "id": "album", "label": "Eden: note this album", "target": "album" },
+    { "id": "artist", "label": "Eden: note this artist", "target": "artist", "admin": true },
+    { "id": "track", "label": "Eden: note these tracks", "target": "track", "background": true }
+  ],
+  "events": [
+    "playlist.changed",
+    "playlist.removed",
+    "track.played",
+    "download.finished",
+    "notification"
+  ],
+  "downloadSource": { "albums": true },
+  "importList": { "label": "Eden", "hosts": ["eden.test"] },
+  "schedule": "15m",
+  "apiAccess": true
+}

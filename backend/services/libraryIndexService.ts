@@ -22,11 +22,8 @@ import {
   upsertLibraryArtist,
   type UntaggedLibraryAlbum,
 } from "./libraryMediaStore.ts";
-import {
-  getAlbumByMbid,
-  resolveAlbumByArtistAndTitle,
-  selectAlbumRelease,
-} from "./providers/brainzmashProvider.ts";
+import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.ts";
+import { selectAlbumRelease } from "./providers/brainzmashRanking.ts";
 import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
