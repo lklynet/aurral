@@ -189,8 +189,8 @@ export interface DownloadSource {
   status?(
     input: Base & { id: string; directory: string },
   ):
-    | { done: boolean; path?: string; imported?: string[] }
-    | Promise<{ done: boolean; path?: string; imported?: string[] }>;
+    | { done: boolean; path?: string; filed?: number }
+    | Promise<{ done: boolean; path?: string; filed?: number }>;
   discard?(input: Base & { id: string }): unknown;
 }
 

@@ -42,10 +42,7 @@ const lidarrSettings = v.fallback(
 
 export const lidarrConversionReport = v.object({
   convertedAt: v.number(),
-  folders: v.array(
-    v.object({ lidarrPath: v.string(), path: v.string(), sharesLibraryFolder: v.boolean() }),
-  ),
-  artistIds: v.array(v.number()),
+  folders: v.array(v.object({ path: v.string(), sharesLibraryFolder: v.boolean() })),
 });
 
 function parse(text: string | undefined): unknown {
@@ -117,7 +114,7 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
               const folder = path.resolve(resolveLocalPath(lidarrPath, mappings));
               return [
                 folder,
-                { lidarrPath, path: folder, sharesLibraryFolder: isWithin(downloadRoot, folder) },
+                { path: folder, sharesLibraryFolder: isWithin(downloadRoot, folder) },
               ] as const;
             }),
         ).values(),
@@ -154,16 +151,6 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
         dropTwins.run(prefix.length, prefix);
       }
 
-      const artistIds = db
-        .prepare<[], number>(
-          `SELECT management.entity_id FROM library_management AS management
-           JOIN library_artists AS artist ON artist.id = management.entity_id
-           WHERE management.entity_kind = 'artist' AND management.managed_by = 'lidarr'
-             AND coalesce(management.monitor_mode, 'none') <> 'none' AND artist.mbid IS NOT NULL
-           ORDER BY management.entity_id`,
-        )
-        .pluck()
-        .all();
       db.prepare(
         `UPDATE library_management
          SET managed_by = 'aurral',
@@ -188,7 +175,7 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
         "UPDATE download_jobs SET managed_by = 'aurral' WHERE managed_by = 'lidarr'",
       ).run();
 
-      const converted = { convertedAt: now, folders, artistIds };
+      const converted = { convertedAt: now, folders };
       db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
         LIDARR_CONVERSION_REPORT_KEY,
         JSON.stringify(converted),
@@ -201,7 +188,6 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
   if (report) {
     logger.info("migration", "Aurral now runs the Library that Lidarr ran", {
       readOnlyFolders: report.folders.map((folder) => folder.path),
-      artists: report.artistIds.length,
       snapshot,
     });
   }

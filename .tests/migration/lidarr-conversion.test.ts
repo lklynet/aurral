@@ -17,7 +17,6 @@ const [
   { convertLidarrLibrary },
   { libraryFolderOwner, readOnlyFolderPaths, saveReadOnlyFolderPaths },
   { resolveDownloadRoot },
-  { dismissLidarrConversionReport },
   { invalidateLibraryManagementCache },
 ] = await setupIsolatedBackend(
   "lidarr-conversion",
@@ -26,7 +25,6 @@ const [
   () => import("../../backend/config/lidarr-conversion.ts"),
   () => import("../../backend/services/libraryFolders.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
-  () => import("../../backend/services/lidarrConversionReport.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
 );
 
@@ -164,10 +162,7 @@ test("an install that Lidarr ran keeps its music in read-only folders, and its a
 
   const report = convert();
 
-  assert.deepEqual(report?.folders, [
-    { lidarrPath: "/lidarr-music", path: lidarrFolder, sharesLibraryFolder: false },
-  ]);
-  assert.deepEqual(report?.artistIds, [band]);
+  assert.deepEqual(report?.folders, [{ path: lidarrFolder, sharesLibraryFolder: false }]);
   assert.deepEqual(readOnlyFolderPaths().sort(), [lidarrFolder, otherFolder].sort());
   assert.deepEqual(mediaRows(), [
     { id: lidarrMedia, track_id: song, source: "readonly", path: lidarrFile },
@@ -223,9 +218,7 @@ test("a folder Lidarr shared with the Library folder becomes read-only, and each
 
   const report = convert();
 
-  assert.deepEqual(report?.folders, [
-    { lidarrPath: libraryFolder, path: libraryFolder, sharesLibraryFolder: true },
-  ]);
+  assert.deepEqual(report?.folders, [{ path: libraryFolder, sharesLibraryFolder: true }]);
   assert.deepEqual(
     mediaRows().map((row) => [row.track_id, row.source, row.path]),
     [
@@ -259,25 +252,6 @@ test("a conversion that fails changes nothing, and Aurral keeps the copy it made
   assert.equal(management("artist", band)?.managed_by, "lidarr");
   assert.deepEqual(readOnlyFolderPaths(), []);
   assert.ok(fs.existsSync(snapshot));
-});
-
-test("dismissing the report can start default monitoring for the artists Lidarr ran, once", () => {
-  connectLidarr([path.join(state.baseDir, "lidarr")]);
-  const band = artist("Band", {}, "11111111-1111-4111-8111-111111111111");
-  manage("artist", band, "lidarr", "all");
-  const own = artist("Own", {}, "22222222-2222-4222-8222-222222222222");
-  manage("artist", own, "aurral", "none");
-  convert();
-
-  assert.deepEqual(dismissLidarrConversionReport({ monitorArtists: true }), {
-    monitoredArtists: 1,
-  });
-
-  assert.match(management("artist", band)!.monitor_rules!, /"default":true/);
-  assert.equal(management("artist", own)?.monitor_rules, null);
-  assert.deepEqual(dismissLidarrConversionReport({ monitorArtists: true }), {
-    monitoredArtists: 0,
-  });
 });
 
 test("an install that never used Lidarr is left alone", () => {

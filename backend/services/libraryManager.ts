@@ -1288,32 +1288,6 @@ export class LibraryManager {
     });
   }
 
-  // Starts default monitoring for the artists among these that Aurral does
-  // not monitor yet. The reconcile task works out what each one is missing.
-  monitorArtistsWithDefaults(artistIds: number[]) {
-    const defaults = getMonitoringDefaults();
-    const stored = nextArtistMonitoring(null, { useDefault: true }, defaults);
-    const started = db
-      .transaction(() =>
-        db
-          .prepare<[string], LibraryArtistsRow["id"]>(
-            `SELECT id FROM library_artists
-             WHERE mbid IS NOT NULL AND id IN (SELECT value FROM json_each(?))`,
-          )
-          .pluck()
-          .all(JSON.stringify(artistIds))
-          .filter((artistId) => {
-            const entry = getLibraryManagementEntry("artist", artistId);
-            if (!entry || entry.monitorRules) return false;
-            this._storeArtistMonitoring(artistId, stored, defaults);
-            return true;
-          }),
-      )
-      .immediate();
-    if (started.length > 0) enqueueSystemTask({ kind: "aurral-monitoring-reconcile" });
-    return started.length;
-  }
-
   async previewArtistMonitoring(
     mbid: string,
     {

@@ -356,6 +356,8 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
   );
 }
 
+const OFFICIAL_PLUGINS = "https://github.com/lklynet/aurral-plugins";
+
 function InstallGroup({ list }: { list: PluginList }) {
   const refresh = useRefreshPlugins();
   const { showSuccess } = useToast();
@@ -363,7 +365,8 @@ function InstallGroup({ list }: { list: PluginList }) {
   const [checked, setChecked] = useState<Inspected | null>(null);
   const [installed, setInstalled] = useState<string[]>([]);
   const inspect = useMutation({
-    mutationFn: () => parseResponse(pluginsClient.install.inspect.$post({ json: { url } })),
+    mutationFn: (link: string) =>
+      parseResponse(pluginsClient.install.inspect.$post({ json: { url: link } })),
     onSuccess: (result) => {
       setChecked(result);
       setInstalled([]);
@@ -448,15 +451,26 @@ function InstallGroup({ list }: { list: PluginList }) {
       title="Install from a link"
       note={
         <>
-          Paste a link to a plugin&apos;s GitHub repo. You can also put its folder in{" "}
-          <code className="settings-code">{list.folder}</code>.
+          Paste a link to a plugin&apos;s GitHub repo, or{" "}
+          <button
+            type="button"
+            className="settings-link"
+            disabled={inspect.isPending}
+            onClick={() => {
+              setUrl(OFFICIAL_PLUGINS);
+              inspect.mutate(OFFICIAL_PLUGINS);
+            }}
+          >
+            use the official plugins
+          </button>
+          . You can also put its folder in <code className="settings-code">{list.folder}</code>.
         </>
       }
     >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (url.trim()) inspect.mutate();
+          if (url.trim()) inspect.mutate(url);
         }}
       >
         <SettingsRow

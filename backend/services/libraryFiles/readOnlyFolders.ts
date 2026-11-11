@@ -5,11 +5,7 @@ import { db } from "../../config/db-sqlite.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { enqueueSystemTask } from "../jobs/systemTasks.ts";
 import { isPathWithin, readOnlyFolderPaths, saveReadOnlyFolderPaths } from "../libraryFolders.ts";
-import {
-  getLibraryScanStatus,
-  getScheduledLibraryScanJobId,
-  scheduleLibraryScan,
-} from "../libraryScanWorker.ts";
+import { isLibraryScanActive, scheduleLibraryScan } from "../libraryScanWorker.ts";
 
 export class ReadOnlyFolderError extends Error {
   declare code: "READ_ONLY_FOLDER_INVALID";
@@ -78,12 +74,6 @@ async function describeFolder(folder: string, libraryFolder: string) {
     insideLibraryFolder: isPathWithin(libraryFolder, folder),
     tracks: countTracksStmt.get(folder, prefix.length, prefix)!,
   };
-}
-
-function isLibraryScanActive() {
-  const jobId = getScheduledLibraryScanJobId();
-  const status = jobId == null ? null : getLibraryScanStatus(jobId)?.status;
-  return status === "queued" || status === "running";
 }
 
 export async function describeReadOnlyFolders() {

@@ -10,7 +10,8 @@ import {
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { deferForInactiveOwner } from "../downloadJobs/playlistOwnerStatus.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
-import { libraryFolderOwner } from "../libraryFolders.ts";
+import { readOnlyFolderPaths } from "../libraryFolders.ts";
+import { isLibraryScanActive, scheduleLibraryScan } from "../libraryScanWorker.ts";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   buildTrackFileName,
@@ -48,6 +49,7 @@ import {
   type TrackResult,
   type Upgrade,
 } from "./downloadSource.ts";
+import { filedAlbumFiles } from "./filedAlbum.ts";
 import {
   recordTrackJobSearching,
   recordTrackJobDownloading,
@@ -57,6 +59,8 @@ import {
 const POLL_SECONDS = 15;
 const MAX_POLLS = (24 * 60 * 60) / POLL_SECONDS;
 const MAX_ALBUM_CANDIDATES = 5;
+const FILED_FALLBACK_SCAN = 8;
+const FILED_GIVE_UP = 16;
 
 type SourceCandidate = Omit<ReturnType<typeof toPipelineCandidate>, "raw"> & {
   raw: TrackResult | AlbumResult;
@@ -78,6 +82,9 @@ export type SourcePayload = {
   heldForReview?: ReturnType<typeof holdForReview> | null;
   pendingId?: string | null;
   importedFiles?: string[] | null;
+  filedCount?: number | null;
+  filedPolls?: number;
+  fallbackScanned?: boolean;
   pollAttempts?: number;
   albumGrab?: boolean;
   releaseMbid?: string | null;
@@ -144,23 +151,6 @@ export async function albumQuery(payload: SourcePayload, job: DownloadJob) {
       durationMs: track.durationMs ?? null,
     })),
   };
-}
-
-// A source that files its own downloads keeps them. Aurral only uses files
-// in a read-only folder, which it never moves, changes, or deletes.
-async function resolveImportedFiles(job: DownloadJob, returned: string[]) {
-  if (job.upgradeForJobId)
-    throw new DownloadSourceError("imported an upgrade itself, and Aurral files its own upgrades");
-  return Promise.all(
-    returned.filter(isAudioFile).map(async (file) => {
-      const filePath = path.isAbsolute(file) ? await fs.realpath(file).catch(() => null) : null;
-      if (!filePath || !(await fs.stat(filePath)).isFile())
-        throw new DownloadSourceError(`imported ${file}, which Aurral can't open`);
-      if (libraryFolderOwner(filePath) !== "readonly")
-        throw new DownloadSourceError(`imported ${filePath}, which isn't in a read-only folder`);
-      return filePath;
-    }),
-  );
 }
 
 async function resolveDownloadedFile(directory: string, returned: string) {
@@ -417,7 +407,13 @@ async function handleDownload(
   source: DownloadSource,
   helpers: SourceHelpers,
 ) {
-  const payload = { ...attempt, importedFiles: null };
+  const payload = {
+    ...attempt,
+    importedFiles: null,
+    filedCount: null,
+    filedPolls: 0,
+    fallbackScanned: false,
+  };
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
   const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
@@ -461,12 +457,55 @@ async function handleDownload(
   }
 }
 
+const FILED_NOT_FOUND =
+  "finished, but Aurral didn't find the album in a read-only folder. Check that the folder it saves to is in Settings > Library and its files are tagged";
+
+// A client that files its own downloads names no files, so Aurral waits until
+// its Library index holds the album. A fallback scan covers shares that send
+// no file events, and polls during a scan don't count toward giving up.
+async function waitForFiledAlbum(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
+  if (!isPipelinePayloadActive(payload)) {
+    await discardSourceWork(payload, source);
+    return null;
+  }
+  const roots = readOnlyFolderPaths();
+  if (roots.length === 0) throw new DownloadSourceError(FILED_NOT_FOUND);
+  const scanning = isLibraryScanActive();
+  const filedPolls = Number(payload.filedPolls || 0);
+  const files = scanning ? [] : filedAlbumFiles(job);
+  if (!scanning && (files.length >= Number(payload.filedCount) || filedPolls >= FILED_GIVE_UP)) {
+    if (files.length === 0) throw new DownloadSourceError(FILED_NOT_FOUND);
+    const finished = { ...payload, importedFiles: files };
+    if (finished.albumGrab === true)
+      return {
+        ...finished,
+        phase: "finalize",
+        candidate: getPayloadCandidate(finished),
+        pendingId: null,
+      };
+    return await albumTrackDownloaded(finished, source, job);
+  }
+  if (Number(payload.pollAttempts) >= MAX_POLLS) throw new DownloadSourceError(FILED_NOT_FOUND);
+  const counted = scanning ? filedPolls : filedPolls + 1;
+  const scan = !payload.fallbackScanned && counted >= FILED_FALLBACK_SCAN;
+  if (scan) scheduleLibraryScan({ changedPaths: roots });
+  return {
+    ...payload,
+    phase: "poll",
+    filedPolls: counted,
+    fallbackScanned: payload.fallbackScanned === true || scan,
+    delaySeconds: POLL_SECONDS,
+  };
+}
+
 async function handlePoll(payload: SourcePayload, source: DownloadSource, helpers: SourceHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
   const directory = stagingDir(source, job.id);
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   try {
+    if (payload.filedCount)
+      return await waitForFiledAlbum({ ...payload, pollAttempts }, source, job);
     const current = await keepFiles(payload, source, job);
     const status = await source.status({ id: String(current.pendingId), directory });
     if (!isPipelinePayloadActive(current)) {
@@ -478,16 +517,29 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
         throw new DownloadSourceError("didn't finish the download within a day");
       return { ...current, phase: "poll", pollAttempts, delaySeconds: POLL_SECONDS };
     }
-    const finished = status.imported
-      ? { ...current, importedFiles: await resolveImportedFiles(job, status.imported) }
-      : current;
-    const candidate = finished.candidates?.[Number(finished.candidateIndex || 0)];
-    if (finished.albumGrab === true)
-      return { ...finished, phase: "finalize", candidate, pendingId: null, pollAttempts };
-    if (finished.importedFiles) return await albumTrackDownloaded(finished, source, job);
+    if (status.filed) {
+      if (job.upgradeForJobId)
+        throw new DownloadSourceError("filed an upgrade itself, and Aurral files its own upgrades");
+      if (current.albumGrab !== true && !fromAlbum(current, source))
+        throw new DownloadSourceError("finished a download without its path");
+      return await waitForFiledAlbum(
+        {
+          ...current,
+          pollAttempts,
+          filedCount: status.filed,
+          filedPolls: 0,
+          fallbackScanned: false,
+        },
+        source,
+        job,
+      );
+    }
+    const candidate = current.candidates?.[Number(current.candidateIndex || 0)];
+    if (current.albumGrab === true)
+      return { ...current, phase: "finalize", candidate, pendingId: null, pollAttempts };
     if (status.path)
-      return trackDownloaded(finished, source, await resolveDownloadedFile(directory, status.path));
-    if (fromAlbum(finished, source)) return await albumTrackDownloaded(finished, source, job);
+      return trackDownloaded(current, source, await resolveDownloadedFile(directory, status.path));
+    if (fromAlbum(current, source)) return await albumTrackDownloaded(current, source, job);
     throw new DownloadSourceError("finished a download without its path");
   } catch (error) {
     if (!(error instanceof DownloadSourceError)) throw error;
@@ -502,7 +554,14 @@ async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSourc
     inPlace: Boolean(payload.importedFiles),
     source: source.id,
     album: getPayloadCandidate(payload)?.resolvedAlbumName ?? null,
-    resetFields: { pendingId: null, pollAttempts: 0, downloadedPath: null },
+    resetFields: {
+      pendingId: null,
+      pollAttempts: 0,
+      downloadedPath: null,
+      filedCount: null,
+      filedPolls: 0,
+      fallbackScanned: false,
+    },
   });
   await cleanup(directory);
   return next;
