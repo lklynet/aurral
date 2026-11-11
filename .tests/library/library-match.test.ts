@@ -2,10 +2,11 @@ import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as v from "valibot";
+import { parseFile } from "music-metadata";
 
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
 import {
@@ -15,16 +16,25 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, { scanMusicRoot }] =
-  await setupIsolatedBackend(
-    "library-match",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/libraryMediaStore.ts"),
-    () => import("../../backend/services/providers/brainzmashProvider.ts"),
-    () => import("../../backend/services/libraryIndexService.ts"),
-    () => import("../../backend/services/libraryFileScanner.ts"),
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  libraryStore,
+  provider,
+  indexService,
+  { scanMusicRoot },
+  { resolveDownloadRoot },
+] = await setupIsolatedBackend(
+  "library-match",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/libraryIndexService.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+);
 
 const { api } = await import("../../backend/routes/api.ts");
 const { getArtistLibraryLookup } = await import("../../backend/routes/library/handlers/misc.ts");
@@ -38,6 +48,10 @@ const PICKED_GROUP = "66666666-6666-4666-8666-666666666661";
 const OTHER_GROUP = "66666666-6666-4666-8666-666666666662";
 const MISSING_GROUP = "66666666-6666-4666-8666-666666666663";
 const ALBUM_ARTIST_MBID = "55555555-5555-4555-8555-555555555557";
+const TRACK_GROUP = "66666666-6666-4666-8666-666666666664";
+const TRACK_RELEASE = "77777777-7777-4777-8777-777777777771";
+const FULL_RECORDING = "88888888-8888-4888-8888-888888888881";
+const NEXT_RECORDING = "88888888-8888-4888-8888-888888888882";
 
 let providerAvailable = true;
 let server: { url: string; close: () => Promise<void> };
@@ -66,6 +80,30 @@ beforeAll(async () => {
     const groups: Record<string, object> = {
       [PICKED_GROUP]: { id: PICKED_GROUP, title: "Picked Album", releases: [] },
       [OTHER_GROUP]: { id: OTHER_GROUP, title: "Picked Album Live", releases: [] },
+      [TRACK_GROUP]: {
+        id: TRACK_GROUP,
+        title: "Track Album",
+        artistid: KNOWN_MBID,
+        artists: [{ id: KNOWN_MBID, artistname: "Known Artist" }],
+        releases: [
+          {
+            id: TRACK_RELEASE,
+            status: "Official",
+            tracks: [
+              [FULL_RECORDING, "The Whole Title"],
+              [NEXT_RECORDING, "Next Song"],
+            ].map(([recordingid, trackname], index) => ({
+              id: `${TRACK_RELEASE}-${index + 1}`,
+              recordingid,
+              trackname,
+              artistid: KNOWN_MBID,
+              durationms: 200,
+              trackposition: index + 1,
+              mediumnumber: 1,
+            })),
+          },
+        ],
+      },
     };
     let body: object | null = null;
     if (url.pathname.startsWith("/artist/"))
@@ -409,4 +447,129 @@ test("an album's matches are its artist's releases, marking the one the Library 
     ],
   );
   assert.equal(body.items[1]?.libraryAlbumId, owned.id);
+});
+
+const trackMatch = v.object({
+  id: v.optional(v.number()),
+  title: v.optional(v.string()),
+  error: v.optional(v.string()),
+});
+
+const matchTrack = async (trackId: number, mbid: string) => {
+  const response = await app.request(`/library/tracks/${trackId}/recording`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mbid }),
+  });
+  const body: unknown = await response.json();
+  return { status: response.status, body: v.parse(trackMatch, body) };
+};
+
+async function scanPartialTrack() {
+  const root = resolveDownloadRoot();
+  const filePath = await writeFlacFixture(
+    path.join(root, "Known Artist", "Track Album", "03 The Whole.flac"),
+    {
+      artist: "Known Artist",
+      album: "Track Album",
+      title: "The Whole",
+      track: "3",
+      MUSICBRAINZ_RELEASEGROUPID: TRACK_GROUP,
+    },
+  );
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const track = db
+    .prepare<[string], import("../../backend/db/rows.ts").LibraryTracksRow>(
+      `SELECT track.* FROM library_tracks AS track
+       JOIN library_media_files AS file ON file.track_id = track.id
+       WHERE file.path = ?`,
+    )
+    .get(filePath)!;
+  return { filePath, track };
+}
+
+test("matching a track retags its file with the recording's title and keeps its favorites", async () => {
+  const { filePath, track } = await scanPartialTrack();
+  const albumId = Number(
+    db.prepare("SELECT album_id FROM library_media_files WHERE path = ?").pluck().get(filePath),
+  );
+  const missing = libraryStore.upsertLibraryTrack({
+    identityKey: `recording:${FULL_RECORDING}`,
+    mbid: FULL_RECORDING,
+    title: "The Whole Title",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId, trackId: missing.id, trackNumber: 1 });
+  db.prepare(
+    "INSERT OR IGNORE INTO users (id, username, password_hash) VALUES (1, 'fan', 'x')",
+  ).run();
+  db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (1, 'song', ?, 1)",
+  ).run(track.identity_key);
+
+  const listed: unknown = await (await app.request(`/library/tracks/${track.id}/matches`)).json();
+  const response = await matchTrack(track.id, FULL_RECORDING);
+
+  assert.deepEqual(
+    v
+      .parse(v.object({ items: v.array(v.looseObject({ id: v.string() })) }), listed)
+      .items.map((item) => item.id),
+    [FULL_RECORDING, NEXT_RECORDING],
+  );
+  assert.equal(response.status, 200);
+  const { common } = await parseFile(filePath);
+  assert.deepEqual(
+    [common.title, common.album, common.musicbrainz_recordingid, common.musicbrainz_albumid],
+    ["The Whole Title", "Track Album", FULL_RECORDING, TRACK_RELEASE],
+  );
+  const matched = db
+    .prepare<[number], import("../../backend/db/rows.ts").LibraryTracksRow>(
+      "SELECT * FROM library_tracks WHERE id = ?",
+    )
+    .get(response.body.id!);
+  assert.deepEqual([matched?.title, matched?.mbid], ["The Whole Title", FULL_RECORDING]);
+  assert.deepEqual(
+    db
+      .prepare("SELECT track_number FROM library_album_tracks WHERE album_id = ? AND track_id = ?")
+      .pluck()
+      .all(albumId, matched?.id),
+    [1],
+  );
+  assert.equal(
+    db
+      .prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 1 AND entity_kind = 'song'")
+      .pluck()
+      .get(),
+    matched?.identity_key,
+  );
+});
+
+test("a track match that cannot be applied leaves the file as it was", async () => {
+  await writeFlacFixture(
+    path.join(resolveDownloadRoot(), "Known Artist", "Track Album", "02 Next Song.flac"),
+    {
+      artist: "Known Artist",
+      album: "Track Album",
+      title: "Next Song",
+      track: "2",
+      MUSICBRAINZ_RELEASEGROUPID: TRACK_GROUP,
+      MUSICBRAINZ_TRACKID: NEXT_RECORDING,
+    },
+  );
+  const { filePath, track } = await scanPartialTrack();
+  const before = await readFile(filePath);
+  const { album } = createArtist("Read Only Track Artist");
+  const readOnlyTrack = db
+    .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+    .pluck()
+    .get(album.id);
+
+  const statuses = [
+    (await matchTrack(track.id, MISSING_MBID)).status,
+    (await matchTrack(track.id, NEXT_RECORDING)).status,
+    (await matchTrack(track.id, "not-an-mbid")).status,
+    (await matchTrack(Number(readOnlyTrack), FULL_RECORDING)).status,
+  ];
+
+  assert.deepEqual(statuses, [404, 409, 400, 409]);
+  assert.deepEqual(await readFile(filePath), before);
 });

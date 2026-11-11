@@ -939,7 +939,6 @@ export function rekeyLibraryTrack(trackId: number, identityKey: string | null) {
        WHERE link.track_id = ? AND NOT EXISTS (
          SELECT 1 FROM library_album_tracks AS kept
          WHERE kept.album_id = link.album_id AND kept.track_id = ?
-           AND kept.disc_number = link.disc_number AND kept.track_number = link.track_number
        )`,
       ).run(target.id, id, target.id);
       db.prepare<[number, number]>(

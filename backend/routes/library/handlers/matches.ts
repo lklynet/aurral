@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import * as v from "valibot";
+import { asAppError } from "../../../../lib/errors.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { db } from "../../../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryArtistsRow } from "../../../db/rows.ts";
@@ -21,6 +22,7 @@ import {
   searchArtists,
 } from "../../../services/providers/brainzmashProvider.ts";
 import { attachCachedCoverUrls } from "../../../services/releaseGroupCoverService.ts";
+import { listTrackMatches, matchLibraryTrack } from "../../../services/libraryFiles/trackMatch.ts";
 
 const MATCH_LIMIT = 12;
 const providerUnavailable = { error: "Could not reach the metadata provider. Try again." };
@@ -241,5 +243,35 @@ export default new Hono<AppEnv>()
         },
         200,
       );
+    },
+  )
+  .get("/tracks/:id/matches", noCache, requireAuth, requirePermission("addAlbum"), async (c) => {
+    const trackId = Number(c.req.param("id"));
+    if (!Number.isSafeInteger(trackId)) return c.json({ error: "Track not found" }, 404);
+    const result = await listTrackMatches(trackId);
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result, 200);
+  })
+  .put(
+    "/tracks/:id/recording",
+    requireAuth,
+    requirePermission("addAlbum"),
+    validate("json", mbidInput),
+    async (c) => {
+      const trackId = Number(c.req.param("id"));
+      const mbid = readMbid(c.req.valid("json").mbid);
+      if (!Number.isSafeInteger(trackId) || !mbid || !UUID_REGEX.test(mbid)) {
+        return c.json({ error: "A MusicBrainz recording ID is required" }, 400);
+      }
+      try {
+        const result = await matchLibraryTrack(trackId, mbid);
+        if ("error" in result) return c.json({ error: result.error }, result.status);
+        return c.json(result, 200);
+      } catch (error) {
+        return c.json(
+          { error: `Aurral could not retag the file: ${asAppError(error)?.message || error}` },
+          500,
+        );
+      }
     },
   );

@@ -14,10 +14,13 @@ import { getApiErrorText } from "../../utils/api/errors.ts";
 import {
   fetchLibraryAlbumMatches,
   fetchLibraryArtistMatches,
+  fetchLibraryTrackMatches,
   updateLibraryAlbumReleaseGroup,
   updateLibraryArtistMbid,
+  updateLibraryTrackRecording,
 } from "../../utils/api/endpoints/library.ts";
-import type { LibraryAlbum, LibraryArtist } from "../../utils/libraryPageData.ts";
+import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../../utils/libraryPageData.ts";
+import { formatDuration } from "./libraryShared.tsx";
 
 const MBID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const SEARCH_DELAY_MS = 300;
@@ -377,6 +380,71 @@ export function AlbumMatchModal({
         album.title || "",
       )}
       save={save}
+      onClose={onClose}
+    />
+  );
+}
+
+export type TrackMatchResult = Awaited<ReturnType<typeof updateLibraryTrackRecording>>;
+
+export function TrackMatchModal({
+  track,
+  album,
+  onClose,
+  onSaved,
+}: {
+  track: LibraryTrack;
+  album: LibraryAlbum;
+  onClose: () => void;
+  onSaved: (result: TrackMatchResult) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const matches = useQuery({
+    queryKey: queryKeys.libraryMatches("track", track.id, ""),
+    queryFn: ({ signal }) => fetchLibraryTrackMatches(track.id, { signal }),
+    enabled: !pastedMbid(query),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const items = matches.data?.items ?? [];
+  const discs = new Set(items.map((item) => item.discNumber)).size;
+  const position = track.albums?.find((entry) => String(entry.albumId) === String(album.id));
+  const filter = nameKey(query);
+  const rows = items
+    .filter((item) => nameKey(item.title).includes(filter))
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      detail: joinDetail(
+        discs > 1 && `Disc ${item.discNumber}`,
+        item.trackNumber ? `Track ${item.trackNumber}` : null,
+        formatDuration(item.durationMs),
+        item.inLibrary && "Already has a file",
+      ),
+      art: null,
+    }));
+  const atPosition = items.find(
+    (item) =>
+      item.trackNumber === position?.trackNumber && item.discNumber === (position?.discNumber || 1),
+  );
+  return (
+    <MatchModal
+      title="Match track"
+      description={joinDetail(track.title, matches.data?.album || album.title)}
+      query={query}
+      onQueryChange={setQuery}
+      placeholder="Filter or paste a MusicBrainz link"
+      list={{
+        groups: [{ label: null, rows }],
+        loading: matches.isPending,
+        failed: matches.isError,
+        retry: () => void matches.refetch(),
+      }}
+      current={null}
+      suggested={items.find((item) => item.id === track.mbid)?.id ?? atPosition?.id ?? null}
+      save={async (mbid) => {
+        if (mbid) onSaved(await updateLibraryTrackRecording(track.id, mbid));
+      }}
       onClose={onClose}
     />
   );

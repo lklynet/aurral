@@ -197,6 +197,9 @@ export async function startPerfApp({ artists }: { artists: number }) {
   const context: PerfContext = {
     artistId: Math.floor(artists / 2) + 1,
     albumId: library.albumIds[Math.floor(library.albumIds.length / 2)]!,
+    trackId: library.trackRows
+      .slice(Math.floor(library.trackRows.length / 2))
+      .find((track) => track.path)!.id,
     lastAlbumPage: Math.floor(library.albums / 100),
     playlistId,
     editPlaylist: {
