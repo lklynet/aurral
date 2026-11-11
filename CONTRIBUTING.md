@@ -64,6 +64,14 @@ Keep UI changes focused and explain any new interaction in the pull request.
 
 Before opening the pull request, run the checks that apply to your change and describe any manual testing in the pull request. Maintainers may ask for a smaller diff, more context, or a separate pull request.
 
+## Use an AI agent
+
+Agents are welcome. [AGENTS.md](AGENTS.md) holds the rules an agent follows in this repo, and most agents read it on their own. `.agents/skills/` holds skills for work specific to Aurral, such as testing in Eden.
+
+- Say what did the work. End the pull request description with the model and harness, and have the agent mark the comments it writes, as AGENTS.md describes. Reviewers want to know what they are reading. It is not held against you.
+- You answer for what you submit. Read the diff, run it, and be ready to explain it.
+- A change gets the same review whether a person or an agent wrote it.
+
 ## Screenshots
 
 Store app screenshots in `web/screenshots/`. The README, docs, and marketing site share these files. Replace the file there to update all three.

@@ -16,8 +16,9 @@ coverage/
 
 # Private maintainer instructions
 /.maintainer/
-/AGENTS.md
-/.agents/
+
+# Agent scratch space
+/.scratch/
 
 # Local planning artifacts
 /SPEC.md
