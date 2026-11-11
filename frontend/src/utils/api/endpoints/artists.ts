@@ -11,10 +11,15 @@ import { artistsClient } from "../clients/artists.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
 export type ArtistDetailsResponse = InferResponseType<(typeof artistsClient)[":mbid"]["$get"], 200>;
+type ReleaseGroupPreview = InferResponseType<
+  (typeof artistsClient)["release-group"][":mbid"]["previews"]["$get"],
+  200
+>["previews"][string];
 export type ReleaseGroupTrack = InferResponseType<
   (typeof artistsClient)["release-group"][":mbid"]["tracks"]["$get"],
   200
->[number];
+>[number] &
+  Partial<ReleaseGroupPreview>;
 export type SimilarArtistsResponse = InferResponseType<
   (typeof artistsClient)[":mbid"]["similar"]["$get"],
   200
@@ -41,27 +46,27 @@ export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: Abor
     ),
   );
 
-export const getReleaseGroupTracks = (
+export const getReleaseGroupTracks = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
+  parseResponse(
+    artistsClient["release-group"][":mbid"].tracks.$get(
+      { param: { mbid: encodeURIComponent(mbid) } },
+      { init: { signal } },
+    ),
+  );
+
+export const getReleaseGroupPreviews = (
   mbid: string,
   {
     signal,
+    artistMbid,
     deezerAlbumId,
-    ...context
-  }: {
-    artistMbid?: string;
-    artistName?: string;
-    albumTitle?: string;
-    releaseType?: string;
-    releaseDate?: string;
-    deezerAlbumId?: string | number;
-    signal?: AbortSignal;
-  } = {},
+  }: { artistMbid?: string; deezerAlbumId?: string; signal?: AbortSignal } = {},
 ) =>
   parseResponse(
-    artistsClient["release-group"][":mbid"].tracks.$get(
+    artistsClient["release-group"][":mbid"].previews.$get(
       {
         param: { mbid: encodeURIComponent(mbid) },
-        query: { ...context, deezerAlbumId: deezerAlbumId ? String(deezerAlbumId) : undefined },
+        query: { artistMbid: artistMbid || undefined, deezerAlbumId: deezerAlbumId || undefined },
       },
       { init: { signal } },
     ),

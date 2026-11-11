@@ -159,6 +159,16 @@
       }
     }
   },
+  "discover album tracks": {
+    "queries": {
+      "cold": 8,
+      "warm": 8
+    },
+    "bytes": 17,
+    "scans": [
+      "library_albums"
+    ]
+  },
   "discover search": {
     "queries": {
       "cold": 12,
