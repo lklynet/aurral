@@ -20,7 +20,7 @@ Code uses names that match the current model:
 
 Stored data uses the current names too. When Aurral moved to its own job queue, one startup migration renamed the tables, columns, queues, task kinds, and settings keys (`backend/config/job-queue-migration.ts`). An older build cannot read the renamed data, so the migration first writes a snapshot, `aurral.pre-job-queue.db`, to the data dir.
 
-The JSON API uses the current names too. Version 2 of the [app contract](../src/content/docs/api/app-contract.mdx#changes-from-version-1) dropped the older names that version 1 returned beside them. `library*Id` always means a Library ID. `provider*Id` was the ID in Lidarr while Lidarr could manage an item. It is always null now and stays for apps that read it.
+The JSON API uses the current names too. Version 2 of the [app contract](../src/content/docs/api/app-contract.mdx#changes-from-version-1) dropped the older names that version 1 returned beside them. `library*Id` always means a Library ID.
 
 `LIBRARY_FOLDER` names the Library folder. `DOWNLOAD_FOLDER`, `WEEKLY_FLOW_FOLDER`, and `PLAYLIST_FOLDER` still work and log a warning.
 

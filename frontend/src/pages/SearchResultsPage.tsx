@@ -98,8 +98,6 @@ type AlbumLibraryState =
   | boolean
   | {
       inLibrary?: boolean;
-      providerAlbumId?: string | null;
-      providerArtistId?: string | null;
       status?: string;
       monitored?: boolean;
       trackFileCount?: number;

@@ -182,7 +182,6 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     albumName: "Playlist Album",
     artistMbid,
     artistName: "Playlist Artist",
-    managed: true,
   });
 
   assert.equal(requested.status, 201);
@@ -201,7 +200,6 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
     albumName: "Playlist Album",
     artistMbid,
     artistName: "Playlist Artist",
-    managed: true,
   });
   assert.equal(albumState().album?.monitored, true);
   assert.deepEqual(albumState().monitored, [true, true, true]);

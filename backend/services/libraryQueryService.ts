@@ -173,7 +173,6 @@ const metadataFields = (metadata: LibraryMetadata | null) => ({
   metadata,
   providerId: metadata?.id ?? null,
   monitored: metadata?.monitored === true,
-  monitorOption: metadata?.monitor || metadata?.addOptions?.monitor || "none",
 });
 
 const parseSources = (value: string | null): string[] =>
@@ -258,7 +257,6 @@ export interface LibraryAlbum {
   metadata: LibraryMetadata | null;
   providerId?: string | number | null;
   monitored?: boolean;
-  monitorOption?: string;
   trackIds: number[];
   sources: string[];
   source?: string | null;
@@ -298,7 +296,6 @@ interface LibraryRowArtist {
   metadata: Record<string, unknown> | null;
   providerId: string | number | null;
   monitored: boolean;
-  monitorOption: string;
   albumIds: number[];
   sources: string[];
   source?: string | null;
@@ -544,7 +541,6 @@ export function getLibraryArtistMbids({
 const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
   const metadata = readLibraryMetadata(row.metadata_json) || {};
   const providerId = metadata.id == null ? null : String(metadata.id);
-  const monitorOption = metadata.monitor || metadata.addOptions?.monitor || "none";
   const sources = new Set(
     String(row.sources || "")
       .split(",")
@@ -566,9 +562,7 @@ const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
     path: metadata.path || null,
     addedAt: metadata.added || (row.created_at ? new Date(row.created_at).toISOString() : null),
     monitored: metadata.monitored === true,
-    monitorOption,
     monitorNewItems: metadata.monitorNewItems || "none",
-    addOptions: metadata.addOptions || { monitor: monitorOption },
     quality: metadata.qualityProfile?.name || "standard",
     albumFolders: true,
     statistics: {
@@ -3094,7 +3088,6 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       metadata: artistMetadata,
       providerId: artistMetadata?.id ?? null,
       monitored: artistMetadata?.monitored === true,
-      monitorOption: artistMetadata?.monitor || artistMetadata?.addOptions?.monitor || "none",
       albumIds: [row.album_id],
       managed: Boolean(artistManagement),
       monitorMode: artistManagement?.monitorMode ?? null,
@@ -3114,7 +3107,6 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       metadata: albumMetadata,
       providerId: albumMetadata?.id ?? null,
       monitored: albumMetadata?.monitored === true,
-      monitorOption: albumMetadata?.monitor || albumMetadata?.addOptions?.monitor || "none",
       ...(albumCredits.length && { creditedArtistMbids: albumCredits }),
       trackIds: [],
       managed: Boolean(albumManagement),

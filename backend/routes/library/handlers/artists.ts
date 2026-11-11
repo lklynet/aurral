@@ -29,13 +29,11 @@ const monitoringInput = v.object({
 const addInput = v.object({
   foreignArtistId: v.optional(v.string()),
   artistName: v.optional(v.string()),
-  monitorOption: v.optional(v.nullable(v.string())),
   monitoring: v.optional(v.nullable(monitoringInput)),
   releaseGroupMbid: v.optional(v.nullable(v.string())),
 });
 
 const updateInput = v.object({
-  monitorOption: v.optional(v.nullable(v.string())),
   monitoring: v.optional(v.nullable(monitoringInput)),
   artistName: v.optional(v.nullable(v.string())),
 });
@@ -121,7 +119,6 @@ export default new Hono<AppEnv>()
         const {
           foreignArtistId: mbid,
           artistName,
-          monitorOption,
           monitoring,
           releaseGroupMbid,
         } = c.req.valid("json");
@@ -150,7 +147,6 @@ export default new Hono<AppEnv>()
 
         const artist = await libraryManager.addArtist(mbid, artistName, {
           user,
-          monitorOption,
           monitoring,
           albumOnly: Boolean(releaseGroupMbid),
         });

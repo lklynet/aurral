@@ -160,10 +160,8 @@ missing field takes the factory default:
 | `topTracks`   | 0 to 50                                                                              | `0`               |
 
 Rules that take nothing, with `catalog` `none`, `newReleases` off, and no top
-tracks, return `400` with `invalid_monitor_rules`. Older clients can send
-`monitorOption` instead: `all` uses the default rules, `future` and `latest`
-become the matching rules, and `none` stops monitoring. Other options return
-`400` with `unsupported_monitor_mode`.
+tracks, return `400` with `invalid_monitor_rules`. A request without `monitoring` stops
+monitoring.
 
 The monitoring read and update return `monitored`, `useDefault`,
 `rules`, and `defaultRules`. The update and the preview also return
@@ -174,7 +172,7 @@ queued, `topTracks`, `skipped` with a `reason` for each skipped release
 top track (`excluded`, `in_library`, `on_release`, or `queued`). If artist
 metadata is unavailable, the route returns `503` with `metadata_unavailable`
 and keeps the previous monitoring. `POST /api/library/artists` accepts the same
-`monitoring` and `monitorOption`.
+`monitoring`.
 
 `DELETE /api/library/albums/:albumId` and
 `DELETE /api/library/artists/:mbid` cancel

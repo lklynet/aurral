@@ -78,8 +78,6 @@ function normalizeAlbumItem(item: ProviderAlbum) {
     secondaryTypes: Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
     coverUrl: item.coverUrl || null,
     inLibrary: false,
-    providerAlbumId: null,
-    providerArtistId: null,
     status: "missing",
     score: item.score || 0,
   };

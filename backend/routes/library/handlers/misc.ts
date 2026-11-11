@@ -44,8 +44,6 @@ const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
 const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) => ({
   inLibrary: true,
   fromLibraryIndex: true,
-  providerAlbumId: album.providerId == null ? null : String(album.providerId),
-  providerArtistId: album.providerArtistId == null ? null : String(album.providerArtistId),
   libraryAlbumId: String(album.id),
   libraryArtistId: String(album.artistId),
   status:

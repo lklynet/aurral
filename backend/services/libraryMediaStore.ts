@@ -2142,13 +2142,7 @@ export function findLegacyKeyedLibraryFiles(source: string) {
   return { paths: new Set(paths), albumIds: new Set(albumIds) };
 }
 
-const CARRIED_ARTIST_METADATA_KEYS = [
-  "monitored",
-  "monitor",
-  "monitorOption",
-  "monitorNewItems",
-  "mbidSource",
-];
+const CARRIED_ARTIST_METADATA_KEYS = ["monitored", "monitorNewItems", "mbidSource"];
 
 // Plays move to the album whose title they name as soon as it has split off.
 // The shared row's last split also takes what no title claims.

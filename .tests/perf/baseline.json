@@ -12,7 +12,7 @@
       "cold": 127,
       "warm": 121
     },
-    "bytes": 187117,
+    "bytes": 179984,
     "scans": []
   },
   "library albums": {
@@ -20,7 +20,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 140943,
+    "bytes": 135998,
     "scans": []
   },
   "library albums, last page": {
@@ -28,7 +28,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 144960,
+    "bytes": 139992,
     "scans": []
   },
   "library albums, recently added": {
@@ -36,7 +36,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 140943,
+    "bytes": 135998,
     "scans": []
   },
   "library artists": {
@@ -52,7 +52,7 @@
       "cold": 21,
       "warm": 21
     },
-    "bytes": 131639,
+    "bytes": 131386,
     "scans": []
   },
   "library genres": {
@@ -68,7 +68,7 @@
       "cold": 21,
       "warm": 20
     },
-    "bytes": 160935,
+    "bytes": 155001,
     "scans": []
   },
   "library filter": {
@@ -76,7 +76,7 @@
       "cold": 21,
       "warm": 20
     },
-    "bytes": 144351,
+    "bytes": 139360,
     "scans": []
   },
   "artist page": {
@@ -84,7 +84,7 @@
       "cold": 64,
       "warm": 62
     },
-    "bytes": 145122,
+    "bytes": 144455,
     "scans": []
   },
   "album page": {
@@ -92,7 +92,7 @@
       "cold": 25,
       "warm": 24
     },
-    "bytes": 16613,
+    "bytes": 16567,
     "scans": []
   },
   "favorites": {
@@ -100,7 +100,7 @@
       "cold": 22,
       "warm": 22
     },
-    "bytes": 256320,
+    "bytes": 253491,
     "scans": []
   },
   "search": {
@@ -116,7 +116,7 @@
       "cold": 28,
       "warm": 28
     },
-    "bytes": 13210,
+    "bytes": 12110,
     "scans": []
   },
   "discover artist": {

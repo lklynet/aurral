@@ -111,9 +111,9 @@ test("other monitoring errors keep the server message", () => {
   );
   assert.equal(
     describeMonitoringError(
-      requestError(400, { code: "unsupported_monitor_mode", error: "Bad mode" }),
+      requestError(400, { code: "invalid_monitor_rules", error: "Bad rules" }),
     ),
-    "Bad mode",
+    "Bad rules",
   );
   assert.equal(describeMonitoringError(new Error("Network Error")), "Network Error");
   assert.equal(describeMonitoringError({}, "Failed to update"), "Failed to update");

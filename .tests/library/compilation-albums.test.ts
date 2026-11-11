@@ -125,7 +125,6 @@ test("a compilation keeps Various Artists on the album and matches each track by
       albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
       artistMbid: variousArtists,
       artistName: "Various Artists",
-      managed: true,
     }),
   });
   assert.equal(requested.status, 201, await requested.text());

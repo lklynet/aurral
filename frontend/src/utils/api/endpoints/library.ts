@@ -582,7 +582,7 @@ export const requestAlbumFromSearch = async (
 
 export const updateLibraryArtist = (
   mbid: string,
-  data: { monitorOption?: string; monitoring?: ArtistMonitoringInput; artistName?: string },
+  data: { monitoring?: ArtistMonitoringInput; artistName?: string },
 ) =>
   refreshActiveDownloadsAfter(
     parseResponse(

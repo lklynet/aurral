@@ -64,11 +64,9 @@ import {
 } from "./downloadSourceService.ts";
 import {
   isStudioAlbum,
-  legacyMonitorMode,
   listArtistReleases,
   MONITORED_AURRAL_ALBUM_CONDITION,
   monitoredTrackCondition,
-  monitoringFromLegacyMode,
   monitoringToken,
   nextArtistMonitoring,
   nextMonitoringDefaults,
@@ -113,8 +111,6 @@ type AlbumMetadata = LibraryMetadata & {
   path?: string | null;
   added?: string | null;
   librarySource?: string | null;
-  monitor?: string | null;
-  monitorOption?: string | null;
   edition?: string | null;
   requestedRelease?: string | null;
   trackListComplete?: boolean;
@@ -234,11 +230,10 @@ type LibraryDeletion = {
   code?: string | null;
 };
 type AurralRelease = Awaited<ReturnType<typeof listArtistReleases>>[number];
-type MonitoringRequest = NonNullable<ReturnType<typeof monitoringFromLegacyMode>>;
+type MonitoringRequest = Parameters<typeof nextArtistMonitoring>[1];
 type MonitoringRequestError =
   | Extract<ReturnType<typeof normalizeMonitorRules>, { error: string }>["error"]
-  | "monitoring.monitored must be true or false"
-  | `Aurral monitoring does not support the "${string}" mode`;
+  | "monitoring.monitored must be true or false";
 type MonitoringRequestResult =
   | { error: MonitoringRequestError; statusCode: number; code: string; request?: undefined }
   | (NoError & { request: MonitoringRequest | null });
@@ -252,7 +247,6 @@ type LibraryUser = Pick<RequestUser, "id" | "username" | "role" | "permissions">
 type MonitoringArtist = { id?: string | number | null; mbid: string | null; name: string };
 type ArtistAddOptions = {
   user?: LibraryUser;
-  monitorOption?: string | null;
   monitoring?: MonitoringInput | null;
   albumOnly?: boolean;
 };
@@ -270,7 +264,6 @@ const announceArtistAdded = (artistName: string, { albumOnly, user }: ArtistAddO
 type AlbumAddOptions = {
   user?: LibraryUser;
   monitorMode?: string | null;
-  monitorOption?: string | null;
   monitored?: boolean;
   monitoringToken?: string | null;
   artistMbid?: string | null;
@@ -280,42 +273,23 @@ type AlbumAddOptions = {
   edition?: string | null;
 };
 
-function resolveMonitoringRequest({
-  monitoring,
-  monitorOption,
-}: {
-  monitoring?: MonitoringInput | null;
-  monitorOption?: string | null;
-} = {}): MonitoringRequestResult {
-  if (monitoring !== undefined && monitoring !== null) {
-    if (typeof monitoring !== "object" || typeof monitoring.monitored !== "boolean") {
-      return invalidMonitoring("monitoring.monitored must be true or false");
-    }
-    if (!monitoring.monitored) return { request: null };
-    if (monitoring.useDefault !== false) return { request: { useDefault: true, rules: null } };
-    const normalized = normalizeMonitorRules(monitoring.rules);
-    return normalized.error
-      ? normalized
-      : { request: { useDefault: false, rules: normalized.rules } };
+function resolveMonitoringRequest(
+  monitoring: MonitoringInput | null | undefined,
+): MonitoringRequestResult {
+  if (monitoring == null) return { request: null };
+  if (typeof monitoring !== "object" || typeof monitoring.monitored !== "boolean") {
+    return invalidMonitoring("monitoring.monitored must be true or false");
   }
-  const option =
-    String(monitorOption ?? "none")
-      .trim()
-      .toLowerCase() || "none";
-  const legacy = monitoringFromLegacyMode(option);
-  if (legacy === undefined) {
-    return {
-      error: `Aurral monitoring does not support the "${option}" mode` as const,
-      statusCode: 400,
-      code: "unsupported_monitor_mode",
-    };
-  }
-  return { request: legacy };
+  if (!monitoring.monitored) return { request: null };
+  if (monitoring.useDefault !== false) return { request: { useDefault: true, rules: null } };
+  const normalized = normalizeMonitorRules(monitoring.rules);
+  return normalized.error
+    ? normalized
+    : { request: { useDefault: false, rules: normalized.rules } };
 }
 
 const describeMonitoring = (effective: ArtistMonitoring, defaults: MonitoringDefaultsState) => ({
   monitored: Boolean(effective),
-  monitorOption: legacyMonitorMode(effective),
   useDefault: effective ? effective.useDefault : true,
   rules: effective?.rules || null,
   defaultRules: defaults.rules,
@@ -701,7 +675,7 @@ export class LibraryManager {
     }
 
     const existing = libraryArtistFallback(normalizedMbid);
-    const resolvedMonitoring = resolveMonitoringRequest(options);
+    const resolvedMonitoring = resolveMonitoringRequest(options.monitoring);
     if (resolvedMonitoring.error) return resolvedMonitoring;
     if (existing) {
       if (!existing.managed) {
@@ -752,9 +726,6 @@ export class LibraryManager {
         librarySource: "aurral",
         added: new Date().toISOString(),
         monitored: false,
-        monitor: "none",
-        monitorOption: "none",
-        addOptions: { monitor: "none" },
       },
     });
     setLibraryManagement({
@@ -775,7 +746,7 @@ export class LibraryManager {
   async addArtist(mbid: string, artistName: string, options: ArtistAddOptions = {}) {
     const artist: MethodResult<"_addArtist"> = await this._addArtist(mbid, artistName, options);
     if (artist?.error || options.albumOnly) return artist;
-    const { request } = resolveMonitoringRequest(options);
+    const { request } = resolveMonitoringRequest(options.monitoring);
     return request ? this.applyArtistMonitoring(mbid, request) : artist;
   }
 
@@ -1237,22 +1208,20 @@ export class LibraryManager {
   async setArtistMonitoring(
     mbid: string,
     {
-      monitorOption,
       monitoring,
       artistName = null,
       user = null,
     }: {
-      monitorOption?: string | null;
       monitoring?: MonitoringInput | null;
       artistName?: string | null;
       user?: LibraryUser;
     } = {},
   ) {
     const artist = libraryArtistFallback(mbid);
-    const resolved = resolveMonitoringRequest({ monitoring, monitorOption });
+    const resolved = resolveMonitoringRequest(monitoring);
     if (resolved.error) return resolved;
     if (!resolved.request && !artist?.managed) {
-      return { ...(artist || { mbid }), monitored: false, monitorOption: "none" };
+      return { ...(artist || { mbid }), monitored: false };
     }
     if (!artist) {
       if (!hasPermission(user, "addArtist")) {
@@ -1296,7 +1265,6 @@ export class LibraryManager {
     defaults: MonitoringDefaultsState,
   ) {
     const effective = resolveArtistMonitoring(stored, defaults);
-    const legacyMode = legacyMonitorMode(effective);
     const artist = db
       .prepare<
         [number],
@@ -1304,7 +1272,6 @@ export class LibraryManager {
       >("SELECT identity_key, mbid, name, metadata_json FROM library_artists WHERE id = ?")
       .get(artistId)!;
     const metadata = readRawLibraryMetadata(artist.metadata_json);
-    const { addOptions } = metadata;
     const startsMonitoring = Boolean(stored) && !getStoredArtistMonitoring(artistId);
     setArtistMonitoringState(artistId, stored, defaults);
     upsertLibraryArtist({
@@ -1315,13 +1282,7 @@ export class LibraryManager {
         ...metadata,
         ...(startsMonitoring && { added: new Date().toISOString() }),
         monitored: Boolean(stored),
-        monitor: legacyMode,
-        monitorOption: legacyMode,
         monitorStartedAt: effective?.newSince ?? null,
-        addOptions: {
-          ...(typeof addOptions === "object" && addOptions),
-          monitor: legacyMode,
-        },
       },
     });
   }
@@ -1359,7 +1320,7 @@ export class LibraryManager {
       artistName = null,
     }: { monitoring?: MonitoringInput | null; artistName?: string | null } = {},
   ) {
-    const resolved = resolveMonitoringRequest({ monitoring });
+    const resolved = resolveMonitoringRequest(monitoring);
     if (resolved.error) return resolved;
     const artist = libraryArtistFallback(mbid);
     const defaults = getMonitoringDefaults();
@@ -1996,7 +1957,7 @@ export class LibraryManager {
         setLibraryManagement({
           entityKind: "album",
           entityId: tracked.existing.id,
-          monitorMode: options.monitorMode || options.monitorOption || null,
+          monitorMode: options.monitorMode || null,
         });
       }
       if (
@@ -2136,7 +2097,6 @@ export class LibraryManager {
     }
     const monitorMode =
       options.monitorMode ||
-      options.monitorOption ||
       (userRequest ? "monitored" : getLibraryManagementEntry("album", existing?.id)?.monitorMode) ||
       null;
     const saveAlbum = () => {
@@ -2157,8 +2117,6 @@ export class LibraryManager {
           trackListComplete: true,
           edition,
           requestedRelease: selectedRelease?.id || null,
-          monitor: monitorMode || "none",
-          monitorOption: monitorMode || "none",
           albumType: metadata?.type || "Album",
           secondaryTypes: metadata?.secondaryTypes || [],
           genres: metadata?.genres || [],

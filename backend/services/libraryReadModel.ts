@@ -108,12 +108,6 @@ const buildArtist = (
     sortName: artist.sortName,
     addedAt: null,
     monitored: Boolean(artist.metadata?.monitored),
-    monitorOption:
-      artist.metadata?.monitorOption ||
-      artist.metadata?.addOptions?.monitor ||
-      artist.metadata?.monitor ||
-      "none",
-    addOptions: artist.metadata?.addOptions || null,
     statistics: {
       albumCount: hasSummary ? Number(artist.albumCount || 0) : artistAlbums.length,
       trackCount,

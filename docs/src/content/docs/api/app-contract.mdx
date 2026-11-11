@@ -153,14 +153,12 @@ tracks have strings `title` and `artistName`, nullable string `mbid`, and array
 `files`. These IDs are different from MusicBrainz IDs and Subsonic IDs.
 
 Album lookup objects contain boolean `inLibrary` and `monitored`, nullable
-strings `libraryAlbumId`, `libraryArtistId`, `providerAlbumId`, and
-`providerArtistId`, string `status`, numeric
+strings `libraryAlbumId` and `libraryArtistId`, string `status`, numeric
 `trackCount` and `trackFileCount`, and array `ownedTrackMbids`. An absent key
 means that the server did not find the album. `ownedTrackMbids` identifies
 available tracks; it does not promise a complete album track list.
 `libraryAlbumId` and `libraryArtistId` are null when the album is not in the
-Library. `providerAlbumId` and `providerArtistId` are always null. They are
-kept for older apps.
+Library.
 
 Flow objects contain strings `id` and `name`, numeric `size` and `ownerUserId`,
 boolean `enabled`, and object `mix`. Existing legacy flows can have a nullable
@@ -200,8 +198,9 @@ current names.
 | `/api/library/albums/aurral/:albumId`                                       | `/api/library/albums/:albumId`                          |
 | `/api/library/tracks/aurral/:trackId`                                       | `/api/library/tracks/:trackId`                          |
 | `aurral:<albumId>` in `GET /api/library/downloads/status`                   | The Library album ID                                    |
+| `monitorOption` on artist requests and on artists and albums                | `monitoring` on requests. Removed from responses        |
 
 In version 1, `libraryAlbumId` and `libraryArtistId` on album lookups and
 album search results held the IDs of the service that manages the album. In
-version 2 they hold Library IDs on lookups, and `providerAlbumId` and
-`providerArtistId` hold the service's IDs on both.
+version 2 they hold Library IDs on lookups. Version 2 has no `providerAlbumId`
+or `providerArtistId`.

@@ -1145,7 +1145,6 @@ test("an album asks for its most common edition and a shorter download leaves it
     albumName: "Edition Album",
     artistMbid,
     artistName: "Edition Artist",
-    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
@@ -1306,7 +1305,6 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
     albumName: "Expanded Album",
     artistMbid,
     artistName: "Expanded Artist",
-    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   ids = requested.body.jobIds;
@@ -1428,7 +1426,6 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
     albumName: "Disc Album",
     artistMbid,
     artistName: "Disc Artist",
-    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
@@ -1547,7 +1544,6 @@ test("an album asks for its release's own lengths and fills a missing one from p
     albumName: "Pressing Album",
     artistMbid,
     artistName: "Pressing Artist",
-    managed: true,
   });
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   assert.deepEqual(
@@ -1671,7 +1667,6 @@ test("asking for an album downloads the missing tracks of the edition its track 
     albumName: "Listed Album",
     artistMbid,
     artistName: "Listed Artist",
-    managed: true,
   });
 
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
@@ -1792,7 +1787,6 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
     albumName: "Silent Album",
     artistMbid,
     artistName: "Silent Artist",
-    managed: true,
   });
 
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
