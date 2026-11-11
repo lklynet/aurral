@@ -1,5 +1,4 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { ArrowRight, X } from "../../../components/icons";
@@ -16,6 +15,7 @@ import {
 } from "../../../hooks/useLibraryFileOperation.ts";
 import { SettingsActions, SettingsRow } from "../SettingsLayout";
 import "./LibraryFileOperation.css";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 const PAGE_SIZE = 50;
 const TAG_IT_YOURSELF = "https://docs.aurral.org/using/library/#tag-a-file-yourself";
@@ -242,8 +242,8 @@ function ReviewDialog({
   });
   const shown = items.data?.items || [];
 
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-modal library-file-op__dialog"
@@ -302,8 +302,7 @@ function ReviewDialog({
           </div>
         ) : null}
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }
 

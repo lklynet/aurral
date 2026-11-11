@@ -1,5 +1,4 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import PillToggle from "./PillToggle";
@@ -18,6 +17,7 @@ import {
   plural,
 } from "../utils/monitoringRules.ts";
 import "./MonitoringRules.css";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 const PREVIEW_DELAY_MS = 400;
 
@@ -329,8 +329,8 @@ function RulesDialog({
   );
   const shownRules = useDefault ? state?.defaultRules : customRules;
 
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-modal monitoring-rules-dialog"
@@ -389,8 +389,7 @@ function RulesDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }
 

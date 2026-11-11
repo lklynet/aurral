@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
-import { createPortal } from "react-dom";
 import { ImagePlus, Link as LinkIcon, Upload, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage.tsx";
@@ -9,6 +8,7 @@ import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { cacheImageLocally } from "../utils/api/endpoints/images.ts";
 import type { CustomArtworkResult } from "../utils/api/endpoints/library.ts";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 const isWebUrl = (value: string) => {
   try {
@@ -164,8 +164,8 @@ export default function ArtworkEditorModal({
     }
   })();
 
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="settings-page__modal settings-page__modal--integration artwork-editor"
@@ -299,7 +299,6 @@ export default function ArtworkEditorModal({
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

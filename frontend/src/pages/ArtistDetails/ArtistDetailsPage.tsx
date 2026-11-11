@@ -1,6 +1,5 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getArtistPreview, updateArtistOverrides } from "../../utils/api/endpoints/artists.ts";
 import { useAddTrackToLibrary } from "../../hooks/useAddTrackToLibrary";
@@ -51,6 +50,7 @@ import {
   buildStaticPlaylistTrackPayload,
   reserveUniquePlaylistName,
 } from "../../utils/staticPlaylists.ts";
+import { ModalBackdrop } from "../../components/ModalBackdrop";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -572,8 +572,8 @@ function EditArtistIdsModal({
   });
 
   if (!show) return null;
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -648,7 +648,6 @@ function EditArtistIdsModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

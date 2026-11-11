@@ -1,5 +1,4 @@
 import { useId } from "react";
-import { createPortal } from "react-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { X } from "../components/icons";
@@ -10,6 +9,7 @@ import { libraryTracksClient } from "../utils/api/clients/libraryTracks.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
 import { formatDuration } from "./library/libraryShared.tsx";
+import { ModalBackdrop } from "../components/ModalBackdrop";
 
 type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
@@ -221,8 +221,8 @@ export default function LibraryInfoModal({
     rows.push([Array.isArray(paths) && paths.length > 1 ? "Files" : "File", paths]);
   }
 
-  return createPortal(
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop onClick={handleBackdropClick}>
       <section
         ref={dialogRef}
         className="artist-modal activity-info-modal library-info-modal"
@@ -263,7 +263,6 @@ export default function LibraryInfoModal({
           ))}
         </dl>
       </section>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }

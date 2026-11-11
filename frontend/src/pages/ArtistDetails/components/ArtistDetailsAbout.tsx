@@ -1,5 +1,4 @@
 import { useCallback, useId, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { X } from "../../../components/icons";
 import TooltipButton from "../../../components/TooltipButton";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
@@ -9,6 +8,7 @@ import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists
 import { UUID_REGEX } from "../../../../../lib/uuid.ts";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink from "../../../components/RouteLink";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 const normalizeHref = (value: unknown) => {
   const href = String(value || "").trim();
@@ -90,34 +90,32 @@ function ArtistBio({ name, bio }: { name: string; bio: string }) {
           Read more
         </button>
       )}
-      {open &&
-        createPortal(
-          <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
-            <section
-              ref={dialogRef}
-              className="artist-modal artist-bio-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={titleId}
-              tabIndex={-1}
-            >
-              <div className="artist-modal__header">
-                <h2 id={titleId} className="artist-modal__title">
-                  {name ? `About ${name}` : "About"}
-                </h2>
-                <TooltipButton
-                  className="btn btn-ghost btn-icon-square"
-                  onClick={close}
-                  label="Close"
-                >
-                  <X className="artist-icon-md" aria-hidden="true" />
-                </TooltipButton>
-              </div>
-              <p className="artist-bio-modal__text">{bio}</p>
-            </section>
-          </div>,
-          document.body,
-        )}
+      {open && (
+        <ModalBackdrop onClick={handleBackdropClick}>
+          <section
+            ref={dialogRef}
+            className="artist-modal artist-bio-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
+          >
+            <div className="artist-modal__header">
+              <h2 id={titleId} className="artist-modal__title">
+                {name ? `About ${name}` : "About"}
+              </h2>
+              <TooltipButton
+                className="btn btn-ghost btn-icon-square"
+                onClick={close}
+                label="Close"
+              >
+                <X className="artist-icon-md" aria-hidden="true" />
+              </TooltipButton>
+            </div>
+            <p className="artist-bio-modal__text">{bio}</p>
+          </section>
+        </ModalBackdrop>
+      )}
     </>
   );
 }

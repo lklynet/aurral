@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { SettingsLink, useSettingsRoute } from "../../navigation/settingsRoute";
 import "./settings.css";
+import { ModalBackdrop } from "../../components/ModalBackdrop";
 
 export const SettingsSavingContext = createContext(false);
 export const SettingsScrollContext = createContext<{
@@ -33,8 +33,8 @@ export function SettingsShell({
     onClose,
     closeDisabled,
   });
-  return createPortal(
-    <div className="settings-dialog-backdrop" onClick={handleBackdropClick}>
+  return (
+    <ModalBackdrop className="settings-dialog-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="settings-dialog"
@@ -60,8 +60,7 @@ export function SettingsShell({
         </div>
         <div className="settings-dialog__pane">{children}</div>
       </div>
-    </div>,
-    document.body,
+    </ModalBackdrop>
   );
 }
 

@@ -61,7 +61,7 @@ The dark theme uses a true black page. The sidebar and top bar sit one step ligh
 
 On desktop the page is one rounded panel inside a chrome gutter. The top bar, sidebar, player, and queue tray all sit in that gutter on one flat chrome color with no panels of their own, and a side with nothing in it keeps an 8px gutter.
 
-Everything that floats above the page shares one surface: `--aurral-surface-popover`, a `--aurral-border-overlay` border, and `--aurral-shadow-popover`. Floating surfaces are solid, and nothing blurs the page behind them. Modals sit on `--aurral-scrim`.
+Everything that floats above the page shares one surface: `--aurral-surface-popover`, a `--aurral-border-overlay` border, and `--aurral-shadow-popover`. Floating surfaces are solid, and nothing blurs the page behind them. Modals sit on `--aurral-scrim`. Build a dialog on `ConfirmModal` or `ModalShell` when one fits, and render any other dialog's backdrop with `ModalBackdrop` from `components/ModalBackdrop.tsx`. It puts the dialog in `document.body`. A dialog left inside the page opens under the player and tab bar, because pages with an artwork wash isolate their own layers.
 
 Pages with an artwork wash swap `--aurral-surface-raised`, `--aurral-surface-hover`, and `--aurral-surface-selected` for see-through versions, so controls pick up the color beneath them. The shared floating rules reset them to solid values. A control that sits on artwork uses the solid `--aurral-overlay-raised` and `--aurral-overlay-hover` instead.
 
