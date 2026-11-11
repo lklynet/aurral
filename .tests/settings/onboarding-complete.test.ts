@@ -51,7 +51,6 @@ test("creates the admin, stores the Library folder, and signs the admin in", asy
   const settings = dbOps.getSettings();
   assert.equal(settings.onboardingComplete, true);
   assert.equal(settings.downloadFolderPath, downloadFolderPath);
-  assert.equal(settings.integrations?.lidarr?.url || "", "");
   assert.doesNotMatch(JSON.stringify(settings), new RegExp(admin.authPassword));
   assert.deepEqual(
     userOps.getAllUsers().map((user) => [user.username, user.role]),

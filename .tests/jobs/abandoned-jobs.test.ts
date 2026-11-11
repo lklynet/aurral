@@ -29,7 +29,7 @@ test("an exited scan process releases its claimed job for retry", async (t: impo
   const pendingPath = path.resolve("test-library", "later.flac");
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [pendingPath],
     inFlightActive: true,
     inFlightPaths: [changedPath],
@@ -52,7 +52,7 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   assert.equal(queue.claim("library:exited")?.id, jobId);
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: true,
+    includeReadOnly: true,
     force: true,
     changedPaths: [],
     inFlightActive: true,
@@ -64,7 +64,7 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
   assert.ok(registry != null);
   assert.equal(registry.jobId, jobId);
-  assert.equal(registry.includeLidarr, true);
+  assert.equal(registry.includeReadOnly, true);
   assert.equal(registry.force, true);
   assert.equal("changedPaths" in registry, false);
   assert.equal(queue.getJob(jobId)?.state, "pending");
@@ -80,7 +80,7 @@ test("a scan left running when Aurral stopped runs again at startup with the fil
   const pendingPath = path.resolve("test-library", "queued.flac");
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [pendingPath],
     inFlightActive: true,
     inFlightPaths: [inFlightPath],
@@ -90,7 +90,7 @@ test("a scan left running when Aurral stopped runs again at startup with the fil
 
   assert.equal(queue.getJob(jobId)?.state, "pending");
   assert.deepEqual(
-    beginLibraryScanJob(jobId, { force: false, includeLidarr: false }).changedPaths,
+    beginLibraryScanJob(jobId, { force: false, includeReadOnly: false }).changedPaths,
     [pendingPath, inFlightPath],
   );
 });
@@ -101,13 +101,13 @@ test("a scan retried after its claim expired scans the files the interrupted att
   const pendingPath = path.resolve("test-library", "afterwards.flac");
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [pendingPath],
     inFlightActive: true,
     inFlightPaths: [inFlightPath],
   });
   try {
-    const scan = beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
+    const scan = beginLibraryScanJob(jobId, { force: false, includeReadOnly: false });
     assert.deepEqual(scan.changedPaths, [inFlightPath, pendingPath]);
   } finally {
     queue.cancel(jobId);
@@ -120,19 +120,22 @@ test("scan start and completion preserve requests received while a scan is activ
   const jobId = queue.enqueue({ force: false });
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [inFlightPath],
   });
   let nextJobId;
   try {
-    const scan = beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
+    const scan = beginLibraryScanJob(jobId, { force: false, includeReadOnly: false });
     assert.deepEqual(scan.changedPaths, [inFlightPath]);
     assert.deepEqual(
       requireFixture(dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema))
         .inFlightPaths,
       [inFlightPath],
     );
-    assert.equal(scheduleLibraryScan({ includeLidarr: true, changedPaths: [pendingPath] }), jobId);
+    assert.equal(
+      scheduleLibraryScan({ includeReadOnly: true, changedPaths: [pendingPath] }),
+      jobId,
+    );
 
     onLibraryScanSuccess({}, { id: jobId });
     const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
@@ -142,7 +145,7 @@ test("scan start and completion preserve requests received while a scan is activ
     assert.ok(registry != null);
     assert.deepEqual(registry.changedPaths, [pendingPath]);
     assert.ok(registry != null);
-    assert.equal(registry.includeLidarr, true);
+    assert.equal(registry.includeReadOnly, true);
   } finally {
     queue.cancel(jobId);
     if (nextJobId) queue.cancel(nextJobId);
@@ -153,13 +156,13 @@ test("scan completion schedules a full rescan requested while the scan was activ
   const jobId = queue.enqueue({ force: false });
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [path.resolve("test-library", "current.flac")],
   });
   let nextJobId;
   try {
-    beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
-    assert.equal(scheduleLibraryScan({ force: true, includeLidarr: true }), jobId);
+    beginLibraryScanJob(jobId, { force: false, includeReadOnly: false });
+    assert.equal(scheduleLibraryScan({ force: true, includeReadOnly: true }), jobId);
     onLibraryScanSuccess({}, { id: jobId });
     const registry = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
     assert.ok(registry != null);
@@ -168,7 +171,7 @@ test("scan completion schedules a full rescan requested while the scan was activ
     assert.ok(registry != null);
     assert.equal(registry.force, true);
     assert.ok(registry != null);
-    assert.equal(registry.includeLidarr, true);
+    assert.equal(registry.includeReadOnly, true);
     assert.ok(registry != null);
     assert.equal("changedPaths" in registry, false);
   } finally {

@@ -1,75 +1,22 @@
 ---
 title: Lidarr
-description: Connect Lidarr to manage artists and albums, and let Aurral read the Lidarr library.
+description: Play the music in Lidarr's folders, and download albums through Lidarr with a plugin.
 ---
 
-Lidarr is optional. Aurral can add and download artists and albums in its own Library folder without Lidarr. Connect Lidarr when you want Lidarr to manage some or all of your artists and albums, or when you want Aurral to show Lidarr queue and history status.
+Aurral runs the Library by itself, and Lidarr is optional. You can use the two together in two ways:
 
-The Lidarr integration has two parts:
+- Aurral plays the music in Lidarr's folders and never changes it.
+- The Lidarr plugin adds Lidarr as a download source, so Lidarr grabs the albums you request in Aurral.
 
-1. Aurral connects to the Lidarr API.
-2. Aurral reads the files at the paths that Lidarr reports.
+Aurral has no Lidarr settings of its own. It never moves, renames, tags, upgrades, or deletes a file in a Lidarr folder.
 
-The API connection can work while file access fails. Mount the same media root in Aurral and Lidarr at the same container path. See [Filesystem and mounts](/getting-started/storage/).
+## Play Lidarr's music
 
-## Connect Lidarr
+Add each Lidarr root folder as a read-only folder in **Settings > Library**. See [Add music Aurral only reads](/using/library/#add-music-aurral-only-reads).
 
-Connect Lidarr from the last step of first-run setup, or later in **Settings > Library > Lidarr**.
+Aurral must see the folder on its own disk. In Docker, mount the Lidarr media root in the Aurral container. See [Filesystem and mounts](/getting-started/storage/).
 
-![Aurral Lidarr integration settings](../../../../../web/screenshots/settings-lidarr.webp)
-
-1. Turn on **Enabled**.
-2. Set **Server URL** to the Lidarr URL that the Aurral server can reach. In Docker, this is often `http://lidarr:8686`. Use HTTPS when the connection leaves your trusted network.
-3. Enter the Lidarr **API key**.
-4. Select **Test connection**.
-5. Set the defaults for new artists: root folder, quality profile, metadata profile, tag, monitoring option, and **Search on add**.
-6. Optional: set **External URL** to the Lidarr address that your browser uses. Aurral uses it only for links that open Lidarr in the browser.
-
-To apply the quality profile, custom formats, and file naming from Davo's Community Lidarr Guide to Lidarr, select **Apply to Lidarr** under **Community guide**. This action changes your Lidarr settings.
-
-## Turn Lidarr off
-
-Turning off **Enabled** and saving disconnects Lidarr's root folders. Aurral removes Lidarr's music from the Library, and downloads its own copy of playlist and flow tracks that used a Lidarr file. The files stay on disk, and Aurral keeps the connection details. Turn **Enabled** on again to add Lidarr's music back. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
-
-If Lidarr only stops answering, nothing is removed. **Settings > Library > Lidarr** says when Lidarr is off or unreachable.
-
-If you want Aurral to manage the music that Lidarr downloaded, ingest Lidarr's root folder before you turn Lidarr off. Copy or Hardlink leaves Lidarr's library as it is. See [Bring your existing music](/using/library/#bring-your-existing-music).
-
-## Library display
-
-Lidarr knows each artist's whole discography, including albums that you have not downloaded. The Library lists only albums with downloaded files, plus albums that Aurral is downloading. The library counts follow the same rule. An artist without downloaded music leaves the list, so an artist that you remove in Lidarr leaves the Library after the next scan.
-
-To see the rest of an artist's discography and request an album, open the artist's Discover page.
-
-## Add artists and albums
-
-When Lidarr is connected, Lidarr manages the artists and albums you add, but the buttons stay the same. Artists and albums that Aurral already has stay Aurral's. **Download album** asks Lidarr for the album. On an artist page, **Monitor** adds the artist to Lidarr with your Lidarr defaults and sets its monitoring. To choose the root folder, quality profile, tag, or monitoring for one artist, select **Customize add…** in the **Monitor** menu. Aurral keeps downloading tracks for playlists, flows, and single tracks.
-
-When Lidarr downloads or monitors an album that Aurral has tracks from, Lidarr takes the album over. See [Who manages your library](/using/library/#who-manages-your-library).
-
-## Metadata providers
-
-Aurral uses the MusicBrainz ID in artist pages and links. It stores Lidarr's own artist ID separately.
-
-If Lidarr uses another metadata provider, such as the Tubifarry Deezer or Discogs provider, Aurral checks that the Lidarr artist matches the MusicBrainz artist. It accepts names that MusicBrainz lists as aliases. It asks Lidarr which provider is active, and it retries an add with the correct provider ID when Lidarr rejects the ID format. Aurral also checks and fills in provider IDs for existing Lidarr artists when it reads the library.
-
-If the artists do not match, search for the artist in Lidarr first, or switch Lidarr to MusicBrainz metadata.
-
-## Library access check
-
-To check that Aurral can read the Lidarr files, open **Settings > Status > Storage** and select **Run checks**. See the **Lidarr library** section. If the check fails, mount the Lidarr media root in Aurral. The recommended layout uses `/data` in both containers, with a Lidarr root folder such as `/data/music`.
-
-The check reads one track of an artist inside a root folder. If no such artist exists, it reads a track of an artist outside the root folders, and reports that a root folder change left that artist behind. See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
-
-In a mixed Windows and Docker setup, the check shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **Lidarr**.
-
-This mapping only helps Aurral read Lidarr files. For playlists in a media server, the server must also scan the Lidarr music folder. See [When paths cannot match](/getting-started/storage/#when-paths-cannot-match).
-
-## How Aurral indexes Lidarr files
-
-Aurral saves the Lidarr root folders locally. It reads them again from the Lidarr `/rootFolder` endpoint when it connects, reconnects, or when the root folders change.
-
-When a file changes in a Lidarr root folder, Aurral scans that file on local disk. The scan does not ask Lidarr for artist, album, track, or track file data. The file must be readable at the saved root folder path. The Library uses the MusicBrainz IDs from the file tags and the provider IDs from Lidarr.
+Aurral scans the folder and picks up what Lidarr adds later. The artists and albums start **Not monitored**. When you monitor one of them, Aurral downloads what is missing into the Library folder.
 
 ### Tag Lidarr's files
 
@@ -77,24 +24,35 @@ By default, Lidarr does not write tags to its files. Without MusicBrainz tags, A
 
 To fix this, open **Lidarr > Settings > Metadata** and set **Tag Audio Files with Metadata** to the **All files** option. To tag the files Lidarr already has, select the artists in Lidarr's artist list and choose **Retag**. Aurral reads the new tags when Lidarr writes them. To fix one artist instead, select **Match artist** in its menu in **Library**.
 
-If a file does not appear in **Library**, select **Refresh** there. Refresh waits for the scan to finish. If the file still does not appear, run the storage checks and look for a path mismatch.
+## Download through Lidarr
 
-If Lidarr fails during a refresh, Aurral retries the scan instead of reporting it complete, and writes the error to the server log. A timeout error names the request method, the endpoint, and the configured timeout.
+The Lidarr plugin asks Lidarr for an album when Aurral wants it. Lidarr grabs the album with its own indexers and download clients and files it in its own folder. Aurral then plays it from the read-only folder.
 
-## Request availability notifications
+1. Add Lidarr's root folders as read-only folders, as above.
+2. In **Settings > Plugins**, paste `https://github.com/lklynet/aurral-plugins` under **Install from a link**, select **Check**, and choose **Lidarr**.
+3. Open **Lidarr** and enter Lidarr's URL and API key.
+4. Select **Test**, then turn the plugin on.
 
-To send **Request available** notifications as soon as Lidarr imports an album, add a webhook in **Lidarr > Settings > Connect**:
+Lidarr joins your other download sources, and its priority decides when Aurral tries it. Quality profiles, metadata profiles, and upgrades stay in Lidarr. The plugin's page covers its other settings. See [Plugins](/admin/plugins/).
 
-1. Add a **Webhook** connection.
-2. Set the URL to `https://aurral.example.com/api/webhooks/lidarr`. Use an Aurral address that Lidarr can reach.
-3. Turn on the **On Import** event.
-4. Add an `X-Api-Key` header with the Aurral API key from **Settings > General**.
+## Upgrade from Aurral 2
 
-Aurral accepts other Lidarr webhook events but ignores them. It updates request history only for the import event, which Lidarr sends as `Download`, and only for albums that users requested in Aurral. The Gotify and webhook event switches in Aurral still decide which notifications go out.
+In Aurral 2, a connected Lidarr managed the artists and albums you added. Aurral 3 manages all of them. The first time Aurral 3 starts on an install that used Lidarr, it converts the Library:
 
-## What Aurral changes
+- Lidarr's root folders become read-only folders, so their music stays in the Library with its favorites, play counts, and playlists.
+- The artists and albums that Lidarr managed become Aurral's, **Not monitored**.
+- Album requests that were waiting on Lidarr are cancelled.
+- Aurral's Lidarr settings, and remote path mappings that applied to Lidarr, are removed. The read-only folders keep the mapped paths.
 
-Changes to Lidarr artists and albums go through the Lidarr API. Changes to Aurral artists and albums write to the Library folder. Aurral never writes to or deletes files in a Lidarr root folder.
+Aurral changes nothing in Lidarr. Before it converts, it saves a copy of its database as `aurral.pre-lidarr-conversion.db` in the data folder. If the conversion fails, Aurral stops before it changes anything and says why in the log.
+
+The first admin to open Aurral sees what changed and can monitor the converted artists with the default rules in **Settings > Monitoring**. Aurral then downloads what those rules ask for and the Library does not have. Leave them unmonitored if Lidarr should keep doing that.
+
+After the upgrade:
+
+- To keep getting albums through Lidarr, install the plugin. See [Download through Lidarr](#download-through-lidarr).
+- If you added an Aurral webhook in **Lidarr > Settings > Connect**, remove it. Aurral no longer has that address.
+- A root folder that was inside the Library folder is listed as read-only too. When Lidarr no longer uses it, remove it from the read-only folders in **Settings > Library**, and Aurral manages those files like the rest of the Library folder.
 
 ## Import list feeds
 

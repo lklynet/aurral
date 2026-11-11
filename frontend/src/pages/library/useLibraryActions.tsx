@@ -27,7 +27,6 @@ import { useAudioQueue } from "../../contexts/audioQueueContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useLibraryShareAction } from "../../hooks/useShareAction";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
-import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import { useQueueTrackActions, useStartRadio } from "../../hooks/useQueueTrackActions";
 import type { RadioSeed } from "../../utils/audioQueue";
@@ -61,7 +60,6 @@ import {
   yearOf,
 } from "../../utils/libraryPageData.ts";
 import type { LibraryMenuItem } from "../../components/LibraryItemMenu";
-import { canRemoveLibraryAlbum, resolveAlbumManager } from "../../utils/libraryDestination.ts";
 import { isAwaitingRelease } from "../../utils/aurralAlbumStatus.ts";
 import { getAlbumMonitoredState } from "../../utils/aurralMonitoring.ts";
 import { libraryPreviewData, libraryPreviewFavorites } from "../../utils/libraryPreviewData";
@@ -465,7 +463,6 @@ export function useLibraryActions({
   const canSearchManually = canAddTracks && hasPermission("accessPlaylists");
   const canChangeMonitoring = hasPermission("changeMonitoring");
   const canEditArtwork = !isPreviewLibrary && (canAddTracks || canChangeMonitoring);
-  const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
   const canMatchAlbum = !isPreviewLibrary && canAddTracks;
@@ -508,9 +505,9 @@ export function useLibraryActions({
     [artworkEditor, showSuccess, updateQueueArtwork],
   );
 
-  const openLibraryRemoval = useCallback((target: LibraryTarget, manager: string | null = null) => {
+  const openLibraryRemoval = useCallback((target: LibraryTarget) => {
     setDeleteFiles(false);
-    setLibraryRemoval({ ...target, manager });
+    setLibraryRemoval(target);
   }, []);
 
   const removeLocalLibraryEntity = useCallback(
@@ -571,29 +568,12 @@ export function useLibraryActions({
             }),
           );
         } else if (removal.kind === "album") {
-          const { entity } = removal;
-          if (resolveAlbumManager(entity) === "aurral") {
-            await parseResponse(
-              libraryAlbumsClient.albums.aurral[":albumId"].$delete({
-                param: { albumId: encodeURIComponent(entity.id) },
-                query: { deleteFiles: String(deleteFiles) },
-              }),
-            );
-          } else if (entity.providerId != null && /^\d+$/.test(String(entity.providerId))) {
-            await parseResponse(
-              libraryAlbumsClient.albums[":id"].$delete({
-                param: { id: encodeURIComponent(entity.providerId) },
-                query: { deleteFiles: String(deleteFiles) },
-              }),
-            );
-          } else {
-            await parseResponse(
-              libraryAlbumsClient.albums.lidarr[":mbid"].$delete({
-                param: { mbid: encodeURIComponent(String(entity.releaseGroupMbid || entity.mbid)) },
-                query: { deleteFiles: String(deleteFiles) },
-              }),
-            );
-          }
+          await parseResponse(
+            libraryAlbumsClient.albums.aurral[":albumId"].$delete({
+              param: { albumId: encodeURIComponent(removal.entity.id) },
+              query: { deleteFiles: String(deleteFiles) },
+            }),
+          );
         } else {
           await parseResponse(
             libraryTracksClient.tracks[":id"].$delete({
@@ -1020,10 +1000,7 @@ export function useLibraryActions({
   const albumMenuItems = (
     album: LibraryAlbum,
     artist: LibraryArtist | null | undefined,
-    {
-      lidarrConnected = libraryDestination.primary === "lidarr",
-      extra = [] as LibraryMenuItem[],
-    } = {},
+    { extra = [] as LibraryMenuItem[] } = {},
   ): LibraryMenuItem[] => [
     shareMenuItem({ kind: "album", entity: album }, { artist }),
     {
@@ -1055,7 +1032,7 @@ export function useLibraryActions({
       : []),
     ...extra,
     ...pluginMenuItems("album", { albumId: album.id }),
-    ...(canDeleteAlbum && canRemoveLibraryAlbum(album, { lidarrConnected })
+    ...(canDeleteAlbum && album.managedBy === "aurral"
       ? [
           {
             id: "delete",
@@ -1434,7 +1411,6 @@ export function useLibraryActions({
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.kind === "album" ? libraryRemoval.entity.title : undefined}
-        managedBy={resolveAlbumManager(libraryRemoval?.entity)}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}
@@ -1528,7 +1504,6 @@ export function useLibraryActions({
     canAddTracks,
     canChangeMonitoring,
     canEditArtistMbid,
-    libraryDestination,
     isAlbumDownloading,
     openLibraryRemoval,
     openLibraryInfo,

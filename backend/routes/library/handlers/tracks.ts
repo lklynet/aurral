@@ -106,12 +106,6 @@ export default new Hono<AppEnv>()
             409,
           );
         }
-        if (result?.code === "lidarr_unavailable") {
-          return c.json(
-            { error: "Lidarr unavailable", message: "Lidarr is not available. Try again later." },
-            503,
-          );
-        }
         logger.error(
           "library",
           `Track deletion failed: ${String(result?.error || "Unknown error")}`,

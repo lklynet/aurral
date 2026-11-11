@@ -41,7 +41,6 @@ import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilt
 import type { LibraryReleaseGroup, ReleaseGroup, ReleaseListViewMode } from "./utils";
 import { albumPath } from "../../../../lib/albumPath.ts";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
-import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { parseResponse } from "hono/client";
 import { getReleaseGroupRatingsBatch } from "../../utils/api/endpoints/artists.ts";
 import { artistsClient } from "../../utils/api/clients/artists.ts";
@@ -103,7 +102,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const { mbid } = useParams();
   const { state, artistName: artistNameFromNav = "", initialLibraryHint } = useArtistRouteState();
   const { showSuccess, showError, showInfo } = useToast();
-  const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
   const { hasPermission } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -162,7 +160,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     loadingAppearsOn,
     existsInLibrary,
     setExistsInLibrary,
-    appSettings,
     albumCovers,
     fulfilledCoverIds,
     coverImages,
@@ -186,12 +183,10 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setLibraryAlbums,
     existsInLibrary,
     setExistsInLibrary,
-    appSettings,
     ownedAlbums,
     showSuccess,
     showError,
     showInfo,
-    libraryDestination,
   });
 
   const releaseGroups = useMemo(
@@ -493,13 +488,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton
-                  {...getAlbumAddAction(
-                    { status: status?.status, releaseDate: releaseGroup["first-release-date"] },
-                    libraryDestination,
-                  )}
-                  ownerConflict={status?.ownerConflict}
-                  onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "", managedBy)
+                  {...getAlbumAddAction({ releaseDate: releaseGroup["first-release-date"] })}
+                  onAdd={() =>
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")
                   }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"
@@ -530,13 +521,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton
-                  {...getAlbumAddAction(
-                    { status: status?.status, releaseDate: releaseGroup["first-release-date"] },
-                    libraryDestination,
-                  )}
-                  ownerConflict={status?.ownerConflict}
-                  onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "", managedBy)
+                  {...getAlbumAddAction({ releaseDate: releaseGroup["first-release-date"] })}
+                  onAdd={() =>
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")
                   }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"

@@ -7,7 +7,7 @@ An imported playlist is a static playlist. It differs from a flow:
 
 - It does not use flow sources, filters, or Deeper cuts.
 - A Spotify, YouTube Music, Deezer, Last.fm, ListenBrainz, or Aurral share import can sync on its own schedule. A synced import keeps the same tracks as the provider.
-- It can reuse finished Aurral tracks and existing Lidarr files instead of downloading them again.
+- It can reuse finished Aurral tracks and files in your read-only folders instead of downloading them again.
 
 ![Aurral playlist import](../../../../../web/screenshots/playlist-import.webp)
 
@@ -145,8 +145,4 @@ One file can belong to several playlists. Aurral does not download a track again
 - Reuse does not change the track order. A track that you already have keeps its place while the missing tracks download.
 - If you add a flow track to a static playlist, Aurral moves its file into the Library, so the flow keeps playing it and a refresh does not delete it.
 
-To reuse Lidarr files, Aurral must read them at the paths that Lidarr reports. Mount the same media root at the same container path in both services, for example `/data` with the Lidarr root folder `/data/music`. See [Filesystem and mounts](/getting-started/storage/).
-
-If Lidarr runs on Windows and Aurral runs in Docker, run **Settings > Status > Storage > Run checks**. The **Lidarr library** section shows the path that Lidarr reports. Add a mapping for that path in **Settings > Downloads > Remote path mappings**.
-
-A media server plays a reused Lidarr track only when it also has the Lidarr root folder in a music library. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).
+A media server plays a reused track from a read-only folder only when it also has that folder in a music library. See [Media servers see a different path](/getting-started/storage/#media-servers-see-a-different-path).

@@ -76,9 +76,9 @@ const formatDateGroupLabel = (value: string | null | undefined) => {
 
 export type ActivityListEntry =
   | { type: "date"; label: string; key: string }
-  | { type: "item"; request: ActivityRequest; key: string | null | undefined };
+  | { type: "item"; request: ActivityRequest; key: string };
 
-const groupRequestsByDate = (requests: ActivityRequest[]) => {
+export const buildHistoryListEntries = (requests: ActivityRequest[]) => {
   const groups: ActivityListEntry[] = [];
   let currentLabel = null;
   for (const request of requests) {
@@ -87,25 +87,7 @@ const groupRequestsByDate = (requests: ActivityRequest[]) => {
       currentLabel = label;
       groups.push({ type: "date", label, key: `date-${label}` });
     }
-    groups.push({ type: "item", request, key: request.id || request.mbid });
+    groups.push({ type: "item", request, key: request.id });
   }
   return groups;
-};
-
-export const buildHistoryListEntries = (requests: ActivityRequest[]) => {
-  const reSearchable = [];
-  const rest = [];
-  for (const request of requests) {
-    if (request?.canReSearch === true) {
-      reSearchable.push(request);
-    } else {
-      rest.push(request);
-    }
-  }
-  const entries = reSearchable.map((request): ActivityListEntry => ({
-    type: "item",
-    request,
-    key: request.id || request.mbid,
-  }));
-  return [...entries, ...groupRequestsByDate(rest)];
 };

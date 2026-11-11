@@ -114,7 +114,7 @@ function assertFiled(item: LibraryFileItem): asserts item is FiledItem {
 async function requestScan(request: LibraryScanRequest) {
   const changedPaths = [...new Set((request?.changedPaths || []).filter(Boolean))];
   if (!changedPaths.length) return;
-  scheduleLibraryScan({ includeLidarr: request.includeLidarr === true, changedPaths });
+  scheduleLibraryScan({ includeReadOnly: request.includeReadOnly === true, changedPaths });
 }
 
 async function finish(operation: LibraryFileOperation, status: string) {

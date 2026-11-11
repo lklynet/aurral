@@ -341,7 +341,7 @@ test("a source that files its own downloads has them checked and used where they
 
   await assert.rejects(
     runToEnd(request("Night Drive", 2, "outside-read-only")),
-    /download failed: imported .*Tide\.flac, which isn't in a read-only folder/,
+    /download failed: imported .*\.flac, which isn't in a read-only folder/,
   );
 
   dbOps.setJSONSetting("readOnlyFolders", [music]);

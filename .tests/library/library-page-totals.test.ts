@@ -34,7 +34,7 @@ test("page totals stay exact after local writes, worker commits, and rollbacks",
   });
   assert.equal(read().total, 1);
   assert.equal(read().hasMore, false);
-  assert.equal(getLibraryPage({ ...options, source: "lidarr" }).total, 0);
+  assert.equal(getLibraryPage({ ...options, source: "readonly" }).total, 0);
   assert.equal(read().total, 1);
 
   const worker = new Database(state.dbPath);
@@ -70,7 +70,7 @@ test("broad search keeps stable ordering, page boundaries, and playable source f
       const title = `${index % 2 ? "match" : "Match"} ${String(Math.floor(index / 3)).padStart(4, "0")}`;
       const track = store.upsertLibraryTrack({ identityKey: `broad:${index}`, title });
       store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-      const source = index % 4 === 0 ? "lidarr" : "aurral";
+      const source = index % 4 === 0 ? "readonly" : "aurral";
       const available = index % 11 !== 0;
       store.upsertLibraryMediaFile({
         trackId: track.id,

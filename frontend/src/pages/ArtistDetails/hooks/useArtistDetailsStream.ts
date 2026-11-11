@@ -16,8 +16,6 @@ import {
   type AlbumRequestResult,
   type LibraryArtist,
 } from "../../../utils/api/endpoints/library.ts";
-import { parseResponse } from "hono/client";
-import { settingsClient, type AppSettingsResponse } from "../../../utils/api/clients/settings.ts";
 import { getStoredAuth } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket.ts";
@@ -176,7 +174,6 @@ export function useArtistDetailsStream(
   const [loadingLibrary, setLoadingLibrary] = useState(seededExistsInLibrary === undefined);
   const [loadingReleases, setLoadingReleases] = useState(!!mbid);
   const [loadingAppearsOn, setLoadingAppearsOn] = useState(!!mbid);
-  const [appSettings, setAppSettings] = useState<AppSettingsResponse | null>(null);
   const [albumCovers, setAlbumCovers] = useState<Record<string, string>>({});
   const [fulfilledCoverIds, setFulfilledCoverIds] = useState(() => new Set<string>());
   const albumCoversRef = useRef(albumCovers);
@@ -257,19 +254,6 @@ export function useArtistDetailsStream(
     setOwnedAlbums([]);
     setExistsInLibrary(nextSeededExistsInLibrary === true);
     setLoadingLibrary(nextSeededExistsInLibrary === undefined);
-
-    queryClient
-      .fetchQuery({
-        queryKey: queryKeys.appSettings,
-        queryFn: ({ signal }) => parseResponse(settingsClient.$get({}, { init: { signal } })),
-        staleTime: 30_000,
-      })
-      .then((settings) => {
-        if (isCurrentRequest()) {
-          setAppSettings(settings);
-        }
-      })
-      .catch(() => {});
 
     const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
     const { token } = getStoredAuth();
@@ -365,10 +349,7 @@ export function useArtistDetailsStream(
         const artistId = fullArtist.id || lookup.artist.id;
         if (!artistId) return;
 
-        const albums = await getLibraryAlbums(artistId, {
-          bypassCache,
-          managedBy: fullArtist.managedBy || lookup.artist.managedBy || null,
-        }).catch((err) => {
+        const albums = await getLibraryAlbums(artistId, { bypassCache }).catch((err) => {
           console.error("Failed to fetch library albums:", err);
           return [];
         });
@@ -799,7 +780,6 @@ export function useArtistDetailsStream(
     loadingAppearsOn,
     existsInLibrary,
     setExistsInLibrary,
-    appSettings,
     albumCovers,
     setAlbumCovers,
     fulfilledCoverIds,

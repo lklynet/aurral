@@ -1,17 +1,13 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { DotLoader } from "../../components/DotLoader";
 import { useSettingsData } from "./hooks/useSettingsData";
-import { useAccountSettings } from "./hooks/useAccountSettings";
 import { SettingsPage, SettingsSavingContext } from "./SettingsLayout";
 import type { SettingsSectionId } from "./settingsSections";
 
 type ServerSettings = ReturnType<typeof useSettingsData> & ReturnType<typeof useToast>;
-type AccountSettings = ReturnType<typeof useAccountSettings>;
 
 const ServerSettingsContext = createContext<ServerSettings | null>(null);
-const AccountSettingsContext = createContext<AccountSettings | null>(null);
 
 const HEALTH_SECTIONS = new Set<SettingsSectionId>(["general", "status", "library", "discovery"]);
 
@@ -23,7 +19,7 @@ export function ServerSettingsProvider({
   children: ReactNode;
 }) {
   const toast = useToast();
-  const data = useSettingsData(toast.showSuccess, toast.showError, toast.showInfo, section);
+  const data = useSettingsData(toast.showSuccess, toast.showError);
   const parentSaving = useContext(SettingsSavingContext);
   const { refreshHealth } = data;
 
@@ -56,24 +52,4 @@ export function ServerSettingsGate({ title, children }: { title: string; childre
       </p>
     </SettingsPage>
   );
-}
-
-export function AccountSettingsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const { showError } = useToast();
-  const account = useAccountSettings(user, showError);
-  return (
-    <AccountSettingsContext.Provider value={account}>
-      <SettingsSavingContext.Provider value={account.saving}>
-        {children}
-      </SettingsSavingContext.Provider>
-    </AccountSettingsContext.Provider>
-  );
-}
-
-export function useAccountSettingsContext() {
-  const value = useContext(AccountSettingsContext);
-  if (!value)
-    throw new Error("useAccountSettingsContext must be used inside AccountSettingsProvider");
-  return value;
 }

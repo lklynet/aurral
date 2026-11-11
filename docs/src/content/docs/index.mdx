@@ -17,12 +17,12 @@ Aurral is a self-hosted app for music discovery, downloads, and playback. It fin
 4. Connect the services that you use.
 
 :::note
-Lidarr is optional. Without Lidarr, Aurral keeps your music in its Library folder and manages it itself. Connect Lidarr when you want Lidarr to manage some or all of your artists and albums.
+Aurral keeps your music in its Library folder and manages it itself. Lidarr is optional: Aurral can play the music in Lidarr's folders and download albums through Lidarr with a plugin.
 :::
 
 ## How Aurral fits
 
-Aurral indexes the music in its Library folder, in read-only folders you add, and, if you connect Lidarr, in the Lidarr root folders. This index is the Library. Aurral plays Library tracks in its built-in player and serves them to Subsonic clients. Navidrome, Plex, and Jellyfin can read the Library folder and Aurral's playlist files.
+Aurral indexes the music in its Library folder, and in read-only folders you add. This index is the Library. Aurral plays Library tracks in its built-in player and serves them to Subsonic clients. Navidrome, Plex, and Jellyfin can read the Library folder and Aurral's playlist files.
 
 ## Essential guides
 
@@ -34,8 +34,8 @@ Aurral indexes the music in its Library folder, in read-only folders you add, an
   <Card title="Create playlists">
     Build a scheduled flow or import a playlist. [Playlists overview](/using/playlists/)
   </Card>
-  <Card title="Connect Lidarr">
-    Let Lidarr manage artists and albums. [Lidarr integration](/integrations/lidarr/)
+  <Card title="Use Lidarr">
+    Play Lidarr's music and download through Lidarr. [Lidarr](/integrations/lidarr/)
   </Card>
   <Card title="Run Aurral">
     Storage, users, environment variables, and troubleshooting. [Administration](/admin/storage/)

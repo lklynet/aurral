@@ -23,9 +23,7 @@ const [
   libraryStore,
   managementStore,
   { api },
-  { invalidateAllDownloadStatusesCache },
   { resolveYtdlpStagingRoot },
-  { lidarrClient },
   { dbOps },
   { libraryManager },
   { downloadWorker, startWorkerIfPending },
@@ -44,9 +42,7 @@ const [
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/services/lidarrStatusSnapshot.ts"),
   () => import("../../backend/services/downloadFolderConfig.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
@@ -134,14 +130,14 @@ async function callRouteAsWebProcess<Body = RouteBody>(
 
 let albumSequence = 0;
 function createLibraryAlbum({
-  managedBy = "aurral",
+  readOnly = false,
   trackCount = 3,
   availableTracks = 0,
   releaseMbid,
 }: {
   trackCount?: number;
   availableTracks?: number;
-  managedBy?: string;
+  readOnly?: boolean;
   releaseMbid?: string;
 } = {}) {
   albumSequence += 1;
@@ -177,13 +173,13 @@ function createLibraryAlbum({
       libraryStore.upsertLibraryMediaFile({
         trackId: track.id,
         albumId: album.id,
-        source: managedBy,
+        source: readOnly ? "readonly" : "aurral",
         path: path.join(isolatedState.dataDir, `album-${albumSequence}`, `${index + 1}.flac`),
       });
     }
     return { ...track, trackMbid };
   });
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy });
+  if (!readOnly) managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id });
   const requestGroupId = `group-${albumSequence}`;
   const jobFor = (
     index: number,
@@ -198,7 +194,6 @@ function createLibraryAlbum({
         albumMbid,
         artistMbid,
         trackMbid: requireFixture(tracks[index]).trackMbid,
-        managedBy: "aurral",
         requestGroupId,
         ...job,
       },
@@ -215,7 +210,6 @@ function addAlbumJob(trackName: string, requestGroupId = "group-1") {
       trackName,
       albumName: "Lifecycle Album",
       albumMbid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      managedBy: "aurral",
       requestGroupId,
     },
     "library",
@@ -348,7 +342,6 @@ test("album-grab request rows include canonical ids and request groups", async (
   history.recordAlbumRequested({
     albumId: fixture.album.id,
     albumName: fixture.album.title,
-    managedBy: "aurral",
     requestGroupId: getJob(requireFixture(ids[0])).requestGroupId,
   });
   const { recordAlbumGrabQueued } = await import("../../backend/services/albumGrabActivity.ts");
@@ -699,11 +692,6 @@ test("a cancelled album job ignores late pipeline transitions until it is retrie
 });
 
 test("cancelling an Aurral album stops active work, cleans staging, and keeps finished tracks", async () => {
-  const lidarrCalls: unknown[][] = [];
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (...args) => {
-    lidarrCalls.push(args);
-    throw new Error("Lidarr must not be called");
-  });
   const { album, jobFor } = createLibraryAlbum({ availableTracks: 1 });
   const doneJob = jobFor(0);
   downloadTracker.setDone(doneJob, path.join(isolatedState.dataDir, "done.flac"), album.title);
@@ -729,28 +717,26 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
     const repeated = await callRoute(`/library/albums/aurral/${album.id}/cancel`, "POST");
     assert.equal(repeated.status, 200);
     assert.deepEqual([...repeated.body.cancelledJobIds], []);
-    assert.equal(lidarrCalls.length, 0);
   } finally {
     await fs.rm(stagingPath, { recursive: true, force: true });
   }
 });
 
-test("album cancellation rejects unknown, malformed, and Lidarr-managed albums", async () => {
-  const { album: lidarrAlbum, jobFor } = createLibraryAlbum({
-    managedBy: "lidarr",
+test("album cancellation rejects unknown, malformed, and read-only albums", async () => {
+  const { album: readOnlyAlbum, jobFor } = createLibraryAlbum({
+    readOnly: true,
     availableTracks: 1,
   });
-  const lidarrJob = jobFor(1);
+  const otherJob = jobFor(1);
 
   const missing = await callRoute("/library/albums/aurral/999999/cancel", "POST");
   assert.equal(missing.status, 404);
   const malformed = await callRoute("/library/albums/aurral/12abc/cancel", "POST");
   assert.equal(malformed.status, 400);
-  const conflict = await callRoute(`/library/albums/aurral/${lidarrAlbum.id}/cancel`, "POST");
+  const conflict = await callRoute(`/library/albums/aurral/${readOnlyAlbum.id}/cancel`, "POST");
   assert.equal(conflict.status, 409);
   assert.equal(conflict.body.code, "album_owner_conflict");
-  assert.equal(conflict.body.managedBy, "lidarr");
-  assert.equal(getJob(lidarrJob).status, "pending");
+  assert.equal(getJob(otherJob).status, "pending");
 });
 
 test("album cancellation waits on provider cleanup without reviving the job", async () => {
@@ -787,12 +773,6 @@ function setDownloadSourceConfigured(configured: boolean) {
 }
 
 test("album status aggregates library availability and per-track jobs", async (t) => {
-  const lidarrCalls: unknown[][] = [];
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (...args) => {
-    lidarrCalls.push(args);
-    throw new Error("Lidarr must not be called");
-  });
   setDownloadSourceConfigured(true);
 
   type Scenario = {
@@ -882,12 +862,12 @@ test("album status aggregates library availability and per-track jobs", async (t
     }
 
     setDownloadSourceConfigured(true);
-    const { album: lidarrAlbum } = createLibraryAlbum({ managedBy: "lidarr" });
+    const { album: readOnlyAlbum } = createLibraryAlbum({ readOnly: true });
     const polled = scenarios.filter((scenario) => scenario.sourceConfigured !== false);
     const query = new URLSearchParams({
       albumIds: [
         ...polled.map((scenario) => keyFor(scenario)),
-        `aurral:${lidarrAlbum.id}`,
+        `aurral:${readOnlyAlbum.id}`,
         "aurral:not-a-number",
       ].join(","),
     });
@@ -910,7 +890,6 @@ test("album status aggregates library availability and per-track jobs", async (t
       `/library/downloads/status?${query}`,
     );
     assert.deepEqual(webBatch.body, batch.body);
-    assert.equal(lidarrCalls.length, 0);
   } finally {
     setDownloadSourceConfigured(false);
   }
@@ -935,7 +914,6 @@ test("a download status poll finds album jobs under either album ID in any spell
     downloadTracker.setDownloading(paddedJob);
 
     const untouched = createLibraryAlbum({ trackCount: 2 });
-    untouched.jobFor(0, { managedBy: "lidarr" });
     untouched.jobFor(1, {}, "discover");
 
     db.prepare("UPDATE download_jobs SET created_at = created_at - 60000 WHERE id IN (?, ?)").run(
@@ -1039,25 +1017,7 @@ test("re-requesting a missing completed file reports a missing download source",
 });
 
 test("active downloads list in-flight albums, artists, and tracks so buttons survive a reload", async (t) => {
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (endpoint) => {
-    if (endpoint.startsWith("/queue")) {
-      return [{ albumId: 7, status: "downloading", size: 100, sizeleft: 40 }];
-    }
-    if (endpoint.startsWith("/history")) return [];
-    if (endpoint.startsWith("/command")) return [];
-    if (endpoint === "/album/7") {
-      return {
-        id: 7,
-        foreignAlbumId: "lidarr-album",
-        artist: { foreignArtistId: "lidarr-artist" },
-      };
-    }
-    return [];
-  });
-  invalidateAllDownloadStatusesCache();
-
-  try {
+  {
     const queuedAlbum = createLibraryAlbum();
     const downloadingTrack = queuedAlbum.jobFor(0);
     downloadTracker.setDownloading(downloadingTrack);
@@ -1085,14 +1045,8 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
 
     const response = await callRoute<ActiveDownloadsBody>("/library/downloads/active");
     assert.equal(response.status, 200);
-    assert.deepEqual(
-      [...response.body.albums].sort(),
-      [queuedAlbum.albumMbid, "lidarr-album"].sort(),
-    );
-    assert.deepEqual(
-      [...response.body.artists].sort(),
-      [queuedAlbum.artistMbid, "lidarr-artist"].sort(),
-    );
+    assert.deepEqual([...response.body.albums], [queuedAlbum.albumMbid]);
+    assert.deepEqual([...response.body.artists], [queuedAlbum.artistMbid]);
     assert.deepEqual(
       response.body.tracks.map((track) => track.mbid).sort(),
       [
@@ -1106,8 +1060,6 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
       "/library/downloads/active",
     );
     assert.deepEqual(webResponse.body, response.body);
-  } finally {
-    invalidateAllDownloadStatusesCache();
   }
 });
 
@@ -1168,7 +1120,6 @@ test("an album asks for its most common edition and a shorter download leaves it
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1183,10 +1134,8 @@ test("an album asks for its most common edition and a shorter download leaves it
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1279,7 +1228,6 @@ test("an album asks for its most common edition and a shorter download leaves it
   );
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
-  invalidateAllDownloadStatusesCache();
   const status = await callRoute(`/library/albums/aurral/${requested.body.album.id}/status`);
   assert.notEqual(status.body.status, "complete");
   assert.equal(status.body.counts.total, 3);
@@ -1326,7 +1274,6 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1341,7 +1288,6 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   const defaults = libraryManager.getMonitoringDefaultsState().rules;
   libraryManager.setMonitoringDefaults({ ...defaults, edition: "expanded" });
   let ids: string[] = [];
@@ -1351,7 +1297,6 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
     }
     libraryManager.setMonitoringDefaults(defaults);
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1458,7 +1403,6 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1473,10 +1417,8 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1580,7 +1522,6 @@ test("an album asks for its release's own lengths and fills a missing one from p
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1595,10 +1536,8 @@ test("an album asks for its release's own lengths and fills a missing one from p
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1661,7 +1600,6 @@ test("asking for an album downloads the missing tracks of the edition its track 
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1676,10 +1614,8 @@ test("asking for an album downloads the missing tracks of the edition its track 
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1700,7 +1636,6 @@ test("asking for an album downloads the missing tracks of the edition its track 
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
   });
   const owned = libraryStore.upsertLibraryTrack({
     identityKey: `recording:${recording(1)}`,
@@ -1832,7 +1767,6 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
-  const originalIsConfigured = lidarrClient.isConfigured;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -1847,10 +1781,8 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
   });
   clearApiCaches();
   downloadWorker.start = async () => {};
-  lidarrClient.isConfigured = () => false;
   t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearApiCaches();
     await metadata.close();
@@ -1938,7 +1870,6 @@ test("an album scanned with its release ID stays one album through downloads and
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
   });
   const tracks = [1, 2].map((index) =>
     libraryStore.upsertLibraryTrack({
@@ -1968,7 +1899,6 @@ test("an album scanned with its release ID stays one album through downloads and
       albumName: "Release Album",
       albumMbid: release,
       trackMbid: recording(2),
-      managedBy: "aurral",
       requestGroupId: "release-keyed",
     },
     "library",
@@ -2019,7 +1949,6 @@ test("an album scanned with its release ID stays one album through downloads and
     filePath,
   ]);
   await scanMusicRoot({ rootPath: root, filePaths: [filePath], source: "aurral" });
-  invalidateAllDownloadStatusesCache();
   assert.equal(
     db
       .prepare<unknown[], { count: number }>(
@@ -2057,7 +1986,6 @@ test("an album scanned with its release ID queues by release group and cancels i
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
   });
   const track = libraryStore.upsertLibraryTrack({
     identityKey: "recording:cdcdcdcd-cdcd-4dcd-8dcd-100000000001",
@@ -2087,7 +2015,6 @@ test("an album scanned with its release ID queues by release group and cancels i
       albumName: "Legacy Album",
       albumMbid: release,
       trackMbid: track.mbid,
-      managedBy: "aurral",
       requestGroupId: "legacy",
     },
     "library",
@@ -2099,9 +2026,7 @@ test("an album scanned with its release ID queues by release group and cancels i
 });
 
 async function addAurralAlbum(artistMbid: string, albumMbid: string, albumName: string) {
-  const result = await libraryManager.addAlbum(artistMbid, albumMbid, albumName, {
-    managedBy: "aurral",
-  });
+  const result = await libraryManager.addAlbum(artistMbid, albumMbid, albumName, {});
   const { albumStatus, jobIds } = result;
   assert.ok(albumStatus && jobIds, JSON.stringify(result));
   return { ...result, albumStatus, jobIds };

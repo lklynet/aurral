@@ -14,14 +14,12 @@ const [
   { dbOps },
   { libraryManager },
   { downloadWorker },
-  { lidarrClient },
   { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
   "bulk-album-adds",
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
@@ -76,7 +74,6 @@ test("adding more albums at once than the metadata queue holds adds every album"
     response.end(JSON.stringify({ error: "not found" }));
   });
   const originalSettings = dbOps.getSettings();
-  const originalIsConfigured = lidarrClient.isConfigured;
   const originalWorkerStart = downloadWorker.start;
   dbOps.updateSettings({
     ...originalSettings,
@@ -90,16 +87,13 @@ test("adding more albums at once than the metadata queue holds adds every album"
     },
   });
   clearMetadataProviderCaches();
-  lidarrClient.isConfigured = () => false;
   downloadWorker.start = async () => {};
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Bulk Artist");
     const results = await Promise.all(
       albumMbids.map((albumMbid) =>
-        libraryManager.addAlbum(requireFixture(artist.id), albumMbid, albumMbid, {
-          managedBy: "aurral",
-        }),
+        libraryManager.addAlbum(requireFixture(artist.id), albumMbid, albumMbid, {}),
       ),
     );
 
@@ -109,7 +103,6 @@ test("adding more albums at once than the metadata queue holds adds every album"
     );
   } finally {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearMetadataProviderCaches();
     await server.close();

@@ -24,7 +24,6 @@ import {
 import { getOidcBootstrapInfo } from "../services/oidcAuth.ts";
 import { pendingLidarrConversion } from "../services/lidarrConversionReport.ts";
 import { isGoogleLoginEnabled } from "../services/googleAuth.ts";
-import { lidarrClient } from "../services/lidarrClient.ts";
 import { getDiscoveryCache } from "../services/discovery/index.ts";
 import { getDiscoveryStatus } from "../services/discovery/userDiscovery.ts";
 import { getCachedArtistCount } from "../services/libraryManager.ts";
@@ -144,9 +143,6 @@ async function computeDiskSpacePayload(settings: AppSettings) {
       location,
       role: "Browse root",
     })),
-    ...(settings.rootFolderPath && path.isAbsolute(settings.rootFolderPath)
-      ? [{ location: settings.rootFolderPath, role: "Lidarr root" }]
-      : []),
     ...(Array.isArray(settings.pathMappings)
       ? settings.pathMappings.map((mapping) => ({
           location: mapping.local,
@@ -266,8 +262,6 @@ type BootstrapPayload = {
   authUser?: string;
   proxyLogoutUrl?: string | null;
   rootFolderConfigured?: boolean;
-  lidarr?: { configured: boolean; circuitOpen: boolean };
-  lidarrConfigured?: boolean;
   lastfmConfigured?: boolean;
   ticketmasterConfigured?: boolean;
   inboxEnabled?: boolean;
@@ -312,12 +306,10 @@ function serializeBootstrapMatcherStatus(
 }
 
 function buildBootstrapPayload(req: CredentialRequest) {
-  lidarrClient.updateConfig();
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
   const authRequired = isAuthRequiredByConfig();
   const currentUser = resolveRequestUser(req);
-  const lidarrConfigured = lidarrClient.isConfigured();
 
   const oidcInfo = getOidcBootstrapInfo();
   const payload: BootstrapPayload = {
@@ -348,12 +340,7 @@ function buildBootstrapPayload(req: CredentialRequest) {
     if (wrapped) payload.wrapped = { year: wrapped.year, preview: wrapped.preview };
     const lidarrConversion = currentUser.role === "admin" ? pendingLidarrConversion() : null;
     if (lidarrConversion) payload.lidarrConversion = lidarrConversion;
-    payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
-    payload.lidarr = {
-      configured: lidarrConfigured,
-      circuitOpen: lidarrConfigured && lidarrClient.isCircuitOpen(),
-    };
-    payload.lidarrConfigured = lidarrConfigured;
+    payload.rootFolderConfigured = Boolean(resolveDownloadRoot());
     payload.lastfmConfigured = !!getLastfmApiKey();
     payload.ticketmasterConfigured = !!getTicketmasterApiKey();
     payload.inboxEnabled = settings.inbox?.enabled !== false;

@@ -157,7 +157,7 @@ function libraryArtist(name: string, albums: string[]) {
     libraryStore.upsertLibraryMediaFile({
       trackId: track.id,
       albumId: album.id,
-      source: "lidarr",
+      source: "readonly",
       path: `/library/${name}/${index}.flac`,
       available: true,
     });
@@ -168,8 +168,7 @@ function libraryArtist(name: string, albums: string[]) {
 const scan = (options: { force?: boolean } = {}) =>
   indexService.scanConfiguredLibrary({
     musicRoot,
-    includeLidarr: false,
-    lidarrClient: { isConfigured: () => true },
+    includeReadOnly: false,
     ...options,
   });
 
@@ -199,7 +198,7 @@ function untaggedAlbum(title: string, songs: string[]) {
     libraryStore.upsertLibraryMediaFile({
       trackId: track.id,
       albumId: album.id,
-      source: "lidarr",
+      source: "readonly",
       path: `/library/Nirvana/${title}/${index + 1}.flac`,
       available: true,
     });

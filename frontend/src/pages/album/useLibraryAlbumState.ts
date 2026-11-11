@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { Eye, EyeOff } from "../../components/icons";
 import { useAurralAlbumMonitoring } from "../../components/AurralAlbumMonitoring";
-import { useToast } from "../../contexts/ToastContext";
-import { libraryAlbumsClient } from "../../utils/api/clients/libraryAlbums.ts";
 import { requestsClient } from "../../utils/api/clients/requests.ts";
 import type { AurralMonitoringResult } from "../../utils/api/endpoints/library.ts";
 import { firstAvailableFile, type LibraryAlbum } from "../../utils/libraryPageData.ts";
-import { resolveAlbumManager } from "../../utils/libraryDestination.ts";
-import { canDownloadAurralAlbum, getMonitoringMenuAction } from "../../utils/aurralMonitoring.ts";
+import { canDownloadAurralAlbum } from "../../utils/aurralMonitoring.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import type { ActivityRequest } from "../../../../lib/activity.ts";
 import type { useLibraryActions } from "../library/useLibraryActions.tsx";
@@ -21,7 +17,6 @@ import {
   trackDownloadIdentity,
   type TrackDownloadState,
 } from "../library/libraryShared.tsx";
-import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
 type LibraryActions = ReturnType<typeof useLibraryActions>;
 
@@ -34,7 +29,6 @@ export function useLibraryAlbumState({
   actions: LibraryActions;
   isPreviewLibrary: boolean;
 }) {
-  const { showError, showSuccess } = useToast();
   const {
     getAlbumTracks,
     loadAlbumTracks,
@@ -42,7 +36,6 @@ export function useLibraryAlbumState({
     setLibrary,
     canAddTracks,
     canChangeMonitoring,
-    libraryDestination,
     isAlbumDownloading,
     trackDownloadStates,
     setTrackDownloadStates,
@@ -114,101 +107,26 @@ export function useLibraryAlbumState({
     await loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [libraryAlbum, loadAlbumTracks]);
 
-  const markAlbumRequested = async (managedBy: string) => {
+  const markAlbumRequested = async () => {
     if (!libraryAlbum) return;
     patchAlbum(libraryAlbum.id, {
-      managedBy: managedBy === "lidarr" ? "lidarr" : "aurral",
+      managedBy: "aurral",
       monitored: true,
       monitorMode: "monitored",
     });
     await reloadLibraryAlbumTracks();
   };
 
-  const albumManager = resolveAlbumManager(libraryAlbum);
-  const activeManager = libraryDestination.primary;
-  const lidarrAlbumId =
-    albumManager === "lidarr" && /^\d+$/.test(String(libraryAlbum?.providerId ?? ""))
-      ? libraryAlbum!.providerId
-      : null;
-  const [lidarrMonitoredOverride, setLidarrMonitoredOverride] = useState<{
-    albumId: string | number;
-    monitored: boolean;
-  } | null>(null);
-  const albumMonitored =
-    albumManager === "aurral"
-      ? albumMonitoring.monitored
-      : lidarrAlbumId
-        ? lidarrMonitoredOverride?.albumId === lidarrAlbumId
-          ? lidarrMonitoredOverride!.monitored
-          : libraryAlbum!.monitored === true
-        : null;
+  const managed = libraryAlbum?.managedBy === "aurral";
+  const albumMonitored = managed ? albumMonitoring.monitored : null;
   const libraryAlbumDownloading = isAlbumDownloading(
     libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid,
   );
   const canDownloadLibraryAlbum = (hasMissingTracks: boolean) => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingTracks) return false;
-    if (!libraryDestination.ready || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid))
-      return false;
-    if (activeManager === "lidarr") return true;
-    if (albumManager === "aurral")
-      return canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
-    return albumManager !== "lidarr";
+    if (!(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid)) return false;
+    return !managed || canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
   };
-
-  const setLidarrAlbumMonitored = useCallback(
-    async (monitored: boolean) => {
-      if (!lidarrAlbumId || lidarrMonitoredOverride) return;
-      const title = libraryAlbum!.title || "Album";
-      setLidarrMonitoredOverride({ albumId: lidarrAlbumId, monitored });
-      try {
-        await parseResponse(
-          libraryAlbumsClient.albums[":id"].$put({
-            param: { id: encodeURIComponent(lidarrAlbumId) },
-            json: { monitored },
-          }),
-        );
-        updateAlbumMonitoringState(libraryAlbum!.id, { monitored });
-        showSuccess(monitored ? `${title} monitored in Lidarr` : `${title} unmonitored in Lidarr`);
-      } catch (requestError) {
-        showError(
-          `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${getApiErrorMessage(
-            requestError,
-            "Try again.",
-          )}`,
-        );
-      } finally {
-        setLidarrMonitoredOverride(null);
-      }
-    },
-    [
-      libraryAlbum,
-      lidarrAlbumId,
-      lidarrMonitoredOverride,
-      showError,
-      showSuccess,
-      updateAlbumMonitoringState,
-    ],
-  );
-  const lidarrAlbumAction =
-    activeManager === "lidarr" && lidarrAlbumId && canChangeMonitoring
-      ? getMonitoringMenuAction({ monitored: albumMonitored, hasMissing: hasMissingAlbumTracks })
-      : null;
-  const getAlbumMonitoringMenuItem = (downloadAlbum: () => unknown) =>
-    albumManager === "lidarr"
-      ? lidarrAlbumAction && {
-          id: "monitoring",
-          label: lidarrAlbumAction === "stop" ? "Stop monitoring album" : "Monitor album",
-          icon: lidarrAlbumAction === "stop" ? EyeOff : Eye,
-          separatorBefore: true,
-          closeBeforeSelect: true,
-          onSelect: () => setLidarrAlbumMonitored(lidarrAlbumAction !== "stop"),
-        }
-      : activeManager === "aurral" || albumMonitoring.monitored
-        ? albumMonitoring.menuItem
-        : albumMonitoring.menuItem && {
-            ...albumMonitoring.menuItem,
-            onSelect: downloadAlbum,
-          };
 
   useEffect(() => {
     if (!libraryAlbum || isPreviewLibrary) return undefined;
@@ -273,13 +191,10 @@ export function useLibraryAlbumState({
   return {
     albumTracks,
     albumMonitoring,
-    albumManager,
-    activeManager,
     albumMonitored,
     libraryAlbumDownloading,
     canDownloadLibraryAlbum,
     reloadLibraryAlbumTracks,
     markAlbumRequested,
-    getAlbumMonitoringMenuItem,
   };
 }

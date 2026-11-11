@@ -85,7 +85,6 @@ async function createLibraryJob({
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
     monitorMode: albumMonitored ? null : "unmonitored",
   });
   const track = libraryStore.upsertLibraryTrack({
@@ -105,7 +104,6 @@ async function createLibraryJob({
       albumName: album.title,
       albumMbid: jobHasAlbum ? albumMbid : null,
       trackMbid,
-      managedBy: "aurral",
     },
     playlistType,
   );

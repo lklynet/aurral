@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
-import { lidarrClient } from "./lidarrClient.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
+import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import type { NzbgetClient } from "./nzbgetClient.ts";
 import { asAppError } from "../../lib/errors.ts";
 
@@ -66,14 +66,7 @@ export async function removeNzbgetDownloadFolder(
     throw new Error("NZBGet download folder is not inside NZBGet's download folders");
   }
 
-  const libraries = [
-    resolveDownloadRoot(),
-    ...(lidarrClient.isEnabled()
-      ? lidarrClient
-          .getConfiguredRootFolderPaths()
-          .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
-      : []),
-  ].filter(Boolean);
+  const libraries = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
   for (const library of await Promise.all(
     libraries.map((root) => realpathOr(path.resolve(root))),
   )) {

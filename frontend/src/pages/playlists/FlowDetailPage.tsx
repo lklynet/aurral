@@ -26,7 +26,6 @@ import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { parseResponse } from "hono/client";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -94,7 +93,6 @@ export default function FlowDetailPage() {
 }
 
 function FlowDetail({ flow }: { flow: Flow }) {
-  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -378,17 +376,13 @@ function FlowDetail({ flow }: { flow: Flow }) {
                       flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
                     ),
                 }),
-                ...(lidarrConnected
-                  ? [
-                      {
-                        id: "lidarr-url",
-                        label: "Copy Lidarr import URL",
-                        icon: ClipboardCopy,
-                        separatorBefore: true,
-                        onSelect: handleCopyLidarrUrl,
-                      },
-                    ]
-                  : []),
+                {
+                  id: "lidarr-url",
+                  label: "Copy Lidarr import URL",
+                  icon: ClipboardCopy,
+                  separatorBefore: true,
+                  onSelect: handleCopyLidarrUrl,
+                },
                 ...pluginActions,
                 {
                   id: "delete",

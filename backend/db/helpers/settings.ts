@@ -17,7 +17,6 @@ import type { SettingsRow } from "../rows.ts";
 import type { CacheOps } from "./cache.ts";
 import type { DiscoveryCacheOps } from "./discovery.ts";
 import type { ArtistOverrideOps } from "./overrides.ts";
-import type { LidarrArtistIdMapOps } from "./lidarr.ts";
 import type { AurralHistoryOps } from "./history.ts";
 import type { InboxOps } from "./inbox.ts";
 import {
@@ -75,7 +74,6 @@ export interface AppSettings {
   qualityProfile: QualityProfile;
   queueCleaner: Record<string, unknown>;
   security: StoredSecurity;
-  rootFolderPath: string | null;
   downloadFolderPath: string | null;
   pathMappings: ReturnType<typeof normalizePathMappings>;
   releaseTypes: string[];
@@ -95,7 +93,6 @@ export interface SettingsUpdate {
   queueCleaner?: Record<string, unknown>;
   security?: StoredSecurity;
   inbox?: StoredInbox;
-  rootFolderPath?: string | null;
   downloadFolderPath?: string | null;
   pathMappings?: unknown;
   releaseTypes?: string[];
@@ -120,7 +117,6 @@ export interface SettingsOps {
   getUserTheme: (userId: number) => unknown;
   setUserTheme: (userId: number, theme: unknown) => void;
   deleteUserSettings: (userId: number) => void;
-  setLidarrRootFolderPaths: (paths: unknown) => string[];
   getSettings: () => AppSettings;
   updateSettings: (settings: SettingsUpdate) => void;
 }
@@ -129,7 +125,6 @@ export type DbOps = SettingsOps &
   CacheOps &
   DiscoveryCacheOps &
   ArtistOverrideOps &
-  LidarrArtistIdMapOps &
   AurralHistoryOps &
   InboxOps;
 
@@ -197,12 +192,6 @@ let settingsCache: AppSettings | null = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60000;
 
-const normalizeLidarrRootFolderPaths = (paths: unknown): string[] => [
-  ...new Set(
-    (Array.isArray(paths) ? paths : []).map((value) => String(value || "").trim()).filter(Boolean),
-  ),
-];
-
 export const dbOps = {
   invalidateSettingsCache() {
     settingsCache = null;
@@ -237,26 +226,6 @@ export const dbOps = {
     deleteSettingsByPrefixStmt.run(`user:${parseInt(String(userId), 10)}:`);
   },
 
-  setLidarrRootFolderPaths(paths) {
-    const settings = dbOps.getSettings();
-    const normalized = normalizeLidarrRootFolderPaths(paths);
-    const currentIntegrations = settings.integrations || {};
-    const currentLidarr = currentIntegrations.lidarr || {};
-    if (JSON.stringify(currentLidarr.rootFolderPaths || []) === JSON.stringify(normalized)) {
-      return normalized;
-    }
-    dbOps.updateSettings({
-      integrations: {
-        ...currentIntegrations,
-        lidarr: {
-          ...currentLidarr,
-          rootFolderPaths: normalized,
-        },
-      },
-    });
-    return normalized;
-  },
-
   getSettings() {
     const now = Date.now();
     const cacheTtl = process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : SETTINGS_CACHE_TTL;
@@ -281,7 +250,6 @@ export const dbOps = {
       getSettingStmt.get("security")?.value,
       "security",
     );
-    const rootFolderPath = getSettingStmt.get("rootFolderPath")?.value;
     const downloadFolderPath = getSettingStmt.get("downloadFolderPath")?.value || null;
     syncDownloadFolderPath(downloadFolderPath);
     const pathMappings = normalizePathMappings(
@@ -323,7 +291,6 @@ export const dbOps = {
       qualityProfile,
       queueCleaner: queueCleaner || {},
       security: security ?? { localNetworkBypass: { enabled: false } },
-      rootFolderPath: rootFolderPath || null,
       downloadFolderPath: downloadFolderPath || null,
       pathMappings,
       releaseTypes: releaseTypes || [],
@@ -402,9 +369,6 @@ export const dbOps = {
             discoveries: settings.inbox.discoveries !== false,
           }),
         );
-      }
-      if (settings.rootFolderPath !== undefined && settings.rootFolderPath !== null) {
-        upsertSettingStmt.run("rootFolderPath", settings.rootFolderPath);
       }
       if (settings.downloadFolderPath !== undefined) {
         const normalized = String(settings.downloadFolderPath || "").trim();

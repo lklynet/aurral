@@ -77,7 +77,7 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   );
   store.upsertLibraryMediaFile({ ...file, available: false });
   assert.deepEqual(query.getLibraryGenres({ availableOnly: true }), []);
-  assert.deepEqual(query.getLibraryGenres({ source: "lidarr" }), []);
+  assert.deepEqual(query.getLibraryGenres({ source: "readonly" }), []);
   assert.deepEqual(
     query.getLibraryGenres().map((genre) => genre.value),
     ["Folk", "Jazz", "Rock"],
@@ -87,7 +87,10 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
     0,
   );
   assert.equal(read("folk").total, 1);
-  assert.equal(query.getLibraryPage({ kind: "tracks", genre: "folk", source: "lidarr" }).total, 0);
+  assert.equal(
+    query.getLibraryPage({ kind: "tracks", genre: "folk", source: "readonly" }).total,
+    0,
+  );
   db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE id = ?").run(track.id);
   assert.equal(read("folk").total, 0);
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -276,7 +279,7 @@ test("Subsonic genre counts deduplicate files and preserve inherited genres acro
   for (const file of [
     { trackId: shared.id, albumId: first.id, source: "flow", path: "/genre/counts-one.flac" },
     { trackId: shared.id, albumId: first.id, source: "flow", path: "/genre/counts-duplicate.flac" },
-    { trackId: shared.id, albumId: second.id, source: "lidarr", path: "/genre/counts-two.flac" },
+    { trackId: shared.id, albumId: second.id, source: "readonly", path: "/genre/counts-two.flac" },
     {
       trackId: missing.id,
       albumId: first.id,
@@ -296,7 +299,7 @@ test("Subsonic genre counts deduplicate files and preserve inherited genres acro
     expected.map((value) => ({ value, albumCount: 1, songCount: 2 })),
   );
   assert.deepEqual(
-    query.getLibraryGenres({ source: "lidarr", availableOnly: true }),
+    query.getLibraryGenres({ source: "readonly", availableOnly: true }),
     ["Album Two", "Inherited", "Track Only"].map((value) => ({
       value,
       albumCount: 1,

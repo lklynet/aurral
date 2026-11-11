@@ -78,7 +78,7 @@ export async function finalizeQualityUpgradeSuccess(
     ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs(changed.map((job) => job.id)),
   ];
   playlistManager.requestPlaylistSync(playlistIds);
-  scheduleLibraryScan({ includeLidarr: false, changedPaths: [oldPath, upgradedPath] });
+  scheduleLibraryScan({ includeReadOnly: false, changedPaths: [oldPath, upgradedPath] });
   recordTrackJobActivity({
     jobId: upgradeJob.id,
     trackName: originalDetails.trackName,

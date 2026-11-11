@@ -98,7 +98,6 @@ const buildArtist = (
     id: artist.id,
     identityKey: artist.identityKey,
     providerId,
-    lidarrManaged: artist.metadata?.librarySource === "lidarr",
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
     managedBy: management?.managedBy ?? null,
     monitorMode: management?.monitorMode ?? null,
@@ -243,7 +242,7 @@ export function buildLibraryReadModel(library: LibraryReadInput) {
 }
 
 export function getLibraryReadModelForArtistPage({
-  source = "lidarr",
+  source = "all",
   availableOnly = true,
   limit = 10000,
   offset = 0,
@@ -265,7 +264,7 @@ export function getLibraryReadModelForArtistPage({
 }
 
 export function getLibraryReadModelForArtists({
-  source = "lidarr",
+  source = "all",
   availableOnly = true,
   mbids = [],
   includeSharedAlbums = false,
@@ -297,7 +296,7 @@ export function getLibraryReadModelForArtistReferences({
 }
 
 export function getLibraryReadModelForAlbumReferences({
-  source = "lidarr",
+  source = "all",
   availableOnly = true,
   references = [],
 }: { source?: unknown; availableOnly?: boolean; references?: unknown[] } = {}) {

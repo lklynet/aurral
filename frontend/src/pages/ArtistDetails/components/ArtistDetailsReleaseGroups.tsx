@@ -89,7 +89,6 @@ export function ArtistDetailsReleaseGroups({
   onReSearchMissingDownloads,
   canAddAlbum,
   handleRequestAlbum,
-  libraryDestination,
   requestingAlbum,
   artistName,
   onVisibleCoverIdsChange,
@@ -107,7 +106,6 @@ export function ArtistDetailsReleaseGroups({
   onReSearchMissingDownloads: (() => void) | null;
   canAddAlbum: boolean;
   handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
-  libraryDestination: Parameters<typeof getAlbumAddAction>[1];
   requestingAlbum: string | null;
   artistName: string;
   onVisibleCoverIdsChange?: (ids: string[]) => void;
@@ -238,17 +236,10 @@ export function ArtistDetailsReleaseGroups({
                   ) : canAddAlbum ? (
                     <div>
                       <AddActionButton
-                        {...getAlbumAddAction(
-                          {
-                            status: status?.status,
-                            releaseDate: releaseGroup["first-release-date"],
-                          },
-                          libraryDestination,
-                        )}
-                        ownerConflict={status?.ownerConflict}
-                        onAdd={(managedBy) =>
-                          handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "", managedBy)
-                        }
+                        {...getAlbumAddAction({
+                          releaseDate: releaseGroup["first-release-date"],
+                        })}
+                        onAdd={() => handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")}
                         isLoading={
                           requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
                         }

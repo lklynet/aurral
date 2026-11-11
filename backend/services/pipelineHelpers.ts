@@ -143,7 +143,7 @@ export async function finalizePipelineJobSuccess(options: PipelineJobSuccessOpti
 }
 
 export type PipelineSuccessJob = Parameters<typeof finalizeQualityUpgradeSuccess>[0] &
-  Pick<DownloadJob, "albumName" | "managedBy"> &
+  Pick<DownloadJob, "albumName"> &
   Partial<
     Pick<
       DownloadJob,
@@ -186,9 +186,9 @@ export async function recordPipelineJobSuccess({
     return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
-  if (job.managedBy !== "lidarr" && committedFinalPath) {
+  if (committedFinalPath) {
     scheduleLibraryScan({
-      includeLidarr: false,
+      includeReadOnly: false,
       changedPaths: [committedFinalPath],
     });
   }

@@ -15,7 +15,6 @@ const [
   { libraryManager },
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
   "aurral-album-added-date",
@@ -24,7 +23,6 @@ const [
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
@@ -78,7 +76,6 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
     response.end(JSON.stringify({ error: "not found" }));
   });
   const originalSettings = dbOps.getSettings();
-  const originalIsConfigured = lidarrClient.isConfigured;
   const originalWorkerStart = downloadWorker.start;
   dbOps.updateSettings({
     ...originalSettings,
@@ -93,14 +90,11 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
     },
   });
   clearMetadataProviderCaches();
-  lidarrClient.isConfigured = () => false;
   downloadWorker.start = async () => {};
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
-    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {
-      managedBy: "aurral",
-    });
+    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {});
 
     const firstAdded = "2020-01-02T03:04:05.000Z";
     const row = db
@@ -115,9 +109,7 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
     );
 
     downloadTracker.clearAll();
-    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {
-      managedBy: "aurral",
-    });
+    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {});
 
     const after = db
       .prepare<unknown[], { metadata_json: string | null }>(
@@ -127,7 +119,6 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
     assert.equal(JSON.parse(requireFixture(requireFixture(after).metadata_json)).added, firstAdded);
   } finally {
     downloadWorker.start = originalWorkerStart;
-    lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearMetadataProviderCaches();
     await server.close();

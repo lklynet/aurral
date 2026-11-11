@@ -34,7 +34,6 @@ import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
 import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
 import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
-import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
 import type {
   PlaylistSelection,
@@ -53,7 +52,6 @@ type ArtistDetailsDownloadTargetsProps = {
   canAddAlbum: boolean;
   requestingAlbum: string | null;
   handleRequestAlbum: ArtistDetailsLibrary["handleRequestAlbum"];
-  libraryDestination: ReturnType<typeof useLibraryDestination>;
   artistName?: string;
   playbackSource?: PlaybackSource | null;
   onAddTrackToPlaylist?: (
@@ -101,7 +99,6 @@ export function ArtistDetailsDownloadTargets({
   canAddAlbum,
   requestingAlbum,
   handleRequestAlbum,
-  libraryDestination,
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
@@ -277,11 +274,10 @@ export function ArtistDetailsDownloadTargets({
                   <ReleaseWaitBadge releaseDate={release!["first-release-date"]} />
                 ) : canAddAlbum && releaseGroupId ? (
                   <AddActionButton
-                    {...getAlbumAddAction({ ...albumStatus }, libraryDestination)}
-                    ownerConflict={albumStatus?.ownerConflict}
-                    onAdd={(managedBy) => {
+                    {...getAlbumAddAction({ releaseDate: release?.["first-release-date"] })}
+                    onAdd={() => {
                       setRequestedPick({ artistId: artist?.id, releaseGroupId });
-                      handleRequestAlbum(releaseGroupId, title, managedBy);
+                      handleRequestAlbum(releaseGroupId, title);
                     }}
                     isLoading={albumBusy}
                     loadingLabel="Downloading"

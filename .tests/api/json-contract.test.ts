@@ -223,13 +223,11 @@ beforeAll(async () => {
   setLibraryManagement({
     entityKind: "artist",
     entityId: artist.id,
-    managedBy: "aurral",
     monitorMode: "none",
   });
   setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy: "aurral",
     monitorMode: "all",
   });
   server = await listen(app);

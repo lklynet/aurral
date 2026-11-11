@@ -1,13 +1,13 @@
 ---
 title: Filesystem and mounts
-description: Give Aurral, Lidarr, download clients, and media servers the same view of your media files.
+description: Give Aurral, download clients, and media servers the same view of your media files.
 ---
 
 Aurral works with several other applications. It uses their APIs to ask them to search, download, manage, or play music. It also opens the files that those applications write.
 
-A passed API test does not prove file access. Aurral can connect to Lidarr or a download client and still fail to read or move files because a mount is wrong.
+A passed API test does not prove file access. Aurral can connect to a download client and still fail to read or move files because a mount is wrong.
 
-Without Lidarr, Aurral needs one media mount with the Library folder inside it, such as `/data/downloads/aurral`. Mount the same folder in your media server. The Lidarr parts of this page apply only when you connect Lidarr.
+Aurral needs one media mount with the Library folder inside it, such as `/data/downloads/aurral`. Mount the same folder in your media server. A [read-only folder](/using/library/#add-music-aurral-only-reads), such as a Lidarr root folder, needs a mount too.
 
 :::caution
 Use one shared media mount, with the same container path in every service that shares files. Use path mappings only when you cannot use the same path.
@@ -28,7 +28,6 @@ Mount the same host folder at the same container path in every service that shar
 
 ```text
 Aurral          /srv/media:/data
-Lidarr          /srv/media:/data
 Download client /srv/media:/data
 Navidrome       /srv/media:/data:ro
 ```
@@ -38,7 +37,6 @@ Every service then sees one host file at one path:
 ```text
 Host:       /srv/media/downloads/aurral/track.flac
 Aurral:     /data/downloads/aurral/track.flac
-Lidarr:     /data/downloads/aurral/track.flac
 Navidrome:  /data/downloads/aurral/track.flac
 ```
 
@@ -48,13 +46,11 @@ Keep a service's own database or configuration mount separate from the media mou
 
 ## How one track moves
 
-### A track that Lidarr already has
+### A track in a read-only folder
 
-1. Aurral asks Lidarr for the track.
-2. Lidarr reports a path such as `/data/music/Artist/Album/Track.flac`.
-3. Aurral checks that the same path exists in its own container.
-4. Aurral reuses that file. It does not download a second copy.
-5. Navidrome scans `/data/music` and plays the file.
+1. Aurral scans the read-only folder, such as `/data/music`, and finds `/data/music/Artist/Album/Track.flac`.
+2. A playlist or flow that wants the track uses that file. Aurral does not download a second copy.
+3. Navidrome scans `/data/music` and plays the file.
 
 ### A new track
 
@@ -68,11 +64,11 @@ Playlist files list each track by its full path in Aurral, such as `/data/downlo
 
 ## What each connection needs
 
-| Connection       | Aurral needs                                                               | Filesystem setup                                                                           |
-| ---------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Lidarr           | URL, API key, and read access to the files that Lidarr reports             | Mount the same media root in Aurral and Lidarr at the same container path.                 |
-| Download clients | API access and read access to completed downloads                          | Mount the same media root in Aurral and the client at the same container path.             |
-| Media servers    | Nothing. Navidrome, Plex, and Jellyfin read the Library folder themselves. | Mount the Library folder and the Lidarr root folder at the same container paths as Aurral. |
+| Connection        | Aurral needs                                                               | Filesystem setup                                                                           |
+| ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Read-only folders | Read access to the folder                                                  | Mount the folder in Aurral.                                                                |
+| Download clients  | API access and read access to completed downloads                          | Mount the same media root in Aurral and the client at the same container path.             |
+| Media servers     | Nothing. Navidrome, Plex, and Jellyfin read the Library folder themselves. | Mount the Library folder and your read-only folders at the same container paths as Aurral. |
 
 The built-in **yt-dlp** source runs inside Aurral and needs no other container. It writes to `/config/_staging` first, then moves checked files into the Library folder.
 
@@ -82,7 +78,7 @@ Choose one folder on the Docker host as the media root. The example uses `/srv/m
 
 ```text
 /srv/media/                         # Docker host
-|-- music/                          # Lidarr root folder
+|-- music/                          # optional read-only folder, such as a Lidarr root folder
 \-- downloads/
     |-- slskd/complete/             # optional Soulseek downloads
     |-- usenet/complete/            # optional SABnzbd or NZBGet downloads
@@ -94,17 +90,16 @@ Choose one folder on the Docker host as the media root. The example uses `/srv/m
 
 Use the same host folder in every media mount:
 
-| Container                 | Docker volume                        | Access         | Why                                                              |
-| ------------------------- | ------------------------------------ | -------------- | ---------------------------------------------------------------- |
-| Aurral                    | `${MEDIA_ROOT:-/srv/media}:/data`    | read and write | Reads Lidarr and client files. Writes downloads.                 |
-| Lidarr                    | `${MEDIA_ROOT:-/srv/media}:/data`    | read and write | Reads the library. Moves completed downloads into `/data/music`. |
-| slskd, SABnzbd, or NZBGet | `${MEDIA_ROOT:-/srv/media}:/data`    | read and write | Writes completed downloads under `/data/downloads`.              |
-| Navidrome                 | `${MEDIA_ROOT:-/srv/media}:/data:ro` | read only      | Scans and plays the library and the Library folder.              |
-| Plex                      | `${MEDIA_ROOT:-/srv/media}:/data:ro` | read only      | Scans the Library folder.                                        |
+| Container                 | Docker volume                        | Access         | Why                                                         |
+| ------------------------- | ------------------------------------ | -------------- | ----------------------------------------------------------- |
+| Aurral                    | `${MEDIA_ROOT:-/srv/media}:/data`    | read and write | Reads client files and read-only folders. Writes downloads. |
+| slskd, SABnzbd, or NZBGet | `${MEDIA_ROOT:-/srv/media}:/data`    | read and write | Writes completed downloads under `/data/downloads`.         |
+| Navidrome                 | `${MEDIA_ROOT:-/srv/media}:/data:ro` | read only      | Scans and plays the library and the Library folder.         |
+| Plex                      | `${MEDIA_ROOT:-/srv/media}:/data:ro` | read only      | Scans the Library folder.                                   |
 
 `MEDIA_ROOT` is a host path. `/data` is a path inside each container. In a Docker volume, the left side is the host and the right side is the container.
 
-For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral, Lidarr, Navidrome, and Plex.
+For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral, Navidrome, and Plex.
 
 Enter `/data/...` paths in application settings. Do not enter `/srv/media/...` in Aurral, because `/srv/media` exists only on the host.
 
@@ -119,10 +114,6 @@ services:
       - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
 
-  lidarr:
-    volumes:
-      - ${MEDIA_ROOT:-/srv/media}:/data
-
   download-client:
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data
@@ -136,7 +127,7 @@ services:
       - ${MEDIA_ROOT:-/srv/media}:/data:ro
 ```
 
-`./config:/config` holds Aurral's database, settings, users, and jobs. Do not share `/config` with Lidarr, a media server, or a download client.
+`./config:/config` holds Aurral's database, settings, users, and jobs. Do not share `/config` with a media server or a download client.
 
 ## Mount a read-only folder
 
@@ -163,11 +154,10 @@ After you add the mounts, use these container paths:
 
 | Application       | Setting                                        | Recommended value                                                                |
 | ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| Lidarr            | Root folder                                    | `/data/music`                                                                    |
 | slskd             | Completed download folder                      | `/data/downloads/slskd/complete`                                                 |
 | SABnzbd or NZBGet | Completed download folder                      | `/data/downloads/usenet/complete`                                                |
 | Aurral            | **Settings > Library > Library folder > Path** | `/data/downloads/aurral`                                                         |
-| Media server      | Music library                                  | The Library folder, such as `/data/downloads/aurral`, and the Lidarr root folder |
+| Media server      | Music library                                  | The Library folder, such as `/data/downloads/aurral`, and your read-only folders |
 
 The folder names for download clients do not matter. These rules do:
 
@@ -180,21 +170,20 @@ The folder names for download clients do not matter. These rules do:
 Follow this order to check each connection separately.
 
 1. Choose the host media root, such as `/srv/media`.
-2. Mount that host folder in Aurral, every download client, your media server, and Lidarr if you use it.
-3. Use `/data/...` paths inside the containers. Set the Lidarr root folder and the completed download folders.
+2. Mount that host folder in Aurral, every download client, and your media server.
+3. Use `/data/...` paths inside the containers. Set the completed download folders.
 4. Start the services.
-5. If you use Lidarr, open **Settings > Library > Lidarr** in Aurral. Enter the URL and API key, then select **Test connection**.
-6. Open **Settings > Library** and set **Library folder > Path** to a writable folder under `/data`, such as `/data/downloads/aurral`.
-7. Connect and test each download client that you use.
-8. Open **Settings > Status > Storage** and select **Run checks**. Fix each failed check.
-9. Add the Library folder to a music library in Navidrome, Plex, or Jellyfin. To import plays from them, open **Settings > Listening**.
+5. Open **Settings > Library** and set **Library folder > Path** to a writable folder under `/data`, such as `/data/downloads/aurral`.
+6. Connect and test each download client that you use.
+7. Open **Settings > Status > Storage** and select **Run checks**. Fix each failed check.
+8. Add the Library folder to a music library in Navidrome, Plex, or Jellyfin. To import plays from them, open **Settings > Listening**.
 
 ## Check the connections
 
 Do these checks in order:
 
 1. **API check.** The **Test connection** button for each integration passes.
-2. **File check.** **Settings > Status > Storage > Run checks** passes the **Aurral downloads** section, and the **Lidarr library** section if you use Lidarr.
+2. **File check.** **Settings > Status > Storage > Run checks** passes the **Aurral downloads** section.
 3. **Output check.** After a flow or playlist downloads a track, the file exists under one of these paths:
 
    ```text
@@ -210,21 +199,21 @@ If the API check passes but the file check fails, do not change the API URL. Fix
 
 Different container paths can work, but each difference needs its own setting. A path mapping translates a path. It does not mount a folder or give access to it.
 
-### Paths reported by Lidarr or download clients
+### Paths reported by download clients
 
 Open **Settings > Downloads > Remote path mappings** and select **Add path mapping**. Enter:
 
-- **Applies to**: the application that reports the path, such as **Lidarr**, **slskd**, **NZBGet**, **SABnzbd**, **Tidarr**, **qBittorrent**, or **deemix**. Select **All sources** to apply the mapping to every application.
+- **Applies to**: the application that reports the path, such as **slskd**, **NZBGet**, **SABnzbd**, **Tidarr**, **qBittorrent**, or **deemix**. Select **All sources** to apply the mapping to every application.
 - **Remote path**: the absolute path that the other application reports.
 - **Local path**: the path to the same folder inside Aurral.
 
 Example:
 
-| Field       | Value              |
-| ----------- | ------------------ |
-| Applies to  | Lidarr             |
-| Remote path | `/downloads/music` |
-| Local path  | `/data/music`      |
+| Field       | Value                            |
+| ----------- | -------------------------------- |
+| Applies to  | slskd                            |
+| Remote path | `/downloads/complete`            |
+| Local path  | `/data/downloads/slskd/complete` |
 
 The local path must exist inside the Aurral container. If it does not, add or fix the Docker mount first.
 
@@ -232,22 +221,22 @@ A native Windows service can report a path such as `N:\ServerFolders\Music`. Mou
 
 ### Media servers see a different path
 
-Navidrome, Plex, and Jellyfin have no path mappings. Playlist files list each track by its full path in Aurral, so mount the Library folder, the Lidarr root folder, and any read-only folders at the same container paths as in Aurral. A server that sees them at other paths imports each playlist without its tracks.
+Navidrome, Plex, and Jellyfin have no path mappings. Playlist files list each track by its full path in Aurral, so mount the Library folder and any read-only folders at the same container paths as in Aurral. A server that sees them at other paths imports each playlist without its tracks.
 
 ## Windows and mixed Docker setups
 
 The same rules apply when a service runs on Windows:
 
 1. Mount the Windows media folder into Aurral.
-2. Add a remote path mapping from the Windows path that Lidarr or the download client reports to the Aurral container path.
+2. Add a remote path mapping from the Windows path that the download client reports to the Aurral container path.
 3. If your media server also runs on Windows, add the matching folders as music libraries.
 
 A remote path mapping only helps Aurral read files. It does not change what a media server can see.
 
 ## Common mistakes
 
-- **Only the Lidarr music folder is mounted in Aurral.** Aurral can read the library but cannot read completed downloads or write to the Library folder.
-- **Only the Library folder is mounted in Navidrome or Plex.** The server cannot play reused Lidarr tracks. Mount the Lidarr library too, or add it as a separate library.
+- **Only a read-only folder is mounted in Aurral.** Aurral can read that music but cannot read completed downloads or write to the Library folder.
+- **Only the Library folder is mounted in Navidrome or Plex.** The server cannot play playlist tracks that come from a read-only folder. Mount the read-only folder too, and add it as a library.
 - **Aurral settings use a host path.** Aurral needs the container path, such as `/data/downloads/aurral`.
 - **A path mapping points to a folder that is not mounted.** A mapping cannot make a missing folder readable.
 - **The Library folder is mounted in a media server but is not in a music library.** The server's playlists stay empty, because it only adds tracks from its libraries. Add the folder to a music library. A path mapping cannot fix this.

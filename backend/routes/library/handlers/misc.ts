@@ -13,9 +13,6 @@ import {
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
 import { getFreshReleasesByArtists } from "../../../services/discovery/freshReleases.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
-import { libraryManager } from "../../../services/libraryManager.ts";
-import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.ts";
-import { logger } from "../../../services/logger.ts";
 import {
   getLibraryReadModelForAlbumReferences,
   getLibraryReadModelForArtists,
@@ -26,15 +23,13 @@ import {
   getRecentlyAddedLibraryArtists,
 } from "../../../services/libraryQueryService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } from "../../../services/lidarrClient.ts";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
+const ALBUM_LOOKUP_BATCH_MAX = 100;
 
 type ReadAlbum = ReturnType<typeof getLibraryReadModelForAlbumReferences>["albums"][number];
 type ReadTrack = ReturnType<typeof getLibraryReadModelForAlbumReferences>["tracks"][number];
 type ReadArtist = ReturnType<typeof getLibraryReadModelForArtists>["artists"][number];
-type ManagedTrack = Awaited<ReturnType<typeof libraryManager.getTracks>>[number];
-type LidarrArtist = Parameters<typeof libraryManager.mapLidarrArtist>[0];
 
 const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
   const value = String(reference || "").trim();
@@ -74,22 +69,13 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
   releaseDate: String(album.releaseDate || "").trim(),
 });
 
-const ownedLidarrTrackMbids = (tracks: WithAbsentKeys<ManagedTrack, "foreignTrackId">[]) =>
-  (Array.isArray(tracks) ? tracks : [])
-    .filter((track) => track?.hasFile === true || track?.path)
-    .map((track) => track?.mbid || track?.foreignTrackId)
-    .map((mbid) => String(mbid || "").trim())
-    .filter(Boolean);
-
 type WithAbsentKeys<Value, Keys extends PropertyKey> = Value extends unknown
   ? Value & { [Key in Exclude<Keys, keyof Value>]?: undefined }
   : never;
 
 const toLibraryArtist = (
   artist: WithAbsentKeys<
-    | ReturnType<typeof getLibraryArtistProjection>[number]
-    | ReadArtist
-    | ReturnType<typeof libraryManager.mapLidarrArtist>,
+    ReturnType<typeof getLibraryArtistProjection>[number] | ReadArtist,
     "providerId"
   >,
   libraryId?: string | number,
@@ -101,13 +87,7 @@ const toLibraryArtist = (
   added: artist.addedAt,
 });
 
-const toLibraryAlbum = (
-  album: WithAbsentKeys<
-    ReadAlbum | ReturnType<typeof libraryManager.mapLidarrAlbum>,
-    "providerId" | "providerArtistId"
-  >,
-  libraryId?: string | number,
-) => ({
+const toLibraryAlbum = (album: ReadAlbum, libraryId?: string | number) => ({
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
@@ -135,7 +115,7 @@ const ownedLibraryAlbums = (albums: ReadAlbum[]) => {
   }));
 };
 
-export async function getArtistLibraryLookup(mbid: string) {
+export function getArtistLibraryLookup(mbid: string) {
   const { artists, albums } = getLibraryReadModelForArtists({
     source: "all",
     availableOnly: false,
@@ -145,53 +125,14 @@ export async function getArtistLibraryLookup(mbid: string) {
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const libraryArtistId = artist ? String(artist.id) : null;
   const ownedAlbums = ownedLibraryAlbums(albums);
-  const aurralArtist = getLibraryArtistProjection({ reference: mbid }).find(
-    (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
-  );
-  if (aurralArtist) {
+  const found =
+    getLibraryArtistProjection({ reference: mbid }).find(
+      (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
+    ) ?? artist;
+  if (found) {
     return {
       exists: true,
-      artist: toLibraryArtist(aurralArtist, aurralArtist.id),
-      albums: albums.map((album) => toLibraryAlbum(album, album.id)),
-      fromLibraryIndex: true,
-      libraryArtistId,
-      ownedAlbums,
-    };
-  }
-  const lidarrConfigured = lidarrClient.isConfigured();
-  let lidarrArtist: LidarrArtist | null | undefined;
-  let lidarrAlbums;
-  if (lidarrConfigured) {
-    try {
-      lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-      if (lidarrArtist) {
-        const albums = await lidarrClient.getAllAlbums({
-          artistIds: [lidarrArtist.id],
-          forceRefresh: true,
-        });
-        lidarrAlbums = albums.map((album) =>
-          toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist!)),
-        );
-      }
-    } catch {
-      lidarrArtist = undefined;
-      lidarrAlbums = undefined;
-    }
-  }
-  if (lidarrArtist && lidarrAlbums) {
-    return {
-      exists: true,
-      artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
-      albums: lidarrAlbums,
-      fromLibraryIndex: true,
-      libraryArtistId,
-      ownedAlbums,
-    };
-  }
-  if (lidarrArtist === undefined && artist && (!lidarrConfigured || artist.lidarrManaged)) {
-    return {
-      exists: true,
-      artist: toLibraryArtist(artist, artist.id),
+      artist: toLibraryArtist(found, found.id),
       albums: albums.map((album) => toLibraryAlbum(album, album.id)),
       fromLibraryIndex: true,
       libraryArtistId,
@@ -208,26 +149,6 @@ export async function getArtistLibraryLookup(mbid: string) {
   };
 }
 
-type LidarrAlbumLookupResult = {
-  inLibrary: true;
-  fromLibraryIndex: false;
-  providerAlbumId: string | null;
-  providerArtistId: string | null;
-  libraryAlbumId: null;
-  libraryArtistId: null;
-  managedBy?: undefined;
-  status: "available" | "monitored" | "unmonitored";
-  monitored: boolean;
-  trackListComplete: true;
-  percentOfTracks: number;
-  sizeOnDisk: number;
-  trackCount: number;
-  trackFileCount: number;
-  ownedTrackMbids: ReturnType<typeof ownedLidarrTrackMbids>;
-  albumName: string;
-  releaseDate: string;
-};
-
 const mbidsInput = v.object({ mbids: v.optional(v.array(v.nullable(v.string()))) });
 
 const uniqueMbids = (mbids: (string | null)[]) => [
@@ -236,32 +157,11 @@ const uniqueMbids = (mbids: (string | null)[]) => [
 
 export default new Hono<AppEnv>()
   .basePath("/library")
-  .get("/rootfolder", async (c) => {
-    try {
-      const configured = lidarrClient.getConfiguredRootFolderPaths();
-      if (!lidarrClient.isEnabled())
-        return c.json(
-          configured.map((path) => ({ path })),
-          200,
-        );
-      if (!lidarrClient.isConfigured() && configured.length === 0) return c.json([], 200);
-      const rootFolders = await lidarrClient.getRootFolders();
-      return c.json(
-        Array.isArray(rootFolders) ? rootFolders.map((folder) => ({ path: folder.path })) : [],
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        { error: "Failed to fetch root folder", message: asAppError(error)?.message },
-        500,
-      );
-    }
-  })
   .get("/lookup/:mbid", async (c) => {
     try {
       const mbid = c.req.param("mbid");
       if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
-      return c.json(await getArtistLibraryLookup(mbid), 200);
+      return c.json(getArtistLibraryLookup(mbid), 200);
     } catch (error) {
       return c.json({ error: "Failed to lookup artist", message: asAppError(error)?.message }, 500);
     }
@@ -299,14 +199,11 @@ export default new Hono<AppEnv>()
       const { mbids } = c.req.valid("json");
       if (!mbids) return c.json({ error: "mbids must be an array" }, 400);
       const wanted = uniqueMbids(mbids);
-      const results: Record<
-        string,
-        ReturnType<typeof libraryAlbumResult> | LidarrAlbumLookupResult
-      > = {};
+      const results: Record<string, ReturnType<typeof libraryAlbumResult>> = {};
       if (wanted.length === 0) return c.json(results, 200);
-      if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
+      if (wanted.length > ALBUM_LOOKUP_BATCH_MAX) {
         return c.json(
-          { error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values` },
+          { error: `mbids must contain at most ${ALBUM_LOOKUP_BATCH_MAX} unique values` },
           400,
         );
       }
@@ -345,57 +242,6 @@ export default new Hono<AppEnv>()
               .filter(Boolean),
           );
         }
-      }
-
-      if (!lidarrClient.isConfigured()) return c.json(results, 200);
-      const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
-
-      for (const [index, foreignAlbumId] of wanted.entries()) {
-        const result = albums[index];
-        if (!result) continue;
-        if (result.status === "rejected") {
-          logger.warn("library", "Lidarr album lookup failed", {
-            foreignAlbumId,
-            message: asAppError(result.reason)?.message || String(result.reason),
-          });
-          continue;
-        }
-        const album = result.value;
-        if (!album) {
-          if (results[foreignAlbumId]?.managedBy !== "aurral") delete results[foreignAlbumId];
-          continue;
-        }
-        if (results[foreignAlbumId]) continue;
-
-        const albumTracks = album.id ? await libraryManager.getTracks(album.id) : [];
-
-        const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
-        const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
-        const trackCount = Number(album?.statistics?.trackCount || 0);
-        const trackFileCount = Number(album?.statistics?.trackFileCount || 0);
-        const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
-        const monitored = Boolean(album?.monitored);
-
-        const providerAlbumId = album.id != null ? String(album.id) : null;
-        const providerArtistId = album.artistId != null ? String(album.artistId) : null;
-        results[foreignAlbumId] = {
-          inLibrary: true,
-          fromLibraryIndex: false,
-          providerAlbumId,
-          providerArtistId,
-          libraryAlbumId: null,
-          libraryArtistId: null,
-          status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
-          monitored,
-          trackListComplete: true,
-          percentOfTracks,
-          sizeOnDisk,
-          trackCount,
-          trackFileCount,
-          ownedTrackMbids: ownedLidarrTrackMbids(albumTracks),
-          albumName: String(album?.title || "").trim(),
-          releaseDate: String(album?.releaseDate || "").trim(),
-        };
       }
 
       return c.json(results, 200);

@@ -30,7 +30,7 @@ Treat playlist removal as a durable cancellation boundary.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
-- Library-track deletion unlinks a file only when Aurral's Library folder holds it. Files in Lidarr or read-only folders stay in place.
+- Library-track deletion unlinks a file only when Aurral's Library folder holds it. Files in read-only folders stay in place.
 - Library-track and album deletion remove the static playlist tracks that referenced the deleted library jobs, under each playlist's download locks. Quick and full library refreshes remove any remaining static playlist track whose referenced job no longer exists, so a failed or older deletion cannot leave a hidden track that still blocks adding the same song.
 - slskd, deemix, and Usenet submissions use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
 

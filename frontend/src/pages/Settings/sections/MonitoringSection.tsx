@@ -191,10 +191,7 @@ function DefaultRulesGroup() {
   const query = useMonitoringDefaults();
   const defaults = query.data;
   return (
-    <SettingsGroup
-      title="Default rules"
-      note="For monitored artists without their own rules. Lidarr artists use Lidarr rules."
-    >
+    <SettingsGroup title="Default rules" note="For monitored artists without their own rules.">
       {defaults ? (
         <SettingsServiceRow
           to={`monitoring/${DEFAULTS_ITEM}`}

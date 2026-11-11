@@ -1,5 +1,4 @@
 import type { ServiceStatus } from "../SettingsLayout";
-import type { normalizeSettings } from "../utils";
 
 export function providerStatus(enabled: boolean, configured: boolean): ServiceStatus {
   if (enabled && configured) return { label: "On" };
@@ -10,8 +9,3 @@ export function providerStatus(enabled: boolean, configured: boolean): ServiceSt
 
 export const configuredStatus = (configured: boolean): ServiceStatus =>
   configured ? { label: "On" } : { label: "Not set up", tone: "muted" };
-
-type Integrations = ReturnType<typeof normalizeSettings>["integrations"];
-
-export const lidarrConnected = ({ lidarr }: Integrations) =>
-  lidarr.enabled !== false && Boolean(lidarr.url && lidarr.apiKey);

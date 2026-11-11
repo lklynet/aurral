@@ -530,12 +530,12 @@ test("album activity excludes hidden member identities from an authorized respon
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryRequests.ts");
   const visible = (
-    await getAurralHistoryRequests(null, { id: 42, username: "listener", role: "user" })
+    await getAurralHistoryRequests({ id: 42, username: "listener", role: "user" })
   ).filter((item) => ids.includes(item.jobId!));
   assert.equal(visible.length, 1);
   assert.deepEqual(requireFixture(visible[0]).albumGrab!.memberJobIds, [ids[0]]);
   const admin = (
-    await getAurralHistoryRequests(null, { id: 1, username: "admin", role: "admin" })
+    await getAurralHistoryRequests({ id: 1, username: "admin", role: "admin" })
   ).filter((item) => ids.includes(item.jobId!));
   assert.equal(admin.length, 2);
   assert.deepEqual(requireFixture(admin[0]).albumGrab!.memberJobIds, ids);
@@ -1254,10 +1254,10 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
 
 test("classifies a file outside the Library folder without making it eligible for upgrades, also when its read-only folder is the Library folder", async () => {
   const tracker = trackerModule.downloadTracker;
-  const lidarrPath = path.join(isolatedState.baseDir, "lidarr", "Song.mp3");
-  await mkdir(path.dirname(lidarrPath), { recursive: true });
+  const sharedPath = path.join(isolatedState.baseDir, "shared", "Song.mp3");
+  await mkdir(path.dirname(sharedPath), { recursive: true });
   await writeFile(
-    lidarrPath,
+    sharedPath,
     Buffer.from(
       "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAzAAAAAAAAAAAAAAD/+5DAAAAAAAAAAAAAAAAAAAAAAABJbmZvAAAADwAAAAIAAATkAKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr//////////////////////////////////////////////////////////////////wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkBQcAAAAAAAAE5MAlg1kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
       "base64",
@@ -1269,7 +1269,7 @@ test("classifies a file outside the Library folder without making it eligible fo
   });
   const jobId = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "discover");
   assert.ok(jobId != null);
-  tracker.setDone(jobId, lidarrPath, "Album", "/music/Artist/Album/Song.mp3");
+  tracker.setDone(jobId, sharedPath, "Album", "/music/Artist/Album/Song.mp3");
 
   const result = await qualityProfileService.reclassifyQualityJobs();
   const job = tracker.getJob(jobId);
@@ -1284,7 +1284,7 @@ test("classifies a file outside the Library folder without making it eligible fo
   assert.equal(decorated.qualityState, "external");
   assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");
 
-  const sharedFolder = path.dirname(lidarrPath);
+  const sharedFolder = path.dirname(sharedPath);
   dbOps.updateSettings({ ...dbOps.getSettings(), downloadFolderPath: sharedFolder });
   assert.equal(decorateJobQuality(job).qualityOwned, true);
   dbOps.setJSONSetting("readOnlyFolders", [sharedFolder]);

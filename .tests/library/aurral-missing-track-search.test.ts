@@ -16,7 +16,6 @@ const [
   managementStore,
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { libraryManager },
   { getLibraryForAlbumIds },
   { recordMissingTrackSearch },
@@ -33,7 +32,6 @@ const [
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/aurralHistoryService.ts"),
@@ -46,7 +44,6 @@ const [
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const lidarrCalls: unknown[][] = [];
 let sequence = 0;
 
 function atTime<T>(now: number, create: () => T) {
@@ -80,7 +77,6 @@ function addTrackJob({
       albumName: album.title,
       albumMbid,
       trackMbid,
-      managedBy: "aurral",
     },
     "library",
   );
@@ -92,7 +88,6 @@ function addTrackJob({
 }
 
 function createAlbum({
-  managedBy = "aurral",
   monitored = true,
   artistMode = null,
   lastSearchedAt = null,
@@ -102,7 +97,6 @@ function createAlbum({
   requested = true,
   releaseDate = null,
 }: {
-  managedBy?: string;
   monitored?: boolean;
   artistMode?: string | null;
   lastSearchedAt?: number | null;
@@ -125,7 +119,6 @@ function createAlbum({
     managementStore.setLibraryManagement({
       entityKind: "artist",
       entityId: artist.id,
-      managedBy: "aurral",
       monitorMode: artistMode,
     });
   }
@@ -138,13 +131,12 @@ function createAlbum({
     releaseDate,
     metadata: {
       monitored,
-      ...(managedBy === "aurral" && requested && { librarySource: "aurral" }),
+      ...(requested && { librarySource: "aurral" }),
     },
   });
   managementStore.setLibraryManagement({
     entityKind: "album",
     entityId: album.id,
-    managedBy,
     monitorMode: monitored ? null : "unmonitored",
   });
   if (lastSearchedAt != null) {
@@ -172,7 +164,7 @@ function createAlbum({
           scanId: undefined,
           trackId: track.id,
           albumId: album.id,
-          source: managedBy,
+          source: "aurral",
           path: path.join(isolatedState.dataDir, `album-${sequence}`, `${index + 1}.flac`),
         });
       } else if (state !== "missing") {
@@ -231,12 +223,6 @@ function setDownloadSourceConfigured(configured: boolean) {
 }
 
 const originalSettings = dbOps.getSettings();
-const originalLidarr = {
-  isConfigured: lidarrClient.isConfigured,
-  request: lidarrClient.request,
-  getArtist: lidarrClient.getArtist,
-  getArtistByMbid: lidarrClient.getArtistByMbid,
-};
 const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
@@ -245,13 +231,6 @@ beforeAll(() => {
     ...dbOps.getSettings(),
     missingTrackSearch: { enabled: true, intervalDays: 1 },
   });
-  lidarrClient.isConfigured = () => false;
-  for (const method of ["request", "getArtist", "getArtistByMbid"] as const) {
-    lidarrClient[method] = async (...args: unknown[]) => {
-      lidarrCalls.push([method, ...args]);
-      throw new Error("Lidarr must not be called");
-    };
-  }
   downloadWorker.start = async () => {};
 });
 
@@ -264,11 +243,9 @@ beforeEach(() => {
   db.prepare("DELETE FROM library_tracks").run();
   db.prepare("DELETE FROM library_artists").run();
   managementStore.invalidateLibraryManagementCache();
-  lidarrCalls.length = 0;
 });
 
 afterAll(async () => {
-  Object.assign(lidarrClient, originalLidarr);
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await cleanupIsolatedState(isolatedState);
@@ -295,7 +272,6 @@ test("a due album gets its failed and missing tracks queued and an Activity entr
   const searchedAt = searchTime(album.id);
   assert.ok(searchedAt !== null && searchedAt >= startedAt);
   assert.equal(albumActivity(album.id).length, 1);
-  assert.deepEqual([...lidarrCalls], []);
 });
 
 test("repeated searches of an album keep one Activity entry", () => {
@@ -374,7 +350,6 @@ test("only Aurral albums someone asked for with monitored missing tracks and no 
   const scannedNotRequested = createAlbum({ requested: false });
   const singleFromPlaylist = createAlbum({ monitored: false, tracks: ["missing", "missing"] });
   setTrackMonitored(requireFixture(singleFromPlaylist.tracks[0]).id, true);
-  const lidarrManaged = createAlbum({ managedBy: "lidarr" });
   const downloading = createAlbum({ tracks: ["pending", "missing"] });
   const cancelledByUser = createAlbum({ tracks: ["cancelled", "failed"] });
   const waitingForReview = createAlbum({ tracks: ["blocked", "available"] });
@@ -392,7 +367,6 @@ test("only Aurral albums someone asked for with monitored missing tracks and no 
   for (const skipped of [
     unmonitored,
     scannedNotRequested,
-    lidarrManaged,
     downloading,
     cancelledByUser,
     waitingForReview,
@@ -402,7 +376,6 @@ test("only Aurral albums someone asked for with monitored missing tracks and no 
   }
   assert.equal(albumJobs(unmonitored.albumMbid).length, 0);
   assert.equal(albumJobs(scannedNotRequested.albumMbid).length, 0);
-  assert.equal(albumJobs(lidarrManaged.albumMbid).length, 0);
   assert.equal(albumJobs(downloading.albumMbid).length, 1);
   assert.deepEqual(
     albumJobs(cancelledByUser.albumMbid)
@@ -418,7 +391,6 @@ test("only Aurral albums someone asked for with monitored missing tracks and no 
     downloadTracker.getAll().some((job) => job.albumMbid == null),
     false,
   );
-  assert.deepEqual([...lidarrCalls], []);
 });
 
 test("a track whose only file belongs to another album still counts as missing", async () => {
@@ -489,9 +461,6 @@ test("Retry skips unmonitored tracks, and turning an album back on monitors all 
     retried.artist.id,
     requireFixture(retried.albumMbid),
     retried.album.title,
-    {
-      managedBy: "aurral",
-    },
   );
   assert.deepEqual(
     albumJobs(retried.albumMbid).map((job) => job.trackMbid),
@@ -666,9 +635,7 @@ test("an album asked for before it comes out waits, then is searched once when i
   const settings = dbOps.getSettings();
   dbOps.updateSettings({ ...settings, missingTrackSearch: { enabled: false, intervalDays: 1 } });
   try {
-    await libraryManager.addAlbum(artist.id, requireFixture(albumMbid), album.title, {
-      managedBy: "aurral",
-    });
+    await libraryManager.addAlbum(artist.id, requireFixture(albumMbid), album.title, {});
     assert.equal(albumJobs(albumMbid).length, 0);
     assert.equal(libraryManager.getAurralAlbumStatus(album.id).status, "unreleased");
     assert.equal(await runMissingTrackSearch(), 0);
@@ -697,7 +664,6 @@ test("the scheduled system task searches due albums", async () => {
     albumJobs(albumMbid).map((job) => job.status),
     ["pending", "pending"],
   );
-  assert.deepEqual([...lidarrCalls], []);
 });
 
 function getJob(id: Parameters<typeof downloadTracker.getJob>[0]) {

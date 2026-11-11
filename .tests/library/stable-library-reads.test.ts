@@ -4,213 +4,24 @@ import { test, vi } from "vite-plus/test";
 
 import { db } from "../../backend/config/db-sqlite.ts";
 import {
-  beginLibraryScan,
-  finishLibraryScan,
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
-import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.ts";
-import { libraryManager } from "../../backend/services/libraryManager.ts";
-import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 import {
   getLibraryAlbumPage,
   getLibraryArtistPage,
   getLibraryArtistKeyProjection,
   getLibraryArtistProjection,
-  iterateLibraryArtistProjection,
   getLibraryPage,
   getLibraryTrackPage,
 } from "../../backend/services/libraryQueryService.ts";
-import {
-  clearScheduledLibraryScan,
-  getScheduledLibraryScanJobId,
-} from "../../backend/services/libraryScanWorker.ts";
-import { libraryScanQueue } from "../../backend/services/jobs/queues.ts";
-import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.ts";
 import { api } from "../../backend/routes/api.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 const app = signedInAs(undefined).route("/", api);
-
-test("stable artist and discovery reads do not call Lidarr", async () => {
-  const identityKey = `stable-read-test:${Date.now()}`;
-  const artist = upsertLibraryArtist({
-    identityKey,
-    mbid: "11111111-1111-4111-8111-111111111111",
-    name: "Stable Read Artist",
-    metadata: { id: 9911, monitored: true },
-  });
-  const originalConfigured = lidarrClient.isConfigured;
-  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
-    throw new Error("stable reads must not call Lidarr");
-  });
-  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
-    throw new Error("stable reads must not call Lidarr");
-  });
-  lidarrClient.isConfigured = () => true;
-
-  try {
-    const artists = [...iterateLibraryArtistProjection({ pageSize: 100 })];
-    const releases = await getRecentMissingReleases(10, {
-      now: "2026-08-22T12:00:00Z",
-    });
-
-    const projectedArtist = artists.find((candidate) => candidate.providerId === "9911");
-    assert.equal(projectedArtist?.id, String(artist.id));
-    assert.deepEqual([...releases], []);
-    assert.equal(request.mock.calls.length, 0);
-  } finally {
-    lidarrClient.isConfigured = originalConfigured;
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  }
-});
-
-test("optional Lidarr reads use indexed Aurral media without provider calls", async () => {
-  const key = `optional-lidarr-read-${process.pid}-${Date.now()}`;
-  const artist = upsertLibraryArtist({
-    identityKey: `${key}:artist`,
-    mbid: `${key}-artist-mbid`,
-    name: "Optional Read Artist",
-    metadata: { id: 9911, monitored: true },
-  });
-  const album = upsertLibraryAlbum({
-    identityKey: `${key}:album`,
-    artistId: artist.id,
-    title: "Optional Read Album",
-    metadata: { id: 9922, foreignAlbumId: `${key}-album`, monitored: true },
-  });
-  const track = upsertLibraryTrack({
-    identityKey: `${key}:track`,
-    title: "Optional Read Track",
-    artistName: artist.name,
-    metadata: { id: 9933, foreignRecordingId: `${key}-track` },
-  });
-  const filePath = `/tmp/${key}.flac`;
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  upsertLibraryMediaFile({
-    trackId: track.id,
-    albumId: album.id,
-    source: "aurral",
-    path: filePath,
-    available: true,
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
-  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
-    throw new Error("optional reads must not call Lidarr");
-  });
-  for (const method of [
-    "getArtistByMbid",
-    "getArtist",
-    "getAlbum",
-    "getTracksByAlbumId",
-    "getTrackFilesByAlbumId",
-  ] as const) {
-    vi.spyOn(lidarrClient, method).mockImplementation(
-      requireValue(async () => {
-        throw new Error("optional reads must not call Lidarr");
-      }),
-    );
-  }
-
-  try {
-    const [byMbid, byId, albums, byAlbumId, tracks, queue] = await Promise.all([
-      libraryManager.getArtist(requireValue(requireValue(artist).mbid)),
-      libraryManager.getArtistById(9911),
-      libraryManager.getAlbums(9911),
-      libraryManager.getAlbumById(9922),
-      libraryManager.getTracks(9922),
-      libraryManager.getPlaybackQueue({ pageSize: 10 }),
-    ]);
-    assert.equal(requireValue(byMbid).id, String(artist.id));
-    assert.equal(requireValue(byId).id, String(artist.id));
-    assert.equal(albums[0]?.id, String(album.id));
-    assert.equal(albums[0]?.providerId, 9922);
-    assert.equal(requireValue(byAlbumId).id, String(album.id));
-    assert.equal(requireValue(byAlbumId).providerId, 9922);
-    const [firstTrack] = tracks;
-    assert.ok(firstTrack && "providerId" in firstTrack);
-    assert.equal(firstTrack.id, String(track.id));
-    assert.equal(firstTrack.providerId, 9933);
-    assert.equal(
-      queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
-      `/library/stream/${album.id}/${track.id}`,
-    );
-    assert.equal(request.mock.calls.length, 0);
-  } finally {
-    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
-    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  }
-});
-
-test("configured Lidarr read failures fall back to the library index", async () => {
-  const key = `fallback-lidarr-read-${process.pid}-${Date.now()}`;
-  const artist = upsertLibraryArtist({
-    identityKey: `${key}:artist`,
-    mbid: `${key}-artist-mbid`,
-    name: "Fallback Read Artist",
-    metadata: { id: 9941 },
-  });
-  const album = upsertLibraryAlbum({
-    identityKey: `${key}:album`,
-    artistId: artist.id,
-    title: "Fallback Read Album",
-    metadata: { id: 9942 },
-  });
-  const track = upsertLibraryTrack({
-    identityKey: `${key}:track`,
-    title: "Fallback Read Track",
-    metadata: { id: 9943 },
-  });
-  const filePath = `/tmp/${key}.flac`;
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  upsertLibraryMediaFile({
-    trackId: track.id,
-    albumId: album.id,
-    source: "aurral",
-    path: filePath,
-    available: true,
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
-    throw new Error("Lidarr connection refused");
-  });
-  vi.spyOn(lidarrClient, "getArtist").mockImplementation(async () => {
-    throw new Error("Lidarr connection refused");
-  });
-  vi.spyOn(lidarrClient, "getHistory").mockImplementation(async () => {
-    throw new Error("Lidarr connection refused");
-  });
-  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async () => {
-    throw new Error("Lidarr connection refused");
-  });
-
-  try {
-    const [byMbid, byId, albums, byAlbumId, tracks] = await Promise.all([
-      libraryManager.getArtist(requireValue(requireValue(artist).mbid)),
-      libraryManager.getArtistById(9941),
-      libraryManager.getAlbums(9941),
-      libraryManager.getAlbumById(9942),
-      libraryManager.getTracks(9942),
-    ]);
-    assert.equal(byMbid?.id, String(artist.id));
-    assert.equal(byId?.id, String(artist.id));
-    assert.equal(albums[0]?.id, String(album.id));
-    assert.equal(byAlbumId?.id, String(album.id));
-    assert.equal(tracks[0]?.id, String(track.id));
-  } finally {
-    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
-    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  }
-});
 
 test("artist key reads use identity columns and preserve metadata foreign IDs", () => {
   const identityKey = `artist-key-read:${Date.now()}`;
@@ -247,100 +58,6 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   }
 });
 
-test("artist monitoring mutations dedupe library reconciliation scans", async () => {
-  clearScheduledLibraryScan();
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => ({
-    id: 9922,
-    artistName: "Monitoring Artist",
-    foreignArtistId: "33333333-3333-4333-8333-333333333333",
-    monitored: false,
-  }));
-  vi.spyOn(lidarrClient, "updateArtistMonitoring").mockImplementation(async () => ({
-    id: 9922,
-    artistName: "Monitoring Artist",
-    foreignArtistId: "33333333-3333-4333-8333-333333333333",
-  }));
-  vi.spyOn(lidarrClient, "getArtist").mockImplementation(async () => ({
-    id: 9922,
-    artistName: "Monitoring Artist",
-    foreignArtistId: "33333333-3333-4333-8333-333333333333",
-    monitored: true,
-    monitor: "all",
-  }));
-
-  let jobId: number | null = null;
-  try {
-    await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
-      monitorOption: "all",
-    });
-    jobId = getScheduledLibraryScanJobId();
-    assert.ok(jobId);
-    assert.deepEqual(JSON.parse(requireValue(libraryScanQueue.getJob(jobId)).payload), {
-      force: false,
-      includeLidarr: true,
-      changedPaths: null,
-    });
-
-    await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
-      monitorOption: "all",
-    });
-    assert.equal(getScheduledLibraryScanJobId(), jobId);
-  } finally {
-    if (jobId) libraryScanQueue.cancel(jobId);
-    clearScheduledLibraryScan();
-  }
-});
-
-test("deleting a Lidarr artist clears library provider state for both IDs", async () => {
-  const mbid = "89898989-8989-4898-8989-898989898989";
-  const foreignArtistId = "8989@deezer";
-  const artist = upsertLibraryArtist({
-    identityKey: `lidarr-artist:${foreignArtistId}`,
-    name: "Deleted Provider Artist",
-    metadata: {
-      id: 8989,
-      foreignArtistId,
-      librarySource: "lidarr",
-      monitored: true,
-    },
-  });
-  const resolvedArtist = upsertLibraryArtist({
-    identityKey: `mbid:${mbid}`,
-    mbid,
-    name: "Deleted Provider Artist",
-    metadata: {
-      id: 8989,
-      librarySource: "lidarr",
-      monitored: true,
-    },
-  });
-  clearScheduledLibraryScan();
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => ({
-    id: 8989,
-    artistName: "Deleted Provider Artist",
-    foreignArtistId,
-  }));
-  vi.spyOn(lidarrClient, "deleteArtist").mockImplementation(async () => true);
-
-  try {
-    assert.deepEqual(await libraryManager.deleteArtist(mbid), { success: true });
-    const projection = getLibraryArtistProjection({ reference: artist.id })[0];
-    assert.equal(projection?.lidarrManaged, false);
-    assert.equal(projection?.providerId, null);
-    assert.equal(projection?.monitored, false);
-    assert.equal(getLibraryArtistProjection({ reference: resolvedArtist.id })[0]?.providerId, null);
-    assert.equal(getLibraryLidarrArtist(mbid), null);
-    assert.equal(getLibraryLidarrArtist(foreignArtistId), null);
-  } finally {
-    const jobId = getScheduledLibraryScanJobId();
-    if (jobId) libraryScanQueue.cancel(jobId);
-    clearScheduledLibraryScan();
-    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, resolvedArtist.id);
-  }
-});
-
 test("library artist compatibility reads apply SQL pagination", async () => {
   const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
   const artists: import("../../backend/db/rows.ts").LibraryArtistsRow[] = [];
@@ -352,7 +69,7 @@ test("library artist compatibility reads apply SQL pagination", async () => {
       identityKey: `${key}:artist:${name}`,
       name: `${key} ${name}`,
       sortName: `${key} ${name}`,
-      metadata: { librarySource: "lidarr" },
+      metadata: { librarySource: "aurral" },
     });
     const album = upsertLibraryAlbum({
       identityKey: `${key}:album:${name}`,
@@ -368,7 +85,7 @@ test("library artist compatibility reads apply SQL pagination", async () => {
     upsertLibraryMediaFile({
       trackId: track.id,
       albumId: album.id,
-      source: "lidarr",
+      source: "readonly",
       path: filePath,
       available: true,
     });
@@ -380,7 +97,7 @@ test("library artist compatibility reads apply SQL pagination", async () => {
 
   try {
     const response = await app.request(
-      `/library/artists?${new URLSearchParams({ readPath: "library", source: "lidarr", limit: "1", offset: "1" })}`,
+      `/library/artists?${new URLSearchParams({ readPath: "library", source: "readonly", limit: "1", offset: "1" })}`,
     );
     const body: (ReturnType<
       typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
@@ -444,7 +161,7 @@ test("library paginated reads keep tied rows stable", () => {
       upsertLibraryMediaFile({
         trackId: track.id,
         albumId: album.id,
-        source: "lidarr",
+        source: "readonly",
         path: filePath,
         available: true,
       });
@@ -491,7 +208,7 @@ test("library paginated reads keep tied rows stable", () => {
       [0, 1].map(
         (offset) =>
           getLibraryArtistPage({
-            source: "lidarr",
+            source: "readonly",
             availableOnly: true,
             query: artistName,
             limit: 1,
@@ -504,7 +221,7 @@ test("library paginated reads keep tied rows stable", () => {
       [0, 1].map(
         (offset) =>
           getLibraryAlbumPage({
-            source: "lidarr",
+            source: "readonly",
             availableOnly: true,
             query: albumTitle,
             limit: 1,
@@ -515,7 +232,7 @@ test("library paginated reads keep tied rows stable", () => {
     );
     for (const sort of ["name", "artist", "newest"] as const) {
       const expectedTrackIds = getLibraryPage({
-        source: "lidarr",
+        source: "readonly",
         availableOnly: true,
         kind: "tracks",
         query: trackTitle,
@@ -526,7 +243,7 @@ test("library paginated reads keep tied rows stable", () => {
         [0, 1].map(
           (offset) =>
             getLibraryPage({
-              source: "lidarr",
+              source: "readonly",
               availableOnly: true,
               kind: "tracks",
               query: trackTitle,
@@ -609,22 +326,6 @@ test("legacy artist list bounds the projection before materialization", async ()
   }
 });
 
-test("artist details do not expose Lidarr state for Aurral-only artists", () => {
-  const mbid = "67676767-6767-4676-8676-676767676767";
-  const artist = upsertLibraryArtist({
-    identityKey: `mbid:${mbid}`,
-    mbid,
-    name: "Aurral Only Artist",
-    metadata: { id: 6767, foreignArtistId: mbid },
-  });
-
-  try {
-    assert.equal(getLibraryLidarrArtist(mbid), null);
-  } finally {
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  }
-});
-
 test("library artist page totals match hydrated items", () => {
   const key = `artist-page-shape:${process.pid}:${Date.now()}`;
   const emptyArtist = upsertLibraryArtist({
@@ -664,67 +365,6 @@ test("library artist page totals match hydrated items", () => {
       populatedArtist.id,
     );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
-  }
-});
-
-test("explicit artist synchronization retains its Lidarr request", async () => {
-  const originalConfigured = lidarrClient.isConfigured;
-  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
-  vi.spyOn(libraryManager, "backfillLidarrArtistMappings").mockImplementation(async () => {});
-  lidarrClient.isConfigured = () => true;
-
-  try {
-    await libraryManager.syncLidarrArtists({ forceRefresh: true });
-    assert.deepEqual(
-      request.mock.calls.map((call) => call[0]),
-      ["/artist"],
-    );
-  } finally {
-    const jobId = getScheduledLibraryScanJobId();
-    if (jobId) libraryScanQueue.cancel(jobId);
-    clearScheduledLibraryScan();
-    lidarrClient.isConfigured = originalConfigured;
-  }
-});
-
-test("a failed provider scan keeps the library artist and marks it stale", () => {
-  const identityKey = `stale-read-test:${Date.now()}`;
-  const artist = upsertLibraryArtist({
-    identityKey,
-    mbid: "22222222-2222-4222-8222-222222222222",
-    name: "Stale Read Artist",
-  });
-  const scanId = beginLibraryScan({ source: "lidarr" });
-
-  try {
-    finishLibraryScan(scanId, { status: "failed", error: "provider unavailable" });
-    assert.equal(getLibraryArtistProjection({ reference: artist.id })[0]?.stale, false);
-
-    const album = upsertLibraryAlbum({
-      identityKey: `${identityKey}:album`,
-      artistId: artist.id,
-      title: "Stale",
-    });
-    const track = upsertLibraryTrack({
-      identityKey: `${identityKey}:track`,
-      title: "Stale",
-      artistName: artist.name,
-    });
-    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-    upsertLibraryMediaFile({
-      trackId: track.id,
-      albumId: album.id,
-      source: "lidarr",
-      path: `/music/${identityKey}.flac`,
-      available: true,
-    });
-    const projection = getLibraryArtistProjection({ reference: artist.id });
-    assert.equal(projection[0]?.name, "Stale Read Artist");
-    assert.equal(projection[0]?.stale, true);
-  } finally {
-    db.prepare("DELETE FROM library_scan_runs WHERE id = ?").run(scanId);
-    db.prepare("DELETE FROM library_tracks WHERE identity_key = ?").run(`${identityKey}:track`);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 

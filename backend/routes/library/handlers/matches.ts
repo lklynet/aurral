@@ -158,12 +158,6 @@ export default new Hono<AppEnv>()
         }
       }
       const result = setLibraryArtistMbid(artistId, mbid);
-      if (result.error === "lidarr_managed") {
-        return c.json(
-          { error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." },
-          409,
-        );
-      }
       const { artist } = result;
       if (!artist) return c.json({ error: "Artist not found" }, 404);
       return c.json(
@@ -226,9 +220,6 @@ export default new Hono<AppEnv>()
       }
       const result = setLibraryAlbumReleaseGroup(albumId, mbid);
       if (!result.album) {
-        if (result.error === "lidarr_managed") {
-          return c.json({ error: "Lidarr manages this album. Change its match in Lidarr." }, 409);
-        }
         if (result.error === "tagged") {
           return c.json(
             {

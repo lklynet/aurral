@@ -5,7 +5,6 @@ import {
   Pause,
   Pencil,
   Play,
-  RefreshCw,
   Share,
   ThumbsDown,
   ThumbsUp,
@@ -13,7 +12,6 @@ import {
 import { DotLoader } from "../../../components/DotLoader";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
-import Tooltip from "../../../components/Tooltip";
 import { ArtistMonitoringButtons } from "../../../components/ArtistMonitoringButtons";
 import { useShareAction } from "../../../hooks/useShareAction";
 import type { ArtistFeedbackAction } from "../../../utils/artistTaste.ts";
@@ -28,7 +26,6 @@ export function ArtistDetailsActionBar({
   loadingLibrary,
   canChangeMonitoring,
   canAddArtist,
-  canRefreshArtist,
   buildingQueue = false,
   isArtistPlaybackActive,
   handlePreviewPlayAll,
@@ -37,13 +34,7 @@ export function ArtistDetailsActionBar({
   tasteFeedbackUsed = {},
   tasteActionPending = null,
 }: {
-  library: Pick<
-    ReturnType<typeof useArtistDetailsLibrary>,
-    | "handleOpenAddCustomizeModal"
-    | "reloadLibraryState"
-    | "handleRefreshArtist"
-    | "refreshingArtist"
-  >;
+  library: Pick<ReturnType<typeof useArtistDetailsLibrary>, "reloadLibraryState">;
   mbid: string;
   artistName?: string;
   existsInLibrary: boolean;
@@ -51,7 +42,6 @@ export function ArtistDetailsActionBar({
   loadingLibrary: boolean;
   canChangeMonitoring: boolean;
   canAddArtist: boolean;
-  canRefreshArtist: boolean;
   buildingQueue?: boolean;
   isArtistPlaybackActive: boolean;
   handlePreviewPlayAll: () => void;
@@ -80,7 +70,6 @@ export function ArtistDetailsActionBar({
         artistName={artistName}
         canChange={canChangeMonitoring}
         canAdd={canAddArtist}
-        onCustomizeLidarr={library.handleOpenAddCustomizeModal}
         onChanged={library.reloadLibraryState}
       />
     );
@@ -111,24 +100,6 @@ export function ArtistDetailsActionBar({
         </div>
 
         <div className="artist-row-actions">
-          {existsInLibrary && canRefreshArtist && (
-            <Tooltip content="Refresh artist">
-              <button
-                type="button"
-                onClick={library.handleRefreshArtist}
-                disabled={library.refreshingArtist}
-                className="btn btn-secondary btn-min-h"
-                aria-label="Refresh artist"
-              >
-                {library.refreshingArtist ? (
-                  <DotLoader size="sm" label={null} />
-                ) : (
-                  <RefreshCw className="artist-icon-sm" />
-                )}
-                <span className="artist-hidden-mobile">Refresh</span>
-              </button>
-            </Tooltip>
-          )}
           <div className="artist-relative">
             <TooltipButton
               type="button"

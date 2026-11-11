@@ -210,19 +210,6 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
           });
         return;
       }
-      if (message?.type === "cache-invalidate" && message.cache === "lidarr-artists") {
-        void import("./libraryManager.ts")
-          .then(({ invalidateLidarrArtistCache }) => {
-            invalidateLidarrArtistCache();
-          })
-          .catch((error) => {
-            logger.warn?.(
-              "[AppRuntime] Could not refresh Lidarr artist cache:",
-              asAppError(error)?.message || error,
-            );
-          });
-        return;
-      }
       if (message?.type === "job-finished" && _group === "downloads") {
         void import("./playlists/flowPlaylistConfig.ts").then(
           ({ invalidateFlowPlaylistConfigCache }) => {

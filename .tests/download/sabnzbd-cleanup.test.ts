@@ -15,7 +15,6 @@ const [
   { SabnzbdClient },
   { removeSabnzbdDownloadFolder },
   { syncPathMappings },
-  { lidarrClient },
 ] = await setupIsolatedBackend(
   "sabnzbd-cleanup",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -23,7 +22,6 @@ const [
   () => import("../../backend/services/sabnzbdClient.ts"),
   () => import("../../backend/services/sabnzbdCleanup.ts"),
   () => import("../../backend/services/pathMappings.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
 );
 
 let sequence = 0;
@@ -196,19 +194,12 @@ test("refuses a completed folder that contains the music library", async () => {
   assert.equal(await exists(folder()), true);
 });
 
-test("protects configured Lidarr roots while Lidarr is disabled", async () => {
+test("refuses a completed folder that contains a read-only folder", async (t) => {
   const musicLibrary = path.join(folder(), "Music");
   await fs.mkdir(musicLibrary, { recursive: true });
-  const enabled = vi.spyOn(lidarrClient, "isEnabled").mockReturnValue(false);
-  const roots = vi
-    .spyOn(lidarrClient, "getConfiguredRootFolderPaths")
-    .mockReturnValue([musicLibrary]);
+  dbOps.setJSONSetting("readOnlyFolders", [musicLibrary]);
+  t.onTestFinished(() => dbOps.setJSONSetting("readOnlyFolders", []));
 
-  try {
-    await assert.rejects(remove(), /music library/);
-    assert.equal(await exists(folder()), true);
-  } finally {
-    enabled.mockRestore();
-    roots.mockRestore();
-  }
+  await assert.rejects(remove(), /music library/);
+  assert.equal(await exists(folder()), true);
 });

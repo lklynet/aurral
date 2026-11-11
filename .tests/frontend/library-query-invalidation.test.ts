@@ -143,37 +143,6 @@ test("artist batch lookup stays within the API batch limit", async () => {
   }
 });
 
-test("artist adds publish an immediate shared library lookup", async () => {
-  vi.resetModules();
-
-  const { addArtistToLibrary } = await import("../../frontend/src/utils/api/endpoints/library.ts");
-  const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        foreignArtistId: "artist-1",
-        artist: { mbid: "artist-1", artistName: "Artist" },
-      }),
-      {
-        status: 201,
-        headers: { "content-type": "application/json" },
-      },
-    );
-
-  try {
-    await addArtistToLibrary({
-      foreignArtistId: "artist-1",
-      artistName: "Artist",
-      managedBy: "aurral",
-    });
-    assert.equal(queryClient.getQueryData(queryKeys.libraryLookup("artist-1")), true);
-  } finally {
-    globalThis.fetch = originalFetch;
-    queryClient.clear();
-  }
-});
-
 test("library refresh starts a new lookup after cancelling an active request", async () => {
   vi.resetModules();
 

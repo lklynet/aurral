@@ -690,7 +690,7 @@ test("a moved file the Library scan files with a track the Library already had g
   assert.equal(await readFile(otherArt, "utf8"), "back");
   assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
   const queued = dbOps.getJSONSetting("pendingLibraryScanJob", scanRegistrySchema);
-  assert.equal(requireValue(queued).includeLidarr, true);
+  assert.equal(requireValue(queued).includeReadOnly, true);
   assert.equal(requireValue(queued).changedPaths?.includes(file), true);
   assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
@@ -1246,7 +1246,7 @@ test("an ingest whose saved options Aurral can't read stops without filing anyth
   assert.ok(await operations.startCleanup());
 });
 
-test("the source check rejects the Library folder and unreadable folders, and flags a Lidarr root folder", async () => {
+test("the source check rejects the Library folder and unreadable folders", async () => {
   await mkdir(root, { recursive: true });
   await assert.rejects(
     checkIngestSource({ sourcePath: path.join(root) }),
@@ -1267,28 +1267,6 @@ test("the source check rejects the Library folder and unreadable folders, and fl
     } finally {
       await chmod(locked, 0o755);
     }
-  }
-
-  const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
-  const track = await makeTrack(path.join(lidarrRoot, "Artist", "Album", "01.flac"), {
-    title: "x",
-  });
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...settings,
-    integrations: {
-      ...settings.integrations,
-      lidarr: { ...settings.integrations?.lidarr, rootFolderPath: lidarrRoot },
-    },
-  });
-  try {
-    const check = await checkIngestSource({ sourcePath: path.join(lidarrRoot, "Artist") });
-    assert.equal(check.lidarrRoot, lidarrRoot);
-    assert.equal(check.audioFiles, 1);
-    assert.equal(check.hardlink.available, true);
-    assert.equal(await exists(track), true);
-  } finally {
-    dbOps.updateSettings(settings);
   }
 });
 

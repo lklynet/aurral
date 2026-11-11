@@ -2,7 +2,7 @@ type LibraryScanRegistry = { changedPaths?: string[] | null };
 
 export type LibraryScanRequest = {
   force?: boolean;
-  includeLidarr?: boolean;
+  includeReadOnly?: boolean;
   changedPaths?: string[] | null;
 };
 

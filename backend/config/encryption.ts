@@ -39,7 +39,6 @@ export function decryptWithKey(text: string | null | undefined, key: Buffer) {
 
 const SENSITIVE_PATHS = [
   ["general", "authPassword"],
-  ["lidarr", "apiKey"],
   ["slskd", "apiKey"],
   ["prowlarr", "apiKey"],
   ["nzbget", "password"],

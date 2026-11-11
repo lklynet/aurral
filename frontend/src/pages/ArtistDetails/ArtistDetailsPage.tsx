@@ -40,8 +40,6 @@ import { ArtistDetailsAppearsOn } from "./components/ArtistDetailsAppearsOn";
 import { ArtistDetailsPreviewTracks } from "./components/ArtistDetailsPreviewTracks";
 import { ArtistDetailsAbout } from "./components/ArtistDetailsAbout";
 import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
-import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
-import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
@@ -67,7 +65,6 @@ function ArtistDetailsPage() {
     initialLibraryHint,
   } = useArtistRouteState();
   const { showSuccess, showError, showInfo } = useToast();
-  const libraryDestination = useLibraryDestination();
   const { hasPermission } = useAuth();
   const similarArtistsScrollRef = useRef(null);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
@@ -150,7 +147,6 @@ function ArtistDetailsPage() {
     loadingAppearsOn,
     existsInLibrary,
     setExistsInLibrary,
-    appSettings,
     albumCovers,
     fulfilledCoverIds,
     setAlbumCovers,
@@ -213,12 +209,10 @@ function ArtistDetailsPage() {
     setLibraryAlbums,
     existsInLibrary,
     setExistsInLibrary,
-    appSettings,
     ownedAlbums,
     showSuccess,
     showError,
     showInfo,
-    libraryDestination,
   });
 
   const libraryLookup = useQuery({
@@ -227,8 +221,6 @@ function ArtistDetailsPage() {
     enabled: false,
   });
   const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;
-  const lidarrManagesArtist =
-    libraryDestination.primary === "lidarr" && libraryArtist?.managedBy !== "aurral";
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -475,7 +467,6 @@ function ArtistDetailsPage() {
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
         canAddArtist={canAddArtist}
-        canRefreshArtist={canChangeMonitoring && lidarrManagesArtist}
         buildingQueue={buildingQueue}
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlayAll={handlePreviewPlayAll}
@@ -517,7 +508,6 @@ function ArtistDetailsPage() {
         canAddAlbum={canAddAlbum}
         requestingAlbum={library.requestingAlbum}
         handleRequestAlbum={library.handleRequestAlbum}
-        libraryDestination={libraryDestination}
         playbackSource={playbackSource}
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
@@ -550,7 +540,6 @@ function ArtistDetailsPage() {
           onReSearchMissingDownloads={canAddAlbum ? library.handleReSearchMissingDownloads : null}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
-          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleReleaseGroupCoverIds}
@@ -573,7 +562,6 @@ function ArtistDetailsPage() {
           getAlbumStatus={library.getAlbumStatus}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
-          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleAppearsOnCoverIds}
@@ -584,14 +572,7 @@ function ArtistDetailsPage() {
         />
       )}
 
-      <ArtistDetailsAbout
-        artist={artist}
-        libraryArtist={libraryArtist}
-        appSettings={appSettings}
-        lidarrConnected={lidarrManagesArtist}
-        existsInLibrary={existsInLibrary}
-        coverImages={coverImages}
-      />
+      <ArtistDetailsAbout artist={artist} coverImages={coverImages} />
 
       {(loadingSimilar || similarArtists.length > 0) && (
         <ArtistDetailsSimilar
@@ -602,25 +583,6 @@ function ArtistDetailsPage() {
           artistFeedbackLookup={artistFeedbackLookup}
         />
       )}
-
-      <AddArtistCustomizeModal
-        error={library.customizeAddError}
-        show={library.showAddCustomizeModal}
-        artistName={artist?.name}
-        loading={library.loadingLidarrPreferences}
-        preferences={library.lidarrPreferences}
-        rootFolderPath={library.customizeRootFolderPath}
-        setRootFolderPath={library.setCustomizeRootFolderPath}
-        qualityProfileId={library.customizeQualityProfileId}
-        setQualityProfileId={library.setCustomizeQualityProfileId}
-        tagId={library.customizeTagId}
-        setTagId={library.setCustomizeTagId}
-        monitorOption={library.customizeMonitorOption}
-        setMonitorOption={library.setCustomizeMonitorOption}
-        onClose={() => library.setShowAddCustomizeModal(false)}
-        onConfirm={library.handleCustomizeAddToLibrary}
-        confirming={library.addingToLibrary}
-      />
 
       <EditArtistIdsModal
         show={showEditIdsModal}

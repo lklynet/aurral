@@ -1,27 +1,21 @@
-import type { LidarrRequestItem } from "../backend/services/lidarrRequestBuilder.ts";
 import type {
   AurralAlbumGrab,
   AurralRequestItem,
 } from "../backend/services/aurralHistoryRequests.ts";
 
-type SharedKeys = keyof LidarrRequestItem & keyof AurralRequestItem;
-
-export type ActivityRequest = {
-  [K in SharedKeys]: LidarrRequestItem[K] | AurralRequestItem[K];
-} & Partial<Omit<LidarrRequestItem, SharedKeys>> &
-  Partial<Omit<AurralRequestItem, SharedKeys>> & {
-    children?: ActivityRequest[];
-    createdAt?: number | null;
-    error?: string | null;
-    qualityLabel?: string | null;
-    qualityState?: string | null;
-    playlistType?: string | null;
-    downloadSource?: string | null;
-    downloadClient?: string | null;
-    progressLabel?: string | null;
-    sourceSummary?: string | null;
-    downloadMethodLabel?: string | null;
-  };
+export type ActivityRequest = AurralRequestItem & {
+  children?: ActivityRequest[];
+  createdAt?: number | null;
+  error?: string | null;
+  qualityLabel?: string | null;
+  qualityState?: string | null;
+  playlistType?: string | null;
+  downloadSource?: string | null;
+  downloadClient?: string | null;
+  progressLabel?: string | null;
+  sourceSummary?: string | null;
+  downloadMethodLabel?: string | null;
+};
 
 export type AlbumActivityRequest = ActivityRequest & {
   children: ActivityRequest[];
@@ -268,7 +262,6 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       status,
       statusLabel,
       inQueue: active,
-      canReSearch: false,
       requestedAt: grab.requestedAt,
       completedAt,
       progressLabel,
@@ -306,14 +299,10 @@ export function buildActivityPage(
     : viewRequests;
   const times = new Map(matching.map((request) => [request, activityTime(request)]));
   const items = matching
-    .toSorted((a, b) => {
-      const reSearch = Number(b.canReSearch === true) - Number(a.canReSearch === true);
-      return (
-        reSearch ||
-        times.get(b)! - times.get(a)! ||
-        String(b.id || "").localeCompare(String(a.id || ""))
-      );
-    })
+    .toSorted(
+      (a, b) =>
+        times.get(b)! - times.get(a)! || String(b.id || "").localeCompare(String(a.id || "")),
+    )
     .slice(0, limit);
   return {
     view,

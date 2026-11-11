@@ -17,7 +17,6 @@ import { artworkHoverTint } from "../utils/imageColors.ts";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
 import type { DiscoverArtist } from "../utils/discoverUtils";
-import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
 import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
 
 export type DiscoverCardArtist = Partial<DiscoverArtist> & {
@@ -182,13 +181,11 @@ export const AlbumCard = memo(
     canAddAlbum = false,
     isPending = false,
     onAlbumAction,
-    libraryDestination,
   }: {
     album: RecentRelease;
     canAddAlbum?: boolean;
     isPending?: boolean;
     onAlbumAction: DiscoverAlbumAction;
-    libraryDestination: ReturnType<typeof useLibraryDestination>;
   }) => {
     const releaseGroupMbid = album.mbid || album.foreignAlbumId;
     const artistMbid = album.artistMbid || album.foreignArtistId;
@@ -294,8 +291,8 @@ export const AlbumCard = memo(
           ) : canAddAlbum && typeof onAlbumAction === "function" ? (
             <div className="artist-discover-card__action">
               <AddActionButton
-                {...getAlbumAddAction(album, libraryDestination)}
-                onAdd={(managedBy) => onAlbumAction(album, managedBy)}
+                {...getAlbumAddAction(album)}
+                onAdd={() => onAlbumAction(album)}
                 isLoading={downloading}
                 loadingLabel="Downloading"
                 disabled={downloading}
@@ -339,7 +336,6 @@ export const AlbumCard = memo(
       prevProps.album.statistics?.percentOfTracks === nextProps.album.statistics?.percentOfTracks &&
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&
-      prevProps.libraryDestination === nextProps.libraryDestination &&
       prevProps.onAlbumAction === nextProps.onAlbumAction
     );
   },

@@ -115,7 +115,7 @@ const PermissionRoute = ({ children, permission }: { children: ReactNode; permis
   return children;
 };
 
-type HealthIssue = "lidarr" | "degraded" | "backend";
+type HealthIssue = "degraded" | "backend";
 
 type AppOutletContext = {
   healthIssue: HealthIssue | null;
@@ -157,7 +157,7 @@ function AppContent() {
   const applyBootstrapHealth = (payload: BootstrapPayload) => {
     setIsHealthy(payload.status === "ok");
     setRootFolderConfigured(payload.rootFolderConfigured || false);
-    setHealthIssue(payload.lidarr?.circuitOpen ? "lidarr" : null);
+    setHealthIssue(null);
   };
 
   useEffect(() => {
@@ -239,23 +239,11 @@ function ProtectedLayout() {
               <LidarrConversionReport />
             </Suspense>
           )}
-          {healthIssue === "lidarr" && isHealthy && (
-            <div className="app-status-banner app-status-banner--warning">
-              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-              <p className="app-status-banner__text app-status-banner__text--warning">
-                Lidarr is busy. Library updates may be delayed.
-              </p>
-            </div>
-          )}
-
           {healthIssue === "degraded" && (
             <div className="app-status-banner app-status-banner--warning">
               <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
               <p className="app-status-banner__text app-status-banner__text--warning">
-                Aurral is responding slowly.{" "}
-                {bootstrap?.lidarrConfigured
-                  ? "Lidarr may be busy. Try again in a minute."
-                  : "Try again in a minute."}
+                Aurral is responding slowly. Try again in a minute.
               </p>
             </div>
           )}

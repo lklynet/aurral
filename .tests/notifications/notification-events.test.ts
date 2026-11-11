@@ -475,7 +475,6 @@ test("an Aurral album request is available once its last track is filed", async 
       albumId: "77",
       albumName: "Souvlaki",
       artistName: "Slowdive",
-      managedBy: "aurral",
       requestGroupId,
     });
     const queue = (trackName: string) =>
@@ -515,7 +514,6 @@ test("an Aurral album request with a failed track is not announced as available"
     albumId: "78",
     albumName: "Pygmalion",
     artistName: "Slowdive",
-    managedBy: "aurral",
     requestGroupId,
   });
   const queue = (trackName: string) =>

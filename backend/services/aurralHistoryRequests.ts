@@ -13,14 +13,7 @@ import {
   playlistOperationQueue,
 } from "./jobs/queues.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
-import type { LidarrClient } from "./lidarrClient.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
-import {
-  parseLidarrSearchContext,
-  resolveAlbumSearchOutcome,
-  albumHasTrackFiles,
-  getLidarrAlbumsById,
-} from "./albumSearchState.ts";
 import {
   MAX_AGE_MS,
   albumRequestReferenceId,
@@ -28,7 +21,6 @@ import {
   buildTrackJobHref,
   downloadClientSuffix,
   recordAlbumSearchCompleted,
-  recordAlbumSearchFailed,
   recordDiscoveryRefreshFailed,
   recordTrackJobBlocked,
   recordTrackJobCancelled,
@@ -102,14 +94,6 @@ export const recordRequestGroupDownloaded = async (requestGroupId: string, fileP
     return reportRecordFailure(error);
   }
 };
-
-const normalizeAlbumMatchText = (value: unknown) =>
-  String(value || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
 
 const isQueueActive = (queue: AnyQueue, predicate: (payload: JsonObject) => boolean) =>
   queue.list().some(({ payload }) => payload !== null && predicate(payload));
@@ -308,96 +292,15 @@ const syncFlowGenerationHistory = async (historyEntries: AurralHistoryEntry[] | 
   }
 };
 
-export const syncAlbumSearchHistory = async (
-  lidarrClient: LidarrClient | null,
-  historyEntries: AurralHistoryEntry[] | null = null,
-) => {
-  if (!lidarrClient?.isConfigured()) return;
-
-  const openEntries = (historyEntries || loadRecentHistory()).filter(
-    (entry) =>
-      entry.kind === "album_requested" &&
-      entry.metadata?.managedBy !== "aurral" &&
-      (entry.status === "processing" || entry.status === "failed"),
-  );
-  if (!openEntries.length) return;
-
-  const [queue, history, commands] = await Promise.all([
-    lidarrClient.getQueue().catch(() => []),
-    lidarrClient.getHistory(1, 200).catch(() => []),
-    lidarrClient.getCommands().catch(() => []),
-  ]);
-  const context = parseLidarrSearchContext({ queue, history, commands });
-
-  const resolveMissingAlbumId = async (entry: AurralHistoryEntry) => {
-    const albumName = normalizeAlbumMatchText(entry.metadata?.albumName);
-    const artistMbid = String(entry.metadata?.artistMbid || "").trim();
-    if (!albumName || !artistMbid) return null;
-    const artist = await lidarrClient.getArtistByMbid(artistMbid).catch(() => null);
-    if (!artist) return null;
-    const albums = await lidarrClient.getAllAlbums({ artistIds: [artist.id] }).catch(() => []);
-    const match = albums.find((album) => normalizeAlbumMatchText(album?.title) === albumName);
-    return match ? String(match.id) : null;
-  };
-
-  const resolvedEntries = [];
-  for (const entry of openEntries) {
-    const albumId = entry.metadata?.albumId
-      ? String(entry.metadata.albumId)
-      : await resolveMissingAlbumId(entry);
-    if (albumId) resolvedEntries.push({ entry, albumId });
-  }
-  const albums = await getLidarrAlbumsById(
-    lidarrClient,
-    resolvedEntries.map(({ albumId }) => albumId),
-  );
-
-  for (const { entry, albumId } of resolvedEntries) {
-    const album = albums.get(albumId);
-    if (album === null) {
-      // Lidarr answered 404: the album was deleted, so the request is moot.
-      dbOps.deleteAurralHistoryById(entry.id);
-      continue;
-    }
-    const albumHasFiles = albumHasTrackFiles(album);
-    const outcome = resolveAlbumSearchOutcome(albumId, context, {
-      searchStartedAt: entry.createdAt,
-      albumHasFiles,
-    });
-    const referenceId = albumRequestReferenceId(entry);
-    const patch = {
-      albumId,
-      albumName: entry.metadata?.albumName || album?.title,
-      artistName: entry.metadata?.artistName || album?.artist?.artistName,
-      artistMbid: entry.metadata?.artistMbid || album?.artist?.foreignArtistId,
-      referenceId,
-    };
-
-    if (outcome?.status === "completed" || albumHasFiles) {
-      recordAlbumSearchCompleted(patch);
-      continue;
-    }
-    if (entry.status === "processing" && outcome?.status === "failed") {
-      recordAlbumSearchFailed({
-        ...patch,
-        statusLabel: outcome.statusLabel,
-      });
-    }
-  }
+const syncActivityFeedHistory = async () => {
+  await syncTrackDownloadHistory(loadRecentHistory());
 };
 
-const syncActivityFeedHistory = async (lidarrClient: LidarrClient | null = null) => {
-  const entries = loadRecentHistory();
-  await syncTrackDownloadHistory(entries);
-  if (lidarrClient) await syncAlbumSearchHistory(lidarrClient, entries);
-};
-
-export const syncProcessingActivityHistory = async (lidarrClient: LidarrClient | null = null) => {
+export const syncProcessingActivityHistory = async () => {
   const entries = loadRecentHistory();
   await syncTrackDownloadHistory(entries);
   await syncDiscoveryRefreshHistory(entries);
   await syncFlowGenerationHistory(entries);
-  if (lidarrClient) await syncAlbumSearchHistory(lidarrClient, entries);
 };
 
 export interface AurralAlbumGrab {
@@ -444,7 +347,6 @@ export interface AurralRequestItem {
   releaseTitle: string | null;
   upgrade: TrackUpgrade | null;
   inQueue: boolean;
-  canReSearch: boolean;
 }
 
 type HistoryRequestOptions = {
@@ -512,10 +414,6 @@ export const toHistoryRequestItem = (
     upgrade: entry.metadata?.upgrade || null,
     inQueue:
       entry.status === "processing" || entry.status === "pending" || entry.status === "blocked",
-    canReSearch:
-      entry.kind === "album_requested" &&
-      entry.status === "failed" &&
-      Boolean(entry.metadata?.albumId),
   };
 };
 
@@ -572,11 +470,8 @@ const buildActiveTrackHistory = (job: HistoryJob | null | undefined): AurralHist
   };
 };
 
-export const getAurralHistoryRequests = async (
-  lidarrClient: LidarrClient | null = null,
-  user: RequesterUser | null = null,
-) => {
-  await syncActivityFeedHistory(lidarrClient);
+export const getAurralHistoryRequests = async (user: RequesterUser | null = null) => {
+  await syncActivityFeedHistory();
   const entries: AurralHistoryEntry[] = [
     ...loadPendingPlaylistImportHistory(user),
     ...loadRecentHistory(),

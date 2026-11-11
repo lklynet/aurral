@@ -52,8 +52,8 @@ export function seedPerfLibrary(
      VALUES (?, 'NOT_FOUND', '[]', ?, ?)`,
   );
   const insertManagement = db.prepare(
-    `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
-     VALUES (?, ?, 'aurral', ?, ?, ?)`,
+    `INSERT INTO library_management (entity_kind, entity_id, monitor_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
   );
 
   const albumIds: number[] = [];
@@ -227,8 +227,8 @@ export function seedPerfPlaylistJobs(
   const now = Date.UTC(2026, 0, 1);
   const insertJob = db.prepare(
     `INSERT INTO download_jobs
-      (id, artist_name, track_name, album_name, owner_id, owner_type, status, final_path, completed_at, created_at, managed_by, reused_library_file)
-     VALUES (?, ?, ?, ?, 'library', 'library', 'done', ?, ?, ?, 'aurral', 1)`,
+      (id, artist_name, track_name, album_name, owner_id, owner_type, status, final_path, completed_at, created_at, reused_library_file)
+     VALUES (?, ?, ?, ?, 'library', 'library', 'done', ?, ?, ?, 1)`,
   );
   const playlists = Array.from({ length: 8 }, (_, index) =>
     library.trackRows

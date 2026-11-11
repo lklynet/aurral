@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterAll, beforeEach, test } from "vite-plus/test";
+import { migrate } from "../../backend/config/migrations.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -14,7 +16,6 @@ const [
   { dbOps },
   { convertLidarrLibrary },
   { libraryFolderOwner, readOnlyFolderPaths, saveReadOnlyFolderPaths },
-  { lidarrClient },
   { resolveDownloadRoot },
   { dismissLidarrConversionReport },
   { invalidateLibraryManagementCache },
@@ -24,11 +25,16 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/lidarr-conversion.ts"),
   () => import("../../backend/services/libraryFolders.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
   () => import("../../backend/services/lidarrConversionReport.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
 );
+
+// The conversion runs on a 2.x database, before the columns it reads are dropped.
+db.exec(`
+  ALTER TABLE library_management ADD COLUMN managed_by TEXT NOT NULL DEFAULT 'aurral';
+  ALTER TABLE download_jobs ADD COLUMN managed_by TEXT;
+`);
 
 const libraryFolder = resolveDownloadRoot();
 const snapshot = path.join(state.dataDir, "aurral.pre-lidarr-conversion.db");
@@ -42,10 +48,10 @@ beforeEach(() => {
 afterAll(() => cleanupIsolatedState(state));
 
 function connectLidarr(rootFolderPaths: string[], pathMappings: unknown[] = []) {
-  dbOps.updateSettings({
-    integrations: { lidarr: { url: "http://lidarr.test", apiKey: "key", rootFolderPaths } },
-    pathMappings,
+  dbOps.setJSONSetting("integrations", {
+    lidarr: { url: "http://lidarr.test", apiKey: "key", rootFolderPaths },
   });
+  dbOps.setJSONSetting("pathMappings", pathMappings);
 }
 
 function convert() {
@@ -195,8 +201,6 @@ test("an install that Lidarr ran keeps its music in read-only folders, and its a
       { id: "waiting", status: "cancelled", managed_by: "aurral" },
     ],
   );
-  assert.equal(lidarrClient.isConfigured(), false);
-  assert.equal(dbOps.getSettings().integrations.lidarr?.url, "http://lidarr.test");
   assert.ok(fs.existsSync(snapshot));
 
   connectLidarr(["/elsewhere"]);
@@ -251,7 +255,6 @@ test("a conversion that fails changes nothing, and Aurral keeps the copy it made
   );
   assert.equal(management("artist", band)?.managed_by, "lidarr");
   assert.deepEqual(readOnlyFolderPaths(), []);
-  assert.equal(lidarrClient.isConfigured(), true);
   assert.ok(fs.existsSync(snapshot));
 });
 
@@ -284,5 +287,17 @@ test("an install that never used Lidarr is left alone", () => {
     mediaRows().map((row) => [row.source, row.path]),
     [["aurral", ownFile]],
   );
+  assert.equal(fs.existsSync(snapshot), false);
+});
+
+test("an install already on Aurral 3 is left alone, even with Lidarr settings left behind", () => {
+  const upgraded = new Database(":memory:");
+  upgraded.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(upgraded);
+  upgraded
+    .prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?)")
+    .run(JSON.stringify({ lidarr: { url: "http://lidarr.test", apiKey: "key" } }));
+
+  assert.equal(convertLidarrLibrary(upgraded, state.dataDir), null);
   assert.equal(fs.existsSync(snapshot), false);
 });

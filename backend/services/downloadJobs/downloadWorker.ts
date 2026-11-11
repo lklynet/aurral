@@ -15,7 +15,6 @@ import {
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.ts";
 import {
   repairOrphanedPlaylistTrackPaths,
-  moveHandedOverTracksToLidarr,
   repairReusableTrackLinks,
   requeueJobsUsingRemovedFolders,
   reuseTrackForPlaylist,
@@ -23,12 +22,7 @@ import {
 } from "./fileReuse.ts";
 import { AURRAL_FLOWS_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
 import { startDownloadPipelineWorker } from "../downloadPipelineWorker.ts";
-import {
-  activeLidarrRoots,
-  configuredLidarrFolders,
-  isLidarrLibraryActive,
-  readOnlyFolderPaths,
-} from "../libraryFolders.ts";
+import { readOnlyFolderPaths } from "../libraryFolders.ts";
 import { withLock } from "../jobs/queue.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
@@ -46,7 +40,6 @@ import {
 import { isPipelinePayloadActive } from "./downloadCancellation.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
-import { lidarrClient } from "../lidarrClient.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 import { recordRequestGroupDownloaded } from "../aurralHistoryRequests.ts";
@@ -424,20 +417,10 @@ export class DownloadWorker {
     return requeued;
   }
 
-  async releaseLidarrFiles() {
-    if (isLidarrLibraryActive(lidarrClient)) return 0;
-    return this.requeueRemovedFolderFiles({
-      removedFolders: configuredLidarrFolders(lidarrClient),
-      keptFolders: readOnlyFolderPaths(),
-      externalFiles: true,
-      reason: "Lidarr was turned off",
-    });
-  }
-
   async releaseReadOnlyFolderFiles(folders: string[]) {
     return this.requeueRemovedFolderFiles({
       removedFolders: folders,
-      keptFolders: [...readOnlyFolderPaths(), ...activeLidarrRoots(lidarrClient)],
+      keptFolders: readOnlyFolderPaths(),
       reason: "Its read-only folder left the Library",
     });
   }
@@ -451,7 +434,6 @@ export class DownloadWorker {
   }
 
   async repairReusableLinks(force = false) {
-    await this.releaseLidarrFiles();
     const now = Date.now();
     if (!force && now - this.lastReuseRepairAt < REUSE_REPAIR_INTERVAL_MS) {
       return null;
@@ -467,7 +449,6 @@ export class DownloadWorker {
     if (Number.isFinite(result?.nextCursor)) {
       this.reuseRepairCursor = result.nextCursor;
     }
-    await moveHandedOverTracksToLidarr();
     return result;
   }
 
@@ -647,7 +628,7 @@ export class DownloadWorker {
         downloadRoot: this.downloadRoot,
         existingJobId: job.id,
         excludeJobIds: [job.id],
-        allowLidarr: !job.requestGroupId,
+        allowFolderSources: !job.requestGroupId,
       });
       if (reuse.reused) {
         if (job.requestGroupId && reuse.finalPath) {

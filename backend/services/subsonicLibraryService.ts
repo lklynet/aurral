@@ -214,8 +214,8 @@ const bitRateKbps = (
     | null
     | undefined,
 ) => {
-  const lidarrKbps = Number.parseInt(String(quality?.audioBitRate), 10);
-  if (lidarrKbps > 0) return lidarrKbps;
+  const kbps = Number.parseInt(String(quality?.audioBitRate), 10);
+  if (kbps > 0) return kbps;
   const bitsPerSecond = Number(quality?.bitrate);
   return bitsPerSecond > 0 ? Math.round(bitsPerSecond / 1000) : null;
 };

@@ -49,8 +49,6 @@ test("an album request shows as downloading at once and stops if the server refu
     artistMbid: "artist-1",
     albumName: "Album",
     artistName: "Artist",
-    managedBy: "aurral",
-    triggerSearch: true,
   });
   await waitForRequests(1);
   assert.deepEqual(activeAlbums(), ["album-1"]);

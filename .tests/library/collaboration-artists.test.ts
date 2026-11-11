@@ -192,7 +192,7 @@ test("deleting a credited artist keeps a release credited to several artists", a
   const { lead, solo, soundtrack, scan, albumOwners } = await createLibrary(t, 4);
   await scan([solo, soundtrack]);
 
-  const deleted = await libraryManager.deleteArtist(lead, true, { manager: "aurral" });
+  const deleted = await libraryManager.deleteArtist(lead, true);
 
   assert.equal(deleted.success, true);
   assert.deepEqual(albumOwners(), [{ title: "Furi", name: credit, mbid: null }]);

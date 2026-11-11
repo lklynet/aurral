@@ -107,7 +107,7 @@ export type LibraryTrackFile = {
   createdAt: LibraryMediaFilesRow["created_at"];
 };
 
-const SOURCES = new Set(["aurral", "lidarr", "readonly", "flow"]);
+const SOURCES = new Set(["aurral", "readonly", "flow"]);
 const libraryCache = new Map<string, LibraryCollection>();
 const pageCountCache = new Map<string, number>();
 const countDataVersion = db.prepare<[], { data_version: number }>("PRAGMA data_version");
@@ -552,12 +552,10 @@ const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
       .map((source) => source.trim())
       .filter(Boolean),
   );
-  if (metadata.librarySource === "lidarr") sources.add("lidarr");
   const management = getManagedByMap("artist").get(Number(row.id)) || null;
   return {
     id: String(row.id),
     providerId,
-    lidarrManaged: metadata.librarySource === "lidarr",
     managedBy: management?.managedBy ?? null,
     monitorMode: management?.monitorMode ?? null,
     mbid: row.mbid || null,
@@ -581,7 +579,6 @@ const libraryArtistProjection = (row: LibraryArtistProjectionRow) => {
     },
     sources: [...sources].sort(),
     available: Boolean(row.available),
-    stale: Boolean(row.stale),
   };
 };
 
@@ -671,7 +668,6 @@ type LibraryArtistProjectionRow = Pick<
   size_on_disk: number;
   sources: string | null;
   available: number;
-  stale: number;
 };
 
 function buildLibraryArtistProjectionQuery({
@@ -750,21 +746,7 @@ function buildLibraryArtistProjectionQuery({
       COUNT(DISTINCT album_track.track_id) AS track_count,
       COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk,
       GROUP_CONCAT(DISTINCT media.source) AS sources,
-      MAX(CASE WHEN media.available = 1 THEN 1 ELSE 0 END) AS available,
-      CASE WHEN EXISTS (
-        SELECT 1
-        FROM library_scan_runs AS scan
-        WHERE scan.source = 'lidarr'
-          AND scan.status = 'failed'
-          AND EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
-          AND scan.id > COALESCE((
-            SELECT complete.id
-            FROM library_scan_runs AS complete
-            WHERE complete.source = 'lidarr' AND complete.status = 'complete'
-            ORDER BY complete.id DESC
-            LIMIT 1
-          ), 0)
-      ) THEN 1 ELSE 0 END AS stale
+      MAX(CASE WHEN media.available = 1 THEN 1 ELSE 0 END) AS available
     FROM artist_page AS artist
     LEFT JOIN library_albums AS album ON album.artist_id = artist.id
     LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
@@ -1032,7 +1014,7 @@ export function getLibraryIndexLastModified() {
        UNION ALL SELECT MAX(updated_at) FROM library_albums
        UNION ALL SELECT MAX(updated_at) FROM library_tracks
        UNION ALL SELECT MAX(updated_at) FROM library_media_files
-       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source IN ('lidarr-removal', 'library-tidy')
+       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source = 'library-tidy'
      )`,
     )
     .get();
@@ -1849,7 +1831,6 @@ const AURRAL_MONITORED_ARTIST = `EXISTS (
   SELECT 1 FROM library_management AS artist_management
   WHERE artist_management.entity_kind = 'artist'
     AND artist_management.entity_id = artist.id
-    AND artist_management.managed_by = 'aurral'
     AND artist_management.monitor_rules IS NOT NULL
 )`;
 

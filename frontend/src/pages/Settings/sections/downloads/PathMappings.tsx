@@ -13,7 +13,6 @@ type PathMapping = ReturnType<typeof readPathMappings>[number];
 
 const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "all", label: "All sources" },
-  { value: "lidarr", label: "Lidarr" },
   { value: "slskd", label: "slskd" },
   { value: "nzbget", label: "NZBGet" },
   { value: "sabnzbd", label: "SABnzbd" },

@@ -13,8 +13,6 @@ interface UserUpdate {
   subsonicPassword?: string | null;
   role?: string;
   permissions?: UserPermissions;
-  lidarrRootFolderPath?: string | null;
-  lidarrQualityProfileId?: number | string | null;
   status?: string;
   roleSource?: string;
   hasLocalPassword?: boolean;
@@ -26,8 +24,6 @@ type UsersListRow = Pick<
   | "username"
   | "role"
   | "permissions"
-  | "lidarr_root_folder_path"
-  | "lidarr_quality_profile_id"
   | "status"
   | "is_protected"
   | "role_source"
@@ -43,7 +39,7 @@ const getUserByUsernameStmt = db.prepare<[string], UsersRow>(
   "SELECT * FROM users WHERE username = ?",
 );
 const getAllUsersStmt = db.prepare<[], UsersListRow>(
-  "SELECT id, username, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password FROM users ORDER BY username",
+  "SELECT id, username, role, permissions, status, is_protected, role_source, has_local_password FROM users ORDER BY username",
 );
 const getUserByIdStmt = db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare<[number], UserAuthRow>(
@@ -51,10 +47,10 @@ const getUserAuthByIdStmt = db.prepare<[number], UserAuthRow>(
 );
 const countUsersStmt = db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?)",
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?",
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?",
 );
 const getSubsonicPasswordByIdStmt = db.prepare<[number], Pick<UsersRow, "subsonic_password">>(
   "SELECT subsonic_password FROM users WHERE id = ?",
@@ -137,9 +133,6 @@ export const userOps = {
       passwordHash: row.password_hash,
       role: row.role || "user",
       permissions: parseStoredPermissions(row.permissions),
-      lidarrRootFolderPath: row.lidarr_root_folder_path || null,
-      lidarrQualityProfileId:
-        row.lidarr_quality_profile_id != null ? Number(row.lidarr_quality_profile_id) : null,
       status: row.status || "active",
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
@@ -155,9 +148,6 @@ export const userOps = {
       passwordHash: row.password_hash,
       role: row.role || "user",
       permissions: parseStoredPermissions(row.permissions),
-      lidarrRootFolderPath: row.lidarr_root_folder_path || null,
-      lidarrQualityProfileId:
-        row.lidarr_quality_profile_id != null ? Number(row.lidarr_quality_profile_id) : null,
       status: row.status || "active",
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
@@ -206,9 +196,6 @@ export const userOps = {
       username: r.username,
       role: r.role || "user",
       permissions: parseStoredPermissions(r.permissions),
-      lidarrRootFolderPath: r.lidarr_root_folder_path || null,
-      lidarrQualityProfileId:
-        r.lidarr_quality_profile_id != null ? Number(r.lidarr_quality_profile_id) : null,
       status: r.status || "active",
       isProtected: !!r.is_protected,
       roleSource: r.role_source || "local",
@@ -234,8 +221,6 @@ export const userOps = {
         encryptSubsonicPassword(subsonicPassword),
         role,
         dbHelpers.stringifyJSON(perms),
-        null,
-        null,
         hasLocalPassword ? 1 : 0,
         isProtected ? 1 : 0,
       );
@@ -244,8 +229,6 @@ export const userOps = {
         username: un,
         role,
         permissions: perms,
-        lidarrRootFolderPath: null,
-        lidarrQualityProfileId: null,
         status: "active",
         isProtected: !!isProtected,
         roleSource: "local",
@@ -275,24 +258,6 @@ export const userOps = {
       data.permissions !== undefined
         ? { ...DEFAULT_PERMISSIONS, ...data.permissions }
         : existing.permissions;
-    const lidarrRootFolderPath =
-      data.lidarrRootFolderPath !== undefined
-        ? data.lidarrRootFolderPath
-          ? String(data.lidarrRootFolderPath).trim()
-          : null
-        : existing.lidarrRootFolderPath;
-    const parsedLidarrQualityProfileId =
-      data.lidarrQualityProfileId !== undefined && data.lidarrQualityProfileId !== null
-        ? Number(data.lidarrQualityProfileId)
-        : data.lidarrQualityProfileId === null
-          ? null
-          : existing.lidarrQualityProfileId;
-    const lidarrQualityProfileId =
-      parsedLidarrQualityProfileId != null && Number.isFinite(parsedLidarrQualityProfileId)
-        ? Math.trunc(parsedLidarrQualityProfileId)
-        : parsedLidarrQualityProfileId === null
-          ? null
-          : existing.lidarrQualityProfileId;
     const status = data.status !== undefined ? data.status : existing.status;
     const roleSource = data.roleSource !== undefined ? data.roleSource : existing.roleSource;
     const hasLocalPassword =
@@ -304,8 +269,6 @@ export const userOps = {
         subsonicPassword,
         role,
         dbHelpers.stringifyJSON(permissions),
-        lidarrRootFolderPath,
-        lidarrQualityProfileId,
         status,
         roleSource,
         hasLocalPassword ? 1 : 0,
@@ -316,8 +279,6 @@ export const userOps = {
         username,
         role,
         permissions,
-        lidarrRootFolderPath,
-        lidarrQualityProfileId,
         status,
         isProtected: existing.isProtected,
         roleSource,

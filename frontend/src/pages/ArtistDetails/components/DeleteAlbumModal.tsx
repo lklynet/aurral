@@ -5,8 +5,6 @@ import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 interface DeleteAlbumModalProps {
   show: boolean;
   title?: string | null;
-  managedBy?: string | null;
-  keepFilesAction?: "remove" | "unmonitor";
   deleteFiles: boolean;
   onDeleteFilesChange: (checked: boolean) => void;
   onCancel: () => void;
@@ -17,8 +15,6 @@ interface DeleteAlbumModalProps {
 export function DeleteAlbumModal({
   show,
   title,
-  managedBy,
-  keepFilesAction = "remove",
   deleteFiles,
   onDeleteFilesChange,
   onCancel,
@@ -33,7 +29,6 @@ export function DeleteAlbumModal({
     closeDisabled: Boolean(removing),
     initialFocusRef: cancelRef,
   });
-  const unmonitors = managedBy !== "aurral" && keepFilesAction === "unmonitor" && !deleteFiles;
 
   if (!show) return null;
   return (
@@ -50,19 +45,8 @@ export function DeleteAlbumModal({
           Delete album
         </h3>
         <p className="artist-modal__copy">
-          {unmonitors ? (
-            <>
-              <strong>{title}</strong> stays in your library and stops being monitored. Delete its
-              files to remove it.
-            </>
-          ) : (
-            <>
-              Delete <strong>{title}</strong> from your library?
-              {managedBy === "aurral"
-                ? "Artist monitoring skips it until you request it again."
-                : null}
-            </>
-          )}
+          Delete <strong>{title}</strong> from your library? Artist monitoring skips it until you
+          request it again.
         </p>
 
         <div>
@@ -95,10 +79,8 @@ export function DeleteAlbumModal({
             {removing ? (
               <>
                 <DotLoader size="sm" label={null} />
-                {unmonitors ? "Unmonitoring..." : "Deleting..."}
+                Deleting...
               </>
-            ) : unmonitors ? (
-              "Unmonitor album"
             ) : (
               "Delete album"
             )}

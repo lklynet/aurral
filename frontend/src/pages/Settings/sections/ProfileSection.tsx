@@ -13,8 +13,6 @@ import { DotLoader } from "../../../components/DotLoader";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { SettingsInput } from "../components/SettingsField";
-import { Select } from "../../../components/Select";
-import { useAccountSettingsContext } from "../SettingsProviders";
 import {
   SettingsActions,
   SettingsGroup,
@@ -202,48 +200,8 @@ function ApiAccessGroup({ userId }: { userId: number }) {
   );
 }
 
-function LidarrDefaultsGroup() {
-  const account = useAccountSettingsContext();
-  return (
-    <SettingsGroup
-      title="Lidarr defaults"
-      note="Used for artists you add. These override the server defaults."
-    >
-      <SettingsRow label="Root folder" htmlFor="profile-root-folder">
-        <Select
-          id="profile-root-folder"
-          value={account.lidarrRootFolderPath}
-          onChange={account.setLidarrRootFolderPath}
-          options={[
-            { value: "", label: "Server default" },
-            ...account.lidarrRootFolders.map((folder) => ({
-              value: folder.path,
-              label: folder.path,
-            })),
-          ]}
-        />
-      </SettingsRow>
-      <SettingsRow label="Quality profile" htmlFor="profile-quality-profile">
-        <Select
-          id="profile-quality-profile"
-          value={account.lidarrQualityProfileId}
-          onChange={account.setLidarrQualityProfileId}
-          options={[
-            { value: "", label: "Server default" },
-            ...account.lidarrQualityProfiles.map((profile) => ({
-              value: String(profile.id),
-              label: profile.name,
-            })),
-          ]}
-        />
-      </SettingsRow>
-    </SettingsGroup>
-  );
-}
-
 export function ProfileSection() {
   const { user } = useAuth();
-  const account = useAccountSettingsContext();
   useConnectedNotice();
 
   return (
@@ -262,7 +220,6 @@ export function ProfileSection() {
           <ApiAccessGroup userId={user.id} />
         </>
       ) : null}
-      {account.lidarrConfigured ? <LidarrDefaultsGroup /> : null}
     </SettingsPage>
   );
 }

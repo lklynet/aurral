@@ -12,8 +12,8 @@ import {
   isActivityQueueItem,
   normalizeActivityStatus,
   matchesActivityView,
-  type ActivityRequest,
 } from "../../lib/activity.ts";
+import { activityRequest } from "./fixtures.ts";
 
 test("normalizeActivityView falls back to queue", () => {
   assert.equal(normalizeActivityView(undefined), "queue");
@@ -114,26 +114,8 @@ test("normalizeActivityStatus only accepts statuses the view offers", () => {
 });
 
 test("activity pages count the whole view but return only the requested slice", () => {
-  const request = (
-    id: string,
-    status: string,
-    statusLabel: string,
-    requestedAt: string,
-  ): ActivityRequest => ({
-    id,
-    source: "aurral",
-    type: "activity",
-    kind: "track_download",
-    albumId: null,
-    albumMbid: null,
-    albumName: null,
-    artistName: null,
-    status,
-    statusLabel,
-    requestedAt,
-    inQueue: status !== "completed",
-    canReSearch: false,
-  });
+  const request = (id: string, status: string, statusLabel: string, requestedAt: string) =>
+    activityRequest({ id, status, statusLabel, requestedAt, inQueue: status !== "completed" });
   const requests = [
     request("old-review", "blocked", "Review", "2026-01-01T00:00:00Z"),
     request("new-review", "blocked", "Review", "2026-01-03T00:00:00Z"),

@@ -35,7 +35,6 @@ const [
   monitoringStore,
   { downloadTracker },
   { downloadWorker },
-  { lidarrClient },
   { systemTaskQueue },
   { processSystemTask },
   { clearMetadataProviderCaches },
@@ -52,7 +51,6 @@ const [
   () => import("../../backend/services/aurralMonitoringStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
@@ -130,7 +128,6 @@ const metadataState: {
   albumGate: null,
   artistGate: null,
 };
-const lidarrCalls: unknown[][] = [];
 
 function artistPayload(mbid: string = artistMbid) {
   const artistReleases: ReleaseFixture[] =
@@ -301,9 +298,7 @@ function queuedAlbumMbids() {
     ...new Set(
       downloadTracker
         .getAll()
-        .filter(
-          (job) => job.playlistType === "library" && job.managedBy === "aurral" && job.albumMbid,
-        )
+        .filter((job) => job.playlistType === "library" && job.albumMbid)
         .map((job) => job.albumMbid),
     ),
   ].sort();
@@ -331,12 +326,6 @@ const storedMonitoring = (mbid = artistMbid) =>
   managementStore.getLibraryManagementEntry("artist", artistRow(mbid)!.id)?.monitorRules ?? null;
 
 const originalSettings = dbOps.getSettings();
-const originalLidarr = {
-  isConfigured: lidarrClient.isConfigured,
-  request: lidarrClient.request,
-  getArtist: lidarrClient.getArtist,
-  getArtistByMbid: lidarrClient.getArtistByMbid,
-};
 const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
@@ -353,13 +342,6 @@ beforeAll(() => {
     },
   });
   clearMetadataProviderCaches();
-  lidarrClient.isConfigured = () => false;
-  for (const method of ["request", "getArtist", "getArtistByMbid"] as const) {
-    lidarrClient[method] = async (...args: unknown[]) => {
-      lidarrCalls.push([method, ...args]);
-      throw new Error("Lidarr must not be called");
-    };
-  }
   downloadWorker.start = async () => {};
 });
 
@@ -381,11 +363,9 @@ beforeEach(() => {
   db.prepare("DELETE FROM library_monitoring_exclusions").run();
   db.prepare("DELETE FROM settings WHERE key = 'monitoringDefaults'").run();
   managementStore.invalidateLibraryManagementCache();
-  lidarrCalls.length = 0;
 });
 
 afterAll(async () => {
-  Object.assign(lidarrClient, originalLidarr);
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();
@@ -406,7 +386,7 @@ const monitorWith = (monitoring: { monitored: boolean }, mbid: string = artistMb
 
 const customRules = (rules: unknown) => ({ monitored: true, useDefault: false, rules });
 
-test("monitoring an Aurral artist with the default rules queues its studio albums and EPs without Lidarr", async () => {
+test("monitoring an Aurral artist with the default rules queues its studio albums and EPs", async () => {
   const added = await callRoute("POST /artists", {
     body: {
       foreignArtistId: artistMbid,
@@ -433,7 +413,6 @@ test("monitoring an Aurral artist with the default rules queues its studio album
   assert.equal(monitoredAgain.statusCode, 200);
   await runQueuedMonitoringTasks();
   assert.equal(downloadTracker.getAll().length, 6);
-  assert.equal(lidarrCalls.length, 0);
 });
 
 test.each(["aurral", "readonly"])(
@@ -459,7 +438,6 @@ test.each(["aurral", "readonly"])(
     managementStore.setLibraryManagement({
       entityKind: "album",
       entityId: album.id,
-      managedBy: "aurral",
     });
     const owned = libraryStore.upsertLibraryTrack({
       identityKey: `recording:${have.recordingid}`,
@@ -506,7 +484,7 @@ test.each(["aurral", "readonly"])(
   },
 );
 
-test("older clients' monitor options map onto rules and Lidarr-only options are refused", async () => {
+test("older clients' monitor options map onto rules and options Aurral never had are refused", async () => {
   await addAurralArtist("none");
   assert.deepEqual(queuedMonitoringTasks(), []);
 
@@ -549,7 +527,6 @@ test("older clients' monitor options map onto rules and Lidarr-only options are 
     assert.equal(rejected.statusCode, 400, mode);
     assert.equal(rejected.body.code, "unsupported_monitor_mode", mode);
   }
-  assert.equal(lidarrCalls.length, 0);
 });
 
 test("custom rules choose release types and how much of the back catalogue to take", async () => {
@@ -642,46 +619,6 @@ test("a later disable wins over an earlier artist monitoring request", async () 
   assert.equal(storedMonitoring(), null);
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), []);
-});
-
-test("artist monitoring skips albums managed by Lidarr", async () => {
-  const added = await addAurralArtist("none");
-  const lidarrAlbum = libraryStore.upsertLibraryAlbum({
-    identityKey: `release-group:${releases.secondAlbum.id}`,
-    mbid: releases.secondAlbum.id,
-    releaseGroupMbid: releases.secondAlbum.id,
-    artistId: Number(added.body.artist.id),
-    title: releases.secondAlbum.title,
-  });
-  const track = libraryStore.upsertLibraryTrack({
-    identityKey: "recording:a3333333-3333-4333-8333-333333333333",
-    mbid: "a3333333-3333-4333-8333-333333333333",
-    title: "Lidarr Track",
-    artistName: "Monitor Artist",
-  });
-  libraryStore.linkLibraryAlbumTrack({
-    albumId: lidarrAlbum.id,
-    trackId: track.id,
-    trackNumber: 1,
-  });
-  managementStore.setLibraryManagement({
-    entityKind: "album",
-    entityId: lidarrAlbum.id,
-    managedBy: "lidarr",
-  });
-
-  const response = await monitorWith({ monitored: true });
-  assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.body.monitoring.skipped, [
-    {
-      releaseGroupId: releases.secondAlbum.id,
-      title: releases.secondAlbum.title,
-      reason: "managed_by_lidarr",
-    },
-  ]);
-  await runQueuedMonitoringTasks();
-  assert.deepEqual(queuedAlbumMbids(), [releases.firstAlbum.id, releases.latestEp.id].sort());
-  assert.equal(lidarrCalls.length, 0);
 });
 
 test("queued artist acquisition stops after monitoring is disabled or the rules change", async () => {
@@ -827,7 +764,6 @@ test("an album override survives artist monitoring changes and unmonitoring keep
     body: { monitored: "yes" },
   });
   assert.equal(invalid.statusCode, 400);
-  assert.equal(lidarrCalls.length, 0);
 });
 
 function futureDate(days: number) {
@@ -898,7 +834,6 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
   clearMetadataProviderCaches();
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.ok(savedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
-  assert.equal(lidarrCalls.length, 0);
 });
 
 test("saving rules again keeps the cutoff for new releases while new releases stay on", async () => {

@@ -15,7 +15,7 @@ import {
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { writeAudioTags } from "../audioTags.ts";
 import { buildMetadataRecord } from "../libraryFileScanner.ts";
-import { configuredLidarrFolders, libraryFolderOwner } from "../libraryFolders.ts";
+import { libraryFolderOwner, readOnlyFolderPaths } from "../libraryFolders.ts";
 import {
   getLibraryMediaFile,
   moveLibraryMediaFilePath,
@@ -62,7 +62,7 @@ type AlbumFileRow = Pick<
 type TagFillAlbums = NonNullable<Parameters<typeof planTagFill>[1]>;
 type CleanupPlanContext = {
   root: string;
-  lidarrRoots: string[];
+  readOnlyRoots: string[];
   albums: TagFillAlbums;
   targets: Map<string, string>;
 };
@@ -90,7 +90,7 @@ function libraryAlbumIds() {
 
 function albumFiles(
   albumId: number,
-  { root, lidarrRoots }: { root: string; lidarrRoots: string[] },
+  { root, readOnlyRoots }: { root: string; readOnlyRoots: string[] },
 ) {
   const seen = new Set<number>();
   return db
@@ -107,7 +107,7 @@ function albumFiles(
     .all(albumId)
     .filter((file) => {
       if (seen.has(file.id) || !isPathInsideRoot(path.resolve(file.path), root)) return false;
-      if (libraryFolderOwner(file.path, { downloadRoot: root, lidarrRoots }) !== "aurral")
+      if (libraryFolderOwner(file.path, { downloadRoot: root, readOnlyRoots }) !== "aurral")
         return false;
       seen.add(file.id);
       return true;
@@ -365,7 +365,7 @@ export async function planCleanup(operation: LibraryFileOperation, deadline: num
   }
   const context: CleanupPlanContext = {
     root,
-    lidarrRoots: configuredLidarrFolders(null),
+    readOnlyRoots: readOnlyFolderPaths(),
     albums: new Map(),
     targets: new Map(
       db
@@ -685,7 +685,7 @@ export async function finishCleanup(operation: LibraryFileOperation) {
   }
   if (removing) updateLibraryFileOperation(operation.id, { summary: { removingSources: null } });
   return {
-    includeLidarr: false,
+    includeReadOnly: false,
     changedPaths: [...folders.keys(), ...[...folders.values()].flatMap((targets) => [...targets])],
   };
 }

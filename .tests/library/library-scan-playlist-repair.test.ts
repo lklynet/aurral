@@ -52,7 +52,7 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
     .spyOn(playlistManager, "requestPlaylistSync")
     .mockImplementation(() => null);
 
-  await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+  await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
 
   assert.deepEqual(
     flowPlaylistConfig.getStaticPlaylist(repaired.id)!.tracks,

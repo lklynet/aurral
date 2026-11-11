@@ -4,6 +4,7 @@ import * as v from "valibot";
 import { unknownList } from "../../lib/unknownList.ts";
 
 let storedPathMappings: PathMapping[] = [];
+// "lidarr" stays for the Lidarr conversion, which reads those mappings once.
 const PATH_MAPPING_SOURCES = new Set([
   "all",
   "lidarr",

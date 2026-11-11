@@ -16,17 +16,13 @@ const [
   { dbOps },
   { api },
   { playlistManager },
-  { lidarrClient },
-  libraryScans,
-  { playbackTaskQueue, libraryScanQueue, systemTaskQueue, maintenanceTaskQueue },
+  { playbackTaskQueue, systemTaskQueue, maintenanceTaskQueue },
 ] = await setupIsolatedBackend(
   "general-settings",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/lidarrClient.ts"),
-  () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
 );
 
@@ -158,9 +154,7 @@ test("the maximum review wait is validated and kept across partial saves", async
   assert.equal(dbOps.getSettings().reviewTimeoutHours, 48);
 });
 
-type SettingsBody = NonNullable<ReturnType<typeof dbOps.getSettings>> & {
-  rootWarnings: { type: string }[];
-};
+type SettingsBody = NonNullable<ReturnType<typeof dbOps.getSettings>>;
 
 function captureSettingsRoutes() {
   const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
@@ -200,187 +194,10 @@ test("the missing-track search setting keeps fields a save leaves out and never 
   }
 });
 
-test("turning Lidarr off or on starts a Library scan, and other saves do not", async (t: import("vite-plus/test").TestContext) => {
-  const { postSettings } = captureSettingsRoutes();
-  vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => []);
-  dbOps.updateSettings({
-    integrations: { lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", enabled: true } },
-  });
-  const scheduledScan = () => {
-    const jobId = libraryScans.getScheduledLibraryScanJobId();
-    const job = jobId == null ? null : libraryScanQueue.getJob(jobId);
-    return job ? JSON.parse(job.payload) : null;
-  };
-  const releaseTask = () =>
-    systemTaskQueue.list().find((job) => job.kind === "lidarr-files-release") ?? null;
-  const clearScan = () => libraryScans.clearScheduledLibraryScan();
-  clearScan();
-  t.onTestFinished(clearScan);
-
-  await postSettings({ integrations: { lidarr: { insecure: true } } });
-  assert.equal(scheduledScan(), null);
-
-  await postSettings({ integrations: { lidarr: { enabled: false } } });
-  assert.equal(scheduledScan()?.includeLidarr, false);
-  assert.notEqual(releaseTask(), null);
-  clearScan();
-
-  await postSettings({ integrations: { lidarr: { enabled: true } } });
-  assert.equal(scheduledScan()?.includeLidarr, true);
-});
-
-test("saves overlapping roots with an equal overlap warning", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  const sharedRoot = join(isolatedState.baseDir, "roots", "shared");
-  dbOps.updateSettings({
-    downloadFolderPath: sharedRoot,
-    integrations: {
-      lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", rootFolderPath: sharedRoot },
-    },
-  });
-
-  const response = await postSettings({
-    integrations: {
-      lidarr: { rootFolderPath: sharedRoot },
-    },
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.ok(response.body != null);
-  const warnings = response.body.rootWarnings;
-  assert.equal(warnings.length, 1);
-  assert.equal(warnings[0]?.type, "equal");
-});
-
-test("does not warn about lidarr roots while lidarr is disabled", async () => {
-  const { getSettings, postSettings } = captureSettingsRoutes();
-  const sharedRoot = join(isolatedState.baseDir, "roots", "disabled-shared");
-  dbOps.updateSettings({
-    downloadFolderPath: sharedRoot,
-    integrations: {
-      lidarr: {
-        url: "http://127.0.0.1:18686",
-        apiKey: "key",
-        enabled: false,
-        rootFolderPath: sharedRoot,
-      },
-    },
-  });
-
-  const saved = await postSettings({
-    integrations: {
-      lidarr: { rootFolderPath: sharedRoot },
-    },
-  });
-  assert.equal(saved.statusCode, 200);
-  assert.ok(saved.body != null);
-  assert.deepEqual([...saved.body.rootWarnings], []);
-
-  const current = await getSettings();
-  assert.ok(current.body != null);
-  assert.deepEqual([...current.body.rootWarnings], []);
-});
-
-test("clears saved Lidarr roots when the connection identity changes", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  dbOps.updateSettings({
-    integrations: {
-      lidarr: {
-        url: "http://old-lidarr:8686",
-        apiKey: "old-key",
-        rootFolderPath: "/old/music",
-        rootFolderPaths: ["/old/music", "/old/other"],
-      },
-    },
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  const refresh = vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => {
-    throw new Error("new Lidarr is unavailable");
-  });
-
-  const response = await postSettings({
-    integrations: {
-      lidarr: { url: "http://new-lidarr:8686", apiKey: "new-key" },
-    },
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.equal(refresh.mock.calls.length, 1);
-  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, []);
-  assert.equal(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath, null);
-});
-
-test("preserves saved Lidarr roots when discovery fails for the same connection", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  dbOps.updateSettings({
-    integrations: {
-      lidarr: {
-        url: "http://lidarr:8686",
-        apiKey: "key",
-        rootFolderPath: "/old/music",
-        rootFolderPaths: ["/old/music"],
-      },
-    },
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => {
-    throw new Error("Lidarr is temporarily unavailable");
-  });
-
-  const response = await postSettings({
-    integrations: {
-      lidarr: { rootFolderPath: "/new/default" },
-    },
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, [
-    "/old/music",
-  ]);
-  assert.equal(
-    requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath,
-    "/new/default",
-  );
-});
-
-test("preserves saved Lidarr roots for equivalent normalized connection values", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  dbOps.updateSettings({
-    integrations: {
-      lidarr: {
-        url: "http://lidarr:8686/",
-        apiKey: " key ",
-        rootFolderPath: "/old/music",
-        rootFolderPaths: ["/old/music"],
-      },
-    },
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => {
-    throw new Error("Lidarr is temporarily unavailable");
-  });
-
-  const response = await postSettings({
-    integrations: {
-      lidarr: { url: "http://lidarr:8686", apiKey: "key" },
-    },
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, [
-    "/old/music",
-  ]);
-  assert.equal(
-    requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath,
-    "/old/music",
-  );
-});
-
 test("an integration setting Aurral can't read is ignored without losing the rest", () => {
   dbOps.setJSONSetting("integrations", {
     slskd: { url: "http://slskd.test", priority: { high: true } },
     webhooks: [{ url: "http://hook.test" }, { body: "no url" }],
-    lidarr: { url: "http://lidarr.test" },
   });
   dbOps.invalidateSettingsCache();
 
@@ -391,7 +208,6 @@ test("an integration setting Aurral can't read is ignored without losing the res
     integrations.webhooks?.map(({ url }) => url),
     ["http://hook.test"],
   );
-  assert.equal(integrations.lidarr?.url, "http://lidarr.test");
 });
 
 test("saving an integration setting Aurral can't read is rejected", async () => {

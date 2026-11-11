@@ -1,15 +1,11 @@
 import { Hono, type Context } from "hono";
-import { createMiddleware } from "hono/factory";
 import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
-import { dbOps } from "../../../db/helpers/index.ts";
-import { hasPermission } from "../../../services/auth.ts";
 import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
-import { invalidateAllDownloadStatusesCache } from "../../../services/lidarrStatusSnapshot.ts";
 import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
 import { asAppError, type AppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
@@ -39,31 +35,18 @@ const sendAurralFailure = <E extends AppEnv>(
   { error, statusCode, ...details }: AurralAlbumFailure,
 ) => c.json({ ...details, error }, isErrorStatus(statusCode) ? statusCode : 500);
 
-const canUpdateAlbum = createMiddleware<AppEnv>(async (c, next) => {
-  const user = c.var.user;
-  if (!hasPermission(user, "changeMonitoring") && !hasPermission(user, "addAlbum")) {
-    return c.json(
-      { error: "Forbidden", message: "Permission required: changeMonitoring or addAlbum" },
-      403,
-    );
-  }
-  await next();
-});
-
 const id = v.union([v.string(), v.number()]);
 
 const listQuery = v.object({
   artistId: v.optional(v.string()),
   readPath: v.optional(v.string()),
   source: v.optional(v.string()),
-  managedBy: v.optional(v.string()),
 });
 
 const addInput = v.object({
   artistId: v.optional(id),
   releaseGroupMbid: v.optional(v.string()),
   albumName: v.optional(v.string()),
-  managedBy: v.optional(v.nullable(v.string())),
 });
 
 const requestInput = v.object({
@@ -97,14 +80,7 @@ export default new Hono<AppEnv>()
         return c.json(albums, 200);
       }
 
-      const { managedBy = null } = query;
-      if (managedBy !== null && managedBy !== "aurral" && managedBy !== "lidarr") {
-        return c.json({ error: "managedBy must be 'aurral' or 'lidarr'" }, 400);
-      }
-      const albums = await libraryManager.getAlbums(artistId, null, {
-        managedBy,
-        includeAurral: true,
-      });
+      const albums = libraryManager.getAlbums(artistId);
       return c.json(
         albums.map((album) => ({
           ...album,
@@ -126,38 +102,20 @@ export default new Hono<AppEnv>()
     async (c) => {
       const user = c.var.user;
       try {
-        const {
-          artistId,
-          releaseGroupMbid,
-          albumName,
-          managedBy: requestedManagedBy,
-        } = c.req.valid("json");
+        const { artistId, releaseGroupMbid, albumName } = c.req.valid("json");
 
         if (!artistId || !releaseGroupMbid || !albumName) {
           return c.json({ error: "artistId, releaseGroupMbid, and albumName are required" }, 400);
         }
 
-        let managedBy;
-        try {
-          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
-        } catch (error) {
-          const failure = asAppError(error);
-          return c.json(
-            { error: failure?.message, code: failure?.code || null },
-            isErrorStatus(failure?.statusCode) ? failure.statusCode : 400,
-          );
-        }
-
         let mbid = releaseGroupMbid;
         if (releaseGroupMbid.startsWith("dz-")) {
-          const artist = await libraryManager.getArtistById(artistId, { managedBy });
-          const artistName = artist?.artistName || "";
+          const artistName = libraryManager.getArtist(artistId)?.artistName || "";
           const resolved = await resolveDeezerAlbumToMbid(artistName, albumName, releaseGroupMbid);
           if (!resolved) {
             return c.json(
               {
-                error:
-                  "Could not resolve metadata for this album. Try adding the artist to Lidarr first or use a different album.",
+                error: "Could not resolve metadata for this album. Try a different album.",
               },
               400,
             );
@@ -165,15 +123,7 @@ export default new Hono<AppEnv>()
           mbid = resolved;
         }
 
-        const settings = dbOps.getSettings();
-        const searchOnAdd =
-          managedBy === "lidarr" && (settings.integrations?.lidarr?.searchOnAdd ?? false);
-
-        const album = await libraryManager.addAlbum(artistId, mbid, albumName, {
-          triggerSearch: searchOnAdd,
-          managedBy,
-          user,
-        });
+        const album = await libraryManager.addAlbum(artistId, mbid, albumName, { user });
         if (isFailure(album)) {
           logger.error("library", `Failed to add album ${albumName}:`, {
             message: album.error,
@@ -199,8 +149,6 @@ export default new Hono<AppEnv>()
           albumName: album.albumName || albumName,
           artistName: album.artistName,
           artistMbid: album.mbid || album.foreignAlbumId,
-          managedBy,
-          searching: managedBy === "lidarr" && searchOnAdd,
           user,
         });
         return c.json({ ...album, queued: false }, 201);
@@ -217,14 +165,7 @@ export default new Hono<AppEnv>()
     async (c) => {
       const user = c.var.user;
       try {
-        const {
-          albumMbid,
-          albumName,
-          artistMbid,
-          artistName,
-          triggerSearch = false,
-          managedBy: requestedManagedBy,
-        } = c.req.valid("json");
+        const { albumMbid, albumName, artistMbid, artistName } = c.req.valid("json");
 
         if (!albumMbid || !albumName || !artistMbid || !artistName) {
           return c.json(
@@ -238,40 +179,23 @@ export default new Hono<AppEnv>()
           albumName,
           artistName,
           artistMbid,
-          triggerSearch,
-          managedBy: requestedManagedBy,
           user,
         });
-        const settings = dbOps.getSettings();
-        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-        const searching =
-          result?.managedBy === "aurral"
-            ? result?.status === "queued"
-            : triggerSearch || searchOnAdd || result?.status === "searching";
         const historyAlbum = {
           albumId: result?.album?.id,
           albumName: result?.album?.albumName || albumName,
           artistName: result?.artist?.artistName || artistName,
           artistMbid: result?.artist?.mbid || artistMbid,
-          managedBy: result?.managedBy || null,
           user,
         };
         recordAlbumRequested({
           ...historyAlbum,
           requestGroupId: result?.requestGroupId || result?.album?.requestGroupId,
-          searching: result?.status === "available" ? false : searching,
         });
         if (result?.status === "available") {
           recordAlbumSearchCompleted(historyAlbum);
         }
-        invalidateAllDownloadStatusesCache();
-        return c.json(
-          {
-            ...result,
-            queued: result?.managedBy === "aurral" ? (result?.jobIds?.length || 0) > 0 : false,
-          },
-          201,
-        );
+        return c.json({ ...result, queued: (result?.jobIds?.length || 0) > 0 }, 201);
       } catch (error) {
         const failure: AlbumRequestFailure | undefined = asAppError(error);
         return c.json(
@@ -355,68 +279,10 @@ export default new Hono<AppEnv>()
   })
   .get("/albums/:id", cacheFor(120), async (c) => {
     try {
-      const album = await libraryManager.getAlbumById(c.req.param("id"));
+      const album = libraryManager.getAlbumById(c.req.param("id"));
       if (!album) return c.json({ error: "Album not found" }, 404);
       return c.json(album, 200);
     } catch (error) {
       return c.json({ error: "Failed to fetch album", message: asAppError(error)?.message }, 500);
     }
-  })
-  .put("/albums/:id", requireAuth, canUpdateAlbum, validate("json", monitoredInput), async (c) => {
-    try {
-      const album = await libraryManager.updateAlbum(c.req.param("id"), c.req.valid("json"));
-      if (isFailure(album)) return c.json({ error: album.error }, 503);
-      return c.json(album, 200);
-    } catch (error) {
-      return c.json({ error: "Failed to update album", message: asAppError(error)?.message }, 500);
-    }
-  })
-  .delete(
-    "/albums/lidarr/:mbid",
-    requireAuth,
-    requirePermission("deleteAlbum"),
-    validate("query", deleteQuery),
-    async (c) => {
-      try {
-        const result = await libraryManager.deleteLidarrAlbumByMbid(
-          c.req.param("mbid"),
-          c.req.valid("query").deleteFiles === "true",
-        );
-        if (!result?.success) {
-          return c.json(
-            { error: result?.error || "Failed to delete album" },
-            isErrorStatus(result?.statusCode) ? result.statusCode : 503,
-          );
-        }
-        return c.json({ success: true, message: "Album deleted successfully" }, 200);
-      } catch (error) {
-        return c.json(
-          { error: "Failed to delete album", message: asAppError(error)?.message },
-          500,
-        );
-      }
-    },
-  )
-  .delete(
-    "/albums/:id",
-    requireAuth,
-    requirePermission("deleteAlbum"),
-    validate("query", deleteQuery),
-    async (c) => {
-      try {
-        const result = await libraryManager.deleteAlbum(
-          c.req.param("id"),
-          c.req.valid("query").deleteFiles === "true",
-        );
-        if (!result?.success) {
-          return c.json({ error: result?.error || "Failed to delete album" }, 503);
-        }
-        return c.json({ success: true, message: "Album deleted successfully" }, 200);
-      } catch (error) {
-        return c.json(
-          { error: "Failed to delete album", message: asAppError(error)?.message },
-          500,
-        );
-      }
-    },
-  );
+  });
