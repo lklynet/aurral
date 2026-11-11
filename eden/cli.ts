@@ -168,6 +168,10 @@ async function up(everything = false) {
 }
 
 async function down() {
+  if (!existsSync(STATE_DIR)) {
+    console.log("This checkout has no Eden.");
+    return;
+  }
   const ports = await resolvePorts();
   compose(ports, ["down", "--volumes", "--remove-orphans"]);
   rmSync(STATE_DIR, { recursive: true, force: true });
