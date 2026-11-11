@@ -58,11 +58,21 @@ const storeListenbrainzReleaseGroups: Migration = (db) =>
     );
   `);
 
+const storeListenbrainzArtistTags: Migration = (db) =>
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS listenbrainz_artist_tags (
+      mbid TEXT PRIMARY KEY,
+      tags_json TEXT NOT NULL,
+      checked_at INTEGER NOT NULL
+    );
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
   dropLidarrMode,
   storeListenbrainzReleaseGroups,
+  storeListenbrainzArtistTags,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

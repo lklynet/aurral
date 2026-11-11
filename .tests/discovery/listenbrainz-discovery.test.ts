@@ -18,6 +18,7 @@ const [
   { default: similar },
   { FlowTrackSource },
   { listenbrainzCache },
+  { getArtistTagLists },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -28,6 +29,7 @@ const [
   () => import("../../backend/routes/artists/handlers/similar.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
   () => import("../../backend/services/apiClients/listenbrainz.ts"),
+  () => import("../../backend/services/musicDataSource/index.ts"),
 );
 
 const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
@@ -35,6 +37,7 @@ const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const LIBRARY = { name: "Library One", mbid: mbid(2) };
 const QUIET = { name: "Quiet Artist", mbid: mbid(3) };
 const NEIGHBOR = { name: "Neighbor Artist", mbid: mbid(4) };
+const TAGGED = { name: "Tagged Artist", mbid: mbid(5) };
 const RELATED = { name: "Related Pick", mbid: mbid(31) };
 const RELATED_PHOTO = "https://cdn-images.dzcdn.net/images/artist/related/1000x1000.jpg";
 const CLOSE_PICK = { name: "Close Pick", mbid: mbid(11) };
@@ -275,6 +278,29 @@ test("without a Last.fm key artist pages list ListenBrainz similar artists and k
     ).length,
     1,
   );
+});
+
+test("without a Last.fm key artist tags are kept across restarts and refreshed in the background after a week", async () => {
+  const loadTags = async () =>
+    (await getArtistTagLists([TAGGED]))[0]?.map((tag: { name: string }) => tag.name);
+  const lookups = () =>
+    requests.filter(
+      (url) =>
+        url.pathname === "/1/metadata/artist/" &&
+        url.searchParams.get("artist_mbids") === TAGGED.mbid,
+    ).length;
+  const expected = ["seen live", "shoegaze", "dream pop"];
+
+  assert.deepEqual(await loadTags(), expected);
+  listenbrainzCache.flushAll();
+  assert.deepEqual(await loadTags(), expected);
+  assert.equal(lookups(), 1);
+
+  vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
+  listenbrainzCache.flushAll();
+  assert.deepEqual(await loadTags(), expected);
+  await vi.runAllTimersAsync();
+  assert.equal(lookups(), 2);
 });
 
 test("without a Last.fm key artist pages fall back to Deezer's related artists when ListenBrainz has none", async () => {

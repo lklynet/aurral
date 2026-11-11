@@ -401,6 +401,12 @@ export interface ListenHistorySourcesRow {
   account: string;
 }
 
+export interface ListenbrainzArtistTagsRow {
+  mbid: string | null;
+  tags_json: string;
+  checked_at: number;
+}
+
 export interface ListenbrainzReleaseGroupsRow {
   mbid: string | null;
   first_release_date: string | null;
