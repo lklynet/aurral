@@ -14,7 +14,7 @@ const [
   { db },
   { dbOps },
   { downloadTracker },
-  { denyExpiredReviews },
+  { retryStaleReviews, approveBlockedJob },
   { withDownloadImportLock },
 ] = await setupIsolatedBackend(
   "review-timeout",
@@ -49,7 +49,7 @@ const exists = async (target: string) => Boolean(await fs.stat(target).catch(() 
 test("songs held longer than the maximum wait are denied and searched again", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: 24 });
   const held = await holdForReview("Old");
-  assert.equal(await denyExpiredReviews(Date.now() + 25 * HOUR), 1);
+  assert.equal(await retryStaleReviews(Date.now() + 25 * HOUR), 1);
   const job = downloadTracker.getJob(held.jobId);
   assert.ok(job != null);
   assert.equal(job.status, "pending");
@@ -60,7 +60,7 @@ test("songs held longer than the maximum wait are denied and searched again", as
 test("songs within the maximum wait stay held", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: 24 });
   const held = await holdForReview("Recent");
-  assert.equal(await denyExpiredReviews(Date.now() + 23 * HOUR), 0);
+  assert.equal(await retryStaleReviews(Date.now() + 23 * HOUR), 0);
   assert.equal(trackedJob(downloadTracker, held.jobId).status, "blocked");
   assert.equal(await exists(held.stagingPath), true);
 });
@@ -68,9 +68,39 @@ test("songs within the maximum wait stay held", async () => {
 test("a maximum wait of zero keeps held songs indefinitely", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: 0 });
   const held = await holdForReview("Kept");
-  assert.equal(await denyExpiredReviews(Date.now() + 1000 * HOUR), 0);
+  assert.equal(await retryStaleReviews(Date.now() + 1000 * HOUR), 0);
   assert.equal(trackedJob(downloadTracker, held.jobId).status, "blocked");
 });
+
+test.each([
+  ["the review task runs", 0, async () => assert.equal(await retryStaleReviews(), 1)],
+  [
+    "its review expired",
+    24,
+    async () => assert.equal(await retryStaleReviews(Date.now() + 25 * HOUR), 1),
+  ],
+  [
+    "it is approved",
+    0,
+    async (jobId: string) => assert.equal((await approveBlockedJob(jobId)).status, 404),
+  ],
+])(
+  "a held song whose file is gone is searched again when %s, without denying its source",
+  async (_trigger, reviewTimeoutHours, settle) => {
+    dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours });
+    const held = await holdForReview("Vanished");
+    downloadTracker.updateDownloadMetadata(held.jobId, {
+      downloadSource: "ytdlp",
+      releaseGuid: "video-id",
+    });
+    await fs.rm(held.stagingPath);
+    await settle(held.jobId);
+    const job = trackedJob(downloadTracker, held.jobId);
+    assert.equal(job.status, "pending");
+    assert.equal(job.error, "Review file is gone");
+    assert.deepEqual(job.deniedRemoteSources ?? [], []);
+  },
+);
 
 test("the stored maximum wait is limited to whole hours up to 30 days", () => {
   for (const [stored, expected] of [
@@ -103,7 +133,7 @@ test("a timeout waits for an approval in progress and leaves the approved song a
     downloadTracker.setDone(held.jobId, held.stagingPath);
   });
   await approvalStarted;
-  const denial = denyExpiredReviews(Date.now() + 25 * HOUR);
+  const denial = retryStaleReviews(Date.now() + 25 * HOUR);
   try {
     for (let tick = 0; tick < 20; tick += 1)
       await new Promise<void>((resolve) => setImmediate(resolve));

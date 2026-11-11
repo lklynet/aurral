@@ -207,11 +207,11 @@ const SYSTEM_TASKS = {
   "review-timeout": {
     queue: "system",
     label: "Review timeout",
-    description: "Denies tracks past the review deadline.",
+    description: "Searches again for held tracks past the review deadline or whose file is gone.",
     schedule: { everyMs: 15 * MINUTE },
     async run() {
-      const { denyExpiredReviews } = await import("../downloadJobs/blockedJobReview.ts");
-      await denyExpiredReviews();
+      const { retryStaleReviews } = await import("../downloadJobs/blockedJobReview.ts");
+      await retryStaleReviews();
     },
   },
   "quality-upgrade-check": {
