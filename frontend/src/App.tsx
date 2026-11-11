@@ -53,6 +53,7 @@ const ShowsPage = lazy(routeModules.shows);
 const LibraryPage = lazy(routeModules.library);
 const WrappedPage = lazy(routeModules.wrapped);
 const WrappedAnnouncement = lazy(() => import("./components/WrappedAnnouncement.tsx"));
+const LidarrConversionReport = lazy(() => import("./components/LidarrConversionReport.tsx"));
 const ArtistDetailsPage = lazy(routeModules.artist);
 const ArtistReleaseListPage = lazy(routeModules.artistReleases);
 const AlbumPage = lazy(routeModules.album);
@@ -231,6 +232,11 @@ function ProtectedLayout() {
           {wrappedSeason && (
             <Suspense fallback={null}>
               <WrappedAnnouncement />
+            </Suspense>
+          )}
+          {bootstrap?.lidarrConversion && (
+            <Suspense fallback={null}>
+              <LidarrConversionReport />
             </Suspense>
           )}
           {healthIssue === "lidarr" && isHealthy && (

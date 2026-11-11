@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
@@ -472,9 +473,10 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     };
   }
 
+  const requestedFolder = typeof downloadFolderPath === "string" ? downloadFolderPath.trim() : "";
   const readOnlyOverlap =
-    typeof downloadFolderPath === "string" && downloadFolderPath.trim()
-      ? readOnlyFolderOverlapping(downloadFolderPath.trim())
+    requestedFolder && path.resolve(requestedFolder) !== path.resolve(resolveDownloadRoot())
+      ? readOnlyFolderOverlapping(requestedFolder)
       : null;
   if (readOnlyOverlap) {
     return {

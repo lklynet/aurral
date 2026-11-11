@@ -40,6 +40,7 @@ const [
   { downloadWorker, DownloadWorker },
   { processSystemTask },
   { clearScheduledLibraryScan },
+  { saveAppSettings },
 ] = await setupIsolatedBackend(
   "read-only-folders",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -52,6 +53,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/appSettings.ts"),
 );
 
 const lidarrOn = { isConfigured: () => true };
@@ -200,6 +202,15 @@ test("a read-only folder cannot overlap the Library folder or another read-only 
     assert.ok(response.body.message, rejected);
   }
   assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders", v.unknown()), [folder]);
+
+  const libraryFolder = resolveDownloadRoot();
+  dbOps.setJSONSetting("readOnlyFolders", [folder, libraryFolder]);
+  assert.ok("settings" in (await saveAppSettings({ downloadFolderPath: libraryFolder })));
+  assert.match(
+    String((await saveAppSettings({ downloadFolderPath: path.join(folder, "Nested") })).error),
+    /cannot overlap the read-only folder/,
+  );
+  assert.equal(resolveDownloadRoot(), libraryFolder);
 });
 
 test("an unreadable saved read-only folder entry keeps the other folders", async () => {

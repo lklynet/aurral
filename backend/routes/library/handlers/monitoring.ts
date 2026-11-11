@@ -7,6 +7,7 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { removeMonitoringExclusion } from "../../../services/aurralMonitoringStore.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
+import { dismissLidarrConversionReport } from "../../../services/lidarrConversionReport.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
@@ -90,6 +91,19 @@ export default new Hono<AppEnv>()
       return sendError(c, error, "Failed to save monitoring defaults");
     }
   })
+  .post(
+    "/lidarr-conversion/dismiss",
+    requireAuth,
+    requireAdmin,
+    validate("json", v.object({ monitorArtists: v.boolean() })),
+    (c) => {
+      try {
+        return c.json(dismissLidarrConversionReport(c.req.valid("json")), 200);
+      } catch (error) {
+        return sendError(c, error, "Failed to dismiss the Lidarr conversion report");
+      }
+    },
+  )
   .get("/monitoring/exclusions", requireAuth, noCache, validate("query", exclusionsQuery), (c) => {
     const artistMbid = String(c.req.valid("query").artistMbid || "").trim();
     if (artistMbid && !UUID_REGEX.test(artistMbid)) {

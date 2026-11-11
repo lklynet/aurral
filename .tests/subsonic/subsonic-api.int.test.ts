@@ -242,19 +242,20 @@ beforeAll(async () => {
       canonicalTags("Unavailable Canonical Song", 2, "66666666-6666-4666-8666-666666666666"),
     ],
   ]);
-  const scanLidarrRoot = () =>
+  const scanFixtureRoot = () =>
     scanMusicRoot({
       rootPath: fixtureRoot,
-      source: "lidarr",
+      source: "readonly",
       metadataReader: async (filePath) => {
         const tags = tagsByPath.get(filePath);
         assert.ok(tags);
         return tags;
       },
     });
-  await scanLidarrRoot();
+  dbOps.setJSONSetting("readOnlyFolders", [fixtureRoot]);
+  await scanFixtureRoot();
   await rm(unavailablePath);
-  await scanLidarrRoot();
+  await scanFixtureRoot();
 
   const flow = flowPlaylistConfig.createFlow({ name: "Canonical Flow", size: 1 });
   flowPlaylistConfig.setEnabled(flow.id, true);
@@ -2022,13 +2023,13 @@ test("streams library files through the authenticated native route", async () =>
   const { token } = await login.json();
   const headers = { Authorization: `Bearer ${token}` };
   const canonical = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
+    `http://127.0.0.1:${aurral.port}/api/library?source=readonly&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
   );
   const library = await canonical.json();
   const albumId = library.tracks[0].albums[0].albumId;
   const tracks = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=library&source=lidarr&albumId=${albumId}`,
+    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=library&source=readonly&albumId=${albumId}`,
     { headers },
   );
   const track = (await tracks.json())[0];
