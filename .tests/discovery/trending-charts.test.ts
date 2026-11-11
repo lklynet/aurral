@@ -78,7 +78,17 @@ const respond = (url: URL) => {
   }
   if (url.hostname !== "api.deezer.com") return json({ error: "unexpected" }, 404);
   if (url.pathname === "/infos") return json({ country_iso: source.region });
-  if (url.pathname === "/user/637006841/playlists") return json({ data: source.playlists });
+  if (url.pathname === "/search/playlist") {
+    const query = url.searchParams.get("q");
+    return json({
+      data: source.playlists
+        .filter((playlist) => playlist.title === query)
+        .flatMap((playlist) => [
+          { ...playlist, id: playlist.id + 100, user: { id: 4036701362 } },
+          { ...playlist, user: { id: 637006841 } },
+        ]),
+    });
+  }
   if (/^\/playlist\/\d+\/tracks$/.test(url.pathname)) {
     return json({ data: source.chartTracks.map((id) => track(id)) });
   }

@@ -172,22 +172,18 @@ async function fetchRegion() {
   return region;
 }
 
+async function searchChartPlaylist(title: string) {
+  const page = await deezerList(deezerPlaylistSchema, "/search/playlist", { q: title, limit: 25 });
+  return page.items.find(
+    (playlist) => playlist.user?.id === DEEZER_CHARTS_USER_ID && text(playlist.title) === title,
+  );
+}
+
 async function findChartPlaylist(region: string) {
-  const wanted = chartPlaylistTitle(region);
-  const playlists: v.InferOutput<typeof deezerPlaylistSchema>[] = [];
-  for (let index = 0; index < 500; index += 100) {
-    const page = await deezerList(
-      deezerPlaylistSchema,
-      `/user/${DEEZER_CHARTS_USER_ID}/playlists`,
-      { index, limit: 100 },
-    );
-    playlists.push(...page.items);
-    if (!page.next || page.received === 0) break;
-  }
   const match =
-    playlists.find((playlist) => text(playlist.title) === wanted) ||
-    playlists.find((playlist) => text(playlist.title) === WORLDWIDE_CHART_TITLE);
-  if (!match?.id) throw new Error("Deezer has no chart playlist");
+    (await searchChartPlaylist(chartPlaylistTitle(region))) ||
+    (await searchChartPlaylist(WORLDWIDE_CHART_TITLE));
+  if (!match) throw new Error("Deezer has no chart playlist");
   return { id: text(match.id), name: text(match.title) };
 }
 
