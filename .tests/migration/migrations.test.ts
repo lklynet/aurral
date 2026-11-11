@@ -65,11 +65,18 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
      VALUES ('artist', 1, 'aurral', 'all', 1, 1)`,
   ).run();
   const request = db.prepare(
-    `INSERT INTO aurral_history (id, kind, title, status, status_label, created_at)
-     VALUES (?, 'album_requested', 'Album', ?, ?, 1)`,
+    `INSERT INTO aurral_history (id, kind, title, status, status_label, metadata, created_at)
+     VALUES (?, 'album_requested', ?, ?, ?, ?, 1)`,
   );
-  request.run("searching", "processing", "Searching");
-  request.run("requested", "completed", "Requested");
+  request.run(
+    "searching",
+    "Searching Lidarr for Third",
+    "processing",
+    "Searching",
+    '{"albumName":"Third"}',
+  );
+  request.run("unnamed", "Searching Lidarr", "processing", "Searching", "not json");
+  request.run("requested", "Requested Dummy", "completed", "Requested", null);
 
   migrate(db);
 
@@ -90,10 +97,11 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
   assert.ok(!columns("download_jobs").includes("managed_by"));
   assert.ok(!columns("users").some((column) => column.startsWith("lidarr_")));
   assert.deepEqual(
-    db.prepare("SELECT id, status, status_label FROM aurral_history ORDER BY id").all(),
+    db.prepare("SELECT id, title, status, status_label FROM aurral_history ORDER BY id").all(),
     [
-      { id: "requested", status: "completed", status_label: "Requested" },
-      { id: "searching", status: "cancelled", status_label: "Cancelled" },
+      { id: "requested", title: "Requested Dummy", status: "completed", status_label: "Requested" },
+      { id: "searching", title: "Requested Third", status: "completed", status_label: "Requested" },
+      { id: "unnamed", title: "Requested album", status: "completed", status_label: "Requested" },
     ],
   );
 });

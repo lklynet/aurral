@@ -558,15 +558,17 @@ export function useLibraryActions({
     const removal = libraryRemoval;
     const trackHasFile = removal.kind === "track" && Boolean(firstAvailableFile(removal.entity));
     setDeletingLibraryEntity(true);
+    let artistRemains = false;
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await parseResponse(
+          const deleted = await parseResponse(
             libraryArtistsClient.artists[":mbid"].$delete({
               param: { mbid: encodeURIComponent(removal.entity.mbid || removal.entity.id) },
               query: { deleteFiles: String(deleteFiles) },
             }),
           );
+          artistRemains = deleted.remains;
         } else if (removal.kind === "album") {
           await parseResponse(
             libraryAlbumsClient.albums[":albumId"].$delete({
@@ -582,11 +584,14 @@ export function useLibraryActions({
           );
         }
       }
-      removeLocalLibraryEntity(removal);
+      if (artistRemains) void invalidateLibraryViews();
+      else removeLocalLibraryEntity(removal);
       setLibraryRemoval(null);
       showSuccess(
         removal.kind === "artist"
-          ? "Artist deleted"
+          ? artistRemains
+            ? `${removal.entity.name} stays in the Library. Its music is in a read-only folder.`
+            : "Artist deleted"
           : removal.kind === "album"
             ? "Album deleted"
             : trackHasFile
@@ -1402,6 +1407,7 @@ export function useLibraryActions({
       <DeleteArtistModal
         show={libraryRemoval?.kind === "artist"}
         artistName={libraryRemoval?.kind === "artist" ? libraryRemoval.entity.name : undefined}
+        sources={libraryRemoval?.kind === "artist" ? libraryRemoval.entity.sources : undefined}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}

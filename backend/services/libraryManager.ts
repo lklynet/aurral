@@ -225,6 +225,7 @@ type DefaultMonitoringArtist = ReturnType<LibraryManager["_defaultMonitoringArti
 type NoError = { error?: undefined; statusCode?: undefined; code?: undefined };
 type LibraryDeletion = {
   success: boolean;
+  remains?: boolean;
   error?: string;
   statusCode?: number;
   code?: string | null;
@@ -1904,9 +1905,9 @@ export class LibraryManager {
     }
     clearLibraryManagement("artist", Number(artist.id));
     clearArtistMonitoringExclusions(artist.mbid);
-    removeLibraryArtistIfEmpty(artist.id);
+    const remains = !removeLibraryArtistIfEmpty(artist.id);
     logger.info("library", `[LibraryManager] Removed Aurral artist "${artist.name}"`);
-    return { success: true };
+    return { success: true, remains };
   }
 
   async _addAlbum(

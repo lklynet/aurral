@@ -4,13 +4,20 @@ import { parseResponse } from "hono/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
+import { useReadOnlyFolders } from "../hooks/useLibraryFileOperation.ts";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
 import { DotLoader } from "./DotLoader";
 
 const LIDARR_DOCS = "https://docs.aurral.org/integrations/lidarr/";
+const MOUNT_DOCS = "https://docs.aurral.org/getting-started/storage/#mount-a-read-only-folder";
 
 export default function LidarrConversionReport() {
   const report = useAuth().bootstrap?.lidarrConversion;
+  const unreadable = new Set(
+    useReadOnlyFolders()
+      .data?.folders.filter((folder) => !folder.readable)
+      .map((folder) => folder.path),
+  );
   const { showSuccess, showError } = useToast();
   const [closed, setClosed] = useState(false);
   const [monitorArtists, setMonitorArtists] = useState(false);
@@ -66,9 +73,34 @@ export default function LidarrConversionReport() {
             {folders.map((folder) => (
               <li key={folder.path}>
                 <code>{folder.path}</code>
-                {folder.sharesLibraryFolder
-                  ? " is inside the Library folder. Remove it in Settings > Library once Lidarr stops using it."
-                  : null}
+                {folder.lidarrPath === folder.path ? null : (
+                  <span>
+                    Lidarr sees it as <code>{folder.lidarrPath}</code>. Use both paths when you add
+                    the Lidarr plugin.
+                  </span>
+                )}
+                {folder.sharesLibraryFolder ? (
+                  <span>
+                    Inside the Library folder. Remove it in Settings &gt; Library once Lidarr stops
+                    using it.
+                  </span>
+                ) : null}
+                {unreadable.has(folder.path) ? (
+                  <span>
+                    <span className="lidarr-conversion__warning">
+                      Aurral cannot read this folder.
+                    </span>{" "}
+                    Mount Lidarr&apos;s music at this path, or remove it in Settings &gt; Library.{" "}
+                    <a
+                      className="lidarr-conversion__link"
+                      href={MOUNT_DOCS}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Storage docs
+                    </a>
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -84,16 +116,20 @@ export default function LidarrConversionReport() {
             <div>
               <span className="artist-card-title">
                 {artistCount === 1
-                  ? "Monitor this artist"
-                  : `Monitor these ${artistCount.toLocaleString()} artists`}
+                  ? "Monitor this artist with your default rules"
+                  : `Monitor these ${artistCount.toLocaleString()} artists with your default rules`}
               </span>
               <p className="artist-modal__subcopy">
-                Uses your default rules in Settings &gt; Monitoring. Aurral downloads what is
-                missing.
+                {artistCount === 1
+                  ? "You monitored it through Aurral 2. Aurral downloads its missing albums using Settings > Monitoring."
+                  : "You monitored them through Aurral 2. Aurral downloads their missing albums using Settings > Monitoring."}
               </p>
             </div>
           </label>
         ) : null}
+        <p className="artist-modal__subcopy">
+          Artists Lidarr already had start Not monitored. Monitor them from their artist page.
+        </p>
         <div className="artist-modal__actions lidarr-conversion__actions">
           <a
             className="lidarr-conversion__link"

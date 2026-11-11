@@ -115,9 +115,10 @@ async function callLibrary(method: string, routePath: string, body?: { path: str
       : { method },
   );
   const responseBody: {
-    folders: { path: string; tracks?: number; readable?: boolean }[];
+    folders: { path: string; tracks?: number; readable?: boolean; insideLibraryFolder?: boolean }[];
     message?: string;
     error?: string;
+    remains?: boolean;
   } = await response.json();
   return { status: response.status, body: responseBody };
 }
@@ -169,6 +170,15 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   assert.equal(deleted.status, 409);
   assert.deepEqual(await fingerprint(filePath), before);
   assert.equal(fileRow(filePath).length, 1);
+
+  const artistId = db
+    .prepare<[], number>("SELECT id FROM library_artists WHERE name = 'Kept Artist'")
+    .pluck()
+    .get();
+  const artistDeleted = await callLibrary("DELETE", `/artists/${artistId}?deleteFiles=true`);
+  assert.equal(artistDeleted.status, 200);
+  assert.equal(artistDeleted.body.remains, true);
+  assert.deepEqual(await fingerprint(filePath), before);
 });
 
 test("a read-only folder cannot overlap the Library folder or another read-only folder", async () => {
@@ -205,14 +215,18 @@ test("a read-only folder cannot overlap the Library folder or another read-only 
   assert.equal(resolveDownloadRoot(), libraryFolder);
 });
 
-test("an unreadable saved read-only folder entry keeps the other folders", async () => {
+test("saved read-only folders show whether each sits inside the Library folder, and a broken entry keeps the others", async () => {
   const folder = await makeFolder("kept-entry");
-  dbOps.setJSONSetting("readOnlyFolders", [folder, null]);
+  const fromLidarr = path.join(resolveDownloadRoot(), "from-lidarr");
+  dbOps.setJSONSetting("readOnlyFolders", [folder, null, fromLidarr]);
 
   const listed = await callLibrary("GET", "/files/read-only-folders");
   assert.deepEqual(
-    listed.body.folders.map((entry) => entry.path),
-    [folder],
+    listed.body.folders.map((entry) => [entry.path, entry.insideLibraryFolder]),
+    [
+      [folder, false],
+      [fromLidarr, true],
+    ],
   );
 });
 

@@ -39,7 +39,9 @@ const dropLidarrMode: Migration = (db) => {
           AND lower(trim(coalesce(mapping.value ->> '$.source', ''))) <> 'lidarr'
       )
       WHERE key = 'pathMappings' AND json_valid(value) AND json_type(value) = 'array';
-    UPDATE aurral_history SET status = 'cancelled', status_label = 'Cancelled'
+    UPDATE aurral_history SET status = 'completed', status_label = 'Requested',
+        title = 'Requested ' || coalesce(
+          CASE WHEN json_valid(metadata) THEN metadata ->> '$.albumName' END, 'album')
       WHERE kind = 'album_requested' AND status = 'processing';
   `);
 };
