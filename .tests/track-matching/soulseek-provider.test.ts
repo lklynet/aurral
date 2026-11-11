@@ -296,6 +296,33 @@ test("falls back to a valid track outside the album folder when the album folder
   );
 });
 
+test("a compilation track is found in its own artist's folders, never vouched for by a Various Artists folder", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "artistUser",
+        file: "Fleetwood Mac\\1977 - Rumours\\04 - You Make Loving Fun.flac",
+        length: 217,
+      }),
+      result({
+        user: "coverUser",
+        file: "Various Artists\\Soft Rock Covers\\05 - A Cover Band - You Make Loving Fun.mp3",
+        length: 217,
+      }),
+    ],
+    {
+      artistName: "Various Artists",
+      artistAliases: ["Fleetwood Mac"],
+      trackName: "You Make Loving Fun",
+      albumName: "70s Gold",
+      durationMs: 217000,
+    },
+  );
+  assert.deepEqual(usableFileNames(evaluation), [
+    "Fleetwood Mac\\1977 - Rumours\\04 - You Make Loving Fun.flac",
+  ]);
+});
+
 test("live variant is rejected by contradiction when the requested track is plain", async () => {
   const evaluation = await evaluate(
     [
@@ -782,27 +809,29 @@ test("single-file folders outside the fitting set stay reachable when identity i
 });
 
 test("sibling-track conflict rejects a same-title different-track candidate", async () => {
-  const evaluation = await evaluate(
-    [
-      result({
-        user: "albumUser",
-        file: "Artist Name\\Album Name (2019)\\02 - Hole In The Sheet.mp3",
-        bitrate: 320,
-      }),
-    ],
-    {
-      artistName: "Artist Name",
-      trackName: "Hole In The Sheet",
-      albumName: "Album Name",
-      releaseYear: "2019",
-      artistAliases: [],
-      albumTrackTitles: ["Hole In The Sheet", "Hole In My Sheet"],
-      trackNumber: 1,
-    },
-  );
-  const usable = usableEvaluationEntries(evaluation);
-  assert.equal(usable.length, 0);
-  assert.ok(evaluation.evaluations[0]?.contradictions.includes("sibling-track-index"));
+  for (const artistName of ["Artist Name", "Various Artists"]) {
+    const evaluation = await evaluate(
+      [
+        result({
+          user: "albumUser",
+          file: `${artistName}\\Album Name (2019)\\02 - Hole In The Sheet.mp3`,
+          bitrate: 320,
+        }),
+      ],
+      {
+        artistName,
+        trackName: "Hole In The Sheet",
+        albumName: "Album Name",
+        releaseYear: "2019",
+        artistAliases: [],
+        albumTrackTitles: ["Hole In The Sheet", "Hole In My Sheet"],
+        trackNumber: 1,
+      },
+    );
+    const usable = usableEvaluationEntries(evaluation);
+    assert.equal(usable.length, 0);
+    assert.ok(evaluation.evaluations[0]?.contradictions.includes("sibling-track-index"));
+  }
 });
 
 test("wrong track number with imperfect metadata is rejected; exact identity rescues it", async () => {
