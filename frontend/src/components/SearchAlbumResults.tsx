@@ -1,5 +1,4 @@
-import ArtworkImage from "./ArtworkImage";
-import { useState } from "react";
+import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
@@ -10,7 +9,6 @@ import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAc
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { OptionalLink } from "./RouteLink";
 import Tooltip from "./Tooltip";
-import type { SearchImageMap } from "./SearchMixedResultList";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 
 export type SearchAlbum = {
@@ -29,7 +27,6 @@ export type SearchAlbum = {
 
 type SearchAlbumResultsProps = {
   albums: SearchAlbum[];
-  albumCovers: SearchImageMap;
   canAddAlbum: boolean;
   pendingAlbumIds: Record<string, boolean | undefined>;
   onAlbumAction: (album: SearchAlbum) => void;
@@ -58,28 +55,6 @@ function getReleaseTypeLabel(album: SearchAlbum) {
   const secondary = Array.isArray(album.secondaryTypes) ? album.secondaryTypes.filter(Boolean) : [];
   const types = [primary, ...secondary].filter(Boolean);
   return types.length ? types.join(" · ") : null;
-}
-
-function AlbumCover({ src, alt }: { src?: string | null; alt: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (!src || failed) {
-    return (
-      <div className="artist-release-card__placeholder">
-        <Music className="artist-icon-lg" aria-hidden="true" />
-      </div>
-    );
-  }
-
-  return (
-    <ArtworkImage
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 function AlbumAction({
@@ -126,7 +101,6 @@ function AlbumAction({
 
 function SearchAlbumResults({
   albums,
-  albumCovers,
   canAddAlbum,
   pendingAlbumIds,
   onAlbumAction,
@@ -151,7 +125,6 @@ function SearchAlbumResults({
 
   const renderAlbum = (album: SearchAlbum) => {
     const isPending = !!pendingAlbumIds[album.id];
-    const coverSrc = albumCovers[album.id] || album.coverUrl;
     const releaseYear = getReleaseYear(album.releaseDate);
     const releaseTypeLabel = getReleaseTypeLabel(album);
     const releaseMeta = [releaseYear, releaseTypeLabel].filter(Boolean).join(" · ");
@@ -167,13 +140,15 @@ function SearchAlbumResults({
             aria-label={`Open ${album.title}`}
           >
             <div className="artist-media-cell artist-list-cover">
-              {coverSrc ? (
-                <ArtworkImage src={coverSrc} alt="" loading="lazy" decoding="async" />
-              ) : (
-                <div className="artist-media-placeholder">
-                  <Music className="artist-icon-md" aria-hidden="true" />
-                </div>
-              )}
+              <ReleaseCoverImage
+                src={album.coverUrl}
+                alt=""
+                placeholder={
+                  <div className="artist-media-placeholder">
+                    <Music className="artist-icon-md" aria-hidden="true" />
+                  </div>
+                }
+              />
             </div>
           </OptionalLink>
           <div className="artist-min-0">
@@ -216,13 +191,15 @@ function SearchAlbumResults({
             className="artist-release-card__cover search-album-results__cover-link"
             aria-label={`Open ${album.title}`}
           >
-            {coverSrc ? (
-              <AlbumCover src={coverSrc} alt="" />
-            ) : (
-              <div className="artist-release-card__placeholder">
-                <Music className="artist-icon-lg" aria-hidden="true" />
-              </div>
-            )}
+            <ReleaseCoverImage
+              src={album.coverUrl}
+              alt=""
+              placeholder={
+                <div className="artist-release-card__placeholder">
+                  <Music className="artist-icon-lg" aria-hidden="true" />
+                </div>
+              }
+            />
           </OptionalLink>
           <div className="artist-release-card__action">
             <AlbumAction

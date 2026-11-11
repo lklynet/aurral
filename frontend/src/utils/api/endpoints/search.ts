@@ -6,16 +6,27 @@ import { queryClient, queryKeys } from "../../../queryClient.ts";
 
 const searchFetch = apiFetchWithin(12_000);
 
+const withAlbumCover = <T extends { type: string; coverUrl?: string | null }>(item: T): T =>
+  item.type === "album" && item.coverUrl
+    ? { ...item, coverUrl: resolveAuthenticatedApiAssetUrl(item.coverUrl) }
+    : item;
+
 export const unifiedSearchQuery = (query: string, limit: number) =>
   queryOptions({
     queryKey: queryKeys.searchUnified(query, limit),
-    queryFn: ({ signal }) =>
-      parseResponse(
+    queryFn: async ({ signal }) => {
+      const result = await parseResponse(
         searchClient.unified.$get(
           { query: { q: query, limit: String(limit) } },
           { fetch: searchFetch, init: { signal } },
         ),
-      ),
+      );
+      return {
+        ...result,
+        top: result.top && withAlbumCover(result.top),
+        albums: result.albums.map(withAlbumCover),
+      };
+    },
     staleTime: 30_000,
   });
 
@@ -85,8 +96,8 @@ export const searchCatalog = async (
   } = {},
 ) => {
   const albumScope = scope === "album";
-  const fetchCatalog = (requestSignal: AbortSignal | undefined) =>
-    parseResponse(
+  const fetchCatalog = async (requestSignal: AbortSignal | undefined) => {
+    const result = await parseResponse(
       searchClient.$get(
         {
           query: {
@@ -101,6 +112,8 @@ export const searchCatalog = async (
         { init: { signal: requestSignal } },
       ),
     );
+    return albumScope ? { ...result, items: result.items.map(withAlbumCover) } : result;
+  };
   if (signal) return fetchCatalog(signal);
   return queryClient.fetchQuery({
     queryKey: queryKeys.searchCatalog(query, scope, { limit, offset, releaseTypes, sort }),

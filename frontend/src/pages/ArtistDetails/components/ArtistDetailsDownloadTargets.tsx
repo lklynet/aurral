@@ -40,7 +40,7 @@ import type {
   SharedPlaylist,
 } from "../../../components/TrackPlaylistMenu";
 import type { ReleaseGroup } from "../utils";
-import { ReleaseCoverImage } from "./ReleaseCoverImage";
+import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
 
 type ArtistDetailsDownloadTargetsProps = {
   releaseGroups?: ReleaseGroup[];

@@ -140,8 +140,15 @@ test("every release group carries a cover URL that needs no metadata lookup", ()
   dbOps.setImage(`rg:${mbid}`, cachedImage);
   dbOps.setImage(`rg:${fallbackMbid}`, "NOT_FOUND");
   const unknownMbid = "33333333-3333-4333-8333-333333333333";
+  const providerCover = "https://images.example/provider.jpg";
 
-  const covered = withCoverUrls([{ id: mbid }, { id: fallbackMbid }, { id: unknownMbid }]);
+  const covered = withCoverUrls([
+    { id: mbid },
+    { id: fallbackMbid },
+    { id: unknownMbid },
+    { id: "44444444-4444-4444-8444-444444444444", coverUrl: providerCover },
+    { id: null },
+  ]);
 
   assert.deepEqual(
     covered.map(({ coverUrl }) => coverUrl),
@@ -149,6 +156,8 @@ test("every release group carries a cover URL that needs no metadata lookup", ()
       buildStableImageProxyUrl(cachedImage),
       null,
       `/api/artists/release-group/${unknownMbid}/cover/image`,
+      providerCover,
+      null,
     ],
   );
   assert.deepEqual(requests, []);

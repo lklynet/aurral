@@ -220,7 +220,6 @@ export const queryKeys = {
   ],
   searchUnified: (query: string, limit: number): QueryKey => ["search", "unified", query, limit],
   searchLibrary: (query: string, limit: number): QueryKey => ["search", "library", query, limit],
-  searchCovers: (mbids: string[]): QueryKey => ["search", "covers", ...mbids],
   searchPlaylists: (query: string): QueryKey => ["search", "playlists", query],
   storageHealth: ["settings", "storage-health"],
   settingsTasks: ["settings", "tasks"],

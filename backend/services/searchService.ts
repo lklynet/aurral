@@ -1,6 +1,7 @@
 import { getTagArtists } from "./musicDataSource/index.ts";
 import { buildImageProxyUrl } from "./imageProxyService.ts";
 import { selectBestArtistImage } from "./imageRanking.ts";
+import { withCoverUrls } from "./releaseGroupCoverService.ts";
 import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
@@ -123,7 +124,7 @@ export async function searchAlbums(
     count: result.count,
     offset: result.offset,
     hasMore: result.offset + result.items.length < result.count,
-    items: result.items.map(normalizeAlbumItem),
+    items: withCoverUrls(result.items.map(normalizeAlbumItem)),
   };
 }
 

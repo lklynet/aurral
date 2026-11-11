@@ -24,21 +24,6 @@ type ReleaseGroupCoverOptions = {
   albumTitle?: string;
   bypassCache?: boolean;
 };
-type BatchItemInput =
-  | {
-      mbid?: unknown;
-      id?: unknown;
-      artistName?: unknown;
-      albumTitle?: unknown;
-    }
-  | null
-  | undefined;
-type ReleaseGroupCoverBatchEntry = {
-  image: string | null;
-  notFound: boolean;
-  transientError?: boolean;
-};
-
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupRefreshRequests = new Map<
   string,
@@ -287,106 +272,25 @@ export const fetchReleaseGroupCoverUrl = async (
   return request;
 };
 
-const normalizeBatchItem = (item: BatchItemInput) => {
-  const mbid = String(item?.mbid || item?.id || "").trim();
-  if (!mbid) return null;
-  return {
-    mbid,
-    artistName: typeof item?.artistName === "string" ? item.artistName.trim() : "",
-    albumTitle: typeof item?.albumTitle === "string" ? item.albumTitle.trim() : "",
-  };
-};
-
-type BatchItem = NonNullable<ReturnType<typeof normalizeBatchItem>>;
-
-export const withCoverUrls = <T extends { id: string }>(releaseGroups: T[]) => {
+export const withCoverUrls = <T extends { id?: string | null; coverUrl?: string | null }>(
+  releaseGroups: T[],
+) => {
   if (!releaseGroups.length) return [];
-  const cached = dbOps.getImages(releaseGroups.map(({ id }) => `${RG_CACHE_PREFIX}${id}`));
+  const cached = dbOps.getImages(
+    releaseGroups.flatMap(({ id, coverUrl }) =>
+      id && !coverUrl ? [`${RG_CACHE_PREFIX}${id}`] : [],
+    ),
+  );
   return releaseGroups.map((releaseGroup) => {
-    const imageUrl = cached[`${RG_CACHE_PREFIX}${releaseGroup.id}`]?.imageUrl ?? null;
+    const { id, coverUrl } = releaseGroup;
+    if (coverUrl || !id) return { ...releaseGroup, coverUrl: coverUrl || null };
+    const imageUrl = cached[`${RG_CACHE_PREFIX}${id}`]?.imageUrl ?? null;
     return {
       ...releaseGroup,
       coverUrl:
         imageUrl === "NOT_FOUND"
           ? null
-          : toPublicCoverUrl(imageUrl) || releaseGroupCoverImageUrl(releaseGroup.id),
+          : toPublicCoverUrl(imageUrl) || releaseGroupCoverImageUrl(id),
     };
   });
-};
-
-export const resolveReleaseGroupCoversBatch = async (
-  items: BatchItemInput[] = [],
-  { concurrency = 6, signal }: { concurrency?: number; signal?: AbortSignal } = {},
-) => {
-  const seen = new Set();
-  const normalized = items
-    .map(normalizeBatchItem)
-    .filter((item): item is BatchItem => {
-      if (!item || seen.has(item.mbid)) return false;
-      seen.add(item.mbid);
-      return true;
-    })
-    .slice(0, 24);
-  const covers: Record<string, ReleaseGroupCoverBatchEntry> = {};
-  if (!normalized.length) return covers;
-
-  const cachedEntries = dbOps.getImages(normalized.map((item) => `${RG_CACHE_PREFIX}${item.mbid}`));
-  const missing = [];
-
-  for (const item of normalized) {
-    const cacheKey = `${RG_CACHE_PREFIX}${item.mbid}`;
-    const cached = cachedEntries[cacheKey];
-    if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
-      const imageUrl = toPublicCoverUrl(cached.imageUrl);
-      if (imageUrl) {
-        covers[item.mbid] = { image: imageUrl, notFound: false };
-        continue;
-      }
-      missing.push(item);
-      continue;
-    }
-    if (cached?.imageUrl === "NOT_FOUND") {
-      covers[item.mbid] = { image: null, notFound: true };
-      continue;
-    }
-    missing.push(item);
-  }
-
-  const safeConcurrency = Math.min(12, Math.max(1, Number.parseInt(String(concurrency), 10) || 6));
-
-  for (let index = 0; index < missing.length; index += safeConcurrency) {
-    signal?.throwIfAborted?.();
-    const batch = missing.slice(index, index + safeConcurrency);
-    const results = await Promise.allSettled(
-      batch.map((item) =>
-        fetchReleaseGroupCoverUrl(item.mbid, {
-          artistName: item.artistName,
-          albumTitle: item.albumTitle,
-        }),
-      ),
-    );
-    batch.forEach((item, batchIndex) => {
-      const entry = results[batchIndex];
-      if (entry?.status !== "fulfilled") {
-        covers[item.mbid] = { image: null, notFound: false, transientError: true };
-        return;
-      }
-      const value = entry.value;
-      if (value?.imageUrl) {
-        covers[item.mbid] = { image: value.imageUrl, notFound: false };
-        return;
-      }
-      if (value?.notFound) {
-        covers[item.mbid] = { image: null, notFound: true };
-        return;
-      }
-      covers[item.mbid] = {
-        image: null,
-        notFound: false,
-        transientError: !!value?.transientError,
-      };
-    });
-  }
-
-  return covers;
 };

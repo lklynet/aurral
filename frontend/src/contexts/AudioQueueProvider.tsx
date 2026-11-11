@@ -44,7 +44,7 @@ import { playQueueClient } from "../utils/api/clients/playQueue.ts";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { playEventsClient } from "../utils/api/clients/playEvents.ts";
 import { libraryRadioClient } from "../utils/api/clients/libraryRadio.ts";
-import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
+import { getReleaseGroupCover } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 import {
   MEDIA_SESSION_SEEK_SECONDS,
@@ -854,11 +854,12 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!missingArtworkMbid) return undefined;
     let cancelled = false;
-    getReleaseGroupCoversBatch([
-      { mbid: missingArtworkMbid, artistName: currentArtist, albumTitle: currentAlbum },
-    ])
-      .then((covers) => {
-        const artwork = covers?.[missingArtworkMbid]?.image;
+    getReleaseGroupCover(missingArtworkMbid, {
+      artistName: currentArtist,
+      albumTitle: currentAlbum,
+    })
+      .then(({ images }) => {
+        const artwork = images[0]?.image;
         if (!cancelled && artwork) {
           dispatch({ type: "SET_ALBUM_ARTWORK", albumMbid: missingArtworkMbid, artwork });
         }

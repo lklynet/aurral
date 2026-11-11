@@ -1,9 +1,9 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
-import ArtworkImage from "../../../components/ArtworkImage";
+import ArtworkImage from "./ArtworkImage";
 
 type ReleaseCoverImageProps = Omit<ComponentProps<typeof ArtworkImage>, "src" | "onError"> & {
-  src: string;
-  fallback: string | null | undefined;
+  src?: string | null;
+  fallback?: string | null;
   placeholder: ReactNode;
 };
 
