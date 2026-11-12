@@ -22,9 +22,11 @@ import {
 } from "../utils/api/endpoints/search.ts";
 import SearchAlbumResults, { isSearchAlbum } from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
-import { TrackPlaylistMenu } from "../components/TrackPlaylistMenu";
+import { TrackPlaylistMenu, type QueueMenuItem } from "../components/TrackPlaylistMenu";
 import { buildSearchSections, type SearchItem } from "../utils/searchNavigation";
 import SearchUnifiedResults, { hasUnifiedResults } from "./SearchUnifiedResults";
+import { useCollectionTint } from "../components/CollectionHeader";
+import { topResultArtwork } from "../components/SearchTopResult";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
@@ -324,6 +326,9 @@ function SearchResults() {
       }),
     [catalogUnavailable, libraryResults, playlistsQuery.data, unifiedResults],
   );
+  const tint = useCollectionTint(
+    isUnifiedSearch && sections.top ? topResultArtwork(sections.top) : null,
+  );
   const loading = isPlaylistTab
     ? libraryQuery.isLoading || playlistsQuery.isLoading
     : isUnifiedSearch
@@ -538,13 +543,15 @@ function SearchResults() {
   );
 
   const renderSongMenu = useCallback(
-    (song: SearchItem) => {
+    (song: SearchItem, queueItems: QueueMenuItem[]) => {
       const savingKey = String(
         song.id ?? song.trackMbid ?? `${song.artistName || ""}:${song.title || ""}`,
       );
       return (
         <TrackPlaylistMenu
           track={song}
+          queueItems={queueItems}
+          triggerVariant={queueItems.length ? "kebab" : "expand"}
           triggerLabel="Add to playlist"
           playlists={staticPlaylists}
           loading={playlistModalLoading}
@@ -615,7 +622,7 @@ function SearchResults() {
             : null;
 
   return (
-    <div className="search-page">
+    <div className="search-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="search-page__header">
         <div className="search-page__title-row">
           <h1 className="search-page__title">{pageTitle}</h1>

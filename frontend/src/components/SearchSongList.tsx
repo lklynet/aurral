@@ -6,8 +6,10 @@ import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
+import type { QueueMenuItem } from "./TrackPlaylistMenu";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
+import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
 import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
 import { normalizeStreamQueueTrack } from "../utils/audioQueue";
 import {
@@ -24,7 +26,7 @@ type SearchSongListProps = {
   label: string;
   query: string;
   canDownload: boolean;
-  renderMenu: (song: SearchItem) => ReactNode;
+  renderMenu: (song: SearchItem, queueItems: QueueMenuItem[]) => ReactNode;
 };
 
 const coverPlaceholder = (
@@ -33,37 +35,40 @@ const coverPlaceholder = (
   </span>
 );
 
-export function useSongPlayback(song: SearchItem) {
-  const { currentTrack, isPlaying, playTrack, togglePlayPause } = useAudioQueue();
+function songQueueTrack(song: SearchItem) {
   const streamPath = song.streamPath;
   if (!streamPath) return null;
+  return normalizeStreamQueueTrack({
+    id: song.id,
+    title: song.title,
+    artistName: song.artistName,
+    albumName: song.albumTitle,
+    artistMbid: song.artistMbid,
+    albumMbid: song.albumMbid,
+    trackMbid: song.trackMbid,
+    durationMs: song.durationMs,
+    libraryTrackId: song.id,
+    libraryAlbumId: song.libraryAlbumId,
+    streamPath,
+    artworkUrl: song.coverUrl,
+  });
+}
+
+export function useSongPlayback(song: SearchItem) {
+  const { currentTrack, isPlaying, playTrack, togglePlayPause } = useAudioQueue();
+  const track = songQueueTrack(song);
+  if (!track) return null;
   const current = currentTrack?.id === String(song.id);
   return {
+    track,
     playing: current && isPlaying,
-    toggle: () =>
-      current
-        ? togglePlayPause()
-        : playTrack(
-            normalizeStreamQueueTrack({
-              id: song.id,
-              title: song.title,
-              artistName: song.artistName,
-              albumName: song.albumTitle,
-              artistMbid: song.artistMbid,
-              albumMbid: song.albumMbid,
-              trackMbid: song.trackMbid,
-              durationMs: song.durationMs,
-              libraryTrackId: song.id,
-              libraryAlbumId: song.libraryAlbumId,
-              streamPath,
-              artworkUrl: song.coverUrl,
-            }),
-          ),
+    toggle: () => (current ? togglePlayPause() : playTrack(track)),
   };
 }
 
-function SongCover({ song }: { song: SearchItem }) {
-  const playback = useSongPlayback(song);
+type SongPlayback = ReturnType<typeof useSongPlayback>;
+
+function SongCover({ song, playback }: { song: SearchItem; playback: SongPlayback }) {
   const cover = (
     <ReleaseCoverImage src={song.coverUrl} alt="" sizes="3rem" placeholder={coverPlaceholder} />
   );
@@ -122,50 +127,66 @@ export function SongDownload({
   );
 }
 
-export default function SearchSongList({
-  songs,
-  label,
+function SongRow({
+  song,
   query,
   canDownload,
   renderMenu,
-}: SearchSongListProps) {
+}: Omit<SearchSongListProps, "songs" | "label"> & { song: SearchItem }) {
+  const playback = useSongPlayback(song);
+  const getQueueItems = useQueueTrackActions();
+  const link = getSearchResultLink(song, { query });
+  const title = song.title || "";
+  const album = song.albumTitle || "";
+  const queueItems = playback
+    ? [
+        {
+          id: "play",
+          label: playback.playing ? "Pause" : "Play",
+          icon: playback.playing ? Pause : Play,
+          disabled: false,
+          onSelect: playback.toggle,
+        },
+        ...getQueueItems(playback.track),
+      ]
+    : [];
+  return (
+    <div className="search-song" role="listitem">
+      <SongCover song={song} playback={playback} />
+      <div className="search-song__copy">
+        <span className="search-song__title">
+          <Tooltip content={title}>
+            {link ? (
+              <RouteLink to={link.to} state={link.state} className="search-song__link">
+                {title}
+              </RouteLink>
+            ) : (
+              <span className="search-song__link">{title}</span>
+            )}
+          </Tooltip>
+          {song.inLibrary ? <SearchLibraryCheck size="sm" /> : null}
+        </span>
+        <span className="search-song__artist">
+          {song.artistName}
+          {album ? <span className="search-song__artist-album"> · {album}</span> : null}
+        </span>
+      </div>
+      <span className="search-song__album">{album}</span>
+      <span className="search-song__time">{formatDuration(song.durationMs)}</span>
+      <span className="search-song__actions">
+        {canDownload && !song.inLibrary ? <SongDownload song={song} /> : null}
+        {renderMenu(song, queueItems)}
+      </span>
+    </div>
+  );
+}
+
+export default function SearchSongList({ songs, label, ...rowProps }: SearchSongListProps) {
   return (
     <div className="search-songs" role="list" aria-label={label}>
-      {songs.map((song, index) => {
-        const link = getSearchResultLink(song, { query });
-        const title = song.title || "";
-        const album = song.albumTitle || "";
-        const duration = formatDuration(song.durationMs);
-        return (
-          <div key={getSearchResultKey(song, index)} className="search-song" role="listitem">
-            <SongCover song={song} />
-            <div className="search-song__copy">
-              <span className="search-song__title">
-                <Tooltip content={title}>
-                  {link ? (
-                    <RouteLink to={link.to} state={link.state} className="search-song__link">
-                      {title}
-                    </RouteLink>
-                  ) : (
-                    <span className="search-song__link">{title}</span>
-                  )}
-                </Tooltip>
-                {song.inLibrary ? <SearchLibraryCheck size="sm" /> : null}
-              </span>
-              <span className="search-song__artist">
-                {song.artistName}
-                {album ? <span className="search-song__artist-album"> · {album}</span> : null}
-              </span>
-            </div>
-            <span className="search-song__album">{album}</span>
-            <span className="search-song__time">{duration}</span>
-            <span className="search-song__actions">
-              {canDownload && !song.inLibrary ? <SongDownload song={song} /> : null}
-              {renderMenu(song)}
-            </span>
-          </div>
-        );
-      })}
+      {songs.map((song, index) => (
+        <SongRow key={getSearchResultKey(song, index)} song={song} {...rowProps} />
+      ))}
     </div>
   );
 }

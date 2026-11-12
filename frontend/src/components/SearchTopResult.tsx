@@ -1,5 +1,5 @@
 import { Music, Pause, Play } from "./icons";
-import ArtistImage from "./ArtistImage";
+import ArtistImage, { imageCandidates } from "./ArtistImage";
 import { DotLoader } from "./DotLoader";
 import { ReleaseCoverImage } from "./ReleaseCoverImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
@@ -122,6 +122,19 @@ function SongAction({ song, canDownload }: { song: SearchItem; canDownload: bool
   return canDownload && !song.inLibrary ? <SongDownload song={song} showLabel /> : null;
 }
 
+function artistImageProps(item: SearchItem) {
+  return {
+    src: item.image || item.imageUrl,
+    mbid: getArtistRecordId(item),
+    isInLibrary: Boolean(item.inLibrary),
+    thumbnail: false,
+  };
+}
+
+export function topResultArtwork(item: SearchItem) {
+  return item.type === "artist" ? imageCandidates(artistImageProps(item))[0]?.src : item.coverUrl;
+}
+
 function topMeta(item: SearchItem) {
   if (item.type === "artist") return "Artist";
   if (item.type === "album") return `${getReleaseTypeLabel(item)} · ${getAlbumCardMeta(item)}`;
@@ -153,15 +166,7 @@ export default function SearchTopResult({
     <article className={`search-top${item.type === "artist" ? " search-top--artist" : ""}`}>
       <span className="search-top__art" aria-hidden="true">
         {item.type === "artist" ? (
-          <ArtistImage
-            src={item.image || item.imageUrl}
-            mbid={getArtistRecordId(item)}
-            artistName={item.name}
-            alt=""
-            isInLibrary={Boolean(item.inLibrary)}
-            thumbnail={false}
-            sizes="13rem"
-          />
+          <ArtistImage {...artistImageProps(item)} artistName={item.name} alt="" sizes="13rem" />
         ) : (
           <ReleaseCoverImage
             src={item.coverUrl}

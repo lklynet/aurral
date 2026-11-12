@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { DiscoverRail } from "../components/DiscoverRail";
 import PlaylistCard from "../components/PlaylistCard";
 import RouteLink from "../components/RouteLink";
@@ -36,7 +36,7 @@ type SearchUnifiedResultsProps = ArtistFeedback & {
   canAddAlbum: boolean;
   pendingAlbumIds: Record<string, boolean | undefined>;
   onAlbumAction: (album: SearchAlbum) => void;
-  renderSongMenu: (song: SearchItem) => ReactNode;
+  renderSongMenu: ComponentProps<typeof SearchSongList>["renderMenu"];
 };
 
 const HERO_SONGS = 4;
@@ -177,7 +177,7 @@ export default function SearchUnifiedResults({
       {top || heroSongs.length ? (
         <div className={`search-hero${top && heroSongs.length ? "" : " search-hero--single"}`}>
           {top ? (
-            <section aria-labelledby="search-top-heading">
+            <section className="search-hero__top" aria-labelledby="search-top-heading">
               <SectionHeader id="search-top-heading" title="Top result" />
               <SearchTopResult item={top} query={query} {...albumProps} />
             </section>

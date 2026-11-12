@@ -6566,6 +6566,10 @@ textarea:disabled {
   transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
+.search-hero__top {
+  container-type: inline-size;
+}
+
 .search-top:focus-within {
   background: var(--aurral-surface-hover);
 }
@@ -6649,13 +6653,39 @@ textarea:disabled {
   position: relative;
   z-index: calc(var(--aurral-z-raised) + 2);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   margin-top: 1.25rem;
 }
 
+.search-top__action > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .search-top__action:empty {
   display: none;
+}
+
+@media (min-width: 641px) {
+  @container (max-width: 26rem) {
+    .search-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+      min-height: 0;
+    }
+
+    .search-top__art {
+      width: 8rem;
+      height: 8rem;
+    }
+
+    .search-top__name {
+      font-size: var(--aurral-font-2xl);
+    }
+  }
 }
 
 @media (max-width: 640px) {
@@ -8862,7 +8892,8 @@ button.native-library-genre-row:focus-visible {
 .recommended-page,
 .trending-page,
 .feed-page,
-.discover-playlists-page {
+.discover-playlists-page,
+.search-page {
   --aurral-surface-raised: var(--aurral-wash-raised);
   --aurral-surface-hover: var(--aurral-wash-hover);
   --aurral-surface-selected: var(--aurral-wash-selected);
@@ -8873,7 +8904,8 @@ button.native-library-genre-row:focus-visible {
 .recommended-page,
 .trending-page,
 .feed-page,
-.discover-playlists-page {
+.discover-playlists-page,
+.search-page {
   position: relative;
   isolation: isolate;
   transition: --collection-tint var(--aurral-duration-slow) var(--aurral-ease-in-out);
@@ -8884,7 +8916,8 @@ button.native-library-genre-row:focus-visible {
 .recommended-page::before,
 .trending-page::before,
 .feed-page::before,
-.discover-playlists-page::before {
+.discover-playlists-page::before,
+.search-page::before {
   position: absolute;
   z-index: var(--aurral-z-below);
   top: calc(-1 * var(--page-gutter, 0px));
@@ -8904,7 +8937,8 @@ button.native-library-genre-row:focus-visible {
 .recommended-page::before,
 .trending-page::before,
 .feed-page::before,
-.discover-playlists-page::before {
+.discover-playlists-page::before,
+.search-page::before {
   height: 34rem;
   background: radial-gradient(
     ellipse 115% 100% at 0% 0%,
