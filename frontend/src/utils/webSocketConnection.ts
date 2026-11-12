@@ -1,4 +1,8 @@
-import type { WebSocketChannelMessage } from "../../../backend/services/websocketService.ts";
+import type {
+  WebSocketChannelMessage,
+  WebSocketServerMessage,
+} from "../../../backend/services/websocketService.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 import { getRequestToken } from "./api/core.ts";
 
 function getWsUrl() {
@@ -26,10 +30,11 @@ type StatusListener = (isConnected: boolean) => void;
 
 const RELOADED_FOR_VERSION_KEY = "aurral:reloaded-for-version";
 
-const reloadIfServerChanged = (serverVersion: unknown) => {
-  if (typeof serverVersion !== "string" || serverVersion === import.meta.env.VITE_APP_VERSION) {
-    return false;
-  }
+const isServerMessage = (value: unknown): value is WebSocketServerMessage =>
+  isRecord(value) && typeof value.type === "string";
+
+const reloadIfServerChanged = (serverVersion: string) => {
+  if (serverVersion === import.meta.env.VITE_APP_VERSION) return false;
   try {
     if (sessionStorage.getItem(RELOADED_FOR_VERSION_KEY) === serverVersion) return false;
     sessionStorage.setItem(RELOADED_FOR_VERSION_KEY, serverVersion);
@@ -210,7 +215,8 @@ function connectSocket() {
   currentSocket.onmessage = (event) => {
     if (socket !== currentSocket) return;
     try {
-      const msg = JSON.parse(event.data);
+      const msg: unknown = JSON.parse(String(event.data));
+      if (!isServerMessage(msg)) return;
       if (msg.type === "pong") {
         clearHeartbeatTimeout();
         return;
@@ -221,8 +227,9 @@ function connectSocket() {
         currentSocket.close();
         return;
       }
+      if (!("channel" in msg)) return;
       const listeners = channelListeners.get(msg.channel);
-      if (!listeners?.size || !msg.type) return;
+      if (!listeners?.size) return;
       for (const listener of listeners) {
         listener(msg);
       }

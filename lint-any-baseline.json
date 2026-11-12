@@ -124,7 +124,6 @@
   "frontend/src/utils/discoverUtils.ts": 5,
   "frontend/src/utils/queueStorage.ts": 7,
   "frontend/src/utils/theme.ts": 6,
-  "frontend/src/utils/webSocketConnection.ts": 9,
   "scripts/github.ts": 1,
   "scripts/label-pr.ts": 1
 }
