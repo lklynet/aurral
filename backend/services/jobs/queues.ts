@@ -140,8 +140,10 @@ export const libraryScanQueue = defineQueue<v.InferOutput<typeof libraryScanSche
   start: (): Promise<unknown> =>
     import("../libraryScanWorker.ts").then((m) => m.startLibraryScanWorker()),
   onAbandoned: async (job): Promise<void> => {
-    const { restoreLibraryScanAfterWorkerExit } = await import("../libraryScanWorker.ts");
-    restoreLibraryScanAfterWorkerExit(job.id);
+    const { clearScheduledLibraryScan, restoreLibraryScanAfterWorkerExit } =
+      await import("../libraryScanWorker.ts");
+    if (job.cancel_requested || job.attempts >= job.max_attempts) clearScheduledLibraryScan(job.id);
+    else restoreLibraryScanAfterWorkerExit(job.id);
   },
 });
 

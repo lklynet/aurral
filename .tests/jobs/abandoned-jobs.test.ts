@@ -70,6 +70,37 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   assert.equal(queue.getJob(jobId)?.state, "pending");
 });
 
+test("a full rescan whose worker dies on its last attempt is not revived by the next scan request", async (t: import("vite-plus/test").TestContext) => {
+  const jobId = queue.enqueue({ force: true, includeReadOnly: true });
+  const changedPath = path.resolve("test-library", "artist.nfo");
+  let nextJobId: number | null = null;
+  t.onTestFinished(() => {
+    queue.cancel(jobId);
+    if (nextJobId != null) queue.cancel(nextJobId);
+  });
+  dbOps.setJSONSetting("pendingLibraryScanJob", {
+    jobId,
+    includeReadOnly: true,
+    force: true,
+    changedPaths: [],
+    inFlightActive: true,
+    inFlightPaths: null,
+  });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    assert.equal(queue.claim("library:killed")?.id, jobId);
+    await recoverAbandonedJobs("library worker stopped responding", "library");
+  }
+  assert.equal(queue.getJob(jobId)?.state, "failed");
+
+  nextJobId = scheduleLibraryScan({ changedPaths: [changedPath] });
+  assert.notEqual(nextJobId, jobId);
+  assert.deepEqual(JSON.parse(queue.getJob(nextJobId)!.payload), {
+    force: false,
+    includeReadOnly: true,
+    changedPaths: [changedPath],
+  });
+});
+
 test("a scan left running when Aurral stopped runs again at startup with the files it was scanning", async (t: import("vite-plus/test").TestContext) => {
   const jobId = queue.enqueue({ force: false });
   t.onTestFinished(() => {
