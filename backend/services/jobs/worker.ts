@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { asAppError } from "../../../lib/errors.ts";
-import { getDatabaseDataVersion } from "../../config/db-sqlite.ts";
+import { getDatabaseDataVersion, loadDownloadFolderPath } from "../../config/db-sqlite.ts";
 import { cpuMs, trackWork } from "../eventLoopWatch.ts";
 import { logger, withLogContext } from "../logger.ts";
 import { onQueueWake, ownsQueueHere, type ClaimedJob, type Queue } from "./queue.ts";
@@ -247,6 +247,7 @@ export function createJobWorker<Payload extends object>(
           if (!job.adjustAttempts(-1)) throw jobInterruption("Background job claim lost");
           waitingAttempt = true;
         }
+        if (process.env.AURRAL_BACKGROUND_WORKER_GROUP) loadDownloadFolderPath();
         resources.prepared = prepareJob
           ? await prepareJob(job.payload, job, { signal: controller.signal })
           : null;
