@@ -187,6 +187,14 @@ export function LibraryArtistDetail({
         <section className="library-artist__section">
           <div className="native-library-section-heading">
             <h2>Most played</h2>
+            {trackTotal > mostPlayed.length ? (
+              <RouteLink
+                to={"/library/tracks?artist=" + encodeURIComponent(String(artist.id))}
+                className="section-show-all"
+              >
+                All tracks
+              </RouteLink>
+            ) : null}
           </div>
           <TrackList
             label={`${name} most played`}

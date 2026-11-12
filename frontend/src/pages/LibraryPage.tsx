@@ -294,6 +294,7 @@ function LibraryPage() {
     sort: sortMode,
     direction: sortDirection,
     pageIndex,
+    artist: selectedArtist,
   } = libraryListParams(section, searchParams);
   const viewMode = searchParams.get("view") === "list" ? "list" : "grid";
   const normalizedQuery = query.trim() ? urlQuery.trim().toLocaleLowerCase() : "";
@@ -352,6 +353,7 @@ function LibraryPage() {
         pageIndex,
         query: normalizedQuery,
         genre: selectedGenre,
+        artist: selectedArtist,
         sort: sortMode,
         direction: sortDirection,
       }),
@@ -361,6 +363,7 @@ function LibraryPage() {
       pageIndex,
       routeArtistId,
       section,
+      selectedArtist,
       selectedGenre,
       sortDirection,
       sortMode,
@@ -384,6 +387,9 @@ function LibraryPage() {
 
   const queryData = libraryQuery.data;
   const { isPreviewLibrary, library, favoriteIds } = useLibraryViewData(queryData, forcePreview);
+  const filterArtistName = selectedArtist
+    ? library.artists.find((artist) => String(artist.id) === selectedArtist)?.name
+    : undefined;
   const loading = !forcePreview && libraryQuery.isPending;
   const error = forcePreview ? null : getApiErrorMessage(libraryQuery.error, "") || null;
   const pageData = useMemo(() => {
@@ -698,7 +704,7 @@ function LibraryPage() {
       ? libraryArtist?.name || "Library"
       : section === "albums" && selectedGenre
         ? selectedGenre
-        : "Library",
+        : filterArtistName || "Library",
   );
 
   const detailTint = useCollectionTint(libraryArtist?.coverUrl);
@@ -1350,14 +1356,14 @@ function LibraryPage() {
       ? "Library"
       : section === "albums" && selectedGenre
         ? selectedGenre
-        : sectionLabel;
+        : filterArtistName || sectionLabel;
   const pageCount =
     section === "home"
       ? (pageData?.total ?? library.albums.length + ownedLibraryTracks.length)
       : activeCount;
   const showToolbar = section !== "home";
   const isSearchVisible = searchOpen || Boolean(query);
-  const hasActiveFilters = Boolean(selectedGenre);
+  const hasActiveFilters = Boolean(selectedGenre || selectedArtist);
 
   return (
     <div className="library-page native-library-page">
@@ -1533,11 +1539,11 @@ function LibraryPage() {
                     ]}
                   />
                 </label>
-                {selectedGenre && (
+                {hasActiveFilters && (
                   <button
                     type="button"
                     className="native-library-filter-reset"
-                    onClick={() => updateGenreFilter("")}
+                    onClick={() => updateViewParams({ genre: null, artist: null, page: null })}
                   >
                     <X aria-hidden="true" />
                     Clear
@@ -1553,14 +1559,14 @@ function LibraryPage() {
       {!loading && !error && activeCount === 0 && (
         <EmptyState
           title={
-            query || selectedGenre
+            query || hasActiveFilters
               ? "No matches"
               : section === "favorites"
                 ? "No favorites"
                 : "Your library is empty"
           }
           message={
-            query || selectedGenre
+            query || hasActiveFilters
               ? "Try a different search or clear the filter."
               : "Music appears here after a Library scan."
           }
