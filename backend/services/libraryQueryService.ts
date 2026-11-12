@@ -1774,12 +1774,12 @@ const recentMediaFilter = (
   return conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
 };
 
-const TRACK_PLAY_COUNT = `(
-  SELECT COUNT(*) FROM play_events AS play
+const TRACK_PLAYS = `FROM play_events AS play
   WHERE play.user_id = ?
     AND play.title = track.title COLLATE NOCASE
-    AND (play.artist = track.artist_name COLLATE NOCASE OR play.artist = artist.name COLLATE NOCASE)
-)`;
+    AND (play.artist = track.artist_name COLLATE NOCASE OR play.artist = artist.name COLLATE NOCASE)`;
+const TRACK_PLAY_COUNT = `(SELECT COUNT(*) ${TRACK_PLAYS})`;
+const TRACK_PLAYED = `EXISTS (SELECT 1 ${TRACK_PLAYS})`;
 
 const recentMediaOrder = (
   kind: string,
@@ -2795,6 +2795,10 @@ function buildPageQuery({
     if (albumId) {
       where.push("album.id = ?");
       parameters.push(Number(albumId));
+    }
+    if (sort === "plays") {
+      where.push(TRACK_PLAYED);
+      parameters.push(userId ?? -1);
     }
   }
 

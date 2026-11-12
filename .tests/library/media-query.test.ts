@@ -832,8 +832,8 @@ test("library album sorts follow arrival, plays, and release date", () => {
     recordPlay.run(listener.id, "d", "New Track", "Someone Else", now, now);
     recordPlay.run(otherListener.id, "e", "New Track", "Newest Fixture", now, now);
     assert.deepEqual(trackTitles(listener.id), ["Old Track", "New Track"]);
-    assert.deepEqual(trackTitles(otherListener.id), ["New Track", "Old Track"]);
-    assert.deepEqual(trackTitles(null), ["New Track", "Old Track"]);
+    assert.deepEqual(trackTitles(otherListener.id), ["New Track"]);
+    assert.deepEqual(trackTitles(null), []);
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(listener.id, otherListener.id);
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);

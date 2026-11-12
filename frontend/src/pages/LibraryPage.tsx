@@ -27,10 +27,8 @@ import { Select } from "../components/Select";
 import TooltipButton from "../components/TooltipButton";
 import Pagination from "../components/Pagination";
 import { FavoriteButton, TrackList } from "../components/TrackList";
-import { CollectionPlayButtons, useCollectionTint } from "../components/CollectionHeader";
-import CrossViewLink from "../components/CrossViewLink";
+import { useCollectionTint } from "../components/CollectionHeader";
 import RouteLink from "../components/RouteLink";
-import { useSharedArtworkStyle } from "../navigation/viewTransitions.ts";
 import {
   SkeletonLibraryArtist,
   SkeletonLibraryGrid,
@@ -77,13 +75,13 @@ import { LibraryHomePlaylists } from "./library/LibraryHomePlaylists";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryKeys } from "../queryClient.ts";
 import Tooltip from "../components/Tooltip";
-import { LIBRARY_SOURCE, useLibraryActions } from "./library/useLibraryActions.tsx";
+import { useLibraryActions } from "./library/useLibraryActions.tsx";
+import { LibraryArtistDetail, type AlbumCardOptions } from "./library/LibraryArtistDetail.tsx";
 import {
   type LibraryPageTrack,
   type LibraryRemoval,
   Cover,
   EmptyState,
-  hasMbid,
   invalidateLibraryViews,
   text,
   useLibraryScanRefresh,
@@ -299,7 +297,6 @@ function LibraryPage() {
 
   const section = resolveLibrarySection(routeSection);
   const isDetail = Boolean(routeArtistId);
-  const sharedArtworkStyle = useSharedArtworkStyle();
   const tab = libraryTabForSection(section);
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
@@ -946,11 +943,14 @@ function LibraryPage() {
     );
   };
 
-  const renderAlbumCard = (album: LibraryAlbum) => {
+  const renderAlbumCard = (
+    album: LibraryAlbum,
+    { showArtist = true, showType = true, showTotal = true }: AlbumCardOptions = {},
+  ) => {
     const artist = getArtistForAlbum(album);
     const albumEmpty =
       !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
-    const meta = albumCardMeta(album, albumAvailability(album));
+    const meta = albumCardMeta(album, albumAvailability(album), { type: showType });
     const isFavorite = favoriteIds.has(favoriteId("album", album));
     const downloadState = album.managed ? describeAlbumStatus(albumStatuses[album.id] || {}) : null;
     // The yellow track count already shows a partial album, so the label would only crowd it out.
@@ -1022,7 +1022,7 @@ function LibraryPage() {
               onClick={() => actions.toggleFavorite("album", album)}
             />
           </div>
-          {artist ? (
+          {!showArtist ? null : artist ? (
             <RouteLink
               to={actions.libraryArtistPath(artist)}
               className="native-library-card__artist"
@@ -1040,14 +1040,18 @@ function LibraryPage() {
                 {cardStatus.label + " · "}
               </span>
             )}
-            {meta.details && meta.details + " · "}
             {meta.partial && downloadState?.status !== "unreleased" ? (
-              <span className="native-library-card__status" data-tone="warning">
-                {meta.count}
-                <span className="sr-only"> available</span>
-              </span>
+              <>
+                {meta.details && meta.details + " · "}
+                <span className="native-library-card__status" data-tone="warning">
+                  {meta.count}
+                  <span className="sr-only"> available</span>
+                </span>
+              </>
+            ) : showTotal || meta.partial ? (
+              [meta.details, meta.count].filter(Boolean).join(" · ")
             ) : (
-              meta.count
+              meta.details
             )}
           </span>
         </div>
@@ -1132,7 +1136,9 @@ function LibraryPage() {
         {favoriteAlbums.length > 0 && (
           <section className="native-library-section">
             {renderSectionHeader("Albums", favoriteAlbums.length)}
-            <div className="native-library-grid">{favoriteAlbums.map(renderAlbumCard)}</div>
+            <div className="native-library-grid">
+              {favoriteAlbums.map((album) => renderAlbumCard(album))}
+            </div>
           </section>
         )}
         {favoriteTracks.length > 0 && (
@@ -1174,142 +1180,37 @@ function LibraryPage() {
     </div>
   );
 
-  const renderLibraryArtistDetail = () => {
-    if (!libraryArtist) return null;
-    const { mbid } = libraryArtist;
-    const ownedAlbums = library.albums.filter(
-      (album) => String(album.artistId) === String(libraryArtist.id),
-    );
-    const sharedAlbums = mbid
-      ? library.albums.filter(
-          (album) => !ownedAlbums.includes(album) && album.creditedArtistMbids?.includes(mbid),
-        )
-      : [];
-    const artistAlbums = [...ownedAlbums, ...sharedAlbums];
-    const artistTracks = ownedAlbums.flatMap(getAlbumTracks);
-    const topTracks = isPreviewLibrary ? artistTracks : artistTopTracks;
-    const artistTrackTotal = ownedAlbums.reduce(
-      (total, album) => total + Number(albumAvailability(album).total || 0),
-      0,
-    );
-    const discoverArtist = hasMbid(libraryArtist) ? libraryArtist : null;
-    const artistPlayable = artistTracks.some((track) => firstAvailableFile(track));
-    const artistIsCurrent =
-      actions.matchesSource(LIBRARY_SOURCE) &&
-      artistTracks.some((track) => String(track.id) === String(actions.currentTrack?.id));
-    return (
-      <section className="native-library-detail">
-        <div
-          className="native-library-detail__hero native-library-detail__hero--artist"
-          data-library-menu-target
-        >
-          <div className="native-library-detail__cover" style={sharedArtworkStyle}>
-            <Cover src={libraryArtist.coverUrl} label={libraryArtist.name} thumbnail={false} />
-          </div>
-          <div className="native-library-detail__body">
-            <h2>{libraryArtist.name || "Unknown Artist"}</h2>
-            <p className="native-library-detail__meta">
-              {[
-                artistAlbums.length + (artistAlbums.length === 1 ? " album" : " albums"),
-                artistTrackTotal
-                  ? artistTrackTotal + (artistTrackTotal === 1 ? " track" : " tracks")
-                  : "",
+  const renderLibraryArtistDetail = () =>
+    libraryArtist ? (
+      <LibraryArtistDetail
+        artist={libraryArtist}
+        albums={library.albums}
+        topTracks={isPreviewLibrary ? null : artistTopTracks}
+        favorite={favoriteIds.has(favoriteId("artist", libraryArtist))}
+        actions={actions}
+        loadTracks={() => loadArtistTracks(libraryArtist)}
+        renderAlbumCard={renderAlbumCard}
+        menu={artistMenuProps(libraryArtist)}
+        menuItems={[
+          ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
+          ...libraryArtistMonitoringItems,
+          ...actions.pluginMenuItems("artist", { artistId: libraryArtist.id }),
+          ...(actions.canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
+            ? [
+                {
+                  id: "delete",
+                  label: "Delete artist",
+                  icon: Trash2,
+                  danger: true,
+                  separatorBefore: true,
+                  onSelect: () =>
+                    actions.openLibraryRemoval({ kind: "artist", entity: libraryArtist }),
+                },
               ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            <div className="native-library-detail__actions">
-              <CollectionPlayButtons
-                label={libraryArtist.name || "artist"}
-                disabled={!artistPlayable}
-                isPlaying={artistIsCurrent && actions.isRunning}
-                isShuffleEnabled={false}
-                onPlay={() =>
-                  artistIsCurrent
-                    ? actions.togglePlayPause()
-                    : playCollection(() => loadArtistTracks(libraryArtist))
-                }
-                onShuffle={() => playCollection(() => loadArtistTracks(libraryArtist), true)}
-              />
-              <FavoriteButton
-                active={favoriteIds.has(favoriteId("artist", libraryArtist))}
-                pending={Boolean(actions.pendingFavorite)}
-                label={libraryArtist.name || "artist"}
-                onClick={() => actions.toggleFavorite("artist", libraryArtist)}
-              />
-              {discoverArtist && (
-                <CrossViewLink
-                  view="discover"
-                  to={"/artist/" + encodeURIComponent(discoverArtist.mbid)}
-                  state={actions.discoverArtistState(discoverArtist)}
-                />
-              )}
-              <LibraryItemMenu
-                label={libraryArtist.name || "Artist"}
-                {...artistMenuProps(libraryArtist)}
-                items={[
-                  ...actions.collectionQueueItems(
-                    () => loadArtistTracks(libraryArtist),
-                    !artistPlayable,
-                    {
-                      seed: { artists: [{ id: String(libraryArtist.id) }] },
-                      label: libraryArtist.name || "Artist",
-                    },
-                  ),
-                  actions.shareMenuItem({ kind: "artist", entity: libraryArtist }),
-                  {
-                    id: "info",
-                    label: "View info",
-                    icon: Info,
-                    onSelect: () =>
-                      actions.openLibraryInfo({ kind: "artist", entity: libraryArtist }),
-                  },
-                  ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
-                  ...libraryArtistMonitoringItems,
-                  ...actions.pluginMenuItems("artist", { artistId: libraryArtist.id }),
-                  ...(actions.canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
-                    ? [
-                        {
-                          id: "delete",
-                          label: "Delete artist",
-                          icon: Trash2,
-                          danger: true,
-                          separatorBefore: true,
-                          onSelect: () =>
-                            actions.openLibraryRemoval({ kind: "artist", entity: libraryArtist }),
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            </div>
-          </div>
-        </div>
-        <section className="native-library-detail__section">
-          <div className="native-library-detail__section-heading">
-            <h3>Albums</h3>
-            <span>{artistAlbums.length}</span>
-          </div>
-          {artistAlbums.length ? (
-            <div className="native-library-grid">{artistAlbums.map(renderAlbumCard)}</div>
-          ) : (
-            <EmptyState title="No albums" message="No albums for this artist." />
-          )}
-        </section>
-        <section className="native-library-detail__section">
-          <div className="native-library-detail__section-heading">
-            <h3>Top tracks</h3>
-            <span>{topTracks.length}</span>
-          </div>
-          {topTracks.length ? (
-            renderTrackList(topTracks, libraryArtist.name + " top tracks")
-          ) : (
-            <EmptyState title="No tracks" message="No tracks for this artist." />
-          )}
-        </section>
-      </section>
-    );
-  };
+            : []),
+        ]}
+      />
+    ) : null;
 
   const renderLibraryModals = () => (
     <>
@@ -1451,7 +1352,7 @@ function LibraryPage() {
       </div>
     ) : tab === "albums" ? (
       <div className={"native-library-grid" + (viewMode === "list" ? " is-list" : "")}>
-        {sortedAlbums.map(renderAlbumCard)}
+        {sortedAlbums.map((album) => renderAlbumCard(album))}
       </div>
     ) : tab === "tracks" ? (
       renderTrackList(sortedTracks, "Library tracks")

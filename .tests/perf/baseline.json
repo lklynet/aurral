@@ -81,10 +81,10 @@
   },
   "artist page": {
     "queries": {
-      "cold": 64,
-      "warm": 62
+      "cold": 60,
+      "warm": 57
     },
-    "bytes": 144455,
+    "bytes": 130619,
     "scans": []
   },
   "album page": {
