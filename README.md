@@ -70,7 +70,7 @@ Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid) and 
   <a href="https://github.com/pcsokonay"><img src="https://github.com/pcsokonay.png?size=120" width="60" alt="@pcsokonay" /></a>
   <a href="https://github.com/okcodemaybe"><img src="https://github.com/okcodemaybe.png?size=120" width="60" alt="@okcodemaybe" /></a>
   <a href="https://github.com/jakobbjelver"><img src="https://github.com/jakobbjelver.png?size=120" width="60" alt="@jakobbjelver" /></a>
-  <a href="https://github.com/zachyzissou"><img src="https://github.com/zachyzissou.png?size=120" width="60" alt="@zachyzissou" /></a>
+  <a href="https://github.com/zachgonser"><img src="https://github.com/zachgonser.png?size=120" width="60" alt="@zachgonser" /></a>
   <a href="https://github.com/erleijen"><img src="https://github.com/erleijen.png?size=120" width="60" alt="@erleijen" /></a>
   <a href="https://github.com/bahraoui"><img src="https://github.com/bahraoui.png?size=120" width="60" alt="@bahraoui" /></a>
 </p>
