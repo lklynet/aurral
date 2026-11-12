@@ -1,4 +1,4 @@
-import { usenetCandidate } from "./fixtures.ts";
+import { isStepFrom, stepFrom, usenetCandidate } from "./fixtures.ts";
 import { createTrackedJob, recordSourceFailures } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -72,7 +72,7 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   const jobId = addJob();
   const polling = {
     phase: "poll",
-    source: "slskd",
+    source: "slskd" as const,
     jobId,
     eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "slow" },
@@ -84,8 +84,7 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   };
 
   const waiting = await processPipelinePayload(polling);
-  assert.ok(waiting != null);
-  assert.ok(waiting != null);
+  assert.ok(isStepFrom(waiting, "slskd"));
   assert.equal(waiting.phase, "poll");
   const longAgo = Date.now() - HOUR_MS;
   const moving = await processPipelinePayload({
@@ -136,7 +135,7 @@ test("an slskd download-complete event for the candidate finishes polling with i
 
   const next = await processPipelinePayload({
     phase: "poll",
-    source: "slskd",
+    source: "slskd" as const,
     jobId,
     eventOffset: 7,
     candidateIndex: 0,
@@ -144,8 +143,8 @@ test("an slskd download-complete event for the candidate finishes polling with i
   });
 
   assert.equal(next?.phase, "finalize");
-  assert.deepEqual(next?.batch, { transfers: [done] });
-  assert.equal(next?.eventOffset, 12);
+  assert.deepEqual(stepFrom(next, "slskd").batch, { transfers: [done] });
+  assert.equal(stepFrom(next, "slskd").eventOffset, 12);
 });
 
 test("an slskd download-complete event passes on the path slskd saved the file to", async () => {
@@ -178,7 +177,7 @@ test("an slskd download-complete event passes on the path slskd saved the file t
 
   const next = await processPipelinePayload({
     phase: "poll",
-    source: "slskd",
+    source: "slskd" as const,
     jobId,
     eventOffset: 0,
     candidateIndex: 0,
@@ -186,7 +185,7 @@ test("an slskd download-complete event passes on the path slskd saved the file t
   });
 
   assert.equal(next?.phase, "finalize");
-  assert.deepEqual(next?.batch, { transfers: [done], localFilename });
+  assert.deepEqual(stepFrom(next, "slskd").batch, { transfers: [done], localFilename });
 });
 
 test("a rejected slskd transfer moves to the next user instead of retrying the same one", async () => {
@@ -212,7 +211,7 @@ test("a rejected slskd transfer moves to the next user instead of retrying the s
   const jobId = addJob();
   const polling = {
     phase: "poll",
-    source: "slskd",
+    source: "slskd" as const,
     jobId,
     eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "strict" },
@@ -252,7 +251,7 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
   const jobId = addJob();
   const polling = {
     phase: "poll",
-    source: "slskd",
+    source: "slskd" as const,
     jobId,
     eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "busy" },
@@ -263,7 +262,7 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
     ],
   };
   const waiting = await processPipelinePayload(polling);
-  assert.ok(waiting != null);
+  assert.ok(isStepFrom(waiting, "slskd"));
   const quarterHourAgo = Date.now() - 15 * 60 * 1000;
 
   const moved = await processPipelinePayload({ ...waiting, lastProgressAt: quarterHourAgo });
@@ -289,7 +288,7 @@ test("a paused Usenet download keeps waiting while the client holds it", async (
   const next = await processUsenetPipelinePayload(
     {
       phase: "poll",
-      source: "usenet",
+      source: "usenet" as const,
       jobId,
       downloadClient: "nzbget",
       nzbId: 7,
@@ -297,7 +296,7 @@ test("a paused Usenet download keeps waiting while the client holds it", async (
     },
     failSource,
   );
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "usenet"));
   assert.equal(next.phase, "poll");
   assert.equal(next.missingPolls, 0);
 });
@@ -309,7 +308,7 @@ test("a Usenet download that leaves the client moves to the next release", async
   const jobId = addJob();
   const payload = {
     phase: "poll",
-    source: "usenet",
+    source: "usenet" as const,
     jobId,
     downloadClient: "nzbget",
     nzbId: 7,
@@ -320,14 +319,14 @@ test("a Usenet download that leaves the client moves to the next release", async
     ],
   };
   const waiting = await processUsenetPipelinePayload(payload, failSource);
-  assert.ok(waiting != null);
+  assert.ok(isStepFrom(waiting, "usenet"));
   assert.equal(waiting.phase, "poll");
   assert.equal(waiting.missingPolls, 1);
   const next = await processUsenetPipelinePayload(
     { ...waiting, missingPolls: 60 } as UsenetPayload,
     failSource,
   );
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "usenet"));
   assert.equal(next.phase, "download");
   assert.equal(next.candidateIndex, 1);
   assert.equal(next.nzbId, null);
@@ -345,7 +344,7 @@ test("an NZBGet download that failed is removed from the client", async () => {
   const result = await processUsenetPipelinePayload(
     {
       phase: "poll",
-      source: "usenet",
+      source: "usenet" as const,
       jobId,
       downloadClient: "nzbget",
       nzbId: 7,
@@ -377,7 +376,7 @@ test("a Usenet download still post-processing in the client keeps waiting", asyn
   const next = await processUsenetPipelinePayload(
     {
       phase: "poll",
-      source: "usenet",
+      source: "usenet" as const,
       jobId,
       downloadClient: "sabnzbd",
       nzbId: "SAB_1",
@@ -385,7 +384,7 @@ test("a Usenet download still post-processing in the client keeps waiting", asyn
     },
     failSource,
   );
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "usenet"));
   assert.equal(next.phase, "poll");
   assert.equal(next.missingPolls, 0);
 });

@@ -20,13 +20,21 @@ import {
 import type { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
 import { isVariousArtistsCredit } from "./titleText.ts";
 
-type RawSearchResult = RawCandidate & { file?: string | null; source?: never; song?: unknown };
-type NormalizedCandidate = CandidateTrack<RawSearchResult> & { song?: never };
-export type SearchResult = RawSearchResult | NormalizedCandidate;
+export type RawSearchResult = RawCandidate & {
+  file?: string | null;
+  source?: never;
+  song?: unknown;
+};
+type NormalizedCandidate<Raw extends RawSearchResult = RawSearchResult> = CandidateTrack<Raw> & {
+  song?: never;
+};
+export type SearchResult<Raw extends RawSearchResult = RawSearchResult> =
+  | Raw
+  | NormalizedCandidate<Raw>;
 type ProviderEvidence = ReturnType<typeof buildSoulseekCandidates>["providerEvidence"][number];
-type EvidenceSource =
+type EvidenceSource<Raw extends RawSearchResult = RawSearchResult> =
   | ProviderEvidence[]
-  | ((candidate: NormalizedCandidate, index: number) => ProviderEvidence | null)
+  | ((candidate: NormalizedCandidate<Raw>, index: number) => ProviderEvidence | null)
   | null;
 
 const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 } as const;
@@ -38,15 +46,17 @@ function isYoutubeSong(candidate: NormalizedCandidate) {
   return candidate.source === "ytdlp" && candidate.raw?.song === true;
 }
 
-function isNormalizedCandidate(entry: SearchResult): entry is NormalizedCandidate {
+function isNormalizedCandidate<Raw extends RawSearchResult>(
+  entry: SearchResult<Raw>,
+): entry is NormalizedCandidate<Raw> {
   return Boolean(entry?.source);
 }
 
-function normalizeSourceCandidates(
+function normalizeSourceCandidates<Raw extends RawSearchResult>(
   source: string | undefined,
-  candidates: SearchResult[],
+  candidates: SearchResult<Raw>[],
   request: SearchTrackRequest,
-): NormalizedCandidate[] {
+): NormalizedCandidate<Raw>[] {
   const capabilities = getCapabilities(source);
   const knownArtistNames = [request.artistName, ...(request.artistAliases || [])].filter(
     Boolean,
@@ -55,14 +65,14 @@ function normalizeSourceCandidates(
     .map((entry) =>
       isNormalizedCandidate(entry)
         ? entry
-        : normalizeCandidate<RawSearchResult>(source, entry, {
+        : normalizeCandidate(source, entry, {
             capabilities:
               entry?.song === true ? { ...capabilities, structuredArtist: true } : capabilities,
             parseFilename: Boolean(capabilities.filename && !entry?.title),
             knownArtistNames,
           }),
     )
-    .filter(Boolean) as NormalizedCandidate[];
+    .filter(Boolean) as NormalizedCandidate<Raw>[];
 }
 
 function requestArtistNames(request: SearchTrackRequest) {
@@ -114,12 +124,12 @@ function isOfficialYoutubeAudio(candidate: NormalizedCandidate, request: SearchT
   );
 }
 
-function evaluate(
+function evaluate<Raw extends RawSearchResult>(
   request: SearchTrackRequest,
-  normalized: NormalizedCandidate[],
-  providerEvidence: EvidenceSource,
+  normalized: NormalizedCandidate<Raw>[],
+  providerEvidence: EvidenceSource<Raw>,
 ) {
-  const evidenceFor = (candidate: NormalizedCandidate, index: number) =>
+  const evidenceFor = (candidate: NormalizedCandidate<Raw>, index: number) =>
     typeof providerEvidence === "function"
       ? providerEvidence(candidate, index)
       : providerEvidence?.[index] || null;
@@ -272,14 +282,14 @@ function evaluate(
   };
 }
 
-export function prefilterCandidates({
+export function prefilterCandidates<Raw extends RawSearchResult = RawSearchResult>({
   request,
   source,
   candidates = [],
 }: {
   request?: SearchTrackRequest;
   source?: string;
-  candidates?: SearchResult[];
+  candidates?: SearchResult<Raw>[];
 } = {}) {
   const trackRequest = request || buildTrackRequest({});
   const normalized = normalizeSourceCandidates(source, candidates, trackRequest);
@@ -305,10 +315,13 @@ export function prefilterCandidates({
   });
 }
 
-export type TrackEvaluation = ReturnType<typeof evaluate>;
-export type CandidateEvaluation = TrackEvaluation["evaluations"][number];
+export type TrackEvaluation<Raw extends RawSearchResult = RawSearchResult> = ReturnType<
+  typeof evaluate<Raw>
+>;
+export type CandidateEvaluation<Raw extends RawSearchResult = RawSearchResult> =
+  TrackEvaluation<Raw>["evaluations"][number];
 
-export async function evaluateTrackCandidates({
+export async function evaluateTrackCandidates<Raw extends RawSearchResult = RawSearchResult>({
   request,
   context,
   source,
@@ -318,8 +331,8 @@ export async function evaluateTrackCandidates({
   request?: SearchTrackRequest;
   context?: Parameters<typeof buildTrackRequest>[0];
   source?: string;
-  candidates?: SearchResult[];
-  providerEvidence?: EvidenceSource;
+  candidates?: SearchResult<Raw>[];
+  providerEvidence?: EvidenceSource<Raw>;
 } = {}) {
   const trackRequest = request || buildTrackRequest(context);
   if (!trackRequest.trackName) throw new Error("evaluateTrackCandidates requires a trackName");

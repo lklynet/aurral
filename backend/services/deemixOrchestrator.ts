@@ -1,7 +1,7 @@
 import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker, type HeldForReviewDraft } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type PipelineStep } from "./downloadJobs/downloadTracker.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
@@ -97,22 +97,10 @@ type DeemixCandidate = {
   candidate?: unknown;
 };
 
-type DeemixPayload = {
-  jobId: string;
-  phase: "search" | "download" | "poll" | "finalize";
-  source?: string;
-  albumGrab?: boolean;
-  albumGroupJobIds?: string[];
-  downloadAttemptId?: string | null;
-  heldForReview?: HeldForReviewDraft;
-  track?: Parameters<typeof attemptTrackRequest>[2];
-  upgradeForJobId?: string | null;
-  manualReplacementSearch?: boolean;
-  manualSelection?: boolean;
-  destination?: string | null;
+type DeemixPayload = PipelineStep & {
+  source: "deemix";
   candidates?: DeemixCandidate[];
   candidate?: DeemixCandidate | null;
-  candidateIndex?: number;
   queueUuid?: string | null;
   queueUuids?: string[] | null;
   pollAttempts?: number;
@@ -332,7 +320,7 @@ async function searchDeemixAlbum(
   const kind = wanted.size < manifest.tracks.length ? "tracks" : "album";
   return {
     ...payload,
-    source: "deemix",
+    source: "deemix" as const,
     phase: "download",
     candidateIndex: 0,
     candidates: ranked.map(({ album, picked }) => ({
@@ -429,7 +417,7 @@ async function handleDeemixSearch(payload: DeemixPayload, helpers: DeemixHelpers
   return {
     ...payload,
     phase: "download",
-    source: "deemix",
+    source: "deemix" as const,
     candidates,
     candidateIndex: 0,
     resolvedTrack,
@@ -485,7 +473,7 @@ async function queueReleaseTracks(
   return {
     ...payload,
     phase: "poll",
-    source: "deemix",
+    source: "deemix" as const,
     candidate,
     queueUuid: null,
     queueUuids: queued,
@@ -591,7 +579,7 @@ async function handleDeemixDownload(payload: DeemixPayload, helpers: DeemixHelpe
   return {
     ...payload,
     phase: "poll",
-    source: "deemix",
+    source: "deemix" as const,
     candidate,
     candidateIndex: index,
     queueUuid,

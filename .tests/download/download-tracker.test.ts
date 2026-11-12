@@ -96,8 +96,7 @@ test("one album pipeline reserves sibling jobs before queue handoff", async () =
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const tracks = ["First", "Second", "Third"].map((trackName, index) => ({
     artistName: "The Band",
@@ -131,8 +130,7 @@ test("a single track in a playlist reserves a release attempt before track-only 
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const id = createTrackedJob(
     tracker,
@@ -166,8 +164,7 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const album = {
     artistName: "The Band",
@@ -547,8 +544,7 @@ test("activity write failures do not interrupt or duplicate an album handoff", a
     ...dbOps.getSettings(),
     integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const ids = ["One", "Two"].map((trackName) =>
     createTrackedJob(
@@ -594,8 +590,7 @@ test("album grabs are skipped when only a per-track source is enabled", async ()
         ytdlp: { enabled: true },
       },
     });
-    const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-      [];
+    const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
     const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
     const ids = ["First", "Second"].map((trackName, index) =>
       createTrackedJob(
@@ -692,8 +687,7 @@ test("partial album fallback persists per-track mode across restart", async () =
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const ids = ["First", "Second", "Third"].map((trackName, index) =>
     createTrackedJob(
@@ -1158,8 +1152,7 @@ test("a queued search carries the job's pinned release ID, and a changed album d
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
-    [];
+  const queued: import("../../backend/services/downloadPipeline.ts").PipelinePayload[] = [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const jobId = createTrackedJob(
     tracker,

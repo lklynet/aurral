@@ -1,3 +1,4 @@
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import { asAppError } from "../../lib/errors.ts";
 import fs from "fs/promises";
@@ -7,8 +8,8 @@ import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
   downloadTracker,
-  type HeldForReviewDraft,
   type JobFields,
+  type PipelineStep,
 } from "./downloadJobs/downloadTracker.ts";
 import {
   buildAlbumSearchTiers,
@@ -69,7 +70,6 @@ import {
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { createSearchResultCache } from "./downloadJobs/searchResultCache.ts";
 import createCache from "./apiClients/simpleCache.ts";
-import type { DownloadTrackFields } from "./downloadUtils.ts";
 import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trackSearchQueries.ts";
 import type { SearchTrackRequest } from "./trackMatching/trackIdentity.ts";
 import {
@@ -93,18 +93,15 @@ type SlskdCandidate = {
     files?: SlskdAlbumFile[];
   };
   resolvedAlbumName?: string | null;
+  releaseVerified?: boolean;
   evaluation?: { decision?: string | null };
   candidate?: unknown;
 };
 
-type SlskdPayload = {
-  jobId: string;
-  playlistId?: string | null;
-  phase: string;
-  track?: DownloadTrackFields;
-  albumGrab?: boolean;
+type SlskdPayload = PipelineStep & {
+  source: "slskd";
   albumTransfers?: (SlskdTransfer | null)[] | null;
-  searchQueries?: string[];
+  searchQueries?: string[] | null;
   searchQueryIndex?: number;
   searchIds?: string[];
   searchId?: string | null;
@@ -112,7 +109,6 @@ type SlskdPayload = {
   soulseekLoggedOutSince?: number | null;
   candidates?: SlskdCandidate[];
   candidate?: SlskdCandidate | null;
-  candidateIndex?: number;
   candidateRetryCounts?: Record<number, number>;
   pollAttempts?: number;
   delaySeconds?: number;
@@ -123,11 +119,6 @@ type SlskdPayload = {
   tailSince?: number | null;
   batch?: SlskdBatch | null;
   batchId?: string | null;
-  destination?: string | null;
-  heldForReview?: HeldForReviewDraft;
-  upgradeForJobId?: string | null;
-  upgrade?: boolean;
-  manualSelection?: boolean;
 };
 
 type SlskdJob = HistoryJob &
@@ -142,7 +133,7 @@ type SlskdHelpers = {
     job: SlskdJob,
     message: string,
     logDetails?: object,
-  ) => Promise<SlskdPayload | null>;
+  ) => Promise<PipelinePayload | null>;
 };
 
 type SearchStepFields = {
@@ -1080,7 +1071,7 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
       ...payload,
       ...SEARCH_RESET,
       phase: "download",
-      source: "slskd",
+      source: "slskd" as const,
       searchId,
       searchIds: [...new Set(searchIds)],
       candidateIndex: 0,
@@ -1753,7 +1744,7 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
   return committed.result;
 }
 
-export async function discardSlskdSearch(payload: SlskdPayload) {
+export async function discardSlskdSearch(payload: Pick<SlskdPayload, "jobId" | "activeSearch">) {
   if (!payload.activeSearch?.id || !slskdClient.isConfigured()) return;
   searchMonitors.delete(payload.activeSearch.id);
   await stopSearch(payload.activeSearch.id);

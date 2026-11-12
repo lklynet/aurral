@@ -1,13 +1,13 @@
-type SlskdPayload = Parameters<
-  typeof import("../../backend/services/slskdOrchestrator.ts").processSlskdPipelinePayload
->[0];
-type DeemixPayload = Parameters<
-  typeof import("../../backend/services/deemixOrchestrator.ts").processDeemixPipelinePayload
->[0];
-type PipelinePayload = CorePipelinePayload &
-  Omit<Partial<SlskdPayload & DeemixPayload>, keyof CorePipelinePayload>;
-import { localDownloadWorker } from "./fixtures.ts";
-import type { PipelinePayload as CorePipelinePayload } from "../../backend/services/downloadPipeline.ts";
+import * as v from "valibot";
+import {
+  isStepFrom,
+  localDownloadWorker,
+  sourceless,
+  usenetCandidate,
+  usenetRelease,
+  ytdlpResult,
+} from "./fixtures.ts";
+import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import type { StoredIntegrations } from "../../backend/db/helpers/settings.ts";
 import type { TestContext } from "vite-plus/test";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
@@ -46,7 +46,7 @@ const [
   libraryStore,
   { beginDownloadAttempt, setActiveDownloadAttemptId },
   { processPlaylistOperation },
-  { stopDownloadPipelineWorker },
+  { stopDownloadPipelineWorker, pipelinePayloadSchema },
   { denyBlockedJob },
 ] = await setupIsolatedBackend(
   "release-first-sources",
@@ -78,33 +78,23 @@ async function processPipelinePayload(
 }
 
 function enqueuePipelineStep(
-  payload: PipelinePayload | null,
+  payload: object | null,
   options: Parameters<typeof downloadPipelineQueue.enqueue>[1] = {},
 ) {
   assert.ok(payload, "Expected a pipeline step to enqueue");
   return downloadPipelineQueue.enqueue(JSON.parse(JSON.stringify(payload)), options);
 }
 
-function soulseekReleaseCandidates(payload: PipelinePayload) {
-  assert.equal(payload.source, "slskd");
+function soulseekReleaseCandidates(payload: PipelinePayload | null) {
+  assert.ok(isStepFrom(payload, "slskd"));
   assert.ok(payload.candidates);
-  return payload.candidates as {
-    releaseVerified: boolean;
-    raw: {
-      user: string;
-      files: NonNullable<
-        ReturnType<
-          typeof import("../../backend/services/albumReleaseSearch.ts").selectSoulseekAlbumFolder
-        >["selected"]
-      >["files"];
-    };
-  }[];
+  return payload.candidates;
 }
 
-function deemixCandidates(payload: PipelinePayload) {
-  assert.equal(payload.source, "deemix");
+function deemixCandidates(payload: PipelinePayload | null) {
+  assert.ok(isStepFrom(payload, "deemix"));
   assert.ok(payload.candidates);
-  return payload.candidates as NonNullable<DeemixPayload["candidates"]>;
+  return payload.candidates;
 }
 
 // Metadata's retries and rate limit run on fake time that moves to each
@@ -221,9 +211,7 @@ function queued(jobId: string) {
     .list()
     .find((entry) => entry.payload?.jobId === jobId)?.payload;
   if (payload == null) return undefined;
-  assert.equal(typeof payload.jobId, "string");
-  assert.equal(typeof payload.phase, "string");
-  return payload as PipelinePayload;
+  return v.parse(pipelinePayloadSchema, payload);
 }
 function requireQueued(jobId: string) {
   const payload = queued(jobId);
@@ -329,7 +317,7 @@ test("every album source is searched by release in priority order before any tra
   assert.equal(ytdlpSearch.mock.calls.length, 0);
   assert.ok(payload != null);
   assert.equal(payload.albumGrab, false);
-  assert.equal(buildNextSourcePayload<CorePipelinePayload>(payload)?.source, "ytdlp");
+  assert.equal(buildNextSourcePayload(payload)?.source, "ytdlp");
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "failed");
 });
 
@@ -347,11 +335,11 @@ test("album requests and upgrades of several tracks of a release try sources in 
   assert.ok(track !== undefined && sibling !== undefined && whole !== undefined);
   const firstSource = (payload: Parameters<typeof buildNextSourcePayload>[0]) =>
     buildNextSourcePayload(payload)?.source;
-  const upgrade = { jobId: track, albumGrab: true, upgrade: true };
+  const upgrade = { phase: "search", jobId: track, albumGrab: true, upgrade: true };
 
-  assert.equal(firstSource({ jobId: track }), "slskd");
-  assert.equal(firstSource({ jobId: whole }), "usenet");
-  assert.equal(firstSource({ jobId: whole, albumGrab: true }), "usenet");
+  assert.equal(firstSource({ phase: "search", jobId: track }), "slskd");
+  assert.equal(firstSource({ phase: "search", jobId: whole }), "usenet");
+  assert.equal(firstSource({ phase: "search", jobId: whole, albumGrab: true }), "usenet");
   assert.equal(firstSource({ ...upgrade, albumGroupJobIds: [track, sibling] }), "usenet");
   assert.equal(firstSource({ ...upgrade, albumGroupJobIds: [track] }), "slskd");
 });
@@ -621,12 +609,15 @@ async function quickSearchDownloaded(
     releaseGuid: `${name}-video`,
   });
   const step = {
-    ...claimQueued(track),
-    source: "ytdlp",
+    ...sourceless(claimQueued(track)),
+    source: "ytdlp" as const,
     phase: "finalize",
     downloadedPath: staged,
     candidates: [
-      { raw: { id: `${name}-video`, title: "Second" }, resolvedAlbumName: "Second (Single)" },
+      {
+        raw: ytdlpResult({ id: `${name}-video`, title: "Second" }),
+        resolvedAlbumName: "Second (Single)",
+      },
     ],
     candidateIndex: 0,
   };
@@ -783,7 +774,10 @@ test("a file the quick search holds stays with its track when its release attemp
   assert.ok(held != null);
 
   assert.equal(
-    await failPipelineJob({ ...attempt, source: "slskd" }, "Request failed with status code 500"),
+    await failPipelineJob(
+      { ...sourceless(attempt), source: "slskd" as const },
+      "Request failed with status code 500",
+    ),
     null,
   );
   const waiting = downloadTracker.getJob(track);
@@ -907,14 +901,11 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   let payload: PipelinePayload | null = albumAttempt([jobId], { source: "slskd" });
   while (payload?.phase === "search") payload = await processPipelinePayload(payload);
 
-  assert.ok(payload != null);
-  assert.ok(payload.candidates != null);
-  assert.equal(payload.phase, "download");
-  assert.ok(payload != null);
-  assert.ok(payload.candidates != null);
-  assert.ok(payload.candidates.length > 0);
+  assert.equal(payload?.phase, "download");
+  assert.ok(soulseekReleaseCandidates(payload).length > 0);
   for (const candidate of soulseekReleaseCandidates(payload)) {
     assert.equal(candidate.releaseVerified, true);
+    assert.ok(candidate.raw.files);
     assert.deepEqual(
       candidate.raw.files.map((file) => [file.jobId, file.file!.split("\\").at(-1)]),
       [[jobId, "02 - Second.flac"]],
@@ -922,6 +913,7 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   }
   const polling = await processPipelinePayload(payload);
   assert.ok(polling != null);
+  assert.ok(isStepFrom(polling, "slskd"));
   assert.equal(polling.phase, "poll");
   assert.deepEqual(polling.candidate, soulseekReleaseCandidates(payload)[0]);
   assert.equal(enqueue.mock.calls.length, 1);
@@ -977,8 +969,6 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
   const ids = libraryJobs(group, ["First", "Third"]);
 
   const searched = await processPipelinePayload(albumAttempt(ids, { source: "deemix" }));
-  assert.ok(searched != null);
-  assert.ok(searched.candidates != null);
   assert.deepEqual(
     deemixCandidates(searched).map((candidate) => [
       candidate.kind,
@@ -1007,7 +997,7 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
   );
   assert.equal(queued.album.mock.calls.length, 0);
   const finalizing = await processPipelinePayload(polling);
-  assert.ok(finalizing != null);
+  assert.ok(isStepFrom(finalizing, "deemix"));
   assert.equal(finalizing.phase, "finalize");
   assert.equal(finalizing.albumGrab, true);
   assert.deepEqual(finalizing.downloadedPaths, [
@@ -1019,8 +1009,6 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const whole = libraryJobs(group, titles);
   const searchedWhole = await processPipelinePayload(albumAttempt(whole, { source: "deemix" }));
-  assert.ok(searchedWhole != null);
-  assert.ok(searchedWhole.candidates != null);
   assert.deepEqual(
     deemixCandidates(searchedWhole).map((candidate) => candidate.kind),
     ["album"],
@@ -1081,7 +1069,7 @@ test("every deemix track an attempt queued is removed on cancel, and its track s
     },
   ]);
   const polling = await processPipelinePayload(await processPipelinePayload(fallback));
-  assert.ok(polling != null);
+  assert.ok(isStepFrom(polling, "deemix"));
   assert.equal(polling.phase, "poll");
   removed.mockClear();
   await processPipelinePayload({ ...polling, pollAttempts: 200 });
@@ -1107,8 +1095,6 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
   assert.ok(ids.every((value) => value != null));
 
   const searched = await processPipelinePayload(albumAttempt(ids, { source: "deemix" }));
-  assert.ok(searched != null);
-  assert.ok(searched.candidates != null);
   assert.deepEqual(
     deemixCandidates(searched).map((candidate) => [candidate.kind, candidate.raw.albumId]),
     [
@@ -1134,7 +1120,7 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
     ],
   );
   const finalizing = await processPipelinePayload(polling);
-  assert.ok(finalizing != null);
+  assert.ok(isStepFrom(finalizing, "deemix"));
   assert.deepEqual(finalizing.downloadedPaths, [
     "/deemix/track-1_9.flac",
     "/deemix/track-2_9.flac",
@@ -1381,7 +1367,13 @@ test("an album attempt whose leading track stopped gives the rest back untried a
     assert.ok(attempt != null);
     assert.deepEqual(attempt.albumGroupJobIds, ids);
     downloadTracker.setFailed(requireFixture(ids[0]), "Stopped");
-    return { ...attempt, phase: "finalize", source: "usenet", downloadClient: "nzbget", nzbId };
+    return {
+      ...sourceless(attempt),
+      phase: "finalize",
+      source: "usenet" as const,
+      downloadClient: "nzbget",
+      nzbId,
+    };
   };
 
   const stopped = libraryJobs(group, ["First", "Second"]);
@@ -1460,7 +1452,10 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
   const attempt = queued(requireFixture(ids[0]));
   assert.ok(attempt != null);
-  enqueuePipelineStep({ ...claimQueued(requireFixture(ids[0])), searchIds: ["album-search"] }, {});
+  enqueuePipelineStep(
+    { ...sourceless(claimQueued(requireFixture(ids[0]))), searchIds: ["album-search"] },
+    {},
+  );
   assert.deepEqual(attempt.albumGroupJobIds, ids);
 
   await cancelDownloadWorkForJobs([trackedJob(downloadTracker, ids[0])]);
@@ -1506,14 +1501,25 @@ test("an album step that fails on every retry blocks the release it downloaded, 
   const failAttempt = async (attempt: number) => {
     await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
     const finalizing = {
-      ...claimQueued(requireFixture(ids[0])),
+      ...sourceless(claimQueued(requireFixture(ids[0]))),
       phase: "finalize",
-      source: "usenet",
+      source: "usenet" as const,
       downloadClient: "nzbget",
       nzbId: `nzb-${attempt}`,
       candidateIndex: 0,
       candidates: [
-        { raw: { release: { guid: `guid-${attempt}`, title: "Retry Band - retries Album" } } },
+        usenetCandidate({
+          raw: {
+            release: usenetRelease({
+              guid: `guid-${attempt}`,
+              title: "Retry Band - retries Album",
+              downloadUrl: "",
+              indexerId: 1,
+              size: 0,
+              categories: [],
+            }),
+          },
+        }),
       ],
     };
     assert.equal(finalizing.albumGrab, true);
@@ -1583,8 +1589,8 @@ test("an album source whose step fails on every retry hands the attempt to the n
   const ids = libraryJobs(group, ["First", "Second"]);
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
   const searching = {
-    ...claimQueued(requireFixture(ids[0])),
-    source: "slskd",
+    ...sourceless(claimQueued(requireFixture(ids[0]))),
+    source: "slskd" as const,
     activeSearch: { id: "refused-search", query: "Refused Band", startedAt: 0 },
   };
 
@@ -1614,13 +1620,13 @@ test("a track step that fails on every retry hands the track to the next source 
     "library",
   );
   await downloadWorker.processJob(trackedJob(downloadTracker, id));
-  const queuedStep = claimQueued(id);
+  const queuedStep = sourceless(claimQueued(id));
 
   for (const failed of [
     queuedStep,
     {
       ...queuedStep,
-      source: "slskd",
+      source: "slskd" as const,
       activeSearch: { id: "lone-search", query: "Lone Band", startedAt: 0 },
     },
   ]) {
@@ -1911,7 +1917,7 @@ function legacyAttempt(ids: string[], extra: Partial<PipelinePayload> = {}) {
 
 const legacyTransfer = {
   phase: "poll",
-  source: "slskd",
+  source: "slskd" as const,
   candidate: { raw: { user: "peer", files: [] } },
   albumTransfers: [],
 };
@@ -1947,7 +1953,7 @@ test("an album transfer queued before attempts named their release waits while i
   const unresolved = resolvedJobs(["Second", "Third"]);
 
   const waiting = await processPipelinePayload(legacyAttempt(unresolved, legacyTransfer));
-  assert.ok(waiting != null);
+  assert.ok(isStepFrom(waiting, "slskd"));
   assert.deepEqual(
     [
       waiting.phase,
@@ -1992,12 +1998,12 @@ test("an album search queued before attempts named their release stops its searc
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
   assert.ok(leader !== undefined && sibling !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, leader));
-  const { releaseMbid: _releaseMbid, ...queuedLegacy } = claimQueued(leader);
+  const { releaseMbid: _releaseMbid, ...queuedLegacy } = sourceless(claimQueued(leader));
 
   assert.equal(
     await processPipelinePayload({
       ...queuedLegacy,
-      source: "slskd",
+      source: "slskd" as const,
       searchIds: ["legacy-search"],
       activeSearch: {
         id: "legacy-search",
@@ -2079,12 +2085,13 @@ test("a two-disc Soulseek release pairs each track with its own disc, in disc fo
   let payload: PipelinePayload | null = albumAttempt(ids, { source: "slskd" });
   while (payload?.phase === "search") payload = await processPipelinePayload(payload);
 
-  assert.ok(payload != null);
-  assert.ok(payload.candidates != null);
   const byUser = Object.fromEntries(
     soulseekReleaseCandidates(payload).map((candidate) => [
-      candidate.raw.user,
-      candidate.raw.files.map((file) => [file.jobId, file.file!.split("\\").slice(-2).join("/")]),
+      candidate.raw.user ?? "",
+      (candidate.raw.files ?? []).map((file) => [
+        file.jobId,
+        file.file!.split("\\").slice(-2).join("/"),
+      ]),
     ]),
   );
   assert.deepEqual(
@@ -2135,8 +2142,6 @@ test("after an album attempt falls back, a sibling's own track search puts the c
   assert.equal(step.albumGrab, undefined);
   assert.equal(trackedJob(downloadTracker, sibling).status, "pending");
   while (step?.phase === "search") step = await processPipelinePayload(step);
-  assert.ok(step != null);
-  assert.ok(step.candidates != null);
   assert.deepEqual(
     soulseekReleaseCandidates(step).map((candidate) => candidate.raw.user),
     ["exact", "bonus"],

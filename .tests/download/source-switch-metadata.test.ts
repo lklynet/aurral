@@ -108,7 +108,7 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
 
   const finalize = await processPipelinePayload({
     jobId,
-    source: "ytdlp",
+    source: "ytdlp" as const,
     phase: "download",
     candidateIndex: 0,
     candidates: [
@@ -118,6 +118,8 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
           id: "video-1",
           title: "The Cure - Boys Don't Cry (Audio)",
           channel: "The Cure",
+          durationSec: null,
+          liveStatus: "not_live",
         },
       },
     ],
@@ -187,7 +189,7 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
   await mkdir(path.dirname(sourcePath), { recursive: true });
   await writeFile(sourcePath, "held");
   const heldForReview = holdForReview(trackedJob(downloadTracker, jobId), {
-    source: "usenet",
+    source: "usenet" as const,
     sourcePath,
     reason: "Duration differs",
     transferId: "41",
@@ -195,7 +197,7 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
 
   const next = await processPipelinePayload({
     jobId,
-    source: "slskd",
+    source: "slskd" as const,
     phase: "download",
     candidateIndex: 0,
     triedSources: ["usenet"],

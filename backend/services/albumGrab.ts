@@ -1,4 +1,5 @@
 import { isRecord } from "../../lib/isRecord.ts";
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "node:path";
 import { isNzbSource } from "./usenetClientCommon.ts";
 import {
@@ -153,7 +154,10 @@ function regroupAlbumGrab<Payload extends AlbumGrabPayload>(
 
 // Tries the next ranked folder or release for the tracks an attempt left
 // unfilled.
-export function continueAlbumGrab(payload: AlbumGrabPayload, resetFields = {}) {
+export function continueAlbumGrab<Payload extends AlbumGrabPayload>(
+  payload: Payload,
+  resetFields = {},
+) {
   const remaining = albumGrabJobs(payload);
   if (remaining.length === 0 || !hasNextCandidate(payload)) return null;
   return buildNextCandidatePayload(regroupAlbumGrab(payload, remaining), resetFields);
@@ -161,10 +165,7 @@ export function continueAlbumGrab(payload: AlbumGrabPayload, resetFields = {}) {
 
 // After the last release of a source, the next album source in configured
 // order searches for the tracks still unfilled before any track search.
-export async function nextAlbumSource<Payload extends AlbumGrabPayload>(
-  payload: Payload,
-  reason = NO_RELEASE_FILLED_REASON,
-) {
+export async function nextAlbumSource(payload: PipelinePayload, reason = NO_RELEASE_FILLED_REASON) {
   const remaining = albumGrabJobs(payload);
   if (remaining.length === 0) return null;
   const { buildNextSourcePayload } = await import("./downloadPipeline.ts");
@@ -251,8 +252,8 @@ export function fallbackAlbumGrabToTracks<Payload extends AlbumGrabPayload>(
   };
 }
 
-export async function finishAlbumGrab(
-  payload: AlbumGrabPayload,
+export async function finishAlbumGrab<Payload extends PipelinePayload>(
+  payload: Payload,
   {
     filePaths,
     inPlace = false,
@@ -282,7 +283,7 @@ export async function finishAlbumGrab(
     filePaths,
     source,
     manifest,
-    verified: getPayloadCandidate(payload)?.releaseVerified === true,
+    verified: getPayloadCandidate<AlbumGrabCandidate>(payload)?.releaseVerified === true,
   });
   if (assigned.rejected.length > 0) {
     logger.info(source, "Album files failed verification", {

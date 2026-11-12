@@ -1,4 +1,4 @@
-import { usenetCandidate } from "./fixtures.ts";
+import { isStepFrom, usenetCandidate } from "./fixtures.ts";
 import { createTrackedJob, startWorkerForQueuedWork, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -119,7 +119,7 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
     { phase: "search", source: "ytdlp", jobId },
     { failOrTryNextSource: async (_payload, _job, reason) => assert.fail(reason) },
   );
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "ytdlp"));
   assert.deepEqual(queries, [
     "songs: Raspberries Go All the Way",
     "Raspberries Go All the Way",
@@ -173,7 +173,7 @@ test("cancelling deemix finalization leaves a provider-reported library file unt
     const result = await processDeemixPipelinePayload(
       {
         phase: "finalize",
-        source: "deemix",
+        source: "deemix" as const,
         jobId,
         queueUuid: "track_1_1",
         downloadedPath: filePath,
@@ -325,12 +325,12 @@ test("yt-dlp sends plausible duration mismatches to review", async (t) => {
 
   const result = await processPipelinePayload({
     phase: "finalize",
-    source: "ytdlp",
+    source: "ytdlp" as const,
     jobId,
     downloadedPath: filePath,
     destination: "ytdlp-review/Artist Name/Album Name",
     candidate: {
-      raw: { id: "video-1", title: "Artist Name - Correct Track" },
+      raw: ytdlpResult({ id: "video-1", title: "Artist Name - Correct Track" }),
     },
     candidateIndex: 0,
   });
@@ -357,10 +357,10 @@ test("a flow track fails instead of waiting for review", async (t) => {
 
   const result = await processPipelinePayload({
     phase: "finalize",
-    source: "ytdlp",
+    source: "ytdlp" as const,
     jobId,
     downloadedPath: filePath,
-    candidate: { raw: { id: "video-1", title: "Artist Name - Correct Track" } },
+    candidate: { raw: ytdlpResult({ id: "video-1", title: "Artist Name - Correct Track" }) },
     candidateIndex: 0,
   });
 
@@ -400,7 +400,7 @@ test("yt-dlp auto-rejects weak title matches instead of reviewing them", async (
   const result = await processYtdlpPipelinePayload(
     {
       phase: "finalize",
-      source: "ytdlp",
+      source: "ytdlp" as const,
       jobId,
       downloadedPath: filePath,
       destination: "ytdlp-weak-title-review/Artist Name/Album Name",
@@ -445,15 +445,15 @@ test("yt-dlp holds partially-matching identity for review", async (t) => {
 
   const result = await processPipelinePayload({
     phase: "finalize",
-    source: "ytdlp",
+    source: "ytdlp" as const,
     jobId,
     downloadedPath: filePath,
     destination: "ytdlp-weak-artist-review/Artist Name",
     candidate: {
-      raw: {
+      raw: ytdlpResult({
         id: "video-weak-artist",
         title: "Correct Tracks",
-      },
+      }),
     },
     candidateIndex: 0,
   });
@@ -522,7 +522,7 @@ test("Usenet tries its other releases before sending a file to review", async ()
     const next = await processUsenetPipelinePayload(
       {
         phase: "finalize",
-        source: "usenet",
+        source: "usenet" as const,
         jobId,
         nzbId: 1,
         destination: "usenet-review/Artist Name/Album Name",
@@ -607,7 +607,7 @@ test("an automatic Usenet upgrade drops a file it cannot verify and keeps the Li
     await processUsenetPipelinePayload(
       {
         phase: "finalize",
-        source: "usenet",
+        source: "usenet" as const,
         jobId: upgradeJobId,
         upgradeForJobId: sourceJobId,
         nzbId: 1,
@@ -717,7 +717,7 @@ test("deemix drops its queue entry before a track goes to review", async () => {
     const polled = await processDeemixPipelinePayload(
       {
         phase: "poll",
-        source: "deemix",
+        source: "deemix" as const,
         jobId,
         queueUuid: "track_1_1",
         destination: "deemix-review/Artist Name/Album Name",
@@ -795,7 +795,7 @@ test("deemix reuses an existing final path instead of creating a duplicate", asy
     const polled = await processDeemixPipelinePayload(
       {
         phase: "poll",
-        source: "deemix",
+        source: "deemix" as const,
         jobId,
         queueUuid: "track_1_1",
         destination,
@@ -852,7 +852,7 @@ test("Soulseek tries the other candidates before sending a file to review", asyn
   const candidate = (name: string) => ({
     raw: { user: name, file: `Music\\Artist Name\\${name}.mp3`, size: 0 },
   });
-  const finalize = (payload: Partial<PipelinePayload> & Pick<PipelinePayload, "jobId">) =>
+  const finalize = (payload: Omit<PipelinePayload & { source: "slskd" }, "phase" | "source">) =>
     processPipelinePayload({ ...payload, phase: "finalize", source: "slskd" });
 
   const jobId = addDurationMismatchJob("slskd-held");
@@ -865,7 +865,7 @@ test("Soulseek tries the other candidates before sending a file to review", asyn
     candidateIndex: 0,
     candidates: [candidate("held"), candidate("other")],
   });
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "slskd"));
   assert.equal(next.candidateIndex, 1);
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "blocked");
   await finalize(next);
@@ -894,7 +894,7 @@ test("Soulseek tries the other candidates before sending a file to review", asyn
     candidateIndex: 0,
     candidates: [candidate("longer"), candidate("other")],
   });
-  assert.ok(retry != null);
+  assert.ok(isStepFrom(retry, "slskd"));
   await finalize(retry);
   assert.equal(trackedJob(downloadTracker, verifiedJobId).status, "done");
   await assert.rejects(access(longer));
@@ -929,9 +929,9 @@ test("a yt-dlp file waits for review while the next source is tried", async (t) 
     const next = await processPipelinePayload({
       jobId,
       phase: "finalize",
-      source: "ytdlp",
+      source: "ytdlp" as const,
       downloadedPath: video,
-      candidate: { raw: { id: "video-held", title: "Artist Name - Correct Track" } },
+      candidate: { raw: ytdlpResult({ id: "video-held", title: "Artist Name - Correct Track" }) },
       candidateIndex: 0,
     });
     assert.ok(next != null);
@@ -1195,7 +1195,7 @@ test("a download is tagged after it reaches the Library, so a slow download fold
   await processUsenetPipelinePayload(
     {
       phase: "finalize",
-      source: "usenet",
+      source: "usenet" as const,
       jobId: usenetJobId,
       nzbId: 1,
       destination: "slow-mount/Artist Name/Album Name",
@@ -1216,7 +1216,7 @@ test("a download is tagged after it reaches the Library, so a slow download fold
   const slskdJobId = addJob("Other Track", 2);
   await processPipelinePayload({
     phase: "finalize",
-    source: "slskd",
+    source: "slskd" as const,
     jobId: slskdJobId,
     candidateIndex: 0,
     destination: "slow-mount/Artist Name/Album Name",
