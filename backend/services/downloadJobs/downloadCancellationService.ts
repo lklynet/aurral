@@ -301,7 +301,7 @@ async function cancelUsenetWork(
       ],
       [
         "Could not remove a deleted playlist history item",
-        () => client.deleteHistoryItem(id),
+        () => client.deleteHistoryItem(id, { deleteFiles: true }),
         () => client.getHistoryItem(id),
       ],
     ] satisfies [string, () => unknown, () => unknown][]) {

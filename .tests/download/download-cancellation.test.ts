@@ -615,10 +615,13 @@ test("NZBGet cancellation deletes the tracked queue and history items", async ()
     downloadTracker.getByPlaylistId(playlistId),
   );
 
-  assert.deepEqual(calls, [
-    ["editqueue", ["GroupFinalDelete", "", [42]]],
-    ["editqueue", ["HistoryFinalDelete", "", [42]]],
-  ]);
+  assert.deepEqual(
+    calls.filter(([method]) => method === "editqueue"),
+    [
+      ["editqueue", ["GroupFinalDelete", "", [42]]],
+      ["editqueue", ["HistoryFinalDelete", "", [42]]],
+    ],
+  );
 });
 
 test("Tidarr cancellation deletes the tracked download", async () => {

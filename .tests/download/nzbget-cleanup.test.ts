@@ -553,6 +553,30 @@ test("a download whose request is cancelled while it is checked is removed", asy
   assert.equal(historyDeletes(deleted), 1);
 });
 
+test("cancelling a song removes its finished download", async (t) => {
+  const { jobId, deleted } = await pipelineFixture(t);
+  const { cancelPlaylistDownloadWork } =
+    await import("../../backend/services/downloadJobs/downloadCancellationService.ts");
+  await cancelPlaylistDownloadWork("library", [trackedJob(downloadTracker, jobId)]);
+  assert.equal(await exists(folder()), false);
+  assert.equal(historyDeletes(deleted), 1);
+});
+
+for (const phase of ["poll", "finalize"] as const) {
+  for (const [state, settle] of [
+    ["finished another way", (jobId: string) => downloadTracker.setDone(jobId, "/elsewhere.flac")],
+    ["failed", (jobId: string) => downloadTracker.setFailed(jobId, "Timed out")],
+  ] as const) {
+    test(`a download whose song ${state} is removed when it is next checked (${phase})`, async (t) => {
+      const { jobId, payload, deleted } = await pipelineFixture(t);
+      settle(jobId);
+      assert.equal(await processUsenetPipelinePayload({ ...payload, phase }, throwOnFailure), null);
+      assert.equal(await exists(folder()), false);
+      assert.equal(historyDeletes(deleted), 1);
+    });
+  }
+}
+
 const failAttempt = (jobId: string | null) => ({
   failOrTryNextSource: async (_payload: unknown, job: { id: string }, reason: string) => {
     assert.equal(job.id, jobId);

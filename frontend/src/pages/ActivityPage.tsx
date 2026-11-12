@@ -278,10 +278,13 @@ function ActivityPage() {
         await settleReviewedJob(jobId, { status: "failed", statusLabel: "Denied" });
       }
       setJobErrors(({ [jobId]: _, ...rest }) => rest);
-    } catch {
+    } catch (jobError) {
       setJobErrors((prev) => ({
         ...prev,
-        [jobId]: action === "approve" ? "Failed to approve" : "Failed to deny",
+        [jobId]:
+          getApiErrorText(jobError, "message") ||
+          getApiErrorText(jobError, "error") ||
+          (action === "approve" ? "Failed to approve" : "Failed to deny"),
       }));
     } finally {
       setReviewingJobs(({ [jobId]: _, ...rest }) => rest);

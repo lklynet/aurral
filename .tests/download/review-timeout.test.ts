@@ -1,5 +1,5 @@
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +16,7 @@ const [
   { downloadTracker },
   { retryStaleReviews, approveBlockedJob },
   { withDownloadImportLock },
+  { slskdClient },
 ] = await setupIsolatedBackend(
   "review-timeout",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -23,6 +24,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/blockedJobReview.ts"),
   () => import("../../backend/services/downloadJobs/downloadLocks.ts"),
+  () => import("../../backend/services/slskdClient.ts"),
 );
 const HOUR = 60 * 60 * 1000;
 let sequence = 0;
@@ -33,8 +35,11 @@ beforeEach(() => {
 });
 afterAll(() => cleanupIsolatedState(state));
 
-async function holdForReview(trackName: string) {
-  const stagingPath = path.join(state.baseDir, `held-${++sequence}`, `${trackName}.flac`);
+async function holdForReview(
+  trackName: string,
+  folder = path.join(state.baseDir, `held-${++sequence}`),
+) {
+  const stagingPath = path.join(folder, `${trackName}.flac`);
   await fs.mkdir(path.dirname(stagingPath), { recursive: true });
   await fs.writeFile(stagingPath, "held audio");
   const jobId = createTrackedJob(downloadTracker, { artistName: "The Band", trackName }, "library");
@@ -146,4 +151,18 @@ test("a timeout waits for an approval in progress and leaves the approved song a
   assert.equal(await denial, 0);
   assert.equal(trackedJob(downloadTracker, held.jobId).status, "done");
   assert.equal(await exists(held.stagingPath), true);
+});
+
+test("approving a Soulseek song removes the folders it leaves in slskd's downloads", async () => {
+  const slskdRoot = path.join(state.baseDir, `slskd-${++sequence}`);
+  const held = await holdForReview("Approved", path.join(slskdRoot, "Album", "Disc 1"));
+  await fs.writeFile(path.join(slskdRoot, "other.flac"), "another download");
+  downloadTracker.updateDownloadMetadata(held.jobId, { downloadSource: "slskd" });
+  vi.spyOn(slskdClient, "getDownloadDirectory").mockImplementation(async () => slskdRoot);
+
+  assert.equal((await approveBlockedJob(held.jobId)).status, 200);
+
+  assert.equal(trackedJob(downloadTracker, held.jobId).status, "done");
+  assert.equal(await exists(path.join(slskdRoot, "Album")), false);
+  assert.equal(await exists(path.join(slskdRoot, "other.flac")), true);
 });
