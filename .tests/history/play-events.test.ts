@@ -142,3 +142,12 @@ test("now playing reaches each linked scrobbler without recording a play", async
     0,
   );
 });
+
+test("a Koito connection without a server URL is not connected, so its plays never reach the public ListenBrainz", () => {
+  const { scrobbleConnectionStore } = scrobbleStore;
+  scrobbleConnectionStore.saveConnection(1, "koito", { token: "koito-token" });
+
+  assert.equal(scrobbleConnectionStore.getConnection(1, "koito"), null);
+  assert.deepEqual(scrobbleConnectionStore.getConnections(1), {});
+  assert.equal(scrobbleConnectionStore.getPublicStatus(1).koito.connected, false);
+});

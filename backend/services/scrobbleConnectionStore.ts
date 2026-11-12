@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type { SettingsRow } from "../db/rows.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
+import { normalizeKoitoBaseUrl } from "./koitoClient.ts";
 
 const SETTINGS_KEY = "scrobbleConnections";
 type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
@@ -60,6 +61,7 @@ const normalize = (provider: ScrobbleProvider, raw: unknown) => {
   if (!PROVIDERS.has(provider) || !v.is(storedConnectionSchema, raw)) return null;
   const token = decryptToken(raw.token);
   if (!token) return null;
+  if (provider === "koito" && !normalizeKoitoBaseUrl(raw.baseUrl)) return null;
   return {
     provider,
     token,
