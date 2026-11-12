@@ -644,7 +644,6 @@ test("yt-dlp searches videos when no YouTube Music song is the requested recordi
     "read BGMfbFzONp8",
     "read KvVk6FvnKj0",
     "read ceWbCc-3uKY",
-    "read t21dyImwINM",
     "video search 宇多田ヒカル First Love",
   ]);
   assert.equal(next.candidates[0]?.raw.id, "o1sUaVJUeB0");

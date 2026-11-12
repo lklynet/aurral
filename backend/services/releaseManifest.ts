@@ -12,7 +12,7 @@ import {
 } from "./providers/brainzmashRanking.ts";
 import { buildResolvedJobTrack, type DownloadTrackFields } from "./downloadUtils.ts";
 import { normalizeMatchText } from "./trackMatching/nativeMatcher.ts";
-import { extractVariants } from "./trackMatching/semanticPolicy.ts";
+import { extractVariants, sameMixCredit } from "./trackMatching/semanticPolicy.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 
 type ManifestArtistInput = Partial<NormalizedArtist> & { artistname?: string };
@@ -77,7 +77,8 @@ export function sameVersion(left: string | null | undefined, right: string | nul
   const b = extractVariants(right);
   return (
     VERSION_KEYS.every((key) => Boolean(a[key]) === Boolean(b[key])) &&
-    a.mixVariant === b.mixVariant
+    a.mixVariant === b.mixVariant &&
+    sameMixCredit(a.mixCredit, b.mixCredit)
   );
 }
 

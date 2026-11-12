@@ -635,6 +635,7 @@ test("jobs map onto the edition by recording, then place and title, then a title
         { title: "Bomb", recordingId: "bomb", trackPosition: 1, mediumNumber: 2 },
         { title: "Live Song (Live)", recordingId: "live", trackPosition: 2, mediumNumber: 2 },
         { title: "Untagged", trackPosition: 3, mediumNumber: 2 },
+        { title: "Bomb (Avalon Remix)", recordingId: "remix", trackPosition: 4, mediumNumber: 2 },
       ],
     },
   );
@@ -665,12 +666,15 @@ test("jobs map onto the edition by recording, then place and title, then a title
   assert.deepEqual(mapRequest(twoDiscs, [{ id: "which-bomb", trackName: "Bomb" }]).offManifest, [
     "which-bomb",
   ]);
-  const placed = (trackName: string) => [
-    ...mapRequest(twoDiscs, [{ id: trackName, trackName, trackNumber: 1, discNumber: 1 }]).wanted,
+  const placed = (trackName: string, trackNumber = 1, discNumber = 1) => [
+    ...mapRequest(twoDiscs, [{ id: trackName, trackName, trackNumber, discNumber }]).wanted,
   ];
   assert.deepEqual(placed("Bomb"), [[0, "Bomb"]]);
   assert.deepEqual(placed("Bomb (Alternate Mix)"), []);
   assert.deepEqual(placed("Bomb (In Concert)"), []);
+  assert.deepEqual(placed("Bomb (Dub Mix)"), []);
+  assert.deepEqual(placed("Bomb (Avalon Remix)", 4, 2), [[5, "Bomb (Avalon Remix)"]]);
+  assert.deepEqual(placed("Bomb (Laughing Buddha Remix)", 4, 2), []);
 });
 
 test("a track request names the whole edition and the track's place on it, whatever else is still wanted", async (t) => {

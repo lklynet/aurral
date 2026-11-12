@@ -182,6 +182,25 @@ test("known recording, variant, and duration contradictions cannot be rescued by
   }
 });
 
+test("a version named at the end of a title is another recording", () => {
+  for (const [expected, version] of [
+    ["Song", "Wembley 1986 Live"],
+    ["Song", "BBC Session Live"],
+    ["Song", "Dub Mix"],
+    ["Song", "Rough Mix"],
+    ["Song (Dub Mix)", "Rough Mix"],
+    ["Commies (Avalon Remix)", "Laughing Buddha Remix"],
+  ] satisfies [string, string][]) {
+    const wanted = { title: expected, artists: ["X"], durationMs: 200000 };
+    const core = expected.replace(/ \(.*\)$/u, "");
+    for (const offered of [`${core} (${version})`, `${core} - ${version}`]) {
+      const candidate = { ...wanted, title: offered };
+      assert.equal(decideRecording(wanted, [candidate]).decision, "skip", offered);
+      assert.equal(verifyDownloadedRecording(wanted, candidate).decision, "no_match", offered);
+    }
+  }
+});
+
 test("matching live versions compare the song core while retaining variant identity", () => {
   const result = decideRecording({ ...request, title: "Hoppipolla (Live at Wembley)" }, [
     {

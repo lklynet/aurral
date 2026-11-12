@@ -687,6 +687,15 @@ test("a YouTube file's artist comes from the video title when yt-dlp tagged the 
     },
   );
   assert.equal(creditedCover.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  const remix = await validate(
+    { artistName: "Slowdance", trackName: "Commies - Avalon Remix", durationMs: 200000 },
+    {
+      videoTitle: "Commies - Avalon Remix",
+      channel: "Slowdance",
+      tags: { title: "Commies - Avalon Remix", artist: "Slowdance" },
+    },
+  );
+  assert.equal(remix.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, remix.reason ?? "");
 });
 
 test("a recording ID tag only counts as a MusicBrainz ID, including one merged into the requested recording", async () => {
