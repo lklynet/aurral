@@ -24,7 +24,7 @@ type ArtistImageProps = {
 
 type Candidate = { src: string; srcSet?: string };
 
-function imageCandidates({
+export function imageCandidates({
   mbid,
   src,
   isInLibrary,
