@@ -36,7 +36,11 @@ import {
   readReleaseListViewMode,
   writeReleaseListViewMode,
 } from "./utils";
-import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilters.ts";
+import {
+  isStudioRelease,
+  matchesReleaseGroupSearch,
+  matchesReleaseGroupTab,
+} from "./releaseFilters.ts";
 import type { LibraryReleaseGroup, ReleaseGroup, ReleaseListViewMode } from "./utils";
 import { albumPath } from "../../../../lib/albumPath.ts";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
@@ -107,7 +111,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const selectedTab = releaseTabs.find((tab) => tab.value === tabParam)?.value ?? "all";
-  const showLiveAlbums = searchParams.get("live") !== "0";
+  const otherReleasesParam = searchParams.get("other");
   const searchTerm = searchParams.get("q") ?? "";
   const sortParam = searchParams.get("sort");
   const sortOption = sortOptions.find((option) => option.value === sortParam) ?? sortOptions[0];
@@ -186,6 +190,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   );
   const { libraryReleaseGroups } = library;
   const libraryTab = !isAppearsOn && selectedTab === "library";
+  const showOtherReleases = otherReleasesParam
+    ? otherReleasesParam === "1"
+    : isAppearsOn || (releaseGroups.length > 0 && !releaseGroups.some(isStudioRelease));
   const filteredReleaseGroups = useMemo(
     () =>
       sortReleaseGroups<LibraryReleaseGroup>(
@@ -194,7 +201,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             matchesReleaseGroupTab(
               releaseGroup,
               libraryTab ? "all" : selectedTab,
-              showLiveAlbums,
+              libraryTab || showOtherReleases,
             ) && matchesReleaseGroupSearch(releaseGroup, searchTerm),
         ),
         sortKey,
@@ -206,7 +213,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       releaseGroups,
       searchTerm,
       selectedTab,
-      showLiveAlbums,
+      showOtherReleases,
       sortDirection,
       sortKey,
     ],
@@ -563,14 +570,16 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               );
             })}
           </div>
-          <div className="artist-release-page__live-toggle">
-            <span>Live albums</span>
-            <PillToggle
-              checked={showLiveAlbums}
-              onChange={(event) => updateFilters({ live: event.target.checked ? null : "0" })}
-              aria-label="Show live albums"
-            />
-          </div>
+          {libraryTab ? null : (
+            <div className="artist-release-page__other-toggle">
+              <span>Live, remixes, and more</span>
+              <PillToggle
+                checked={showOtherReleases}
+                onChange={(event) => updateFilters({ other: event.target.checked ? "1" : "0" })}
+                aria-label="Show live albums, remixes, and other releases"
+              />
+            </div>
+          )}
         </div>
       </div>
 

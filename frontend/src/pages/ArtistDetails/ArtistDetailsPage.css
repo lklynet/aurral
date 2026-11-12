@@ -1140,7 +1140,7 @@ button.artist-track__text {
 }
 
 .artist-release-page__filters,
-.artist-release-page__live-toggle {
+.artist-release-page__other-toggle {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1156,7 +1156,7 @@ button.artist-track__text {
   min-width: 0;
 }
 
-.artist-release-page__live-toggle {
+.artist-release-page__other-toggle {
   flex-shrink: 0;
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-xs);
@@ -1295,7 +1295,7 @@ button.artist-track__text {
     flex-shrink: 0;
   }
 
-  .artist-release-page__live-toggle {
+  .artist-release-page__other-toggle {
     width: 100%;
     justify-content: space-between;
   }

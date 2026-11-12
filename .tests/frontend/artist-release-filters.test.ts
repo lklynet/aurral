@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   matchesReleaseGroupSearch,
   matchesReleaseGroupTab,
+  preferStudioReleases,
 } from "../../frontend/src/pages/ArtistDetails/releaseFilters.ts";
 
 const release = (
@@ -16,9 +17,11 @@ const release = (
   "secondary-types": secondaryTypes,
 });
 
-test("the live toggle applies across the regular release tabs", () => {
+test("hiding other releases applies across the regular release tabs", () => {
   const studioAlbum = release("Album");
   const liveAlbum = release("Album", ["Live"]);
+  const remixAlbum = release("Album", ["Remix"]);
+  const studioCompilation = release("Album", ["Compilation"]);
   const studioEp = release("EP");
   const liveEp = release("EP", ["Live"]);
   const liveCompilation = release("Album", ["Compilation", "Live"]);
@@ -28,11 +31,26 @@ test("the live toggle applies across the regular release tabs", () => {
   assert.equal(matchesReleaseGroupTab(liveAlbum, "all", false), false);
   assert.equal(matchesReleaseGroupTab(liveAlbum, "albums"), true);
   assert.equal(matchesReleaseGroupTab(liveAlbum, "albums", false), false);
+  assert.equal(matchesReleaseGroupTab(remixAlbum, "albums", false), false);
+  assert.equal(matchesReleaseGroupTab(studioCompilation, "compilations", false), true);
   assert.equal(matchesReleaseGroupTab(studioEp, "singles"), true);
   assert.equal(matchesReleaseGroupTab(liveEp, "singles"), true);
   assert.equal(matchesReleaseGroupTab(liveEp, "singles", false), false);
   assert.equal(matchesReleaseGroupTab(liveCompilation, "compilations"), true);
   assert.equal(matchesReleaseGroupTab(liveCompilation, "compilations", false), false);
+});
+
+test("studio releases fill a shelf unless the artist has none of that kind", () => {
+  const studioAlbum = release("Album", [], "Studio");
+  const liveAlbum = release("Album", ["Live"], "Live");
+  const remixSingle = release("Single", ["Remix"], "Remix");
+  const titles = (releaseGroups: { title: string }[]) => releaseGroups.map(({ title }) => title);
+
+  assert.deepEqual(titles(preferStudioReleases([studioAlbum, liveAlbum], "albums")), ["Studio"]);
+  assert.deepEqual(titles(preferStudioReleases([liveAlbum, remixSingle], "albums")), ["Live"]);
+  assert.deepEqual(titles(preferStudioReleases([studioAlbum, liveAlbum, remixSingle], "singles")), [
+    "Remix",
+  ]);
 });
 
 test("release search matches titles without case or surrounding whitespace", () => {
