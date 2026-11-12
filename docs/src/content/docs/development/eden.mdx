@@ -41,7 +41,7 @@ Eden never touches `backend/data` or `backend/.env`. `pnpm run dev` still starts
 - **A Library** of about 180 albums and 2,000 tracks from every third catalogue artist. The files are silent FLAC, written with the exact length of each track, its tags, its MusicBrainz IDs, and a cover. Every seventh album is missing its last tracks, so there is always something to complete.
 - **A world** of about 380 albums the Library doesn't have. This is what a download finds. Anything else isn't out there, which is the case a failed search needs.
 - **Listening history** for both accounts: about 3,500 plays over 180 days, the same ones every time.
-- **The outside**, a proxy that all of Aurral's requests to the internet go through. It answers for Deezer, ListenBrainz, Last.fm, MusicBrainz, LRCLIB, Ticketmaster, Apple's charts, and the location lookups, with answers built from the catalogue. Any other host gets a 502 right away. `http://127.0.0.1:<port>/requests` lists what Aurral asked, which is also how a test checks that a scrobble was sent.
+- **The outside**, a proxy that all of Aurral's requests to the internet go through. It answers for Deezer, ListenBrainz, Last.fm, MusicBrainz, LRCLIB, Ticketmaster, Apple's charts, and the location lookups, with answers built from the catalogue. Any other host gets a 502 right away. `http://127.0.0.1:<port>/requests` lists what Aurral asked, which is also how a test checks that a scrobble was sent. Deezer's 30-second previews are silent clips from the same address, so they play only in a browser on the machine running Eden.
 - **A stand-in for yt-dlp**, so the built-in download source searches and downloads the world and never reaches YouTube.
 
 The generated files are sparse: about 13 GB by their sizes, about 350 MB on disk.
@@ -68,6 +68,7 @@ A service that needs another brings it along. `lidarr` starts `nzbget`, `prowlar
 
 - Tidarr and deemix, which download from paid accounts.
 - Plex and Google sign-in, which need accounts with those companies.
+- Artist videos, which come from YouTube's search and play from YouTube.
 - News feeds and images. Aurral fetches these straight from the real sites, past the proxy, so cover art and artist photos for music outside the Library load from the internet.
 
 `pnpm eden status` prints this list. It comes from `eden/coverage.ts`, which has an entry for every integration Aurral has settings for. A new integration fails the typecheck there until it gets a service or a reason.

@@ -42,6 +42,8 @@ stops it too, then removes the lab. Never stop a process you found by name.
 - A catalogue album in neither place is known to Aurral but has no source.
   Request one to test a download that fails.
 - An artist outside `eden/catalogue/artists.ts` is not found at all.
+- One artist in sixteen, Thom Yorke and Slowdive among them, put out its
+  least-known release in the last few weeks. Use one to test new releases.
 
 The files are silent FLAC with the right lengths and tags. They prove matching,
 tagging, and import. They prove nothing about audio.
@@ -96,8 +98,19 @@ Iterate against a running `pnpm eden dev --all` with
 `pnpm exec vp test run --project eden <file>`. Before pushing, run
 `pnpm eden test`, which rebuilds the lab with every service and runs them all.
 
-## When Eden can't cover it
+## Grow Eden when it falls short
 
-`pnpm eden status` ends with what Eden leaves out. If the change depends on
-one of those, say so in the PR and describe what you checked instead. Never
-point Eden at a real account or a real service to fill the gap.
+Eden should keep growing until it can test everything Aurral does. When a test
+needs something Eden doesn't do, such as a field Aurral reads that a stand-in
+leaves out, an ID that doesn't line up, or data no seeded artist has, fix Eden in
+the same change. Don't fake responses in the browser or skip the check.
+
+- Build the answer from the catalogue in `eden/outside` or `eden/metadata`, so
+  every lab gives the same one.
+- Add an assertion to `.tests/eden/eden.test.ts` that fails without the fix.
+- Say in the PR what Eden gained.
+
+`pnpm eden status` ends with what Eden leaves out, from `eden/coverage.ts`.
+When a gap can't be filled without a real account or service, add it there with
+the reason, and in the PR describe what you checked instead. Never point Eden
+at a real account or a real service to fill the gap.

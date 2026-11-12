@@ -1,4 +1,4 @@
-import type { Outside } from "./music.ts";
+import { releaseDate, type Outside } from "./music.ts";
 
 // Lyrics, and everything "near me" needs: where the listener is and who plays there.
 
@@ -216,7 +216,7 @@ export const appleCharts: Outside = {
         id: String(album.number),
         name: album.title,
         artistName: artist.name,
-        releaseDate: album.date,
+        releaseDate: releaseDate(album),
         genres: artist.genres.slice(0, 2).map((name) => ({ name })),
       })),
     );
