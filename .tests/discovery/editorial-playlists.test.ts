@@ -544,6 +544,49 @@ test("an album link without a Deezer album ID still finds the album", async () =
   );
 });
 
+test("a song on another artist's soundtrack opens the soundtrack", async () => {
+  const artistMbid = "00000000-0000-4000-8000-000000000001";
+  const soundtrack = "00000000-0000-4000-8000-000000000003";
+  const ownSingle = "00000000-0000-4000-8000-000000000004";
+  const release = (id: string, title: string, credit: string) => ({
+    id: `${id}-release`,
+    date: "2026-11-20",
+    "artist-credit": [{ name: credit, artist: { id: credit === "Tove Lo" ? artistMbid : id } }],
+    "release-group": { id, title },
+  });
+  const searches: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/search/artist") {
+      return Response.json([{ id: artistMbid, artistname: "Tove Lo", genres: [], images: [] }]);
+    }
+    if (url.pathname !== "/ws/2/recording") return Response.json([]);
+    searches.push(url.searchParams.get("query") ?? "");
+    return Response.json({
+      recordings: [
+        {
+          title: "Blood In Your Eyes",
+          releases: [
+            release(ownSingle, "Blood In Your Eyes", "Tove Lo"),
+            release(soundtrack, "Grand Theft Auto VI: The Album", "Grand Theft Auto VI"),
+          ],
+        },
+      ],
+    });
+  });
+
+  assert.deepEqual(
+    await resolveEditorialTrackLinks({
+      artistName: "Tove Lo",
+      albumName: "Grand Theft Auto VI: The Album",
+      deezerAlbumId: "1119883012",
+      trackName: "Blood In Your Eyes",
+    }),
+    { artistMbid, albumMbid: soundtrack },
+  );
+  assert.deepEqual(searches, [`recording:"Blood In Your Eyes" AND arid:${artistMbid}`]);
+});
+
 test("flow templates keep their recipe and need history for Listening History", () => {
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
   const available = Object.fromEntries(

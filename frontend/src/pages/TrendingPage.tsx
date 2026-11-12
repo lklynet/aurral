@@ -289,6 +289,7 @@ export default function TrendingPage() {
           artistName: lead.artistName,
           albumName: lead.albumName,
           deezerAlbumId: lead.deezerAlbumId,
+          trackName: lead.trackName,
         })
       : null;
     const leadArtistPath = lead ? resolveArtistPath({ name: lead.artistName }) : null;

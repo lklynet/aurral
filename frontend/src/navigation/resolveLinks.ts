@@ -31,13 +31,20 @@ export const resolveAlbumPath = ({
   artistName,
   albumName,
   deezerAlbumId,
+  trackName,
 }: {
   artistName?: MaybeText;
   albumName?: MaybeText;
   deezerAlbumId?: MaybeId;
+  trackName?: MaybeText;
 }) =>
   text(artistName) && text(albumName)
-    ? buildPath("album", { artist: artistName, name: albumName, deezer: deezerAlbumId })
+    ? buildPath("album", {
+        artist: artistName,
+        name: albumName,
+        deezer: deezerAlbumId,
+        track: trackName,
+      })
     : null;
 
 export const resolveLibraryArtistPath = ({ mbid, name }: { mbid?: MaybeText; name?: MaybeText }) =>
@@ -90,6 +97,7 @@ async function resolveCatalog(
           artist: artistName || undefined,
           album: albumName || undefined,
           albumId: (kind === "album" && text(params.get("deezer"))) || undefined,
+          track: (kind === "album" && text(params.get("track"))) || undefined,
         },
       },
       { init: { signal } },

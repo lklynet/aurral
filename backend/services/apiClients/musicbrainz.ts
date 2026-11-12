@@ -6,6 +6,7 @@ import {
   listArtistAlbums as listMetadataArtistAlbums,
 } from "../providers/brainzmashProvider.ts";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
+import { scoreTextMatch } from "../providers/brainzmashRanking.ts";
 import { artistCreditSchema, musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
 import { readMany } from "../integrationData.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
@@ -25,6 +26,7 @@ const musicbrainzTagArtistsCache = createCache<{
 }>(6 * 60 * 60, 200);
 const musicbrainzReleaseCreditsCache = createCache<Map<string, ArtistCredit>>(24 * 60 * 60, 500);
 const RELEASE_CREDITS_RETRY_SECONDS = 5 * 60;
+const musicbrainzTrackReleaseGroupCache = createCache<string | null>(6 * 60 * 60, 500);
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 const APPEARS_ON_PAGE_SIZE = 100;
 const APPEARS_ON_MAX_RELEASES = 1000;
@@ -60,6 +62,13 @@ const releaseSchema = v.looseObject({
   date: v.optional(v.string()),
   "artist-credit": releaseGroupSchema.entries["artist-credit"],
   "release-group": releaseGroupSchema,
+});
+
+const recordingSearchSchema = v.looseObject({ recordings: v.array(v.unknown()) });
+
+const recordingSchema = v.looseObject({
+  title: v.optional(v.string()),
+  releases: v.optional(v.array(v.unknown())),
 });
 
 const releaseTracksSchema = v.looseObject({
@@ -394,6 +403,43 @@ export async function musicbrainzGetReleaseTrackCredits(
     });
     return credits;
   }
+}
+
+// The release group a song is on, found from the song itself, for a song whose
+// album is not one of the artist's own, such as a soundtrack credited to the
+// game. The album the song came with wins, then a release crediting the artist.
+export async function musicbrainzFindTrackReleaseGroup({
+  artistMbid,
+  trackName,
+  albumName,
+}: {
+  artistMbid: string;
+  trackName: string;
+  albumName: string;
+}) {
+  const cacheKey = JSON.stringify(
+    [artistMbid, trackName, albumName].map((part) => part.toLowerCase()),
+  );
+  const cached = musicbrainzTrackReleaseGroupCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const data = await musicbrainzGet(recordingSearchSchema, "/recording", {
+    query: `recording:"${trackName.replace(/["\\]/g, "\\$&")}" AND arid:${artistMbid}`,
+    limit: 10,
+  });
+  const source = { service: "MusicBrainz", endpoint: "/recording" };
+  const rank = (release: MusicBrainzRelease) =>
+    2 * Number(scoreTextMatch(release["release-group"].title, albumName) >= 85) +
+    Number(artistCreditIncludesMbid(release["artist-credit"], artistMbid));
+  const [best] = readMany(recordingSchema, data.recordings, source)
+    .filter((recording) => scoreTextMatch(recording.title, trackName) >= 85)
+    .flatMap((recording) => readMany(releaseSchema, recording.releases ?? [], source))
+    .toSorted(
+      (left, right) =>
+        rank(right) - rank(left) || (left.date || "9999").localeCompare(right.date || "9999"),
+    );
+  const releaseGroupId = best?.["release-group"].id ?? null;
+  musicbrainzTrackReleaseGroupCache.set(cacheKey, releaseGroupId);
+  return releaseGroupId;
 }
 
 export async function musicbrainzGetArtistNameByMbid(

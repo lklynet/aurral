@@ -53,6 +53,7 @@ export default function TrendingGenrePage() {
       artistName: track.artistName,
       albumName: track.albumName,
       deezerAlbumId: track.deezerAlbumId,
+      trackName: track.trackName,
     });
     return to ? { to } : null;
   };
