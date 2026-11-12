@@ -3402,7 +3402,7 @@ test("scanMusicRoot reads Aurral identity markers from native ID3 comments", asy
   }
 });
 
-test("a rescan leaves the songs of files it did not walk, in another folder or one it skips", async () => {
+test("a rescan leaves the songs of files in another folder, and drops ones an older scan took from a folder it skips", async () => {
   const roots = await Promise.all([
     mkdtemp(path.join(tmpdir(), "aurral-library-scanned-")),
     mkdtemp(path.join(tmpdir(), "aurral-library-elsewhere-")),
@@ -3427,7 +3427,7 @@ test("a rescan leaves the songs of files it did not walk, in another folder or o
       );
     }
     const reader = async (filePath: string) => requireFixture(tags[filePath]);
-    const skipped = await createAudioFile(roots[0], `_fallback/${artist}/Skipped/01 Song.flac`);
+    const skipped = await createAudioFile(roots[0], `_flows/flow/${artist}/Skipped/01 Song.flac`);
     tags[skipped] = untagged(artist, "Skipped", "Song");
     for (const root of roots)
       await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
@@ -3445,7 +3445,6 @@ test("a rescan leaves the songs of files it did not walk, in another folder or o
       [
         ["Elsewhere", 1],
         ["Scanned", 1],
-        ["Skipped", 1],
       ],
     );
   } finally {
