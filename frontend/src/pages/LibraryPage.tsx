@@ -86,6 +86,7 @@ import {
   text,
   useLibraryScanRefresh,
   useLibraryViewData,
+  waitForLibraryScan,
 } from "./library/libraryShared.tsx";
 import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 
@@ -120,8 +121,6 @@ const hasGenre = (genre: string, ...entities: (GenreSource | null | undefined)[]
 };
 
 const QUERY_DEBOUNCE_MS = 250;
-
-const wait = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const canRemoveLibraryArtist = (artist: LibraryArtist) =>
   Boolean(artist.mbid) || artist.sources?.some((source) => source === "aurral") === true;
@@ -181,21 +180,8 @@ function LibraryPage() {
 
   const pollLibraryRefresh = useCallback(
     async (jobId: number, attempt: number, successMessage = "") => {
-      while (true) {
-        const status = await parseResponse(
-          libraryClient.refresh[":jobId"].$get({ param: { jobId: encodeURIComponent(jobId) } }),
-        );
-        if (refreshAttemptRef.current !== attempt) return;
-        if (status.status === "completed") {
-          void invalidateLibraryViews();
-          if (successMessage) showSuccess(successMessage);
-          return;
-        }
-        if (status.status === "failed") {
-          throw new Error(status.error || "Library refresh failed");
-        }
-        await wait(750);
-      }
+      const done = await waitForLibraryScan(jobId, () => refreshAttemptRef.current === attempt);
+      if (done && successMessage) showSuccess(successMessage);
     },
     [showSuccess],
   );
@@ -1194,6 +1180,7 @@ function LibraryPage() {
         menuItems={[
           ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
           ...libraryArtistMonitoringItems,
+          ...actions.rescanMenuItem({ artistId: libraryArtist.id }, libraryArtist),
           ...actions.pluginMenuItems("artist", { artistId: libraryArtist.id }),
           ...(actions.canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
             ? [

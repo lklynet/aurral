@@ -73,7 +73,7 @@
   ".tests/library/library-ingest.test.ts": 1,
   ".tests/library/library-page-query.test.ts": 1,
   ".tests/library/library-read-routes.test.ts": 4,
-  ".tests/library/library-refresh.test.ts": 6,
+  ".tests/library/library-refresh.test.ts": 3,
   ".tests/library/library-removal.test.ts": 1,
   ".tests/library/library-watch-process.test.ts": 16,
   ".tests/library/malformed-metadata-index.test.ts": 1,

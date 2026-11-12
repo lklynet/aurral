@@ -45,6 +45,13 @@ test("classifies final audio from measured metadata at exact tier thresholds", (
     classifyAudioQuality({ format: { codec: "ALAC", bitrate: 900000 } }, "track.m4a").tier,
     null,
   );
+  assert.equal(
+    classifyAudioQuality(
+      { format: { codec: "FLAC", sampleRate: 44100, bitsPerSample: 16 } },
+      "track.flac",
+    ).tier,
+    "flac-standard",
+  );
 });
 
 test("normalizes the one global profile and migrates the old slskd preference", () => {

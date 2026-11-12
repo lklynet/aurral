@@ -1,4 +1,8 @@
+import * as v from "valibot";
+import { dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import { lenient } from "../db/helpers/storedSchemas.ts";
+import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { libraryFolderOwner, readOnlyFolderPaths } from "./libraryFolders.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
@@ -74,6 +78,30 @@ export function decorateJobQuality<T extends QualityJob>(
   readOnlyRoots = readOnlyFolderPaths(),
 ) {
   return { ...job, ...(!job.upgradeForJobId && getJobQuality(job, profile, readOnlyRoots)) };
+}
+
+const storedQualitySchema = v.looseObject({
+  format: lenient(v.nullable(v.string())),
+  bitrate: lenient(v.nullable(v.number())),
+  sampleRate: lenient(v.nullable(v.number())),
+  bitsPerSample: lenient(v.nullable(v.number())),
+});
+
+export function classifyLibraryFileQuality(
+  file: Pick<LibraryMediaFilesRow, "path" | "quality_json">,
+) {
+  const stored = dbHelpers.readJSON(storedQualitySchema, file.quality_json, file.path) ?? {};
+  return classifyAudioQuality(
+    {
+      format: {
+        codec: stored.format,
+        bitrate: stored.bitrate,
+        sampleRate: stored.sampleRate,
+        bitsPerSample: stored.bitsPerSample,
+      },
+    },
+    file.path,
+  );
 }
 
 export function validateParsedQuality(

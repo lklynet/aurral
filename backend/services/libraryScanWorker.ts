@@ -3,12 +3,19 @@ import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import {
+  isDownloadOwnerProcess,
+  requestDownloadOwner,
+} from "./downloadJobs/downloadOwnerClient.ts";
 import { parseJobPayload } from "./jobs/queue.ts";
 import { libraryScanQueue } from "./jobs/queues.ts";
 import { createJobWorker } from "./jobs/worker.ts";
 import { resolveLibraryScanChangedPaths, type LibraryScanRequest } from "./libraryScanRequest.ts";
-import type { SettingsRow } from "../db/rows.ts";
+import type { LibraryMediaFilesRow, SettingsRow } from "../db/rows.ts";
+import { resolveDownloadRoot } from "./downloadPaths.ts";
+import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
 import { websocketService } from "./websocketService.ts";
 import { unknownList } from "../../lib/unknownList.ts";
 
@@ -243,6 +250,38 @@ function registerLibraryScan({
   return jobId;
 }
 
+const itemFilesStmt = (match: string) =>
+  db.prepare<[number], Pick<LibraryMediaFilesRow, "path" | "source">>(
+    `SELECT DISTINCT media.path, media.source FROM library_albums AS album
+     JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+     JOIN library_media_files AS media ON media.track_id = album_track.track_id
+       AND (media.album_id = album.id OR media.album_id IS NULL)
+     WHERE ${match} AND media.source IN ('aurral', 'readonly')
+     ORDER BY media.path`,
+  );
+const albumFilesStmt = itemFilesStmt("album.id = ?");
+const artistFilesStmt = itemFilesStmt("album.artist_id = ?");
+
+export type LibraryItemScope = { albumId: number } | { artistId: number };
+
+// An album or artist rescans the folders that hold its files, so files added
+// beside them are found too. A file loose in a Library folder rescans alone.
+export function scheduleLibraryItemScan(scope: LibraryItemScope) {
+  const files =
+    "albumId" in scope ? albumFilesStmt.all(scope.albumId) : artistFilesStmt.all(scope.artistId);
+  if (files.length === 0) return null;
+  const roots = new Set(
+    [resolveDownloadRoot(), ...readOnlyFolderPaths()].map((root) => path.resolve(root)),
+  );
+  return scheduleLibraryScan({
+    includeReadOnly: files.some((file) => file.source === "readonly"),
+    changedPaths: files.map((file) => {
+      const folder = path.dirname(path.resolve(file.path));
+      return roots.has(folder) ? file.path : folder;
+    }),
+  });
+}
+
 export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: unknown = null) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
@@ -304,28 +343,22 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: unknown
     .immediate();
 }
 
+// Clearing a finished scan and queuing the scan for paths that arrived while it
+// ran commit together, so a request that joined it never sees neither.
 export function onLibraryScanSuccess(_payload: unknown, job: { id: number }) {
-  const pending = db
-    .transaction(() => {
-      const registry = getScanRegistry();
-      if (Number(registry.jobId) !== Number(job.id)) return null;
-      const result = {
-        fullScan: registry.fullRescanPending === true,
-        paths: Array.isArray(registry.changedPaths) ? registry.changedPaths : [],
-        includeReadOnly: registry.includeReadOnly === true,
-        force: registry.force === true,
-      };
-      setScanRegistry(withoutScheduledScan(registry));
-      return result;
-    })
-    .immediate();
-  if (pending && (pending.fullScan || pending.paths.length > 0)) {
+  db.transaction(() => {
+    const registry = getScanRegistry();
+    if (Number(registry.jobId) !== Number(job.id)) return;
+    const fullScan = registry.fullRescanPending === true;
+    const paths = Array.isArray(registry.changedPaths) ? registry.changedPaths : [];
+    setScanRegistry(withoutScheduledScan(registry));
+    if (!fullScan && paths.length === 0) return;
     registerLibraryScan({
-      force: pending.force,
-      includeReadOnly: pending.includeReadOnly,
-      changedPaths: pending.fullScan ? null : pending.paths,
+      force: fullScan && registry.force === true,
+      includeReadOnly: registry.includeReadOnly === true,
+      changedPaths: fullScan ? null : paths,
     });
-  }
+  }).immediate();
   scheduleReleaseMetadataRefresh({ delaySeconds: 5 });
 }
 
@@ -403,11 +436,44 @@ export function getLibraryScanStatus(jobId: string | number) {
   if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) return null;
   const job = libraryScanQueue.getJob(normalizedJobId);
   if (!job) return { jobId: normalizedJobId, status: "unknown", error: null };
+  const registry = getScanRegistry();
+  const handingOff =
+    job.state === "done" &&
+    normalizeJobId(registry.jobId) === normalizedJobId &&
+    registry.inFlightActive === true;
   return {
     jobId: normalizedJobId,
-    status: SCAN_STATUS[job.state],
+    status: handingOff ? SCAN_STATUS.running : SCAN_STATUS[job.state],
     error: job.state === "failed" || job.state === "cancelled" ? job.last_error : null,
   };
+}
+
+const doneJobPathsStmt = db
+  .prepare<[], string>(
+    `SELECT DISTINCT final_path FROM download_jobs
+     WHERE status = 'done' AND final_path IS NOT NULL AND upgrade_for_job_id IS NULL`,
+  )
+  .pluck();
+
+async function followChangedJobFiles(changedFiles: Set<string>) {
+  if (changedFiles.size === 0) return;
+  const paths = doneJobPathsStmt
+    .all()
+    .filter((filePath) => changedFiles.has(path.resolve(filePath)));
+  if (paths.length === 0) return;
+  try {
+    if (isDownloadOwnerProcess()) {
+      const { followChangedLibraryFiles } = await import("./downloadJobs/fileReuse.ts");
+      await followChangedLibraryFiles(paths);
+    } else {
+      await requestDownloadOwner("followChangedLibraryFiles", [paths], { timeoutMs: 10 * 60_000 });
+    }
+  } catch (error) {
+    logger.warn("library", "Downloads could not follow the files a Library scan changed", {
+      files: paths.length,
+      reason: safeLogDiagnostic(error),
+    });
+  }
 }
 
 const {
@@ -433,6 +499,7 @@ const {
       const { resolveChangedAlbumCovers } = await import("./libraryArtwork.ts");
       await resolveChangedAlbumCovers(changedFiles);
     }
+    await followChangedJobFiles(changedFiles);
     const { settleIngestedMusic } = await import("./libraryFiles/ingest.ts");
     await settleIngestedMusic();
     const { pruneLibraryArtwork } = await import("./libraryArtwork.ts");

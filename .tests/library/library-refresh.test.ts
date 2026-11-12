@@ -6,6 +6,7 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { EventEmitter } from "node:events";
+import * as v from "valibot";
 import { requireFixture } from "../playlists/fixtures.ts";
 
 process.env.NODE_ENV = "test";
@@ -15,7 +16,9 @@ const {
   claimScheduledLibraryScanJob,
   beginLibraryScanJob,
   clearScheduledLibraryScan,
+  getLibraryScanStatus,
   getScheduledLibraryScanJobId,
+  libraryScanSchema,
   onLibraryScanFinalFailure,
   onLibraryScanSuccess,
   scanRegistrySchema,
@@ -24,8 +27,9 @@ const {
 } = await import("../../backend/services/libraryScanWorker.ts");
 const { dbOps } = await import("../../backend/db/helpers/index.ts");
 const { db } = await import("../../backend/config/db-sqlite.ts");
-const { beginLibraryScan, finishLibraryScan } =
-  await import("../../backend/services/libraryMediaStore.ts");
+const libraryStore = await import("../../backend/services/libraryMediaStore.ts");
+const { beginLibraryScan, finishLibraryScan } = libraryStore;
+const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.ts");
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.ts");
 const { saveReadOnlyFolderPaths } = await import("../../backend/services/libraryFolders.ts");
 const { libraryScanQueue } = await import("../../backend/services/jobs/queues.ts");
@@ -97,7 +101,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
     ReturnType<typeof import("../../backend/services/libraryScanWorker.ts").getLibraryScanStatus>
   >;
   type Queued = { queued: boolean; jobId: number; status: ScanStatus };
-  const refresh = async (body?: { mode: string }) => {
+  const refresh = async (body?: object) => {
     const response = await app.request("/library/refresh", {
       method: "POST",
       ...(body && {
@@ -111,7 +115,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   let refreshJobId: number | undefined;
 
   const queuedPayload = (jobId: number) =>
-    JSON.parse(requireValue(libraryScanQueue.getJob(jobId)).payload);
+    v.parse(libraryScanSchema, JSON.parse(requireValue(libraryScanQueue.getJob(jobId)).payload));
 
   try {
     assert.equal((await refresh({ mode: "bogus" })).statusCode, 400);
@@ -137,6 +141,57 @@ test("library refresh queues a quick or full scan and exposes its queue status",
     assert.equal(queuedPayload(full.body.jobId).force, true);
     libraryScanQueue.cancel(full.body.jobId);
     clearScheduledLibraryScan();
+
+    const root = resolveDownloadRoot();
+    const artist = libraryStore.upsertLibraryArtist({ identityKey: "name:refresh", name: "R" });
+    const addAlbum = (title: string, files: string[]) => {
+      const album = libraryStore.upsertLibraryAlbum({
+        identityKey: `album:${title}`,
+        artistId: artist.id,
+        title,
+      });
+      files.forEach((file, index) => {
+        const track = libraryStore.upsertLibraryTrack({
+          identityKey: `track:${title}:${index}`,
+          title: `${title} ${index}`,
+        });
+        libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+        libraryStore.upsertLibraryMediaFile({
+          trackId: track.id,
+          albumId: album.id,
+          source: "aurral",
+          path: path.join(root, file),
+        });
+      });
+      return album.id;
+    };
+    const albumId = addAlbum("Disc", [
+      "R/Disc/CD1/01.flac",
+      "R/Disc/CD1/02.flac",
+      "R/Disc/CD2/01.flac",
+    ]);
+    addAlbum("Loose", ["loose.mp3"]);
+    const emptyAlbumId = addAlbum("Wanted", []);
+    const scoped = async (body: object) => {
+      const queued = await refresh(body);
+      assert.equal(queued.statusCode, 202);
+      const payload = queuedPayload(queued.body.jobId);
+      libraryScanQueue.cancel(queued.body.jobId);
+      clearScheduledLibraryScan();
+      return payload;
+    };
+    assert.deepEqual(await scoped({ albumId }), {
+      force: false,
+      includeReadOnly: false,
+      changedPaths: [path.join(root, "R/Disc/CD1"), path.join(root, "R/Disc/CD2")],
+    });
+    assert.deepEqual((await scoped({ artistId: artist.id })).changedPaths, [
+      path.join(root, "R/Disc/CD1"),
+      path.join(root, "R/Disc/CD2"),
+      path.join(root, "loose.mp3"),
+    ]);
+    assert.equal((await refresh({ albumId: emptyAlbumId })).statusCode, 404);
+    assert.equal((await refresh({ albumId: 1.5 })).statusCode, 400);
 
     const { jobId } = (await refresh({ mode: "quick" })).body;
     assert.equal(queuedPayload(jobId).force, false);
@@ -380,6 +435,38 @@ test("an early first claim uses its targeted payload without a stale read-only s
     assert.equal(getScheduledLibraryScanJobId(), jobId);
   } finally {
     if (jobId) queue.cancel(jobId);
+    clearScheduledLibraryScan();
+  }
+});
+
+test("paths queued during a full scan follow it as a targeted scan", () => {
+  const queue = libraryScanQueue;
+  clearScheduledLibraryScan();
+  let fullJob: number | undefined;
+  let followUp: number | null = null;
+  try {
+    fullJob = scheduleLibraryScan({ force: true });
+    const claimed = requireValue(queue.claim("follow-up-library-scan-test"));
+    assert.equal(claimed.id, fullJob);
+    assert.equal(claimScheduledLibraryScanJob(fullJob), true);
+    beginLibraryScanJob(fullJob, { force: true, includeReadOnly: true, changedPaths: null });
+    scheduleLibraryScan({ includeReadOnly: false, changedPaths: ["/data/music/Album"] });
+    assert.equal(claimed.ack(), true);
+    assert.equal(getLibraryScanStatus(fullJob)?.status, "running");
+
+    onLibraryScanSuccess(null, { id: fullJob });
+    assert.equal(getLibraryScanStatus(fullJob)?.status, "completed");
+
+    followUp = getScheduledLibraryScanJobId();
+    const payload = v.parse(
+      libraryScanSchema,
+      JSON.parse(requireValue(queue.getJob(requireValue(followUp))).payload),
+    );
+    assert.equal(payload.force, false);
+    assert.deepEqual(payload.changedPaths, ["/data/music/Album"]);
+  } finally {
+    if (fullJob) queue.cancel(fullJob);
+    if (followUp) queue.cancel(followUp);
     clearScheduledLibraryScan();
   }
 });
