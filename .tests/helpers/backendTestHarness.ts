@@ -1,3 +1,4 @@
+import "../offline-guard.ts";
 import { mkdir, mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
