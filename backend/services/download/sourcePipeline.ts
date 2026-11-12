@@ -278,7 +278,6 @@ function trackDownloaded(payload: SourcePayload, source: DownloadSource, filePat
     phase: "finalize",
     source: source.id,
     candidate,
-    pendingId: null,
     downloadedPath: filePath,
   };
 }
@@ -536,7 +535,7 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
     }
     const candidate = current.candidates?.[Number(current.candidateIndex || 0)];
     if (current.albumGrab === true)
-      return { ...current, phase: "finalize", candidate, pendingId: null, pollAttempts };
+      return { ...current, phase: "finalize", candidate, pollAttempts };
     if (status.path)
       return trackDownloaded(current, source, await resolveDownloadedFile(directory, status.path));
     if (fromAlbum(current, source)) return await albumTrackDownloaded(current, source, job);
@@ -547,23 +546,29 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
   }
 }
 
+// The source keeps a download Aurral imported from, so a torrent seeds, and
+// removes one Aurral didn't use.
 async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSource) {
-  const directory = stagingDir(source, payload.jobId);
-  const next = await finishAlbumGrab(payload, {
+  let imported = false;
+  const settled = { ...payload, pendingId: null };
+  const next = await finishAlbumGrab(settled, {
     filePaths: await downloadedFiles(payload, source),
     inPlace: Boolean(payload.importedFiles),
     source: source.id,
     album: getPayloadCandidate(payload)?.resolvedAlbumName ?? null,
     resetFields: {
-      pendingId: null,
       pollAttempts: 0,
       downloadedPath: null,
       filedCount: null,
       filedPolls: 0,
       fallbackScanned: false,
     },
+    onImported: () => {
+      imported = true;
+    },
   });
-  await cleanup(directory);
+  if (imported) await cleanup(stagingDir(source, payload.jobId));
+  else await discardSourceWork(payload, source);
   return next;
 }
 
@@ -579,8 +584,9 @@ async function handleFinalize(
   const resolvedTrack = resolveTrack(payload, job);
   const filePath = String(payload.downloadedPath || "").trim();
   if (!filePath) {
+    await discardSourceWork(payload, source);
     if (hasNextCandidate(payload))
-      return buildNextCandidatePayload(payload, { downloadedPath: null });
+      return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
     return helpers.failOrTryNextSource(payload, job, "download is missing its file");
   }
   const validation = await validateDownloadedTrackFile({
@@ -594,7 +600,7 @@ async function handleFinalize(
     },
   });
   if (!isPipelinePayloadActive(payload)) {
-    await cleanup(directory);
+    await discardSourceWork(payload, source);
     return null;
   }
   const inPlace = Boolean(payload.importedFiles);
@@ -605,9 +611,10 @@ async function handleFinalize(
         `${job.id}-held${path.extname(filePath)}`,
       );
       await fs.rename(filePath, heldPath);
-      await cleanup(directory);
+      await discardSourceWork(payload, source);
       const heldPayload = {
         ...payload,
+        pendingId: null,
         downloadedPath: null,
         heldForReview: holdForReview(job, {
           source: source.id,
@@ -624,10 +631,10 @@ async function handleFinalize(
       source.id,
       deniedKey(payload, source, candidate?.raw?.id),
     );
-    await cleanup(directory);
+    await discardSourceWork(payload, source);
     const reason = validation.reason || "download failed track validation";
     if (hasNextCandidate(payload))
-      return buildNextCandidatePayload(payload, { downloadedPath: null });
+      return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
     return helpers.failOrTryNextSource(payload, job, reason);
   }
   const inactiveOwner = deferForInactiveOwner(payload, job);

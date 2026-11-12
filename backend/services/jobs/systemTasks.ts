@@ -185,6 +185,16 @@ const SYSTEM_TASKS = {
     schedule: { everyMs: HOUR },
     run: () => cleanExpiredSessions(),
   },
+  "qbittorrent-cleanup": {
+    queue: "maintenance",
+    label: "qBittorrent cleanup",
+    description: "Removes imported torrents once qBittorrent stops seeding them.",
+    schedule: { everyMs: HOUR },
+    async run() {
+      const { removeSeededTorrents } = await import("../qbittorrentSource.ts");
+      await removeSeededTorrents();
+    },
+  },
   "flow-reuse-repair": {
     queue: "system",
     label: "Playlist file reuse repair",

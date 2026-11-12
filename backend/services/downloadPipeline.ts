@@ -249,6 +249,7 @@ const sourceSearchReset = () => ({
   queueUuid: null,
   queueUuids: null,
   history: null,
+  pendingId: null,
   downloadedPath: null,
 });
 
