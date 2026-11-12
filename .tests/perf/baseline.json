@@ -71,6 +71,14 @@
     "bytes": 155001,
     "scans": []
   },
+  "library status filter": {
+    "queries": {
+      "cold": 34,
+      "warm": 32
+    },
+    "bytes": 233327,
+    "scans": []
+  },
   "library filter": {
     "queries": {
       "cold": 21,

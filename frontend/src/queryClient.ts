@@ -9,6 +9,7 @@ type LibraryViewOptions = {
   pageIndex?: number;
   query?: string;
   genre?: string;
+  status?: string | null;
   artist?: string;
   sort?: string;
   direction?: string;

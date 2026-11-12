@@ -11,7 +11,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 2,
-    "features": []
+    "features": ["libraryStatusFilter"]
   }
 }
 ```
@@ -55,6 +55,10 @@ them. Version 1 servers listed each one under its feature name.
 Each capability added after version 2 gets its own name, and Aurral adds the
 name only when its routes are available. Clients check for that name before
 using those routes. An absent name means the server does not promise it.
+
+| Feature               | Capability                                                                                                                                                                                                                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libraryStatusFilter` | Artist and album pages from `GET /api/library` accept `status=monitored`, `unmonitored`, or `missing`. An album is missing tracks when some are unavailable, unless Aurral manages it and it is not released yet. An artist is missing tracks when one of its albums is. Other values return `400`. |
 
 The registry is `backend/config/apiContract.ts`. A capability change updates that
 registry and this reference. The response checks in `.tests/api/` pin the fields

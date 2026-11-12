@@ -75,6 +75,13 @@ export const scenarios: Scenario[] = [
     requests: () => [library({ kind: "albums", page: 1, pageSize: 100, genre: "Jazz" })],
   },
   {
+    name: "library status filter",
+    requests: () => [
+      library({ kind: "albums", page: 1, pageSize: 100, status: "missing" }),
+      library({ kind: "artists", page: 1, pageSize: 100, status: "missing" }),
+    ],
+  },
+  {
     name: "library filter",
     requests: () => [library({ kind: "albums", page: 1, pageSize: 100, query: "Album 0004" })],
   },
