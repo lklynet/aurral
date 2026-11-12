@@ -233,11 +233,12 @@ export const releaseTypeOf = (album: LibraryAlbum | null | undefined) => {
 export const albumCardMeta = (
   album: LibraryAlbum | null | undefined,
   { available, total }: { available: number; total?: number | null },
+  { type = true }: { type?: boolean } = {},
 ) => {
   const partial = Boolean(total && available < total);
   const unit = total === 1 ? "track" : "tracks";
   return {
-    details: [releaseTypeOf(album), yearOf(album?.releaseDate)].filter(Boolean).join(" · "),
+    details: [type && releaseTypeOf(album), yearOf(album?.releaseDate)].filter(Boolean).join(" · "),
     count: partial ? `${available}/${total} ${unit}` : `${total || 0} ${unit}`,
     partial,
   };

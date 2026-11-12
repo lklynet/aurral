@@ -430,8 +430,13 @@ button.artist-track__text {
 }
 
 .artist-pick__title {
+  display: -webkit-box;
   margin: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   font-size: var(--aurral-font-xl);
   font-weight: 600;
   letter-spacing: var(--aurral-tracking-title);

@@ -308,6 +308,19 @@ export const libraryFavoritesQueryOptions = queryOptions({
   staleTime: 30_000,
 });
 
+export const libraryArtistPlaysQueryOptions = (artistId: string) =>
+  queryOptions({
+    queryKey: queryKeys.libraryArtistPlays(artistId),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        libraryClient.artists[":artistId"].plays.$get(
+          { param: { artistId } },
+          { init: { signal } },
+        ),
+      ).then(({ plays }) => plays),
+    staleTime: 15_000,
+  });
+
 const waitForLibraryFavoritesRefresh = async () => {
   let waited = false;
   while (libraryFavoritesRefresh) {

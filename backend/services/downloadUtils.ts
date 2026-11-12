@@ -61,12 +61,12 @@ type BlockedJobFields = {
   releaseTitle?: string | null;
 };
 
-// A leading dot hides a file or folder from most scanners, so names never start with one.
+// A leading dot hides a file or folder from most scanners, and SMB and NTFS
+// reject a name ending in a dot, so names never start or end with one.
 export function sanitizePathPart(value: unknown, fallback = "Unknown") {
   const text = String(value || "")
     .replace(/[<>:"/\\|?*]/g, "_")
-    .replace(/^[\s.]+/, "")
-    .trim();
+    .replace(/^[\s.]+|[\s.]+$/g, "");
   return text || fallback;
 }
 

@@ -54,6 +54,19 @@ const libraryTracksStmt = db.prepare<[...(string | null)[]], Pick<LibraryTracksR
      AND (artist.mbid = ? OR artist.name = ? COLLATE NOCASE OR track.artist_name = ? COLLATE NOCASE)`,
 );
 
+const libraryArtistPlaysStmt = db.prepare<[number, number], { plays: number }>(
+  `SELECT COUNT(play.id) AS plays
+   FROM library_artists AS artist
+   LEFT JOIN play_events AS play
+     ON play.user_id = ? AND play.artist = artist.name COLLATE NOCASE
+     AND (play.artist_mbid IS NULL OR play.artist_mbid = coalesce(artist.mbid, play.artist_mbid))
+   WHERE artist.id = ?
+   GROUP BY artist.id`,
+);
+
+export const getLibraryArtistPlays = (userId: number, artistId: number) =>
+  libraryArtistPlaysStmt.get(userId, artistId)?.plays ?? null;
+
 const sameText = (left: string | null | undefined, right: string | null | undefined) =>
   Boolean(left && right && left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0);
 

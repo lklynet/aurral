@@ -7,7 +7,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { getArtistListening }] = await setupIsolatedBackend(
+const [isolatedState, { getArtistListening, getLibraryArtistPlays }] = await setupIsolatedBackend(
   "artist-listening",
   () => import("../../backend/services/artistListening.ts"),
 );
@@ -77,4 +77,26 @@ test("stays hidden under 10 plays and drops a rank past 20", () => {
       play("Song", NOW - index, { artist: `Artist ${artist}` });
   }
   assert.equal(getArtistListening(userId, MBID, "Radiohead", NOW)?.rank, null);
+});
+
+test("counts a Library artist's plays, matching any MusicBrainz id when the artist has none", () => {
+  const addArtist = (key: string, mbid: string | null) =>
+    Number(
+      db
+        .prepare(
+          "INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at) VALUES (?, ?, 'Radiohead', 0, 0)",
+        )
+        .run(key, mbid).lastInsertRowid,
+    );
+  const matched = addArtist("matched", MBID);
+  const unmatched = addArtist("unmatched", null);
+  play("Nude", NOW);
+  play("Nude", NOW, { artist: "RADIOHEAD", mbid: null });
+  play("Creep", NOW, { mbid: "00000000-0000-4000-8000-000000000000" });
+  play("Song", NOW, { artist: "Busier" });
+
+  assert.equal(getLibraryArtistPlays(userId, matched), 2);
+  assert.equal(getLibraryArtistPlays(userId, unmatched), 3);
+  assert.equal(getLibraryArtistPlays(userId + 1, matched), 0);
+  assert.equal(getLibraryArtistPlays(userId, -1), null);
 });
