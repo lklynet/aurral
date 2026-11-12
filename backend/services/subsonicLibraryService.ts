@@ -611,12 +611,12 @@ function playlistJobFromId(user: SubsonicUser, value: string) {
   const playlist = playlistFromId(user, idFor(kind, parsed.key.slice(0, separator)));
   if (!playlist) return null;
   const job = downloadTracker.getJob(parsed.key.slice(separator + 1));
-  return job && playlistOwnsJob(playlist, job) && job.status === "done" && job.finalPath
+  return job && playlistOwnsJob(playlist, job) && job.status === "done"
     ? { kind, playlist, job }
     : null;
 }
 
-const isPlayableJob = (job: DownloadJob) => job.status === "done" && Boolean(job.finalPath);
+const isPlayableJob = (job: DownloadJob) => job.status === "done";
 
 const visiblePlaylistJobs = (
   flow: PlaylistOwner,
@@ -1849,9 +1849,7 @@ export async function getSubsonicMixPlaylist(value: string, user: SubsonicUser) 
 export function resolveStreamPath(value: string, user: SubsonicUser) {
   const playlistEntry = playlistJobFromId(user, value);
   if (playlistEntry) {
-    return playlistEntry.job.status === "done" && playlistEntry.job.finalPath
-      ? playlistEntry.job.finalPath
-      : null;
+    return playlistEntry.job.finalPath;
   }
 
   const parsed = parseId(value);

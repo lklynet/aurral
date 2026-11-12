@@ -443,7 +443,7 @@ async function renameLibraryFile(from: string, to: string) {
 
 function moveJobs(from: string, to: string) {
   for (const job of downloadTracker.getAll()) {
-    if (job.status !== "done" || !job.finalPath || path.resolve(job.finalPath) !== from) continue;
+    if (job.status !== "done" || path.resolve(job.finalPath) !== from) continue;
     downloadTracker.updateFinalPath(job.id, to);
   }
 }

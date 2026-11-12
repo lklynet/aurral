@@ -4,7 +4,11 @@ import { dbOps } from "../db/helpers/index.ts";
 import { lenient } from "../db/helpers/storedSchemas.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { libraryFolderOwner, readOnlyFolderPaths } from "./libraryFolders.ts";
-import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type DownloadJobState,
+} from "./downloadJobs/downloadTracker.ts";
 import {
   classifyAudioQuality,
   getQualityState,
@@ -14,30 +18,29 @@ import {
   normalizeQualityProfile,
 } from "./qualityProfileModel.ts";
 
-export type QualityJob = Pick<
-  DownloadJob,
-  | "id"
-  | "status"
-  | "finalPath"
-  | "upgradeForJobId"
-  | "albumMbid"
-  | "artistName"
-  | "trackName"
-  | "albumName"
-  | "playlistId"
-  | "playlistType"
-  | "playlistGeneration"
-  | "downloadSource"
-  | "downloadClient"
-  | "manualReplacementSearch"
-  | "qualityTier"
-  | "qualityFormat"
-  | "qualityBitrateKbps"
-  | "qualitySampleRate"
-  | "qualityBitDepth"
-  | "qualityCheckedAt"
-  | "qualityUpgradeCheckedAt"
->;
+export type QualityJob = DownloadJobState &
+  Pick<
+    DownloadJob,
+    | "id"
+    | "upgradeForJobId"
+    | "albumMbid"
+    | "artistName"
+    | "trackName"
+    | "albumName"
+    | "playlistId"
+    | "playlistType"
+    | "playlistGeneration"
+    | "downloadSource"
+    | "downloadClient"
+    | "manualReplacementSearch"
+    | "qualityTier"
+    | "qualityFormat"
+    | "qualityBitrateKbps"
+    | "qualitySampleRate"
+    | "qualityBitDepth"
+    | "qualityCheckedAt"
+    | "qualityUpgradeCheckedAt"
+  >;
 
 export type QualityProfile = ReturnType<typeof getQualityProfile>;
 

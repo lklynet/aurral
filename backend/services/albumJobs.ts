@@ -20,8 +20,16 @@ import { db } from "../config/db-sqlite.ts";
 import { replaceAlbumDownloadLeaderInTransaction } from "./downloadJobs/downloadOwnership.ts";
 import { recordTrackJobSearching } from "./aurralHistoryService.ts";
 
-export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);
-export const RETRYABLE_JOB_STATUSES = new Set([...ACTIVE_JOB_STATUSES, "failed", "cancelled"]);
+export const ACTIVE_JOB_STATUSES = new Set<DownloadJob["status"]>([
+  "pending",
+  "downloading",
+  "cancel_requested",
+]);
+export const RETRYABLE_JOB_STATUSES = new Set<DownloadJob["status"]>([
+  ...ACTIVE_JOB_STATUSES,
+  "failed",
+  "cancelled",
+]);
 
 type AlbumMbids = (string | null | undefined)[];
 type AlbumTrackRef = Pick<LibraryTrack, "mbid" | "title">;

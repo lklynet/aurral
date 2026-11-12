@@ -201,7 +201,7 @@ const linkIndexedFiles = async (tracks: unknown, ownerUserId: unknown) => {
   const libraryJobsByPath = new Map(
     downloadTracker
       .getAll()
-      .filter((job) => job.playlistType === "library" && job.status === "done" && job.finalPath)
+      .filter((job) => job.playlistType === "library" && job.status === "done")
       .map((job) => [job.finalPath, job] as const),
   );
   const linked: unknown[] = [];

@@ -48,7 +48,7 @@ async function readQuality(filePath: string) {
 }
 
 export async function classifyQualityJob(job: QualityJob | null | undefined) {
-  if (!job?.finalPath || job.status !== "done" || job.upgradeForJobId) {
+  if (job?.status !== "done" || job.upgradeForJobId) {
     return null;
   }
   let quality;
@@ -76,7 +76,7 @@ export async function reclassifyQualityJobs({ enqueue = false }: { enqueue?: boo
   const seen = new Set();
   let classified = 0;
   for (const job of downloadTracker.getAll()) {
-    if (!job?.finalPath || job.status !== "done" || job.upgradeForJobId) {
+    if (job?.status !== "done" || job.upgradeForJobId) {
       continue;
     }
     const filePath = path.resolve(job.finalPath);
@@ -174,7 +174,7 @@ function listLibraryUpgradeCandidates(profile: QualityProfile) {
   const jobPaths = new Set(
     downloadTracker
       .getAll()
-      .filter((job: QualityJob) => job.status === "done" && job.finalPath && !job.upgradeForJobId)
+      .filter((job: QualityJob) => job.status === "done" && !job.upgradeForJobId)
       .map((job: QualityJob) => path.resolve(job.finalPath!)),
   );
   const candidates = [];
@@ -225,7 +225,7 @@ async function listUpgradeCandidatesByAlbum({
   const seen = new Set();
   const readOnlyRoots = readOnlyFolderPaths();
   for (const job of downloadTracker.getAll()) {
-    if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
+    if (job.status !== "done" || job.upgradeForJobId) continue;
     if (owners && !owners.has(job.playlistType)) continue;
     if (!isPlaylistOwnerActive(job.playlistId || job.playlistType)) continue;
     const filePath = path.resolve(job.finalPath);
