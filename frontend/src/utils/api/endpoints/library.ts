@@ -20,6 +20,7 @@ import {
   type ActiveDownloads,
 } from "../../activeDownloads.ts";
 import type { requestLibraryTrack } from "../../../../../backend/services/libraryTrackRequests.ts";
+import type { LibraryStatus } from "../../../../../lib/libraryStatus.ts";
 
 type SignalOptions = { signal?: AbortSignal };
 
@@ -34,6 +35,7 @@ type LibraryPageOptions = {
   pageSize?: number;
   query?: string;
   genre?: string;
+  status?: LibraryStatus | null;
   sort?: string;
   direction?: string;
   artistId?: string | number;
@@ -93,6 +95,7 @@ const libraryPageParams = (options: LibraryPageOptions = {}) =>
       pageSize: options.pageSize,
       query: options.query,
       genre: options.genre,
+      status: options.status,
       sort: options.sort,
       direction: options.direction,
       artistId: options.artistId,

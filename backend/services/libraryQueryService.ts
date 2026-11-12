@@ -16,6 +16,8 @@ import {
   rebuildStoredLibraryGenreStats,
 } from "../config/library-search-index.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
+import type { LibraryStatus } from "../../lib/libraryStatus.ts";
+import { utcDay } from "../../lib/releaseDate.ts";
 import { parseLibrarySearch, type LibrarySearch } from "./librarySearchIndex.ts";
 import { MATCH, matchQuality } from "./searchText.ts";
 import {
@@ -1925,6 +1927,64 @@ const pageMediaExists = (
   };
 };
 
+const managedAlbum = (alias: string) => `EXISTS (
+  SELECT 1 FROM library_management AS status_management
+  WHERE status_management.entity_kind = 'album' AND status_management.entity_id = ${alias}.id
+)`;
+
+const monitoredAlbum = (alias: string) => `(EXISTS (
+  SELECT 1 FROM library_management AS status_management
+  WHERE status_management.entity_kind = 'album'
+    AND status_management.entity_id = ${alias}.id
+    AND coalesce(status_management.monitor_mode, '') <> 'unmonitored'
+) AND CASE WHEN json_valid(${alias}.metadata_json)
+  THEN coalesce(json_extract(${alias}.metadata_json, '$.monitored') = 1, 0)
+  ELSE 0 END)`;
+
+const missingTracksAlbum = (alias: string, sourceFilter: string | null): PageSql => {
+  const { conditions, parameters } = mediaSourceClause(sourceFilter, "status_media");
+  const releaseDay = `substr(trim(coalesce(${alias}.release_date, '')), 1, 10)`;
+  return {
+    sql: `(EXISTS (
+      SELECT 1 FROM library_album_tracks AS status_track
+      WHERE status_track.album_id = ${alias}.id
+        AND NOT EXISTS (
+          SELECT 1 FROM library_media_files AS status_media
+          WHERE status_media.track_id = status_track.track_id
+            AND ${albumMediaCondition("status_media", "status_track")}
+            AND status_media.available = 1
+            ${conditions.map((condition) => `AND ${condition}`).join(" ")}
+        )
+    ) AND NOT (${managedAlbum(alias)} AND ${releaseDay} GLOB '[0-9][0-9][0-9][0-9]*' AND ${releaseDay} > ?))`,
+    parameters: [...parameters, utcDay()],
+  };
+};
+
+const statusPredicate = (
+  kind: string,
+  status: LibraryStatus,
+  sourceFilter: string | null,
+  availableOnly: LibraryAvailability,
+): PageSql | null => {
+  if (kind === "albums") {
+    if (status === "missing") return missingTracksAlbum("album", sourceFilter);
+    const monitored = monitoredAlbum("album");
+    return { sql: status === "monitored" ? monitored : `NOT ${monitored}`, parameters: [] };
+  }
+  if (kind !== "artists") return null;
+  if (status === "monitored") return { sql: AURRAL_MONITORED_ARTIST, parameters: [] };
+  if (status === "unmonitored") return { sql: `NOT ${AURRAL_MONITORED_ARTIST}`, parameters: [] };
+  const visible = pageMediaExists("albums", sourceFilter, availableOnly);
+  const missing = missingTracksAlbum("album", sourceFilter);
+  return {
+    sql: `EXISTS (
+      SELECT 1 FROM library_albums AS album
+      WHERE album.artist_id = artist.id AND ${visible.sql} AND ${missing.sql}
+    )`,
+    parameters: [...visible.parameters, ...missing.parameters],
+  };
+};
+
 const genrePredicate = (aliases: string[], genre: string): PageSql => {
   const clauses: string[] = [];
   const parameters: unknown[] = [];
@@ -2697,6 +2757,7 @@ function buildPageQuery({
   availableOnly,
   query,
   genre,
+  status,
   sort,
   direction,
   artistId,
@@ -2708,6 +2769,7 @@ function buildPageQuery({
   availableOnly: LibraryAvailability;
   query: string;
   genre: string;
+  status: LibraryStatus | null;
   sort: string;
   direction: string;
   artistId: string | number | null;
@@ -2826,6 +2888,11 @@ function buildPageQuery({
     const predicate = genrePredicate(genreAliases, genre);
     where.push(predicate.sql);
     parameters.push(...predicate.parameters);
+  }
+  const statusFilter = status && statusPredicate(kind, status, sourceFilter, availableOnly);
+  if (statusFilter) {
+    where.push(statusFilter.sql);
+    parameters.push(...statusFilter.parameters);
   }
 
   const orderDirection = direction === "desc" ? "DESC" : "ASC";
@@ -3259,6 +3326,7 @@ type LibraryPageOptions = LibraryScope & {
   offset?: number | string | null;
   query?: unknown;
   genre?: unknown;
+  status?: LibraryStatus | null;
   sort?: unknown;
   direction?: unknown;
   artistId?: string | number | null;
@@ -3304,6 +3372,7 @@ export function getLibraryPage({
   offset = null,
   query = "",
   genre = "",
+  status = null,
   sort = null,
   direction = "asc",
   artistId = null,
@@ -3381,6 +3450,7 @@ export function getLibraryPage({
     availableOnly,
     query: normalizedQuery,
     genre: normalizedGenre,
+    status,
     sort: normalizedSort,
     direction: normalizedDirection,
     artistId,

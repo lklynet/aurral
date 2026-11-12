@@ -28,6 +28,7 @@ import {
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { LIBRARY_STATUSES } from "../../../../lib/libraryStatus.ts";
 import { getLibraryArtistPlays } from "../../../services/artistListening.ts";
 import { toPublicLibrary, toPublicLibraryPage } from "../../../services/publicLibrary.ts";
 
@@ -72,6 +73,7 @@ const pageQuery = v.object({
   availableOnly: v.optional(v.string()),
   query: v.optional(v.string()),
   genre: v.optional(v.string()),
+  status: v.optional(v.picklist(LIBRARY_STATUSES)),
   sort: v.optional(v.string()),
   direction: v.optional(v.string()),
   artistId: v.optional(v.string()),
@@ -109,6 +111,7 @@ const libraryPage = factory.createHandlers(noCache, validate("query", pageQuery)
         pageSize,
         query: query.query,
         genre: query.genre,
+        status: query.status,
         sort: query.sort,
         direction: query.direction,
         artistId: query.artistId,
