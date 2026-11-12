@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Info, Pause, Play, Shuffle } from "../../components/icons";
+import { Info, Pause, Play, Shuffle, Sparkles } from "../../components/icons";
 import { LibraryItemMenu, type LibraryMenuItem } from "../../components/LibraryItemMenu";
 import { FavoriteButton, TrackList } from "../../components/TrackList";
 import TooltipButton from "../../components/TooltipButton";
@@ -170,6 +170,16 @@ export function LibraryArtistDetail({
                 ...menuItems,
               ]}
             />
+            {hasMbid(artist) ? (
+              <RouteLink
+                to={"/artist/" + encodeURIComponent(artist.mbid)}
+                state={actions.discoverArtistState(artist)}
+                className="btn btn-ghost library-artist__discover"
+              >
+                <Sparkles aria-hidden="true" />
+                <span>Discover</span>
+              </RouteLink>
+            ) : null}
           </div>
         </div>
       </div>

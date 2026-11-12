@@ -22,7 +22,7 @@ import {
 } from "../components/icons";
 
 import { DotLoader } from "../components/DotLoader";
-import { LibraryItemMenu } from "../components/LibraryItemMenu";
+import { LibraryItemMenu, type LibraryMenuItem } from "../components/LibraryItemMenu";
 import { Select } from "../components/Select";
 import TooltipButton from "../components/TooltipButton";
 import Pagination from "../components/Pagination";
@@ -82,6 +82,7 @@ import {
   type LibraryRemoval,
   Cover,
   EmptyState,
+  hasMbid,
   invalidateLibraryViews,
   text,
   useLibraryScanRefresh,
@@ -756,10 +757,7 @@ function LibraryPage() {
     if (path) navigate(path);
   };
 
-  const artistMbidMenuItems = (
-    artist: LibraryArtist | null | undefined,
-    { separatorBefore = false }: { separatorBefore?: boolean } = {},
-  ) =>
+  const artistMbidMenuItems = (artist: LibraryArtist | null | undefined) =>
     actions.canEditArtistMbid &&
     (artist && "providerId" in artist ? artist.providerId : undefined) == null
       ? [
@@ -767,7 +765,6 @@ function LibraryPage() {
             id: "mbid",
             label: "Match artist",
             icon: Fingerprint,
-            separatorBefore,
             onSelect: () => setMbidArtist(artist),
           },
         ]
@@ -801,12 +798,19 @@ function LibraryPage() {
       load: () => loadArtistTracks(artist),
     });
 
-  const handleDiscoverArtistOpen = (artist: LibraryArtist | null | undefined) => {
-    if (!artist?.mbid) return;
-    navigate("/artist/" + encodeURIComponent(artist.mbid), {
-      state: actions.discoverArtistState(artist),
-    });
-  };
+  const discoverArtistMenuItem = (artist: LibraryArtist): LibraryMenuItem => ({
+    id: "discover",
+    label: "Open in Discover",
+    icon: Sparkles,
+    separatorBefore: true,
+    disabled: !hasMbid(artist),
+    onSelect: () => {
+      if (!hasMbid(artist)) return;
+      navigate("/artist/" + encodeURIComponent(artist.mbid), {
+        state: actions.discoverArtistState(artist),
+      });
+    },
+  });
 
   const favoriteCount = favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
@@ -877,14 +881,7 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => actions.openLibraryInfo({ kind: "artist", entity: artist }),
               },
-              {
-                id: "discover",
-                label: "Open in Discover",
-                icon: Sparkles,
-                separatorBefore: true,
-                onSelect: () => handleDiscoverArtistOpen(artist),
-                disabled: !artist.mbid,
-              },
+              discoverArtistMenuItem(artist),
               ...artistMbidMenuItems(artist),
               ...actions.pluginMenuItems("artist", { artistId: artist.id }),
               ...(actions.canDeleteArtist && canRemoveLibraryArtist(artist)
@@ -1178,7 +1175,8 @@ function LibraryPage() {
         renderAlbumCard={renderAlbumCard}
         menu={artistMenuProps(libraryArtist)}
         menuItems={[
-          ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
+          discoverArtistMenuItem(libraryArtist),
+          ...artistMbidMenuItems(libraryArtist),
           ...libraryArtistMonitoringItems,
           ...actions.rescanMenuItem({ artistId: libraryArtist.id }, libraryArtist),
           ...actions.pluginMenuItems("artist", { artistId: libraryArtist.id }),
