@@ -1938,7 +1938,7 @@ const monitoredAlbum = (alias: string) => `(EXISTS (
     AND status_management.entity_id = ${alias}.id
     AND coalesce(status_management.monitor_mode, '') <> 'unmonitored'
 ) AND CASE WHEN json_valid(${alias}.metadata_json)
-  THEN json_extract(${alias}.metadata_json, '$.monitored') = 1
+  THEN coalesce(json_extract(${alias}.metadata_json, '$.monitored') = 1, 0)
   ELSE 0 END)`;
 
 const missingTracksAlbum = (alias: string, sourceFilter: string | null): PageSql => {

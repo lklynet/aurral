@@ -95,6 +95,7 @@ test("status filters split albums and artists by monitoring and by the partial c
     metadata: { monitored: true },
   });
   addAlbum(finished.id, "Whole", { tracks: 1, files: 1 });
+  addAlbum(finished.id, "Untagged", { tracks: 1, files: 1, managed: "monitored", metadata: {} });
 
   const titles = (status?: LibraryStatus) =>
     getLibraryPage({ kind: "albums", availableOnly: LIBRARY_VIEW, pageSize: 100, status })
@@ -106,7 +107,7 @@ test("status filters split albums and artists by monitoring and by the partial c
       .sort();
 
   assert.deepEqual(titles("monitored"), ["Complete", "Partial", "Upcoming"]);
-  assert.deepEqual(titles("unmonitored"), ["Loose", "Paused", "Whole"]);
+  assert.deepEqual(titles("unmonitored"), ["Loose", "Paused", "Untagged", "Whole"]);
   assert.deepEqual(titles("missing"), ["Loose", "Partial"]);
   assert.deepEqual(
     titles("missing"),
