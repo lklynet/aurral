@@ -217,6 +217,18 @@ export const queryKeys = {
     artistName || "",
   ],
   artistPlaylistsPrefix: ["artists", "playlists"],
+  artistShows: (mbid: MaybeText, artistName: MaybeText): QueryKey => [
+    "artists",
+    "shows",
+    mbid || null,
+    artistName || "",
+  ],
+  artistListening: (mbid: MaybeText, artistName: MaybeText): QueryKey => [
+    "artists",
+    "listening",
+    mbid || null,
+    artistName || "",
+  ],
   activeDownloads: ["downloads", "active"],
   downloadStatus: (ids: MaybeId[]): QueryKey => ["library", "download-status", [...ids].sort()],
   albumStatus: (albumId: MaybeId): QueryKey => ["library", "aurral-album-status", String(albumId)],

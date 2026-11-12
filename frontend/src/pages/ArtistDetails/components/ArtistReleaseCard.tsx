@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
@@ -7,10 +7,32 @@ import { OptionalLink } from "../../../components/RouteLink";
 import { Clock, Music } from "../../../components/icons";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
+import { getReleaseYear, isNewReleaseGroup } from "../utils";
 import type { ReleaseGroup, ReleaseMetricValue } from "../utils";
 import { ReleaseMetric } from "./ReleaseMetric";
 
 type AlbumStatus = ReturnType<ArtistDetailsLibrary["getAlbumStatus"]>;
+
+export function ReleaseMeta({
+  releaseGroup,
+  detail,
+}: {
+  releaseGroup: ReleaseGroup;
+  detail: string | null | undefined;
+}) {
+  const lead = isNewReleaseGroup(releaseGroup) ? (
+    <span className="artist-release-new">New</span>
+  ) : (
+    getReleaseYear(releaseGroup)
+  );
+  return (
+    <>
+      {lead}
+      {lead && detail ? " · " : null}
+      {detail}
+    </>
+  );
+}
 
 function ReleaseStatusLine({
   status,
@@ -19,7 +41,7 @@ function ReleaseStatusLine({
 }: {
   status: AlbumStatus;
   busy: boolean;
-  meta: string;
+  meta: ReactNode;
 }) {
   if (busy) return <p className="artist-release-tile__meta is-busy">Downloading</p>;
   if (status?.status === "available" && status.partial) {
@@ -57,7 +79,7 @@ export function ArtistReleaseCard({
   coverUrl,
   fallbackCoverUrl = null,
   link,
-  meta,
+  detail,
   status,
   busy,
   onDownload,
@@ -68,7 +90,7 @@ export function ArtistReleaseCard({
   coverUrl: string | null | undefined;
   fallbackCoverUrl?: string | null;
   link: ComponentProps<typeof OptionalLink>["link"];
-  meta: string;
+  detail: string | null | undefined;
   status: AlbumStatus;
   busy: boolean;
   onDownload: (() => void) | null;
@@ -112,7 +134,11 @@ export function ArtistReleaseCard({
           </Tooltip>
         </OptionalLink>
       </Heading>
-      <ReleaseStatusLine status={status} busy={busy} meta={meta} />
+      <ReleaseStatusLine
+        status={status}
+        busy={busy}
+        meta={<ReleaseMeta releaseGroup={releaseGroup} detail={detail} />}
+      />
       {metric?.label ? (
         <Tooltip content={metric.title}>
           <p className="artist-release-tile__metric">

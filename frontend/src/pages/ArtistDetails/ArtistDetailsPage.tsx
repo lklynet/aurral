@@ -38,6 +38,8 @@ import { ArtistDetailsPreviewTracks } from "./components/ArtistDetailsPreviewTra
 import { ArtistDetailsAbout } from "./components/ArtistDetailsAbout";
 import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
 import { ArtistDetailsPlaylists } from "./components/ArtistDetailsPlaylists";
+import { ArtistDetailsTour } from "./components/ArtistDetailsTour";
+import { ArtistDetailsListening } from "./components/ArtistDetailsListening";
 import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import RouteLink from "../../components/RouteLink";
@@ -527,6 +529,8 @@ function ArtistDetailsPage() {
         />
       )}
 
+      <ArtistDetailsTour mbid={mbid!} artistName={artistDisplayName} />
+
       {showVideos && !loadingPreview && previewTracks.length > 0 ? (
         <ArtistDetailsVideos mbid={mbid!} artistName={artistDisplayName} tracks={previewTracks} />
       ) : null}
@@ -541,6 +545,12 @@ function ArtistDetailsPage() {
       )}
 
       <ArtistDetailsPlaylists mbid={mbid!} artistName={artistDisplayName} />
+
+      <ArtistDetailsListening
+        mbid={mbid!}
+        artistName={artistDisplayName}
+        releaseGroups={artist["release-groups"] ?? []}
+      />
 
       <ArtistDetailsAbout artist={artist} />
 

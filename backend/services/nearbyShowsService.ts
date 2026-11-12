@@ -60,6 +60,9 @@ const ticketmasterEventSchema = v.looseObject({
             city: v.optional(v.looseObject({ name: optionalString })),
             state: v.optional(v.looseObject({ stateCode: optionalString, name: optionalString })),
             country: v.optional(v.looseObject({ countryCode: optionalString })),
+            location: v.optional(
+              v.looseObject({ latitude: coordinateSchema, longitude: coordinateSchema }),
+            ),
           }),
         ),
       ),
@@ -147,9 +150,11 @@ const nearbyShowsResponseCache = createCache<{
   location: NearbyLocation;
   shows: ReturnType<typeof matchShows>;
 }>(5 * 60, 100);
+const artistEventCache = createCache<ReturnType<typeof toEventRecord>[]>(6 * 60 * 60, 500);
 const nearbyShowsInflight: InflightRequests = new Map();
 
 const DEFAULT_RADIUS_MILES = 250;
+const EARTH_RADIUS_MILES = 3958.8;
 const EVENT_PAGE_SIZE = 200;
 const MAX_EVENT_PAGES = 5;
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
@@ -235,6 +240,26 @@ const selectImage = (images: TicketmasterImage[] = []) => {
   return images.find((image) => image?.url)?.url || null;
 };
 
+const toCoordinates = (latitude: unknown, longitude: unknown) => {
+  if (latitude == null || latitude === "" || longitude == null || longitude === "") return null;
+  const point = { latitude: Number(latitude), longitude: Number(longitude) };
+  return Number.isFinite(point.latitude) && Number.isFinite(point.longitude) ? point : null;
+};
+
+type Coordinates = NonNullable<ReturnType<typeof toCoordinates>>;
+
+const milesBetween = (from: Coordinates, to: Coordinates) => {
+  const radians = Math.PI / 180;
+  const latitude = (to.latitude - from.latitude) * radians;
+  const longitude = (to.longitude - from.longitude) * radians;
+  const h =
+    Math.sin(latitude / 2) ** 2 +
+    Math.cos(from.latitude * radians) *
+      Math.cos(to.latitude * radians) *
+      Math.sin(longitude / 2) ** 2;
+  return 2 * EARTH_RADIUS_MILES * Math.asin(Math.sqrt(h));
+};
+
 const toEventRecord = (event: TicketmasterEvent & { id: string }) => {
   const attractions = Array.isArray(event?._embedded?.attractions)
     ? event._embedded.attractions
@@ -260,6 +285,7 @@ const toEventRecord = (event: TicketmasterEvent & { id: string }) => {
     performerKeys: [
       ...new Set(attractions.map((attraction) => toArtistKey(attraction?.name)).filter(Boolean)),
     ],
+    coordinates: toCoordinates(venue.location?.latitude, venue.location?.longitude),
   };
 };
 
@@ -472,6 +498,35 @@ const fetchTicketmasterEvents = async ({
   });
 };
 
+const resolveLocation = async (
+  zipCode: string,
+  countryCode: string,
+  publicIp: string,
+): Promise<NearbyLocation> => {
+  if (!zipCode) return resolveIpLocation(publicIp);
+  const localCountryCode = countryCode
+    ? ""
+    : await resolveIpLocation(publicIp).then(
+        (ipLocation) => sanitizeCountryCode(ipLocation.countryCode),
+        () => "",
+      );
+  return (
+    (localCountryCode && (await resolveZipLocation(zipCode, localCountryCode))) ||
+    (await resolveZipLocation(zipCode, countryCode)) || {
+      source: "zip",
+      resolved: false,
+      postalCode: zipCode,
+      city: null,
+      region: null,
+      regionCode: null,
+      countryCode: countryCode || (isLikelyUsZip(zipCode) ? "US" : null),
+      latitude: null,
+      longitude: null,
+      label: zipCode,
+    }
+  );
+};
+
 const buildArtistMap = (artistsBySource: [ArtistSource, ArtistInput[] | undefined][]) => {
   const map = new Map<string, { name: string; sourceType: ArtistSource }>();
   for (const [sourceType, artists] of artistsBySource) {
@@ -489,7 +544,7 @@ const matchShows = (
   artistMap: ReturnType<typeof buildArtistMap>,
 ) => {
   const shows = [];
-  for (const { performerKeys, ...event } of events) {
+  for (const { performerKeys, coordinates: _coordinates, ...event } of events) {
     const matches = new Map<string, ArtistSource>();
     for (const key of performerKeys) {
       const match = artistMap.get(key);
@@ -548,31 +603,7 @@ export const getNearbyShows = async ({
   const cachedResult = resultCacheKey ? nearbyShowsResponseCache.get(resultCacheKey) : null;
   if (cachedResult) return cachedResult;
 
-  let location: NearbyLocation;
-  if (sanitizedZipCode) {
-    const localCountryCode = sanitizedCountryCode
-      ? ""
-      : await resolveIpLocation(publicIp).then(
-          (ipLocation) => sanitizeCountryCode(ipLocation.countryCode),
-          () => "",
-        );
-    location = (localCountryCode &&
-      (await resolveZipLocation(sanitizedZipCode, localCountryCode))) ||
-      (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
-        source: "zip",
-        resolved: false,
-        postalCode: sanitizedZipCode,
-        city: null,
-        region: null,
-        regionCode: null,
-        countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
-        latitude: null,
-        longitude: null,
-        label: sanitizedZipCode,
-      };
-  } else {
-    location = await resolveIpLocation(publicIp);
-  }
+  const location = await resolveLocation(sanitizedZipCode, sanitizedCountryCode, publicIp);
 
   const shows =
     location.resolved === false
@@ -590,4 +621,90 @@ export const getNearbyShows = async ({
   const result = { location, shows };
   if (resultCacheKey) nearbyShowsResponseCache.set(resultCacheKey, result);
   return result;
+};
+
+export const getTicketmasterRadiusMiles = () => {
+  const configured = Number(dbOps.getSettings().integrations?.ticketmaster?.searchRadiusMiles);
+  return Number.isFinite(configured)
+    ? Math.max(5, Math.min(250, Math.floor(configured)))
+    : DEFAULT_RADIUS_MILES;
+};
+
+const fetchArtistEvents = async (apiKey: string, artistName: string, artistKey: string) => {
+  const cached = artistEventCache.get(artistKey);
+  if (cached) return cached;
+  return runSharedInflight(nearbyShowsInflight, `artist:${artistKey}`, async (signal) => {
+    const query = {
+      apikey: apiKey,
+      keyword: artistName,
+      classificationName: "music",
+      size: EVENT_PAGE_SIZE,
+      sort: "date,asc",
+      locale: "*",
+      includeTBA: "no",
+      includeTBD: "no",
+      startDateTime: buildDateRange().startDateTime,
+    };
+    const source = { service: "Ticketmaster", endpoint: "/events.json" };
+    const listedEvents: TicketmasterEvent[] = [];
+    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+      const response = await http.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+        query: { ...query, page },
+        timeoutMs: 10000,
+        signal,
+      });
+      const data = readOne(ticketmasterPageSchema, response.data, source);
+      listedEvents.push(...readMany(ticketmasterEventSchema, data._embedded?.events ?? [], source));
+      if (page + 1 >= (data.page?.totalPages ?? 0)) break;
+    }
+    const events = listedEvents
+      .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
+      .map(toEventRecord)
+      .filter((event) => event.performerKeys.includes(artistKey));
+    artistEventCache.set(artistKey, events);
+    return events;
+  });
+};
+
+const rememberedOrigin = async (userId: number) => {
+  const remembered = getRememberedNearbyLocation(userId);
+  if (!remembered) return null;
+  const location = await resolveLocation(
+    sanitizeZipCode(remembered.zipCode),
+    sanitizeCountryCode(remembered.countryCode),
+    getPublicRequestIp({ ip: remembered.ip }),
+  ).catch(() => null);
+  return location?.resolved ? toCoordinates(location.latitude, location.longitude) : null;
+};
+
+export const getArtistShows = async (userId: number, artistName: string) => {
+  const apiKey = getTicketmasterApiKey();
+  const artistKey = toArtistKey(artistName);
+  if (!apiKey || !artistKey) return [];
+  const [events, origin] = await Promise.all([
+    fetchArtistEvents(apiKey, artistName, artistKey),
+    rememberedOrigin(userId),
+  ]);
+  const shows = sortShows(
+    events.map((event) => ({
+      id: event.id,
+      url: event.url,
+      date: event.date,
+      time: event.time,
+      dateTime: event.dateTime,
+      venueName: event.venueName,
+      city: event.city,
+      region: event.region,
+      distance:
+        origin && event.coordinates ? Math.round(milesBetween(origin, event.coordinates)) : null,
+    })),
+  );
+  const radiusMiles = getTicketmasterRadiusMiles();
+  const nearest = shows
+    .filter((show) => show.distance !== null && show.distance <= radiusMiles)
+    .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0))[0];
+  return [
+    ...(nearest ? [{ ...nearest, near: true }] : []),
+    ...shows.filter((show) => show !== nearest).map((show) => ({ ...show, near: false })),
+  ];
 };

@@ -42,10 +42,101 @@ export const lrclib: Outside = {
   },
 };
 
+const TOUR = [
+  {
+    city: "Seattle",
+    stateCode: "WA",
+    venue: "Climate Pledge Arena",
+    latitude: 47.6221,
+    longitude: -122.354,
+  },
+  {
+    city: "Vancouver",
+    stateCode: "BC",
+    venue: "Rogers Arena",
+    latitude: 49.2778,
+    longitude: -123.1088,
+  },
+  {
+    city: HOME.city,
+    stateCode: HOME.stateCode,
+    venue: "Moda Center",
+    latitude: 45.5316,
+    longitude: -122.6668,
+  },
+  {
+    city: "San Francisco",
+    stateCode: "CA",
+    venue: "Chase Center",
+    latitude: 37.768,
+    longitude: -122.3877,
+  },
+  {
+    city: "Los Angeles",
+    stateCode: "CA",
+    venue: "Kia Forum",
+    latitude: 33.9583,
+    longitude: -118.3417,
+  },
+  { city: "Denver", stateCode: "CO", venue: "Ball Arena", latitude: 39.7487, longitude: -105.0077 },
+  {
+    city: "Chicago",
+    stateCode: "IL",
+    venue: "United Center",
+    latitude: 41.8807,
+    longitude: -87.6742,
+  },
+  {
+    city: "New York",
+    stateCode: "NY",
+    venue: "Madison Square Garden",
+    latitude: 40.7505,
+    longitude: -73.9934,
+  },
+];
+
+// An artist search gets that artist's tour: a run of dates from the coast inland, one at home.
+const tourFor = (artist: { number: number; name: string }) =>
+  TOUR.map((stop, index) => {
+    const date = new Date(
+      Date.now() + (30 + (artist.number % 7) + index * 3) * DAY_MS,
+    ).toISOString();
+    return {
+      id: `eden-tour-${artist.number}-${index}`,
+      name: `${artist.name} Live`,
+      url: `https://www.ticketmaster.com/event/eden-tour-${artist.number}-${index}`,
+      dates: {
+        start: {
+          localDate: date.slice(0, 10),
+          ...(index !== 5 && { localTime: "20:00:00" }),
+          dateTime: date,
+        },
+      },
+      _embedded: {
+        attractions: [{ name: artist.name, images: [] }],
+        venues: [
+          {
+            name: stop.venue,
+            city: { name: stop.city },
+            state: { stateCode: stop.stateCode },
+            country: { countryCode: stop.stateCode === "BC" ? "CA" : "US" },
+            location: { latitude: String(stop.latitude), longitude: String(stop.longitude) },
+          },
+        ],
+      },
+    };
+  });
+
 export const ticketmaster: Outside = {
   hosts: ["app.ticketmaster.com"],
   respond({ url }, music) {
     if (!url.pathname.endsWith("/events.json")) return undefined;
+    const keyword = url.searchParams.get("keyword");
+    if (keyword) {
+      const [artist] = music.findArtists(keyword);
+      const events = artist ? tourFor(artist) : [];
+      return { _embedded: { events }, page: { size: events.length, totalPages: 1, number: 0 } };
+    }
     const events =
       Number(url.searchParams.get("page")) > 0
         ? []

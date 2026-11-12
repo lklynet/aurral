@@ -162,3 +162,23 @@ test("the Aurral pick still offers an album that is in Lidarr but unmonitored", 
     null,
   );
 });
+
+test("the newest release from the last 60 days leads the popular releases", () => {
+  const now = Date.UTC(2026, 10, 11);
+  const releaseGroups = [
+    ...plaidDiscography(),
+    release("Older New Single", "Single", { "first-release-date": "2026-10-01" }),
+    release("Newest Live", "Album", {
+      "secondary-types": ["Live"],
+      "first-release-date": "2026-10-20",
+    }),
+    release("Announced", "Album", { "first-release-date": "2026-12-01" }),
+    release("Too Old", "Album", { "first-release-date": "2026-09-01" }),
+  ];
+
+  assert.deepEqual(titles(getPopularReleaseGroups(releaseGroups, 3, now)), [
+    "Newest Live",
+    "Double Figure",
+    "The Digging Remedy",
+  ]);
+});

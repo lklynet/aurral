@@ -109,6 +109,8 @@ export const scenarios: Scenario[] = [
       `/api/artists/${DISCOVER_ARTIST}/cover`,
       `/api/artists/${DISCOVER_ARTIST}/similar?limit=10`,
       `/api/artists/${DISCOVER_ARTIST}/playlists`,
+      `/api/artists/${DISCOVER_ARTIST}/shows`,
+      `/api/artists/${DISCOVER_ARTIST}/listening?artistName=${encodeURIComponent("Perf Artist 00001")}`,
       `/api/library/lookup/${DISCOVER_ARTIST}`,
     ],
   },

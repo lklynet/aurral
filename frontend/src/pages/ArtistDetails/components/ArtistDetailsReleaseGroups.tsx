@@ -6,7 +6,6 @@ import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
   getPopularReleaseGroups,
   getReleaseGroupCoverUrl,
-  getReleaseYear,
   type LibraryReleaseGroup,
   type ReleaseGroup,
 } from "../utils";
@@ -184,9 +183,7 @@ export function ArtistDetailsReleaseGroups({
                       coverUrl: coverUrl || artistCoverImage || "",
                     })
               }
-              meta={[getReleaseYear(releaseGroup), releaseGroup["primary-type"]]
-                .filter(Boolean)
-                .join(" · ")}
+              detail={releaseGroup["primary-type"]}
               status={getAlbumStatus(releaseGroup.id)}
               busy={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
               onDownload={

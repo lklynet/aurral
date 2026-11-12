@@ -1,6 +1,7 @@
 import { RELEASE_LIST_VIEW_MODE_KEY } from "./constants.ts";
 import { TAG_COLORS } from "../../utils/discoverUtils.ts";
 import { formatDate } from "../../utils/dateTime.ts";
+import { isNewRelease } from "../../../../lib/releaseDate.ts";
 import {
   releaseTypeOf,
   type LibraryAlbum as LibraryPageAlbum,
@@ -254,23 +255,24 @@ export const getArtistHeroImage = (coverImages: readonly ArtistCoverImage[] | nu
   return fanart?.image || getCoverImage(coverImages);
 };
 
+const releaseDateOf = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) =>
+  releaseGroupOrAlbum?.["first-release-date"] ||
+  releaseGroupOrAlbum?.releaseDate ||
+  releaseGroupOrAlbum?.firstReleaseDate ||
+  "";
+
 export const getReleaseYear = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) => {
-  const value =
-    releaseGroupOrAlbum?.["first-release-date"] ||
-    releaseGroupOrAlbum?.releaseDate ||
-    releaseGroupOrAlbum?.firstReleaseDate ||
-    "";
-  const year = String(value || "").slice(0, 4);
+  const year = String(releaseDateOf(releaseGroupOrAlbum)).slice(0, 4);
   return /^\d{4}$/.test(year) ? year : "";
 };
 
+export const isNewReleaseGroup = (
+  releaseGroupOrAlbum: ReleaseGroup | null | undefined,
+  now = Date.now(),
+) => isNewRelease(releaseDateOf(releaseGroupOrAlbum), now);
+
 export const formatReleaseDate = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) => {
-  const value =
-    releaseGroupOrAlbum?.["first-release-date"] ||
-    releaseGroupOrAlbum?.releaseDate ||
-    releaseGroupOrAlbum?.firstReleaseDate ||
-    "";
-  const raw = String(value || "").trim();
+  const raw = String(releaseDateOf(releaseGroupOrAlbum)).trim();
   if (!raw) return "";
   if (/^\d{4}$/.test(raw)) return raw;
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -486,7 +488,21 @@ export const sortReleaseGroupsByPopularity = <T extends ReleaseGroup>(releaseGro
 export const getPopularReleaseGroups = <T extends ReleaseGroup>(
   releaseGroups: T[] = [],
   limit = 6,
-) => sortReleaseGroupsByPopularity(releaseGroups).slice(0, limit);
+  now = Date.now(),
+) => {
+  const popular = sortReleaseGroupsByPopularity(releaseGroups);
+  const latest = popular
+    .filter((releaseGroup) => isNewReleaseGroup(releaseGroup, now))
+    .reduce<T | null>(
+      (newest, releaseGroup) =>
+        !newest || releaseDateOf(releaseGroup) > releaseDateOf(newest) ? releaseGroup : newest,
+      null,
+    );
+  return (latest ? [latest, ...popular.filter((item) => item !== latest)] : popular).slice(
+    0,
+    limit,
+  );
+};
 
 const isUnrequestedReleaseGroup = (
   getAlbumStatus: ReleaseGroupStatusLookup | undefined,

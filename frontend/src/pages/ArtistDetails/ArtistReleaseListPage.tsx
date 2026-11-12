@@ -19,7 +19,7 @@ import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import PillToggle from "../../components/PillToggle";
 import ReleaseStatusCheck from "./components/ReleaseStatusCheck";
-import { ArtistReleaseCard } from "./components/ArtistReleaseCard";
+import { ArtistReleaseCard, ReleaseMeta } from "./components/ArtistReleaseCard";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -33,7 +33,6 @@ import {
   getCoverImage,
   getReleaseGroupCoverUrl,
   getReleaseMetric,
-  getReleaseYear,
   readReleaseListViewMode,
   writeReleaseListViewMode,
 } from "./utils";
@@ -359,9 +358,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       library.requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id);
     const releaseTypeLabel = getReleaseTypeLabel(releaseGroup);
     const artistCredit = isAppearsOn ? releaseGroup["artist-credit"]?.[0]?.name || "" : "";
-    const metaLabel = [getReleaseYear(releaseGroup), artistCredit || releaseTypeLabel]
-      .filter(Boolean)
-      .join(" · ");
+    const detail = artistCredit || releaseTypeLabel;
 
     if (viewMode === "list") {
       return (
@@ -384,7 +381,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             className="artist-min-0 card-link"
           >
             <h2 className="artist-release-card__title artist-truncate">{releaseGroup.title}</h2>
-            <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
+            <p className="artist-release-card__meta artist-truncate">
+              <ReleaseMeta releaseGroup={releaseGroup} detail={detail} />
+            </p>
           </OptionalLink>
           <div className="artist-row-actions">
             {metric.label && (
@@ -423,7 +422,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         coverUrl={cover}
         fallbackCoverUrl={artistCoverImage}
         link={releaseLink(releaseGroup, cover || artistCoverImage || "")}
-        meta={metaLabel}
+        detail={detail}
         status={status}
         busy={albumBusy}
         onDownload={

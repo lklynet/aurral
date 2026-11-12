@@ -1325,3 +1325,295 @@ button.artist-track__text {
     justify-content: space-between;
   }
 }
+
+.artist-release-new {
+  color: var(--aurral-text);
+  font-weight: 600;
+}
+
+.artist-tour {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--artist-tour-rows), auto);
+  grid-auto-flow: column;
+  column-gap: 2rem;
+  margin: 0 -0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.artist-gig {
+  display: grid;
+  min-height: 3.5rem;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "date city distance tickets"
+    "date venue distance tickets";
+  align-items: center;
+  column-gap: 1rem;
+  padding: 0.5rem;
+  border-radius: var(--aurral-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.artist-gig__date {
+  display: grid;
+  grid-area: date;
+  justify-items: center;
+  line-height: 1;
+}
+
+.artist-gig__month {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.artist-gig__day {
+  margin-top: 0.25rem;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-xl);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.artist-gig__city,
+.artist-gig__venue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-gig__city {
+  grid-area: city;
+  align-self: end;
+  color: var(--aurral-text);
+  font-weight: 600;
+}
+
+.artist-gig__venue {
+  grid-area: venue;
+  align-self: start;
+  margin-top: 0.125rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+}
+
+.artist-gig__near,
+.artist-gig__distance {
+  grid-area: distance;
+  font-size: var(--aurral-font-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.artist-gig__near {
+  color: var(--aurral-text);
+  font-weight: 600;
+}
+
+.artist-gig__distance {
+  color: var(--aurral-text-subtle);
+}
+
+.artist-gig__tickets {
+  display: inline-flex;
+  grid-area: tickets;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.artist-gig__tickets svg {
+  width: var(--aurral-icon-xs);
+  height: var(--aurral-icon-xs);
+}
+
+.artist-tour__more {
+  margin-top: 0.5rem;
+}
+
+.artist-listening {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 3rem;
+}
+
+.artist-listening__headline {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-2xl);
+  font-weight: 700;
+  letter-spacing: var(--aurral-tracking-title);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.artist-listening__dim {
+  color: var(--aurral-text-muted);
+  font-weight: 600;
+}
+
+.artist-listening__facts {
+  margin: 0.5rem 0 0;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-base);
+}
+
+.artist-listening__facts span + span::before {
+  margin: 0 0.375rem;
+  color: var(--aurral-text-subtle);
+  content: "·";
+}
+
+.artist-listening__strip {
+  margin-top: 1.75rem;
+}
+
+.artist-listening__weeks {
+  display: grid;
+  height: 2.5rem;
+  grid-template-columns: repeat(52, minmax(0, 1fr));
+  gap: 3px;
+  border-radius: var(--aurral-radius-xs);
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.artist-listening__weeks:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 4px;
+}
+
+.artist-listening__weeks > span {
+  background: color-mix(in srgb, var(--aurral-text) var(--artist-week-level), transparent);
+}
+
+.artist-listening__weeks > .is-level-0 {
+  --artist-week-level: 10%;
+}
+
+.artist-listening__weeks > .is-level-1 {
+  --artist-week-level: 30%;
+}
+
+.artist-listening__weeks > .is-level-2 {
+  --artist-week-level: 60%;
+}
+
+.artist-listening__weeks > .is-level-3 {
+  --artist-week-level: 100%;
+}
+
+.artist-listening__weeks > .is-active {
+  outline: 1px solid var(--aurral-text);
+  outline-offset: 1px;
+}
+
+.artist-listening__labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.artist-listening .artist-track {
+  grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 4rem 2.25rem;
+}
+
+.artist-listening .artist-track__time {
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .artist-gig:is(a):hover {
+    background: var(--aurral-surface-hover);
+  }
+
+  .artist-gig:is(a):hover .artist-gig__tickets {
+    color: var(--aurral-text);
+  }
+}
+
+@media (min-width: 768px) {
+  .artist-tour__more.is-phone-only {
+    display: none;
+  }
+
+  @container artist-page (width < 940px) {
+    .artist-tour {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      grid-auto-flow: row;
+    }
+
+    .artist-listening {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2rem;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .artist-tour {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+
+  .artist-tour:not(.is-expanded) > li:nth-child(n + 4) {
+    display: none;
+  }
+
+  .artist-gig {
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto var(--aurral-icon-xs);
+    grid-template-areas:
+      "date city distance distance"
+      "date venue venue tickets";
+    column-gap: 0.75rem;
+  }
+
+  .artist-gig.is-unlocated {
+    grid-template-areas:
+      "date city city tickets"
+      "date venue venue tickets";
+  }
+
+  .artist-gig__tickets > span {
+    display: none;
+  }
+
+  .artist-listening {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .artist-listening__facts span {
+    display: block;
+  }
+
+  .artist-listening__facts span + span::before {
+    content: none;
+  }
+
+  .artist-listening__weeks {
+    gap: 2px;
+  }
+
+  .artist-listening .artist-track {
+    grid-template-columns: 2.5rem minmax(0, 1fr) 4rem 2.25rem;
+  }
+
+  .artist-listening .artist-track__lead {
+    display: none;
+  }
+}

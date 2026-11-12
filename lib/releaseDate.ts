@@ -24,3 +24,9 @@ export const releasedSince = (
   const day = releaseDay(releaseDate);
   return day !== null && day > utcDay(since) && day <= utcDay(now);
 };
+
+const NEW_RELEASE_DAYS = 60;
+
+export const isNewRelease = (releaseDate: string | null | undefined, now = Date.now()) =>
+  /^\d{4}-\d{2}-\d{2}/.test(String(releaseDate ?? "").trim()) &&
+  releasedSince(releaseDate, now - NEW_RELEASE_DAYS * 86_400_000, now);
