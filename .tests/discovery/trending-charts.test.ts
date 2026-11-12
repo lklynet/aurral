@@ -19,7 +19,7 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  { getTrendingCharts, getTrendingGenreChart, refreshTrendingCharts },
+  { getTrendingCharts, getTrendingGenreChart, refreshTrendingCharts, setTrendingRegion },
 ] = await setupIsolatedBackend(
   "trending-charts",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -197,6 +197,53 @@ test("a region without its own charts falls back to worldwide songs and US album
       .map((url) => url.pathname.split("/")[3]),
     ["nz", "us"],
   );
+});
+
+test("a chosen region replaces the server's location until Automatic is picked again", async () => {
+  await refreshAt(DAY_ONE);
+  source.playlists.push({ id: 3, title: "Top Japan" });
+  source.appleStorefronts.jp = [appleAlbum(5, "J-Pop")];
+  source.appleStorefronts.us = [appleAlbum(9, "Country")];
+  requests = [];
+
+  await setTrendingRegion("JP", DAY_ONE + 60 * 1000);
+  await refreshTrendingCharts({ now: DAY_ONE + 6 * 60 * 60 * 1000 });
+
+  const japan = getTrendingCharts(USER_ID);
+  assert.equal(japan.region, "JP");
+  assert.equal(japan.regionChoice, "JP");
+  assert.equal(japan.songs?.playlistName, "Top Japan");
+  assert.deepEqual(
+    japan.albums?.map((album) => album.name),
+    ["Record 5"],
+  );
+  assert.equal(
+    requests.some((url) => url.pathname === "/infos"),
+    false,
+  );
+
+  requests = [];
+  await setTrendingRegion("001", DAY_ONE + 7 * 60 * 60 * 1000);
+
+  const worldwide = getTrendingCharts(USER_ID);
+  assert.equal(worldwide.region, "001");
+  assert.equal(worldwide.songs?.playlistName, "Top Worldwide");
+  assert.deepEqual(
+    worldwide.albums?.map((album) => album.name),
+    ["Record 9"],
+  );
+  assert.deepEqual(requests.map((url) => url.pathname.replace(/\/\d+\//, "/:id/")).sort(), [
+    "/api/v2/us/music/most-played/:id/albums.json",
+    "/playlist/:id/tracks",
+    "/search/playlist",
+  ]);
+
+  await setTrendingRegion("auto", DAY_ONE + 8 * 60 * 60 * 1000);
+
+  const automatic = getTrendingCharts(USER_ID);
+  assert.equal(automatic.region, "GB");
+  assert.equal(automatic.regionChoice, "auto");
+  assert.equal(automatic.songs?.playlistName, "Top UK");
 });
 
 test("Apple Music timeouts and gateway errors are retried before giving up", async () => {

@@ -846,6 +846,17 @@ textarea:disabled {
   height: var(--aurral-icon-sm);
 }
 
+.select-menu__search {
+  position: sticky;
+  top: 0;
+  padding-bottom: 0.25rem;
+  background: var(--aurral-surface-popover);
+}
+
+.select-menu__search .input {
+  width: 100%;
+}
+
 .label {
   display: block;
   margin-bottom: 0.25rem;

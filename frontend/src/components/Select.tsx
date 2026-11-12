@@ -24,6 +24,8 @@ type SelectProps<T extends string | number> = {
   className?: string;
   disabled?: boolean;
   "aria-label"?: string;
+  triggerLabel?: string;
+  searchable?: boolean;
 };
 
 const TYPEAHEAD_RESET_MS = 500;
@@ -60,6 +62,16 @@ export function matchOption(
   return -1;
 }
 
+function filterOptions<Option extends { label: string }>(
+  options: readonly Option[],
+  query: string,
+) {
+  const needle = query.trim().toLocaleLowerCase();
+  return needle
+    ? options.filter((option) => option.label.toLocaleLowerCase().includes(needle))
+    : options;
+}
+
 export function Select<T extends string | number>({
   value,
   options,
@@ -68,32 +80,61 @@ export function Select<T extends string | number>({
   className = "input",
   disabled = false,
   "aria-label": ariaLabel,
+  triggerLabel,
+  searchable = false,
 }: SelectProps<T>) {
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const typeahead = useRef({ query: "", at: 0 });
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [position, setPosition] = useState<CSSProperties | null>(null);
+  const [query, setQuery] = useState("");
   const open = activeIndex !== null;
-  const selectedIndex = options.findIndex((option) => option.value === value);
-  const selected = options[selectedIndex] ?? options[0];
+  const visible = filterOptions(options, query);
+  const selectedIndex = visible.findIndex((option) => option.value === value);
+  const selected = options.find((option) => option.value === value) ?? options[0];
 
   const close = () => {
     setActiveIndex(null);
     setPosition(null);
+    setQuery("");
   };
 
   const openAt = (index: number) => {
-    triggerRef.current?.focus({ preventScroll: true });
+    if (!searchable) triggerRef.current?.focus({ preventScroll: true });
     setActiveIndex(index >= 0 && !options[index]?.disabled ? index : stepOption(options, -1, 1));
   };
 
+  const search = (next: string) => {
+    setQuery(next);
+    setActiveIndex(stepOption(filterOptions(options, next), -1, 1));
+  };
+
   const commit = (index: number) => {
-    const option = options[index];
+    const option = visible[index];
     if (!option || option.disabled) return;
+    if (searchable) triggerRef.current?.focus({ preventScroll: true });
     close();
     if (option.value !== value) onChange(option.value);
+  };
+
+  const navigate = (event: KeyboardEvent<HTMLElement>, current: number) => {
+    const moves: Record<string, number> = {
+      ArrowDown: stepOption(visible, current, 1),
+      ArrowUp: stepOption(visible, current, -1),
+      ...(!searchable && {
+        Home: stepOption(visible, -1, 1),
+        End: stepOption(visible, visible.length, -1),
+      }),
+    };
+    const moved = moves[event.key];
+    if (moved === undefined) return false;
+    event.preventDefault();
+    setActiveIndex(moved);
+    return true;
   };
 
   const findTyped = (key: string, from: number) => {
@@ -110,6 +151,10 @@ export function Select<T extends string | number>({
       if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
         event.preventDefault();
         openAt(selectedIndex);
+      } else if (typed && searchable) {
+        event.preventDefault();
+        openAt(selectedIndex);
+        search(event.key);
       } else if (typed) {
         event.preventDefault();
         openAt(findTyped(event.key, selectedIndex));
@@ -126,17 +171,8 @@ export function Select<T extends string | number>({
       close();
       return;
     }
-    const moves: Record<string, number> = {
-      ArrowDown: stepOption(options, activeIndex, 1),
-      ArrowUp: stepOption(options, activeIndex, -1),
-      Home: stepOption(options, -1, 1),
-      End: stepOption(options, options.length, -1),
-    };
-    const moved = moves[event.key];
-    if (moved !== undefined) {
-      event.preventDefault();
-      setActiveIndex(moved);
-    } else if (event.key === "Enter" || event.key === " ") {
+    if (navigate(event, activeIndex)) return;
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       commit(activeIndex);
     } else if (typed) {
@@ -149,19 +185,19 @@ export function Select<T extends string | number>({
   useLayoutEffect(() => {
     if (!open) return;
     const trigger = triggerRef.current?.getBoundingClientRect();
-    const list = listRef.current;
-    if (!trigger || !list) return;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
     const below = window.innerHeight - trigger.bottom - MENU_GAP - VIEWPORT_EDGE;
     const above = trigger.top - MENU_GAP - VIEWPORT_EDGE;
-    const placeAbove = list.scrollHeight > below && above > below;
-    const width = Math.max(list.offsetWidth, trigger.width);
+    const placeAbove = menu.scrollHeight > below && above > below;
+    const width = Math.max(menu.offsetWidth, trigger.width);
     const left = Math.max(
       VIEWPORT_EDGE,
       Math.min(trigger.left, window.innerWidth - width - VIEWPORT_EDGE),
     );
     setPosition({
       left,
-      minWidth: trigger.width,
+      minWidth: width,
       maxHeight: Math.min(placeAbove ? above : below, MENU_MAX_HEIGHT),
       ...(placeAbove
         ? { bottom: window.innerHeight - trigger.top + MENU_GAP }
@@ -170,30 +206,40 @@ export function Select<T extends string | number>({
   }, [open]);
 
   useEffect(() => {
-    const list = listRef.current;
-    const item = activeIndex === null ? null : list?.children[activeIndex];
-    if (!list || !(item instanceof HTMLElement)) return;
-    if (item.offsetTop < list.scrollTop) {
-      list.scrollTop = item.offsetTop;
-    } else if (item.offsetTop + item.offsetHeight > list.scrollTop + list.clientHeight) {
-      list.scrollTop = item.offsetTop + item.offsetHeight - list.clientHeight;
+    if (position) searchRef.current?.focus({ preventScroll: true });
+  }, [position]);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    const item = activeIndex === null ? null : listRef.current?.children[activeIndex];
+    if (!menu || !(item instanceof HTMLElement)) return;
+    const top = item.offsetTop - (searchRef.current?.parentElement?.offsetHeight ?? 0);
+    if (top < menu.scrollTop) {
+      menu.scrollTop = top;
+    } else if (item.offsetTop + item.offsetHeight > menu.scrollTop + menu.clientHeight) {
+      menu.scrollTop = item.offsetTop + item.offsetHeight - menu.clientHeight;
     }
   }, [activeIndex, position]);
 
   useEffect(() => {
     if (!open) return undefined;
+    const openWidth = window.innerWidth;
     const dismiss = () => {
       setActiveIndex(null);
       setPosition(null);
+      setQuery("");
+    };
+    const dismissOnResize = () => {
+      if (window.innerWidth !== openWidth) dismiss();
     };
     const closeOnScroll = (event: Event) => {
-      if (event.target instanceof Node && listRef.current?.contains(event.target)) return;
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       dismiss();
     };
-    window.addEventListener("resize", dismiss);
+    window.addEventListener("resize", dismissOnResize);
     window.addEventListener("scroll", closeOnScroll, true);
     return () => {
-      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("resize", dismissOnResize);
       window.removeEventListener("scroll", closeOnScroll, true);
     };
   }, [open]);
@@ -211,14 +257,16 @@ export function Select<T extends string | number>({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-activedescendant={
-          activeIndex !== null && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined
+          !searchable && activeIndex !== null && activeIndex >= 0
+            ? `${listId}-${activeIndex}`
+            : undefined
         }
         disabled={disabled}
         onClick={() => (open ? close() : openAt(selectedIndex))}
         onKeyDown={handleKeyDown}
-        onBlur={close}
+        onBlur={searchable ? undefined : close}
       >
-        <span className="select__value">{selected?.label}</span>
+        <span className="select__value">{triggerLabel ?? selected?.label}</span>
         <ChevronDown className="select__chevron" aria-hidden="true" />
       </button>
       {open
@@ -230,33 +278,72 @@ export function Select<T extends string | number>({
                 onClick={close}
               />
               <div
-                ref={listRef}
-                id={listId}
+                ref={menuRef}
                 className="select-menu"
-                role="listbox"
-                aria-label={ariaLabel}
                 style={position ?? { visibility: "hidden" }}
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => {
+                  if (event.target !== searchRef.current) event.preventDefault();
+                }}
               >
-                {options.map((option, index) => (
-                  <div
-                    key={option.value}
-                    id={`${listId}-${index}`}
-                    role="option"
-                    aria-selected={index === selectedIndex}
-                    aria-disabled={option.disabled || undefined}
-                    className={`select-menu__option${index === activeIndex ? " is-active" : ""}`}
-                    onPointerMove={() => {
-                      if (!option.disabled && index !== activeIndex) setActiveIndex(index);
-                    }}
-                    onClick={() => commit(index)}
-                  >
-                    <span className="select__value">{option.label}</span>
-                    {index === selectedIndex ? (
-                      <Check className="select-menu__check" aria-hidden="true" />
-                    ) : null}
+                {searchable ? (
+                  <div className="select-menu__search">
+                    <input
+                      ref={searchRef}
+                      className="input"
+                      type="search"
+                      role="combobox"
+                      aria-label={ariaLabel ? `Search ${ariaLabel}` : "Search"}
+                      aria-expanded
+                      aria-controls={listId}
+                      aria-autocomplete="list"
+                      aria-activedescendant={
+                        activeIndex !== null && activeIndex >= 0
+                          ? `${listId}-${activeIndex}`
+                          : undefined
+                      }
+                      placeholder="Search"
+                      value={query}
+                      onChange={(event) => search(event.target.value)}
+                      onBlur={(event) => {
+                        if (event.relatedTarget !== triggerRef.current) close();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          triggerRef.current?.focus({ preventScroll: true });
+                          close();
+                        } else if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (activeIndex !== null) commit(activeIndex);
+                        } else if (activeIndex !== null) {
+                          navigate(event, activeIndex);
+                        }
+                      }}
+                    />
                   </div>
-                ))}
+                ) : null}
+                <div ref={listRef} id={listId} role="listbox" aria-label={ariaLabel}>
+                  {visible.map((option, index) => (
+                    <div
+                      key={option.value}
+                      id={`${listId}-${index}`}
+                      role="option"
+                      aria-selected={index === selectedIndex}
+                      aria-disabled={option.disabled || undefined}
+                      className={`select-menu__option${index === activeIndex ? " is-active" : ""}`}
+                      onPointerMove={() => {
+                        if (!option.disabled && index !== activeIndex) setActiveIndex(index);
+                      }}
+                      onClick={() => commit(index)}
+                    >
+                      <span className="select__value">{option.label}</span>
+                      {index === selectedIndex ? (
+                        <Check className="select-menu__check" aria-hidden="true" />
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
               </div>
             </>,
             document.body,

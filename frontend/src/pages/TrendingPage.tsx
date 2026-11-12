@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { ArrowDown, ArrowUp, Check, Pause, Play, Plus } from "../components/icons";
 import ArtworkImage from "../components/ArtworkImage";
@@ -7,6 +7,7 @@ import { useCollectionTint } from "../components/CollectionHeader";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
 import RouteLink from "../components/RouteLink";
+import { Select, type SelectOption } from "../components/Select";
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import Tooltip from "../components/Tooltip";
 import { useAuth } from "../contexts/AuthContext";
@@ -30,6 +31,11 @@ import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 import "./TrendingPage.css";
 import StatePanel from "../components/StatePanel";
+import {
+  TRENDING_REGION_CHOICES,
+  WORLDWIDE_REGION,
+  type TrendingRegionChoice,
+} from "../../../lib/trendingRegions.ts";
 
 type TrendingCharts = InferResponseType<typeof discoveryClient.trending.$get, 200>;
 type Songs = NonNullable<TrendingCharts["songs"]>;
@@ -41,14 +47,25 @@ const SPARK_WIDTH = 220;
 const SPARK_HEIGHT = 56;
 const SPARK_PAD = 6;
 
+const regionNames = new Intl.DisplayNames(undefined, { type: "region" });
+
 const regionName = (region: string | null) => {
   if (!region) return null;
+  if (region === WORLDWIDE_REGION) return "Worldwide";
   try {
-    return new Intl.DisplayNames(undefined, { type: "region" }).of(region) ?? region;
+    return regionNames.of(region) ?? region;
   } catch {
     return region;
   }
 };
+
+const REGION_OPTIONS: SelectOption<TrendingRegionChoice>[] = [
+  { value: "auto", label: "Automatic" },
+  { value: WORLDWIDE_REGION, label: "Worldwide" },
+  ...TRENDING_REGION_CHOICES.filter((choice) => choice !== "auto" && choice !== WORLDWIDE_REGION)
+    .map((value) => ({ value, label: regionName(value) ?? value }))
+    .sort((left, right) => left.label.localeCompare(right.label)),
+];
 
 function Movement({ value }: { value: Songs["items"][number]["movement"] }) {
   if (value === "new") return <span className="trending-movement is-new">New</span>;
@@ -160,6 +177,15 @@ export default function TrendingPage() {
   const trackSaveActions = useTrackSaveActions();
   const { playQueue, togglePlayPause, currentTrack, isPlaying, matchesSource } = useAudioQueue();
   const [savingPlaylist, setSavingPlaylist] = useState(false);
+  const regionMutation = useMutation({
+    mutationFn: (region: TrendingRegionChoice) =>
+      parseResponse(discoveryClient.trending.region.$put({ json: { region } })),
+    onSuccess: (charts) => queryClient.setQueryData(chartsQuery.queryKey, charts),
+    onError: (err) => {
+      showError(getApiErrorMessage(err, "Couldn't change the chart country. Try again."));
+      void refetch();
+    },
+  });
 
   const songs = data?.songs ?? null;
   const lead = songs?.items[0];
@@ -228,6 +254,11 @@ export default function TrendingPage() {
 
   const region = regionName(data?.region ?? null);
   const updated = data?.updatedAt ? formatRelativeTime(new Date(data.updatedAt)) : null;
+  const canPickRegion = user?.role === "admin";
+  const pendingRegion = regionMutation.isPending
+    ? REGION_OPTIONS.find((option) => option.value === regionMutation.variables)?.label
+    : null;
+  const status = pendingRegion ? "updating" : updated ? `updated ${updated}` : null;
   const popularPlaylists =
     shelf?.categories.find((category) => category.id === "genre-0")?.playlists ?? [];
   const hasCharts = Boolean(
@@ -511,9 +542,25 @@ export default function TrendingPage() {
     <div className="trending-page" style={tint ? { "--collection-tint": tint } : undefined}>
       <header className="trending-page__header">
         <h1 className="page-title">Trending</h1>
-        {region || updated ? (
+        {canPickRegion || region || status ? (
           <p className="trending-page__meta">
-            {[region, updated ? `updated ${updated}` : null].filter(Boolean).join(" · ")}
+            {canPickRegion ? (
+              <Select
+                className="trending-page__region"
+                aria-label="Chart country"
+                value={data?.regionChoice ?? "auto"}
+                options={REGION_OPTIONS}
+                triggerLabel={pendingRegion ?? region ?? "Automatic"}
+                onChange={(choice) => {
+                  if (!regionMutation.isPending) regionMutation.mutate(choice);
+                }}
+                searchable
+              />
+            ) : (
+              region
+            )}
+            {(canPickRegion || region) && status ? " · " : null}
+            {status}
           </p>
         ) : null}
       </header>
