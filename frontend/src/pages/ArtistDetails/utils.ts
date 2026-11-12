@@ -47,10 +47,6 @@ export interface PlayableTrack {
 export interface ArtistCoverImage {
   image: string | null;
   front?: boolean;
-  types?: string[];
-  coverType?: string;
-  kind?: string;
-  CoverType?: string;
 }
 
 export interface ReleaseLibraryInfo {
@@ -224,36 +220,6 @@ export const getCoverImage = (coverImages: readonly ArtistCoverImage[] | null | 
 
 export const getReleaseGroupCoverUrl = (releaseGroup: ReleaseGroup | null | undefined) =>
   resolveAuthenticatedApiAssetUrl(releaseGroup?.coverUrl || releaseGroup?._coverUrl);
-
-const getImageKinds = (image: ArtistCoverImage | null | undefined) => {
-  const kinds = [
-    image?.coverType,
-    image?.kind,
-    image?.CoverType,
-    ...(Array.isArray(image?.types) ? image.types : []),
-  ];
-  return kinds.map((kind) =>
-    String(kind || "")
-      .trim()
-      .toLowerCase(),
-  );
-};
-
-const imageMatchesKinds = (
-  image: ArtistCoverImage | null | undefined,
-  kinds: readonly string[],
-) => {
-  const imageKinds = getImageKinds(image);
-  return imageKinds.some((kind) => kinds.includes(kind));
-};
-
-export const getArtistHeroImage = (coverImages: readonly ArtistCoverImage[] | null | undefined) => {
-  if (!coverImages?.length) return null;
-  const fanart = coverImages.find((image) =>
-    imageMatchesKinds(image, ["fanart", "background", "banner"]),
-  );
-  return fanart?.image || getCoverImage(coverImages);
-};
 
 const releaseDateOf = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) =>
   releaseGroupOrAlbum?.["first-release-date"] ||
