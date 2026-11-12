@@ -39,7 +39,10 @@ import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlistTracks.ts";
-import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
+import {
+  applyPlaylistTrackPatch,
+  schedulePlaylistMbidEnrichment,
+} from "../playlistMbidEnrichmentService.ts";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.ts";
 import {
   activatePlaylistDownloadGeneration,
@@ -554,7 +557,7 @@ function matchCurrentTracks(
       .filter((track) => downloadTracker.getJob(track.canonicalJobId)?.playlistType === "library")
       .map((track, index) => [index, track] as const),
   );
-  const assigned = new Map<number, string>();
+  const assigned = new Map<number, StaticPlaylist["tracks"][number]>();
   const referencedJob = (track: PlaylistTrackInput) => {
     const job = downloadTracker.getJob(String(track.canonicalJobId || ""));
     return job && tracksShareMembership(job, track) ? job.id : "";
@@ -569,7 +572,7 @@ function matchCurrentTracks(
       if (assigned.has(index)) return;
       const match = byKey.get(key(track))?.find((candidate) => unused.has(candidate));
       if (match === undefined) return;
-      assigned.set(index, unused.get(match)!.canonicalJobId!);
+      assigned.set(index, unused.get(match)!);
       unused.delete(match);
     });
   }
@@ -625,11 +628,12 @@ async function updateStaticPlaylistLocked({
     );
     createdJobIds = linked.createdJobIds;
     const linkedTracks = [...linked.tracks];
-    const nextTracks = normalizedTracks.map((track, index) =>
-      assigned.has(index)
-        ? { ...track, canonicalJobId: assigned.get(index) }
-        : linkedTracks.shift()!,
-    );
+    const nextTracks = normalizedTracks.map((track, index) => {
+      const current = assigned.get(index);
+      return current
+        ? { ...applyPlaylistTrackPatch(track, current), canonicalJobId: current.canonicalJobId }
+        : linkedTracks.shift()!;
+    });
     const keptJobIds = new Set(nextTracks.map((track) => track.canonicalJobId));
     return {
       playlist: flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {

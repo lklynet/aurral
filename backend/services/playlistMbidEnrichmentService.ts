@@ -130,7 +130,7 @@ function hasPatch(patch: TrackMetadata) {
   return patch && typeof patch === "object" && Object.keys(patch).length > 0;
 }
 
-function applyPlaylistTrackPatch(track: PlaylistTrack, source: TrackMetadata) {
+export function applyPlaylistTrackPatch(track: PlaylistTrack, source: TrackMetadata) {
   const patch = mergeMissingMetadata(track, source);
   if (!hasPatch(patch)) return track;
   return (
