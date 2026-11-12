@@ -356,7 +356,14 @@ test("a synced Aurral share follows the sender's latest snapshot until they stop
 test("a sync keeps the IDs Aurral already found for tracks still in the playlist", async () => {
   const info = vi.spyOn(logger, "info").mockImplementation(() => {});
   connectSpotify(7, "working-token");
-  stubSpotify(({ url }) => jsonResponse(playlistPage(playlistItemsId(url))));
+  let albumName = "New Album";
+  stubSpotify(({ url }) => {
+    const page = playlistPage(playlistItemsId(url));
+    return jsonResponse({
+      ...page,
+      items: page.items.map(({ item }) => ({ item: { ...item, album: { name: albumName } } })),
+    });
+  });
   const playlist = createSyncedPlaylist("Weekly", 7, "spotify-playlist", "weekly");
   await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
   const [track] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
@@ -386,4 +393,12 @@ test("a sync keeps the IDs Aurral already found for tracks still in the playlist
   assert.equal(synced?.canonicalJobId, track?.canonicalJobId);
   const completed = info.mock.calls.find((call) => call[1] === "Playlist import sync completed");
   assert.partialDeepStrictEqual(completed?.[2], { tracksAdded: 0, tracksRemoved: 0 });
+
+  albumName = "New Album (Live)";
+  spotifyClient.clearPlaylistTrackCache();
+  await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
+
+  const [live] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  assert.equal(live?.albumName, "New Album (Live)");
+  assert.deepEqual([live?.albumMbid, live?.trackMbid, live?.releaseYear], [null, null, null]);
 });

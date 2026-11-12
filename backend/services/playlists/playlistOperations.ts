@@ -39,10 +39,7 @@ import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlistTracks.ts";
-import {
-  applyPlaylistTrackPatch,
-  schedulePlaylistMbidEnrichment,
-} from "../playlistMbidEnrichmentService.ts";
+import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.ts";
 import {
   activatePlaylistDownloadGeneration,
@@ -630,9 +627,18 @@ async function updateStaticPlaylistLocked({
     const linkedTracks = [...linked.tracks];
     const nextTracks = normalizedTracks.map((track, index) => {
       const current = assigned.get(index);
-      return current
-        ? { ...applyPlaylistTrackPatch(track, current), canonicalJobId: current.canonicalJobId }
-        : linkedTracks.shift()!;
+      if (!current) return linkedTracks.shift()!;
+      const sameTrack = buildImportTrackIdentity(track) === buildImportTrackIdentity(current);
+      return {
+        ...track,
+        ...(sameTrack && {
+          artistMbid: track.artistMbid || current.artistMbid,
+          albumMbid: track.albumMbid || current.albumMbid,
+          trackMbid: track.trackMbid || current.trackMbid,
+          releaseYear: track.releaseYear || current.releaseYear,
+        }),
+        canonicalJobId: current.canonicalJobId,
+      };
     });
     const keptJobIds = new Set(nextTracks.map((track) => track.canonicalJobId));
     return {
