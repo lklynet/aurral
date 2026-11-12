@@ -274,6 +274,13 @@ export class QbittorrentClient {
       await this._request("/api/v2/torrents/resume", { method: "POST", body: body() });
   }
 
+  async addTag(hash: string, tag: string) {
+    await this._request("/api/v2/torrents/addTags", {
+      method: "POST",
+      body: new URLSearchParams({ hashes: hash, tags: tag }),
+    });
+  }
+
   async deleteTorrents(hashes: string[]) {
     if (hashes.length === 0) return;
     await this._request("/api/v2/torrents/delete", {

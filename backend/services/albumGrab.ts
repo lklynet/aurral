@@ -259,12 +259,14 @@ export async function finishAlbumGrab(
     source,
     album = null,
     resetFields = {},
+    onImported,
   }: {
     filePaths?: string[];
     inPlace?: boolean;
     source: string;
     album?: string | null;
     resetFields?: Record<string, unknown>;
+    onImported?: () => void;
   },
 ) {
   const jobs = albumGrabJobs(payload);
@@ -333,6 +335,7 @@ export async function finishAlbumGrab(
         });
       });
       if (committed.cancelled) continue;
+      onImported?.();
       if (job.status === "done")
         recordAlbumTrackState(job, source === "soulseek" ? "slskd" : source);
     } catch (error) {
