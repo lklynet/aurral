@@ -119,7 +119,7 @@ function SongAction({ song, canDownload }: { song: SearchItem; canDownload: bool
       />
     );
   }
-  return canDownload ? <SongDownload song={song} showLabel /> : null;
+  return canDownload && !song.inLibrary ? <SongDownload song={song} showLabel /> : null;
 }
 
 function topMeta(item: SearchItem) {

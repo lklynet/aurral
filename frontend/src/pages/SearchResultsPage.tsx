@@ -305,14 +305,24 @@ function SearchResults() {
     ...playlistSearchQuery(trimmedQuery),
     enabled: isUnifiedSearch && (activeFilter === "all" || isPlaylistTab),
   });
+  const libraryResults = useMemo(
+    () =>
+      isUnifiedSearch && libraryQuery.data
+        ? {
+            ...libraryQuery.data,
+            albums: libraryQuery.data.albums.map(withAlbumLibraryState),
+          }
+        : null,
+    [isUnifiedSearch, libraryQuery.data, withAlbumLibraryState],
+  );
   const sections = useMemo(
     () =>
       buildSearchSections<SearchResultItem>({
-        library: isUnifiedSearch ? libraryQuery.data : null,
+        library: libraryResults,
         catalog: catalogUnavailable ? null : unifiedResults,
         playlists: playlistsQuery.data?.playlists,
       }),
-    [catalogUnavailable, isUnifiedSearch, libraryQuery.data, playlistsQuery.data, unifiedResults],
+    [catalogUnavailable, libraryResults, playlistsQuery.data, unifiedResults],
   );
   const loading = isPlaylistTab
     ? libraryQuery.isLoading || playlistsQuery.isLoading
@@ -352,15 +362,20 @@ function SearchResults() {
     setPendingAlbumIds({});
   }, [catalogQueryKey]);
 
-  const statusAlbums = rawUnifiedResults?.albums ?? (isAlbumSearch ? rawResults : null);
+  const statusAlbums = useMemo(
+    () =>
+      isUnifiedSearch
+        ? [...(libraryQuery.data?.albums ?? []), ...(rawUnifiedResults?.albums ?? [])]
+        : isAlbumSearch
+          ? rawResults
+          : null,
+    [isAlbumSearch, isUnifiedSearch, libraryQuery.data, rawResults, rawUnifiedResults],
+  );
   useEffect(() => {
     if (!statusAlbums?.length) return undefined;
     let cancelled = false;
     const missingAlbumIds = statusAlbums.flatMap((album) =>
-      typeof album?.id === "string" &&
-      album.id &&
-      !album.inLibrary &&
-      albumLibraryLookup[album.id] === undefined
+      typeof album?.id === "string" && album.id && albumLibraryLookup[album.id] === undefined
         ? [album.id]
         : [],
     );
