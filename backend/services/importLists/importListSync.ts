@@ -6,7 +6,10 @@ import {
 } from "../playlists/flowPlaylistConfig.ts";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
-import { buildPlaylistTrackIdentity } from "../playlists/playlistTracks.ts";
+import {
+  buildImportTrackIdentity,
+  buildPlaylistTrackIdentity,
+} from "../playlists/playlistTracks.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import {
@@ -122,8 +125,9 @@ export async function syncStaticPlaylistImportHere({
     const currentIdentities = new Set<string>(
       (result?.playlist?.tracks || []).map(buildPlaylistTrackIdentity),
     );
+    const storedTracks = new Set((result?.playlist?.tracks || []).map(buildImportTrackIdentity));
     const acceptedNotStored = tracks.filter(
-      (track) => !currentIdentities.has(buildPlaylistTrackIdentity(track)),
+      (track) => !storedTracks.has(buildImportTrackIdentity(track)),
     );
     const tracksAdded = [...currentIdentities].filter((id) => !previousIdentities.has(id)).length;
     const tracksRemoved = [...previousIdentities].filter((id) => !currentIdentities.has(id)).length;

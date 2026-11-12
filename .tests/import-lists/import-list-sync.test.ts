@@ -392,7 +392,11 @@ test("a sync keeps the IDs Aurral already found for tracks still in the playlist
   );
   assert.equal(synced?.canonicalJobId, track?.canonicalJobId);
   const completed = info.mock.calls.find((call) => call[1] === "Playlist import sync completed");
-  assert.partialDeepStrictEqual(completed?.[2], { tracksAdded: 0, tracksRemoved: 0 });
+  assert.partialDeepStrictEqual(completed?.[2], {
+    tracksAdded: 0,
+    tracksRemoved: 0,
+    acceptedNotStoredCount: 0,
+  });
 
   albumName = "New Album (Live)";
   spotifyClient.clearPlaylistTrackCache();
