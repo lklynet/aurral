@@ -5,9 +5,8 @@ import fs from "fs/promises";
 import {
   downloadTracker,
   type DownloadJob,
-  type HeldForReviewDraft,
   type JobFields,
-  type PipelinePayload as TrackerPayload,
+  type PipelineStep,
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient, getUsenetClient } from "./download/downloadClientSettings.ts";
@@ -97,8 +96,10 @@ type UsenetJob = Pick<DownloadJob, "id"> &
 
 type RankedRelease = ReturnType<typeof rankUsenetReleases>[number];
 
-type UsenetCandidate = Pick<RankedRelease, "raw" | "score" | "scores" | "resolvedAlbumName"> & {
-  releaseAdmissible: boolean;
+type UsenetCandidate = Partial<Pick<RankedRelease, "scores" | "resolvedAlbumName">> & {
+  raw: Pick<RankedRelease["raw"], "release"> & Partial<Omit<RankedRelease["raw"], "release">>;
+  score: number;
+  releaseAdmissible?: boolean;
   releaseVerified?: boolean;
 };
 
@@ -116,18 +117,8 @@ type ValidationOptions = { manualSelection?: boolean; release?: ReleaseManifestO
 
 type UsenetRemoveOptions = { deleteFiles?: boolean; historyItem?: UsenetHistoryItem | null };
 
-interface UsenetPayload extends Omit<TrackerPayload, "candidates"> {
-  jobId: string;
-  phase: string;
-  source?: string | null;
-  albumGrab?: boolean;
-  releaseMbid?: string | null;
-  track?: Parameters<typeof attemptTrackRequest>[2];
-  destination?: string | null;
-  upgradeForJobId?: string | null;
-  upgrade?: boolean;
-  manualSelection?: boolean;
-  manualDownloadClient?: string | null;
+interface UsenetPayload extends PipelineStep {
+  source: NzbSourceId;
   downloadClient?: string | null;
   nzbId?: NzbId | null;
   nzbGrabs?: number;
@@ -135,12 +126,10 @@ interface UsenetPayload extends Omit<TrackerPayload, "candidates"> {
   searchQueryIndex?: number;
   searchError?: string | null;
   candidates?: UsenetCandidate[];
-  candidateIndex?: number;
   pollAttempts?: number;
   missingPolls?: number;
   unreadPolls?: number;
   history?: UsenetHistoryItem | null;
-  heldForReview?: HeldForReviewDraft | null;
   downloadedPath?: string | null;
 }
 

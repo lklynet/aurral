@@ -276,8 +276,8 @@ function readAdvertisedDurationMs(item: SlskdFile) {
 // Turns raw slskd search results into canonical candidates enriched with
 // folder evidence. Identity decisions belong to the shared engine; this only
 // gathers what Soulseek can (and cannot) prove about each file.
-export function buildSoulseekCandidates(
-  results: SlskdFile[],
+export function buildSoulseekCandidates<File extends SlskdFile>(
+  results: File[],
   request: SearchTrackRequest,
   options: SoulseekOptions = {},
 ) {
@@ -295,7 +295,7 @@ export function buildSoulseekCandidates(
       const filePath = String(item?.file || "");
       const baseName = getFileBaseName(filePath);
       const parsed = parseFilenameArtistTitle(baseName, request);
-      const candidate: CandidateTrack<SlskdFile> | null = normalizeCandidate("soulseek", item, {
+      const candidate: CandidateTrack<File> | null = normalizeCandidate("soulseek", item, {
         capabilities: { filename: true },
         parseFilename: false,
       });

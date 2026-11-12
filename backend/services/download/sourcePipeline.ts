@@ -7,7 +7,11 @@ import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
 } from "../downloadJobs/downloadCancellation.ts";
-import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type PipelineStep,
+} from "../downloadJobs/downloadTracker.ts";
 import { deferForInactiveOwner } from "../downloadJobs/playlistOwnerStatus.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { readOnlyFolderPaths } from "../libraryFolders.ts";
@@ -50,6 +54,7 @@ import {
   type Upgrade,
 } from "./downloadSource.ts";
 import { filedAlbumFiles } from "./filedAlbum.ts";
+import { pluginIdFromSource } from "../plugins/pluginStore.ts";
 import {
   recordTrackJobSearching,
   recordTrackJobDownloading,
@@ -62,33 +67,29 @@ const MAX_ALBUM_CANDIDATES = 5;
 const FILED_FALLBACK_SCAN = 8;
 const FILED_GIVE_UP = 16;
 
-type SourceCandidate = Omit<ReturnType<typeof toPipelineCandidate>, "raw"> & {
-  raw: TrackResult | AlbumResult;
-};
-export type SourcePayload = {
-  jobId: string;
-  phase: string;
-  source?: string | null;
-  playlistId?: string | null;
-  track?: Parameters<typeof buildResolvedTrack>[1];
-  destination?: string | null;
-  upgradeForJobId?: string | null;
-  upgrade?: boolean;
-  manualSelection?: boolean;
+type SourceCandidate =
+  | ReturnType<typeof toPipelineCandidate<TrackResult>>
+  | {
+      raw: AlbumResult;
+      resolvedAlbumName: string;
+      releaseVerified: boolean;
+      candidate?: never;
+      evaluation?: never;
+    };
+export const isSourceContractId = (source: unknown): source is DownloadSource["id"] =>
+  typeof source === "string" && (source === "qbittorrent" || Boolean(pluginIdFromSource(source)));
+
+export type SourcePayload = PipelineStep & {
+  source: DownloadSource["id"];
   candidates?: SourceCandidate[];
   candidate?: SourceCandidate | null;
-  candidateIndex?: number;
   downloadedPath?: string | null;
-  heldForReview?: ReturnType<typeof holdForReview> | null;
   pendingId?: string | null;
   importedFiles?: string[] | null;
   filedCount?: number | null;
   filedPolls?: number;
   fallbackScanned?: boolean;
   pollAttempts?: number;
-  albumGrab?: boolean;
-  releaseMbid?: string | null;
-  albumGroupJobIds?: string[];
   filesChecked?: boolean;
 };
 export type SourceHelpers = {
@@ -166,7 +167,10 @@ async function resolveDownloadedFile(directory: string, returned: string) {
 
 // Removes what a step started: the source's own download, if it has one, and
 // the folder Aurral gave it.
-export async function discardSourceWork(payload: SourcePayload, source: DownloadSource) {
+export async function discardSourceWork(
+  payload: Pick<SourcePayload, "jobId" | "pendingId">,
+  source: DownloadSource,
+) {
   if (payload.pendingId && source.discard) {
     await source.discard(payload.pendingId).catch((error: unknown) =>
       logger.warn(source.id, "Could not remove a download", {

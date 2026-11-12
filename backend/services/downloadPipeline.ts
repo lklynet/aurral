@@ -4,7 +4,11 @@ import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
 import type { JsonObject } from "./jobs/queue.ts";
 import { downloadPipelineQueue } from "./jobs/queues.ts";
-import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type PipelineStep,
+} from "./downloadJobs/downloadTracker.ts";
 import {
   discardSlskdSearch,
   discardSlskdWork,
@@ -47,10 +51,11 @@ import { processShareDownload } from "./shareLinks/download.ts";
 import { processPluginPipelinePayload } from "./plugins/pluginDownloadSource.ts";
 import {
   discardSourceWork as discardContractSourceWork,
+  isSourceContractId,
   processSourcePipelinePayload,
+  type SourcePayload,
 } from "./download/sourcePipeline.ts";
 import { nativeDownloadSource } from "./download/nativeSources.ts";
-import { pluginIdFromSource } from "./plugins/pluginStore.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
 import { recordTrackJobFailed } from "./aurralHistoryService.ts";
 import { finalizeQualityUpgradeFailure } from "./qualityUpgradeOutcome.ts";
@@ -60,35 +65,38 @@ import { finalizeQualityUpgradeFailure } from "./qualityUpgradeOutcome.ts";
 // shares the download-pipeline queue.
 const slskdClient = getDownloadClient("slskd");
 
-type TrackerPayload = Parameters<typeof downloadTracker.upgradeAttemptAhead>[0];
 type SlskdStepPayload = Parameters<typeof processSlskdPipelinePayload>[0];
-type SlskdStepHelpers = Parameters<typeof processSlskdPipelinePayload>[1];
 type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
 type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
-type PluginStepPayload = Parameters<typeof processPluginPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
-type AdapterPayload =
-  | SlskdStepPayload
-  | UsenetStepPayload
-  | YtdlpStepPayload
-  | DeemixStepPayload
-  | PluginStepPayload;
-type AdapterState<Payload> = {
-  [Key in Exclude<Payload extends unknown ? keyof Payload : never, keyof TrackerPayload>]?:
-    | (Payload extends unknown ? (Key extends keyof Payload ? Payload[Key] : never) : never)
-    | null;
-};
-
-export type PipelinePayload = TrackerPayload &
-  AdapterState<AdapterPayload> & {
+export type PipelinePayload = PipelineStep &
+  (
+    | { source?: null }
+    | { source: "share" }
+    | SlskdStepPayload
+    | UsenetStepPayload
+    | DeemixStepPayload
+    | YtdlpStepPayload
+    | SourcePayload
+  ) & {
     exhaustedSources?: string[];
     sourceErrors?: SourceError[];
     releaseWaits?: number | null;
     upgradeWaits?: number;
     delaySeconds?: number;
   };
+
+const isNzbStep = (
+  payload: PipelinePayload,
+): payload is Extract<PipelinePayload, { source: UsenetStepPayload["source"] }> =>
+  isNzbSource(payload.source);
+
+const isSourceContractStep = (
+  payload: PipelinePayload,
+): payload is Extract<PipelinePayload, { source: SourcePayload["source"] }> =>
+  isSourceContractId(payload.source);
 
 type SourceFields = Partial<
   Pick<
@@ -192,11 +200,11 @@ const sourceOrder = (payload: SourceFields): SourceOrder =>
     ? "album"
     : "track";
 
-export function buildNextSourcePayload<Payload extends SourceFields>(
-  payload: Payload,
+export function buildNextSourcePayload(
+  payload: PipelinePayload,
   failedSource: string | null = null,
   reason: string | null = null,
-) {
+): PipelinePayload | null {
   if (payload?.manualSelection === true) return null;
   const allowedSources = Array.isArray(payload?.allowedSources)
     ? new Set(payload.allowedSources)
@@ -224,13 +232,11 @@ export function buildNextSourcePayload<Payload extends SourceFields>(
   const untried = sources.filter((source) => !tried.has(source.id));
   const next = untried.find((source) => !exhausted.has(source.id)) || untried[0];
   if (!next) return null;
-  return {
-    ...payload,
-    ...sourceSearchReset(),
-    source: next.id,
-    triedSources: [...tried],
-    sourceErrors,
-  };
+  const step = { ...payload, ...sourceSearchReset(), triedSources: [...tried], sourceErrors };
+  const { id } = next;
+  if (id === "slskd" || id === "deemix" || id === "ytdlp") return { ...step, source: id };
+  if (isNzbSource(id)) return { ...step, source: id };
+  return { ...step, source: id };
 }
 
 const sourceSearchReset = () => ({
@@ -326,13 +332,13 @@ function summarizeSourceErrors(
 }
 
 async function failOrTryNextSource(
-  sourcePayload: { jobId: string },
+  payload: PipelinePayload,
   sourceJob: { id: string },
   message: string,
   logDetails: object = {},
 ) {
-  const payload = sourcePayload as PipelinePayload;
-  const job = sourceJob as DownloadJob;
+  const job = downloadTracker.getJob(sourceJob.id);
+  if (!job) return null;
   if (payload?.quickSearch === true && payload.source)
     downloadTracker.recordQuickSearched(job.id, payload.source);
   const nextPayload = buildNextSourcePayload(payload, payload?.source || "slskd", message);
@@ -471,11 +477,12 @@ async function awaitAttemptRelease(payload: PipelinePayload) {
 }
 
 async function discardSourceWork(payload: PipelinePayload) {
-  const native = nativeDownloadSource(payload.source);
-  if (native) await discardContractSourceWork(payload as PluginStepPayload, native);
-  else if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
-  else if (isNzbSource(payload.source)) await discardUsenetWork(payload as UsenetStepPayload);
-  else if (payload.source === "deemix") await discardDeemixWork(payload as DeemixStepPayload);
+  if (isSourceContractStep(payload)) {
+    const native = nativeDownloadSource(payload.source);
+    if (native) await discardContractSourceWork(payload, native);
+  } else if (payload.source === "slskd") await discardSlskdWork(payload);
+  else if (isNzbStep(payload)) await discardUsenetWork(payload);
+  else if (payload.source === "deemix") await discardDeemixWork(payload);
 }
 
 // An attempt that ends while it still holds tracks was dropped before its
@@ -514,7 +521,7 @@ export async function processPipelinePayload(payload: PipelinePayload) {
 
 async function processSourcePayload(payload: PipelinePayload): Promise<PipelinePayload | null> {
   if (!isPipelinePayloadActive(payload)) {
-    await discardSlskdSearch(payload as SlskdStepPayload);
+    await discardSlskdSearch(payload);
     return null;
   }
   const currentJob = downloadTracker.getJob(payload.jobId);
@@ -563,7 +570,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
     }
     return processSourcePayload(nextPayload);
   }
-  const { source } = payload;
+  const { source, jobId } = payload;
   if (payload.albumGrab === true && ["search", "finalize"].includes(payload.phase) && currentJob) {
     if (await attemptRelease(payload, currentJob)) {
       if (payload.releaseWaits) payload = { ...payload, releaseWaits: null, delaySeconds: 0 };
@@ -583,57 +590,49 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
         )
       : null;
   }
-  if (isNzbSource(payload.source)) {
+  if (isNzbStep(payload)) {
     if (!isSourceConfigured(payload.source)) {
       const job = downloadTracker.getJob(payload.jobId);
       return job
         ? failOrTryNextSource(payload, job, `${getSourceLabel(payload.source)} is not configured`)
         : null;
     }
-    return processUsenetPipelinePayload(payload as UsenetStepPayload, { failOrTryNextSource });
+    return processUsenetPipelinePayload(payload, { failOrTryNextSource });
   }
   if (payload.source === "deemix") {
     if (!isSourceConfigured("deemix")) {
       const job = downloadTracker.getJob(payload.jobId);
       return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
     }
-    return processDeemixPipelinePayload(payload as DeemixStepPayload, { failOrTryNextSource });
+    return processDeemixPipelinePayload(payload, { failOrTryNextSource });
   }
   if (payload.source === "ytdlp") {
     if (!isSourceConfigured("ytdlp")) {
       const job = downloadTracker.getJob(payload.jobId);
       return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
     }
-    return processYtdlpPipelinePayload(payload as YtdlpStepPayload, { failOrTryNextSource });
+    return processYtdlpPipelinePayload(payload, { failOrTryNextSource });
   }
-  const native = nativeDownloadSource(payload.source);
-  if (native) {
+  if (isSourceContractStep(payload)) {
+    const native = nativeDownloadSource(payload.source);
+    if (!native) return processPluginPipelinePayload(payload, { failOrTryNextSource });
     if (!isSourceConfigured(native.id)) {
       const job = downloadTracker.getJob(payload.jobId);
       return job
         ? failOrTryNextSource(payload, job, `${getSourceLabel(native.id)} is not configured`)
         : null;
     }
-    return processSourcePipelinePayload(payload as PluginStepPayload, native, {
-      failOrTryNextSource,
-    });
+    return processSourcePipelinePayload(payload, native, { failOrTryNextSource });
   }
-  if (pluginIdFromSource(payload.source)) {
-    return processPluginPipelinePayload(payload as PluginStepPayload, { failOrTryNextSource });
-  }
-  if (payload.source !== "slskd") {
-    const job = downloadTracker.getJob(payload.jobId);
-    return job
-      ? failOrTryNextSource(payload, job, `Unknown download source: ${payload.source}`)
-      : null;
+  if (source !== "slskd") {
+    const job = downloadTracker.getJob(jobId);
+    return job ? failOrTryNextSource(payload, job, `Unknown download source: ${source}`) : null;
   }
   if (!slskdClient.isConfigured() || !isSourceConfigured("slskd")) {
     const job = downloadTracker.getJob(payload.jobId);
     return job ? failOrTryNextSource(payload, job, SLSKD_NOT_CONFIGURED_MESSAGE) : null;
   }
-  return processSlskdPipelinePayload(payload as SlskdStepPayload, {
-    failOrTryNextSource: failOrTryNextSource as SlskdStepHelpers["failOrTryNextSource"],
-  });
+  return processSlskdPipelinePayload(payload, { failOrTryNextSource });
 }
 
 export async function continuePipeline(payload: PipelinePayload | null | undefined) {

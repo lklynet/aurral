@@ -188,7 +188,7 @@ async function search(track: Parameters<typeof downloadTracker.addJob>[0]) {
 }
 
 const choices = (next: Awaited<ReturnType<typeof search>>["next"]) =>
-  next.candidates.map((entry) => [entry.raw.id, entry.evaluation.decision]);
+  next.candidates.map((entry) => [entry.raw.id, entry.evaluation?.decision]);
 
 function assertNoYtdlpLeft(pids: number[]) {
   for (const pid of pids)

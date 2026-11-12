@@ -162,7 +162,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
   const pipelinePayload = {
     ...payload,
     phase: "download",
-    source: "usenet",
+    source: "usenet" as const,
     candidates: [
       usenetCandidate({
         raw: {
@@ -220,7 +220,7 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
   const pipelinePayload = {
     ...payload,
     phase: "download" as const,
-    source: "deemix",
+    source: "deemix" as const,
     candidates: [
       {
         raw: {
@@ -277,7 +277,7 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
   const pipelinePayload = {
     ...payload,
     phase: "download",
-    source: "slskd",
+    source: "slskd" as const,
     eventOffset: 0,
     candidates: [
       {

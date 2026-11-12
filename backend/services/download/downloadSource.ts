@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import type { albumQuery, trackQuery } from "./sourcePipeline.ts";
+import type { PLUGIN_SOURCE_PREFIX } from "../plugins/pluginStore.ts";
 
 const MAX_RESULTS = 50;
 const MAX_FILES = 1000;
@@ -69,7 +70,7 @@ export class DownloadSourceError extends Error {}
 // keeps: `list` is null until the source knows the files, and then `keep`
 // names the files to download, every file when Aurral can't tell.
 export type DownloadSource = {
-  id: string;
+  id: "qbittorrent" | `${typeof PLUGIN_SOURCE_PREFIX}${string}`;
   staging: string;
   tracks?: {
     search: (track: TrackQuery, upgrade: Upgrade) => Promise<TrackResult[]>;

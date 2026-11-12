@@ -14,12 +14,13 @@ import {
   prefilterCandidates,
   evaluateTrackCandidates,
   type CandidateEvaluation,
+  type RawSearchResult,
   type SearchResult,
   type TrackEvaluation,
 } from "./decisionEngine.ts";
 import { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
 
-export async function buildSourceCandidates({
+export async function buildSourceCandidates<Raw extends RawSearchResult = RawSearchResult>({
   source,
   results,
   candidates,
@@ -28,8 +29,8 @@ export async function buildSourceCandidates({
   options = {},
 }: {
   source?: string;
-  results?: SearchResult[];
-  candidates?: SearchResult[];
+  results?: Raw[];
+  candidates?: Raw[];
   request?: SearchTrackRequest;
   context?: Parameters<typeof buildTrackRequest>[0];
   options?: Parameters<typeof buildSoulseekCandidates>[2];
@@ -74,7 +75,9 @@ export function hasUsableSearchCandidates({
 }
 
 // Payload shape the download orchestrators carry between phases.
-export function toPipelineCandidate(evaluation: CandidateEvaluation) {
+export function toPipelineCandidate<Raw extends RawSearchResult>(
+  evaluation: CandidateEvaluation<Raw>,
+) {
   return {
     raw: evaluation.candidate.raw,
     candidate: evaluation.candidate,
@@ -93,7 +96,9 @@ export function toPipelineCandidate(evaluation: CandidateEvaluation) {
 }
 
 // Candidates the orchestrator may attempt, in decision order.
-export function usableEvaluationEntries(evaluation: TrackEvaluation | null | undefined) {
+export function usableEvaluationEntries<Raw extends RawSearchResult>(
+  evaluation: TrackEvaluation<Raw> | null | undefined,
+) {
   // Review-tier candidates are usable as a last resort: the orchestrator
   // tries them after every accept/verify candidate, under strict
   // post-download validation, before failing the source.

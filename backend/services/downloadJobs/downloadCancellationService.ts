@@ -353,7 +353,7 @@ async function cancelSourceWork(payloads: CancellationPayload[]) {
     const jobId = normalizeId(payload?.jobId);
     if (!source || !jobId) continue;
     const pendingId = typeof payload?.pendingId === "string" ? payload.pendingId : null;
-    await discardSourceWork({ jobId, phase: "cancelled", pendingId }, source);
+    await discardSourceWork({ jobId, pendingId }, source);
     discarded += 1;
   }
   return { discarded };

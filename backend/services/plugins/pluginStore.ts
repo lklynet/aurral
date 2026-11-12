@@ -302,7 +302,7 @@ export function activePluginSources() {
   return activePlugins()
     .filter((plugin) => plugin.manifest.downloadSource && isCapabilityOn(plugin, "downloadSource"))
     .map((plugin) => ({
-      id: `${PLUGIN_SOURCE_PREFIX}${plugin.id}`,
+      id: `${PLUGIN_SOURCE_PREFIX}${plugin.id}` as const,
       label: plugin.manifest.name,
       enabled: true,
       configured: true,

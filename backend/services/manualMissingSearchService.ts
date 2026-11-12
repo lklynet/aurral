@@ -5,7 +5,7 @@ import {
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { isNzbSource, USENET_CLIENT_KEYS } from "./usenetClientCommon.ts";
+import { USENET_CLIENT_KEYS, type NzbSourceId } from "./usenetClientCommon.ts";
 import { getDownloadSourceStatus } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -36,16 +36,15 @@ type ManualSearchJob = Pick<DownloadJob, "id"> &
   Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName">>;
 type ManualWorkContext = { jobId: string; playlistId: string | null };
 type RawSearchResult = JsonObject;
-type StoredCandidate = ReturnType<typeof toStoredCandidate>;
+type ManualResult = Awaited<ReturnType<typeof searchSource>>[number];
 type ManualSearchSession = {
   actorId: string;
   jobId: string;
   mode: ManualSearchMode;
   playlistId: string;
-  source: string;
   sourceId: string | undefined;
   downloadClient: string | null;
-  results: Map<string, StoredCandidate>;
+  results: Map<string, ManualResult["selection"]>;
   expiresAt: number;
 };
 
@@ -138,12 +137,19 @@ function resultView(source: string, raw: RawSearchResult) {
   };
 }
 
-function toStoredCandidate(source: string, raw: RawSearchResult) {
-  if (isNzbSource(source)) {
-    return { raw: { release: raw }, score: 0 };
-  }
-  return { raw };
-}
+const manualResults = <Source extends string, Raw extends RawSearchResult>(
+  source: Source,
+  results: Raw[],
+) => results.map((raw) => ({ raw, selection: { source, candidate: { raw } } }));
+
+const manualReleases = <Source extends NzbSourceId, Raw extends RawSearchResult>(
+  source: Source,
+  releases: Raw[],
+) =>
+  releases.map((raw) => ({
+    raw,
+    selection: { source, candidate: { raw: { release: raw }, score: 0 } },
+  }));
 
 async function searchSlskd(query: string, workContext: ManualWorkContext) {
   const results = await getDownloadClient("slskd").searchQuery(query, {
@@ -165,19 +171,27 @@ async function searchSlskd(query: string, workContext: ManualWorkContext) {
 }
 
 async function searchSource(source: string, query: string, workContext: ManualWorkContext) {
-  if (source === "slskd") return searchSlskd(query, workContext);
+  if (source === "slskd") return manualResults(source, await searchSlskd(query, workContext));
   if (source === "deemix") {
-    return (await getDownloadClient("deemix").search(query, { limit: 50 })).filter(
-      (entry: RawSearchResult) => entry?.readable !== false,
+    const found = await getDownloadClient("deemix").search(query, { limit: 50 });
+    return manualResults(
+      source,
+      found.filter((entry) => entry?.readable !== false),
     );
   }
   if (source === "ytdlp") {
-    return (await getDownloadClient("ytdlp").search(query, { limit: 10 })).filter(
-      (entry: RawSearchResult) => !isYtdlpLiveResult(entry),
+    const found = await getDownloadClient("ytdlp").search(query, { limit: 10 });
+    return manualResults(
+      source,
+      found.filter((entry) => !isYtdlpLiveResult(entry)),
     );
   }
-  if (source === "usenet") return prowlarrClient.search(query, { limit: MAX_RESULTS });
-  if (source === "tidarr") return getDownloadClient("tidarr").search(query);
+  if (source === "usenet") {
+    return manualReleases(source, await prowlarrClient.search(query, { limit: MAX_RESULTS }));
+  }
+  if (source === "tidarr") {
+    return manualReleases(source, await getDownloadClient("tidarr").search(query));
+  }
   throw new Error("Unknown manual search source");
 }
 
@@ -220,9 +234,7 @@ export async function createManualMissingSearch({
   if (!sourceOption) throw new Error("That download client is not currently available");
   const query = buildQuery(job);
   if (!query) throw new Error("This track has no searchable artist or title");
-  const rawResults = (
-    await searchSource(sourceOption.source, query, { jobId: job.id, playlistId })
-  ).slice(0, MAX_RESULTS);
+  const found = await searchSource(sourceOption.source, query, { jobId: job.id, playlistId });
   return storeManualMissingSearch({
     jobId: job.id,
     actorId,
@@ -230,7 +242,7 @@ export async function createManualMissingSearch({
     playlistId,
     sourceOption,
     query,
-    rawResults,
+    found,
   });
 }
 
@@ -241,7 +253,7 @@ export function storeManualMissingSearch({
   playlistId = null,
   sourceOption,
   query,
-  rawResults,
+  found,
 }: {
   jobId: string;
   actorId: string | number;
@@ -249,17 +261,17 @@ export function storeManualMissingSearch({
   playlistId?: string | null;
   sourceOption: ManualSource;
   query: string;
-  rawResults: RawSearchResult[];
+  found: ManualResult[];
 }) {
   pruneSessions();
   while (sessions.size >= MAX_SESSIONS) {
     sessions.delete(sessions.keys().next().value!);
   }
-  const storedResults = new Map<string, StoredCandidate>();
+  const storedResults = new Map<string, ManualResult["selection"]>();
   const source = text(sourceOption?.source);
-  const results = (Array.isArray(rawResults) ? rawResults : []).slice(0, MAX_RESULTS).map((raw) => {
+  const results = found.slice(0, MAX_RESULTS).map(({ raw, selection }) => {
     const resultId = randomUUID();
-    storedResults.set(resultId, toStoredCandidate(source, raw));
+    storedResults.set(resultId, selection);
     return { id: resultId, ...resultView(source, raw) };
   });
   const sessionId = randomUUID();
@@ -268,7 +280,6 @@ export function storeManualMissingSearch({
     jobId: text(jobId),
     mode: mode === "replacement" ? "replacement" : "missing",
     playlistId: text(playlistId),
-    source,
     sourceId: sourceOption?.id,
     downloadClient: sourceOption?.downloadClient || null,
     results: storedResults,
@@ -293,15 +304,14 @@ export function getManualMissingSelection({
   if (!session || session.jobId !== text(jobId) || session.actorId !== text(actorId)) {
     throw new Error("This manual search has expired. Search again to refresh the results.");
   }
-  const candidate = session.results.get(text(resultId));
-  if (!candidate) throw new Error("That search result is no longer available");
+  const selection = session.results.get(text(resultId));
+  if (!selection) throw new Error("That search result is no longer available");
   return {
-    source: session.source,
+    ...selection,
     sourceId: session.sourceId,
     downloadClient: session.downloadClient,
     mode: session.mode,
     playlistId: session.playlistId || null,
-    candidate,
   };
 }
 

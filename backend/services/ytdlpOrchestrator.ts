@@ -1,7 +1,11 @@
 import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type PipelineStep,
+} from "./downloadJobs/downloadTracker.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
@@ -47,22 +51,15 @@ const SONG_READS = 6;
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
 type YtdlpResult = Awaited<ReturnType<YtdlpClient["search"]>>[number];
-type YtdlpCandidate = Omit<ReturnType<typeof toPipelineCandidate>, "raw"> & { raw: YtdlpResult };
+type YtdlpCandidate = Partial<ReturnType<typeof toPipelineCandidate<YtdlpResult>>> & {
+  raw: YtdlpResult;
+};
 
-type YtdlpPayload = {
-  jobId: string;
-  phase: string;
-  source?: string | null;
-  playlistId?: string | null;
-  track?: Parameters<typeof buildResolvedTrack>[1];
-  destination?: string | null;
-  upgradeForJobId?: string | null;
-  manualSelection?: boolean;
+type YtdlpPayload = PipelineStep & {
+  source: "ytdlp";
   candidates?: YtdlpCandidate[];
   candidate?: YtdlpCandidate | null;
-  candidateIndex?: number;
   downloadedPath?: string | null;
-  heldForReview?: ReturnType<typeof holdForReview> | null;
 };
 
 type YtdlpHelpers = {
@@ -221,7 +218,7 @@ async function handleYtdlpSearch(payload: YtdlpPayload, helpers: YtdlpHelpers) {
   return {
     ...payload,
     phase: "download",
-    source: "ytdlp",
+    source: "ytdlp" as const,
     candidates,
     candidateIndex: 0,
     resolvedTrack,
@@ -281,7 +278,7 @@ async function handleYtdlpDownload(payload: YtdlpPayload, helpers: YtdlpHelpers)
   return {
     ...payload,
     phase: "finalize",
-    source: "ytdlp",
+    source: "ytdlp" as const,
     candidate,
     candidateIndex: index,
     downloadedPath: downloaded.filePath,
@@ -332,7 +329,7 @@ async function handleYtdlpFinalize(payload: YtdlpPayload, helpers: YtdlpHelpers)
         ...payload,
         downloadedPath: null,
         heldForReview: holdForReview(job, {
-          source: "ytdlp",
+          source: "ytdlp" as const,
           sourcePath: heldPath,
           reason: validation.reason,
         }),

@@ -1,4 +1,4 @@
-import { candidateFile, createTrackedJob, trackedJob } from "./fixtures.ts";
+import { candidateFile, createTrackedJob, isStepFrom, trackedJob } from "./fixtures.ts";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -95,7 +95,7 @@ test("a Soulseek search advances one poll per pipeline step", async (t) => {
   );
 
   const first = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
-  assert.ok(first != null);
+  assert.ok(isStepFrom(first, "slskd"));
   assert.equal(first.phase, "search");
   assert.equal(first.activeSearch!.id, "search-1");
   assert.ok(first.delaySeconds != null);
@@ -108,7 +108,7 @@ test("a Soulseek search advances one poll per pipeline step", async (t) => {
   assert.equal(polled.mock.calls.length, 1);
 
   const third = await processPipelinePayload(second);
-  assert.ok(third != null);
+  assert.ok(isStepFrom(third, "slskd"));
   assert.equal(third.phase, "download");
   assert.equal(third.activeSearch, null);
   assert.equal(created.mock.calls.length, 1);
@@ -133,16 +133,15 @@ test("a Soulseek search that slskd keeps queued past five minutes waits for it t
   );
 
   const started = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
-  assert.ok(started != null);
+  assert.ok(isStepFrom(started, "slskd"));
   const queuedAt = Date.now();
   vi.advanceTimersByTime(30000);
   let next = started;
-  assert.ok(next != null);
   while (Date.now() - queuedAt < 10 * 60 * 1000) {
     assert.ok(next.delaySeconds != null);
     vi.advanceTimersByTime(next.delaySeconds * 1000);
     const advanced = await processPipelinePayload(next);
-    assert.ok(advanced != null);
+    assert.ok(isStepFrom(advanced, "slskd"));
     next = advanced;
     assert.equal(next.phase, "search");
     assert.equal(next.activeSearch?.id, started.activeSearch!.id);
@@ -154,7 +153,7 @@ test("a Soulseek search that slskd keeps queued past five minutes waits for it t
   assert.ok(next.delaySeconds != null);
   vi.advanceTimersByTime(next.delaySeconds * 1000);
   const ran = await processPipelinePayload(next);
-  assert.ok(ran != null);
+  assert.ok(isStepFrom(ran, "slskd"));
   assert.equal(ran.phase, "download");
   assert.equal(created.mock.calls.length, 1);
   assert.ok(ran.candidates != null);
@@ -189,7 +188,7 @@ test("a Soulseek search that starts running just before its monitor is rebuilt k
   assert.ok(next != null);
   assert.equal(next.phase, "download");
   assert.equal(created.mock.calls.length, 1);
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "slskd"));
   assert.ok(next.candidates != null);
   assert.match(candidateFile(next.candidates[0]), /Late Album\\01 - Song\.flac$/);
 });
@@ -223,7 +222,7 @@ test("tracks from one album reuse the album search", async (t) => {
     source: "slskd",
     jobId: requireFixture(second),
   });
-  assert.ok(secondResult.next != null);
+  assert.ok(isStepFrom(secondResult.next, "slskd"));
   assert.equal(secondResult.next.phase, "download");
   assert.equal(created.mock.calls.length, 1);
   assert.ok(secondResult.next.candidates != null);
@@ -254,9 +253,9 @@ test("a failed Soulseek poll moves on to the next query", async () => {
   );
 
   const first = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
-  assert.ok(first != null);
+  assert.ok(isStepFrom(first, "slskd"));
   const second = await processPipelinePayload(first);
-  assert.ok(second != null);
+  assert.ok(isStepFrom(second, "slskd"));
   assert.equal(second.phase, "search");
   assert.equal(second.searchQueryIndex, 1);
   assert.notEqual(second.activeSearch!.query, first.activeSearch!.query);
@@ -452,7 +451,7 @@ test("a search refused while Soulseek logs in waits and resumes after login", as
   assert.ok(stillHeld.delaySeconds != null);
   vi.advanceTimersByTime(stillHeld.delaySeconds * 1000);
   const resumed = await processPipelinePayload(stillHeld);
-  assert.ok(resumed != null);
+  assert.ok(isStepFrom(resumed, "slskd"));
   assert.equal(resumed.phase, "search");
   assert.equal(soulseek.searches.length, 1);
   assert.equal(resumed.activeSearch!.query, held.searchQueries![0]);
@@ -480,7 +479,7 @@ test("a transfer that fails while Soulseek logs in is retried from the same peer
   soulseek.loggedIn = false;
   soulseek.transferState = "Completed, Errored";
   const held = await processPipelinePayload(polling);
-  assert.ok(held != null);
+  assert.ok(isStepFrom(held, "slskd"));
   assert.equal(held.phase, "download");
   assert.equal(held.candidateIndex, 0);
   assert.deepEqual(held.candidateRetryCounts, { 0: 0 });
@@ -531,7 +530,7 @@ test("a restart that drops an upgrade deletes the upgrade's running search from 
   const soulseek = await startSoulseek(t);
   soulseek.loggedIn = true;
   const { upgradeId, searching } = await startUpgradeSearch("Restart Band");
-  assert.ok(searching != null);
+  assert.ok(isStepFrom(searching, "slskd"));
   const searchId = searching.activeSearch!.id;
   const trackedSearches = () =>
     db
@@ -571,7 +570,7 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
     "library",
   );
   const live = await processPipelinePayload({ phase: "search", source: "slskd", jobId: liveId });
-  assert.ok(live != null);
+  assert.ok(isStepFrom(live, "slskd"));
   assert.equal(soulseek.searches.length, 2);
 
   downloadTracker.resetDownloadingToPending();
@@ -596,14 +595,14 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
   );
   respond(503);
   await assert.rejects(startup, { message: "Could not cancel slskd work" });
-  assert.ok(dropped != null);
+  assert.ok(isStepFrom(dropped, "slskd"));
   assert.deepEqual(
     trackedSlskdSearchIds(),
     [dropped.activeSearch!.id, live.activeSearch!.id].sort(),
   );
 
   await processSystemTask({ kind: "flow-startup-check" });
-  assert.ok(dropped != null);
+  assert.ok(isStepFrom(dropped, "slskd"));
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${dropped.activeSearch!.id}`]);
   assert.deepEqual(trackedSlskdSearchIds(), [live.activeSearch!.id]);
 });

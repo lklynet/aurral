@@ -1,4 +1,4 @@
-import { createTrackedJob, startWorkerForQueuedWork, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, isStepFrom, startWorkerForQueuedWork, trackedJob } from "./fixtures.ts";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -200,7 +200,7 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     };
     const initial = {
       phase: "search" as const,
-      source: "deemix",
+      source: "deemix" as const,
       jobId: requireFixture(ids[0]),
       downloadAttemptId,
       playlistId: "library",
@@ -289,8 +289,9 @@ const serveStandard = (t: import("vite-plus/test").TestContext) =>
   ]);
 
 function deemixCandidates(result: Awaited<ReturnType<typeof processDeemixPipelinePayload>>) {
-  assert.ok(result?.candidates != null);
-  return result.candidates as NonNullable<DeemixPayload["candidates"]>;
+  assert.ok(isStepFrom(result, "deemix"));
+  assert.ok(result.candidates);
+  return result.candidates;
 }
 
 const albumEntry = (id: string, title: string, artist = "The Band") => ({
@@ -303,7 +304,7 @@ const albumEntry = (id: string, title: string, artist = "The Band") => ({
 async function searchWith(ids: string[], releaseMbid: string) {
   const payload = {
     phase: "search" as const,
-    source: "deemix",
+    source: "deemix" as const,
     jobId: requireFixture(ids[0]),
     albumGrab: true,
     albumGroupJobIds: ids,

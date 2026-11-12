@@ -1,4 +1,4 @@
-import { usenetCandidate } from "./fixtures.ts";
+import { isStepFrom, usenetCandidate } from "./fixtures.ts";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import {
   test,
@@ -347,7 +347,7 @@ async function pipelineFixture(
     deleted,
     payload: {
       jobId,
-      source: "usenet",
+      source: "usenet" as const,
       phase: "finalize",
       downloadClient: "nzbget",
       nzbId: 42,
@@ -660,7 +660,7 @@ test("a download keeps polling while NZBGet cannot be read, goes on once it can,
     },
     throwOnFailure,
   );
-  assert.ok(next != null);
+  assert.ok(isStepFrom(next, "usenet"));
   assert.equal(next.nzbId, 43);
   assert.equal((await poll(next as UsenetPayload)).phase, "poll");
 });

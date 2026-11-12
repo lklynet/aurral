@@ -83,7 +83,7 @@ export function getDownloadSourceStatus() {
   const qbittorrentConfigured = prowlarrConfigured && qbittorrentClient.isConfigured();
   return {
     slskd: {
-      id: "slskd",
+      id: "slskd" as const,
       label: SOURCE_LABELS.slskd,
       enabled: isSlskdEnabled(),
       configured: slskdConfigured,
@@ -91,7 +91,7 @@ export function getDownloadSourceStatus() {
       albumPriority: normalizeAlbumPriority(getIntegrations().slskd?.albumPriority),
     },
     usenet: {
-      id: "usenet",
+      id: "usenet" as const,
       label: SOURCE_LABELS.usenet,
       enabled: usenetConfigured,
       configured: usenetConfigured,
@@ -102,7 +102,7 @@ export function getDownloadSourceStatus() {
       sabnzbdConfigured,
     },
     tidarr: {
-      id: "tidarr",
+      id: "tidarr" as const,
       label: SOURCE_LABELS.tidarr,
       enabled: getIntegrations().tidarr?.enabled === true,
       configured: tidarrConfigured,
@@ -110,7 +110,7 @@ export function getDownloadSourceStatus() {
       albumPriority: normalizeAlbumPriority(getIntegrations().tidarr?.albumPriority),
     },
     deemix: {
-      id: "deemix",
+      id: "deemix" as const,
       label: SOURCE_LABELS.deemix,
       enabled: deemixClient.isEnabled(),
       configured: deemixConfigured,
@@ -118,14 +118,14 @@ export function getDownloadSourceStatus() {
       albumPriority: normalizeAlbumPriority(getIntegrations().deemix?.albumPriority),
     },
     ytdlp: {
-      id: "ytdlp",
+      id: "ytdlp" as const,
       label: SOURCE_LABELS.ytdlp,
       enabled: ytdlpClient.isEnabled(),
       configured: ytdlpConfigured,
       priority: getYtdlpPriority(),
     },
     qbittorrent: {
-      id: "qbittorrent",
+      id: "qbittorrent" as const,
       label: SOURCE_LABELS.qbittorrent,
       enabled: qbittorrentClient.getStatus().enabled,
       configured: qbittorrentConfigured,

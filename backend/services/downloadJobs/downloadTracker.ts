@@ -6,8 +6,9 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { listOf } from "../../db/helpers/storedSchemas.ts";
 import type { DownloadJobsRevisionRow, DownloadJobsRow } from "../../db/rows.ts";
-import type { JsonValue } from "../jobs/queue.ts";
+import type { NzbSourceId } from "../usenetClientCommon.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
+import type { PipelinePayload } from "../downloadPipeline.ts";
 import {
   getQuickSearchSources,
   isAlbumGrabSourceConfigured,
@@ -87,19 +88,23 @@ type AddJobOptions = {
   saved?: boolean;
   startedByPlaylist?: string | null;
 };
-type ManualCandidate = { raw: JsonValue };
+type SourceCandidate<Source extends PipelinePayload["source"]> =
+  Extract<PipelinePayload, { source: Source }> extends { candidates?: (infer Candidate)[] | null }
+    ? Candidate
+    : never;
+type ManualSelection = { downloadClient?: string | null } & (
+  | { source: "slskd"; candidate: SourceCandidate<"slskd"> }
+  | { source: "deemix"; candidate: SourceCandidate<"deemix"> }
+  | { source: "ytdlp"; candidate: SourceCandidate<"ytdlp"> }
+  | { source: NzbSourceId; candidate: SourceCandidate<NzbSourceId> }
+);
 const queuedStepSchema = v.object({
   jobId: v.string(),
   downloadAttemptId: v.string(),
   albumGroupJobIds: v.nullish(v.array(v.string()), []),
 });
 type AlbumGrabAttempt = Omit<ReturnType<typeof downloadPipelineQueue.list>[number], "payload"> & {
-  payload: PipelinePayload & { albumGroupJobIds: string[] };
-};
-type ManualSelection = {
-  source?: string;
-  candidate?: ManualCandidate;
-  downloadClient?: string | null;
+  payload: PipelineStep & { albumGroupJobIds: string[] };
 };
 export type HeldForReview = {
   source: string;
@@ -561,9 +566,25 @@ export type HeldForReviewDraft = Omit<HeldForReview, "sourcePath"> & {
 const hasSourcePath = (held: HeldForReviewDraft | null | undefined): held is HeldForReview =>
   Boolean(held?.sourcePath);
 
-type PipelineCandidate = { raw?: unknown; [field: string]: unknown };
+function buildManualPayload(job: DownloadJob, selection: ManualSelection): PipelinePayload {
+  const step = {
+    ...buildPipelinePayload(job),
+    phase: "download",
+    allowedSources: [selection.source],
+    candidateIndex: 0,
+    manualSelection: true,
+    manualDownloadClient: selection.downloadClient || null,
+  };
+  if (selection.source === "slskd")
+    return { ...step, source: selection.source, candidates: [selection.candidate] };
+  if (selection.source === "deemix")
+    return { ...step, source: selection.source, candidates: [selection.candidate] };
+  if (selection.source === "ytdlp")
+    return { ...step, source: selection.source, candidates: [selection.candidate] };
+  return { ...step, source: selection.source, candidates: [selection.candidate] };
+}
 
-export type PipelinePayload = Partial<{
+export type PipelineStep = Partial<{
   [
     K in Exclude<
       keyof BuiltPipelinePayload,
@@ -579,8 +600,6 @@ export type PipelinePayload = Partial<{
     albumGrab?: boolean;
     releaseMbid?: string | null;
     albumGroupJobIds?: string[] | null;
-    source?: string | null;
-    candidates?: PipelineCandidate[];
     candidateIndex?: number;
     manualSelection?: boolean;
     manualDownloadClient?: string | null;
@@ -955,7 +974,11 @@ export class DownloadTracker {
     if (getShareDownload(jobId)) {
       const job = this.jobs.get(jobId);
       if (!job || job.status !== "pending" || this.isSlskdDispatched(jobId)) return false;
-      const payload = { ...buildPipelinePayload(job), source: "share", manualSelection: true };
+      const payload: PipelinePayload = {
+        ...buildPipelinePayload(job),
+        source: "share",
+        manualSelection: true,
+      };
       if (!isPipelinePayloadActive(payload)) return false;
       this.enqueuePipeline(payload);
       this.markSlskdDispatched(jobId);
@@ -1018,7 +1041,7 @@ export class DownloadTracker {
     return true;
   }
 
-  _holdForRelease(payload: PipelinePayload, members: DownloadJob[], release: TrackerRelease) {
+  _holdForRelease(payload: PipelineStep, members: DownloadJob[], release: TrackerRelease) {
     payload.albumGrab = true;
     payload.releaseMbid = release.releaseMbid;
     payload.albumGroupJobIds = members.map((member) => member.id);
@@ -1037,7 +1060,7 @@ export class DownloadTracker {
   // release attempt therefore waits while one that started before it still
   // downloads an upgrade of the same album by release, and then downloads
   // the release whole.
-  upgradeAttemptAhead(payload: PipelinePayload) {
+  upgradeAttemptAhead(payload: PipelineStep) {
     const order = upgradeAttemptOrder.get(payload.downloadAttemptId);
     const albumMbid = this.jobs.get(payload.jobId)?.albumMbid;
     if (order === undefined || !albumMbid) return false;
@@ -1059,8 +1082,8 @@ export class DownloadTracker {
   // After its quick search found nothing to import, a track request tries
   // its release the way a queued track does. Returns the attempt, or null
   // when the track searches for itself.
-  searchByReleaseAfterQuickSearch(
-    payload: PipelinePayload,
+  searchByReleaseAfterQuickSearch<Step extends PipelineStep>(
+    payload: Step,
     release: TrackerRelease | null | undefined,
   ) {
     const job = this.jobs.get(payload.jobId);
@@ -1070,35 +1093,16 @@ export class DownloadTracker {
       this._noteTrackSearch(job, release);
       return null;
     }
-    const attempt: PipelinePayload = { ...payload };
+    const attempt = { ...payload };
     this._holdForRelease(attempt, members, release!);
     recordAlbumGrabQueued(attempt, members);
     return attempt;
   }
 
-  enqueueManualSelection(
-    jobId: string,
-    { source, candidate, downloadClient = null }: ManualSelection = {},
-  ) {
+  enqueueManualSelection(jobId: string, selection: ManualSelection) {
     const job = this.jobs.get(jobId);
-    const normalizedSource = String(source || "").trim();
     if (!job || job.status !== "failed" || job.upgradeForJobId) return false;
-    if (
-      !candidate?.raw ||
-      !["slskd", "usenet", "tidarr", "deemix", "ytdlp"].includes(normalizedSource)
-    ) {
-      return false;
-    }
-    const payload: PipelinePayload = {
-      ...buildPipelinePayload(job),
-      phase: "download",
-      source: normalizedSource,
-      allowedSources: [normalizedSource],
-      candidates: [candidate],
-      candidateIndex: 0,
-      manualSelection: true,
-      manualDownloadClient: downloadClient || null,
-    };
+    const payload = buildManualPayload(job, selection);
     if (!this.setPending(jobId, "Manual download queued", { asRetryCycle: false })) return false;
     // Reserve the job before publishing it so automatic dispatch cannot claim it
     // during the queue handoff.
@@ -1114,32 +1118,12 @@ export class DownloadTracker {
     }
   }
 
-  enqueueManualReplacementSelection(
-    jobId: string,
-    { source, candidate, downloadClient = null }: ManualSelection = {},
-  ) {
+  enqueueManualReplacementSelection(jobId: string, selection: ManualSelection) {
     const sourceJob = this.jobs.get(jobId);
-    const normalizedSource = String(source || "").trim();
     if (sourceJob?.status !== "done") return false;
-    if (
-      !candidate?.raw ||
-      !["slskd", "usenet", "tidarr", "deemix", "ytdlp"].includes(normalizedSource)
-    ) {
-      return false;
-    }
     const replacementJobId = this.addReplacementSearchJob(sourceJob);
     if (!replacementJobId) return false;
-    const replacementJob = this.jobs.get(replacementJobId)!;
-    const payload: PipelinePayload = {
-      ...buildPipelinePayload(replacementJob),
-      phase: "download",
-      source: normalizedSource,
-      allowedSources: [normalizedSource],
-      candidates: [candidate],
-      candidateIndex: 0,
-      manualSelection: true,
-      manualDownloadClient: downloadClient || null,
-    };
+    const payload = buildManualPayload(this.jobs.get(replacementJobId)!, selection);
     this.markSlskdDispatched(replacementJobId);
     try {
       this.enqueuePipeline(payload);
