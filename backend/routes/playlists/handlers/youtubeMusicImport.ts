@@ -108,12 +108,6 @@ export default new Hono<AppEnv>()
         );
       } catch (error) {
         const failure = asAppError(error);
-        if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-          logger.debug("playlist-import", "YouTube Music playlist import name already exists", {
-            playlistName: name || null,
-          });
-          return c.json({ error: "Playlist name already exists", message: failure.message }, 409);
-        }
         const status = Number(failure?.statusCode) || 500;
         logger[status >= 500 ? "error" : "warn"](
           "playlist-import",

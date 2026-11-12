@@ -267,7 +267,7 @@ const importSourceOf = (playlistId: string) => {
 
 const emptyPlan = () => ({ primaryTracks: [] });
 
-const captureLog = (level: "info" | "error", message: string) => {
+const captureLog = (level: "info" | "warn", message: string) => {
   const logged = Promise.withResolvers<Record<string, unknown>>();
   const spy = vi.spyOn(logger, level).mockImplementation((_scope, entry, details) => {
     if (entry === message) logged.resolve({ ...details });
@@ -309,19 +309,17 @@ test("background import logs completion only after the playlist exists", async (
   }
 });
 
-test("background import logs a permanent failure with its reason", async () => {
-  const { logged: importFailed } = captureLog("error", "Playlist import failed");
+test("background import logs a failed attempt with its reason", async () => {
+  const { logged: importFailed } = captureLog("warn", "Playlist import attempt failed; retrying");
+  vi.spyOn(flowPlaylistConfig, "createStaticPlaylist").mockImplementation(() => {
+    throw new Error("Settings are read-only");
+  });
   const { stopPlaylistOperationWorker } =
     await import("../../backend/services/playlists/playlistOperationWorker.ts");
-  flowPlaylistConfig.createStaticPlaylist({
-    name: "Duplicate Import",
-    ownerUserId: 7,
-    tracks: [],
-  });
   try {
     await enqueueImportedPlaylist({
       ownerUserId: 7,
-      name: "Duplicate Import",
+      name: "Failing Import",
       provider: "listenbrainz-playlist",
       sourceName: "Test Source",
       externalId: "external-playlist",
@@ -333,7 +331,7 @@ test("background import logs a permanent failure with its reason", async () => {
     });
     const failed = await importFailed;
     assert.equal(failed.provider, "listenbrainz-playlist");
-    assert.match(String(failed.reason), /already exists/i);
+    assert.equal(failed.reason, "Settings are read-only");
     assert.ok(failed.operationId);
   } finally {
     await stopPlaylistOperationWorker();

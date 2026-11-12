@@ -8,8 +8,6 @@ import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
 
 type PlaylistOperation = Record<string, unknown>;
 
-const PERMANENT_ERROR_CODES = new Set(["STATIC_PLAYLIST_NAME_CONFLICT", "FLOW_NAME_CONFLICT"]);
-
 let currentLabel: string | null = null;
 let flowRunLabel: string | null = null;
 
@@ -38,9 +36,8 @@ function syncWorkerState() {
 }
 
 function retryDecision(error: unknown, job: Pick<TypedJob<unknown>, "attempts">) {
-  const failure = asAppError(error);
-  const message = failure?.message || String(error);
-  if (PERMANENT_ERROR_CODES.has(String(failure?.code || "")) || job.attempts >= 3) {
+  const message = asAppError(error)?.message || String(error);
+  if (job.attempts >= 3) {
     return { action: "fail" as const, message };
   }
   return { action: "retry" as const, delayMs: 60_000, message };

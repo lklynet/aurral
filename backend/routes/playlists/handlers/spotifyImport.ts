@@ -258,12 +258,6 @@ export default new Hono<AppEnv>()
         );
       } catch (error) {
         const failure = asAppError(error);
-        if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-          logger.debug("playlist-import", "Spotify playlist import name already exists", {
-            playlistName: name || null,
-          });
-          return c.json({ error: "Playlist name already exists", message: failure.message }, 409);
-        }
         const status =
           failure?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : failure?.statusCode || 500;
         logger[status >= 500 ? "error" : "warn"](

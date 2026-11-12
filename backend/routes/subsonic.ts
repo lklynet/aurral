@@ -220,7 +220,6 @@ const failedResponse = (format: SubsonicFormat, ...[code, message, helpUrl]: Sub
   renderResponse(format, "failed", { code, message, helpUrl });
 
 const PLAYLIST_EDIT_ERROR_CODES: Partial<Record<string, number>> = {
-  STATIC_PLAYLIST_NAME_CONFLICT: 50,
   SUBSONIC_PLAYLIST_READ_ONLY: 50,
   SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND: 70,
 };

@@ -184,9 +184,6 @@ export default new Hono<AppEnv>()
       return c.json({ success: true, flow }, 200);
     } catch (error) {
       const failure = asAppError(error);
-      if (failure?.code === "FLOW_NAME_CONFLICT") {
-        return c.json({ error: "Flow name already exists", message: failure.message }, 400);
-      }
       return c.json({ error: "Failed to create flow", message: failure?.message }, 500);
     }
   })
@@ -220,9 +217,6 @@ export default new Hono<AppEnv>()
       return c.json({ success: true, flow: updated }, 200);
     } catch (error) {
       const failure = asAppError(error);
-      if (failure?.code === "FLOW_NAME_CONFLICT") {
-        return c.json({ error: "Flow name already exists", message: failure.message }, 400);
-      }
       return c.json({ error: "Failed to update flow", message: failure?.message }, 500);
     }
   })
@@ -341,9 +335,6 @@ export default new Hono<AppEnv>()
         return c.json({ success: true, ...saved }, 200);
       } catch (error) {
         const failure = asAppError(error);
-        if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-          return c.json({ error: "Playlist name already exists", message: failure.message }, 400);
-        }
         return c.json(
           { error: "Failed to create static playlist", message: failure?.message },
           500,

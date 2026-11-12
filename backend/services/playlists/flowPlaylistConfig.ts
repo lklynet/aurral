@@ -337,7 +337,6 @@ const getStoredFlows = () => {
   }
   flowsCachedAt = Date.now();
   const stored = dbOps.getJSONSetting("flows", v.unknown());
-  if (!Array.isArray(stored)) dbOps.updateSettings({ flows: [] });
   cachedFlows = Array.isArray(stored) ? stored.map(normalizeFlow) : [];
   return cachedFlows;
 };
@@ -354,7 +353,6 @@ const getStoredStaticPlaylists = () => {
   }
   staticPlaylistsCachedAt = Date.now();
   const stored = dbOps.getJSONSetting("staticPlaylists", v.unknown());
-  if (!Array.isArray(stored)) dbOps.updateSettings({ staticPlaylists: [] });
   cachedStaticPlaylists = Array.isArray(stored) ? stored.map(normalizeStaticPlaylist) : [];
   return cachedStaticPlaylists;
 };
@@ -370,23 +368,6 @@ const setStaticPlaylists = (playlists: StaticPlaylist[]) => {
   }
 };
 
-const normalizeNameKey = (value: unknown) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-const createNameConflictError = (name: string) => {
-  const error: Error & { code?: string } = new Error(`Flow name "${name}" already exists`);
-  error.code = "FLOW_NAME_CONFLICT";
-  return error;
-};
-
-const createStaticPlaylistNameConflictError = (name: string) => {
-  const error: Error & { code?: string } = new Error(`Playlist "${name}" already exists`);
-  error.code = "STATIC_PLAYLIST_NAME_CONFLICT";
-  return error;
-};
-
 const canUserAccessOwnerScopedEntity = (user: AccessUser, ownerUserId: number | null) => {
   if (user?.role === "admin") return true;
   if (!user || ownerUserId == null) return false;
@@ -395,51 +376,6 @@ const canUserAccessOwnerScopedEntity = (user: AccessUser, ownerUserId: number | 
 
 const isOwnedByUser = (entity: OwnedEntity | null | undefined, userId: number | null) =>
   Number(entity?.ownerUserId) === Number(userId);
-
-const entitiesRelevantForNameCheck = <T extends OwnedEntity>(
-  entities: T[],
-  { ownerUserId }: { ownerUserId: number | null },
-) => entities.filter((e) => isOwnedByUser(e, ownerUserId));
-
-const assertUniqueFlowName = (
-  flows: FlowConfig[],
-  sameOwnerPlaylists: StaticPlaylist[],
-  nextName: string,
-  exceptFlowId: string | null = null,
-) => {
-  const key = normalizeNameKey(nextName);
-  if (!key) return;
-  const flowConflict = flows.some((flow) => {
-    if (!flow) return false;
-    if (exceptFlowId && flow.id === exceptFlowId) return false;
-    return normalizeNameKey(flow.name) === key;
-  });
-  const playlistConflict = sameOwnerPlaylists.some(
-    (playlist) => playlist && normalizeNameKey(playlist.name) === key,
-  );
-  if (flowConflict || playlistConflict) {
-    throw createNameConflictError(String(nextName || "").trim());
-  }
-};
-
-const assertUniqueStaticPlaylistName = (
-  playlists: StaticPlaylist[],
-  sameOwnerFlows: FlowConfig[],
-  nextName: unknown,
-  exceptPlaylistId: string | null = null,
-) => {
-  const key = normalizeNameKey(nextName);
-  if (!key) return;
-  const playlistConflict = playlists.some((playlist) => {
-    if (!playlist) return false;
-    if (exceptPlaylistId && playlist.id === exceptPlaylistId) return false;
-    return normalizeNameKey(playlist.name) === key;
-  });
-  const flowConflict = sameOwnerFlows.some((flow) => flow && normalizeNameKey(flow.name) === key);
-  if (playlistConflict || flowConflict) {
-    throw createStaticPlaylistNameConflictError(String(nextName || "").trim());
-  }
-};
 
 export const flowPlaylistConfig = {
   canUserAccessFlow<T extends OwnedEntity>(user: AccessUser, flow: T | null | undefined) {
@@ -515,13 +451,6 @@ export const flowPlaylistConfig = {
   }: CreateFlowInput) {
     const flows = getStoredFlows();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
-    assertUniqueFlowName(
-      entitiesRelevantForNameCheck(flows, { ownerUserId: normalizedOwnerUserId }),
-      entitiesRelevantForNameCheck(getStoredStaticPlaylists(), {
-        ownerUserId: normalizedOwnerUserId,
-      }),
-      name,
-    );
     const flow = normalizeFlow({
       id: randomUUID(),
       name,
@@ -556,14 +485,6 @@ export const flowPlaylistConfig = {
     const current = flows[index];
     if (!current) return null;
     const nextName = updates?.name ?? current.name;
-    assertUniqueFlowName(
-      entitiesRelevantForNameCheck(flows, { ownerUserId: current.ownerUserId }),
-      entitiesRelevantForNameCheck(getStoredStaticPlaylists(), {
-        ownerUserId: current.ownerUserId,
-      }),
-      nextName,
-      flowId,
-    );
     const currentSchedule = normalizeScheduleDays(current.scheduleDays);
     const currentScheduleTime = normalizeScheduleTime(current.scheduleTime);
     const { yearFrom, yearTo } = resolveYearRangeUpdate(current, updates || {});
@@ -716,7 +637,6 @@ export const flowPlaylistConfig = {
     importSource = null,
     description = null,
     recordHistory = true,
-    replacesFlowId = null,
   }: {
     id?: string | null;
     name: unknown;
@@ -728,17 +648,9 @@ export const flowPlaylistConfig = {
     importSource?: StoredImportSource | null;
     description?: unknown;
     recordHistory?: boolean;
-    replacesFlowId?: string | null;
   }) {
     const playlists = getStoredStaticPlaylists();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
-    assertUniqueStaticPlaylistName(
-      entitiesRelevantForNameCheck(playlists, { ownerUserId: normalizedOwnerUserId }),
-      entitiesRelevantForNameCheck(getStoredFlows(), {
-        ownerUserId: normalizedOwnerUserId,
-      }).filter((flow) => flow.id !== replacesFlowId),
-      name,
-    );
     const playlist = normalizeStaticPlaylist({
       id: String(id || "").trim() || randomUUID(),
       name,
@@ -784,12 +696,6 @@ export const flowPlaylistConfig = {
     const current = playlists[index];
     if (!current) return null;
     const nextName = updates?.name ?? current.name;
-    assertUniqueStaticPlaylistName(
-      entitiesRelevantForNameCheck(playlists, { ownerUserId: current.ownerUserId }),
-      entitiesRelevantForNameCheck(getStoredFlows(), { ownerUserId: current.ownerUserId }),
-      nextName,
-      playlistId,
-    );
     const next = normalizeStaticPlaylist({
       ...current,
       name: nextName,
