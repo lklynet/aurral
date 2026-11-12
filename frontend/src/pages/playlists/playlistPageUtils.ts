@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "../../components/icons";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";
-import { formatNextRun } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./playlistRunActivity";
 import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
@@ -72,14 +71,7 @@ export const formatTrackTotal = (count: number) => `${count} ${count === 1 ? "tr
 export const formatFlowTrackLabel = (count: number, stats: PlaylistStats | null | undefined) =>
   Number(stats?.total || 0) > 0 ? formatTrackCountLabel(count, stats) : formatTrackTotal(count);
 
-export function describeFlowSchedule(flow: Partial<Flow> | null | undefined, now: number) {
-  if (flow?.enabled !== true) return "Off";
-  const next = formatNextRun(flow.nextRunAt, now);
-  if (!next) return null;
-  return next === "soon" ? "Next update soon" : `Next update in ${next}`;
-}
-
-export const getFlowActivityMessage = ({
+export const getFlowActivity = ({
   flow,
   status,
   stats,
@@ -97,7 +89,7 @@ export const getFlowActivityMessage = ({
     status,
     stats,
     rerunning,
-  })?.message || null;
+  });
 
 export type PlaylistTrackRow = ReturnType<typeof usePlaylistTracks>["tracks"][number];
 

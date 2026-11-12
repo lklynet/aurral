@@ -753,10 +753,21 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   return pollPayload(submission.result.nzbId);
 }
 
-async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers) {
+// A song that finished, failed, or went away while its release downloaded
+// no longer needs the download, so it leaves the client with its files. A
+// dropped album grab is settled by the pipeline, which returns its tracks.
+async function releaseUnneededDownload(payload: UsenetPayload) {
   const job = downloadTracker.getJob(payload.jobId);
+  if (job && job.status !== "failed" && job.status !== "done") return job;
+  if (payload.nzbId != null && payload.albumGrab !== true) {
+    await removeUsenetItem(payload, payload.jobId, { deleteFiles: true });
+  }
+  return null;
+}
+
+async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers) {
+  const job = await releaseUnneededDownload(payload);
   if (!job) return null;
-  if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   let historyItem: UsenetHistoryItem | null | undefined;
@@ -832,9 +843,8 @@ async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers
 }
 
 async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHelpers) {
-  const job = downloadTracker.getJob(payload.jobId);
+  const job = await releaseUnneededDownload(payload);
   if (!job) return null;
-  if (job.status === "failed" || job.status === "done") return null;
   const candidate = getPayloadCandidate(payload);
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));

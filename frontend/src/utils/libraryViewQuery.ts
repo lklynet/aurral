@@ -71,6 +71,7 @@ export const libraryListParams = (section: LibraryViewId, searchParams: URLSearc
       : LIBRARY_DEFAULT_SORT,
     direction: searchParams.get("dir") === "desc" ? "desc" : "asc",
     pageIndex: Number.isSafeInteger(requestedPage) && requestedPage > 1 ? requestedPage : 1,
+    artist: section === "tracks" ? searchParams.get("artist") || "" : "",
   };
 };
 
@@ -110,12 +111,23 @@ type LibraryViewRequest = {
   pageIndex?: number;
   query?: string;
   genre?: string;
+  artist?: string;
   sort?: string;
   direction?: string;
 };
 
 const fetchLibraryPages = async (
-  { section, albumId, artistId, pageIndex, query, genre, sort, direction }: LibraryViewRequest,
+  {
+    section,
+    albumId,
+    artistId,
+    pageIndex,
+    query,
+    genre,
+    artist,
+    sort,
+    direction,
+  }: LibraryViewRequest,
   signal: AbortSignal,
 ) => {
   const tab = libraryTabForSection(section);
@@ -181,6 +193,7 @@ const fetchLibraryPages = async (
       pageSize,
       query,
       genre,
+      artistId: artist || undefined,
       sort,
       direction,
       // Albums and artists omit the param, so the server shows what can be
@@ -202,7 +215,7 @@ export type LibraryViewData = {
 };
 
 const finishLibraryView = (
-  { query, genre }: Pick<LibraryViewRequest, "query" | "genre">,
+  { query, genre, artist }: Pick<LibraryViewRequest, "query" | "genre" | "artist">,
   { nextData, pageResults, library, favoriteIds }: Required<Omit<LibraryViewData, "isPreview">>,
 ): LibraryViewData => {
   const usePreview =
@@ -210,6 +223,7 @@ const finishLibraryView = (
     pageResults.every((page) => Number(page?.total || 0) === 0) &&
     !query &&
     !genre &&
+    !artist &&
     library.artists.length === 0 &&
     library.albums.length === 0 &&
     library.tracks.length === 0;
@@ -230,6 +244,7 @@ export function libraryViewQueryOptions({
   pageIndex = 1,
   query = "",
   genre = "",
+  artist = "",
   sort = "name",
   direction = "asc",
 }: {
@@ -240,13 +255,14 @@ export function libraryViewQueryOptions({
   pageIndex?: number;
   query?: string;
   genre?: string;
+  artist?: string;
   sort?: string;
   direction?: string;
 } = {}) {
   const view =
     albumId || artistId
       ? { preview, albumId: albumId || null, artistId: albumId ? null : artistId || null }
-      : { preview, section, pageIndex, query, genre, sort, direction };
+      : { preview, section, pageIndex, query, genre, artist, sort, direction };
   return queryOptions({
     queryKey: queryKeys.libraryView(view),
     enabled: !preview,

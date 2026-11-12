@@ -6,6 +6,8 @@ import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
 import type { PlayEventsRow } from "../db/rows.ts";
 import { userOps } from "../db/helpers/index.ts";
 import { emitPluginEvent } from "./plugins/pluginEvents.ts";
+import { logger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 type PlayEventInput = {
   trackId?: unknown;
@@ -216,6 +218,61 @@ export const playEventDeliverySchema = v.looseObject({
   connectionRevision: v.string(),
 });
 
+type ScrobbleConnection = NonNullable<ReturnType<typeof scrobbleConnectionStore.getConnection>>;
+type Listen = {
+  artist: string;
+  title: string;
+  album: string | null;
+  durationMs: number | null;
+  trackMbid: string | null;
+  albumMbid: string | null;
+  artistMbid: string | null;
+} & ({ listenType: "single"; playedAt: number } | { listenType: "playing_now" });
+
+const sendListen = async (connection: ScrobbleConnection, listen: Listen) => {
+  if (connection.provider === "lastfm") {
+    const { lastfmScrobble, lastfmUpdateNowPlaying } = await import("./apiClients/lastfm.ts");
+    await (listen.listenType === "single"
+      ? lastfmScrobble(listen, connection.token)
+      : lastfmUpdateNowPlaying(listen, connection.token));
+    return;
+  }
+  const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.ts");
+  await listenbrainzSubmit({
+    token: connection.token,
+    baseUrl:
+      connection.provider === "koito"
+        ? getKoitoListenBrainzBaseUrl(connection.baseUrl || "")
+        : undefined,
+    event: listen,
+  });
+};
+
+export const sendNowPlaying = (userId: number, input: PlayEventInput = {}) => {
+  const title = text(input.title, 500);
+  const artist = text(input.artist, 500);
+  if (!title || !artist) throw new Error("title and artist are required");
+  const listen: Listen = {
+    listenType: "playing_now",
+    title,
+    artist,
+    album: text(input.album, 500) || null,
+    durationMs: positiveInt(input.durationMs),
+    artistMbid: text(input.artistMbid, 100) || null,
+    albumMbid: text(input.albumMbid, 100) || null,
+    trackMbid: text(input.trackMbid, 100) || null,
+  };
+  return Promise.all(
+    Object.values(scrobbleConnectionStore.getConnections(userId)).map((connection) =>
+      sendListen(connection, listen).catch((error: unknown) => {
+        logger.info("scrobbling", `${connection.provider} did not take now playing`, {
+          error: asAppError(error)?.message,
+        });
+      }),
+    ),
+  );
+};
+
 export const deliverPlayEvent = async ({
   eventId,
   userId,
@@ -231,23 +288,5 @@ export const deliverPlayEvent = async ({
     connection.connectionRevision !== connectionRevision
   )
     return;
-  if (provider === "lastfm") {
-    const { lastfmScrobble } = await import("./apiClients/lastfm.ts");
-    await lastfmScrobble(event, connection.token);
-    return;
-  }
-  if (provider === "listenbrainz") {
-    const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.ts");
-    await listenbrainzSubmit({ token: connection.token, event });
-    return;
-  }
-  if (provider === "koito") {
-    const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.ts");
-    await listenbrainzSubmit({
-      token: connection.token,
-      baseUrl: getKoitoListenBrainzBaseUrl(connection.baseUrl || ""),
-      event,
-    });
-    return;
-  }
+  await sendListen(connection, { ...event, listenType: "single" });
 };

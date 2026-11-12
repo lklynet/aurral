@@ -297,6 +297,7 @@ export type QueueAction =
   | { type: "EXTEND_QUEUE"; tracks: QueueTrack[] }
   | { type: "REMOVE_AUTOPLAY" }
   | { type: "REMOVE_ENTRY"; entryId: string }
+  | { type: "REMOVE_MISSING"; entryId: string; autoplay: boolean }
   | { type: "REORDER_UPCOMING"; entryIds: string[] }
   | { type: "CLEAR_UPCOMING" }
   | {
@@ -572,6 +573,23 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       if (!state.queue.some((track) => track.entryId === action.entryId)) return state;
       const keep = (track: QueueEntry) => track.entryId !== action.entryId;
       return arrange(state, state.queue.filter(keep), playbackEntries(state).filter(keep));
+    }
+    case "REMOVE_MISSING": {
+      const order = playbackEntries(state);
+      const at = order.findIndex((track) => track.entryId === action.entryId);
+      if (at < 0) return state;
+      if (at !== state.currentIndex) {
+        return queueReducer(state, { type: "REMOVE_ENTRY", entryId: action.entryId });
+      }
+      const keep = (track: QueueEntry) => track.entryId !== action.entryId;
+      const playback = order.filter(keep);
+      if (playback.length === 0) return queueReducer(state, { type: "CLEAR_QUEUE" });
+      const wraps = at >= playback.length;
+      return playAt(
+        arrange(state, state.queue.filter(keep), playback),
+        wraps ? 0 : at,
+        action.autoplay && (!wraps || state.repeatMode === "all"),
+      );
     }
     case "REORDER_UPCOMING": {
       const order = playbackEntries(state);

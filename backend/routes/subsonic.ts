@@ -53,7 +53,7 @@ import {
   getLibraryScanStatus,
   getScheduledLibraryScanJobId,
 } from "../services/libraryScanWorker.ts";
-import { recordPlayEvent } from "../services/playEventService.ts";
+import { recordPlayEvent, sendNowPlaying } from "../services/playEventService.ts";
 import { logger } from "../services/logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
@@ -483,22 +483,27 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     const submission = !["false", "0", "no"].includes(
       getParameter(params, "submission").toLowerCase(),
     );
-    if (submission) {
-      ids.forEach((id, index) => {
-        const song = getSong(id, user);
-        if (!song) return;
+    ids.forEach((id, index) => {
+      const song = getSong(id, user);
+      if (!song) return;
+      const track = {
+        trackId: song.id,
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        albumId: song.albumId,
+        durationMs: Number(song.duration || 0) * 1000,
+      };
+      if (submission) {
         recordPlayEvent(user.id, {
-          trackId: song.id,
-          title: song.title,
-          artist: song.artist,
-          album: song.album,
-          albumId: song.albumId,
-          durationMs: Number(song.duration || 0) * 1000,
+          ...track,
           playedAt: times[index] || undefined,
           source: "subsonic",
         });
-      });
-    }
+      } else {
+        void sendNowPlaying(user.id, track);
+      }
+    });
     return ok();
   }
   if (method === "getlicense") {

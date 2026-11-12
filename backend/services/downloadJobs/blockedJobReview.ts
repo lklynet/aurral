@@ -18,18 +18,10 @@ import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { isNzbSource } from "../usenetClientCommon.ts";
-import {
-  removeReviewedUsenetDownload,
-  shouldPreserveReviewedUsenetSource,
-} from "../usenetOrchestrator.ts";
+import { shouldPreserveReviewedUsenetSource } from "../usenetOrchestrator.ts";
 import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
-
-async function removeReviewedDownload(job: DownloadJob) {
-  if (!isNzbSource(job.downloadSource)) return;
-  await removeReviewedUsenetDownload(job);
-}
 
 export const hasApprovalFollowUps = () => approvalFollowUps.size > 0;
 
@@ -102,7 +94,7 @@ export async function approveBlockedJob(jobId: string) {
   if (committed.cancelled) return { status: 409, error: "Download job was removed" };
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
   const { committedPath, recorded } = committed.result;
-  await removeReviewedDownload(job);
+  await discardReviewFile(job);
   try {
     await classifyQualityJob(downloadTracker.getJob(job.id));
   } catch (error) {

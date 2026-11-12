@@ -38,6 +38,7 @@ const linksQuery = v.object({
   artist: v.optional(v.string()),
   album: v.optional(v.string()),
   albumId: v.optional(v.string()),
+  track: v.optional(v.string()),
 });
 
 const shelfQuery = v.object({ scope: v.optional(v.picklist(["featured", "all"])) });
@@ -61,13 +62,14 @@ export default new Hono<AppEnv>()
     }
   })
   .get("/playlists/links", requireAuth, validate("query", linksQuery), async (c) => {
-    const { artist, album, albumId } = c.req.valid("query");
+    const { artist, album, albumId, track } = c.req.valid("query");
     try {
       return c.json(
         await resolveEditorialTrackLinks({
           artistName: artist,
           albumName: album,
           deezerAlbumId: albumId,
+          trackName: track,
         }),
         200,
       );

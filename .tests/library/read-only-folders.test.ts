@@ -39,7 +39,7 @@ const [
   { downloadTracker },
   { downloadWorker },
   { processSystemTask },
-  { clearScheduledLibraryScan },
+  { clearScheduledLibraryScan, getScheduledLibraryScanJobId },
   { saveAppSettings },
 ] = await setupIsolatedBackend(
   "read-only-folders",
@@ -230,7 +230,11 @@ test("saved read-only folders show whether each sits inside the Library folder, 
   );
 });
 
-test("removing a read-only folder takes its music out of the Library and keeps the files", async () => {
+test("removing a read-only folder takes its music out of the Library and keeps the files, and making it the Library folder brings the music back", async (t) => {
+  const libraryFolder = resolveDownloadRoot();
+  t.onTestFinished(async () => {
+    await saveAppSettings({ downloadFolderPath: libraryFolder });
+  });
   const folder = await makeFolder("removed");
   const filePath = await makeTrack(folder, "Gone Artist", "Gone Album", "Gone Song");
   await callLibrary("POST", "/files/read-only-folders", { path: folder });
@@ -248,6 +252,17 @@ test("removing a read-only folder takes its music out of the Library and keeps t
     0,
   );
   assert.ok((await stat(filePath)).isFile());
+
+  clearScheduledLibraryScan();
+  assert.ok("settings" in (await saveAppSettings({ downloadFolderPath: libraryFolder })));
+  assert.equal(getScheduledLibraryScanJobId(), null);
+  assert.ok("settings" in (await saveAppSettings({ downloadFolderPath: folder })));
+  assert.notEqual(getScheduledLibraryScanJobId(), null);
+  await scanConfiguredLibrary();
+  assert.deepEqual(
+    fileRow(filePath).map((row) => row.source),
+    ["aurral"],
+  );
 });
 
 test("a scan kept to the Library folder reaches the read-only folders that hold its paths, and no others", async (t) => {

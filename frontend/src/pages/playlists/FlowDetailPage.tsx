@@ -1,7 +1,8 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
+  Ban,
   ClipboardCopy,
   Download,
   FilePlus2,
@@ -14,6 +15,7 @@ import {
   SkeletonCollectionHeader,
   SkeletonCollectionTracks,
   SkeletonStatus,
+  SkeletonTrackList,
 } from "../../components/Skeletons";
 import {
   CollectionHeader,
@@ -31,18 +33,13 @@ import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
-import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
-import { formatFlowLastRun, getFlowDisplayTrackCount } from "../../utils/playlistStats";
+import { useFlowEnabled } from "./FlowEnabledSwitch.tsx";
+import { getFlowDisplayTrackCount } from "../../utils/playlistStats";
+import { formatAlbumDuration } from "../ArtistDetails/utils";
+import { describeFlowRecipe, formatFlowFreshness, formatFlowSchedule } from "./flowPageUtils";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
-import {
-  describeFlowSchedule,
-  formatFlowTrackLabel,
-  formatTrackTotal,
-  getFlowActivityMessage,
-  optionMenuItem,
-  usePlaylistTracks,
-} from "./playlistPageUtils";
+import { formatTrackTotal, getFlowActivity, usePlaylistTracks } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import type { Flow } from "../../utils/playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
@@ -69,10 +66,10 @@ export default function FlowDetailPage() {
             </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
-              <strong>Flow unavailable</strong>
-              <span>Aurral could not load this flow.</span>
+              <strong>Couldn&apos;t load this flow</strong>
+              <span>Aurral didn&apos;t answer. Check that the server is running.</span>
               <button type="button" className="native-library-state__action" onClick={fetchStatus}>
-                Retry
+                Try again
               </button>
             </div>
           ) : (
@@ -115,21 +112,55 @@ function FlowDetail({ flow }: { flow: Flow }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);
-  const [confirmDownloadSaved, setConfirmDownloadSaved] = useState(false);
-  const [downloadingSaved, setDownloadingSaved] = useState(false);
 
   const stats = getPlaylistStats(flow.id);
+  const trackCount = getFlowDisplayTrackCount(flow, stats, tracks.length);
+  const onOff = useFlowEnabled(flow, { trackCount: tracks.length, onChanged: fetchStatus });
   const enabled = flow.enabled === true;
   const savedCount = tracks.filter((track) => track.status === "saved").length;
-  const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
-  const lastRun = formatFlowLastRun(flow.lastRunAt);
-  const canRunNow = enabled && !running && !activity;
-  const metaParts = [
-    flow.ownerUsername || user?.username || null,
-    formatFlowTrackLabel(getFlowDisplayTrackCount(flow, stats, tracks.length), stats),
-    lastRun ? `Updated ${lastRun}` : null,
-    describeFlowSchedule(flow, countdownNow),
-  ];
+  const activity = getFlowActivity({ flow, status, stats, rerunning: running });
+  const refreshing = activity !== null && !["downloading", "queued"].includes(activity.phase);
+  const statusTrackCount = Number(stats?.total || 0);
+  const building =
+    enabled &&
+    tracks.length === 0 &&
+    (refreshing ||
+      onOff.awaitingRun ||
+      !flow.lastRunAt ||
+      statusTrackCount > 0 ||
+      status?.operationQueue?.processing === true);
+  const statusCounts = [
+    flow.enabled,
+    flow.lastRunAt,
+    stats?.total,
+    stats?.pending,
+    stats?.downloading,
+    stats?.blocked,
+    stats?.done,
+    stats?.failed,
+  ].join(":");
+  const seenStatusCounts = useRef(statusCounts);
+  useEffect(() => {
+    if (seenStatusCounts.current === statusCounts) return;
+    seenStatusCounts.current = statusCounts;
+    void refresh();
+  }, [statusCounts, refresh]);
+  const owner =
+    flow.ownerUsername && flow.ownerUsername !== user?.username ? flow.ownerUsername : null;
+  const duration = formatAlbumDuration(
+    tracks.reduce((total, track) => total + Number(track.durationMs || 0), 0),
+  );
+  const facts = enabled
+    ? [
+        owner,
+        formatFlowFreshness(flow.lastRunAt, countdownNow),
+        tracks.length > 0
+          ? [formatTrackTotal(trackCount), duration].filter(Boolean).join(", ")
+          : null,
+        formatFlowSchedule(flow.scheduleDays, flow.scheduleTime),
+      ]
+    : [owner];
+  const canRefresh = enabled && !running && !activity;
 
   const handleRunNow = async () => {
     setRunning(true);
@@ -140,11 +171,10 @@ function FlowDetail({ flow }: { flow: Flow }) {
           json: { limit: flow.size },
         }),
       );
-      showSuccess(`${flow.name} run started`);
       await fetchStatus();
       await refresh();
     } catch (err) {
-      showError(getApiErrorMessage(err, "Failed to run flow"));
+      showError(getApiErrorMessage(err, "Failed to refresh flow"));
     } finally {
       setRunning(false);
     }
@@ -199,35 +229,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     }
   };
 
-  const updateSetting = async (
-    json: { autoDownload?: boolean; recordHistory?: boolean; showInLibrary?: boolean },
-    successMessage: string,
-  ) => {
-    try {
-      await parseResponse(
-        flowsClient.flows[":flowId"].$put({ param: { flowId: encodeURIComponent(flow.id) }, json }),
-      );
-      showSuccess(successMessage);
-      await fetchStatus();
-      return true;
-    } catch (err) {
-      showError(getApiErrorMessage(err, "Failed to update flow setting"));
-      return false;
-    }
-  };
-
-  const enableAutoDownload = async () => {
-    if (await updateSetting({ autoDownload: true }, "New tracks will download automatically"))
-      setConfirmDownloadSaved(savedCount > 0);
-  };
-
-  const downloadSavedNow = async () => {
-    setDownloadingSaved(true);
-    await handleDownloadSaved();
-    setDownloadingSaved(false);
-    setConfirmDownloadSaved(false);
-  };
-
   const handleCopyLidarrUrl = async () => {
     try {
       const response = await parseResponse(
@@ -250,13 +251,23 @@ function FlowDetail({ flow }: { flow: Flow }) {
     }
   };
 
+  const editButton = (
+    <TooltipButton
+      className="native-library-icon-button"
+      label="Edit flow"
+      onClick={() => setEditOpen(true)}
+    >
+      <Pencil aria-hidden="true" />
+    </TooltipButton>
+  );
+
   return (
     <CollectionPage tintSrc={artworkUrlFor(flow.id)} className="playlist-page">
       <CollectionHeader
         cover={
           <button
             type="button"
-            className="playlist-detail__cover"
+            className={`playlist-detail__cover${enabled ? "" : " is-off"}`}
             onClick={() => setEditOpen(true)}
             aria-label={`Edit ${flow.name}`}
           >
@@ -267,53 +278,62 @@ function FlowDetail({ flow }: { flow: Flow }) {
             />
           </button>
         }
-        corner={
-          <TooltipButton
-            className="native-library-icon-button"
-            onClick={() => canRunNow && handleRunNow()}
-            aria-disabled={!canRunNow}
-            label={
-              !enabled
-                ? "Turn the flow on to run it"
-                : running || activity
-                  ? "Flow is running"
-                  : "Run now"
-            }
-          >
-            {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-          </TooltipButton>
-        }
         title={flow.name}
-        meta={metaParts.filter(Boolean).join(" · ")}
+        subtitle={describeFlowRecipe(flow)}
+        meta={facts.filter(Boolean).join(" · ")}
         status={
-          activity ? (
+          !enabled ? (
+            <p className="native-library-detail__meta playlist-detail__activity">
+              Off. Turn it on to build a new mix.
+            </p>
+          ) : building || refreshing ? (
             <p className="native-library-detail__meta playlist-detail__activity" role="status">
-              <DotLoader size="xs" label={null} />
-              {activity}
+              <RefreshCw aria-hidden="true" />
+              {building
+                ? flow.lastRunAt
+                  ? "Building a new mix…"
+                  : "Building your first mix…"
+                : activity?.message}
             </p>
           ) : null
         }
         actions={
           <>
-            <CollectionPlayButtons
-              label={flow.name}
-              disabled={playback.disabled}
-              isPlaying={playback.isListPlaying}
-              isShuffleEnabled={playback.isShuffleEnabled}
-              onPlay={playback.handlePlayAll}
-              onShuffle={playback.handleShufflePlay}
-            />
-            <span className="playlist-detail__switch">
-              <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
-              <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
-            </span>
-            <TooltipButton
-              className="native-library-icon-button"
-              label="Edit flow"
-              onClick={() => setEditOpen(true)}
-            >
-              <Pencil aria-hidden="true" />
-            </TooltipButton>
+            {enabled ? (
+              <>
+                <CollectionPlayButtons
+                  label={flow.name}
+                  disabled={playback.disabled}
+                  isPlaying={playback.isListPlaying}
+                  isShuffleEnabled={playback.isShuffleEnabled}
+                  onPlay={playback.handlePlayAll}
+                  onShuffle={playback.handleShufflePlay}
+                />
+                <TooltipButton
+                  className="native-library-icon-button"
+                  onClick={() => canRefresh && handleRunNow()}
+                  aria-disabled={!canRefresh}
+                  label={canRefresh ? "Refresh now" : "Refreshing"}
+                >
+                  {running ? (
+                    <DotLoader size="sm" label={null} />
+                  ) : (
+                    <RefreshCw aria-hidden="true" />
+                  )}
+                </TooltipButton>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="native-library-page-play"
+                disabled={onOff.pending}
+                onClick={() => onOff.setEnabled(true)}
+              >
+                {onOff.pending ? <DotLoader size="sm" label={null} /> : null}
+                Turn on
+              </button>
+            )}
+            {editButton}
             <LibraryItemMenu
               label={flow.name}
               contextMenu={false}
@@ -328,7 +348,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   ? [
                       {
                         id: "download",
-                        label: "Download all",
+                        label: `Download ${formatTrackTotal(savedCount)}`,
                         icon: Download,
                         onSelect: handleDownloadSaved,
                       },
@@ -341,55 +361,31 @@ function FlowDetail({ flow }: { flow: Flow }) {
                   disabled: Number(stats?.done || 0) === 0,
                   onSelect: handleConvertToStatic,
                 },
-                optionMenuItem({
-                  id: "auto-download",
-                  label: "Download automatically",
-                  checked: flow.autoDownload !== false,
-                  separatorBefore: true,
-                  onSelect: () =>
-                    flow.autoDownload === false
-                      ? enableAutoDownload()
-                      : updateSetting(
-                          { autoDownload: false },
-                          "New tracks will wait for you to download them",
-                        ),
-                }),
-                optionMenuItem({
-                  id: "scrobble",
-                  label: "Scrobble tracks",
-                  checked: flow.recordHistory !== false,
-                  onSelect: () =>
-                    updateSetting(
-                      { recordHistory: flow.recordHistory === false },
-                      flow.recordHistory === false
-                        ? "Scrobbling turned on"
-                        : "Scrobbling turned off",
-                    ),
-                }),
-                optionMenuItem({
-                  id: "show-in-library",
-                  label: "Show in library",
-                  checked: flow.showInLibrary === true,
-                  onSelect: () =>
-                    updateSetting(
-                      { showInLibrary: flow.showInLibrary !== true },
-                      flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
-                    ),
-                }),
                 {
                   id: "lidarr-url",
                   label: "Copy Lidarr import URL",
                   icon: ClipboardCopy,
-                  separatorBefore: true,
                   onSelect: handleCopyLidarrUrl,
                 },
                 ...pluginActions,
+                ...(enabled
+                  ? [
+                      {
+                        id: "turn-off",
+                        label: "Turn off",
+                        icon: Ban,
+                        separatorBefore: true,
+                        disabled: onOff.pending,
+                        onSelect: () => onOff.setEnabled(false),
+                      },
+                    ]
+                  : []),
                 {
                   id: "delete",
                   label: "Delete flow",
                   icon: Trash2,
                   danger: true,
-                  separatorBefore: true,
+                  separatorBefore: !enabled,
                   onSelect: () => setConfirmDelete(true),
                 },
               ]}
@@ -398,48 +394,57 @@ function FlowDetail({ flow }: { flow: Flow }) {
         }
       />
 
-      <div className="playlist-detail__panel">
-        <PlaylistTracks
-          entry={flow}
-          kind="flow"
-          tracks={tracks}
-          loading={loading}
-          error={error}
-          refresh={refresh}
-          staticPlaylists={staticPlaylists}
-          fetchStatus={fetchStatus}
-          activityHint={activity}
-          emptyMessage={enabled ? "No tracks yet." : "Turn this flow on to generate tracks."}
-          recordHistory={flow.recordHistory !== false}
-        />
-      </div>
+      {enabled || tracks.length > 0 ? (
+        <div className="playlist-detail__panel">
+          {!loading && !error && tracks.length === 0 ? (
+            building ? (
+              <SkeletonStatus label="Building your first mix">
+                <SkeletonTrackList count={4} />
+              </SkeletonStatus>
+            ) : (
+              <div className="native-library-state">
+                <strong>This refresh found no tracks</strong>
+                <span>Try fewer tags, a wider year range, or another source.</span>
+                <button
+                  type="button"
+                  className="native-library-state__action"
+                  onClick={() => setEditOpen(true)}
+                >
+                  Edit flow
+                </button>
+              </div>
+            )
+          ) : (
+            <PlaylistTracks
+              entry={flow}
+              kind="flow"
+              tracks={tracks}
+              loading={loading}
+              error={error}
+              refresh={refresh}
+              staticPlaylists={staticPlaylists}
+              fetchStatus={fetchStatus}
+              recordHistory={flow.recordHistory !== false}
+            />
+          )}
+        </div>
+      ) : null}
 
       {editOpen ? (
         <Suspense fallback={null}>
           <FlowEditor flowId={flow.id} onClose={() => setEditOpen(false)} />
         </Suspense>
       ) : null}
+      {onOff.confirmModal}
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${flow.name}?`}
-        body="Removes this flow and its playlist setup."
+        body="Removes this flow, its tracks, and its schedule."
         confirmLabel="Delete flow"
         busyLabel="Deleting…"
         busy={deleting}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-      />
-      <ConfirmModal
-        open={confirmDownloadSaved}
-        title={`Download ${formatTrackTotal(savedCount)} already in this flow?`}
-        body="New tracks will download automatically from now on."
-        confirmLabel="Download now"
-        cancelLabel="Not now"
-        tone="primary"
-        busyLabel="Downloading"
-        busy={downloadingSaved}
-        onCancel={() => setConfirmDownloadSaved(false)}
-        onConfirm={downloadSavedNow}
       />
     </CollectionPage>
   );

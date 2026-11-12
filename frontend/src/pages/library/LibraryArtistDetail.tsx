@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Info, Pause, Play, Shuffle } from "../../components/icons";
+import { Info, Pause, Play, Shuffle, Sparkles } from "../../components/icons";
 import { LibraryItemMenu, type LibraryMenuItem } from "../../components/LibraryItemMenu";
 import { FavoriteButton, TrackList } from "../../components/TrackList";
 import TooltipButton from "../../components/TooltipButton";
@@ -170,6 +170,16 @@ export function LibraryArtistDetail({
                 ...menuItems,
               ]}
             />
+            {hasMbid(artist) ? (
+              <RouteLink
+                to={"/artist/" + encodeURIComponent(artist.mbid)}
+                state={actions.discoverArtistState(artist)}
+                className="btn btn-ghost library-artist__discover"
+              >
+                <Sparkles aria-hidden="true" />
+                <span>Discover</span>
+              </RouteLink>
+            ) : null}
           </div>
         </div>
       </div>
@@ -177,6 +187,14 @@ export function LibraryArtistDetail({
         <section className="library-artist__section">
           <div className="native-library-section-heading">
             <h2>Most played</h2>
+            {trackTotal > mostPlayed.length ? (
+              <RouteLink
+                to={"/library/tracks?artist=" + encodeURIComponent(String(artist.id))}
+                className="section-show-all"
+              >
+                All tracks
+              </RouteLink>
+            ) : null}
           </div>
           <TrackList
             label={`${name} most played`}

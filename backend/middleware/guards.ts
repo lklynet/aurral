@@ -107,6 +107,7 @@ const tokenArtworkPaths = [
   /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i,
   /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i,
   /^\/api\/playlists\/track-artwork\/[^/]+$/i,
+  /^\/api\/playlists\/flow-templates\/[^/]+\/cover$/i,
   /^\/api\/discover\/playlists\/(?:mix|discovery)\/[^/]+\/cover$/i,
   /^\/api\/artists\/release-group\/[a-f0-9-]{36}\/cover\/image$/i,
   /^\/api\/artists\/[a-f0-9-]{36}\/image$/i,

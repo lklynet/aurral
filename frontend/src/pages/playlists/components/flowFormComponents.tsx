@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, type ReactNode } from "react";
 import { SettingsGroup, SettingsNote, SettingsRow } from "../../Settings/SettingsLayout.tsx";
 import {
   CommaTokenInput,
@@ -7,12 +7,16 @@ import {
 } from "./CommaTokenInput.tsx";
 import PillToggle from "../../../components/PillToggle";
 import Tooltip from "../../../components/Tooltip";
+import TooltipButton from "../../../components/TooltipButton";
 import { Select } from "../../../components/Select";
+import { Minus, Plus } from "../../../components/icons";
 import { FLOW_SOURCES, normalizeScheduleDays, type FlowSource } from "../../../../../lib/flows.ts";
 import {
-  FOCUS_NEEDS_SEEDS,
+  YEAR_INPUT_ERROR,
+  draftYearsInvalid,
   flowDraftTotal,
   focusNeedsSeeds,
+  formatNextRefresh,
   type FlowDraft,
 } from "../flowPageUtils.ts";
 import { formatTrackTotal } from "../playlistPageUtils.ts";
@@ -23,11 +27,15 @@ const SOURCES: Record<FlowSource, { label: string; description: string }> = {
   discover: { label: "Discover", description: "Your recommendations" },
   mix: { label: "Library", description: "Artists you own, tracks you don't" },
   trending: { label: "Trending", description: "Trending this week" },
-  focus: { label: "Focus", description: "Similar artists or your recent listening" },
+  focus: {
+    label: "Artists and tags",
+    description: "From the artists below, your tags, or your recent listening",
+  },
   newReleases: { label: "New releases", description: "Recent albums you're missing" },
 };
 
 const MAX_SOURCE_TRACKS = 100;
+const STEP = 5;
 
 const WEEKDAY_OPTIONS = [
   { id: 0, short: "Su", full: "Sunday" },
@@ -44,15 +52,63 @@ const SCHEDULE_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
   label: `${hour % 12 || 12}:00 ${hour >= 12 ? "PM" : "AM"}`,
 }));
 
-const toTrackCount = (value: string) =>
-  Math.min(MAX_SOURCE_TRACKS, Math.max(0, Math.round(Number(value) || 0)));
+const toTrackCount = (value: number) =>
+  Math.min(MAX_SOURCE_TRACKS, Math.max(0, Math.round(value || 0)));
+
+function TrackCountStepper({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onChange: (count: number) => void;
+}) {
+  return (
+    <span className={`flow-editor__stepper${value === 0 ? " is-zero" : ""}`}>
+      <TooltipButton
+        className="btn btn-ghost btn-icon"
+        label={`Fewer tracks`}
+        aria-label={`Fewer tracks from ${label}`}
+        disabled={value <= 0}
+        onClick={() => onChange(toTrackCount(Math.ceil(value / STEP) * STEP - STEP))}
+      >
+        <Minus aria-hidden="true" />
+      </TooltipButton>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        max={MAX_SOURCE_TRACKS}
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(toTrackCount(Number(event.target.value)))}
+      />
+      <TooltipButton
+        className="btn btn-ghost btn-icon"
+        label={`More tracks`}
+        aria-label={`More tracks from ${label}`}
+        disabled={value >= MAX_SOURCE_TRACKS}
+        onClick={() => onChange(toTrackCount(Math.floor(value / STEP) * STEP + STEP))}
+      >
+        <Plus aria-hidden="true" />
+      </TooltipButton>
+    </span>
+  );
+}
 
 export function FlowFormFields({
   draft,
   onDraftChange,
+  enabled,
+  enabledSwitch,
 }: {
   draft: FlowDraft;
   onDraftChange: FlowDraftUpdater;
+  enabled: boolean;
+  enabledSwitch: ReactNode;
 }) {
   const setCount = (source: FlowSource, count: number) =>
     onDraftChange((prev) => ({ ...prev, counts: { ...prev.counts, [source]: count } }));
@@ -68,6 +124,7 @@ export function FlowFormFields({
   );
   const scheduleDays = normalizeScheduleDays(draft.scheduleDays);
   const idPrefix = useId();
+  const yearsInvalid = draftYearsInvalid(draft);
   const yearInput = (key: "yearFrom" | "yearTo", label: string) => (
     <input
       type="number"
@@ -77,6 +134,7 @@ export function FlowFormFields({
       inputMode="numeric"
       placeholder="Any"
       aria-label={label}
+      aria-invalid={yearsInvalid || undefined}
       className="input"
       value={draft[key] ?? ""}
       onChange={(event) => {
@@ -85,12 +143,93 @@ export function FlowFormFields({
       }}
     />
   );
+  const tagInput = (key: "includeTags" | "excludeTags", label: string, placeholder: string) => (
+    <SettingsRow label={label} stack>
+      <CommaTokenInput
+        value={draft[key]}
+        placeholder={placeholder}
+        fetchSuggestions={fetchFlowTagSuggestions}
+        suggestionLabel="Tag suggestions"
+        onChange={(value) => onDraftChange((prev) => ({ ...prev, [key]: value }))}
+      />
+    </SettingsRow>
+  );
 
   return (
     <>
-      <SettingsGroup title="Schedule">
+      <SettingsGroup
+        title="Mix"
+        actions={
+          <span className="settings-group__meta">{formatTrackTotal(flowDraftTotal(draft))}</span>
+        }
+      >
+        {FLOW_SOURCES.map((source) => {
+          const { label, description } = SOURCES[source];
+          const countId = `${idPrefix}-${source}`;
+          const count = draft.counts[source];
+          return (
+            <Fragment key={source}>
+              <SettingsRow
+                label={
+                  <span className={count === 0 ? "flow-editor__off" : undefined}>{label}</span>
+                }
+                htmlFor={countId}
+                help={description}
+              >
+                <TrackCountStepper
+                  id={countId}
+                  label={label}
+                  value={count}
+                  onChange={(next) => setCount(source, next)}
+                />
+              </SettingsRow>
+              {source === "focus" && count > 0 ? (
+                <div className="flow-editor__nested">
+                  <SettingsRow label="Similar to" stack>
+                    <CommaTokenInput
+                      value={draft.includeRelatedArtists}
+                      placeholder="Add an artist"
+                      fetchSuggestions={fetchFlowArtistSuggestions}
+                      suggestionLabel="Similar artist suggestions"
+                      onChange={(includeRelatedArtists) =>
+                        onDraftChange((prev) => ({ ...prev, includeRelatedArtists }))
+                      }
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Also use my recent listening">
+                    {toggle("recentListening", "Also use my recent listening")}
+                  </SettingsRow>
+                  {focusNeedsSeeds(draft) ? (
+                    <SettingsNote tone="warning">
+                      Add an artist, turn on recent listening, or add a tag under Filters. Until
+                      then this flow can&apos;t save.
+                    </SettingsNote>
+                  ) : null}
+                </div>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        <SettingsRow
+          label="Deeper cuts"
+          help="Prefers less popular tracks from Discover, Library, and Artists and tags"
+        >
+          {toggle("deepDive", "Deeper cuts")}
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Schedule"
+        actions={
+          enabled ? (
+            <span className="settings-group__meta">
+              {formatNextRefresh(draft.scheduleDays, draft.scheduleTime)}
+            </span>
+          ) : null
+        }
+      >
         <SettingsRow label="Days">
-          <div className="flow-page__weekday-grid" role="group" aria-label="Update days">
+          <div className="flow-page__weekday-grid" role="group" aria-label="Refresh days">
             {WEEKDAY_OPTIONS.map((day) => {
               const checked = scheduleDays.includes(day.id);
               const isLastDay = checked && scheduleDays.length === 1;
@@ -134,92 +273,37 @@ export function FlowFormFields({
         </SettingsRow>
       </SettingsGroup>
 
-      <SettingsGroup
-        title="Tracks"
-        actions={
-          <span className="settings-group__meta">{formatTrackTotal(flowDraftTotal(draft))}</span>
-        }
-      >
-        {FLOW_SOURCES.map((source) => {
-          const { label, description } = SOURCES[source];
-          const countId = `${idPrefix}-${source}`;
-          return (
-            <Fragment key={source}>
-              <SettingsRow label={label} htmlFor={countId} help={description}>
-                <span className="flow-editor__count">
-                  <input
-                    id={countId}
-                    type="number"
-                    min="0"
-                    max={MAX_SOURCE_TRACKS}
-                    inputMode="numeric"
-                    className="input"
-                    value={draft.counts[source]}
-                    onChange={(event) => setCount(source, toTrackCount(event.target.value))}
-                  />
-                </span>
-              </SettingsRow>
-              {source === "focus" && draft.counts.focus > 0 ? (
-                <>
-                  <SettingsRow label="Similar to" stack>
-                    <CommaTokenInput
-                      value={draft.includeRelatedArtists}
-                      placeholder="Artists"
-                      fetchSuggestions={fetchFlowArtistSuggestions}
-                      suggestionLabel="Similar artist suggestions"
-                      onChange={(includeRelatedArtists) =>
-                        onDraftChange((prev) => ({ ...prev, includeRelatedArtists }))
-                      }
-                    />
-                  </SettingsRow>
-                  <SettingsRow label="Also use my recent listening">
-                    {toggle("recentListening", "Also use my recent listening")}
-                  </SettingsRow>
-                  {focusNeedsSeeds(draft) ? (
-                    <SettingsNote tone="warning">{FOCUS_NEEDS_SEEDS}</SettingsNote>
-                  ) : null}
-                </>
-              ) : null}
-            </Fragment>
-          );
-        })}
-        <SettingsRow
-          label="Deeper cuts"
-          help="Tracks ranked 10 to 25 instead of each artist's top 10"
-        >
-          {toggle("deepDive", "Deeper cuts")}
-        </SettingsRow>
-      </SettingsGroup>
-
       <SettingsGroup title="Filters">
-        <SettingsRow label="Tags" help="Start a tag with - to leave it out." stack>
-          <CommaTokenInput
-            value={draft.includeTags}
-            placeholder="hip hop, 80s, happy"
-            fetchSuggestions={fetchFlowTagSuggestions}
-            suggestionLabel="Tag suggestions"
-            excludable
-            onChange={(includeTags) => onDraftChange((prev) => ({ ...prev, includeTags }))}
-          />
-        </SettingsRow>
-        <SettingsRow label="Released">
+        {tagInput("includeTags", "Only these tags", "Any tag, like hip hop or 80s")}
+        {tagInput("excludeTags", "Skip these tags", "Add a tag")}
+        <SettingsRow
+          label="Released"
+          help={yearsInvalid ? YEAR_INPUT_ERROR : undefined}
+          tone={yearsInvalid ? "error" : "default"}
+        >
           <span className="flow-editor__years">
-            {yearInput("yearFrom", "Release year from")}
+            {yearInput("yearFrom", "Released from")}
             to
-            {yearInput("yearTo", "Release year to")}
+            {yearInput("yearTo", "Released to")}
           </span>
         </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup title="Playlist">
-        <SettingsRow label="Download automatically">
+        <SettingsRow label="Flow on" help="Turning it off removes its tracks and stops refreshes">
+          {enabledSwitch}
+        </SettingsRow>
+        <SettingsRow
+          label="Download automatically"
+          help="Off saves new tracks to the flow without downloading them"
+        >
           {toggle("autoDownload", "Download automatically")}
         </SettingsRow>
-        <SettingsRow label="Scrobble tracks">
-          {toggle("recordHistory", "Scrobble tracks")}
+        <SettingsRow label="Scrobble plays">
+          {toggle("recordHistory", "Scrobble plays")}
         </SettingsRow>
-        <SettingsRow label="Show in library">
-          {toggle("showInLibrary", "Show in library")}
+        <SettingsRow label="Show in Library" help="List it with your playlists">
+          {toggle("showInLibrary", "Show in Library")}
         </SettingsRow>
       </SettingsGroup>
     </>

@@ -22,7 +22,7 @@ import {
 } from "../components/icons";
 
 import { DotLoader } from "../components/DotLoader";
-import { LibraryItemMenu } from "../components/LibraryItemMenu";
+import { LibraryItemMenu, type LibraryMenuItem } from "../components/LibraryItemMenu";
 import { Select } from "../components/Select";
 import TooltipButton from "../components/TooltipButton";
 import Pagination from "../components/Pagination";
@@ -82,6 +82,7 @@ import {
   type LibraryRemoval,
   Cover,
   EmptyState,
+  hasMbid,
   invalidateLibraryViews,
   text,
   useLibraryScanRefresh,
@@ -293,6 +294,7 @@ function LibraryPage() {
     sort: sortMode,
     direction: sortDirection,
     pageIndex,
+    artist: selectedArtist,
   } = libraryListParams(section, searchParams);
   const viewMode = searchParams.get("view") === "list" ? "list" : "grid";
   const normalizedQuery = query.trim() ? urlQuery.trim().toLocaleLowerCase() : "";
@@ -351,6 +353,7 @@ function LibraryPage() {
         pageIndex,
         query: normalizedQuery,
         genre: selectedGenre,
+        artist: selectedArtist,
         sort: sortMode,
         direction: sortDirection,
       }),
@@ -360,6 +363,7 @@ function LibraryPage() {
       pageIndex,
       routeArtistId,
       section,
+      selectedArtist,
       selectedGenre,
       sortDirection,
       sortMode,
@@ -383,6 +387,9 @@ function LibraryPage() {
 
   const queryData = libraryQuery.data;
   const { isPreviewLibrary, library, favoriteIds } = useLibraryViewData(queryData, forcePreview);
+  const filterArtistName = selectedArtist
+    ? library.artists.find((artist) => String(artist.id) === selectedArtist)?.name
+    : undefined;
   const loading = !forcePreview && libraryQuery.isPending;
   const error = forcePreview ? null : getApiErrorMessage(libraryQuery.error, "") || null;
   const pageData = useMemo(() => {
@@ -697,7 +704,7 @@ function LibraryPage() {
       ? libraryArtist?.name || "Library"
       : section === "albums" && selectedGenre
         ? selectedGenre
-        : "Library",
+        : filterArtistName || "Library",
   );
 
   const detailTint = useCollectionTint(libraryArtist?.coverUrl);
@@ -756,10 +763,7 @@ function LibraryPage() {
     if (path) navigate(path);
   };
 
-  const artistMbidMenuItems = (
-    artist: LibraryArtist | null | undefined,
-    { separatorBefore = false }: { separatorBefore?: boolean } = {},
-  ) =>
+  const artistMbidMenuItems = (artist: LibraryArtist | null | undefined) =>
     actions.canEditArtistMbid &&
     (artist && "providerId" in artist ? artist.providerId : undefined) == null
       ? [
@@ -767,7 +771,6 @@ function LibraryPage() {
             id: "mbid",
             label: "Match artist",
             icon: Fingerprint,
-            separatorBefore,
             onSelect: () => setMbidArtist(artist),
           },
         ]
@@ -801,12 +804,19 @@ function LibraryPage() {
       load: () => loadArtistTracks(artist),
     });
 
-  const handleDiscoverArtistOpen = (artist: LibraryArtist | null | undefined) => {
-    if (!artist?.mbid) return;
-    navigate("/artist/" + encodeURIComponent(artist.mbid), {
-      state: actions.discoverArtistState(artist),
-    });
-  };
+  const discoverArtistMenuItem = (artist: LibraryArtist): LibraryMenuItem => ({
+    id: "discover",
+    label: "Open in Discover",
+    icon: Sparkles,
+    separatorBefore: true,
+    disabled: !hasMbid(artist),
+    onSelect: () => {
+      if (!hasMbid(artist)) return;
+      navigate("/artist/" + encodeURIComponent(artist.mbid), {
+        state: actions.discoverArtistState(artist),
+      });
+    },
+  });
 
   const favoriteCount = favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
@@ -877,14 +887,7 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => actions.openLibraryInfo({ kind: "artist", entity: artist }),
               },
-              {
-                id: "discover",
-                label: "Open in Discover",
-                icon: Sparkles,
-                separatorBefore: true,
-                onSelect: () => handleDiscoverArtistOpen(artist),
-                disabled: !artist.mbid,
-              },
+              discoverArtistMenuItem(artist),
               ...artistMbidMenuItems(artist),
               ...actions.pluginMenuItems("artist", { artistId: artist.id }),
               ...(actions.canDeleteArtist && canRemoveLibraryArtist(artist)
@@ -1178,7 +1181,8 @@ function LibraryPage() {
         renderAlbumCard={renderAlbumCard}
         menu={artistMenuProps(libraryArtist)}
         menuItems={[
-          ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
+          discoverArtistMenuItem(libraryArtist),
+          ...artistMbidMenuItems(libraryArtist),
           ...libraryArtistMonitoringItems,
           ...actions.rescanMenuItem({ artistId: libraryArtist.id }, libraryArtist),
           ...actions.pluginMenuItems("artist", { artistId: libraryArtist.id }),
@@ -1352,14 +1356,14 @@ function LibraryPage() {
       ? "Library"
       : section === "albums" && selectedGenre
         ? selectedGenre
-        : sectionLabel;
+        : filterArtistName || sectionLabel;
   const pageCount =
     section === "home"
       ? (pageData?.total ?? library.albums.length + ownedLibraryTracks.length)
       : activeCount;
   const showToolbar = section !== "home";
   const isSearchVisible = searchOpen || Boolean(query);
-  const hasActiveFilters = Boolean(selectedGenre);
+  const hasActiveFilters = Boolean(selectedGenre || selectedArtist);
 
   return (
     <div className="library-page native-library-page">
@@ -1535,11 +1539,11 @@ function LibraryPage() {
                     ]}
                   />
                 </label>
-                {selectedGenre && (
+                {hasActiveFilters && (
                   <button
                     type="button"
                     className="native-library-filter-reset"
-                    onClick={() => updateGenreFilter("")}
+                    onClick={() => updateViewParams({ genre: null, artist: null, page: null })}
                   >
                     <X aria-hidden="true" />
                     Clear
@@ -1555,14 +1559,14 @@ function LibraryPage() {
       {!loading && !error && activeCount === 0 && (
         <EmptyState
           title={
-            query || selectedGenre
+            query || hasActiveFilters
               ? "No matches"
               : section === "favorites"
                 ? "No favorites"
                 : "Your library is empty"
           }
           message={
-            query || selectedGenre
+            query || hasActiveFilters
               ? "Try a different search or clear the filter."
               : "Music appears here after a Library scan."
           }

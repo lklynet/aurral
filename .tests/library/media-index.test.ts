@@ -302,7 +302,7 @@ const totalChanges = () =>
 const removeArtistsNamed = (pattern: string) =>
   db.prepare("DELETE FROM library_artists WHERE name LIKE ?").run(pattern);
 
-test("a scan of several roots drops songs whose files are gone from albums nobody asked for, including ones an older scan only marked missing", async (t: import("vite-plus/test").TestContext) => {
+test("a scan of several roots drops songs whose files are gone from albums nobody asked for, including ones an older scan only marked missing, and keeps songs it cannot read", async (t: import("vite-plus/test").TestContext) => {
   const roots = await Promise.all([
     mkdtemp(path.join(tmpdir(), "aurral-roots-gone-one-")),
     mkdtemp(path.join(tmpdir(), "aurral-roots-gone-two-")),
@@ -333,14 +333,18 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
       track,
     );
   }
+  const unreadable = new Set<string>();
   const scan = () =>
     scanMusicRoots({
       rootPaths: roots,
       source,
-      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
+      metadataReader: async (filePath: string) => {
+        if (unreadable.has(filePath)) throw new Error("unreadable");
+        return requireFixture(tags[filePath]);
+      },
     });
-  const [, gone, , marked] = Object.keys(tags);
-  assert.ok(gone !== undefined && marked !== undefined);
+  const [stays, gone, , marked] = Object.keys(tags);
+  assert.ok(stays !== undefined && gone !== undefined && marked !== undefined);
   await scan();
   db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(
     source,
@@ -348,6 +352,9 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
   );
   await rm(gone);
   await rm(marked);
+  await utimes(stays, new Date(), new Date(Date.now() + 60_000));
+  unreadable.add(stays);
+  unreadable.add(await createAudioFile(roots[0], `${artist}/One/3 Partial.flac`));
 
   await scan();
 
@@ -440,7 +447,7 @@ function deleteIndexedFile(source: string, filePath: string) {
   }
 }
 
-test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
+test("scanMusicRoot indexes tagged media, dated by the original release, and ignores Flow output", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-scan-"));
   const source = `test-aurral-${process.pid}`;
   let filePath: string | undefined;
@@ -456,7 +463,10 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
     const result = await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async () => metadata,
+      metadataReader: async () => ({
+        ...metadata,
+        common: { ...metadata.common, date: "2016-02-12", originaldate: "2004-09-07" },
+      }),
     });
     const snapshot = getLibrarySnapshot();
     const files = snapshot.files.filter((file) => file.source === source);
@@ -470,8 +480,8 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
       true,
     );
     assert.equal(
-      snapshot.albums.some((album) => album.title === "Playback Roadmap"),
-      true,
+      snapshot.albums.find((album) => album.title === "Playback Roadmap")?.release_date,
+      "2004-09-07",
     );
     assert.equal(
       snapshot.tracks.some((track) => track.title === "First Step"),
@@ -2872,7 +2882,7 @@ test("songs a catalogue album shares with other albums keep their identity and s
   }
 });
 
-test("a song whose file is gone leaves an album nobody asked for, and stays on one someone asked for", async () => {
+test("a song whose file is gone leaves an album nobody asked for, and stays on one someone asked for, even when another file cannot be read", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-missing-"));
   const source = `test-missing-${process.pid}`;
   const artist = `Missing ${process.pid}`;
@@ -2896,11 +2906,15 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
   await file("Requested", "Kept", 1);
   const coming = await file("Requested", "Coming", 2);
   const lonely = await file("Unplugged", "Lonely", 1);
+  const unreadable = new Set<string>();
   const scan = () =>
     scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath: string) => requireFixture(tags[filePath]),
+      metadataReader: async (filePath: string) => {
+        if (unreadable.has(filePath)) throw new Error("unreadable");
+        return requireFixture(tags[filePath]);
+      },
     });
   try {
     await scan();
@@ -2923,6 +2937,9 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
     });
     const comingTrack = requireValue(fileRows(source, coming)).trackId;
     for (const filePath of [lostCopy, marlenas, coming, lonely]) await rm(filePath);
+    await utimes(headlight, new Date(), new Date(Date.now() + 60_000));
+    unreadable.add(headlight);
+    unreadable.add(await createAudioFile(root, `${artist}/Unplugged/2 Partial.flac`));
 
     await scan();
 

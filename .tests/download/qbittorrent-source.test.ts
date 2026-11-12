@@ -4,7 +4,7 @@ import { buffer } from "node:stream/consumers";
 import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, test } from "vite-plus/test";
+import { afterAll, afterEach, beforeEach, test, type TestContext } from "vite-plus/test";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 import {
   cleanupIsolatedState,
@@ -19,7 +19,7 @@ const [
   state,
   { db },
   { dbOps },
-  { qbittorrentSource },
+  { qbittorrentSource, removeSeededTorrents },
   { qbittorrentClient },
   { DownloadSourceError },
   { processSourcePipelinePayload },
@@ -132,6 +132,12 @@ async function startFake() {
         fake.added.push(form);
         fake.onAdd(String(form.get("tags")));
         return response.end("Ok.");
+      }
+      if (url.pathname === "/api/v2/torrents/addTags") {
+        const form = new URLSearchParams(payload.toString());
+        const torrent = byHash(form.get("hashes"));
+        if (torrent) torrent.tags = [torrent.tags, form.get("tags")].filter(Boolean).join(", ");
+        return response.end();
       }
       if (url.pathname === "/api/v2/torrents/delete") {
         fake.deleted.push(String(new URLSearchParams(payload.toString()).get("hashes")));
@@ -305,6 +311,7 @@ test("status waits for the torrent, signs in again when its session ends, then l
   fake.sid = "second";
   Object.assign(torrent, { state: "stalledUP", progress: 1 });
   assert.deepEqual(await qbittorrentSource.status({ id: "aurral-1", directory }), { done: true });
+  assert.equal(torrent.tags, "aurral-1, aurral-imported");
 
   assert.equal(fake.logins, 2);
   assert.deepEqual((await readdir(directory, { recursive: true })).sort(), [
@@ -331,7 +338,7 @@ test("status waits for the torrent, signs in again when its session ends, then l
   assert.equal((await qbittorrentClient.testConnection()).connected, false);
 });
 
-test("discard removes an unfinished torrent and leaves a finished one seeding", async () => {
+test("discard removes the torrent, finished or not", async () => {
   const torrent = { name: "", state: "downloading", save_path: "", files: [] };
   fake.torrents = [
     { ...torrent, hash: "other", progress: 0.1, tags: "" },
@@ -342,7 +349,22 @@ test("discard removes an unfinished torrent and leaves a finished one seeding", 
   await qbittorrentSource.discard!("a");
   await qbittorrentSource.discard!("b");
 
-  assert.deepEqual(fake.deleted, ["partial"]);
+  assert.deepEqual(fake.deleted, ["partial", "done"]);
+});
+
+test("cleanup removes imported torrents once qBittorrent stops seeding them", async () => {
+  const torrent = { name: "", save_path: "", files: [], progress: 1 };
+  fake.torrents = [
+    { ...torrent, hash: "stopped", state: "stoppedUP", tags: "aurral-1, aurral-imported" },
+    { ...torrent, hash: "paused", state: "pausedUP", tags: "aurral-2, aurral-imported" },
+    { ...torrent, hash: "seeding", state: "uploading", tags: "aurral-3, aurral-imported" },
+    { ...torrent, hash: "unimported", state: "stoppedUP", tags: "aurral-4" },
+    { ...torrent, hash: "other", state: "stoppedUP", tags: "" },
+  ];
+
+  await removeSeededTorrents();
+
+  assert.deepEqual(fake.deleted, ["stopped|paused"]);
 });
 
 // An album torrent of Lowlands whose files are on disk, as qBittorrent
@@ -374,7 +396,7 @@ async function lowlandsTorrent(name = (title: string, place: number) => `0${plac
     });
 }
 
-async function runPipeline(start: Payload) {
+async function runPipeline(start: Payload, last?: string) {
   const fail = async (_payload: Payload, _job: unknown, message: string) => {
     throw new Error(message);
   };
@@ -386,6 +408,7 @@ async function runPipeline(start: Payload) {
       failOrTryNextSource: fail,
     });
     payload = next && typeof next === "object" && "phase" in next ? (next as Payload) : null;
+    if (phases.at(-1) === last) break;
   }
   return phases;
 }
@@ -416,6 +439,7 @@ test("a track request downloads only the track's file from an album torrent and 
   const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   assert.equal(job.releaseGuid, "album:lowlands");
+  assert.deepEqual(fake.deleted, []);
 });
 
 test("a track request downloads the whole album when the file names don't show the track, and picks it by its tags", async () => {
@@ -439,8 +463,8 @@ test("a track request downloads the whole album when the file names don't show t
   assert.equal(trackedJob(downloadTracker, jobId).status, "done");
 });
 
-test("an album attempt downloads only its tracks once the torrent's files show the release", async (t) => {
-  await lowlandsTorrent();
+// A request for the second track of Lowlands, whose release has these tracks.
+async function lowlandsAlbumJob(t: TestContext, titles: string[]) {
   await serveGroups(t, [
     brainzmashGroup({
       id: "lowlands-group",
@@ -449,16 +473,16 @@ test("an album attempt downloads only its tracks once the torrent's files show t
       releases: [
         {
           id: "lowlands-release",
-          tracks: ["Tide", "Night Drive"].map((title) => ({ title, durationMs: 1000 })),
+          tracks: titles.map((title) => ({ title, durationMs: 1000 })),
         },
       ],
     }),
   ]);
-  const jobId = createTrackedJob(
+  return createTrackedJob(
     downloadTracker,
     {
       artistName: "Glass Coast",
-      trackName: "Night Drive",
+      trackName: titles[1] ?? "",
       albumName: "Lowlands",
       albumMbid: "lowlands-group",
       releaseMbid: "lowlands-release",
@@ -467,6 +491,11 @@ test("an album attempt downloads only its tracks once the torrent's files show t
     },
     "qbittorrent-source",
   );
+}
+
+test("an album attempt downloads only its tracks once the torrent's files show the release", async (t) => {
+  await lowlandsTorrent();
+  const jobId = await lowlandsAlbumJob(t, ["Tide", "Night Drive"]);
 
   await runPipeline({
     jobId,
@@ -483,4 +512,47 @@ test("an album attempt downloads only its tracks once the torrent's files show t
   const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   await access(String(job.finalPath));
+  assert.deepEqual(fake.deleted, []);
+});
+
+test("an album upgrade keeps seeding the torrent it imported from", async (t) => {
+  await lowlandsTorrent();
+  const originalId = await lowlandsAlbumJob(t, ["Tide", "Night Drive"]);
+  downloadTracker.setDone(originalId, path.join(folder, "old.mp3"), "Lowlands");
+  downloadTracker.updateQuality(originalId, { tier: "mp3-128" });
+  const jobId = downloadTracker.addUpgradeJob(trackedJob(downloadTracker, originalId));
+  assert.ok(jobId);
+
+  await runPipeline({
+    jobId,
+    phase: "search",
+    source: "qbittorrent",
+    albumGrab: true,
+    albumGroupJobIds: [jobId],
+    releaseMbid: "lowlands-release",
+    upgrade: true,
+    upgradeForJobId: originalId,
+  });
+  assert.equal(downloadTracker.getJob(jobId), null);
+  assert.equal(trackedJob(downloadTracker, originalId).qualityTier, "flac-standard");
+  assert.deepEqual(fake.deleted, []);
+});
+
+test("an album attempt removes a finished torrent it imported nothing from", async (t) => {
+  await lowlandsTorrent();
+  const jobId = await lowlandsAlbumJob(t, ["Harbor", "Pier"]);
+
+  await runPipeline(
+    {
+      jobId,
+      phase: "search",
+      source: "qbittorrent",
+      albumGrab: true,
+      albumGroupJobIds: [jobId],
+      releaseMbid: "lowlands-release",
+    },
+    "finalize",
+  );
+  assert.notEqual(trackedJob(downloadTracker, jobId).status, "done");
+  assert.deepEqual(fake.deleted, ["h1"]);
 });

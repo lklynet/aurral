@@ -25,7 +25,7 @@ type PlaylistEditModalProps = {
   entry: { id: string; name: string; importSource?: { artworkUrl?: string | null } | null };
   title: string;
   onClose: () => void;
-  onRename: (name: string) => Promise<void>;
+  onRename?: (name: string) => Promise<void>;
 };
 
 const PREVIEW_DELAY_MS = 300;
@@ -145,14 +145,14 @@ export function PlaylistEditModal({ entry, title, onClose, onRename }: PlaylistE
     if (busy) return;
     const nextName = name.trim();
     if (!nextName) return setError("Name is required");
-    const renamed = nextName !== entry.name;
+    const renamed = onRename !== undefined && nextName !== entry.name;
     const cover: CoverDraft | null =
       draft ?? (renamed && savedPick ? { kind: "generated", pick: savedPick } : null);
     if (!renamed && !cover) return onClose();
     setBusy("save");
     setError("");
     try {
-      if (renamed) await onRename(nextName);
+      if (renamed) await onRename?.(nextName);
       if (cover) {
         const result = await commitCover(entry.id, cover);
         bumpArtwork(entry.id);
@@ -260,23 +260,25 @@ export function PlaylistEditModal({ entry, title, onClose, onRename }: PlaylistE
             <Trash2 className="artist-icon-sm" />
           </TooltipButton>
         </div>
-        <input
-          type="text"
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value);
-            if (error) setError("");
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              save();
-            }
-          }}
-          className="input input--tall"
-          aria-label="Name"
-          autoFocus
-        />
+        {onRename ? (
+          <input
+            type="text"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (error) setError("");
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                save();
+              }
+            }}
+            className="input input--tall"
+            aria-label="Name"
+            autoFocus
+          />
+        ) : null}
         {error ? <p className="artist-error-text">{error}</p> : null}
       </div>
     </ModalShell>

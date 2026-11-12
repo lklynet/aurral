@@ -67,7 +67,7 @@ Pages with an artwork wash swap `--aurral-surface-raised`, `--aurral-surface-hov
 
 Two shared rules near the end of `frontend/src/index.css` apply the surface. One covers menus, popovers, suggestions, and toasts, and the other covers modals. Add a new floating element to the matching selector list instead of setting its border, radius, background, or shadow in its own rule. The shared rules come later in the file, so those values would never show. Tooltips set the surface themselves and use `--aurral-radius-sm`. Build a new menu on an existing menu class such as `.artist-options-menu` when you can. It already has the surface and opens as a bottom sheet on phones.
 
-Fields sit one step above whatever holds them, so an input reads the same on the page, in a settings card, or in a modal. Use `Select` from `components/Select.tsx` for every dropdown instead of a native `<select>`. It opens on the menu surface, and as a bottom sheet on phones.
+Fields sit one step above whatever holds them, so an input reads the same on the page, in a settings card, or in a modal. Use `Select` from `components/Select.tsx` for every dropdown instead of a native `<select>`. It opens on the menu surface, and as a bottom sheet on phones. Pass `searchable` when the list is too long to scroll, such as a list of countries.
 
 Text uses `--aurral-text` (white), `--aurral-text-muted` for secondary text, and `--aurral-text-subtle` for metadata and placeholders. `--aurral-accent` is white in the dark theme. Immersive mode tints it from artwork, so components use the token and never pick a color.
 

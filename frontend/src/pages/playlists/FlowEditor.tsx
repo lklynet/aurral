@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { parseResponse } from "hono/client";
-import { Plus } from "../../components/icons";
+import { Plus, Trash2 } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { useToast } from "../../contexts/ToastContext";
@@ -9,15 +10,18 @@ import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { afterTextEntry } from "../../utils/afterTextEntry.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
-import {
-  SettingsGroup,
-  SettingsNote,
-  SettingsPane,
-  SettingsShell,
-} from "../Settings/SettingsLayout.tsx";
+import { SettingsNote, SettingsPane, SettingsShell } from "../Settings/SettingsLayout.tsx";
 import { FlowFormFields } from "./components/flowFormComponents.tsx";
 import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
-import { buildFlowFromForm, flowToForm, isFlowDirty, newBlankFlow } from "./flowPageUtils.ts";
+import {
+  buildFlowFromForm,
+  describeFlowRecipe,
+  draftRecipe,
+  flowToForm,
+  isFlowDirty,
+  newBlankFlow,
+} from "./flowPageUtils.ts";
+import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
 import type { FlowDraft } from "./flowPageUtils.ts";
 import type { Flow } from "../../utils/playlistStats.ts";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
@@ -29,6 +33,7 @@ const flowParam = (flowId: string) => ({ flowId: encodeURIComponent(flowId) });
 type SaveJob = { flow: Flow; draft: FlowDraft; savedCount: number };
 
 export default function FlowEditor({ flowId, onClose }: { flowId: string; onClose: () => void }) {
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { flows, fetchStatus } = usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
@@ -38,7 +43,8 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
   }));
   const [view, setView] = useState<"nav" | "pane">("pane");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"create" | "download" | null>(null);
+  const [busy, setBusy] = useState<"create" | "download" | "delete" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const queuedRef = useRef(new Map<string, SaveJob>());
@@ -173,13 +179,23 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
     }
   };
 
-  const rename = async (name: string) => {
+  const deleteFlow = async () => {
     if (!flow) return;
-    await parseResponse(
-      flowsClient.flows[":flowId"].$put({ param: flowParam(flow.id), json: { name } }),
-    );
-    setSelection((current) => ({ ...current, draft: { ...current.draft, name } }));
-    await fetchStatus();
+    setBusy("delete");
+    try {
+      const result = await parseResponse(
+        flowsClient.flows[":flowId"].$delete({ param: flowParam(flow.id) }),
+      );
+      saveRef.current = () => {};
+      showSuccess(result?.queued ? `Removal of ${flow.name} queued` : `Deleted ${flow.name}`);
+      await fetchStatus();
+      onClose();
+      navigate("/flows", { replace: true });
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to delete flow"));
+      setBusy(null);
+      setConfirmDelete(false);
+    }
   };
 
   return (
@@ -245,31 +261,57 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
             }
           >
             {error ? <SettingsNote tone="error">{error}</SettingsNote> : null}
-            <SettingsGroup>
+            <div>
               <div className="flow-editor__identity">
                 <PlaylistArtworkThumb
-                  sizes="2.5rem"
+                  sizes="4rem"
                   artworkUrl={artworkUrlFor(flow.id)}
                   name={flow.name}
                   className="flow-editor__cover"
+                  onClick={() => setEditOpen(true)}
                 />
-                <span className="flow-editor__name">{flow.name}</span>
+                <input
+                  type="text"
+                  className="input flow-editor__name"
+                  aria-label="Flow name"
+                  value={draft.name ?? ""}
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    setSelection((current) => ({ ...current, draft: { ...current.draft, name } }));
+                    setError("");
+                  }}
+                />
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => setEditOpen(true)}
                 >
-                  Name and cover
+                  Change cover
                 </button>
               </div>
-            </SettingsGroup>
+              <p className="flow-editor__recipe">{describeFlowRecipe(draftRecipe(draft))}</p>
+            </div>
             <FlowFormFields
               draft={draft}
+              enabled={flow.enabled === true}
+              enabledSwitch={
+                <FlowEnabledSwitch flow={flow} trackCount={tracks.length} onChanged={fetchStatus} />
+              }
               onDraftChange={(updater) => {
                 setSelection((current) => ({ ...current, draft: updater(current.draft) }));
                 setError("");
               }}
             />
+            <div className="flow-editor__footer">
+              <button
+                type="button"
+                className="btn btn-ghost-danger btn-sm"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 aria-hidden="true" />
+                Delete flow
+              </button>
+            </div>
           </SettingsPane>
         ) : (
           <SettingsPane
@@ -285,18 +327,14 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
         )}
       </SettingsShell>
       {editOpen && flow ? (
-        <PlaylistEditModal
-          entry={flow}
-          title="Name and cover"
-          onClose={() => setEditOpen(false)}
-          onRename={rename}
-        />
+        <PlaylistEditModal entry={flow} title="Change cover" onClose={() => setEditOpen(false)} />
       ) : null}
       <ConfirmModal
         open={pendingLeave !== null}
-        title="Discard unsaved changes?"
+        title={`Discard changes to ${flow?.name ?? "this flow"}?`}
         body={leaveError}
         confirmLabel="Discard"
+        cancelLabel="Keep editing"
         busyLabel="Discarding"
         onCancel={() => setPendingLeave(null)}
         onConfirm={() => {
@@ -305,10 +343,20 @@ export default function FlowEditor({ flowId, onClose }: { flowId: string; onClos
         }}
       />
       <ConfirmModal
+        open={confirmDelete}
+        title={`Delete ${flow?.name ?? "this flow"}?`}
+        body="Removes this flow, its tracks, and its schedule."
+        confirmLabel="Delete flow"
+        busyLabel="Deleting…"
+        busy={busy === "delete"}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={deleteFlow}
+      />
+      <ConfirmModal
         open={pendingDownload !== null}
-        title={`Download ${formatTrackTotal(pendingDownload?.count ?? 0)} already in ${pendingDownload?.name ?? "this flow"}?`}
-        body="New tracks will download automatically from now on."
-        confirmLabel="Download now"
+        title={`Download the ${formatTrackTotal(pendingDownload?.count ?? 0)} already here?`}
+        body="New tracks download automatically from now on."
+        confirmLabel={`Download ${formatTrackTotal(pendingDownload?.count ?? 0)}`}
         cancelLabel="Not now"
         tone="primary"
         busyLabel="Downloading"
