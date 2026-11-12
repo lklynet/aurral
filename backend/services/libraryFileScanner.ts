@@ -585,12 +585,12 @@ export async function scanMusicRoot({
           reason: firstFailure.reason,
         });
       }
-      if (unseenPaths && result.filesFailed === 0) {
+      if (unseenPaths) {
         // A file an older scan took from Aurral's own folders, such as _flows,
         // was never this source's, so it goes instead of waiting to come back.
         const inScope = (filePath: string) =>
           isPathWithin(resolvedRoot, filePath) && !isExcluded(filePath);
-        const unseen = [...unseenPaths];
+        const unseen = [...unseenPaths].filter((filePath) => !failedPaths.has(filePath));
         for (const filePath of [
           ...(await forgetMissingFiles(source, resolvedRoot, unseen.filter(inScope))),
           ...markLibraryMediaFilesUnavailable(
@@ -694,7 +694,7 @@ export async function scanMusicRoots({
       result.filesFailed += scan.filesFailed;
       result.changed ||= scan.changed;
       for (const filePath of filePaths) unseenPaths.delete(filePath);
-      if (scan.filesFailed === 0) scannedRoots.push(rootPath);
+      scannedRoots.push(rootPath);
     } catch {
       result.filesFailed += 1;
     }
