@@ -114,6 +114,7 @@ export const queryKeys = {
     options,
   ],
   libraryLookup: (id: string): QueryKey => ["library", "lookup", id],
+  libraryArtistPlays: (artistId: string): QueryKey => ["library", "artist-plays", artistId],
   libraryLookupBatch: (ids: string[]): QueryKey => ["library", "lookup-batch", [...ids].sort()],
   libraryViewPrefix: LIBRARY_VIEW_QUERY_KEY,
   libraryPagePrefix: LIBRARY_PAGE_QUERY_KEY,

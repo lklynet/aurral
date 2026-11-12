@@ -124,7 +124,7 @@ type LibraryLookup = {
   artistsById: Map<string, LibraryArtist>;
 };
 
-type LibraryCollection = { tracks: LibraryPageTrack[]; lookup: LibraryLookup | null };
+export type LibraryCollection = { tracks: LibraryPageTrack[]; lookup: LibraryLookup | null };
 
 type LibraryPageResult = Awaited<ReturnType<typeof getLibraryPage>>;
 
@@ -158,6 +158,8 @@ const pageSize = LIBRARY_PAGE_SIZE;
 type PlaylistTrackPayload = ReturnType<typeof buildStaticPlaylistTrackPayload>;
 
 export const LIBRARY_SOURCE = { type: "native-library", id: "library", label: "Library" };
+
+export type LibraryActions = ReturnType<typeof useLibraryActions>;
 
 export function useLibraryActions({
   libraryQueryKey,

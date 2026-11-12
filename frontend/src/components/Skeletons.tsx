@@ -375,23 +375,26 @@ export function SkeletonTrackList({
   variant = "collection",
 }: {
   count?: number;
-  variant?: "collection" | "release";
+  variant?: "collection" | "release" | "compact";
 }) {
   const isCollection = variant === "collection";
+  const hasCover = variant !== "release";
   return (
     <div className={`native-library-track-list native-library-track-list--${variant}`}>
-      <div className="native-library-track native-library-track--heading">
-        <span />
-        <span className="native-library-track__number">#</span>
-        {isCollection ? <span /> : null}
-        <span>Title</span>
-        {isCollection ? <span>Artist</span> : null}
-        {isCollection ? <span>Album</span> : null}
-        <span className="native-library-track__time">Time</span>
-        <span />
-        <span />
-        <span />
-      </div>
+      {variant === "compact" ? null : (
+        <div className="native-library-track native-library-track--heading">
+          <span />
+          <span className="native-library-track__number">#</span>
+          {isCollection ? <span /> : null}
+          <span>Title</span>
+          {isCollection ? <span>Artist</span> : null}
+          {isCollection ? <span>Album</span> : null}
+          <span className="native-library-track__time">Time</span>
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
       <div>
         {range(count).map((index) => (
           <div key={index} className="native-library-track">
@@ -399,7 +402,7 @@ export function SkeletonTrackList({
             <span className="native-library-track__number">
               <SkeletonText width="1em" />
             </span>
-            {isCollection ? (
+            {hasCover ? (
               <SkeletonShape className="native-library-track__cover">
                 <span />
               </SkeletonShape>
@@ -506,35 +509,40 @@ export function SkeletonAlbumDetail({ label }: { label: string }) {
 
 export function SkeletonLibraryArtist({ label }: { label: string }) {
   return (
-    <SkeletonStatus label={label} className="native-library-detail">
-      <div className="native-library-detail__hero native-library-detail__hero--artist">
-        <div className="native-library-detail__cover">
-          <SkeletonShape className="skeleton-fill" />
-        </div>
-        <div className="native-library-detail__body">
-          <h2>
-            <SkeletonText width="6em" />
-          </h2>
-          <p className="native-library-detail__meta">
-            <SkeletonText width="8em" />
-          </p>
-          <div className="native-library-detail__actions">
-            <SkeletonPlayButtons icons={3} />
+    <SkeletonStatus label={label}>
+      <div className="library-artist">
+        <div className="library-artist__hero">
+          <div className="library-artist__photo">
+            <SkeletonShape className="skeleton-fill" />
+          </div>
+          <div className="library-artist__body">
+            <h1 className="library-artist__name">
+              <SkeletonText width="4em" />
+            </h1>
+            <p className="library-artist__meta">
+              <SkeletonText width="12em" />
+            </p>
+            <div className="library-artist__actions native-library-detail__actions">
+              <SkeletonShape className="btn btn-round-lg library-artist__play" />
+              {range(3).map((index) => (
+                <SkeletonShape key={index} className="native-library-favorite" />
+              ))}
+            </div>
           </div>
         </div>
+        <section className="library-artist__section">
+          <div className="native-library-section-heading">
+            <h2>Most played</h2>
+          </div>
+          <SkeletonTrackList count={10} variant="compact" />
+        </section>
+        <section className="library-artist__section">
+          <div className="native-library-section-heading">
+            <h2>Albums</h2>
+          </div>
+          <SkeletonLibraryGrid count={6} className="native-library-grid library-artist__grid" />
+        </section>
       </div>
-      <section className="native-library-detail__section">
-        <div className="native-library-detail__section-heading">
-          <h3>Albums</h3>
-        </div>
-        <SkeletonLibraryGrid count={2} />
-      </section>
-      <section className="native-library-detail__section">
-        <div className="native-library-detail__section-heading">
-          <h3>Top tracks</h3>
-        </div>
-        <SkeletonTrackList count={5} />
-      </section>
     </SkeletonStatus>
   );
 }

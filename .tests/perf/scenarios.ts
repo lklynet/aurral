@@ -91,6 +91,7 @@ export const scenarios: Scenario[] = [
         sort: "plays",
         availableOnly: true,
       }),
+      `/api/library/artists/${artistId}/plays`,
     ],
   },
   {
