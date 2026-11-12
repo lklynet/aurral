@@ -1,10 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import * as v from "valibot";
 import { toNormalizedAlbum } from "../../backend/services/providers/brainzmashMappers.ts";
 import { selectAlbumRelease } from "../../backend/services/providers/brainzmashRanking.ts";
-import { CATALOGUE_ARTISTS } from "./artists.ts";
 
 const text = v.nullish(v.string());
 const count = v.nullish(v.number());
@@ -94,30 +93,6 @@ export function serializeArtist(artist: CatalogueArtist, albums: CatalogueAlbum[
   });
 }
 
-// A catalogue directory may hold an `index.json` with its artists in order, the albums
-// its Library holds, and the editorial playlists Deezer offers. Without one, it is
-// Eden's main catalogue, whose Library is planned by rule.
-const catalogueIndexSchema = v.object({
-  artists: v.array(v.string()),
-  library: v.optional(v.array(v.string())),
-  playlists: v.array(
-    v.object({
-      title: v.string(),
-      picture: v.nullable(v.string()),
-      trackCount: v.number(),
-      tracks: v.array(v.object({ artist: v.string(), title: v.string() })),
-    }),
-  ),
-});
-export type CatalogueIndex = v.InferOutput<typeof catalogueIndexSchema>;
-export const CATALOGUE_INDEX = "index.json";
-
-function readIndex(directory: string): CatalogueIndex {
-  const file = path.join(directory, CATALOGUE_INDEX);
-  if (!existsSync(file)) return { artists: CATALOGUE_ARTISTS.map(([id]) => id), playlists: [] };
-  return v.parse(catalogueIndexSchema, JSON.parse(readFileSync(file, "utf8")));
-}
-
 export function loadCatalogue(directory = CATALOGUE_DIR) {
   const artists = new Map<string, CatalogueArtist>();
   const albums = new Map<string, CatalogueAlbum>();
@@ -135,8 +110,7 @@ export function loadCatalogue(directory = CATALOGUE_DIR) {
       albums.set(album.id, album);
     }
   }
-  const { artists: order, library, playlists } = readIndex(directory);
-  return { artists, albums, order, library, playlists };
+  return { artists, albums };
 }
 
 export type Catalogue = ReturnType<typeof loadCatalogue>;

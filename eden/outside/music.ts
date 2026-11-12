@@ -1,5 +1,5 @@
 import { getLinkedDeezerArtistId } from "../../backend/services/providers/brainzmashMappers.ts";
-import { VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
+import { CATALOGUE_ARTISTS, VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
 import { albumEdition, type Catalogue, type CatalogueArtist } from "../catalogue/catalogue.ts";
 import { searchKey } from "../metadata/search.ts";
 
@@ -12,7 +12,6 @@ export type Artist = {
   id: string;
   name: string;
   genres: string[];
-  picture: string | null;
   votes: number;
   albums: Album[];
 };
@@ -62,7 +61,7 @@ export function indexMusic(catalogue: Catalogue) {
     numbers.add(number);
     return number;
   };
-  const artists: Artist[] = catalogue.order.flatMap((id, index) => {
+  const artists: Artist[] = CATALOGUE_ARTISTS.flatMap(([id], index) => {
     const artist = catalogue.artists.get(id);
     if (!artist || id === VARIOUS_ARTISTS_ID) return [];
     return [
@@ -71,7 +70,6 @@ export function indexMusic(catalogue: Catalogue) {
         id,
         name: artist.artistname,
         genres: artist.genres ?? [],
-        picture: artist.images?.find((image) => image.CoverType === "Poster")?.Url ?? null,
         votes: artist.rating?.Count ?? 0,
         albums: [],
       },
@@ -136,11 +134,6 @@ export function indexMusic(catalogue: Catalogue) {
   const allTracks = allAlbums.flatMap((album) => album.tracks);
   const popular = artists.toSorted((left, right) => right.votes - left.votes);
   const words = (query: string | null) => searchKey(query).split(" ").filter(Boolean);
-  const findTracks = (query: string | null) => {
-    const wanted = words(query);
-    if (wanted.length === 0) return [];
-    return allTracks.filter((track) => wanted.every((word) => track.key.includes(word)));
-  };
 
   return {
     artists,
@@ -167,14 +160,11 @@ export function indexMusic(catalogue: Catalogue) {
         return wanted.every((word) => key.includes(word));
       });
     },
-    findTracks,
-    // A recorded playlist keeps the tracks the catalogue has.
-    playlists: catalogue.playlists.map((playlist) => ({
-      ...playlist,
-      tracks: playlist.tracks.flatMap(
-        ({ artist, title }) => findTracks(`${artist} ${title}`)[0] ?? [],
-      ),
-    })),
+    findTracks(query: string | null) {
+      const wanted = words(query);
+      if (wanted.length === 0) return [];
+      return allTracks.filter((track) => wanted.every((word) => track.key.includes(word)));
+    },
     inGenre: (genre: string | null) => {
       const key = searchKey(genre);
       return popular.filter((artist) => artist.genres.some((entry) => searchKey(entry) === key));

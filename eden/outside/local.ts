@@ -1,4 +1,4 @@
-import { releaseDate, type Artist, type Outside } from "./music.ts";
+import { releaseDate, type Outside } from "./music.ts";
 
 // Lyrics, and everything "near me" needs: where the listener is and who plays there.
 
@@ -95,11 +95,8 @@ const TOUR = [
   },
 ];
 
-const artistImages = (artist: Artist) =>
-  artist.picture ? [{ url: artist.picture, ratio: "4_3", width: 1000 }] : [];
-
 // An artist search gets that artist's tour: a run of dates from the coast inland, one at home.
-const tourFor = (artist: Artist) =>
+const tourFor = (artist: { number: number; name: string }) =>
   TOUR.map((stop, index) => {
     const date = new Date(
       Date.now() + (30 + (artist.number % 7) + index * 3) * DAY_MS,
@@ -116,7 +113,7 @@ const tourFor = (artist: Artist) =>
         },
       },
       _embedded: {
-        attractions: [{ name: artist.name, images: artistImages(artist) }],
+        attractions: [{ name: artist.name, images: [] }],
         venues: [
           {
             name: stop.venue,
@@ -149,13 +146,13 @@ export const ticketmaster: Outside = {
               id: `eden-show-${artist.number}`,
               name: artist.name,
               url: `https://www.ticketmaster.com/event/eden-show-${artist.number}`,
-              images: artistImages(artist),
+              images: [],
               distance: 2 + index,
               dates: {
                 start: { localDate: date.slice(0, 10), localTime: "20:00:00", dateTime: date },
               },
               _embedded: {
-                attractions: [{ name: artist.name, images: artistImages(artist) }],
+                attractions: [{ name: artist.name, images: [] }],
                 venues: [
                   {
                     name: index % 2 ? "Eden Hall" : "The Garden",

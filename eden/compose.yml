@@ -12,8 +12,6 @@ services:
   metadata:
     <<: *eden-node
     command: ["node", "eden/metadata/server.ts"]
-    environment:
-      EDEN_SCENE: ${EDEN_SCENE}
     ports:
       - "127.0.0.1:${EDEN_PORT_METADATA}:5002"
     healthcheck:
@@ -33,7 +31,6 @@ services:
     command: ["node", "eden/standins/outside.ts"]
     environment:
       EDEN_PORT_OUTSIDE: ${EDEN_PORT_OUTSIDE}
-      EDEN_SCENE: ${EDEN_SCENE}
     ports:
       - "127.0.0.1:${EDEN_PORT_OUTSIDE}:8080"
     volumes:
