@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  buildArtistTags,
-  getArtistHeroImage,
-  getArtistType,
-  type ArtistCoverImage,
-} from "../utils";
+import { buildArtistTags, getCoverImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.ts";
@@ -33,7 +28,7 @@ export function ArtistDetailsHero({
   coverImages: readonly ArtistCoverImage[] | null | undefined;
   onCoverError?: () => void;
 }) {
-  const heroImage = getArtistHeroImage(coverImages);
+  const heroImage = getCoverImage(coverImages);
   const [imageFailed, setImageFailed] = useState(false);
   const [retryImage, setRetryImage] = useState("");
   const displayedImage = retryImage || heroImage;

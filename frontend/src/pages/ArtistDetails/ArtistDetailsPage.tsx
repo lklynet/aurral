@@ -7,7 +7,7 @@ import { useAddTrackToLibrary } from "../../hooks/useAddTrackToLibrary";
 import { parseResponse } from "hono/client";
 import { artistsClient } from "../../utils/api/clients/artists.ts";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
-import { buildTasteArtist, getArtistHeroImage, getCoverImage } from "./utils";
+import { buildTasteArtist, getCoverImage } from "./utils";
 import { useArtworkWash } from "../../utils/imageColors";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
@@ -333,7 +333,7 @@ function ArtistDetailsPage() {
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
-  const heroWash = useArtworkWash(getArtistHeroImage(coverImages));
+  const heroWash = useArtworkWash(getCoverImage(coverImages));
   const { getAlbumStatus } = library;
   const librarySummary = useMemo(() => {
     if (!existsInLibrary || !libraryArtistId) return null;
