@@ -20,7 +20,7 @@ const [
   { default: mcpRoutes },
   { pluginsDir },
   { stopAllPlugins },
-  { listPlugins },
+  { listPlugins, updatePlugin },
   {
     checkPluginUpdates,
     inspectPluginLink,
@@ -28,6 +28,9 @@ const [
     unpackPluginArchive,
     updatePluginFromSource,
   },
+  { pendingLidarrConversion, setUpLidarrPlugin },
+  { encryptWithKey },
+  { getSettingsEncryptionKey },
 ] = await setupIsolatedBackend(
   "plugin-install",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -37,6 +40,9 @@ const [
   () => import("../../backend/services/plugins/pluginHost.ts"),
   () => import("../../backend/services/plugins/pluginService.ts"),
   () => import("../../backend/services/plugins/pluginInstaller.ts"),
+  () => import("../../backend/services/lidarrConversionReport.ts"),
+  () => import("../../backend/config/encryption.ts"),
+  () => import("../../backend/db/helpers/settings.ts"),
 );
 
 const admin = signedInAs(testUser(1, { username: "admin", role: "admin" })).route(
@@ -200,6 +206,85 @@ test("a GitHub repo link offers each plugin in it and installs the ones chosen",
       ["crate", "1.1.0", repo],
     ],
   );
+});
+
+test("an install converted from Lidarr sets up the official Lidarr plugin with Lidarr's saved connection", async (t) => {
+  const requested: string[] = [];
+  const server = await createMockHttpServer((request, response) => {
+    requested.push(String(request.url));
+    if (request.url === "/repos/lklynet/aurral-plugins/releases/latest") {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    response.end(
+      zip({
+        "aurral-plugins-1a2b/lidarr/manifest.json": JSON.stringify({
+          id: "lidarr",
+          name: "Lidarr",
+          version: "1.0.0",
+          api: 1,
+          settings: [
+            { key: "url", label: "Lidarr URL", type: "text", required: true },
+            { key: "apiKey", label: "API key", type: "password", required: true },
+            { key: "rootFolder", label: "Root folder for new artists", type: "text" },
+          ],
+          test: true,
+        }),
+        "aurral-plugins-1a2b/lidarr/index.js": `export default {
+          test: ({ settings }) => {
+            if (settings.apiKey !== "key") throw new Error("Lidarr answered HTTP 401");
+            return { message: "Connected" };
+          },
+        };`,
+        "aurral-plugins-1a2b/box/manifest.json": manifest("1.0.0"),
+        "aurral-plugins-1a2b/box/index.js": "export default {};",
+      }),
+    );
+  });
+  t.onTestFinished(server.close);
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    realFetch(String(input).replace("https://api.github.com", server.url), init),
+  );
+  db.prepare("INSERT INTO settings (key, value) VALUES ('lidarrConversion', ?)").run(
+    JSON.stringify({
+      convertedAt: 1,
+      folders: [],
+      connection: {
+        url: "http://lidarr.test",
+        apiKey: encryptWithKey("old", getSettingsEncryptionKey()),
+        rootFolder: "",
+      },
+    }),
+  );
+  const lidarr = async () => {
+    const { plugins } = await listPlugins();
+    return plugins.map((plugin) => [plugin.id, plugin.enabled, plugin.settings, plugin.sourceUrl]);
+  };
+
+  await assert.rejects(setUpLidarrPlugin(), /HTTP 401/);
+  assert.deepEqual(await lidarr(), [
+    [
+      "lidarr",
+      false,
+      { url: "http://lidarr.test", apiKey: "old" },
+      "https://github.com/lklynet/aurral-plugins",
+    ],
+  ]);
+
+  updatePlugin("lidarr", { settings: { apiKey: "key" } });
+  assert.deepEqual(await setUpLidarrPlugin(), { message: "Connected" });
+  assert.deepEqual(await lidarr(), [
+    [
+      "lidarr",
+      true,
+      { url: "http://lidarr.test", apiKey: "key" },
+      "https://github.com/lklynet/aurral-plugins",
+    ],
+  ]);
+  assert.equal(requested.length, 2);
+  assert.equal(pendingLidarrConversion(), null);
 });
 
 test("the daily check finds newer versions with what they add, and Update all installs them", async (t) => {

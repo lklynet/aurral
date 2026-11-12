@@ -163,6 +163,11 @@ test("an install that Lidarr ran keeps its music in read-only folders, and its a
   const report = convert();
 
   assert.deepEqual(report?.folders, [{ path: lidarrFolder, sharesLibraryFolder: false }]);
+  assert.deepEqual(report?.connection, {
+    url: "http://lidarr.test",
+    apiKey: "key",
+    rootFolder: "",
+  });
   assert.deepEqual(readOnlyFolderPaths().sort(), [lidarrFolder, otherFolder].sort());
   assert.deepEqual(mediaRows(), [
     { id: lidarrMedia, track_id: song, source: "readonly", path: lidarrFile },

@@ -31,6 +31,7 @@ const lidarrSettings = v.fallback(
     lidarr: v.optional(
       v.looseObject({
         enabled: v.optional(v.unknown()),
+        url: v.optional(v.unknown()),
         apiKey: v.optional(v.unknown()),
         rootFolderPath: v.optional(v.unknown()),
         rootFolderPaths: v.optional(v.array(v.unknown())),
@@ -43,6 +44,7 @@ const lidarrSettings = v.fallback(
 export const lidarrConversionReport = v.object({
   convertedAt: v.number(),
   folders: v.array(v.object({ path: v.string(), sharesLibraryFolder: v.boolean() })),
+  connection: v.optional(v.object({ url: v.string(), apiKey: v.string(), rootFolder: v.string() })),
 });
 
 function parse(text: string | undefined): unknown {
@@ -53,6 +55,8 @@ function parse(text: string | undefined): unknown {
     return null;
   }
 }
+
+const text = (value: unknown) => String(value ?? "").trim();
 
 const isWithin = (root: string, candidate: string) => {
   const relative = path.relative(root, candidate);
@@ -68,7 +72,8 @@ const outermost = (folders: string[]) =>
 // music: Lidarr's root folders become read-only folders, so Aurral plays the
 // files and never renames, retags, upgrades, or deletes them, and every
 // artist and album becomes Aurral's with the same IDs, unmonitored. Nothing
-// here calls Lidarr.
+// here calls Lidarr. The report keeps Lidarr's connection, its key still
+// encrypted, until an admin sets up the Lidarr plugin or dismisses it.
 export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
   const setting = db.prepare<[string], string>("SELECT value FROM settings WHERE key = ?").pluck();
   if (setting.get(MIGRATION_KEY)) return null;
@@ -108,7 +113,7 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
       const folders = [
         ...new Map(
           [...(lidarr.rootFolderPaths ?? []), lidarr.rootFolderPath]
-            .map((root) => String(root ?? "").trim())
+            .map(text)
             .filter(Boolean)
             .map((lidarrPath) => {
               const folder = path.resolve(resolveLocalPath(lidarrPath, mappings));
@@ -175,7 +180,17 @@ export function convertLidarrLibrary(db: Database.Database, dataDir: string) {
         "UPDATE download_jobs SET managed_by = 'aurral' WHERE managed_by = 'lidarr'",
       ).run();
 
-      const converted = { convertedAt: now, folders };
+      const converted = {
+        convertedAt: now,
+        folders,
+        ...(connected && {
+          connection: {
+            url: text(lidarr.url),
+            apiKey: text(lidarr.apiKey),
+            rootFolder: text(lidarr.rootFolderPath),
+          },
+        }),
+      };
       db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
         LIDARR_CONVERSION_REPORT_KEY,
         JSON.stringify(converted),

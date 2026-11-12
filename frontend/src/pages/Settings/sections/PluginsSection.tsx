@@ -23,6 +23,7 @@ import {
   type ServiceStatus,
 } from "../SettingsLayout";
 import { readApiError } from "../../../utils/api/errors.ts";
+import { OFFICIAL_PLUGINS_URL } from "../../../../../lib/officialPlugins.ts";
 
 type PluginList = InferResponseType<typeof pluginsClient.$get, 200>;
 type Plugin = PluginList["plugins"][number];
@@ -356,8 +357,6 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
   );
 }
 
-const OFFICIAL_PLUGINS = "https://github.com/lklynet/aurral-plugins";
-
 function InstallGroup({ list }: { list: PluginList }) {
   const refresh = useRefreshPlugins();
   const { showSuccess } = useToast();
@@ -457,8 +456,8 @@ function InstallGroup({ list }: { list: PluginList }) {
             className="settings-link"
             disabled={inspect.isPending}
             onClick={() => {
-              setUrl(OFFICIAL_PLUGINS);
-              inspect.mutate(OFFICIAL_PLUGINS);
+              setUrl(OFFICIAL_PLUGINS_URL);
+              inspect.mutate(OFFICIAL_PLUGINS_URL);
             }}
           >
             use the official plugins

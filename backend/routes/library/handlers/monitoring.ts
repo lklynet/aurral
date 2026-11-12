@@ -7,7 +7,11 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { removeMonitoringExclusion } from "../../../services/monitoringStore.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
-import { dismissLidarrConversionReport } from "../../../services/lidarrConversionReport.ts";
+import {
+  dismissLidarrConversionReport,
+  setUpLidarrPlugin,
+} from "../../../services/lidarrConversionReport.ts";
+import { PluginRequestError } from "../../../services/plugins/pluginService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
@@ -94,6 +98,15 @@ export default new Hono<AppEnv>()
       return c.json({ success: true }, 200);
     } catch (error) {
       return sendError(c, error, "Failed to dismiss the Lidarr conversion report");
+    }
+  })
+  .post("/lidarr-conversion/plugin", requireAuth, requireAdmin, async (c) => {
+    try {
+      return c.json(await setUpLidarrPlugin(), 200);
+    } catch (error) {
+      if (error instanceof PluginRequestError)
+        return c.json({ error: error.message }, error.status);
+      return sendError(c, error, "Failed to set up the Lidarr plugin");
     }
   })
   .get("/monitoring/exclusions", requireAuth, noCache, validate("query", exclusionsQuery), (c) => {
